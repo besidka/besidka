@@ -4,19 +4,22 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
 
   nitro: {
-    preset: "cloudflare_module",
+    preset: 'cloudflare_module',
 
     cloudflare: {
       deployConfig: true,
-      nodeCompat: true
-    }
+      nodeCompat: true,
+      wrangler: {
+        name: 't3-cloneathon',
+      },
+    },
   },
 
   modules: [
-    "nitro-cloudflare-dev", 
-    '@nuxt/eslint', 
-    '@nuxt/fonts', 
-    '@nuxt/icon'
+    'nitro-cloudflare-dev',
+    '@nuxt/eslint',
+    '@nuxt/fonts',
+    '@nuxt/icon',
   ],
   eslint: {
     checker: true,
@@ -37,11 +40,6 @@ export default defineNuxtConfig({
     compatibilityVersion: 4,
   },
   typescript: {
-    typeCheck: true
+    typeCheck: true,
   },
-  vite: {
-    experimental: {
-      enableNativePlugin: true
-    }
-  }
 })
