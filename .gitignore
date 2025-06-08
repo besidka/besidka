@@ -29,3 +29,6 @@ logs
 .wrangler
 .dev.vars*
 wrangler.json*
+
+# Tests
+coverage
