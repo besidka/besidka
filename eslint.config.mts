@@ -13,5 +13,8 @@ export default withNuxt([
       '@stylistic': stylistic,
     },
     files: ['**/*.ts', '**/*.mts', '**/*.cts', '**/*.js', '**/*.mjs', '**/*.cjs', '**/*.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
   },
 ])

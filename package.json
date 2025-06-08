@@ -7,6 +7,8 @@
 		"dev": "nuxt dev",
 		"generate": "nuxt generate",
 		"preview": "bun run build && wrangler dev",
+		"prepare": "nuxt prepare",
+		"typecheck": "nuxt typecheck",
 		"postinstall": "nuxt prepare",
 		"deploy": "bun run build && wrangler deploy",
 		"cf-typegen": "wrangler types"
@@ -24,6 +26,12 @@
 		"@stylistic/eslint-plugin": "^4.4.1",
 		"nitro-cloudflare-dev": "^0.2.2",
 		"nitropack": "^2.11.12",
+		"typescript": "^5.8.3",
+		"vite-plugin-eslint2": "^5.0.3",
+		"vue-tsc": "^2.2.10",
 		"wrangler": "^4.19.1"
+	},
+	"overrides": {
+		"vite": "npm:rolldown-vite@latest"
 	}
 }
