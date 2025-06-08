@@ -12,5 +12,10 @@ export default defineNuxtConfig({
     }
   },
 
-  modules: ["nitro-cloudflare-dev"]
+  modules: [
+    "nitro-cloudflare-dev", 
+    '@nuxt/eslint', 
+    '@nuxt/fonts', 
+    '@nuxt/icon'
+  ]
 })

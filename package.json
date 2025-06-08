@@ -12,11 +12,16 @@
 		"cf-typegen": "wrangler types"
 	},
 	"dependencies": {
+		"@nuxt/eslint": "1.4.1",
+		"@nuxt/fonts": "0.11.4",
+		"@nuxt/icon": "1.13.0",
+		"eslint": "^9.0.0",
 		"nuxt": "^3.17.5",
 		"vue": "^3.5.16",
 		"vue-router": "^4.5.1"
 	},
 	"devDependencies": {
+		"@stylistic/eslint-plugin": "^4.4.1",
 		"nitro-cloudflare-dev": "^0.2.2",
 		"nitropack": "^2.11.12",
 		"wrangler": "^4.19.1"
