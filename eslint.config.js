@@ -1,10 +1,8 @@
 import stylistic from '@stylistic/eslint-plugin'
-import { createConfigForNuxt } from '@nuxt/eslint-config/flat'
 // @ts-check
 import withNuxt from './.nuxt/eslint.config.mjs'
 
 const generalConfig = {
-  name: '@courses/eslint-rules',
   plugins: {
     '@stylistic': stylistic,
   },
@@ -61,11 +59,8 @@ const stylisticResultConfig = stylistic.configs.customize(stylisticCustomConfig)
 
 export const configNuxt = [stylisticResultConfig, generalConfig]
 
-export const configStandalone = createConfigForNuxt({
-  features: {
-    tooling: true,
-    stylistic: stylisticCustomConfig,
-  },
-}).append(stylisticResultConfig, generalConfig)
-
-export default withNuxt(configNuxt)
+export default withNuxt(configNuxt).append({
+  ignores: [
+    'auth-schema.ts',
+  ],
+})

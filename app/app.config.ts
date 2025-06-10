@@ -1,3 +1,7 @@
 export default defineAppConfig({
-  siteName: 'T3 Chat Cloneathon',
+  siteName: 'Chernenko AI Chat',
+  messages: {
+    autoRemove: true,
+    autoRemoveTimeout: 10000,
+  },
 })

@@ -1,89 +1,102 @@
 @import "tailwindcss";
 
+@source "../../";
+
 @plugin "daisyui" {
   themes: light --default, dark --prefersdark;
   logs: false;
 }
 
+/* https://v5.daisyui.com/theme-generator/ */
 @plugin "daisyui/theme" {
   name: "light";
-  default: false;
+  default: true;
   prefersdark: false;
   color-scheme: "light";
-  --color-base-100: oklch(100% 0 0);
-  --color-base-200: oklch(98% 0 0);
-  --color-base-300: oklch(95% 0 0);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(59% 0.249 0.584);
-  --color-primary-content: oklch(100% 0 0);
-  --color-secondary: oklch(71% 0.202 349.761);
-  --color-secondary-content: oklch(94% 0.028 342.258);
-  --color-accent: oklch(59% 0.249 0.584);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(21% 0.006 285.885);
-  --color-neutral-content: oklch(100% 0 0);
-  --color-info: oklch(74% 0.16 232.661);
-  --color-info-content: oklch(29% 0.066 243.157);
-  --color-success: oklch(76% 0.177 163.223);
-  --color-success-content: oklch(37% 0.077 168.94);
-  --color-warning: oklch(82% 0.189 84.429);
-  --color-warning-content: oklch(41% 0.112 45.904);
-  --color-error: oklch(71% 0.194 13.428);
-  --color-error-content: oklch(27% 0.105 12.094);
-  --radius-selector: 0.5rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
+  --color-base-100: var(--color-white);
+  --color-base-200: var(--color-stone-100);
+  --color-base-300: var(--color-stone-200);
+  --color-base-content: var(--color-stone-950);
+  --color-primary: var(--color-stone-800);
+  --color-primary-content: var(--color-white);
+  --color-secondary: var(--color-stone-800);
+  --color-secondary-content: var(--color-white);
+  --color-accent: var(--color-pink-500);
+  --color-accent-content: var(--color-white);
+  --color-neutral: var(--color-stone-800);
+  --color-neutral-content: var(--color-white);
+  --color-info: var(--color-sky-100);
+  --color-info-content: var(--color-sky-950);
+  --color-success: var(--color-emerald-600);
+  --color-success-content: var(--color-white);
+  --color-input-success: var(--color-emerald-600);
+  --color-warning: var(--color-amber-100);
+  --color-warning-content: var(--color-amber-950);
+  --color-error: var(--color-red-500);
+  --color-error-content: var(--color-white);
+  --radius-selector: 1rem;
+  --radius-field: .5rem;
+  --radius-box: .5rem;
+  --size-selector: .3rem;
+  --size-field: .3rem;
   --border: 1px;
   --depth: 1;
-  --noise: 0;
+  --noise: 1;
+
+
+  --color-text: var(--color-stone-950);
+  --color-skeleton: var(--color-gray-400);
+  --color-skeleton-overlay: var(--color-gray-200);
 }
+
 
 @plugin "daisyui/theme" {
   name: "dark";
   default: false;
-  prefersdark: false;
+  prefersdark: true;
   color-scheme: "dark";
-  --color-base-100: oklch(27% 0.006 286.033);
-  --color-base-200: oklch(21% 0.006 285.885);
-  --color-base-300: oklch(14% 0.005 285.823);
-  --color-base-content: oklch(100% 0 0);
-  --color-primary: oklch(65% 0.241 354.308);
-  --color-primary-content: oklch(100% 0 0);
-  --color-secondary: oklch(82% 0.12 346.018);
-  --color-secondary-content: oklch(0% 0 0);
-  --color-accent: oklch(65% 0.241 354.308);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(27% 0.006 286.033);
-  --color-neutral-content: oklch(100% 0 0);
-  --color-info: oklch(74% 0.16 232.661);
-  --color-info-content: oklch(29% 0.066 243.157);
-  --color-success: oklch(76% 0.177 163.223);
-  --color-success-content: oklch(37% 0.077 168.94);
-  --color-warning: oklch(82% 0.189 84.429);
-  --color-warning-content: oklch(41% 0.112 45.904);
-  --color-error: oklch(71% 0.194 13.428);
-  --color-error-content: oklch(27% 0.105 12.094);
-  --radius-selector: 0.5rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
+  --color-base-100: var(--color-stone-800);
+  --color-base-200: var(--color-stone-900);
+  --color-base-300: var(--color-stone-950);
+  --color-base-content: var(--color-stone-100);
+  --color-primary: var(--color-stone-800);
+  --color-primary-content: var(--color-stone-100);
+  --color-secondary: var(--color-stone-800);
+  --color-secondary-content: var(--color-stone-100);
+  --color-accent: var(--color-pink-400);
+  --color-accent-content: var(--color-stone-950);
+  --color-neutral: var(--color-stone-800);
+  --color-neutral-content: var(--color-stone-100);
+  --color-info: var(--color-sky-100);
+  --color-info-content: var(--color-sky-950);
+  --color-success: var(--color-emerald-200);
+  --color-success-content: var(--color-emerald-950);
+  --color-input-success: var(--color-success);
+  --color-warning: var(--color-amber-100);
+  --color-warning-content: var(--color-amber-950);
+  --color-error: var(--color-red-200);
+  --color-error-content: var(--color-red-950);
+  --radius-selector: 1rem;
+  --radius-field: .5rem;
+  --radius-box: .5rem;
+  --size-selector: .3rem;
+  --size-field: .3rem;
   --border: 1px;
   --depth: 1;
-  --noise: 0;
+  --noise: 1;
+
+
+  --color-text: var(--color-white);
+  --color-skeleton: var(--color-gray-300);
+  --color-skeleton-overlay: var(--color-white);
 }
 
 @theme {
   --font-display: 'Atkinson Hyperlegible', sans-serif;
   --font-code: 'Atkinson Hyperlegible Mono', sans-serif;
-}
 
-@layer base {
-  body {
-    @apply font-display;
-  }
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) var(--animate-pulse-iterations, infinite);
+  --animate-pulse-once: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 1;
 }
 
 @custom-variant light {
@@ -96,4 +109,166 @@
   &:where([data-theme="dark"], [data-theme="dark"] *) {
     @slot;
   }
+}
+
+@layer base {
+  html,
+  body {
+    @apply w-full h-full overflow-x-hidden;
+  }
+
+  html {
+    @apply bg-gradient-to-tr
+      from-accent/20 dark:from-accent/30
+      via-accent/10 dark:via-accent/10
+      to-accent/30;
+  }
+
+  body {
+    @apply font-display;
+  }
+
+  strong {
+    @apply font-medium;
+  }
+}
+
+/** 
+ * Change the background color of the skeleton loader
+ * https://github.com/saadeghi/daisyui/blob/master/src/components/styled/skeleton.css 
+ */
+@layer utilities {
+
+  .checkbox {
+    --size-selector: .25rem;
+    --radius-selector: .5rem;
+  }
+
+  .badge {
+    --size-selector: 0.1875rem;
+  }
+  
+  .tooltip::before {
+    --radius-field: .25rem;
+  }
+
+  .fieldset-legend {
+    font-size: .875rem;
+  }
+
+  .tab-content {
+    @apply bg-base-100 border-base-300 p-6;
+  }
+  
+  .skeleton:not(.skeleton--default) {
+      @apply rounded-full;
+      background-color: var(--color-skeleton);
+      background-image: linear-gradient(
+        105deg,
+        transparent 0%,
+        transparent 40%,
+        var(--color-skeleton-overlay) 50%,
+        transparent 60%,
+        transparent 100%
+      );
+  }
+
+  .validator:not([type="checkbox"]) {
+
+    &:user-invalid, &:has(:user-invalid) {
+      --input-color: var(--color-base-content);
+    }
+
+
+    &[user-valid="true"], &:has([user-valid="true"]) {
+      &, &:focus, &:checked, &[aria-checked="true"], &:focus-within {
+        --input-color: var(--color-success);
+      }
+    }
+    
+    &[user-invalid="true"], &:has([user-invalid="true"]) {
+      --radius-field: 0;
+      --custom-radius-field: .5rem;
+
+      border-top-right-radius: var(--custom-radius-field);
+      border-top-left-radius: var(--custom-radius-field);
+      
+      &, &:focus, &:checked, &[aria-checked="true"], &:focus-within {
+        --input-color: var(--color-error);
+      }
+
+      & ~ .validator-hint {
+        --custom-radius-field: .5rem;
+
+        border-bottom-right-radius: var(--custom-radius-field);
+        border-bottom-left-radius: var(--custom-radius-field);
+        
+        @apply visible flex items-center justify-end gap-2 
+          mt-0 py-0.5 px-2 
+          bg-error text-error-content;
+      }
+    }
+  }
+
+  .input {
+    &:has(> input[disabled]), &:is(:disabled, [disabled]) {
+      @apply border-base-300;
+    }
+  }
+
+  input[data-com-onepassword-filled="light"],
+  input[data-com-onepassword-filled="dark"] {
+    background: red !important;
+  }
+
+  .alert-success {
+    @variant light {
+      --color-success: var(--color-emerald-200);
+      --color-success-content: var(--color-emerald-950);
+    }
+  }
+
+  .modal {
+    &:not(dialog:not(.modal-open)), 
+    &::backdrop {
+      @apply bg-black/70;
+    }
+  }
+
+  .btn {
+    @apply font-normal;
+  }
+
+  /* .btn {
+    outline-color: var(--custom-outline-color, var(--btn-color));
+
+    @variant dark {
+        &.btn-primary {
+          --custom-outline-color: var(--color-primary-content);
+        }
+        &.btn-secondary {
+          --custom-outline-color: var(--color-secondary-content);
+        }
+        &.btn-neutral {
+          --custom-outline-color: var(--color-neutral-content);
+        }
+    }
+    &.btn-outline {
+      @media (hover: hover) {
+        &:not(:hover):not(:focus-visible):not(:active) {
+          @variant dark {
+            &.btn-primary {
+              --btn-color: var(--color-primary-content);
+            }
+            &.btn-secondary {
+              --btn-color: var(--color-secondary-content);
+            }
+            &.btn-neutral {
+              --btn-color: var(--color-neutral-content);
+            }
+          }
+        }
+      }
+    }
+  } */
 }

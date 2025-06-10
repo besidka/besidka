@@ -4,6 +4,8 @@
     <NuxtPage />
   </NuxtLayout>
   <NuxtLoadingIndicator />
+  <UiConfirmation />
+  <UiMessages />
 </template>
 
 <script setup lang="ts">

@@ -32,3 +32,11 @@ wrangler.json*
 
 # Tests
 coverage
+
+# Drizzle ORM
+.drizzle
+
+# Better Auth
+auth-schema.ts
+database.sqlite
+
