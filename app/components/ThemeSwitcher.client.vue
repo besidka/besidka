@@ -1,6 +1,6 @@
 <template>
   <label
-    class="flex items-center focus-within:focus"
+    class="flex items-center bubble size-12 !rounded-full flex items-center justify-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-content"
     :class="{
           'tooltip': tips,
           'tooltip-left': tips && tipsPosition === 'left',

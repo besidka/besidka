@@ -239,6 +239,14 @@
     @apply font-normal;
   }
 
+  .bubble {
+    @apply rounded-xl bg-white/60 shadow-2xl backdrop-blur-3xl saturate-125;
+
+    @variant dark {
+      @apply bg-white/10;
+    }
+  }
+
   /* .btn {
     outline-color: var(--custom-outline-color, var(--btn-color));
 
