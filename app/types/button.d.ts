@@ -24,6 +24,7 @@ export interface ButtonProps {
   type?: 'button' | 'submit' | 'reset'
   soft?: boolean
   outline?: boolean
+  circle?: boolean
   disabled?: boolean
   mode?: ButtonMode
   title?: string
@@ -38,6 +39,7 @@ export interface ButtonProps {
   iconName?: string
   iconNameDisabled?: string
   iconSize?: number
+  tooltipPosition?: 'top' | 'bottom' | 'left' | 'right'
 }
 
 export interface ButtonContainerAttrs {

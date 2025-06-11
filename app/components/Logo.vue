@@ -1,46 +1,58 @@
 <template>
   <div class="flex items-center min-h-16 ml-4 mb-4">
-      <NuxtLink
-        to="/"
-        class="btn btn-link p-0 !no-underline"
-      >
-        <figure class="flex items-center">
-          <ClientOnly>
-            <template #fallback>
-              <span
-                :style="{
-                  width: `${size.width}px`,
-                  height: `${size.height}px`,
-                }"
-                class="block skeleton"
-              />
-            </template>
-            <NuxtImg
+    <NuxtLink
+      to="/"
+      class="w-full btn !p-0 !no-underline"
+      :class="{
+        'btn-circle btn-primary': !asLink,
+        'btn-link': asLink,
+      }"
+    >
+      <figure class="flex items-center gap-2">
+        <ClientOnly v-if="asLink">
+          <template #fallback>
+            <span
+              :style="{
+                width: `${size.width}px`,
+                height: `${size.height}px`,
+              }"
+              class="block skeleton"
+            />
+          </template>
+          <NuxtImg
             :src="src"
             :alt="alt"
             v-bind="size"
           />
-          </ClientOnly>
-          <Transition name="title">
-            <span
-              v-show="!short"
-              class="ml-2 font-black text-2xl dark:text-white"
-            >
-              chernenko.chat
-            </span>
-          </Transition>
-        </figure>
-      </NuxtLink>
+        </ClientOnly>
+        <NuxtImg
+          v-else
+          :src="src"
+          :alt="alt"
+          v-bind="size"
+        />
+        <Transition name="title">
+          <span
+            v-show="!short"
+            class="font-black text-2xl dark:text-white"
+          >
+            chernenko.chat
+          </span>
+        </Transition>
+      </figure>
+    </NuxtLink>
   </div>
 </template>
 
 <script setup lang="ts">
 interface Props {
   short?: boolean
+  asLink?: boolean
   alt?: string
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
+  asLink: true,
   alt: 'Logo',
 })
 
@@ -49,7 +61,7 @@ const colorMode = useColorMode()
 const src = computed<string>(() => {
   let prefix = 'logo'
 
-  if (colorMode.value === 'dark') {
+  if (!props.asLink || colorMode.value === 'dark') {
     prefix += '-light'
   }
 
@@ -57,8 +69,8 @@ const src = computed<string>(() => {
 })
 
 const size = computed<{ width: number, height: number }>(() => ({
-  width: 40,
-  height: 40,
+  width: props.asLink ? 40 : 28,
+  height: props.asLink ? 40 : 28,
 }))
 </script>
 

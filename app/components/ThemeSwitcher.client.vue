@@ -1,40 +1,33 @@
 <template>
-  <label
-    class="flex items-center bubble size-12 !rounded-full flex items-center justify-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:focus-visible:outline-primary-content"
-    :class="{
-          'tooltip': tips,
-          'tooltip-left': tips && tipsPosition === 'left',
-          'tooltip-right': tips && tipsPosition === 'right',
-          'tooltip-top': tips && tipsPosition === 'top',
-          'tooltip-bottom': tips && tipsPosition === 'bottom',
-    }"
-    :data-tip="tips ? label : null"
+  <UiButton
+    circle
+    :tooltip="tips"
+    :tooltip-position="tipsPosition"
+    :title="label"
+    :icon-only="true"
+    @click="changeColorMode"
   >
-    <span class="swap swap-rotate">
-      <input
-        v-model="checked"
-        type="checkbox"
-        class="theme-controller outline-none"
-      >
-      <Icon
-        class="swap-off"
-        name="lucide:sun"
-        size="20"
-      />
-      <Icon
-        class="swap-on"
-        name="lucide:moon"
-        size="20"
-      />
-    </span>
-    <span
-      :class="{
-        'sr-only': tips,
-      }"
-    >
-      {{ label }}
-    </span>
-  </label>
+    <template #icon>
+      <span class="swap swap-rotate">
+        <Icon
+          :class="{
+            'swap-off': !checked,
+            'swap-on': checked,
+          }"
+          name="lucide:sun"
+          size="20"
+        />
+        <Icon
+          :class="{
+            'swap-off': checked,
+            'swap-on': !checked,
+          }"
+          name="lucide:moon"
+          size="20"
+        />
+      </span>
+    </template>
+  </UiButton>
 </template>
 
 <script setup lang="ts">
@@ -54,7 +47,11 @@ onBeforeMount(() => {
   setFavicon(colorMode.preference as FaviconTheme)
 })
 
-const checked = shallowRef<boolean>(colorMode.value !== 'light')
+function changeColorMode() {
+  colorMode.value = colorMode.value === 'light' ? 'dark' : 'light'
+}
+
+const checked = computed<boolean>(() => colorMode.value !== 'light')
 
 watch(checked, (value: boolean) => {
   colorMode.preference = !value ? 'light' : 'dark'

@@ -4,7 +4,7 @@
       <div class="grid place-items-center mb-8">
         <Logo class="min-h-auto !m-0" />
       </div>
-      <UiBubble class="grow sm:w-md max-w-full p-8 text-center">
+      <UiBubble class="grow sm:w-md max-w-full p-8 text-center z-20">
         <template v-if="error">
           <h1 class="mb-2 text-4xl font-bold text-text">
             Error code: {{ error.statusCode }}

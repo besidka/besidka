@@ -4,11 +4,14 @@
       'tooltip before:font-normal': showTooltip,
       'before:hidden after:hidden': showTooltip,
       'lg:before:block lg:after:block': showTooltip,
-      'tooltip-bottom': showTooltip,
       'tooltip-accent': showTooltip && mode === 'accent',
       'tooltip-primary': showTooltip && mode === 'primary',
       'tooltip-secondary': showTooltip && mode === 'secondary',
       'tooltip-error': showTooltip && mode === 'error',
+      'tooltip-left': showTooltip && tooltipPosition === 'left',
+      'tooltip-right': showTooltip && tooltipPosition === 'right',
+      'tooltip-top': showTooltip && tooltipPosition === 'top',
+      'tooltip-bottom': showTooltip && tooltipPosition === 'bottom',
     }"
     v-bind="containerAttrs"
   >
@@ -29,6 +32,7 @@
         'btn-ghost': mode === 'ghost',
         'btn-soft': soft,
         'btn-outline': outline,
+        'btn-circle': circle,
         'btn-link': mode === 'link',
         'btn-disabled': disabled,
         'btn-xs': size === 'xs',
@@ -101,6 +105,7 @@ const props = withDefaults(defineProps<ButtonProps>(), {
   mode: 'primary',
   text: 'Text',
   iconSize: 20,
+  tooltipPosition: 'bottom',
 })
 
 const slots: Slots = useSlots()
