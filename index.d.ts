@@ -1,3 +1,28 @@
+export interface Provider {
+  id: string
+  name: string
+  models: Model[]
+}
+
+export interface Model {
+  id: string
+  name: string
+  default?: boolean
+  description: string
+  contextLength: number
+  maxOutputTokens: number
+  price: {
+    tokens: number
+    input: string
+    output: string
+  }
+  modalities: {
+    input: string[]
+    output: string[]
+  }
+  tools: string[]
+}
+
 declare module 'nuxt/schema' {
 
   interface RuntimeConfig {
@@ -7,8 +32,8 @@ declare module 'nuxt/schema' {
     resend: {
       apiKey: string
       sender: {
-        'no-reply': string
-        'personalized': string
+        noreply: string
+        personalized: string
       }
     }
     betterAuth: {
@@ -24,6 +49,13 @@ declare module 'nuxt/schema' {
         }
       }
     }
+    providers: {
+      [key: string]: Provider
+    }
+  }
+
+  interface PublicRuntimeConfig {
+    defaultModel: string
   }
 
   interface AppConfigInput {

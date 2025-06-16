@@ -107,48 +107,49 @@
           </template>
         </UiFormInput>
         <Transition
-            appear
-            name="rules"
-            :duration="500"
+          appear
+          name="rules"
+          :duration="500"
         >
-            <UiBubble
-                v-if="isFocused"
-                class="relative overflow-hidden p-4 shadow-md text-xs bg-gradient-to-br from-base-100"
-                :class="{
-                    'to-base-200': !data.password,
-                    'to-error/30': data.password && !allRulesPassed,
-                    'to-success/50 animate-pulse-once':
-                      data.password && allRulesPassed,
-                }"
+          <UiBubble
+            v-if="isFocused"
+            class="relative overflow-hidden p-4 shadow-md text-xs bg-gradient-to-br from-base-100"
+            :class="{
+              'to-error/10': !data.password || data.password && !allRulesPassed,
+              'to-success/50 animate-pulse-once':
+                data.password && allRulesPassed,
+            }"
+          >
+            <ul>
+              <li
+                v-for="({ message, passed }, index) in rules"
+                :key="index"
+                class="relative z-20 flex mb-1"
+              >
+                <Icon
+                  :name="
+                    `${passed ? 'lucide:check' : 'lucide:x'}`
+                  "
+                  size="16"
+                  class="mr-1"
+                  :class="{
+                    'text-success': passed,
+                    'text-error': !passed,
+                  }"
+                />
+                <span>{{ message }}</span>
+              </li>
+            </ul>
+            <div
+              class="flex items-center mt-4 *:ml-2 *:py-1 *:px-2 *:rounded-full *:bg-gradient-to-br *:drop-shadow"
+              :class="timeToCrackHighlight"
             >
-                <ul>
-                    <li
-                        v-for="({ message, passed }, index) in rules"
-                        :key="index"
-                        class="relative z-20 flex mb-1"
-                    >
-                        <Icon
-                            :name="
-                              `${passed ? 'lucide:check' : 'lucide:x'}`
-                            "
-                            size="16"
-                            class="mr-1"
-                            :class="{
-                                'text-success': passed,
-                                'text-error': !passed,
-                            }"
-                        />
-                        <span>{{ message }}</span>
-                    </li>
-                </ul>
-                <div
-                    class="flex items-center mt-4 *:ml-2 *:py-1 *:px-2 *:rounded-full *:bg-gradient-to-br *:drop-shadow"
-                    :class="timeToCrackHighlight"
-                >
-                  Time to crack:
-                  <strong class="badge text-xs" :class="timeToCrackHighlight">{{ timeToCrack }}</strong>
-                </div>
-            </UiBubble>
+              Time to crack:
+              <strong class="badge badge-soft text-xs" :class="timeToCrackHighlight">
+                {{ timeToCrack }}
+              </strong>
+            </div>
+          </UiBubble>
         </Transition>
         <UiFormInput
           v-model="data.passwordConfirmation"

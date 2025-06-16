@@ -1,33 +1,38 @@
 <template>
-  <UiButton
-    circle
-    :tooltip="tips"
-    :tooltip-position="tipsPosition"
-    :title="label"
-    :icon-only="true"
-    @click="changeColorMode"
-  >
-    <template #icon>
-      <span class="swap swap-rotate">
-        <Icon
-          :class="{
-            'swap-off': !checked,
-            'swap-on': checked,
-          }"
-          name="lucide:sun"
-          size="20"
-        />
-        <Icon
-          :class="{
-            'swap-off': checked,
-            'swap-on': !checked,
-          }"
-          name="lucide:moon"
-          size="20"
-        />
-      </span>
+  <ClientOnly>
+    <template #fallback>
+      <SidebarSkeleton />
     </template>
-  </UiButton>
+    <UiButton
+      ghost
+      circle
+      :tooltip-position="tipsPosition"
+      :title="label"
+      :icon-only="true"
+      @click="changeColorMode"
+    >
+      <template #icon>
+        <span class="swap swap-rotate">
+          <Icon
+            :class="{
+              'swap-off': !checked,
+              'swap-on': checked,
+            }"
+            name="lucide:sun"
+            size="20"
+          />
+          <Icon
+            :class="{
+              'swap-off': checked,
+              'swap-on': !checked,
+            }"
+            name="lucide:moon"
+            size="20"
+          />
+        </span>
+      </template>
+    </UiButton>
+  </ClientOnly>
 </template>
 
 <script setup lang="ts">

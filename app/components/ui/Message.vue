@@ -29,10 +29,10 @@
       max="100"
       class="progress block w-full h-1 bg-black/10"
       :class="{
-        'text-error-content': message.type === 'error',
-        'text-success-content': message.type === 'success',
-        'text-info-content': message.type === 'info',
-        'text-warning-content': message.type === 'warning',
+        'text-error': message.type === 'error',
+        'text-success': message.type === 'success',
+        'text-info': message.type === 'info',
+        'text-warning': message.type === 'warning',
       }"
     />
   </div>

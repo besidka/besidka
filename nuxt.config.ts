@@ -1,4 +1,22 @@
 import tailwindcss from '@tailwindcss/vite'
+import providers from './providers'
+
+const {
+  // @TODO Anthropic is under development yet
+  // anthropic,
+  // @TODO Google is under development yet
+  // google,
+  openai,
+} = providers
+
+const providerValues = Object.values(providers)
+const defaultFirstFoundModel = providerValues[0]?.models[0]
+const defaultMarkedModel = providerValues.find((provider) => {
+  return provider.models.find((model) => {
+    return (model as any).default
+  })
+})
+const defaultModel = (defaultMarkedModel ?? defaultFirstFoundModel)!.id
 
 const {
   DB_ID,
@@ -21,7 +39,11 @@ const isProd = !isDev
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: isDev },
+  features: {
+    devLogs: true,
+  },
   nitro: {
+    debug: true,
     preset: 'cloudflare_module',
     experimental: {
       asyncContext: true,
@@ -30,11 +52,11 @@ export default defineNuxtConfig({
       deployConfig: isProd,
       nodeCompat: true,
       wrangler: {
-        name: 't3-cloneathon',
+        name: 'chat',
         d1_databases: [
           {
             binding: 'DB',
-            database_name: 't3-cloneathon',
+            database_name: 'chat',
             database_id: DB_ID || '__SET__DB_ID__IN_ENV__',
             preview_database_id: DB_PREVIEW_ID || '__SET__DB_PREVIEW_ID__IN_ENV__',
             migrations_dir: '.drizzle/migrations',
@@ -50,15 +72,46 @@ export default defineNuxtConfig({
       },
     },
   },
-  runtimeConfig: {
-    drizzle: {
-      debug: isDev,
+  $development: {
+    routeRules: {
+      '/.well-known/appspecific/**': {
+        headers: { 'cache-control': 'max-age=31536000' },
+        redirect: { to: '/', statusCode: 404 },
+      },
+      '/__webpack_hmr/**': {
+        headers: { 'cache-control': 'max-age=31536000' },
+        redirect: { to: '/', statusCode: 404 },
+      },
+      '/chats/**': {
+        // cache: false,
+      },
     },
+    runtimeConfig: {
+      drizzle: {
+        debug: true,
+      },
+      providers: {
+        // @TODO Anthropic is under development yet
+        // anthropic,
+        // @TODO Google is under development yet
+        // google,
+        openai,
+      },
+    },
+  },
+  $production: {
+    runtimeConfig: {
+      providers: {
+        openai,
+      },
+    },
+  },
+  runtimeConfig: {
     resend: {
       apiKey: RESEND_API_KEY || '__SET__RESEND_API_KEY__IN_ENV__',
       sender: {
-        'no-reply': RESEND_FROM_NOREPLY || '__SET__RESEND_FROM_NOREPLY__IN_ENV__',
-        'personalized': RESEND_FROM_PERSONALIZED || '__SET__RESEND_FROM_PERSONALIZED__IN_ENV__',
+        noreply: RESEND_FROM_NOREPLY || '__SET__RESEND_FROM_NOREPLY__IN_ENV__',
+        personalized: RESEND_FROM_PERSONALIZED || '__SET__RESEND_FROM_PERSONALIZED__IN_ENV__',
       },
     },
     betterAuth: {
@@ -73,6 +126,9 @@ export default defineNuxtConfig({
           clientSecret: GITHUB_CLIENT_SECRET || '__SET__GITHUB_CLIENT_SECRET__IN_ENV__',
         },
       },
+    },
+    public: {
+      defaultModel,
     },
   },
   colorMode: {

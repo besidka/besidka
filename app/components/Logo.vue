@@ -7,9 +7,10 @@
         'btn-circle btn-primary': !asLink,
         'btn-link': asLink,
       }"
+      :disabled="!asLink && disabled"
     >
       <figure class="flex items-center gap-2">
-        <ClientOnly v-if="asLink">
+        <ClientOnly v-if="asLink || disabled">
           <template #fallback>
             <span
               :style="{
@@ -34,7 +35,7 @@
         <Transition name="title">
           <span
             v-show="!short"
-            class="font-black text-2xl dark:text-white"
+            class="font-black text-2xl text-base-content"
           >
             chernenko.chat
           </span>
@@ -48,10 +49,12 @@
 interface Props {
   short?: boolean
   asLink?: boolean
+  disabled?: boolean | null
   alt?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  disabled: null,
   asLink: true,
   alt: 'Logo',
 })
@@ -61,7 +64,7 @@ const colorMode = useColorMode()
 const src = computed<string>(() => {
   let prefix = 'logo'
 
-  if (!props.asLink || colorMode.value === 'dark') {
+  if ((!props.disabled && !props.asLink) || colorMode.value === 'dark') {
     prefix += '-light'
   }
 

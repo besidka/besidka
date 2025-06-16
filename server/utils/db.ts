@@ -5,9 +5,9 @@ import * as schema from '../db/schema'
 let db: DrizzleD1Database<typeof schema>
 
 export function useDb() {
-  if (db) {
-    return db
-  }
+  // if (db) {
+  //   return db
+  // }
 
   db = (globalThis as any).__env__.DB
 

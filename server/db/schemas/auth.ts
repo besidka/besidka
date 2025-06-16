@@ -1,14 +1,11 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
 import { relations } from 'drizzle-orm'
-import { defaultSchema } from '../../utils/schema'
-// import { publicId } from '../../utils/public-id'
-
-// @TODO: Custom type doesn't work with auto-increment
-// https://github.com/drizzle-team/drizzle-orm/issues/818#issuecomment-2960199129
-const publicId = () => integer({ mode: 'number' })
+import { defaultSchemaTimestamps } from '../../utils/schema'
+import { chats } from './chats'
 
 export const users = sqliteTable('users', {
-  ...defaultSchema,
+  ...defaultSchemaTimestamps,
+  id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
   name: text().notNull(),
   email: text().notNull().unique(),
   emailVerified: integer({ mode: 'boolean' }).notNull(),
@@ -16,8 +13,9 @@ export const users = sqliteTable('users', {
 })
 
 export const sessions = sqliteTable('sessions', {
-  ...defaultSchema,
-  userId: publicId()
+  ...defaultSchemaTimestamps,
+  id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
+  userId: integer({ mode: 'number' })
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   expiresAt: integer({ mode: 'timestamp' }).notNull(),
@@ -26,10 +24,11 @@ export const sessions = sqliteTable('sessions', {
 })
 
 export const accounts = sqliteTable('accounts', {
-  ...defaultSchema,
-  accountId: publicId().notNull(),
+  ...defaultSchemaTimestamps,
+  id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
+  accountId: integer({ mode: 'number' }).notNull(),
   providerId: text().notNull(),
-  userId: publicId()
+  userId: integer({ mode: 'number' })
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   accessToken: text(),
@@ -42,15 +41,21 @@ export const accounts = sqliteTable('accounts', {
 })
 
 export const verifications = sqliteTable('verifications', {
-  ...defaultSchema,
+  ...defaultSchemaTimestamps,
+  id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
   identifier: text().notNull(),
   value: text().notNull(),
   expiresAt: integer({ mode: 'timestamp' }).notNull(),
 })
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
+  chats: many(chats),
+  chat: one(chats, {
+    fields: [users.id],
+    references: [chats.userId],
+  }),
 }))
 
 export const accountsRelations = relations(accounts, ({ one }) => ({

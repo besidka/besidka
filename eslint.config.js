@@ -9,6 +9,7 @@ const generalConfig = {
   files: ['**/*.ts', '**/*.mts', '**/*.cts', '**/*.js', '**/*.mjs', '**/*.cjs', '**/*.vue'],
   rules: {
     'no-console': 'warn',
+    'no-case-declarations': 'off',
     'unicorn/prefer-number-properties': 'off',
     'vue/multi-word-component-names': 'off',
     'vue/no-multiple-template-root': 'off',

@@ -7,7 +7,6 @@ type ButtonMode =
   | 'primary'
   | 'secondary'
   | 'error'
-  | 'ghost'
   | 'link'
   | 'info'
   | 'warning'
@@ -23,9 +22,10 @@ export interface ButtonProps {
   to?: string
   type?: 'button' | 'submit' | 'reset'
   soft?: boolean
+  ghost?: boolean
   outline?: boolean
   circle?: boolean
-  disabled?: boolean
+  disabled?: boolean | null
   mode?: ButtonMode
   title?: string
   text?: string
@@ -39,7 +39,9 @@ export interface ButtonProps {
   iconName?: string
   iconNameDisabled?: string
   iconSize?: number
+  tooltip?: string | null
   tooltipPosition?: 'top' | 'bottom' | 'left' | 'right'
+  tooltipStyle?: 'inherit' | Exclude<ButtonMode, 'default' | 'ghost' | 'link'>
 }
 
 export interface ButtonContainerAttrs {

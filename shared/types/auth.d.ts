@@ -1,4 +1,4 @@
-import * as schema from '../db/schema'
+import * as schema from '~~/server/db/schema'
 
 export type User = typeof schema.users.$inferSelect
 

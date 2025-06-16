@@ -3,11 +3,25 @@
     :class="{
       'tooltip before:font-normal': showTooltip,
       'before:hidden after:hidden': showTooltip,
-      'lg:before:block lg:after:block': showTooltip,
-      'tooltip-accent': showTooltip && mode === 'accent',
-      'tooltip-primary': showTooltip && mode === 'primary',
-      'tooltip-secondary': showTooltip && mode === 'secondary',
-      'tooltip-error': showTooltip && mode === 'error',
+      'md:before:block md:after:block': showTooltip,
+      'tooltip-accent':
+        showTooltip && (
+          tooltipStyle === 'accent'
+          || (tooltipStyle === 'inherit' && mode === 'accent')
+        ),
+      'tooltip-primary': showTooltip && (
+          tooltipStyle === 'primary'
+          || (tooltipStyle === 'inherit' && mode === 'primary')
+        ),
+      'tooltip-secondary': showTooltip && (
+          tooltipStyle === 'secondary'
+          || (tooltipStyle === 'inherit' && mode === 'secondary')
+        ),
+      'tooltip-error light:[--tt-bg:var(--color-red-950)]':
+        showTooltip && (
+          tooltipStyle === 'error'
+          || (tooltipStyle === 'inherit' && mode === 'error')
+        ),
       'tooltip-left': showTooltip && tooltipPosition === 'left',
       'tooltip-right': showTooltip && tooltipPosition === 'right',
       'tooltip-top': showTooltip && tooltipPosition === 'top',
@@ -29,7 +43,7 @@
         'btn-warning': mode === 'warning',
         'btn-error': mode === 'error',
         'btn-success': mode === 'success',
-        'btn-ghost': mode === 'ghost',
+        'btn-ghost': ghost,
         'btn-soft': soft,
         'btn-outline': outline,
         'btn-circle': circle,
@@ -106,6 +120,7 @@ const props = withDefaults(defineProps<ButtonProps>(), {
   text: 'Text',
   iconSize: 20,
   tooltipPosition: 'bottom',
+  tooltipStyle: 'inherit',
 })
 
 const slots: Slots = useSlots()
@@ -118,7 +133,11 @@ const hasCustomIcon = computed<boolean>(() => {
 })
 
 const showTooltip = computed<boolean>(() => {
-  return !props.disabled && (props.iconOnly || props.iconOnlyDesktop)
+  if (props.disabled && props.tooltip === null) {
+    return false
+  }
+
+  return props.iconOnly || props.iconOnlyDesktop
 })
 
 const buttonTag = computed(() => {
@@ -130,7 +149,7 @@ const buttonTag = computed(() => {
 })
 
 const resultTitle = computed<string>(() => {
-  if (props.disabled) {
+  if (props.disabled && props.tooltip === null) {
     return ''
   }
 
@@ -138,10 +157,10 @@ const resultTitle = computed<string>(() => {
 })
 
 const containerAttrs = computed<ButtonContainerAttrs>(() => {
-  return props.disabled
+  return props.disabled && props.tooltip === null
     ? {}
     : {
-      'data-tip': toValue(resultTitle),
+      'data-tip': props.tooltip === null ? undefined : toValue(resultTitle),
     }
 })
 

@@ -10,7 +10,7 @@
             Error code: {{ error.statusCode }}
           </h1>
           <h2 class="text-xl font-medium">
-            {{ error.message }}
+            {{ error.statusMessage }}
           </h2>
         </template>
         <h1
@@ -36,7 +36,7 @@
     </div>
   </div>
   <div class="fixed top-8 right-8 z-20">
-    <ThemeSwitcher
+    <LazySidebarThemeSwitcher
       :tips="true"
       tips-position="left"
     />
@@ -47,10 +47,13 @@
 <script setup lang="ts">
 import type { NuxtError } from '#app'
 
-defineProps({
+const props = defineProps({
   error: {
     type: Object as () => NuxtError,
     default: null,
   },
 })
+
+// eslint-disable-next-line no-console
+console.error(props.error)
 </script>

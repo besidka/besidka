@@ -14,10 +14,10 @@
         v-for="message in messages"
         :key="message.id"
         role="alert"
-        class="alert block w-full p-0 border-0 shadow-lg"
+        class="alert alert-soft block w-full p-0 border-0 !shadow-lg"
         :class="{
           'alert-error': message.type === 'error',
-          'alert-success': message.type === 'success',
+          'alert-success text-success-content': message.type === 'success',
           'alert-info': message.type === 'info',
           'alert-warning': message.type === 'warning',
         }"

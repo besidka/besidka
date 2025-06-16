@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 
-type From = 'no-reply' | 'personalized'
+type From = 'noreply' | 'personalized'
 
 export const useEmail = () => {
   const resend = new Resend(process.env.RESEND_API_KEY || '')
@@ -10,7 +10,7 @@ export const useEmail = () => {
     to,
     subject,
     html,
-    from = 'no-reply' as From,
+    from = 'noreply' as From,
   }: {
     to: string
     subject: string
