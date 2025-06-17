@@ -142,6 +142,7 @@ export default defineNuxtConfig({
     '@nuxt/image',
     '@nuxtjs/color-mode',
     '@nuxtjs/device',
+    '@nuxtjs/mdc',
     '@vueuse/nuxt',
   ],
   eslint: {
@@ -166,6 +167,9 @@ export default defineNuxtConfig({
     typeCheck: true,
   },
   vite: {
+    optimizeDeps: {
+      include: ['debug'],
+    },
     plugins: [tailwindcss()],
   },
   css: ['./assets/css/main.css'],
@@ -184,5 +188,10 @@ export default defineNuxtConfig({
   },
   experimental: {
     componentIslands: true,
+  },
+  mdc: {
+    highlight: {
+      shikiEngine: 'javascript',
+    },
   },
 })

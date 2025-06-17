@@ -35,7 +35,7 @@
           <template v-else-if="m.role === 'assistant'">
             <div
               v-if="session?.user.image"
-              class="chat-image avatar avatar-placeholder rounded-full"
+              class="max-sm:hidden chat-image avatar avatar-placeholder rounded-full"
             >
               <div class="w-10 rounded-full bg-base-100">
                 <Icon name="lucide:bot-message-square" />
@@ -43,7 +43,13 @@
             </div>
           </template>
           <UiBubble class="chat-bubble !shadow-none">
-            {{ part.text }}
+            <MDCCached
+              :value="part.text"
+              :cache-key="`message-${m.id}-part-${index}`"
+              unwrap="p"
+              :components="components"
+              :parser-options="{ highlight: false }"
+            />
           </UiBubble>
         </template>
       </div>
@@ -69,9 +75,15 @@
   />
 </template>
 <script setup lang="ts">
+import type { DefineComponent } from 'vue'
 import type { Chat } from '#shared/types/chats.d'
 import { useChat } from '@ai-sdk/vue'
 import { ref, watch, nextTick, onMounted, shallowRef } from 'vue'
+import ProseStreamPre from '~/components/prose/PreStream.vue'
+
+const components = {
+  pre: ProseStreamPre as unknown as DefineComponent,
+}
 
 definePageMeta({
   middleware: 'auth',
