@@ -35,15 +35,16 @@ const {
 
 const isDev = !!import.meta.dev
 const isProd = !isDev
+const enableAllLogs = false
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: isDev },
   features: {
-    devLogs: true,
+    devLogs: enableAllLogs,
   },
   nitro: {
-    debug: true,
+    debug: enableAllLogs,
     preset: 'cloudflare_module',
     experimental: {
       asyncContext: true,
