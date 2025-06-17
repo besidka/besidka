@@ -17,7 +17,7 @@
           tooltipStyle === 'secondary'
           || (tooltipStyle === 'inherit' && mode === 'secondary')
         ),
-      'tooltip-error light:[--tt-bg:var(--color-red-950)]':
+      'tooltip-error':
         showTooltip && (
           tooltipStyle === 'error'
           || (tooltipStyle === 'inherit' && mode === 'error')

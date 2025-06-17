@@ -13,7 +13,6 @@
     <UiButton
       ghost
       mode="error"
-      class="light:[--color-error:var(--color-red-950)]"
       icon-name="lucide:log-out"
       :icon-only="true"
       title="Sign out"
@@ -45,6 +44,9 @@
       title="Sign in"
       circle
       tooltip-position="left"
+      :class="{
+        'max-sm:scale-120 max-sm:-translate-y-3': $route.path !== '/signin',
+      }"
     />
     <SidebarThemeSwitcher
       :tips="true"
@@ -55,7 +57,7 @@
 <script setup lang="ts">
 const { $auth } = useNuxtApp()
 
-const session = $auth.useSession()
+const { data: session } = await $auth.useSession(useFetch)
 
 async function signOut() {
   try {

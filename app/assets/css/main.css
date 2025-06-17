@@ -21,7 +21,7 @@
   --color-primary-content: var(--color-white);
   --color-secondary: var(--color-white);
   --color-secondary-content: var(--color-stone-800);
-  --color-accent: var(--color-pink-900);
+  --color-accent: var(--color-pink-600);
   --color-accent-content: var(--color-white);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-white);
@@ -32,7 +32,7 @@
   --color-input-success: var(--color-emerald-600);
   --color-warning: var(--color-amber-700);
   --color-warning-content: var(--color-amber-950);
-  --color-error: var(--color-red-900);
+  --color-error: var(--color-red-600);
   --color-error-content: var(--color-white);
   --radius-selector: 1rem;
   --radius-field: .5rem;
@@ -43,8 +43,6 @@
   --depth: 1;
   --noise: 1;
 
-
-  --color-error-global: var(--color-red-900);
   --color-text: var(--color-stone-950);
   --color-skeleton: var(--color-gray-400);
   --color-skeleton-overlay: var(--color-gray-200);
@@ -229,10 +227,10 @@
   }
 
   .bubble {
-    @apply rounded-xl bg-white/50 shadow-2xl backdrop-blur-3xl saturate-200;
+    @apply rounded-xl bg-white/50 shadow-2xl backdrop-blur-3xl;
 
     @variant dark {
-      @apply bg-white/10 saturate-125;
+      @apply bg-white/10;
     }
   }
 

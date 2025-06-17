@@ -8,7 +8,7 @@
       }"
     >
       <div
-        class="p-1 pb-0 rounded-t-xl bg-base-100/30 dark:bg-base-100/80 shadow-lg"
+        class="p-1 pb-0 max-sm:pb-16 rounded-t-xl bg-base-100/30 dark:bg-base-100/80 shadow-lg"
       >
         <textarea
           v-model="message"

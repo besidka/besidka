@@ -1,7 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="relative overflow-y-auto w-full max-w-4xl mx-auto py-8 px-3 md:px-16 no-scrollbar outline-none"
+    class="relative overflow-y-auto w-full max-w-4xl mx-auto py-8 px-3 sm:px-24 no-scrollbar outline-none"
     tabindex="-1"
     @scroll="onScroll"
   >
@@ -56,7 +56,7 @@
     </div>
     <div
       v-show="showScrollButton && messages.length > 1"
-      class="fixed bottom-50 left-1/2 -translate-x-1/2 z-50"
+      class="fixed bottom-66 sm:bottom-50 left-1/2 -translate-x-1/2 z-50"
     >
       <UiButton
         circle
@@ -141,6 +141,9 @@ const {
   })),
   body: {
     model: userModel.value,
+  },
+  onFinish() {
+    scrollToBottom()
   },
   onError(error) {
     const { message } = typeof error.message === 'string'

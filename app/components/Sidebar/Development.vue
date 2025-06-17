@@ -1,4 +1,15 @@
 <template>
+  <UiButton
+    to="/chats/history"
+    ghost
+    disabled
+    icon-name="lucide:history"
+    :icon-only="true"
+    title="History (In development)"
+    circle
+    tooltip-position="left"
+    tooltip-style="error"
+  />
   <LazySidebarSubmenu>
     <template #trigger>
       <UiButton
@@ -10,23 +21,12 @@
       />
     </template>
     <UiButton
-      to="/chats/history"
-      ghost
-      disabled
-      icon-name="lucide:history"
-      :icon-only="true"
-      title="History"
-      circle
-      tooltip-position="bottom"
-      tooltip-style="error"
-    />
-    <UiButton
       to="/assistants"
       ghost
       disabled
       icon-name="lucide:bot-message-square"
       :icon-only="true"
-      title="Assistants"
+      title="Assistants (In development)"
       circle
       tooltip-position="bottom"
       tooltip-style="error"
@@ -37,7 +37,7 @@
       disabled
       icon-name="lucide:layers-2"
       :icon-only="true"
-      title="Workspaces"
+      title="Workspaces (In development)"
       circle
       tooltip-position="bottom"
       tooltip-style="error"

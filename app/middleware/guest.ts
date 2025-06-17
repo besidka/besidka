@@ -3,12 +3,12 @@ export default defineNuxtRouteMiddleware(async () => {
     return
   }
 
-  // const { $auth } = useNuxtApp()
-  // const { data: session } = await $auth.useSession(useFetch)
+  const { $auth } = useNuxtApp()
+  const { data: session } = await $auth.useSession(useFetch)
 
-  // if (!session.value) {
-  //   return
-  // }
+  if (!session.value) {
+    return
+  }
 
-  // return navigateTo('/')
+  return navigateTo('/')
 })
