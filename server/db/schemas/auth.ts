@@ -2,6 +2,7 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
 import { relations } from 'drizzle-orm'
 import { defaultSchemaTimestamps } from '../../utils/schema'
 import { chats } from './chats'
+import { keys } from './keys'
 
 export const users = sqliteTable('users', {
   ...defaultSchemaTimestamps,
@@ -55,6 +56,11 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   chat: one(chats, {
     fields: [users.id],
     references: [chats.userId],
+  }),
+  keys: many(keys),
+  key: one(keys, {
+    fields: [users.id],
+    references: [keys.userId],
   }),
 }))
 

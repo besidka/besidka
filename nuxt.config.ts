@@ -1,14 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import providers from './providers'
 
-const {
-  // @TODO Anthropic is under development yet
-  // anthropic,
-  // @TODO Google is under development yet
-  // google,
-  openai,
-} = providers
-
 const providerValues = Object.values(providers)
 const defaultFirstFoundModel = providerValues[0]?.models[0]
 const defaultMarkedModel = providerValues.find((provider) => {
@@ -83,27 +75,10 @@ export default defineNuxtConfig({
         headers: { 'cache-control': 'max-age=31536000' },
         redirect: { to: '/', statusCode: 404 },
       },
-      '/chats/**': {
-        // cache: false,
-      },
     },
     runtimeConfig: {
       drizzle: {
         debug: true,
-      },
-      providers: {
-        // @TODO Anthropic is under development yet
-        // anthropic,
-        // @TODO Google is under development yet
-        // google,
-        openai,
-      },
-    },
-  },
-  $production: {
-    runtimeConfig: {
-      providers: {
-        openai,
       },
     },
   },
@@ -128,8 +103,12 @@ export default defineNuxtConfig({
         },
       },
     },
+    providers,
     public: {
       defaultModel,
+      providers: providerValues.map((provider) => {
+        return provider.id
+      }),
     },
   },
   colorMode: {
@@ -144,10 +123,14 @@ export default defineNuxtConfig({
     '@nuxtjs/color-mode',
     '@nuxtjs/device',
     '@nuxtjs/mdc',
+    'nuxt-svgo',
     '@vueuse/nuxt',
   ],
   eslint: {
     checker: true,
+  },
+  svgo: {
+    autoImportPath: '~/assets/icons/logos',
   },
   fonts: {
     defaults: {
@@ -160,6 +143,14 @@ export default defineNuxtConfig({
     serverBundle: {
       collections: ['lucide', 'mdi'],
     },
+    customCollections: [
+      {
+        prefix: 'logos',
+        dir: './assets/icons/logos',
+        width: 48,
+        height: 48,
+      },
+    ],
   },
   future: {
     compatibilityVersion: 4,

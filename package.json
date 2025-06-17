@@ -44,6 +44,7 @@
 		"eslint": "^9.28.0",
 		"hashids": "^2.3.0",
 		"nuxt": "^3.17.5",
+		"nuxt-svgo": "^4.2.2",
 		"resend": "^4.5.2",
 		"shiki-stream": "^0.1.2",
 		"tailwindcss": "^4.1.8",

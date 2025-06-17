@@ -1,6 +1,10 @@
 <template>
   <LazyBackgroundLogo />
   <div class="relative z-30">
-    <NuxtPage/>
+    <div
+      class="relative w-full max-w-4xl mx-auto py-8 px-3 sm:px-24"
+    >
+      <NuxtPage/>
+    </div>
   </div>
 </template>

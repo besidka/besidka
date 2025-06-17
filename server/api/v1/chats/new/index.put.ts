@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
 
   switch (provider.id) {
     case 'openai': {
-      const { generateChatTitle } = useOpenAI(model)
+      const { generateChatTitle } = await useOpenAI(session.user.id, model)
 
       chatTitle = await generateChatTitle(body.data.message)
       break

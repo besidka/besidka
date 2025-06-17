@@ -1,15 +1,32 @@
-// import { randomUUID } from 'node:crypto'
-// import { generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
-// import { ulid } from 'ulid'
-// import * as schema from '../../../../../db/schema'
 
-const { OPENAI_API_KEY, OPENAI_API_PROJECT_KEY } = process.env
+export async function useOpenAI(
+  userId: string,
+  model: string,
+) {
+  const keys = await useDb().query.keys.findFirst({
+    where(keys, { and, eq }) {
+      return and(
+        eq(keys.userId, parseInt(userId)),
+        eq(keys.provider, 'openai'),
+      )
+    },
+    columns: {
+      apiKey: true,
+      projectId: true,
+    },
+  })
 
-export function useOpenAI(model: string) {
+  if (!keys) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'OpenAI key not found.',
+    })
+  }
+
   const openai = createOpenAI({
-    apiKey: OPENAI_API_KEY,
-    project: OPENAI_API_PROJECT_KEY,
+    apiKey: keys.apiKey,
+    project: keys.projectId,
   })
 
   function getInstance() {

@@ -25,8 +25,7 @@
     />
     <UiButton
       to="/profile/keys"
-      disabled
-      mode="error"
+      :disabled="$route.path === '/profile/keys'"
       ghost
       icon-name="lucide:key-round"
       :icon-only="true"

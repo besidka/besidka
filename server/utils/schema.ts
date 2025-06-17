@@ -1,5 +1,5 @@
 import { integer } from 'drizzle-orm/sqlite-core'
-import { publicId } from './public-id'
+import { publicId } from './custom-db-types'
 
 export const defaultSchemaIdOnly = {
   // @TODO: Custom type doesn't work with auto-increment

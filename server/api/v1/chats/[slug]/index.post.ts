@@ -92,7 +92,9 @@ export default defineEventHandler(async (event) => {
 
   switch (provider.id) {
     case 'openai': {
-      const { instance: openAiInstance } = useOpenAI(model)
+      const {
+        instance: openAiInstance,
+      } = await useOpenAI(session.user.id, model)
 
       instance = openAiInstance
       break

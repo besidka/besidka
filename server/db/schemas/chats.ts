@@ -5,7 +5,7 @@ import {
 import { ulid } from 'ulid'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
-import { publicId } from '../../utils/public-id'
+import { publicId } from '../../utils/custom-db-types'
 
 export const chats = sqliteTable(
   'chats',

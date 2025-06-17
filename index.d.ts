@@ -56,6 +56,7 @@ declare module 'nuxt/schema' {
 
   interface PublicRuntimeConfig {
     defaultModel: string
+    providers: string[]
   }
 
   interface AppConfigInput {
