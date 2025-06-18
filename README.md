@@ -45,7 +45,7 @@ You are welcome to visit the production site [www.chernenko.chat](https://www.ch
 - History page: **0,5 hours**
 - Polishing + deployment via Cloudflare Workers: **4 hours**
 
-Total: **34 hours**
+Total: **59 hours**
 
 ## Local installation
 
