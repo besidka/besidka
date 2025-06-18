@@ -1,75 +1,115 @@
-# Nuxt Minimal Starter
+# AI Chat
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Bring your own API keys and pay only for what you used.
 
-## Setup
+The idea is a part of hackathon (cloneathon) initiated by [Theo Browne](https://github.com/t3dotgg). More details are [here](https://x.com/theo/status/1934398749008392655).
 
-Make sure to install dependencies:
+## Tech stack
+
+- [Nuxt (Vue + Nitro + Cloudflare workers)](https://nuxt.com/)
+- [Drizzle ORM](https://orm.drizzle.team/)
+- [Better Auth](https://www.better-auth.com/)
+- [Daisy UI](https://daisyui.com/)
+
+## Hackathon Requirements 
+
+### Core requirements
+
+- [x] Chat with Various LLMs
+- [x] Authentication & Sync
+- [x] Browser Friendly
+- [x] Easy to Try
+- [x] **PINK** 
+
+### Bonus requirements
+
+- [x] Syntax Highlighting. Beautiful code formatting and highlighting
+- [x] Resumable Streams. Continue generation after page refresh. _Partially implemented. If the last message was from a user, a new response sends again on page reloading_.
+- [x] Bring Your Own Key. _Securely stored in a database_
+
+## How to try?
+
+You are welcome to visit the production site [www.chernenko.chat](https://www.chernenko.chat).
+
+## Spent time on MVP
+
+- Project installation and basic preparation: **3 hours**
+- Authentication: **16 hours**
+- Basic UI: **3 hours**
+- Syntax highlighting: **2,5 hours**
+- Main navigation: **1,5 hours**
+- API keys storing: **2,5 hours**
+- Adding Google AI Studio provider: **1 hour**
+- History page: **0,5 hours**
+- Polishing + deployment via Cloudflare Workers: **4 hours**
+
+Total: **34 hours**
+
+## Local installation
+
+### Prerequisites
+
+- [Bun.sh](https://bun.sh/){target="_blank"}
+  
+### Steps
+
+Clone the repository.
 
 ```bash
-# npm
-npm install
+git clone git@github.com:serhii-chernenko/chat.git
+```
 
-# pnpm
-pnpm install
+Go to the project directory. Install the dependencies.
 
-# yarn
-yarn install
-
-# bun
+```bash
+cd chat
 bun install
 ```
 
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
+Prepare drizzle migrations.
 ```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
+# Expected output is .drizzle/migrations/*.sql
+bun run db:generate
 ```
 
-## Production
-
-Build the application for production:
-
+Create a new D1 database and KV storage for Cloudflare.
+::code-content
 ```bash
-# npm
-npm run build
+bunx wrangler d1 create chat
+bunx wrangler kv namespace create chat
+```
 
-# pnpm
-pnpm build
+Get the `database_id` from the output and set it in the `.env.local` file as `DB_ID`.
+```bash
+cp .env.example .env.local
+```
 
-# yarn
-yarn build
-
-# bun
+Build the project to generate a `wrangler.json` file.
+```bash
+# Expected output is .output/server/wrangler.json
 bun run build
 ```
 
-Locally preview production build:
-
+Apply the migrations to the D1 database.
 ```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+# Expected output is .wrangler/state/v3/d1/*.sqlite
+bunx wrangler d1 apply chat
 ```
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Copy the auto-generated `wrangler.json` file to the root directory. Because it will be removed when `bun run dev` runs.
+```bash
+cp .output/server/wrangler.json wrangler.json
+```
+
+Generate environment types for the project. Optional but recommended.
+```bash
+bun run cf-typegen
+```
+
+Start the development server.
+```bash
+bun run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000){target="_blank"} in your browser.
+
