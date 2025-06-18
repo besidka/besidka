@@ -11,10 +11,10 @@ export function useServerAuth() {
 
   const config = useRuntimeConfig()
   const {
+    baseURL,
     secret,
     providers: { google, github },
   } = config.betterAuth ?? {}
-  const baseURL = getRequestURL(useEvent()).origin
   const db = useDb()
   const kv = useKV()
   const dataKey = 'auth'
@@ -37,7 +37,7 @@ export function useServerAuth() {
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
-    baseURL,
+    baseURL: baseURL || getRequestURL(useEvent()).origin,
     advanced: {
       database: {
         useNumberId: true,
@@ -47,8 +47,8 @@ export function useServerAuth() {
     },
     emailAndPassword: {
       enabled: true,
-      autoSignIn: false,
-      requireEmailVerification: true,
+      autoSignIn: import.meta.dev,
+      requireEmailVerification: !import.meta.dev,
       async sendResetPassword({ user, url }) {
         await sendEmail({
           to: user.email,
@@ -58,9 +58,15 @@ export function useServerAuth() {
       },
     },
     emailVerification: {
-      sendOnSignUp: true,
+      sendOnSignUp: !import.meta.dev,
       autoSignInAfterVerification: true,
       async sendVerificationEmail({ user, url }) {
+        if (import.meta.dev) {
+          // eslint-disable-next-line no-console
+          console.log(`Verification link for ${user.email}: ${url}`)
+          return
+        }
+
         await sendEmail({
           to: user.email,
           subject: 'Verify your email address',

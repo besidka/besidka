@@ -2,15 +2,23 @@ import tailwindcss from '@tailwindcss/vite'
 import providers from './providers'
 
 const providerValues = Object.values(providers)
-const defaultFirstFoundModel = providerValues[0]?.models[0]
-const defaultMarkedModel = providerValues.find((provider) => {
-  return provider.models.find((model) => {
-    return (model as any).default
-  })
-})
-const defaultModel = (defaultMarkedModel ?? defaultFirstFoundModel)!.id
+const defaultFirstFoundModel = providerValues[0]?.models[0]?.id
+let defaultMarkedModel: string = ''
+
+for (const provider of providerValues) {
+  for (const model of provider.models) {
+    // @ts-expect-error
+    if (model.default) {
+      defaultMarkedModel = model.id
+      break
+    }
+  }
+}
+
+const defaultModel = defaultMarkedModel ?? defaultFirstFoundModel
 
 const {
+  BASE_URL,
   DB_ID,
   DB_PREVIEW_ID,
   KV_ID,
@@ -23,6 +31,8 @@ const {
   GOOGLE_CLIENT_SECRET,
   GITHUB_CLIENT_ID,
   GITHUB_CLIENT_SECRET,
+  HASHIDS_SECRET,
+  ENCRYPTION_SECRET,
 } = process.env
 
 const isDev = !!import.meta.dev
@@ -46,6 +56,10 @@ export default defineNuxtConfig({
       nodeCompat: true,
       wrangler: {
         name: 'chat',
+        observability: {
+          enabled: true,
+          head_sampling_rate: 1,
+        },
         d1_databases: [
           {
             binding: 'DB',
@@ -83,6 +97,10 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
+    encryption: {
+      hashids: HASHIDS_SECRET || '__SET__HASHIDS_SECRET__IN_ENV__',
+      key: ENCRYPTION_SECRET || '__SET__ENCRYPTION_SECRET__IN_ENV__',
+    },
     resend: {
       apiKey: RESEND_API_KEY || '__SET__RESEND_API_KEY__IN_ENV__',
       sender: {
@@ -91,6 +109,7 @@ export default defineNuxtConfig({
       },
     },
     betterAuth: {
+      baseURL: BASE_URL || '',
       secret: BETTER_AUTH_SECRET || '__SET__BETTER_AUTH_SECRET__IN_ENV__',
       providers: {
         google: {

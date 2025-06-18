@@ -62,6 +62,7 @@
           <UiButton
             type="submit"
             text="Save"
+            icon-name="lucide:cloud-upload"
             :disabled="pending"
             class="w-full"
           />
@@ -74,7 +75,12 @@
 import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
-const { data: fetchedKeys } = await useFetch('/api/v1/profiles/keys/google')
+const { data: fetchedKeys, error, refresh } = await useFetch('/api/v1/profiles/keys/google')
+
+if (error.value) {
+  // eslint-disable-next-line no-console
+  console.warn('Failed to fetch Google AI Studio keys')
+}
 
 const form = ref<InstanceType<typeof UiForm> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
@@ -102,6 +108,7 @@ async function updateKey() {
         apiKey: apiKey.value,
       },
     })
+    await refresh()
     useSuccessMessage('Google AI Studio key updated successfully')
   } catch (exception) {
     useErrorMessage('Failed to update Google AI Studio key')
@@ -122,6 +129,7 @@ async function deleteKey() {
     await $fetch('/api/v1/profiles/keys/google', {
       method: 'delete',
     })
+    await refresh()
     useSuccessMessage('Google AI Studio keys deleted successfully')
     apiKey.value = ''
     await nextTick()

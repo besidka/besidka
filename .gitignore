@@ -21,14 +21,14 @@ logs
 .eslintcache
 
 # Local env files
-.env
-.env.*
+.env*
 !.env.example
 
 # wrangler files
 .wrangler
 .dev.vars*
-wrangler.json*
+wrangler*.json*
+worker-configuration.d.ts
 
 # Tests
 coverage

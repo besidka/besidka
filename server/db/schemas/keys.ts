@@ -4,7 +4,6 @@ import {
 } from 'drizzle-orm/sqlite-core'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
-import { encryptedText } from '../../utils/custom-db-types'
 
 export const keys = sqliteTable(
   'keys',
@@ -14,8 +13,8 @@ export const keys = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     provider: text({ enum: ['openai', 'anthropic', 'google'] }).notNull(),
-    apiKey: encryptedText().notNull(),
-    projectId: encryptedText().default(''),
+    apiKey: text().notNull(),
+    projectId: text().default(''),
   },
   table => [
     uniqueIndex('uq_key_user').on(table.id, table.userId),

@@ -17,16 +17,16 @@ export async function useOpenAI(
     },
   })
 
-  if (!keys) {
+  if (!keys?.apiKey || !keys.projectId) {
     throw createError({
       statusCode: 401,
-      statusMessage: 'OpenAI key not found.',
+      statusMessage: 'OpenAI keys not found. Please set it up in the settings.',
     })
   }
 
   const openai = createOpenAI({
-    apiKey: keys.apiKey,
-    project: keys.projectId,
+    apiKey: await useDecryptText(keys.apiKey),
+    project: await useDecryptText(keys.projectId),
   })
 
   function getInstance() {

@@ -1,6 +1,6 @@
 export default {
   id: 'google',
-  name: 'Google',
+  name: 'Google AI Studio',
   models: [
     {
       id: 'gemini-2.0-flash-lite',

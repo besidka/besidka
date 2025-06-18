@@ -114,7 +114,12 @@
 import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
-const { data: fetchedKeys } = await useFetch('/api/v1/profiles/keys/openai')
+const { data: fetchedKeys, error, refresh } = await useFetch('/api/v1/profiles/keys/openai')
+
+if (error.value) {
+  // eslint-disable-next-line no-console
+  console.warn('Failed to fetch OpenAI keys')
+}
 
 const form = ref<InstanceType<typeof UiForm> | null>()
 const projectIdInput = ref<InstanceType<typeof UiFormInput> | null>()
@@ -153,6 +158,7 @@ async function updateKeys() {
       method: 'post',
       body: keys,
     })
+    await refresh()
     form.value?.resetValidation()
     useSuccessMessage('OpenAI keys updated successfully')
   } catch (exception) {
@@ -174,6 +180,7 @@ async function deleteKeys() {
     await $fetch('/api/v1/profiles/keys/openai', {
       method: 'delete',
     })
+    await refresh()
     useSuccessMessage('OpenAI keys deleted successfully')
     keys.projectId = ''
     keys.apiKey = ''

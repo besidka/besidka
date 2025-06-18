@@ -2,17 +2,26 @@ import { customType } from 'drizzle-orm/sqlite-core'
 import Hashids from 'hashids'
 import crypto from 'node:crypto'
 
-const hashids = new Hashids(
-  process.env.HASHIDS_SECRET || 'secret',
-  16,
-)
+let hashidsInstance: Hashids | null = null
+
+function getHashidsInstance(): Hashids {
+  if (hashidsInstance) {
+    return hashidsInstance
+  }
+
+  const { encryption: { hashids } } = useRuntimeConfig()
+
+  hashidsInstance = new Hashids(hashids, 16)
+
+  return hashidsInstance
+}
 
 function encodePublicId(id: number): string {
-  return hashids.encode(id)
+  return getHashidsInstance().encode(id)
 }
 
 function decodePublicId(publicId: string): number {
-  const [id] = hashids.decode(publicId)
+  const [id] = getHashidsInstance().decode(publicId)
 
   return Number(id)
 }
@@ -36,15 +45,35 @@ export const publicId = customType<{
   },
 })
 
+let cryptoInstance: Buffer<ArrayBufferLike> | null = null
+
+function getCryptoInstance() {
+  if (cryptoInstance) {
+    return cryptoInstance
+  }
+
+  const { encryption: { key } } = useRuntimeConfig()
+
+  cryptoInstance = crypto
+    .createHash('sha256')
+    .update(key)
+    .digest()
+
+  return cryptoInstance
+}
+
 const IV_LENGTH = 12
-const KEY = crypto
-  .createHash('sha256')
-  .update(process.env.ENCRYPTION_SECRET || 'secret')
-  .digest()
 
 function encryptText(plain: string): string {
   const iv = crypto.randomBytes(IV_LENGTH)
-  const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv)
+  const cipher = crypto.createCipheriv(
+    'aes-256-gcm',
+    getCryptoInstance(),
+    iv,
+    {
+      authTagLength: 16,
+    },
+  )
   const encrypted = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
   const tag = cipher.getAuthTag()
 
@@ -57,7 +86,14 @@ function decryptText(cipherTextBase64: string): string {
   const iv = raw.subarray(0, IV_LENGTH)
   const tag = raw.subarray(IV_LENGTH, IV_LENGTH + 16)
   const text = raw.subarray(IV_LENGTH + 16)
-  const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, iv)
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    getCryptoInstance(),
+    iv,
+    {
+      authTagLength: 16,
+    },
+  )
 
   decipher.setAuthTag(tag)
 

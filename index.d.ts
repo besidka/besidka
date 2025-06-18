@@ -26,6 +26,10 @@ export interface Model {
 declare module 'nuxt/schema' {
 
   interface RuntimeConfig {
+    encryption: {
+      hashids: string
+      key: string
+    }
     drizzle: {
       debug?: boolean
     }
@@ -37,6 +41,7 @@ declare module 'nuxt/schema' {
       }
     }
     betterAuth: {
+      baseURL: string
       secret: string
       providers: {
         google: {

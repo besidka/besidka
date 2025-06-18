@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "nuxt build",
-		"dev": "nuxt dev",
+		"dev": "nuxt dev --dotenv .env.local",
 		"generate": "nuxt generate",
 		"preview": "bun run build && wrangler dev",
 		"dev:prepare": "nuxt prepare",
@@ -39,6 +39,7 @@
 		"@vueuse/nuxt": "^13.3.0",
 		"ai": "^4.3.16",
 		"better-auth": "^1.2.8",
+		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.0.43",
 		"drizzle-kit": "^0.31.1",
 		"drizzle-orm": "^0.44.2",

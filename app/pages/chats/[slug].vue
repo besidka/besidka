@@ -34,7 +34,6 @@
           </template>
           <template v-else-if="m.role === 'assistant'">
             <div
-              v-if="session?.user.image"
               class="max-sm:hidden chat-image avatar avatar-placeholder rounded-full"
             >
               <div class="w-10 rounded-full bg-base-100">

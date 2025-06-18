@@ -31,9 +31,11 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  const apiKey = await useEncryptText(body.data.apiKey)
+
   if (existingKey) {
     await db.update(schema.keys).set({
-      apiKey: body.data.apiKey,
+      apiKey,
     }).where(and(
       eq(schema.keys.userId, parseInt(session.user.id)),
       eq(schema.keys.provider, 'google'),
@@ -45,7 +47,7 @@ export default defineEventHandler(async (event) => {
   await db.insert(schema.keys).values({
     userId: parseInt(session.user.id),
     provider: 'google',
-    apiKey: body.data.apiKey,
+    apiKey,
   })
 
   return setResponseStatus(event, 201, 'Key created successfully')

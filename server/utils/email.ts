@@ -3,8 +3,16 @@ import { Resend } from 'resend'
 type From = 'noreply' | 'personalized'
 
 export const useEmail = () => {
-  const resend = new Resend(process.env.RESEND_API_KEY || '')
-  const { sender } = useRuntimeConfig().resend
+  const { apiKey, sender } = useRuntimeConfig().resend
+
+  if (!apiKey) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Resend API key is not set in the runtime configuration.',
+    })
+  }
+
+  const resend = new Resend(apiKey)
 
   async function send({
     to,

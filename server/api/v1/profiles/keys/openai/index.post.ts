@@ -32,10 +32,13 @@ export default defineEventHandler(async (event) => {
     },
   })
 
+  const apiKey = await useEncryptText(body.data.apiKey)
+  const projectId = await useEncryptText(body.data.projectId)
+
   if (existingKey) {
     await db.update(schema.keys).set({
-      apiKey: body.data.apiKey,
-      projectId: body.data.projectId,
+      apiKey,
+      projectId,
     }).where(and(
       eq(schema.keys.userId, parseInt(session.user.id)),
       eq(schema.keys.provider, 'openai'),
@@ -47,8 +50,8 @@ export default defineEventHandler(async (event) => {
   await db.insert(schema.keys).values({
     userId: parseInt(session.user.id),
     provider: 'openai',
-    apiKey: body.data.apiKey,
-    projectId: body.data.projectId,
+    apiKey,
+    projectId,
   })
 
   return setResponseStatus(event, 201, 'Key created successfully')

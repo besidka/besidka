@@ -18,8 +18,15 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  return keys ?? {
-    apiKey: '',
-    projectId: '',
-  }
+  return keys
+    ? {
+      apiKey: await useDecryptText(keys.apiKey),
+      projectId: keys.projectId
+        ? await useDecryptText(keys.projectId)
+        : '',
+    }
+    : {
+      apiKey: '',
+      projectId: '',
+    }
 })

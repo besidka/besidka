@@ -16,7 +16,7 @@ useSeoMeta({
   title: 'New Chat',
 })
 
-const message = shallowRef<string>('Write a one-sentence bedtime story about a unicorn.')
+const message = shallowRef<string>()
 const pending = shallowRef<boolean>(false)
 
 async function onSubmit(message: MaybeRefOrGetter<string>) {

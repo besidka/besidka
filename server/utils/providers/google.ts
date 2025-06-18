@@ -20,12 +20,12 @@ export async function useGoogle(
   if (!keys) {
     throw createError({
       statusCode: 401,
-      statusMessage: 'Google key not found.',
+      statusMessage: 'Google key not found. Please set it up in the settings.',
     })
   }
 
   const google = createGoogleGenerativeAI({
-    apiKey: keys.apiKey,
+    apiKey: await useDecryptText(keys.apiKey),
   })
 
   function getInstance() {

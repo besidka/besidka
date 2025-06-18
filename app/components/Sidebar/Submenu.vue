@@ -1,8 +1,7 @@
 <template>
   <div
-    class="relative group dropdown dropdown-center sm:-mx-2 sm:px-2"
+    class="relative group dropdown dropdown-center dropdown-hover sm:-mx-2 sm:px-2"
     :class="{
-      'dropdown-hover': $device.isDesktop,
       'dropdown-top': isMobileSmall,
       'dropdown-left': !isMobileSmall,
     }"
