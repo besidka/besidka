@@ -50,7 +50,7 @@ Total: **34 hours**
 
 ### Prerequisites
 
-- [Bun.sh](https://bun.sh/){target="_blank"}
+- [Bun.sh](https://bun.sh/)
   
 ### Steps
 
