@@ -4,6 +4,7 @@
     <h3 class="text-2xl font-bold">Google AI Studio</h3>
     <p>Manage your Google AI Studio API key here</p>
     <UiForm
+      ref="form"
       class="w-full"
       @submit="updateKey"
     >
@@ -43,11 +44,21 @@
               external
               target="_blank"
             >
-              Get your API keys from Google AI Studio: https://aistudio.google.com/app/apikey
+              Get your API key from Google AI Studio: https://aistudio.google.com/app/apikey
             </NuxtLink>
           </template>
         </UiFormInput>
-        <div class="md:grid md:place-content-end">
+        <div class="max-md:grid md:flex md:place-content-end gap-2">
+          <UiButton
+            v-if="fetchedKeys?.apiKey"
+            mode="error"
+            text="Delete"
+            icon-name="lucide:trash"
+            :disabled="pending"
+            class="w-full"
+            outline
+            @click="onDeleteKey"
+          />
           <UiButton
             type="submit"
             text="Save"
@@ -60,10 +71,12 @@
   </section>
 </template>
 <script setup lang="ts">
+import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
 const { data: fetchedKeys } = await useFetch('/api/v1/profiles/keys/google')
 
+const form = ref<InstanceType<typeof UiForm> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
@@ -89,16 +102,47 @@ async function updateKey() {
         apiKey: apiKey.value,
       },
     })
-    useSuccessMessage('Google AI Studio keys updated successfully')
+    useSuccessMessage('Google AI Studio key updated successfully')
   } catch (exception) {
-    useErrorMessage('Failed to update Google AI Studio keys')
+    useErrorMessage('Failed to update Google AI Studio key')
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to update Google AI Studio keys',
+      statusMessage: 'Failed to update Google AI Studio key',
       data: exception,
     })
   } finally {
     pending.value = false
   }
+}
+
+async function deleteKey() {
+  pending.value = true
+
+  try {
+    await $fetch('/api/v1/profiles/keys/google', {
+      method: 'delete',
+    })
+    useSuccessMessage('Google AI Studio keys deleted successfully')
+    apiKey.value = ''
+    await nextTick()
+    form.value?.resetValidation()
+  } catch (exception) {
+    useErrorMessage('Failed to delete Google AI Studio keys')
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to delete Google AI Studio keys',
+      data: exception,
+    })
+  } finally {
+    pending.value = false
+  }
+}
+
+function onDeleteKey() {
+  useConfirmationModal(
+    deleteKey,
+    [],
+    'Are you sure you want to delete your Google AI Studio key?',
+  )
 }
 </script>

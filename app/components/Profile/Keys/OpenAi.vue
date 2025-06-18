@@ -4,6 +4,7 @@
     <h3 class="text-2xl font-bold">OpenAI</h3>
     <p>Manage your OpenAI project and API keys here</p>
     <UiForm
+      ref="form"
       class="w-full"
       @submit="updateKeys"
     >
@@ -86,10 +87,21 @@
             </NuxtLink>
           </template>
         </UiFormInput>
-        <div class="md:grid md:place-content-end">
+        <div class="max-md:grid md:flex md:place-content-end gap-2">
+          <UiButton
+            v-if="fetchedKeys?.projectId && fetchedKeys?.apiKey"
+            mode="error"
+            text="Delete"
+            icon-name="lucide:trash"
+            :disabled="pending"
+            class="w-full"
+            outline
+            @click="onDeleteKeys"
+          />
           <UiButton
             type="submit"
             text="Save"
+            icon-name="lucide:cloud-upload"
             :disabled="pending"
             class="w-full"
           />
@@ -99,10 +111,12 @@
   </section>
 </template>
 <script setup lang="ts">
+import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
 const { data: fetchedKeys } = await useFetch('/api/v1/profiles/keys/openai')
 
+const form = ref<InstanceType<typeof UiForm> | null>()
 const projectIdInput = ref<InstanceType<typeof UiFormInput> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
@@ -139,6 +153,7 @@ async function updateKeys() {
       method: 'post',
       body: keys,
     })
+    form.value?.resetValidation()
     useSuccessMessage('OpenAI keys updated successfully')
   } catch (exception) {
     useErrorMessage('Failed to update OpenAI keys')
@@ -150,5 +165,37 @@ async function updateKeys() {
   } finally {
     pending.value = false
   }
+}
+
+async function deleteKeys() {
+  pending.value = true
+
+  try {
+    await $fetch('/api/v1/profiles/keys/openai', {
+      method: 'delete',
+    })
+    useSuccessMessage('OpenAI keys deleted successfully')
+    keys.projectId = ''
+    keys.apiKey = ''
+    await nextTick()
+    form.value?.resetValidation()
+  } catch (exception) {
+    useErrorMessage('Failed to delete OpenAI keys')
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Failed to delete OpenAI keys',
+      data: exception,
+    })
+  } finally {
+    pending.value = false
+  }
+}
+
+function onDeleteKeys() {
+  useConfirmationModal(
+    deleteKeys,
+    [],
+    'Are you sure you want to delete your OpenAI keys?',
+  )
 }
 </script>
