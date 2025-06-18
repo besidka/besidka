@@ -12,6 +12,9 @@ Bring your own API keys and pay only for what you used.
 # Info
 The idea is a part of hackathon (cloneathon) initiated by [Theo Browne](https://github.com/t3dotgg). More details are [here](https://x.com/theo/status/1934398749008392655).
 
+My detailed post in Twitter about the process of development:<br>
+https://x.com/serhiichernenko/status/1935438276447424733
+
 ## Tech stack
 
 - [Nuxt (Vue + Nitro + Cloudflare workers)](https://nuxt.com/)
@@ -19,6 +22,7 @@ The idea is a part of hackathon (cloneathon) initiated by [Theo Browne](https://
 - [Better Auth](https://www.better-auth.com/)
 - [Resend](https://resend.com/)
 - [Daisy UI](https://daisyui.com/)
+- [Vercel AI SDK](https://ai-sdk.dev/docs)
 
 ## Hackathon Requirements 
 
