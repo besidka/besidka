@@ -113,7 +113,7 @@ Start the development server.
 bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000){target="_blank"} in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Preview
 
