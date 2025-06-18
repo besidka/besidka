@@ -9,6 +9,7 @@ The idea is a part of hackathon (cloneathon) initiated by [Theo Browne](https://
 - [Nuxt (Vue + Nitro + Cloudflare workers)](https://nuxt.com/)
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Better Auth](https://www.better-auth.com/)
+- [Resend](https://resend.com/)
 - [Daisy UI](https://daisyui.com/)
 
 ## Hackathon Requirements 
