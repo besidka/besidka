@@ -143,14 +143,6 @@ export default defineNuxtConfig({
     serverBundle: {
       collections: ['lucide', 'mdi'],
     },
-    customCollections: [
-      {
-        prefix: 'logos',
-        dir: './assets/icons/logos',
-        width: 48,
-        height: 48,
-      },
-    ],
   },
   future: {
     compatibilityVersion: 4,

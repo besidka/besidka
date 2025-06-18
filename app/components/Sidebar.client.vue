@@ -25,6 +25,16 @@
       <SidebarAuthCta />
       <template v-if="session">
         <LazySidebarNewChat />
+        <UiButton
+          to="/chats/history"
+          ghost
+          :disabled="$route.path === '/chats/history'"
+          icon-name="lucide:history"
+          :icon-only="true"
+          title="History"
+          circle
+          tooltip-position="left"
+        />
         <LazySidebarDevelopment />
       </template>
     </UiBubble>

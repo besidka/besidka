@@ -1,15 +1,4 @@
 <template>
-  <UiButton
-    to="/chats/history"
-    ghost
-    disabled
-    icon-name="lucide:history"
-    :icon-only="true"
-    title="History (In development)"
-    circle
-    tooltip-position="left"
-    tooltip-style="error"
-  />
   <LazySidebarSubmenu>
     <template #trigger>
       <UiButton
