@@ -346,7 +346,7 @@ async function socialSignIn(provider: 'google' | 'github') {
       provider,
     })
     useSuccessMessage(`Successfully signed in with ${provider}`)
-    await navigateTo('/')
+    await navigateTo('/chats/new')
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)
