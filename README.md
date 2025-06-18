@@ -39,6 +39,7 @@ You are welcome to visit the production site [www.chernenko.chat](https://www.ch
 - Basic UI: **3 hours**
 - Syntax highlighting: **2,5 hours**
 - Main navigation: **1,5 hours**
+- General chats functionality: **25 hours**
 - API keys storing: **2,5 hours**
 - Adding Google AI Studio provider: **1 hour**
 - History page: **0,5 hours**
