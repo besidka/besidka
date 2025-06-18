@@ -113,3 +113,19 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000){target="_blank"} in your browser.
 
+## Preview
+
+### Light theme
+
+![image](https://github.com/user-attachments/assets/1460e9f6-7f68-4cb6-933f-0651d6af00ce)
+![image](https://github.com/user-attachments/assets/f80a2f07-52f9-4738-9992-5e0062263444)
+
+### Dark theme
+
+![image](https://github.com/user-attachments/assets/0152dfff-9d83-4333-8b9d-54b31fc51461)
+![image](https://github.com/user-attachments/assets/cc49a94f-34bd-469d-adda-106d94c3e041)
+
+
+
+
+
