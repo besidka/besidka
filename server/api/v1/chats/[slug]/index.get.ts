@@ -1,5 +1,3 @@
-const unauthorizedError = `You don't have access to this resource. Try to sign out and sign in again.`
-
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
     slug: z.ulid(),
@@ -13,16 +11,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const session = await useServerAuth().api.getSession({
-    // @ts-ignore
-    headers: getHeaders(event),
-  })
+  const session = await useUserSession(event)
 
   if (!session) {
-    throw createError({
-      statusCode: 401,
-      statusMessage: unauthorizedError,
-    })
+    return useUnauthorizedError()
   }
 
   const { model } = parseCookies(event)

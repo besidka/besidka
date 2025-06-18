@@ -73,7 +73,9 @@
 </template>
 <script setup lang="ts">
 const { defaultModel } = useRuntimeConfig().public
-const { data: providers } = await useFetch('/api/v1/providers')
+const { data: providers } = await useFetch('/api/v1/providers', {
+  cache: 'reload',
+})
 
 defineProps<{
   pending?: boolean

@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const session = await useUserSession(event)
 
   if (!session?.user) {
-    return useUnathorizedError()
+    return useUnauthorizedError()
   }
 
   const { provider, model } = useChatProvider(event)
@@ -28,6 +28,12 @@ export default defineEventHandler(async (event) => {
   switch (provider.id) {
     case 'openai': {
       const { generateChatTitle } = await useOpenAI(session.user.id, model)
+
+      chatTitle = await generateChatTitle(body.data.message)
+      break
+    }
+    case 'google': {
+      const { generateChatTitle } = await useGoogle(session.user.id, model)
 
       chatTitle = await generateChatTitle(body.data.message)
       break
@@ -43,7 +49,7 @@ export default defineEventHandler(async (event) => {
   })
 
   if (!user) {
-    return useUnathorizedError()
+    return useUnauthorizedError()
   }
 
   const chat = await db

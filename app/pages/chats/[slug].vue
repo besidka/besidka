@@ -49,6 +49,7 @@
               unwrap="p"
               :components="components"
               :parser-options="{ highlight: false }"
+              class="chat-markdown"
             />
           </UiBubble>
         </template>

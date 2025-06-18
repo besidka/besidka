@@ -3,7 +3,7 @@ export default {
   name: 'Google',
   models: [
     {
-      id: 'gpt-4.1-nano',
+      id: 'gemini-2.0-flash-lite',
       name: 'Gemini 2.0 Flash-Lite',
       description: 'Best for cost-efficient performance',
       contextLength: 1_000_000,
@@ -17,6 +17,7 @@ export default {
         input: ['text', 'image', 'video', 'audio'],
         output: ['text'],
       },
+      tools: [],
     },
   ],
 }

@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
   const session = await useUserSession(event)
 
   if (!session) {
-    return useUnathorizedError()
+    return useUnauthorizedError()
   }
 
   const db = useDb()
@@ -97,6 +97,14 @@ export default defineEventHandler(async (event) => {
       } = await useOpenAI(session.user.id, model)
 
       instance = openAiInstance
+      break
+    }
+    case 'google': {
+      const {
+        instance: googleInstance,
+      } = await useGoogle(session.user.id, model)
+
+      instance = googleInstance
       break
     }
     default:

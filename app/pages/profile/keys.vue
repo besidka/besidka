@@ -14,6 +14,11 @@
     v-if="providers.length"
     class="grid gap-4"
   >
+    <li v-if="isGoogleEnabled">
+      <UiBubble>
+        <LazyProfileKeysGoogle />
+      </UiBubble>
+    </li>
     <li v-if="isOpenAiEnabled">
       <UiBubble>
         <LazyProfileKeysOpenAi />
@@ -38,5 +43,9 @@ const providers = computed<string[]>(() => {
 
 const isOpenAiEnabled = computed<boolean>(() => {
   return providers.value.includes('openai')
+})
+
+const isGoogleEnabled = computed<boolean>(() => {
+  return providers.value.includes('google')
 })
 </script>

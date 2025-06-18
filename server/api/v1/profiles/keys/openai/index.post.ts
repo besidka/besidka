@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const session = await useUserSession(event)
 
   if (!session) {
-    return useUnathorizedError()
+    return useUnauthorizedError()
   }
 
   const db = useDb()
