@@ -283,6 +283,10 @@
     @apply list-decimal my-4 pl-6;
   }
 
+  li {
+    @apply pl-6;
+  }
+
   table {
     @apply table;
   }

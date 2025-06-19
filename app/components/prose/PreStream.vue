@@ -59,7 +59,11 @@ const props = defineProps<{
 }>()
 
 const trimmedCode = computed<string>(() => {
-  return props.code.trim().replace(/`+$/, '')
+  try {
+    return props.code.trim().replace(/`+$/, '')
+  } catch {
+    return props.code
+  }
 })
 
 const lang = computed<string>(() => {

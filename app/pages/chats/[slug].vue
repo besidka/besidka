@@ -45,10 +45,10 @@
             <MDCCached
               :value="part.text"
               :cache-key="`message-${m.id}-part-${index}`"
-              unwrap="p"
               :components="components"
               :parser-options="{ highlight: false }"
               class="chat-markdown"
+              :unwrap="m.role === 'user' ? 'pre' : ''"
             />
           </UiBubble>
         </template>
