@@ -52,7 +52,7 @@
 @plugin "daisyui/theme" {
   name: "dark";
   default: false;
-  prefersdark: true;
+  prefersdark: false;
   color-scheme: "dark";
   --color-base-100: var(--color-stone-800);
   --color-base-200: var(--color-stone-900);
@@ -114,13 +114,6 @@
   html,
   body {
     @apply w-full h-full overflow-x-hidden;
-  }
-
-  html {
-    @apply bg-gradient-to-tr
-      from-pink-500/20 dark:from-pink-500/30
-      via-pink-500/10 dark:via-pink-500/10
-      to-pink-500/30;
   }
 
   body {
@@ -300,5 +293,13 @@
 
   strong + strong {
     @apply block;
+  }
+}
+
+html {
+  @apply bg-gradient-to-tr from-pink-500/20 via-pink-500/10 to-pink-500/30;
+
+  @variant dark {
+    @apply dark:from-pink-500/30 dark:via-pink-500/10;
   }
 }
