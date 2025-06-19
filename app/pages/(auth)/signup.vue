@@ -16,16 +16,23 @@
           class="w-full"
           :disabled="pending"
           @click="socialSignIn('google')"
-        />
+        >
+          <template #icon>
+            <SvgoGoogle class="icon" />
+          </template>
+        </UiButton>
       </li>
       <li>
         <UiButton
-          text="Sign up with GitHub"
-          icon-name="mdi:github"
+          text="Sign in with GitHub"
           class="w-full"
           :disabled="pending"
           @click="socialSignIn('github')"
-        />
+        >
+          <template #icon>
+            <SvgoGithub class="icon" />
+          </template>
+        </UiButton>
       </li>
     </ul>
     <div class="divider">or continue with</div>

@@ -150,17 +150,24 @@ export default defineNuxtConfig({
   },
   svgo: {
     autoImportPath: '~/assets/icons/logos',
+    defaultImport: 'component',
   },
   fonts: {
     defaults: {
       weights: [400, 700],
       styles: ['normal'],
+      subsets: [
+        'cyrillic-ext',
+        'cyrillic',
+        'latin-ext',
+        'latin',
+      ],
     },
     provider: 'google',
   },
   icon: {
     serverBundle: {
-      collections: ['lucide', 'mdi'],
+      collections: ['lucide'],
     },
   },
   future: {
