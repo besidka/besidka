@@ -22,6 +22,7 @@ const Configuration: UserConfig = {
         'chore',
         'revert',
         'security',
+        'legal',
       ],
     ],
   },
