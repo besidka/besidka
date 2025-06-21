@@ -9,7 +9,7 @@
       v-if="!isAlertHidden"
       @click="isAlertHidden = false"
     >
-      The app is now code-frozen for the <NuxtLink to="https://cloneathon.t3.chat" external target="_blank">T3 Cloneathon</NuxtLink>. For the latest updates, visit <NuxtLink to="https://www.chernenko.chat" external rel="">www.chernenko.chat</NuxtLink>.
+      <NuxtLink to="https://cloneathon.t3.chat" external target="_blank"><strong>T3 Cloneathon</strong></NuxtLink>: The code freeze version, prepared for the hackathon deadline, is available at <NuxtLink to="https://cloneathon.chernenko.chat" external rel="">https://cloneathon.chernenko.chat</NuxtLink>.
     </LazyUiAlert>
     <div
       :class="{
