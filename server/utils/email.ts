@@ -3,16 +3,20 @@ import { Resend } from 'resend'
 type From = 'noreply' | 'personalized'
 
 export const useEmail = () => {
-  const { apiKey, sender } = useRuntimeConfig().resend
+  const {
+    resendApiKey,
+    resendSenderNoreply,
+    resendSenderPersonalized,
+  } = useRuntimeConfig(useEvent())
 
-  if (!apiKey) {
+  if (!resendApiKey) {
     throw createError({
       statusCode: 500,
       statusMessage: 'Resend API key is not set in the runtime configuration.',
     })
   }
 
-  const resend = new Resend(apiKey)
+  const resend = new Resend(resendApiKey)
 
   async function send({
     to,
@@ -29,13 +33,30 @@ export const useEmail = () => {
       throw createError('Missing required parameters: to, subject, or html')
     }
 
-    if (!sender[from as keyof typeof sender]) {
-      throw createError('Sender email is required for personalized emails')
+    let resultFrom: string = ''
+
+    switch (from) {
+      case 'noreply':
+        if (resendSenderNoreply) {
+          resultFrom = resendSenderNoreply
+          break
+        }
+
+        throw createError('Sender email is required for noreply emails')
+      case 'personalized':
+        if (resendSenderPersonalized) {
+          resultFrom = resendSenderPersonalized
+          break
+        }
+
+        throw createError('Sender email is required for personalized emails')
+      default:
+        throw createError('Invalid sender type')
     }
 
     try {
       return await resend.emails.send({
-        from: sender[from as keyof typeof sender],
+        from: resultFrom,
         to,
         subject,
         html,

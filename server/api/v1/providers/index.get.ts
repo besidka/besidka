@@ -1,5 +1,5 @@
-export default defineCachedEventHandler(async () => {
-  const { providers } = useRuntimeConfig()
+export default defineCachedEventHandler(async (event) => {
+  const { providers } = useRuntimeConfig(event)
 
   return providers
 }, {

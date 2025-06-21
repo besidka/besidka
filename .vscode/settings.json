@@ -1,5 +1,8 @@
 {
 	"files.associations": {
-		"wrangler.json": "jsonc"
+		"wrangler.json": "jsonc",
+		"wrangler.jsonc.example": "jsonc",
+		".env.*": "properties",
+		".dev.vars*": "properties"
 	}
 }

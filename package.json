@@ -4,13 +4,13 @@
 	"type": "module",
 	"scripts": {
 		"build": "nuxt build",
-		"dev": "nuxt dev --dotenv .env.local",
+		"dev": "nuxt dev --dotenv .dev.vars",
+		"preview": "bun run build && wrangler dev --port 3000",
+		"deploy": "bun run build && wrangler deploy",
 		"generate": "nuxt generate",
-		"preview": "bun run build && wrangler dev",
 		"dev:prepare": "nuxt prepare",
 		"typecheck": "nuxt typecheck",
 		"postinstall": "nuxt prepare",
-		"deploy": "bun run build && wrangler deploy",
 		"cf-typegen": "wrangler types",
 		"lint": "eslint",
 		"format": "eslint --fix",
@@ -77,7 +77,7 @@
 		"vite-plugin-eslint2": "^5.0.3",
 		"vitest": "^3.2.2",
 		"vue-tsc": "^2.2.10",
-		"wrangler": "^4.19.1"
+		"wrangler": "^4.20.5"
 	},
 	"lint-staged": {
 		"*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}": [

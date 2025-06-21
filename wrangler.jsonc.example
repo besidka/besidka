@@ -1,0 +1,38 @@
+{
+  "name": "chat",
+  "compatibility_date": "2025-05-20",
+  // Uncomment this the following line if you want to use a custom domain
+  // "workers_dev": false,
+  // "routes": [
+  //   {
+  //     "custom_domain": true,
+  //     "pattern": "domain.com"
+  //   },
+  //   {
+  //     "pattern": "*.domain.com/*",
+  //     "zone_name": "domain.com"
+  //   }
+  // ],
+  // @TODO: Replace the following with your actual D1 database details
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chat",
+      // bunx wrangler d1 create chat
+      "database_id": "123",
+      // bunx wrangler d1 create chat-preview
+      "preview_database_id": "456",
+      "migrations_dir": ".drizzle/migrations"
+    }
+  ],
+  // @TODO: Replace the following with your actual KV storage details
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      // bunx wrangler kv namespace create chat
+      "id": "123",
+      // bunx wrangler kv namespace create chat-preview
+      "preview_id": "456"
+    }
+  ]
+}

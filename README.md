@@ -57,12 +57,13 @@ Total: **59 hours**
 
 ## Local installation
 
+Pay your attention that the project is designed to run on Cloudflare Workers. It requires additional steps to run it via Cloudflare Workers preview or deploy to the production environment.
+
+The steps below are for local development only for the quick start and check.
+
 ### Prerequisites
 
 - [Bun.sh](https://bun.sh/)
-- [Cloudflare account](https://dash.cloudflare.com/)
-- [Cloudflare D1 database](https://developers.cloudflare.com/d1/getting-started/) requires a credit card in your acconunt even if you are using a free plan. You can use the [free tier](https://www.cloudflare.com/products/d1/) of D1 database.
-- [Cloudflare KV storage](https://developers.cloudflare.com/kv/)
   
 ### Steps
 
@@ -79,45 +80,27 @@ cd chat
 bun install
 ```
 
+Copy wrangler and ENV related files.
+```bash
+cp .dev.vars.example .dev.vars
+cp wrangler.jsonc.example wrangler.jsonc
+```
+
+Generate environment types for the project.
+```bash
+bun run cf-typegen
+```
+
 Prepare drizzle migrations.
 ```bash
 # Expected output is .drizzle/migrations/*.sql
 bun run db:generate
 ```
 
-Create a new D1 database and KV storage for Cloudflare.
-::code-content
-```bash
-# The names of D1 and KV could be shorter but for a case if not only me submitted Cloudflare workers.
-bunx wrangler d1 create serhii-chernenko-chat
-bunx wrangler kv namespace create serhii-chernenko-chat
-```
-
-Get the `database_id` from the output and set it in the `.env.local` file as `DB_ID`.
-```bash
-cp .env.example .env.local
-```
-
-Build the project to generate a `wrangler.json` file.
-```bash
-# Expected output is .output/server/wrangler.json
-bun run build
-```
-
-Copy the auto-generated `wrangler.json` file to the root directory. Because it will be removed when `bun run dev` runs.
-```bash
-cp .output/server/wrangler.json wrangler.json
-```
-
 Apply the migrations to the D1 database.
 ```bash
 # Expected output is .wrangler/state/v3/d1/*.sqlite
-bunx wrangler d1 migrations apply serhii-chernenko-chat
-```
-
-Generate environment types for the project. Optional but recommended.
-```bash
-bun run cf-typegen
+bunx wrangler d1 migrations apply chat
 ```
 
 Start the development server.
@@ -126,9 +109,22 @@ bun run dev
 ```
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser.
-2. Sign up [http://localhost:3000/signup](http://localhost:3000/signup). In development mode you don't need to wait for email confirmation. You have to be automatically redirected to the home page as a customer already.
+2. Sign up [http://localhost:3000/signup](http://localhost:3000/signup). Please use the Email + Password flow because you don't have prepared API keys for Google and GitHub OAuth yet. In development mode you don't need to wait for email confirmation. You have to be automatically redirected to the home page as a customer already.
 3. Put your own API keys here: [http://localhost:3000/profile/keys](http://localhost:3000/profile/keys)
 4. You are welcome to start a new chat: [http://localhost:3000/chats/new](http://localhost:3000/chats/new)
+
+## Security
+
+### Snyk code checking repository
+
+- [Snyk](https://snyk.io/) is a tool for finding and fixing vulnerabilities in your code.
+
+```bash
+# Total issues: 0
+snyk code test
+```
+
+![image](https://github.com/user-attachments/assets/b65d51e1-f394-4287-bddd-e6119fc620a4)
 
 ## Preview
 

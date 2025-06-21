@@ -1,11 +1,9 @@
-import type { KVNamespace } from '@cloudflare/workers-types'
+export function useKV() {
+  const { KV } = useEvent().context.cloudflare.env
 
-export function useKV(): KVNamespace {
-  const kv = (globalThis as any).__env__.KV
-
-  if (!kv) {
-    throw createError(`KV not found in ENV: ${name}`)
+  if (!KV) {
+    throw createError(`KV not found in ENV: KV`)
   }
 
-  return kv
+  return KV
 }

@@ -15,13 +15,13 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const session = await useUserSession(event)
+  const session = await useUserSession()
 
   if (!session?.user) {
     return useUnauthorizedError()
   }
 
-  const { provider, model } = useChatProvider(event)
+  const { provider, model } = useChatProvider()
 
   let chatTitle = ''
 

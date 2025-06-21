@@ -1,6 +1,5 @@
-import type { H3Event } from 'h3'
-
-export function useChatProvider(event: H3Event) {
+export function useChatProvider() {
+  const event = useEvent()
   const { model } = parseCookies(event)
 
   if (!model) {
@@ -10,7 +9,7 @@ export function useChatProvider(event: H3Event) {
     })
   }
 
-  const { providers } = useRuntimeConfig()
+  const { providers } = useRuntimeConfig(event)
   const provider = Object.values(providers).find((p) => {
     return p.models.some((m: any) => m.id === model)
   })

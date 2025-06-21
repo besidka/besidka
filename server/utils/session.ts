@@ -1,5 +1,3 @@
-import type { H3Event } from 'h3'
-
 export function useUnauthorizedError() {
   throw createError({
     statusCode: 401,
@@ -7,9 +5,9 @@ export function useUnauthorizedError() {
   })
 }
 
-export async function useUserSession(event: H3Event) {
+export async function useUserSession() {
   return await useServerAuth().api.getSession({
     // @ts-ignore
-    headers: getHeaders(event),
+    headers: getHeaders(useEvent()),
   })
 }

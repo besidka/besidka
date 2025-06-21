@@ -1,9 +1,3 @@
-export interface Provider {
-  id: string
-  name: string
-  models: Model[]
-}
-
 export interface Model {
   id: string
   name: string
@@ -23,37 +17,27 @@ export interface Model {
   tools: string[]
 }
 
+export interface Provider {
+  id: string
+  name: string
+  models: Model[]
+}
+
 declare module 'nuxt/schema' {
 
   interface RuntimeConfig {
-    encryption: {
-      hashids: string
-      key: string
-    }
-    drizzle: {
-      debug?: boolean
-    }
-    resend: {
-      apiKey: string
-      sender: {
-        noreply: string
-        personalized: string
-      }
-    }
-    betterAuth: {
-      baseURL: string
-      secret: string
-      providers: {
-        google: {
-          clientId: string
-          clientSecret: string
-        }
-        github: {
-          clientId: string
-          clientSecret: string
-        }
-      }
-    }
+    baseUrl: string
+    drizzleDebug?: boolean
+    encryptionHashids: string
+    encryptionKey: string
+    resendApiKey: string
+    resendSenderNoreply: string
+    resendSenderPersonalized: string
+    betterAuthSecret: string
+    googleClientId: string
+    googleClientSecret: string
+    githubClientId: string
+    githubClientSecret: string
     providers: {
       [key: string]: Provider
     }

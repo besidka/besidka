@@ -21,6 +21,7 @@ const Configuration: UserConfig = {
         'ci',
         'chore',
         'revert',
+        'security',
       ],
     ],
   },
