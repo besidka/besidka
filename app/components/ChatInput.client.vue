@@ -1,14 +1,14 @@
 <template>
-  <div class="grid place-content-center min-h-16 pt-8">
+  <div class="fixed bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3">
     <UiBubble
-      class="!rounded-b-none !rounded-t-[calc(var(--radius-xl)_+_var(--spacing)_*_2)] !pb-0 z-50 transition-transform duration-500 ease-in-out"
+      class="!pb-0 z-50 !rounded-b-none !rounded-t-[calc(var(--radius-xl)_+_var(--spacing)_*_2)] !bg-accent/20 transition-transform duration-500 ease-in-out"
       :class="{
         'translate-y-full': !visible,
         'translate-y-0': visible,
       }"
     >
       <div
-        class="p-1 pb-0 max-sm:pb-16 rounded-t-xl bg-base-100/30 dark:bg-base-100/80 shadow-lg"
+        class="p-1 pb-0 max-sm:pb-16 rounded-t-xl bg-base-100/80 dark:bg-base-100/80 shadow-lg"
       >
         <textarea
           v-model="message"

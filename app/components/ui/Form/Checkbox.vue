@@ -16,7 +16,9 @@
       :user-invalid="required && isInvalid"
       :checked="value"
     >
-    <slot />
+    <span class="text-wrap">
+      <slot />
+    </span>
   </label>
 </template>
 
