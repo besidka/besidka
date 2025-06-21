@@ -1,6 +1,6 @@
 <template>
   <LazyBackgroundLogo />
-  <div class="relative z-30 grid grid-rows-[1fr_auto] h-screen overflow-hidden">
+  <div class="relative z-30 pb-60">
     <NuxtPage/>
   </div>
 </template>

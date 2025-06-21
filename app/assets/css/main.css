@@ -26,12 +26,12 @@
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-white);
   --color-info: var(--color-sky-700);
-  --color-info-content: var(--color-sky-950);
+  --color-info-content: var(--color-sky-100);
   --color-success: var(--color-emerald-700);
   --color-success-content: var(--color-emerald-950);
   --color-input-success: var(--color-emerald-600);
   --color-warning: var(--color-amber-700);
-  --color-warning-content: var(--color-amber-950);
+  --color-warning-content: var(--color-amber-100);
   --color-error: var(--color-red-600);
   --color-error-content: var(--color-white);
   --radius-selector: 1rem;
@@ -200,6 +200,10 @@
           bg-error text-error-content;
       }
     }
+  }
+
+  .label {
+    @apply text-wrap;
   }
 
   .input {
