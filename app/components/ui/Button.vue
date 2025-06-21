@@ -22,6 +22,21 @@
           tooltipStyle === 'error'
           || (tooltipStyle === 'inherit' && mode === 'error')
         ),
+      'tooltip-warning':
+        showTooltip && (
+          tooltipStyle === 'warning'
+          || (tooltipStyle === 'inherit' && mode === 'warning')
+        ),
+      'tooltip-info':
+        showTooltip && (
+          tooltipStyle === 'info'
+          || (tooltipStyle === 'inherit' && mode === 'info')
+        ),
+      'tooltip-success':
+        showTooltip && (
+          tooltipStyle === 'success'
+          || (tooltipStyle === 'inherit' && mode === 'success')
+        ),
       'tooltip-left': showTooltip && tooltipPosition === 'left',
       'tooltip-right': showTooltip && tooltipPosition === 'right',
       'tooltip-top': showTooltip && tooltipPosition === 'top',
