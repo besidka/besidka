@@ -30,7 +30,7 @@ https://x.com/serhiichernenko/status/1935438276447424733
 
 Due to T3 Cloneathon rules, the project has to be code freezed. But I’d like to continue the development of the project after the hackathon while waiting for the results.
 
-To follow the rules and make the race fair, I created a separate branch [`release/cloneathon`](https://github.com/serhii-chernenko/chat/tree/release/cloneathon) with the code freezed at the moment of the hackathon deadline. You can find it.
+To follow the rules and make the race fair, I created a separate branch [`release/cloneathon`](https://github.com/serhii-chernenko/chat/tree/release/cloneathon) with the code freezed at the moment of the hackathon deadline.
 
 It’s assigned to the subdomain [cloneathon.chernenko.chat](https://cloneathon.chernenko.chat) and is available for the public.
 
