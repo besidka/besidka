@@ -9,12 +9,7 @@ export function useServerAuth() {
     return _auth
   }
 
-  const config = useRuntimeConfig()
-  const {
-    baseURL,
-    secret,
-    providers: { google, github },
-  } = config.betterAuth ?? {}
+  const config = useRuntimeConfig(useEvent())
   const db = useDb()
   const kv = useKV()
   const dataKey = 'auth'
@@ -22,7 +17,7 @@ export function useServerAuth() {
   const { send: sendEmail } = useEmail()
 
   _auth = betterAuth({
-    secret,
+    secret: config.betterAuthSecret,
     database: drizzleAdapter(db, {
       provider: 'sqlite',
       schema,
@@ -37,7 +32,7 @@ export function useServerAuth() {
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
-    baseURL: baseURL || getRequestURL(useEvent()).origin,
+    baseURL: config.baseUrl || getRequestURL(useEvent()).origin,
     advanced: {
       database: {
         useNumberId: true,
@@ -76,12 +71,12 @@ export function useServerAuth() {
     },
     socialProviders: {
       google: {
-        clientId: google.clientId,
-        clientSecret: google.clientSecret,
+        clientId: config.googleClientId,
+        clientSecret: config.googleClientSecret,
       },
       github: {
-        clientId: github.clientId,
-        clientSecret: github.clientSecret,
+        clientId: config.githubClientId,
+        clientSecret: config.githubClientSecret,
       },
     },
     account: {

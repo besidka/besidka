@@ -7,10 +7,10 @@ function getCryptoInstance() {
     return cryptoInstance
   }
 
-  const { encryption: { key } } = useRuntimeConfig()
+  const { encryptionKey } = useRuntimeConfig(useEvent())
 
   cryptoInstance = new CryptoShield({
-    secretKey: key,
+    secretKey: encryptionKey,
   })
 
   return cryptoInstance

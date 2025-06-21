@@ -22,12 +22,13 @@ logs
 
 # Local env files
 .env*
-!.env.example
 
 # wrangler files
 .wrangler
 .dev.vars*
+!.dev.vars.example
 wrangler*.json*
+!wrangler.json*.example
 worker-configuration.d.ts
 
 # Tests

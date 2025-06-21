@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const session = await useUserSession(event)
+  const session = await useUserSession()
 
   if (!session) {
     return useUnauthorizedError()
@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { providers } = useRuntimeConfig()
+  const { providers } = useRuntimeConfig(event)
   const provider = Object.values(providers).find((p) => {
     return p.models.some((m: any) => m.id === model)
   })
