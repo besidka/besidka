@@ -94,6 +94,8 @@ useSeoMeta({
   title: 'New Chat',
 })
 
+const { userModel } = useUserModel()
+
 const route = useRoute()
 
 const { data: chat, error: chatError } = await useFetch<Chat>(
@@ -126,8 +128,6 @@ useSeoMeta({
 })
 
 const { data: session } = await useLazyFetch('/api/v1/auth/session')
-
-const userModel = useCookie<string>('model')
 
 const {
   messages, input, handleSubmit, reload, stop: _stop,

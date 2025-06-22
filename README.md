@@ -147,8 +147,3 @@ snyk code test
 
 ![image](https://github.com/user-attachments/assets/0152dfff-9d83-4333-8b9d-54b31fc51461)
 ![image](https://github.com/user-attachments/assets/cc49a94f-34bd-469d-adda-106d94c3e041)
-
-
-
-
-

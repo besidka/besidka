@@ -72,7 +72,6 @@
   </div>
 </template>
 <script setup lang="ts">
-const { defaultModel } = useRuntimeConfig().public
 const { data: providers } = await useFetch('/api/v1/providers', {
   cache: 'reload',
 })
@@ -97,9 +96,7 @@ onBeforeUnmount(() => {
   visible.value = false
 })
 
-const userModel = useCookie<string>('model', {
-  default: () => defaultModel as string,
-})
+const { userModel } = useUserModel()
 
 function getModelName(modelId: string): string {
   const emptyTitle = 'Select Model'
