@@ -1,25 +1,24 @@
 <template>
-  <div
+  <UiBubble
     v-if="!isAlertHidden"
     role="alert"
-    class="alert alert-info alert-soft sticky z-50 top-0 inset-x-0 !block px-10 max-sm:pl-4 rounded-t-none !shadow"
+    class="sticky z-50 top-0 inset-x-0 !block px-10 max-sm:pl-4 !rounded-none !shadow-none"
   >
-    <div class="w-full text-center">
+    <div class="w-full text-center text-sm">
       <slot />
     </div>
     <div class="absolute right-4 top-1/2 -translate-y-1/2">
       <UiButton
-        mode="info"
         circle
         ghost
         size="xs"
-        text="Close"
+        text="Hide"
         icon-only
         icon-name="lucide:x"
         @click="$emit('click')"
       />
     </div>
-  </div>
+  </UiBubble>
 </template>
 
 <script setup lang="ts">

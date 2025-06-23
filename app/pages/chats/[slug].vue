@@ -1,7 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-24 px-3 sm:px-24 pb-60 no-scrollbar"
+    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto max-lg:pt-24 lg:pt-16 px-3 sm:px-24 pb-60 no-scrollbar"
   >
     <div
       v-for="m in messages"
