@@ -62,7 +62,7 @@
           icon-name="lucide:chevrons-down"
           icon-only
           title="Scroll to bottom"
-          class="opacity-10 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300 [--depth:0]"
+          class="opacity-50 sm:opacity-20 dark:sm:opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300 [--depth:0]"
           @click="scrollToBottom"
         />
       </div>
