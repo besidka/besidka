@@ -4,7 +4,7 @@
     @mouseenter="pauseInterval"
     @mouseleave="startInterval"
   >
-    <div class="flex items-center justify-between gap-4 py-4 px-2 sm:px-4">
+    <div class="flex items-center justify-between gap-4 p-4">
       <div class="flex items-center gap-4">
         <Icon
           :name="getIcon(message?.type)"

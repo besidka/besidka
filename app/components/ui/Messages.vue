@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed top-4 sm:top-8 right-8 z-50 flex justify-center w-full sm:max-w-md pointer-events-none"
+    class="fixed top-0 sm:top-8 right-0 sm:right-8 z-50 flex justify-center w-full sm:max-w-md pointer-events-none"
   >
     <TransitionGroup
       name="messages"
@@ -14,7 +14,7 @@
         v-for="message in messages"
         :key="message.id"
         role="alert"
-        class="alert alert-soft block w-full p-0 border-0 !shadow-lg"
+        class="alert alert-soft block w-full p-0 border-0 !shadow-lg max-sm:!rounded-none"
         :class="{
           'alert-error': message.type === 'error',
           'alert-success text-success-content': message.type === 'success',
