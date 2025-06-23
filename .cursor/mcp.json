@@ -1,6 +1,7 @@
 {
-  "servers": {
+  "mcpServers": {
     "nuxt": {
+      "type": "sse",
       "url": "https://mcp.nuxt.com/sse"
     },
     "cloudflare": {
