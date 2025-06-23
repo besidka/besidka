@@ -1,7 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto max-lg:pt-24 lg:pt-16 px-3 sm:px-24 pb-60 no-scrollbar"
+    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto max-lg:pt-24 lg:pt-16 px-4 sm:px-24 pb-60 no-scrollbar"
   >
     <div
       v-for="m in messages"
@@ -22,7 +22,7 @@
             :class="{
               'avatar-placeholder':
                 m.role === 'assistant' || !session?.user.image,
-              'max-sm:hidden': m.role === 'assistant',
+                'max-sm:hidden': m.role === 'assistant',
             }"
           >
             <div class="w-10 rounded-full bg-base-100">
@@ -40,7 +40,7 @@
               </template>
             </div>
           </div>
-          <UiBubble class="chat-bubble sm:!px-6 !shadow-none">
+          <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
             <MDCCached
               :value="part.text"
               :cache-key="`message-${m.id}-part-${index}`"
