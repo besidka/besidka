@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3">
+  <div class="fixed z-30 bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3">
     <UiBubble
       class="!pb-0 z-50 !rounded-b-none !rounded-t-[calc(var(--radius-xl)_+_var(--spacing)_*_2)] !bg-accent/20 transition-transform duration-500 ease-in-out"
       :class="{
@@ -97,6 +97,7 @@ onBeforeUnmount(() => {
 })
 
 const { userModel } = useUserModel()
+const { replaceUserPre } = useChatInput()
 
 function getModelName(modelId: string): string {
   const emptyTitle = 'Select Model'
@@ -116,6 +117,16 @@ function getModelName(modelId: string): string {
 
 const message = defineModel<string>({
   default: '',
+  get: (value: string) => {
+    value = replaceUserPre(value)
+
+    return value
+  },
+  set: (value: string) => {
+    value = replaceUserPre(value)
+
+    return value
+  },
 })
 
 function sendMessage() {

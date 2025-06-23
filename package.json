@@ -46,6 +46,7 @@
 		"hashids": "^2.3.0",
 		"nuxt": "^3.17.5",
 		"nuxt-svgo": "^4.2.2",
+		"remark-breaks": "^4.0.0",
 		"resend": "^4.5.2",
 		"shiki-stream": "^0.1.2",
 		"tailwindcss": "^4.1.8",

@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-rows-[1fr_auto] h-screen">
+  <div>
     Welcome
   </div>
 </template>

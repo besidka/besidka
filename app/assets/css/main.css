@@ -299,8 +299,8 @@
     @apply my-4 py-2 pl-4 border-l-4 border-base-content/50 italic text-base-content/90;
   }
 
-  strong + strong {
-    @apply block;
+  p {
+    @apply mb-2 last:mb-0;
   }
 }
 
