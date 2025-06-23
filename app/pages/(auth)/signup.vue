@@ -12,7 +12,6 @@
       <li>
         <UiButton
           text="Sign up with Google"
-          icon-name="mdi:google"
           class="w-full"
           :disabled="pending"
           @click="socialSignIn('google')"
