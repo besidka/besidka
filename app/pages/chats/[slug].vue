@@ -1,9 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="relative overflow-y-auto w-full max-w-4xl mx-auto py-8 px-3 sm:px-24 no-scrollbar outline-none"
-    tabindex="-1"
-    @scroll="onScroll"
+    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-24 px-3 sm:px-24 pb-60 no-scrollbar"
   >
     <div
       v-for="m in messages"
@@ -19,66 +17,69 @@
         }"
       >
         <template v-if="part.type === 'text'">
-          <template v-if="m.role === 'user'">
-            <div
-              v-if="session?.user.image"
-              class="chat-image avatar rounded-full"
-            >
-              <div class="w-10 rounded-full">
+          <div
+            class="chat-image avatar rounded-full"
+            :class="{
+              'avatar-placeholder':
+                m.role === 'assistant' || !session?.user.image,
+              'max-sm:hidden': m.role === 'assistant',
+            }"
+          >
+            <div class="w-10 rounded-full bg-base-100">
+              <Icon
+                v-if="m.role === 'assistant'"
+                name="lucide:bot-message-square"
+              />
+              <template v-else>
                 <img
+                  v-if="session?.user.image"
                   :alt="session.user.name"
                   :src="session.user.image"
                 >
-              </div>
+                <Icon v-else name="lucide:user-round" />
+              </template>
             </div>
-          </template>
-          <template v-else-if="m.role === 'assistant'">
-            <div
-              class="max-sm:hidden chat-image avatar avatar-placeholder rounded-full"
-            >
-              <div class="w-10 rounded-full bg-base-100">
-                <Icon name="lucide:bot-message-square" />
-              </div>
-            </div>
-          </template>
-          <UiBubble class="chat-bubble !shadow-none">
+          </div>
+          <UiBubble class="chat-bubble sm:!px-6 !shadow-none">
             <MDCCached
               :value="part.text"
               :cache-key="`message-${m.id}-part-${index}`"
               :components="components"
               :parser-options="{ highlight: false }"
               class="chat-markdown"
-              :unwrap="m.role === 'user' ? 'pre' : ''"
+              :unwrap="getUnwrap(m.role)"
             />
           </UiBubble>
-        </template>
+      </template>
+    </div>
+    <ClientOnly>
+      <div
+        v-show="!arrivedState.bottom && messages.length > 1"
+        class="fixed z-20 bottom-60 sm:bottom-50 left-1/2 -translate-x-1/2 z-50"
+      >
+        <UiButton
+          circle
+          icon-name="lucide:chevrons-down"
+          icon-only
+          title="Scroll to bottom"
+          class="opacity-10 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300 [--depth:0]"
+          @click="scrollToBottom"
+        />
       </div>
-    </div>
-    <div
-      v-show="showScrollButton && messages.length > 1"
-      class="fixed bottom-66 sm:bottom-50 left-1/2 -translate-x-1/2 z-50"
-    >
-      <UiButton
-        circle
-        icon-name="lucide:chevrons-down"
-        icon-only
-        title="New Messages"
-        class="opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300"
-        @click="scrollToBottom"
-      />
-    </div>
+    </ClientOnly>
   </div>
   <LazyChatInput
     v-model="input"
     :pending="pending"
     @submit="onSubmit"
   />
-</template>
+</div></template>
 <script setup lang="ts">
 import type { DefineComponent } from 'vue'
 import type { Chat } from '#shared/types/chats.d'
+import type { Message } from '@ai-sdk/vue'
 import { useChat } from '@ai-sdk/vue'
-import { ref, watch, nextTick, onMounted, shallowRef } from 'vue'
+import { ref, nextTick, onMounted, shallowRef } from 'vue'
 import ProseStreamPre from '~/components/prose/PreStream.vue'
 
 const components = {
@@ -129,6 +130,12 @@ useSeoMeta({
 
 const { data: session } = await useLazyFetch('/api/v1/auth/session')
 
+const messagesContainer = ref<HTMLElement | null>(null)
+
+const { measure, y, arrivedState } = useScroll(messagesContainer, {
+  behavior: 'smooth',
+})
+
 const {
   messages, input, handleSubmit, reload, stop: _stop,
 } = useChat({
@@ -155,8 +162,14 @@ const {
   },
 })
 
-onMounted(() => {
-  if (
+onMounted(async () => {
+  measure()
+
+  await nextTick()
+
+  if ((chat.value?.messages?.length || 0) > 1) {
+    scrollToBottom()
+  } else if (
     chat.value?.messages.length === 1
     || chat.value?.messages.pop()?.role === 'user'
   ) {
@@ -164,50 +177,27 @@ onMounted(() => {
   }
 })
 
+function scrollToBottom() {
+  if (!messagesContainer.value || arrivedState.bottom) {
+    return
+  }
+
+  y.value += Number.MAX_SAFE_INTEGER
+}
+
 const pending = shallowRef<boolean>(false)
 
 function onSubmit() {
   handleSubmit()
 }
 
-const messagesContainer = ref<HTMLElement | null>(null)
-const showScrollButton = shallowRef(false)
+function getUnwrap(_role: Message['role']) {
+  const tags = ['strong']
 
-function scrollToBottom() {
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTo({
-      top: messagesContainer.value.scrollHeight,
-      behavior: 'smooth',
-    })
-    showScrollButton.value = false
-  }
+  // if (role === 'user') {
+  //   tags.push('pre')
+  // }
+
+  return tags.join(',')
 }
-
-function onScroll() {
-  if (!messagesContainer.value) return
-  const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
-  // If user is not at the bottom, show the button
-  showScrollButton.value = scrollTop + clientHeight < scrollHeight - 50
-}
-
-watch(
-  () => messages.value.length,
-  async (newLength, oldLength) => {
-    await nextTick()
-    if (!messagesContainer.value) return
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainer.value
-    const atBottom = scrollTop + clientHeight >= scrollHeight - 50
-    if (newLength > oldLength) {
-      if (atBottom) {
-        scrollToBottom()
-      } else {
-        showScrollButton.value = true
-      }
-    }
-  },
-)
-
-onMounted(() => {
-  nextTick(scrollToBottom)
-})
 </script>

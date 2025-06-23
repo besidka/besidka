@@ -1,5 +1,5 @@
 import type { LanguageModelV1, CoreMessage } from 'ai'
-import { streamText } from 'ai'
+import { streamText, smoothStream } from 'ai'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
@@ -117,6 +117,7 @@ export default defineEventHandler(async (event) => {
   return streamText({
     model: instance,
     messages: body.data.messages as CoreMessage[],
+    experimental_transform: smoothStream(),
     async onFinish(response) {
       await db.insert(schema.messages).values({
         chatId: chat.id,

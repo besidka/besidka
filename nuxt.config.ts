@@ -125,6 +125,9 @@ export default defineNuxtConfig({
     componentIslands: true,
   },
   mdc: {
+    remarkPlugins: {
+      'remark-breaks': {},
+    },
     highlight: {
       shikiEngine: 'javascript',
     },
