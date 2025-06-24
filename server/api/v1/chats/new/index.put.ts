@@ -21,25 +21,6 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
-  const { provider, model } = useChatProvider()
-
-  let chatTitle = ''
-
-  switch (provider.id) {
-    case 'openai': {
-      const { generateChatTitle } = await useOpenAI(session.user.id, model)
-
-      chatTitle = await generateChatTitle(body.data.message)
-      break
-    }
-    case 'google': {
-      const { generateChatTitle } = await useGoogle(session.user.id, model)
-
-      chatTitle = await generateChatTitle(body.data.message)
-      break
-    }
-  }
-
   const db = useDb()
 
   const user = await db.query.users.findFirst({
@@ -56,7 +37,6 @@ export default defineEventHandler(async (event) => {
     .insert(schema.chats)
     .values({
       userId: user.id,
-      title: chatTitle,
     })
     .returning({
       id: schema.chats.id,
