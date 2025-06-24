@@ -1,10 +1,9 @@
 <template>
   <UiBubble
-    v-if="!isAlertHidden"
     role="alert"
     class="sticky z-50 top-0 inset-x-0 !block px-10 max-sm:pl-4 !rounded-none !shadow-none"
   >
-    <div class="w-full text-center text-sm">
+    <div class="w-full text-center text-xs sm:text-sm">
       <slot />
     </div>
     <div class="absolute right-4 top-1/2 -translate-y-1/2">
@@ -25,10 +24,6 @@
 defineEmits<{
   click: []
 }>()
-
-const isAlertHidden = useCookie('alert-hidden', {
-  default: () => false,
-})
 </script>
 
 <style scoped>

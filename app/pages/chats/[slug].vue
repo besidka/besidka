@@ -50,12 +50,13 @@
               :unwrap="getUnwrap(m.role)"
             />
           </UiBubble>
-      </template>
+        </template>
+      </div>
     </div>
     <ClientOnly>
       <div
         v-show="!arrivedState.bottom && messages.length > 1"
-        class="fixed z-20 bottom-60 sm:bottom-50 left-1/2 -translate-x-1/2 z-50"
+        class="fixed z-20 bottom-20 sm:bottom-10 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
       >
         <UiButton
           circle
@@ -70,10 +71,11 @@
   </div>
   <LazyChatInput
     v-model="input"
+    :visible="chatInputVisible"
     :pending="pending"
     @submit="onSubmit"
   />
-</div></template>
+</template>
 <script setup lang="ts">
 import type { DefineComponent } from 'vue'
 import type { Chat } from '#shared/types/chats.d'
@@ -134,10 +136,17 @@ const messagesContainer = ref<HTMLElement | null>(null)
 
 const { measure, y, arrivedState } = useScroll(messagesContainer, {
   behavior: 'smooth',
+  offset: {
+    bottom: 200,
+  },
 })
 
 const {
-  messages, input, handleSubmit, reload, stop: _stop,
+  messages,
+  input,
+  handleSubmit,
+  reload,
+  stop: _stop,
 } = useChat({
   id: chat.value.id,
   api: `/api/v1/chats/${chat.value.slug}`,
@@ -160,6 +169,11 @@ const {
 
     useErrorMessage(message)
   },
+})
+
+const chatInputVisible = computed(() => {
+  return messages.value.length === 1
+    || (messages.value.length > 1 && arrivedState.bottom)
 })
 
 onMounted(async () => {
@@ -189,6 +203,7 @@ const pending = shallowRef<boolean>(false)
 
 function onSubmit() {
   handleSubmit()
+  scrollToBottom()
 }
 
 function getUnwrap(_role: Message['role']) {

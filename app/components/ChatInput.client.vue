@@ -1,11 +1,13 @@
 <template>
-  <div class="fixed z-30 bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3">
+  <div
+    class="fixed z-50 bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
+    :class="{
+      'translate-y-full': !visible,
+      'translate-y-0': visible,
+    }"
+    >
     <UiBubble
-      class="!pb-0 z-50 !rounded-b-none !rounded-t-[calc(var(--radius-xl)_+_var(--spacing)_*_2)] !bg-accent/20 transition-transform duration-500 ease-in-out"
-      :class="{
-        'translate-y-full': !visible,
-        'translate-y-0': visible,
-      }"
+      class="!pb-0 !rounded-b-none !rounded-t-[calc(var(--radius-xl)_+_var(--spacing)_*_2)] !bg-accent/20"
     >
       <div
         class="p-1 pb-0 max-sm:pb-16 rounded-t-xl bg-base-100/80 dark:bg-base-100/80 shadow-lg"
@@ -15,7 +17,7 @@
           class="textarea textarea-ghost !bg-transparent w-lg max-w-full h-12 resize-none rounded-[calc(var(--radius-field))]"
           placeholder="Type your message here..."
           :disabled="pending"
-          @keydown.enter.exact.prevent="sendMessage"
+          @keydown.enter.exact="handleEnter"
         />
         <div class="flex items-center justify-between p-2">
           <div>
@@ -78,24 +80,14 @@ const { data: providers } = await useFetch('/api/v1/providers', {
 
 defineProps<{
   pending?: boolean
+  visible?: boolean
 }>()
 
 const emit = defineEmits<{
   submit: [string]
 }>()
 
-const visible = shallowRef<boolean>(false)
-
-onMounted(() => {
-  setTimeout(() => {
-    visible.value = true
-  }, 100)
-})
-
-onBeforeUnmount(() => {
-  visible.value = false
-})
-
+const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
 const { replaceUserPre } = useChatInput()
 
@@ -128,6 +120,10 @@ const message = defineModel<string>({
     return value
   },
 })
+
+function handleEnter() {
+  return isDesktop && sendMessage()
+}
 
 function sendMessage() {
   if (!message.value?.trim()) {
