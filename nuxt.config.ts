@@ -115,6 +115,10 @@ export default defineNuxtConfig({
       },
       meta: [
         {
+          name: 'viewport',
+          content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+        },
+        {
           name: 'description',
           content: 'Open-source AI chat application. Bring your API key and start chatting with available LLMs!',
         },

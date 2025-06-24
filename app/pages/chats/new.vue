@@ -1,7 +1,7 @@
 <template>
-  <div/>
   <LazyChatInput
     v-model="message"
+    visible
     :pending="pending"
     @submit="onSubmit"
   />
