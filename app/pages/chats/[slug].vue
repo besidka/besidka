@@ -130,6 +130,47 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
+const {
+  data: chatTitle,
+  error: chatTitleError,
+} = await useLazyFetch(
+  `/api/v1/chats/${route.params.slug}/title`,
+  {
+    method: 'patch',
+    key: `chat-title-${route.params.slug}`,
+    cache: 'force-cache',
+    immediate: !chat.value.title,
+  },
+)
+
+watch(chatTitleError, () => {
+  if (!chatTitleError.value) {
+    return
+  }
+
+  throw createError({
+    statusCode: chatTitleError.value.status || 500,
+    statusMessage:
+      chatTitleError.value.statusMessage
+      || 'An error occurred while fetching the chat',
+    data: chatError.value,
+  })
+}, {
+  flush: 'post',
+  immediate: false,
+  once: true,
+})
+
+watch(chatTitle, (value) => {
+  value && useSeoMeta({
+    title: value,
+  })
+}, {
+  flush: 'post',
+  immediate: false,
+  once: true,
+})
+
 const { data: session } = await useLazyFetch('/api/v1/auth/session')
 
 const messagesContainer = ref<HTMLElement | null>(null)
