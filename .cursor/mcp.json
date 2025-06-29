@@ -11,6 +11,9 @@
     "cloudflare-bindings": {
 			"type": "sse",
 			"url": "https://bindings.mcp.cloudflare.com/sse"
-		}
+		},
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    }
   }
 }

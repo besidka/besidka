@@ -25,6 +25,11 @@ const Configuration: UserConfig = {
         'legal',
       ],
     ],
+    'subject-case': [
+      RuleConfigSeverity.Error,
+      'always',
+      ['sentence-case', 'lower-case'],
+    ],
   },
 }
 
