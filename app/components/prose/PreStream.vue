@@ -1,9 +1,12 @@
 <template>
-  <div class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-hidden">
+  <div
+    class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-hidden"
+  >
     <div class="flex items-center justify-between">
       <div class="mockup-browser-toolbar"/>
       <div class="flex gap-2 py-2 pr-4">
         <UiButton
+          v-if="isExpandButtonVisible"
           mode="default"
           ghost
           :icon-name="expanded
@@ -26,31 +29,40 @@
         />
       </div>
     </div>
-    <ProsePre v-bind="props">
-      <ShikiCachedRenderer
-        :key="key"
-        :highlighter="highlighter"
-        :code="trimmedCode"
-        :lang="lang"
-        :theme="$colorMode.value === 'dark'
-          ? 'github-dark'
-          : 'github-light'
-        "
-        class="p-4 overflow-x-auto"
-        :class="{
-          'overflow-y-auto max-h-20': !expanded
-        }"
-      />
-    </ProsePre>
+    <div
+      class="p-4 overflow-x-auto text-sm"
+      :class="{
+        'overflow-y-auto max-h-30': !expanded
+      }"
+    >
+      <ClientOnly>
+        <template #fallback>
+          <ProsePre v-bind="props" class="motion-safe:animate-pulse">
+            {{ trimmedCode }}
+          </ProsePre>
+        </template>
+        <ProsePre v-bind="props">
+          <ShikiCachedRenderer
+            :key="key"
+            :highlighter="highlighter"
+            :code="trimmedCode"
+            :lang="lang"
+            :theme="$colorMode.value === 'dark'
+              ? 'github-dark'
+              : 'github-light'
+            "
+          >
+            Render
+          </ShikiCachedRenderer>
+        </ProsePre>
+      </ClientOnly>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ShikiCachedRenderer } from 'shiki-stream/vue'
 
-const colorMode = useColorMode()
-const clipboard = useClipboard()
-const highlighter = await useHighlighter()
 const props = defineProps<{
   code: string
   language: string
@@ -58,12 +70,22 @@ const props = defineProps<{
   meta?: string
 }>()
 
+const colorMode = useColorMode()
+const clipboard = useClipboard()
+const highlighter = await useHighlighter()
+
 const trimmedCode = computed<string>(() => {
   try {
     return props.code.trim().replace(/`+$/, '')
   } catch {
     return props.code
   }
+})
+
+const codeLines = computed<number>(() => {
+  const lines = trimmedCode.value.match(/\r?\n/gm)
+
+  return lines ? lines.length + 1 : 1
 })
 
 const lang = computed<string>(() => {
@@ -97,5 +119,37 @@ function copy() {
   }, 2000)
 }
 
-const expanded = shallowRef(false)
+const expanded = shallowRef(codeLines.value < 3)
+const isExpandButtonVisible = shallowRef(codeLines.value >= 3)
+const timer = ref<NodeJS.Timeout | null>(null)
+const savedCodeState = shallowRef<string>(props.code)
+
+function updateExpandedState() {
+  if (codeLines.value < 3) {
+    return
+  }
+
+  expanded.value = false
+  isExpandButtonVisible.value = true
+}
+
+onBeforeMount(() => {
+  savedCodeState.value = props.code
+})
+
+onMounted(() => {
+  timer.value = setInterval(() => {
+    if (props.code.length !== savedCodeState.value.length) {
+      savedCodeState.value = props.code
+      return
+    }
+
+    updateExpandedState()
+    timer.value && clearTimeout(timer.value)
+  }, 1000)
+})
+
+onBeforeUnmount(() => {
+  timer.value && clearTimeout(timer.value)
+})
 </script>
