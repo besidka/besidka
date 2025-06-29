@@ -43,7 +43,7 @@
           <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
             <MDCCached
               :value="part.text"
-              :cache-key="`message-${m.id}-part-${index}`"
+              :cache-key="`chat-${chat?.id}-message-${m.id}-part-${index}`"
               :components="components"
               :parser-options="{ highlight: false }"
               class="chat-markdown"
@@ -81,7 +81,6 @@ import type { DefineComponent } from 'vue'
 import type { Chat } from '#shared/types/chats.d'
 import type { Message } from '@ai-sdk/vue'
 import { useChat } from '@ai-sdk/vue'
-import { ref, nextTick, onMounted, shallowRef } from 'vue'
 import ProseStreamPre from '~/components/prose/PreStream.vue'
 
 const components = {
@@ -182,6 +181,8 @@ const { measure, y, arrivedState } = useScroll(messagesContainer, {
   },
 })
 
+const interval = ref<NodeJS.Timeout | null>(null)
+
 const {
   messages,
   input,
@@ -199,7 +200,18 @@ const {
   body: {
     model: userModel.value,
   },
+  onResponse() {
+    if (interval.value) {
+      return clearInterval(interval.value)
+    }
+
+    interval.value = setInterval(scrollToBottom, 1000)
+  },
   onFinish() {
+    if (interval.value) {
+      return clearInterval(interval.value)
+    }
+
     scrollToBottom()
   },
   onError(error) {
@@ -217,11 +229,7 @@ const chatInputVisible = computed(() => {
     || (messages.value.length > 1 && arrivedState.bottom)
 })
 
-onMounted(async () => {
-  measure()
-
-  await nextTick()
-
+onMounted(() => {
   if ((chat.value?.messages?.length || 0) > 1) {
     scrollToBottom()
   } else if (
@@ -233,10 +241,7 @@ onMounted(async () => {
 })
 
 function scrollToBottom() {
-  if (!messagesContainer.value || arrivedState.bottom) {
-    return
-  }
-
+  measure()
   y.value += Number.MAX_SAFE_INTEGER
 }
 
@@ -244,15 +249,14 @@ const pending = shallowRef<boolean>(false)
 
 function onSubmit() {
   handleSubmit()
-  scrollToBottom()
 }
 
-function getUnwrap(_role: Message['role']) {
+function getUnwrap(role: Message['role']) {
   const tags = ['strong']
 
-  // if (role === 'user') {
-  //   tags.push('pre')
-  // }
+  if (role === 'user') {
+    tags.push('pre')
+  }
 
   return tags.join(',')
 }
