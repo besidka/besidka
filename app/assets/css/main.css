@@ -302,6 +302,13 @@
   p {
     @apply mb-2 last:mb-0;
   }
+
+  p,
+  li {
+    & > code {
+      @apply whitespace-pre-wrap p-1 rounded bg-accent/10 text-accent text-sm;
+    }
+  }
 }
 
 html {
