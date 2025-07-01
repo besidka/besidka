@@ -4,7 +4,7 @@ export async function useGoogle(
   userId: string,
   model: string,
 ) {
-  const keys = await useDb().query.keys.findFirst({
+  const data = await useDb().query.keys.findFirst({
     where(keys, { and, eq }) {
       return and(
         eq(keys.userId, parseInt(userId)),
@@ -13,11 +13,10 @@ export async function useGoogle(
     },
     columns: {
       apiKey: true,
-      projectId: true,
     },
   })
 
-  if (!keys) {
+  if (!data) {
     throw createError({
       statusCode: 401,
       statusMessage: 'Google key not found. Please set it up in the settings.',
@@ -25,7 +24,7 @@ export async function useGoogle(
   }
 
   const google = createGoogleGenerativeAI({
-    apiKey: await useDecryptText(keys.apiKey),
+    apiKey: await useDecryptText(data.apiKey),
   })
 
   function getInstance() {

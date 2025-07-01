@@ -3,7 +3,6 @@ import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
-    projectId: z.string().nonempty(),
     apiKey: z.string().nonempty(),
   }).safeParse)
 
@@ -33,12 +32,10 @@ export default defineEventHandler(async (event) => {
   })
 
   const apiKey = await useEncryptText(body.data.apiKey)
-  const projectId = await useEncryptText(body.data.projectId)
 
   if (existingKey) {
     await db.update(schema.keys).set({
       apiKey,
-      projectId,
     }).where(and(
       eq(schema.keys.userId, parseInt(session.user.id)),
       eq(schema.keys.provider, 'openai'),
@@ -51,7 +48,6 @@ export default defineEventHandler(async (event) => {
     userId: parseInt(session.user.id),
     provider: 'openai',
     apiKey,
-    projectId,
   })
 
   return setResponseStatus(event, 201, 'Key created successfully')

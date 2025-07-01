@@ -54,7 +54,7 @@
     />
     <p
       v-if="$slots.noteAfter"
-      class="fieldset-label mt-2 text-base-content/80"
+      class="fieldset-label mt-2 text-base-content/80 note"
     >
       <slot name="noteAfter" />
     </p>
@@ -141,3 +141,13 @@ onBeforeUnmount(() => {
   observer.value?.disconnect()
 })
 </script>
+
+<style scoped>
+@reference '~/assets/css/main.css';
+
+:deep(.note) {
+  a {
+    @apply link;
+  }
+}
+</style>

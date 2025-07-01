@@ -15,5 +15,5 @@ export default defineEventHandler(async (event) => {
       eq(schema.keys.provider, 'openai'),
     ))
 
-  return setResponseStatus(event, 204, 'Keys deleted successfully')
+  return setResponseStatus(event, 204, 'API key deleted successfully')
 })

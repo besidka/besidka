@@ -14,7 +14,6 @@ export const keys = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     provider: text({ enum: ['openai', 'anthropic', 'google'] }).notNull(),
     apiKey: text().notNull(),
-    projectId: text().default(''),
   },
   table => [
     uniqueIndex('uq_key_user').on(table.id, table.userId),
