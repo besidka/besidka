@@ -121,8 +121,13 @@ const message = defineModel<string>({
   },
 })
 
-function handleEnter() {
-  return isDesktop && sendMessage()
+function handleEnter(event: KeyboardEvent) {
+  if (!isDesktop) {
+    return
+  }
+
+  event.preventDefault()
+  sendMessage()
 }
 
 function sendMessage() {
