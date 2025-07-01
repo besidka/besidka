@@ -2,7 +2,7 @@
   <section class="grid place-items-center gap-2 pt-4">
     <SvgoOpenai class="!size-16" />
     <h3 class="text-2xl font-bold">OpenAI</h3>
-    <p>Manage your OpenAI project and API keys here</p>
+    <p>Manage your OpenAI API key here</p>
     <UiForm
       ref="form"
       class="w-full"
@@ -10,51 +10,12 @@
     >
       <UiFormFieldset>
         <UiFormInput
-          ref="projectIdInput"
-          v-model="keys.projectId"
-          autocomplete="off"
-          type="password"
-          label="Project ID"
-          placeholder="proj_xxxx..."
-          :rules="[Validation.required()]"
-          :disabled="pending"
-        >
-          <template #labelBefore>
-            <Icon
-              name="lucide:folder-key"
-              size="16"
-            />
-          </template>
-          <template #labelAfter>
-            <UiButton
-              mode="default"
-              text="Paste"
-              icon-name="lucide:clipboard-paste"
-              :icon-size="16"
-              icon-only
-              circle
-              ghost
-              size="sm"
-              @click="pasteProjectId"
-            />
-          </template>
-          <template #noteAfter>
-            <NuxtLink
-              to="https://platform.openai.com/settings/organization/projects"
-              external
-              target="_blank"
-            >
-              Get your Project ID from OpenAI: https://platform.openai.com/settings/organization/projects
-            </NuxtLink>
-          </template>
-        </UiFormInput>
-        <UiFormInput
           ref="apiKeyInput"
-          v-model="keys.apiKey"
+          v-model="apiKey"
           autocomplete="off"
           type="password"
           label="API Key"
-          placeholder="sk-proj-xxxx...-xxxx..."
+          placeholder="sk-proj-x-xxxx...-xxxx..."
           :rules="[Validation.required()]"
           :disabled="pending"
         >
@@ -78,18 +39,21 @@
             />
           </template>
           <template #noteAfter>
-            <NuxtLink
-              to="https://platform.openai.com/api-keys"
-              external
-              target="_blank"
-            >
-              Get your API keys from OpenAI: https://platform.openai.com/api-keys
-            </NuxtLink>
+            <span>
+              Get your API key from OpenAI:
+              <NuxtLink
+                to="https://platform.openai.com/api-keys"
+                external
+                target="_blank"
+              >
+                https://platform.openai.com/api-keys
+              </NuxtLink>
+            </span>
           </template>
         </UiFormInput>
         <div class="max-md:grid md:flex md:place-content-end gap-2">
           <UiButton
-            v-if="fetchedKeys?.projectId && fetchedKeys?.apiKey"
+            v-if="apiKey"
             mode="error"
             text="Delete"
             icon-name="lucide:trash"
@@ -114,38 +78,29 @@
 import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
-const { data: fetchedKeys, error, refresh } = await useFetch('/api/v1/profiles/keys/openai')
+const {
+  data: fetchedApiKey,
+  error,
+  refresh,
+} = await useFetch('/api/v1/profiles/keys/openai')
 
 if (error.value) {
   // eslint-disable-next-line no-console
-  console.warn('Failed to fetch OpenAI keys')
+  console.warn('Failed to fetch OpenAI keys', error.value)
 }
 
 const form = ref<InstanceType<typeof UiForm> | null>()
-const projectIdInput = ref<InstanceType<typeof UiFormInput> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
 
-const keys = shallowReactive<{
-  projectId: string
-  apiKey: string
-}>({
-  projectId: (fetchedKeys.value as any)?.projectId || '',
-  apiKey: (fetchedKeys.value as any)?.apiKey || '',
-})
+const apiKey = shallowRef<string>(fetchedApiKey.value || '')
 
 const pending = shallowRef<boolean>(false)
 
-async function pasteProjectId() {
-  keys.projectId = await paste()
-  await nextTick()
-  projectIdInput.value?.dispatchChange()
-}
-
 async function pasteApiKey() {
-  keys.apiKey = await paste()
+  apiKey.value = await paste()
   await nextTick()
   apiKeyInput.value?.dispatchChange()
 }
@@ -156,16 +111,20 @@ async function updateKeys() {
   try {
     await $fetch('/api/v1/profiles/keys/openai', {
       method: 'post',
-      body: keys,
+      body: {
+        apiKey: apiKey.value,
+      },
     })
     await refresh()
     form.value?.resetValidation()
-    useSuccessMessage('OpenAI keys updated successfully')
+    useSuccessMessage('OpenAI API key updated successfully')
   } catch (exception) {
-    useErrorMessage('Failed to update OpenAI keys')
+    useErrorMessage('Failed to update OpenAI API key')
+    // eslint-disable-next-line no-console
+    console.error('Failed to update OpenAI API key', exception)
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to update OpenAI keys',
+      statusMessage: 'Failed to update OpenAI API key',
       data: exception,
     })
   } finally {
@@ -182,15 +141,16 @@ async function deleteKeys() {
     })
     await refresh()
     useSuccessMessage('OpenAI keys deleted successfully')
-    keys.projectId = ''
-    keys.apiKey = ''
+    apiKey.value = ''
     await nextTick()
     form.value?.resetValidation()
   } catch (exception) {
-    useErrorMessage('Failed to delete OpenAI keys')
+    useErrorMessage('Failed to delete OpenAI API key')
+    // eslint-disable-next-line no-console
+    console.error('Failed to delete OpenAI API key', exception)
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to delete OpenAI keys',
+      statusMessage: 'Failed to delete OpenAI API key',
       data: exception,
     })
   } finally {
@@ -202,7 +162,7 @@ function onDeleteKeys() {
   useConfirmationModal(
     deleteKeys,
     [],
-    'Are you sure you want to delete your OpenAI keys?',
+    'Are you sure you want to delete your OpenAI API key?',
   )
 }
 </script>

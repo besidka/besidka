@@ -5,7 +5,7 @@ export default defineEventHandler(async () => {
     return useUnauthorizedError()
   }
 
-  const keys = await useDb().query.keys.findFirst({
+  const data = await useDb().query.keys.findFirst({
     where(keys, { and, eq }) {
       return and(
         eq(keys.userId, parseInt(session.user.id)),
@@ -14,19 +14,10 @@ export default defineEventHandler(async () => {
     },
     columns: {
       apiKey: true,
-      projectId: true,
     },
   })
 
-  return keys
-    ? {
-      apiKey: await useDecryptText(keys.apiKey),
-      projectId: keys.projectId
-        ? await useDecryptText(keys.projectId)
-        : '',
-    }
-    : {
-      apiKey: '',
-      projectId: '',
-    }
+  return data?.apiKey
+    ? await useDecryptText(data.apiKey)
+    : ''
 })

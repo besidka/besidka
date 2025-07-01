@@ -39,18 +39,21 @@
             />
           </template>
           <template #noteAfter>
-            <NuxtLink
-              to="https://aistudio.google.com/app/apikey"
-              external
-              target="_blank"
-            >
-              Get your API key from Google AI Studio: https://aistudio.google.com/app/apikey
-            </NuxtLink>
+            <span>
+              Get your API key from Google AI Studio:
+              <NuxtLink
+                to="https://aistudio.google.com/app/apikey"
+                external
+                target="_blank"
+              >
+                https://aistudio.google.com/app/apikey
+              </NuxtLink>
+            </span>
           </template>
         </UiFormInput>
         <div class="max-md:grid md:flex md:place-content-end gap-2">
           <UiButton
-            v-if="fetchedKeys?.apiKey"
+            v-if="apiKey"
             mode="error"
             text="Delete"
             icon-name="lucide:trash"
@@ -75,11 +78,15 @@
 import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
-const { data: fetchedKeys, error, refresh } = await useFetch('/api/v1/profiles/keys/google')
+const {
+  data: fetchedApiKey,
+  error,
+  refresh,
+} = await useFetch('/api/v1/profiles/keys/google')
 
 if (error.value) {
   // eslint-disable-next-line no-console
-  console.warn('Failed to fetch Google AI Studio keys')
+  console.warn('Failed to fetch Google AI Studio key')
 }
 
 const form = ref<InstanceType<typeof UiForm> | null>()
@@ -88,7 +95,7 @@ const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
 
-const apiKey = shallowRef<string>((fetchedKeys.value as any)?.apiKey || '')
+const apiKey = shallowRef<string>(fetchedApiKey.value || '')
 
 const pending = shallowRef<boolean>(false)
 
@@ -130,15 +137,15 @@ async function deleteKey() {
       method: 'delete',
     })
     await refresh()
-    useSuccessMessage('Google AI Studio keys deleted successfully')
+    useSuccessMessage('Google AI Studio key deleted successfully')
     apiKey.value = ''
     await nextTick()
     form.value?.resetValidation()
   } catch (exception) {
-    useErrorMessage('Failed to delete Google AI Studio keys')
+    useErrorMessage('Failed to delete Google AI Studio key')
     throw createError({
       statusCode: 500,
-      statusMessage: 'Failed to delete Google AI Studio keys',
+      statusMessage: 'Failed to delete Google AI Studio key',
       data: exception,
     })
   } finally {
