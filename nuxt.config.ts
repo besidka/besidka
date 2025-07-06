@@ -1,5 +1,5 @@
 import tailwindcss from '@tailwindcss/vite'
-import { providers, publicProviders, defaultModel } from './providers'
+import { providers, defaultModel } from './providers'
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
@@ -49,10 +49,9 @@ export default defineNuxtConfig({
     googleClientSecret: '',
     githubClientId: '',
     githubClientSecret: '',
-    providers,
     public: {
       defaultModel,
-      providers: publicProviders,
+      providers,
     },
   },
   colorMode: {

@@ -1,12 +1,15 @@
 <template>
   <LazyChatInput
-    v-model="message"
+    v-model:message="message"
+    v-model:tools="tools"
     visible
     :pending="pending"
     @submit="onSubmit"
   />
 </template>
 <script setup lang="ts">
+import type { Tools } from '#shared/types/chats.d'
+
 definePageMeta({
   middleware: 'auth',
   layout: 'chat',
@@ -17,16 +20,18 @@ useSeoMeta({
 })
 
 const message = shallowRef<string>()
+const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
 
-async function onSubmit(message: MaybeRefOrGetter<string>) {
+async function onSubmit() {
   pending.value = true
 
   try {
     const response = await $fetch('/api/v1/chats/new', {
       method: 'put',
       body: {
-        message: toValue(message),
+        message: message.value,
+        tools: tools.value,
       },
       cache: 'no-cache',
     })

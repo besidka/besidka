@@ -5,3 +5,5 @@ export type Message = typeof schema.messages.$inferSelect
 export type Chat = typeof schema.chats.$inferSelect & {
   messages: Message[]
 }
+
+export type Tools = Message['tools']

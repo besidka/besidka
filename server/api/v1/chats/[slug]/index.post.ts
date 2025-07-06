@@ -1,4 +1,5 @@
 import type { LanguageModelV1, CoreMessage } from 'ai'
+import type { FormattedTools } from '~~/server/types/tools.d'
 import { streamText, smoothStream } from 'ai'
 import * as schema from '~~/server/db/schema'
 
@@ -16,8 +17,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBody(event, z.object({
-    id: z.string().nonempty(),
     model: z.string().nonempty(),
+    tools: z.array(z.enum(['web_search'])),
     messages: z.array(
       z.object({
         id: z.string().nonempty(),
@@ -56,6 +57,7 @@ export default defineEventHandler(async (event) => {
       messages: {
         columns: {
           role: true,
+          tools: true,
         },
       },
     },
@@ -83,26 +85,41 @@ export default defineEventHandler(async (event) => {
         chatId: chat.id,
         role: 'user',
         content: lastMessage.content,
+        tools: body.data.tools,
       })
   }
 
   const { provider, model } = useChatProvider()
+  const requestedTools = chat.messages.length === 1
+    ? chat.messages[0]?.tools || []
+    : body.data.tools
 
   let instance: LanguageModelV1
+  let parsedTools: FormattedTools = {}
 
   switch (provider.id) {
     case 'openai': {
       const {
         instance: openAiInstance,
-      } = await useOpenAI(session.user.id, model)
+        tools: openAiTools,
+      } = await useOpenAI(
+        session.user.id,
+        model.id,
+        requestedTools,
+      )
 
       instance = openAiInstance
+      parsedTools = openAiTools
       break
     }
     case 'google': {
       const {
         instance: googleInstance,
-      } = await useGoogle(session.user.id, model)
+      } = await useGoogle(
+        session.user.id,
+        model.id,
+        requestedTools,
+      )
 
       instance = googleInstance
       break
@@ -118,12 +135,36 @@ export default defineEventHandler(async (event) => {
     model: instance,
     messages: body.data.messages as CoreMessage[],
     experimental_transform: smoothStream(),
+    ...parsedTools,
     async onFinish(response) {
       await db.insert(schema.messages).values({
         chatId: chat.id,
         role: 'assistant',
         content: response.text,
+        tools: body.data.tools,
       })
     },
-  }).toDataStreamResponse()
+    onError(error) {
+      // eslint-disable-next-line no-console
+      console.error(error)
+    },
+  }).toDataStreamResponse({
+    getErrorMessage: errorHandler,
+  })
 })
+
+function errorHandler(error: unknown) {
+  if (error == null) {
+    return 'An error occurred while processing the chat.'
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return JSON.stringify(error)
+}
