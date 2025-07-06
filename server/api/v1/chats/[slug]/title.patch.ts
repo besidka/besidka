@@ -67,13 +67,21 @@ export default defineEventHandler(async (event) => {
 
   switch (provider.id) {
     case 'openai': {
-      const { generateChatTitle } = await useOpenAI(session.user.id, model)
+      const { generateChatTitle } = await useOpenAI(
+        session.user.id,
+        model.id,
+        [],
+      )
 
       title = await generateChatTitle(initialMessages)
       break
     }
     case 'google': {
-      const { generateChatTitle } = await useGoogle(session.user.id, model)
+      const { generateChatTitle } = await useGoogle(
+        session.user.id,
+        model.id,
+        [],
+      )
 
       title = await generateChatTitle(initialMessages)
       break

@@ -17,7 +17,7 @@ export default {
         input: ['text', 'image', 'video', 'audio'],
         output: ['text'],
       },
-      tools: [],
+      tools: ['web_search'],
     },
   ],
 }

@@ -2,6 +2,7 @@ import * as schema from '~~/server/db/schema'
 
 const rules = z.object({
   message: z.string().trim().min(1),
+  tools: z.array(z.enum(['web_search'])),
 })
 
 export default defineEventHandler(async (event) => {
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event) => {
       chatId: chat.id,
       role: 'user',
       content: body.data.message,
+      tools: body.data.tools,
     })
 
   return {

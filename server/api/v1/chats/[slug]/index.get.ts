@@ -17,27 +17,6 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
-  const { model } = parseCookies(event)
-
-  if (!model) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Please select a model to continue.',
-    })
-  }
-
-  const { providers } = useRuntimeConfig(event)
-  const provider = Object.values(providers).find((p) => {
-    return p.models.some((m: any) => m.id === model)
-  })
-
-  if (!provider) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Current model is not supported by any provider. Please select a different model.',
-    })
-  }
-
   const chat = await useDb().query.chats.findFirst({
     where(chats, { and, eq }) {
       return and(
@@ -56,6 +35,7 @@ export default defineEventHandler(async (event) => {
           id: true,
           role: true,
           content: true,
+          tools: true,
         },
       },
     },

@@ -1,20 +1,21 @@
-export function useChatProvider() {
+export function useChatProvider(): {
+  provider: Provider
+  model: Model
+  modelName: Model['name']
+} {
   const event = useEvent()
-  const { model } = parseCookies(event)
+  const { model: userModel } = parseCookies(event)
 
-  if (!model) {
+  if (!userModel) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Please select a model to continue.',
     })
   }
 
-  const { providers } = useRuntimeConfig(event)
-  const provider = Object.values(providers).find((p) => {
-    return p.models.some((m: any) => m.id === model)
-  })
+  const { model, provider, modelName } = getModel(userModel)
 
-  if (!provider) {
+  if (!provider || !model) {
     throw createError({
       statusCode: 400,
       statusMessage:
@@ -23,7 +24,8 @@ export function useChatProvider() {
   }
 
   return {
-    model,
     provider,
+    model,
+    modelName,
   }
 }

@@ -16,6 +16,10 @@
           'chat-end': m.role === 'user',
         }"
       >
+        <!-- <h1>{{ part.type }}</h1>
+        <template v-if="part.type === 'tool-invocation'">
+          State: <strong>{{ part.toolInvocation.state }}</strong>
+        </template> -->
         <template v-if="part.type === 'text'">
           <div
             class="chat-image avatar rounded-full"
@@ -43,7 +47,7 @@
           <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
             <MDCCached
               :value="part.text"
-              :cache-key="`chat-${chat?.id}-message-${m.id}-part-${index}`"
+              :cache-key="`message-${m.id}-part-${index}`"
               :components="components"
               :parser-options="{ highlight: false }"
               class="chat-markdown"
@@ -70,23 +74,14 @@
     </ClientOnly>
   </div>
   <LazyChatInput
-    v-model="input"
+    v-model:message="input"
+    v-model:tools="tools"
     :visible="chatInputVisible"
     :pending="pending"
     @submit="onSubmit"
   />
 </template>
 <script setup lang="ts">
-import type { DefineComponent } from 'vue'
-import type { Chat } from '#shared/types/chats.d'
-import type { Message } from '@ai-sdk/vue'
-import { useChat } from '@ai-sdk/vue'
-import ProseStreamPre from '~/components/prose/PreStream.vue'
-
-const components = {
-  pre: ProseStreamPre as unknown as DefineComponent,
-}
-
 definePageMeta({
   middleware: 'auth',
   layout: 'chat',
@@ -95,8 +90,6 @@ definePageMeta({
 useSeoMeta({
   title: 'New Chat',
 })
-
-const { userModel } = useUserModel()
 
 const route = useRoute()
 
@@ -129,135 +122,32 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const {
-  data: chatTitle,
-  error: chatTitleError,
-} = await useLazyFetch(
-  `/api/v1/chats/${route.params.slug}/title`,
-  {
-    method: 'patch',
-    key: `chat-title-${route.params.slug}`,
-    cache: 'force-cache',
-    immediate: !chat.value.title,
-  },
-)
-
-watch(chatTitleError, () => {
-  if (!chatTitleError.value) {
-    return
-  }
-
-  throw createError({
-    statusCode: chatTitleError.value.status || 500,
-    statusMessage:
-      chatTitleError.value.statusMessage
-      || 'An error occurred while fetching the chat',
-    data: chatError.value,
-  })
-}, {
-  flush: 'post',
-  immediate: false,
-  once: true,
-})
-
-watch(chatTitle, (value) => {
-  value && useSeoMeta({
-    title: value,
-  })
-}, {
-  flush: 'post',
-  immediate: false,
-  once: true,
-})
+useSetChatTitle(chat.value.title)
 
 const { data: session } = await useLazyFetch('/api/v1/auth/session')
 
-const messagesContainer = ref<HTMLElement | null>(null)
-
-const { measure, y, arrivedState } = useScroll(messagesContainer, {
-  behavior: 'smooth',
-  offset: {
-    bottom: 200,
-  },
-})
-
-const interval = ref<NodeJS.Timeout | null>(null)
+const {
+  messagesContainer,
+  scrollToBottom,
+  arrivedState,
+} = useChatScroll()
 
 const {
   messages,
   input,
   handleSubmit,
-  reload,
-  stop: _stop,
-} = useChat({
-  id: chat.value.id,
-  api: `/api/v1/chats/${chat.value.slug}`,
-  initialMessages: chat.value.messages?.map(message => ({
-    id: message.id,
-    content: message.content,
-    role: message.role,
-  })),
-  body: {
-    model: userModel.value,
-  },
-  onResponse() {
-    if (interval.value) {
-      return clearInterval(interval.value)
-    }
+  tools,
+  pending,
+} = useChat(toValue(chat.value))
 
-    interval.value = setInterval(scrollToBottom, 1000)
-  },
-  onFinish() {
-    if (interval.value) {
-      return clearInterval(interval.value)
-    }
-
-    scrollToBottom()
-  },
-  onError(error) {
-    const { message } = typeof error.message === 'string'
-      && error.message[0] === '{'
-      ? JSON.parse(error.message)
-      : error
-
-    useErrorMessage(message)
-  },
-})
+const { components, getUnwrap } = useChatFormat()
 
 const chatInputVisible = computed(() => {
   return messages.value.length === 1
     || (messages.value.length > 1 && arrivedState.bottom)
 })
 
-onMounted(() => {
-  if ((chat.value?.messages?.length || 0) > 1) {
-    scrollToBottom()
-  } else if (
-    chat.value?.messages.length === 1
-    || chat.value?.messages.pop()?.role === 'user'
-  ) {
-    reload()
-  }
-})
-
-function scrollToBottom() {
-  measure()
-  y.value += Number.MAX_SAFE_INTEGER
-}
-
-const pending = shallowRef<boolean>(false)
-
 function onSubmit() {
   handleSubmit()
-}
-
-function getUnwrap(role: Message['role']) {
-  const tags = ['strong']
-
-  if (role === 'user') {
-    tags.push('pre')
-  }
-
-  return tags.join(',')
 }
 </script>
