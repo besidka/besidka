@@ -1,8 +1,11 @@
+import type { Tools } from '#shared/types/chats.d'
+import type { FormattedTools } from '~~/server/types/tools.d'
 import { createOpenAI } from '@ai-sdk/openai'
 
 export async function useOpenAI(
   userId: string,
   model: string,
+  requestedTools: Tools,
 ) {
   const data = await useDb().query.keys.findFirst({
     where(keys, { and, eq }) {
@@ -28,7 +31,7 @@ export async function useOpenAI(
   })
 
   function getInstance() {
-    return openai(model)
+    return openai.responses(model)
   }
 
   async function generateChatTitle(message: string) {
@@ -38,8 +41,31 @@ export async function useOpenAI(
     )
   }
 
+  function getTools(): FormattedTools {
+    if (!requestedTools?.length) {
+      return {}
+    }
+
+    const result: FormattedTools = {}
+
+    if (requestedTools.includes('web_search')) {
+      if (!result.tools) {
+        result.tools = {}
+      }
+
+      result.tools['web_search_preview'] = openai.tools.webSearchPreview()
+      result.toolChoice = {
+        type: 'tool',
+        toolName: 'web_search_preview',
+      }
+    }
+
+    return result
+  }
+
   return {
     instance: getInstance(),
     generateChatTitle,
+    tools: getTools(),
   }
 }

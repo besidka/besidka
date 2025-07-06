@@ -18,7 +18,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search_preview'],
+      tools: [],
     },
     {
       id: 'gpt-4o-mini',
@@ -35,7 +35,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search_preview'],
+      tools: ['web_search'],
     },
   ],
 }

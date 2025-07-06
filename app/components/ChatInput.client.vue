@@ -20,7 +20,7 @@
           @keydown.enter.exact="handleEnter"
         />
         <div class="flex items-center justify-between p-2">
-          <div>
+          <div class="flex items-center gap-2">
             <div class="dropdown dropdown-top">
               <div
                 tabindex="0"
@@ -28,7 +28,7 @@
                 aria-label="Select model"
                 class="btn btn-ghost btn-sm [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
               >
-                {{ getModelName(userModel) }}
+                {{ getModelName(toValue(userModel)) }}
                 <Icon name="lucide:chevron-up" size="14" />
               </div>
               <div
@@ -40,7 +40,9 @@
                     v-for="provider in providers"
                     :key="provider.id"
                   >
-                    <span class="menu-title">{{ provider.name }}</span>
+                    <span class="menu-title">
+                      {{ provider.name }}
+                    </span>
                     <ul>
                       <li v-for="model in provider.models" :key="model.id">
                         <button
@@ -55,6 +57,25 @@
                 </ul>
               </div>
             </div>
+            <UiButton
+              v-if="isWebSearchSupported"
+              mode="accent"
+              :ghost="isWebSearchEnabled ? undefined : true"
+              circle
+              icon-name="lucide:globe"
+              :icon-size="16"
+              icon-only
+              :text="isWebSearchEnabled
+                ? 'Disable web search'
+                : 'Enable web search'
+              "
+              tooltip-position="top"
+              size="xs"
+              :class="{
+                'btn-active': isWebSearchEnabled,
+              }"
+              @click="toggleWebSearch"
+            />
           </div>
           <div>
             <UiButton
@@ -74,9 +95,7 @@
   </div>
 </template>
 <script setup lang="ts">
-const { data: providers } = await useFetch('/api/v1/providers', {
-  cache: 'reload',
-})
+import type { Tools } from '#shared/types/chats.d'
 
 defineProps<{
   pending?: boolean
@@ -84,30 +103,15 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [string]
+  submit: []
 }>()
 
 const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
-const { replaceUserPre } = useChatInput()
+const { replaceUserPre, isWebSearchSupported } = useChatInput()
+const { providers } = getProviders()
 
-function getModelName(modelId: string): string {
-  const emptyTitle = 'Select Model'
-  let modelName
-
-  for (const provider of Object.values(providers.value ?? {})) {
-    for (const model of provider.models) {
-      if (model.id === modelId) {
-        modelName = model.name
-        break
-      }
-    }
-  }
-
-  return modelName ?? emptyTitle
-}
-
-const message = defineModel<string>({
+const message = defineModel<string>('message', {
   default: '',
   get: (value: string) => {
     value = replaceUserPre(value)
@@ -120,6 +124,25 @@ const message = defineModel<string>({
     return value
   },
 })
+
+const tools = defineModel<Tools>('tools', {
+  default: [],
+})
+
+const isWebSearchEnabled = computed<boolean>(() => {
+  return tools.value.includes('web_search')
+})
+
+function toggleWebSearch() {
+  if (!isWebSearchEnabled.value) {
+    tools.value = [...tools.value, 'web_search']
+    return
+  }
+
+  tools.value = tools.value.filter((tool) => {
+    return tool !== 'web_search'
+  })
+}
 
 function handleEnter(event: KeyboardEvent) {
   if (!isDesktop) {
@@ -135,7 +158,7 @@ function sendMessage() {
     return useWarningMessage('Please enter a message before sending.')
   }
 
-  emit('submit', message.value)
+  emit('submit')
   message.value = ''
 }
 </script>

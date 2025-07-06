@@ -1,8 +1,10 @@
+import type { Tools } from '#shared/types/chats.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 
 export async function useGoogle(
   userId: string,
   model: string,
+  requestedTools: Tools,
 ) {
   const data = await useDb().query.keys.findFirst({
     where(keys, { and, eq }) {
@@ -28,7 +30,9 @@ export async function useGoogle(
   })
 
   function getInstance() {
-    return google(model)
+    return google(model, {
+      useSearchGrounding: requestedTools.includes('web_search'),
+    })
   }
 
   async function generateChatTitle(message: string) {

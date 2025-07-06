@@ -1,4 +1,4 @@
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 import {
   sqliteTable, text, integer, uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
@@ -33,6 +33,10 @@ export const messages = sqliteTable(
       .references(() => chats.id, { onDelete: 'cascade' }),
     role: text({ enum: ['system', 'user', 'assistant'] }).notNull(),
     content: text().notNull(),
+    tools: text({ mode: 'json' })
+      .notNull()
+      .$type<Array<'web_search'>>()
+      .default(sql`'[]'`),
   }, table => [
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),
   ],
