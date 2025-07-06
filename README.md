@@ -2,6 +2,8 @@
 
 Bring your own API keys and pay only for what you used.
 
+Project board is available [here](https://github.com/users/serhii-chernenko/projects/5).
+
 ## How to try?
 
 1. You are welcome to visit the production site [www.chernenko.chat](https://www.chernenko.chat).
@@ -24,46 +26,16 @@ https://x.com/serhiichernenko/status/1935438276447424733
 - [Daisy UI](https://daisyui.com/)
 - [Vercel AI SDK](https://ai-sdk.dev/docs)
 
-## Hackathon Requirements 
+## Features
 
-### Deadline
-
-Due to T3 Cloneathon rules, the project has to be code freezed. But I’d like to continue the development of the project after the hackathon while waiting for the results.
-
-To follow the rules and make the race fair, I created a separate branch [`release/cloneathon`](https://github.com/serhii-chernenko/chat/tree/release/cloneathon) with the code freezed at the moment of the hackathon deadline.
-
-It’s assigned to the subdomain [cloneathon.chernenko.chat](https://cloneathon.chernenko.chat) and is available for the public.
-
-Meanwhile, the main branch [`main`](https://github.com/serhii-chernenko/chat/tree/main) and the production site [www.chernenko.chat](https://www.chernenko.chat) are still under development. I’m going to add more features and fix bugs.
-
-### Core requirements
-
+- [x] **PINK**. _Dark/light themes supported_
 - [x] Chat with Various LLMs
-- [x] Authentication & Sync
-- [x] Browser Friendly
-- [x] Easy to Try
-- [x] **PINK** 
-
-### Bonus requirements
-
+- [x] Authentication (Email + Password, Google, GitHub)
+- [x] Browser Friendly. Easy to Try
 - [x] Syntax Highlighting. Beautiful code formatting and highlighting
-- [x] Resumable Streams. Continue generation after page refresh. _Partially implemented. If the last message was from a user, a new response sends again on page reloading_.
+- [x] Resumable Streams. Continue generation after page refresh
 - [x] Bring Your Own Key. _Securely stored in a database_
-
-## Spent time on MVP
-
-- Project installation and basic preparation: **3 hours**
-- Authentication: **16 hours**
-- Basic UI: **3 hours**
-- Syntax highlighting: **2,5 hours**
-- Main navigation: **1,5 hours**
-- General chats functionality: **25 hours**
-- API keys storing: **2,5 hours**
-- Adding Google AI Studio provider: **1 hour**
-- History page: **0,5 hours**
-- Polishing + deployment via Cloudflare Workers: **4 hours**
-
-Total: **59 hours**
+- [x] Web search. _Get real-time information from the web_
 
 ## Local installation
 
