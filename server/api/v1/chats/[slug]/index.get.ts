@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
         columns: {
           id: true,
           role: true,
-          content: true,
+          parts: true,
           tools: true,
         },
       },

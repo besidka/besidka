@@ -1,8 +1,8 @@
-import type { LanguageModelV1 } from 'ai'
+import type { LanguageModel } from 'ai'
 import { generateText } from 'ai'
 
 export async function useChatTitle(
-  model: LanguageModelV1,
+  model: LanguageModel,
   message: string,
 ) {
   const instructions: string[] = [

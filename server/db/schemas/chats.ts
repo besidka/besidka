@@ -1,3 +1,4 @@
+import type { UIMessage } from 'ai'
 import { relations, sql } from 'drizzle-orm'
 import {
   sqliteTable, text, integer, uniqueIndex,
@@ -32,7 +33,11 @@ export const messages = sqliteTable(
       .notNull()
       .references(() => chats.id, { onDelete: 'cascade' }),
     role: text({ enum: ['system', 'user', 'assistant'] }).notNull(),
-    content: text().notNull(),
+    parts: text({ mode: 'json' })
+      .notNull()
+      .$type<UIMessage['parts']>()
+      // .$type<Record<string, never>>()
+      .default(sql`'[]'`),
     tools: text({ mode: 'json' })
       .notNull()
       .$type<Array<'web_search'>>()
