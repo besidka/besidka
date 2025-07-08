@@ -1,6 +1,6 @@
-import type { LanguageModelV1, CoreMessage } from 'ai'
+import type { LanguageModel, ProviderOptions } from 'ai'
 import type { FormattedTools } from '~~/server/types/tools.d'
-import { streamText, smoothStream } from 'ai'
+import { streamText, smoothStream, convertToModelMessages } from 'ai'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
@@ -23,8 +23,17 @@ export default defineEventHandler(async (event) => {
       z.object({
         id: z.string().nonempty(),
         role: z.enum(['system', 'user', 'assistant']),
-        content: z.string().nonempty(),
-      }).partial(),
+        createdAt: z.coerce.date().optional(),
+        annotations: z.array(z.string()).optional(),
+        parts: z.array(z.any()).min(1, 'At least one part is required'),
+        experimental_attachments: z.array(
+          z.object({
+            name: z.string().optional(),
+            contentType: z.string().optional(),
+            url: z.string().nonempty(),
+          }),
+        ).optional(),
+      }),
     ).min(1, 'At least one message is required'),
   }).safeParse)
 
@@ -77,14 +86,13 @@ export default defineEventHandler(async (event) => {
     lastMessage
     && lastMessage.role === 'user'
     && messages.length > 1
-    && lastMessage.content?.trim().length
   ) {
     await db
       .insert(schema.messages)
       .values({
         chatId: chat.id,
         role: 'user',
-        content: lastMessage.content,
+        parts: lastMessage.parts,
         tools: body.data.tools,
       })
   }
@@ -94,8 +102,9 @@ export default defineEventHandler(async (event) => {
     ? chat.messages[0]?.tools || []
     : body.data.tools
 
-  let instance: LanguageModelV1
+  let instance: LanguageModel
   let parsedTools: FormattedTools = {}
+  let providerOptions: ProviderOptions = {}
 
   switch (provider.id) {
     case 'openai': {
@@ -115,6 +124,7 @@ export default defineEventHandler(async (event) => {
     case 'google': {
       const {
         instance: googleInstance,
+        providerOptions: googleProviderOptions,
       } = await useGoogle(
         session.user.id,
         model.id,
@@ -122,6 +132,7 @@ export default defineEventHandler(async (event) => {
       )
 
       instance = googleInstance
+      providerOptions = googleProviderOptions
       break
     }
     default:
@@ -133,14 +144,18 @@ export default defineEventHandler(async (event) => {
 
   return streamText({
     model: instance,
-    messages: body.data.messages as CoreMessage[],
+    messages: convertToModelMessages(body.data.messages),
     experimental_transform: smoothStream(),
     ...parsedTools,
+    providerOptions,
     async onFinish(response) {
       await db.insert(schema.messages).values({
         chatId: chat.id,
         role: 'assistant',
-        content: response.text,
+        parts: [{
+          type: 'text',
+          text: response.text,
+        }],
         tools: body.data.tools,
       })
     },
@@ -148,23 +163,24 @@ export default defineEventHandler(async (event) => {
       // eslint-disable-next-line no-console
       console.error(error)
     },
-  }).toDataStreamResponse({
-    getErrorMessage: errorHandler,
+  }).toUIMessageStreamResponse({
+    // getErrorMessage: errorHandler,
   })
 })
 
-function errorHandler(error: unknown) {
-  if (error == null) {
-    return 'An error occurred while processing the chat.'
-  }
+// @TODO: Figure out how to handle errors in the stream for v5
+// function errorHandler(error: unknown) {
+//   if (error == null) {
+//     return 'An error occurred while processing the chat.'
+//   }
 
-  if (typeof error === 'string') {
-    return error
-  }
+//   if (typeof error === 'string') {
+//     return error
+//   }
 
-  if (error instanceof Error) {
-    return error.message
-  }
+//   if (error instanceof Error) {
+//     return error.message
+//   }
 
-  return JSON.stringify(error)
-}
+//   return JSON.stringify(error)
+// }

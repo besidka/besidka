@@ -29,15 +29,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         messages,
       }
     },
-    onResponse() {
-      pending.value = true
-
-      if (scrollInterval.value) {
-        return clearInterval(scrollInterval.value)
-      }
-
-      scrollInterval.value = setInterval(scrollToBottom, 1000)
-    },
     onFinish() {
       pending.value = false
       if (scrollInterval.value) {

@@ -50,7 +50,10 @@ export default defineEventHandler(async (event) => {
     .values({
       chatId: chat.id,
       role: 'user',
-      content: body.data.message,
+      parts: [{
+        type: 'text',
+        text: body.data.message,
+      }],
       tools: body.data.tools,
     })
 
