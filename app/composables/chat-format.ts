@@ -1,12 +1,12 @@
 import type { DefineComponent } from 'vue'
-import type { Message } from '@ai-sdk/vue'
+import type { UIMessage } from '@ai-sdk/vue'
 import ProseStreamPre from '~/components/prose/PreStream.vue'
 
 const components = {
   pre: ProseStreamPre as unknown as DefineComponent,
 }
 
-function getUnwrap(role: Message['role']) {
+function getUnwrap(role: UIMessage['role']) {
   const tags = ['strong']
 
   if (role === 'user') {

@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
           return asc(messages.createdAt)
         },
         columns: {
-          content: true,
+          parts: true,
         },
       },
     },
@@ -62,7 +62,8 @@ export default defineEventHandler(async (event) => {
     return null
   }
 
-  const initialMessages = chat.messages[0]!.content as string
+  // @ts-expect-error
+  const initialMessages = chat.messages[0]!.parts?.[0]?.text as string
   let title = ''
 
   switch (provider.id) {
