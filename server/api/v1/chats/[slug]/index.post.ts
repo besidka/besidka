@@ -164,23 +164,22 @@ export default defineEventHandler(async (event) => {
       console.error(error)
     },
   }).toUIMessageStreamResponse({
-    // getErrorMessage: errorHandler,
+    onError: errorHandler,
   })
 })
 
-// @TODO: Figure out how to handle errors in the stream for v5
-// function errorHandler(error: unknown) {
-//   if (error == null) {
-//     return 'An error occurred while processing the chat.'
-//   }
+function errorHandler(error: unknown) {
+  if (error == null) {
+    return 'An error occurred while processing the chat.'
+  }
 
-//   if (typeof error === 'string') {
-//     return error
-//   }
+  if (typeof error === 'string') {
+    return error
+  }
 
-//   if (error instanceof Error) {
-//     return error.message
-//   }
+  if (error instanceof Error) {
+    return error.message
+  }
 
-//   return JSON.stringify(error)
-// }
+  return JSON.stringify(error)
+}
