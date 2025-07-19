@@ -34,6 +34,7 @@
 		"@nuxtjs/device": "^3.2.4",
 		"@nuxtjs/mdc": "^0.17.0",
 		"@tailwindcss/vite": "^4.1.8",
+		"@vite-pwa/nuxt": "^1.0.4",
 		"@vueuse/nuxt": "^13.3.0",
 		"ai": "^5.0.0-beta@latest",
 		"better-auth": "^1.2.8",

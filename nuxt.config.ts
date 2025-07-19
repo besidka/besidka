@@ -37,6 +37,15 @@ export default defineNuxtConfig({
     runtimeConfig: {
       drizzleDebug: true,
     },
+    pwa: {
+      devOptions: {
+        enabled: true,
+        suppressWarnings: true,
+        navigateFallback: '/',
+        navigateFallbackAllowlist: [/^\/$/],
+        type: 'module',
+      },
+    },
   },
   runtimeConfig: {
     baseUrl: '',
@@ -70,6 +79,7 @@ export default defineNuxtConfig({
     '@nuxtjs/mdc',
     'nuxt-svgo',
     '@vueuse/nuxt',
+    '@vite-pwa/nuxt',
   ],
   eslint: {
     checker: true,
@@ -142,7 +152,6 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon/favicon.svg' },
         { rel: 'shortcut icon', href: '/favicon/favicon.ico' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/favicon/apple-touch-icon.png' },
-        { rel: 'manifest', href: '/favicon/site.webmanifest' },
       ],
     },
   },
@@ -155,6 +164,47 @@ export default defineNuxtConfig({
     },
     highlight: {
       shikiEngine: 'javascript',
+    },
+  },
+  // https://stackblitz.com/edit/vite-pwa-nuxt-42xnmfqg?file=playground%2Fnuxt.config.ts
+  pwa: {
+    registerWebManifestInRouteRules: true,
+    registerType: 'autoUpdate',
+    workbox: {
+      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+    },
+    injectManifest: {
+      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+    },
+    client: {
+      installPrompt: true,
+      periodicSyncForUpdates: 3600,
+    },
+    manifest: {
+      name: 'Besidka',
+      short_name: 'Besidka',
+      start_url: '/chats/new',
+      icons: [
+        {
+          src: '/favicon/web-app-manifest-192x192.png',
+          sizes: '192x192',
+          type: 'image/png',
+        },
+        {
+          src: '/favicon/web-app-manifest-512x512.png',
+          sizes: '512x512',
+          type: 'image/png',
+        },
+        {
+          src: '/favicon/web-app-manifest-512x512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any maskable',
+        },
+      ],
+      theme_color: '#F9C3E3',
+      background_color: '#F9C3E3',
+      display: 'standalone',
     },
   },
 })

@@ -1,4 +1,5 @@
 <template>
+  <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
   <NuxtErrorBoundary @error="onException">
     <template #error>
