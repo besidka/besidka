@@ -37,15 +37,19 @@ useSeoMeta({
 
 const config = useRuntimeConfig().public
 
-const providers = computed<string[]>(() => {
-  return config?.providers as string[] ?? []
+const providers = computed<Providers>(() => {
+  return config?.providers as Providers ?? []
 })
 
 const isOpenAiEnabled = computed<boolean>(() => {
-  return providers.value.includes('openai')
+  return providers.value.some((provider) => {
+    return provider.id === 'openai'
+  })
 })
 
 const isGoogleEnabled = computed<boolean>(() => {
-  return providers.value.includes('google')
+  return providers.value.some((provider) => {
+    return provider.id === 'google'
+  })
 })
 </script>
