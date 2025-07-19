@@ -1,0 +1,25 @@
+# General
+NUXT_BASE_URL=http://localhost:3000
+
+# Drizzle
+NUXT_ENCRYPTION_HASHIDS=secret
+NUXT_ENCRYPTION_KEY=secret
+
+# Resend
+# https://resend.com/api-keys
+NUXT_RESEND_API_KEY=
+NUXT_RESEND_SENDER_NOREPLY=noreply@domain.com
+NUXT_RESEND_SENDER_PERSONALIZED=serhii@domain.com
+
+# Better Auth
+NUXT_BETTER_AUTH_SECRET=secret
+
+# Google OAuth API
+# https://console.cloud.google.com/apis/dashboard
+NUXT_GOOGLE_CLIENT_ID=
+NUXT_GOOGLE_CLIENT_SECRET=
+
+# GitHub OAuth API
+# https://github.com/settings/applications
+NUXT_GITHUB_CLIENT_ID=
+NUXT_GITHUB_CLIENT_SECRET=
