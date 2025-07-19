@@ -4,7 +4,6 @@ export default {
   models: [
     {
       id: 'gpt-4.1-nano',
-      default: true,
       name: 'GPT-4.1 nano',
       description: 'GPT-4.1 nano is the fastest, most cost-effective GPT-4.1 model.',
       contextLength: 1_047_576,
