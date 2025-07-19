@@ -136,9 +136,11 @@ definePageMeta({
   layout: 'auth',
 })
 
-useSeoMeta({
-  title: 'Sign in',
-})
+if (import.meta.server) {
+  useSeoMeta({
+    title: 'Sign In',
+  })
+}
 
 const { Validation } = useValidation()
 

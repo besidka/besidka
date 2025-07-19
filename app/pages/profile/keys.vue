@@ -31,9 +31,12 @@ definePageMeta({
   middleware: 'auth',
 })
 
-useSeoMeta({
-  title: 'API Keys',
-})
+if (import.meta.server) {
+  useSeoMeta({
+    title: 'API Keys',
+    robots: 'noindex, nofollow',
+  })
+}
 
 const config = useRuntimeConfig().public
 

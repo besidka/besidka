@@ -1,6 +1,5 @@
 {
-	"name": "chat",
-	"private": true,
+	"name": "besidka",
 	"type": "module",
 	"scripts": {
 		"build": "nuxt build",

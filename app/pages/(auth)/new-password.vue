@@ -199,9 +199,12 @@ definePageMeta({
   layout: 'auth',
 })
 
-useSeoMeta({
-  title: 'Set a new password',
-})
+if (import.meta.server) {
+  useSeoMeta({
+    title: 'Set a new password',
+    robots: 'noindex, nofollow',
+  })
+}
 
 const { Validation } = useValidation()
 const { estimateTimeToCrack } = usePassword()

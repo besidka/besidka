@@ -39,6 +39,7 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
+    baseUrl: '',
     encryptionHashids: '',
     encryptionKey: '',
     resendApiKey: '',
@@ -50,6 +51,7 @@ export default defineNuxtConfig({
     githubClientId: '',
     githubClientSecret: '',
     public: {
+      baseUrl: '',
       defaultModel,
       providers,
     },
@@ -119,8 +121,28 @@ export default defineNuxtConfig({
         },
         {
           name: 'description',
-          content: 'Open-source AI chat application. Bring your API key and start chatting with available LLMs!',
+          content: 'Your digital besidka for all AI chats. Connect to any LLM using your API key. Open-source, private, and community-driven',
         },
+        {
+          name: 'theme-color',
+          content: '#F9C3E3',
+        },
+        {
+          name: 'background-color',
+          content: '#F9C3E3',
+        },
+        {
+          name: 'apple-mobile-web-app-title',
+          content: 'Besidka',
+        },
+      ],
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon/favicon.ico' },
+        { rel: 'icon', type: 'image/png', href: '/favicon/favicon-96x96.png', sizes: '96x96' },
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon/favicon.svg' },
+        { rel: 'shortcut icon', href: '/favicon/favicon.ico' },
+        { rel: 'apple-touch-icon', sizes: '180x180', href: '/favicon/apple-touch-icon.png' },
+        { rel: 'manifest', href: '/favicon/site.webmanifest' },
       ],
     },
   },

@@ -18,6 +18,7 @@ declare module 'nuxt/schema' {
   }
 
   interface PublicRuntimeConfig {
+    baseUrl: string
     defaultModel: string
     providers: Providers
   }

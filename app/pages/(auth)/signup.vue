@@ -244,9 +244,11 @@ definePageMeta({
   layout: 'auth',
 })
 
-useSeoMeta({
-  title: 'Sign up',
-})
+if (import.meta.server) {
+  useSeoMeta({
+    title: 'Sign Up',
+  })
+}
 
 const { Validation } = useValidation()
 const { estimateTimeToCrack } = usePassword()

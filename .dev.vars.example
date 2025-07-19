@@ -1,5 +1,6 @@
 # General
 NUXT_BASE_URL=http://localhost:3000
+NUXT_PUBLIC_BASE_URL=http://localhost:3000
 
 # Drizzle
 NUXT_ENCRYPTION_HASHIDS=secret

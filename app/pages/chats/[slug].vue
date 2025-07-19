@@ -1,7 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto max-lg:pt-24 lg:pt-16 px-4 sm:px-24 pb-60 no-scrollbar"
+    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-60 no-scrollbar"
   >
     <div
       v-for="m in messages"
@@ -30,9 +30,10 @@
             }"
           >
             <div class="w-10 rounded-full bg-base-100">
-              <Icon
+              <Logo
                 v-if="m.role === 'assistant'"
-                name="lucide:bot-message-square"
+                short
+                class="size-6 text-text"
               />
               <template v-else>
                 <img
@@ -87,9 +88,12 @@ definePageMeta({
   layout: 'chat',
 })
 
-useSeoMeta({
-  title: 'New Chat',
-})
+if (import.meta.server) {
+  useSeoMeta({
+    title: 'New Chat',
+    robots: 'noindex, nofollow',
+  })
+}
 
 const route = useRoute()
 

@@ -46,6 +46,8 @@
   --color-text: var(--color-stone-950);
   --color-skeleton: var(--color-gray-400);
   --color-skeleton-overlay: var(--color-gray-200);
+
+  --color-logo-eyes-bg: var(--color-base-100);
 }
 
 
@@ -88,10 +90,12 @@
   --color-text: var(--color-white);
   --color-skeleton: var(--color-gray-300);
   --color-skeleton-overlay: var(--color-white);
+
+  --color-logo-eyes-bg: var(--color-stone-700);
 }
 
 @theme {
-  --font-display: 'Atkinson Hyperlegible', sans-serif;
+  --font-display: 'Nunito', sans-serif;
   --font-code: 'Atkinson Hyperlegible Mono', sans-serif;
 
   --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) var(--animate-pulse-iterations, infinite);
@@ -270,13 +274,13 @@
 }
 
 .chat-markdown {
-  @apply leading-7;
+  @apply leading-7 text-base-content/80;
 
   hr {
     @apply my-4 border-t border-base-content/30;
   }
   strong {
-    @apply font-bold;
+    @apply font-bold text-base-content;
   }
 
   ul {

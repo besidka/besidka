@@ -61,9 +61,11 @@ definePageMeta({
   layout: 'auth',
 })
 
-useSeoMeta({
-  title: 'Reset Password',
-})
+if (import.meta.server) {
+  useSeoMeta({
+    title: 'Reset Password',
+  })
+}
 
 const { Validation } = useValidation()
 
