@@ -1,4 +1,3 @@
 <template>
-  <LazyBackgroundLogo />
   <NuxtPage/>
 </template>
