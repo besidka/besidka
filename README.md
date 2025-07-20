@@ -2,7 +2,7 @@
 
 Bring Your API Keys and Pay for What You Use.
 
-![image](https://github.com/user-attachments/assets/70052da1-d72d-4980-b96a-2ece3edbf3d8)
+<img width="400" alt="og-image" src="https://github.com/user-attachments/assets/ce429ef9-f98d-40fa-9288-2c991346cdd2" />
 
 My detailed post in Twitter about the process of development:<br>
 https://x.com/besidka_ai/status/1946685763183133001
@@ -107,16 +107,44 @@ bun run dev
 snyk code test
 ```
 
-![image](https://github.com/user-attachments/assets/f09e09a5-dcbb-4278-9855-8cc51b07ffbf)
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/4ab122b3-bf06-4012-b9b3-fcc6ada029c5" />
+
 
 ## Preview
 
-### Light theme
-
-![image](https://github.com/user-attachments/assets/0ef49eea-e137-4776-a4bd-501b2ba04a6d)
-![image](https://github.com/user-attachments/assets/d16e7438-b3b8-4388-a3a3-974c3d4a8dcc)
-
-### Dark theme
-
-![image](https://github.com/user-attachments/assets/60ee3540-de47-4b79-9fcc-dc5af63fe036)
-![image](https://github.com/user-attachments/assets/5392c051-af3c-4c10-861f-470350a6975e)
+<table>
+  <thead>
+    <tr>
+      <th colspan="2">
+        Light theme
+      </td>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <img width="2070" height="1836" alt="image" src="https://github.com/user-attachments/assets/f656ba5c-7f7d-45ec-b43f-7b956df7a9f8" />
+      </td>
+      <td>
+        <img width="748" height="1638" alt="image" src="https://github.com/user-attachments/assets/88b40b26-7126-43fe-91f0-3566ffbd656d" />
+      </td>
+    </tr>
+  </tbody>
+    <thead>
+    <tr>
+      <th colspan="2">
+        Dark theme
+      </td>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <img width="2080" height="1832" alt="image" src="https://github.com/user-attachments/assets/455dc66e-ee43-49b3-bfbc-2e9192ba3d9e" />
+      </td>
+      <td>
+        <img width="750" height="1642" alt="image" src="https://github.com/user-attachments/assets/5d39986b-3f03-44f1-9f75-9182472dc8a9" />
+      </td>
+    </tr>
+  </tbody>
+</table>
