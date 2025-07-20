@@ -9,7 +9,7 @@ https://x.com/besidka_ai/status/1946685763183133001
 
 ## Project
 
-Project board is available [here](https://github.com/users/serhii-chernenko/projects/5).
+Project board is available [here](https://github.com/orgs/besidka/projects/2).
 
 ## How to try?
 
