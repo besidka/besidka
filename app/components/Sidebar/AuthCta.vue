@@ -8,6 +8,7 @@
         title="User Menu"
         :tooltip="undefined"
         circle
+        tag="summary"
       />
     </template>
     <UiButton

@@ -7,6 +7,7 @@
         :icon-only="true"
         title="More Features"
         circle
+        tag="summary"
       />
     </template>
     <UiButton

@@ -22,19 +22,19 @@
         />
         <div class="flex items-center justify-between p-2">
           <div class="flex items-center gap-2">
-            <div class="dropdown dropdown-top">
-              <div
-                tabindex="0"
-                role="button"
+            <details
+              ref="modelDropdown"
+              class="dropdown dropdown-top"
+            >
+              <summary
                 aria-label="Select model"
                 class="btn btn-ghost btn-sm [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
               >
                 {{ getModelName(toValue(userModel)) }}
                 <Icon name="lucide:chevron-up" size="14" />
-              </div>
+              </summary>
               <div
-                tabindex="0"
-                class="dropdown-content menu bg-base-100 rounded-box z-50 w-64 shadow-sm"
+                class="dropdown-content bg-base-100 rounded-box z-50 w-64 shadow-sm"
               >
                 <ul class="menu menu-xs w-full">
                   <li
@@ -57,7 +57,7 @@
                   </li>
                 </ul>
               </div>
-            </div>
+            </details>
             <UiButton
               v-if="isWebSearchSupported"
               mode="accent"
@@ -129,6 +129,26 @@ const message = defineModel<string>('message', {
 
 const tools = defineModel<Tools>('tools', {
   default: [],
+})
+
+const modelDropdown = useTemplateRef<HTMLDetailsElement>('modelDropdown')
+const isDropdownHovered = useElementHover(modelDropdown)
+
+onClickOutside(modelDropdown, () => {
+  if (modelDropdown.value?.open) {
+    modelDropdown.value.open = false
+  }
+})
+
+watch(isDropdownHovered, (hovered) => {
+  if (!modelDropdown.value || !isDesktop) {
+    return
+  }
+
+  modelDropdown.value.open = hovered
+}, {
+  immediate: false,
+  flush: 'post',
 })
 
 const isWebSearchEnabled = computed<boolean>(() => {

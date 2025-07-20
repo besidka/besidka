@@ -119,10 +119,7 @@ export default defineNuxtConfig({
     },
     plugins: [
       tailwindcss(),
-      visualizer({
-        open: true,
-        filename: 'stats.html',
-      }),
+      visualizer(),
     ],
   },
   css: ['./assets/css/main.css'],

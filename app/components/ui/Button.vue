@@ -1,9 +1,11 @@
 <template>
-  <div
+  <component
+    :is="props.tag === 'summary' ? 'summary' : 'div'"
     :class="{
       'tooltip before:font-normal': showTooltip,
       'before:hidden after:hidden': showTooltip,
       'md:before:block md:after:block': showTooltip,
+      'z-[2]': props.tag === 'summary',
       'tooltip-accent':
         showTooltip && (
           tooltipStyle === 'accent'
@@ -114,7 +116,7 @@
         </span>
       </span>
     </component>
-  </div>
+  </component>
 </template>
 
 <script setup lang='ts'>
@@ -136,6 +138,7 @@ const props = withDefaults(defineProps<ButtonProps>(), {
   iconSize: 20,
   tooltipPosition: 'bottom',
   tooltipStyle: 'inherit',
+  tag: 'button',
 })
 
 const slots: Slots = useSlots()
@@ -155,12 +158,12 @@ const showTooltip = computed<boolean>(() => {
   return props.iconOnly || props.iconOnlyDesktop
 })
 
-const buttonTag = computed(() => {
+const buttonTag = computed<ButtonProps['tag'] | ReturnType<typeof resolveComponent>>(() => {
   return props.disabled
     ? 'span'
     : props.to
       ? resolveComponent('NuxtLink')
-      : 'button'
+      : props.tag === 'summary' ? 'span' : props.tag
 })
 
 const resultTitle = computed<string>(() => {
@@ -196,7 +199,7 @@ const buttonAttrs = computed<ButtonAttrs>(() => {
         'aria-label': title,
       }
       : {
-        'type': props.type,
+        'type': props.tag === 'button' ? props.type : undefined,
         'aria-label': title,
         'onClick': nativeAttrs.onClick,
       },

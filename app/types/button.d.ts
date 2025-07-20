@@ -42,6 +42,7 @@ export interface ButtonProps {
   tooltip?: string | null
   tooltipPosition?: 'top' | 'bottom' | 'left' | 'right'
   tooltipStyle?: 'inherit' | Exclude<ButtonMode, 'default' | 'ghost' | 'link'>
+  tag?: 'button' | 'span' | 'summary'
 }
 
 export interface ButtonContainerAttrs {
