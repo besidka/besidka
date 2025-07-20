@@ -39,7 +39,7 @@ export default defineNuxtConfig({
     },
     pwa: {
       devOptions: {
-        enabled: true,
+        enabled: false,
         suppressWarnings: true,
         navigateFallback: '/',
         navigateFallbackAllowlist: [/^\/$/],
@@ -131,7 +131,7 @@ export default defineNuxtConfig({
         },
         {
           name: 'description',
-          content: 'Your digital besidka for all AI chats. Connect to any LLM using your API key. Open-source, private, and community-driven',
+          content: 'Open-source AI chat application. Bring your API key and start chatting with available LLMs!',
         },
         {
           name: 'theme-color',
@@ -147,11 +147,11 @@ export default defineNuxtConfig({
         },
       ],
       link: [
-        { rel: 'icon', type: 'image/x-icon', href: '/favicon/favicon.ico' },
-        { rel: 'icon', type: 'image/png', href: '/favicon/favicon-96x96.png', sizes: '96x96' },
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon/favicon.svg' },
-        { rel: 'shortcut icon', href: '/favicon/favicon.ico' },
-        { rel: 'apple-touch-icon', sizes: '180x180', href: '/favicon/apple-touch-icon.png' },
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
+        { rel: 'icon', type: 'image/png', href: '/favicon-96x96.png', sizes: '96x96' },
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'shortcut icon', href: '/favicon.ico' },
+        { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
       ],
     },
   },
@@ -186,17 +186,17 @@ export default defineNuxtConfig({
       start_url: '/chats/new',
       icons: [
         {
-          src: '/favicon/web-app-manifest-192x192.png',
+          src: '/web-app-manifest-192x192.png',
           sizes: '192x192',
           type: 'image/png',
         },
         {
-          src: '/favicon/web-app-manifest-512x512.png',
+          src: '/web-app-manifest-512x512.png',
           sizes: '512x512',
           type: 'image/png',
         },
         {
-          src: '/favicon/web-app-manifest-512x512.png',
+          src: '/web-app-manifest-512x512.png',
           sizes: '512x512',
           type: 'image/png',
           purpose: 'any maskable',
