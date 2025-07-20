@@ -10,7 +10,7 @@
       <div
         v-for="(part, index) in m.parts"
         :key="index"
-        class="chat"
+        class="chat w-fit"
         :class="{
           'chat-start': m.role === 'assistant',
           'chat-end': m.role === 'user',
@@ -60,6 +60,27 @@
     </div>
     <ClientOnly>
       <div
+        v-if="status === 'submitted'"
+        class="chat chat-start w-fit"
+      >
+        <div
+          class="chat-image avatar avatar-placeholder rounded-full"
+        >
+          <div class="w-10 rounded-full bg-base-100">
+            <Logo
+              short
+              class="size-6 text-text"
+            />
+          </div>
+        </div>
+        <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
+          <span class="loading loading-dots loading-md">
+            <span class="sr-only">Loading...</span>
+          </span>
+        </UiBubble>
+      </div>
+
+      <div
         v-show="!arrivedState.bottom && messages.length > 1"
         class="fixed z-20 bottom-40 sm:bottom-30 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
       >
@@ -78,7 +99,7 @@
     v-model:message="input"
     v-model:tools="tools"
     :visible="chatInputVisible"
-    :pending="pending"
+    :pending="['submitted', 'streaming'].includes(status)"
     @submit="onSubmit"
   />
 </template>
@@ -141,7 +162,7 @@ const {
   input,
   handleSubmit,
   tools,
-  pending,
+  status,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()

@@ -7,7 +7,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   chat = toValue(chat)
 
-  const pending = shallowRef<boolean>(false)
   const tools = shallowRef<Tools>(
     chat.messages[chat.messages.length - 1]?.tools || [],
   )
@@ -18,6 +17,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     handleSubmit,
     reload,
     stop: _stop,
+    status,
   } = useChatSdk({
     id: chat.id,
     api: `/api/v1/chats/${chat.slug}`,
@@ -30,7 +30,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
     },
     onFinish() {
-      pending.value = false
       if (scrollInterval.value) {
         return clearInterval(scrollInterval.value)
       }
@@ -66,6 +65,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     handleSubmit,
     reload,
     tools,
-    pending,
+    status,
   }
 }

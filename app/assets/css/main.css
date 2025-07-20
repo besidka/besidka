@@ -44,7 +44,7 @@
   --noise: 1;
 
   --color-text: var(--color-stone-950);
-  --color-skeleton: var(--color-gray-400);
+  --color-skeleton: var(--color-gray-300);
   --color-skeleton-overlay: var(--color-gray-200);
 
   --color-logo-eyes-bg: var(--color-base-100);
@@ -88,7 +88,7 @@
 
 
   --color-text: var(--color-white);
-  --color-skeleton: var(--color-gray-300);
+  --color-skeleton: var(--color-gray-400);
   --color-skeleton-overlay: var(--color-white);
 
   --color-logo-eyes-bg: var(--color-stone-700);
