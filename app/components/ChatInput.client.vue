@@ -1,8 +1,8 @@
 <template>
   <div
-    class="fixed z-50 bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
+    class="fixed z-50 max-sm:bottom-8 bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
     :class="{
-      'translate-y-full': !visible,
+      'translate-y-1/2': !visible,
       'translate-y-0': visible,
     }"
     >
@@ -18,6 +18,7 @@
           placeholder="Type your message here..."
           :disabled="pending"
           @keydown.enter.exact="handleEnter"
+          @focus="scrollToBottom"
         />
         <div class="flex items-center justify-between p-2">
           <div class="flex items-center gap-2">
@@ -110,6 +111,7 @@ const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
 const { replaceUserPre, isWebSearchSupported } = useChatInput()
 const { providers } = getProviders()
+const { scrollToBottom } = useChatScroll()
 
 const message = defineModel<string>('message', {
   default: '',

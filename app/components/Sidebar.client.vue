@@ -9,7 +9,7 @@
     }"
   >
     <UiBubble
-      class="grid max-sm:grid-flow-col max-sm:auto-cols-fr max-sm:place-items-center gap-2 max-sm:!rounded-none sm:!rounded-full !p-2"
+      class="grid max-sm:grid-flow-col max-sm:auto-cols-fr max-sm:place-items-center gap-2 max-sm:!rounded-none sm:!rounded-full !p-2 max-sm:!pb-8"
     >
       <UiButton
         to="/"

@@ -1,7 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-60 no-scrollbar"
+    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-68 no-scrollbar"
   >
     <div
       v-for="m in messages"
@@ -61,7 +61,7 @@
     <ClientOnly>
       <div
         v-show="!arrivedState.bottom && messages.length > 1"
-        class="fixed z-20 bottom-20 sm:bottom-10 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
+        class="fixed z-20 bottom-40 sm:bottom-30 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
       >
         <UiButton
           circle
