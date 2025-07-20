@@ -40,3 +40,6 @@ coverage
 auth-schema.ts
 database.sqlite
 
+# Vite
+stats.html
+

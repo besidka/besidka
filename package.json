@@ -74,6 +74,7 @@
 		"lint-staged": "^16.1.0",
 		"nitro-cloudflare-dev": "^0.2.2",
 		"nitropack": "^2.11.12",
+		"rollup-plugin-visualizer": "^6.0.3",
 		"typescript": "^5.8.3",
 		"vite-plugin-eslint2": "^5.0.3",
 		"vitest": "^3.2.2",
