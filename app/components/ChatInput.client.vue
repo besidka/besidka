@@ -18,7 +18,7 @@
           placeholder="Type your message here..."
           :disabled="pending"
           @keydown.enter.exact="handleEnter"
-          @focus="scrollToBottom"
+          @focus="onFocus"
         />
         <div class="flex items-center justify-between p-2">
           <div class="flex items-center gap-2">
@@ -111,7 +111,7 @@ const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
 const { replaceUserPre, isWebSearchSupported } = useChatInput()
 const { providers } = getProviders()
-const { scrollToBottom } = useChatScroll()
+const { scrollToBottom, arrivedState } = useChatScroll()
 
 const message = defineModel<string>('message', {
   default: '',
@@ -182,5 +182,9 @@ function sendMessage() {
 
   emit('submit')
   message.value = ''
+}
+
+function onFocus() {
+  !arrivedState.bottom && scrollToBottom()
 }
 </script>

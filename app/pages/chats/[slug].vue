@@ -10,7 +10,7 @@
       <div
         v-for="(part, index) in m.parts"
         :key="index"
-        class="chat w-fit"
+        class="chat"
         :class="{
           'chat-start': m.role === 'assistant',
           'chat-end': m.role === 'user',

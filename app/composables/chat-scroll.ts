@@ -24,6 +24,9 @@ export function useChatScroll() {
   })
 
   function scrollToBottom() {
+    if (import.meta.server) return
+
+    console.log('scrollToBottom')
     measure()
     y.value += Number.MAX_SAFE_INTEGER
   }

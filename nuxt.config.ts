@@ -40,7 +40,7 @@ export default defineNuxtConfig({
     },
     pwa: {
       devOptions: {
-        enabled: false,
+        enabled: true,
         suppressWarnings: true,
         navigateFallback: '/',
         navigateFallbackAllowlist: [/^\/$/],
@@ -151,10 +151,9 @@ export default defineNuxtConfig({
         },
       ],
       link: [
-        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
+        { rel: 'shortcut icon', type: 'image/x-icon', href: '/favicon.ico' },
         { rel: 'icon', type: 'image/png', href: '/favicon-96x96.png', sizes: '96x96' },
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-        { rel: 'shortcut icon', href: '/favicon.ico' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
       ],
     },
@@ -173,7 +172,6 @@ export default defineNuxtConfig({
   // https://stackblitz.com/edit/vite-pwa-nuxt-42xnmfqg?file=playground%2Fnuxt.config.ts
   pwa: {
     registerWebManifestInRouteRules: true,
-    registerType: 'autoUpdate',
     workbox: {
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
     },
@@ -182,33 +180,7 @@ export default defineNuxtConfig({
     },
     client: {
       installPrompt: true,
-      periodicSyncForUpdates: 3600,
-    },
-    manifest: {
-      name: 'Besidka',
-      short_name: 'Besidka',
-      start_url: '/chats/new',
-      icons: [
-        {
-          src: '/web-app-manifest-192x192.png',
-          sizes: '192x192',
-          type: 'image/png',
-        },
-        {
-          src: '/web-app-manifest-512x512.png',
-          sizes: '512x512',
-          type: 'image/png',
-        },
-        {
-          src: '/web-app-manifest-512x512.png',
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'any maskable',
-        },
-      ],
-      theme_color: '#F9C3E3',
-      background_color: '#F9C3E3',
-      display: 'standalone',
+      periodicSyncForUpdates: 60 * 5,
     },
   },
 })

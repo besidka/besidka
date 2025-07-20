@@ -29,13 +29,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         messages,
       }
     },
-    onFinish() {
-      if (scrollInterval.value) {
-        return clearInterval(scrollInterval.value)
-      }
-
-      scrollToBottom()
-    },
     onError(error) {
       const { message } = typeof error.message === 'string'
         && error.message[0] === '{'
@@ -55,6 +48,22 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     ) {
       reload()
     }
+  })
+
+  watch(status, (newStatus) => {
+    scrollInterval.value && clearInterval(scrollInterval.value)
+
+    console.log('status changed', newStatus)
+    scrollToBottom()
+
+    if (newStatus !== 'streaming') {
+      return
+    }
+
+    scrollInterval.value = setInterval(scrollToBottom, 1000)
+  }, {
+    immediate: false,
+    flush: 'post',
   })
 
   useSetChatTitle(chat.title)

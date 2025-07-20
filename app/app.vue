@@ -8,10 +8,13 @@
     <NuxtLayout />
   </NuxtErrorBoundary>
   <NuxtLoadingIndicator />
-  <UiConfirmation />
-  <UiMessages />
-  <Sidebar />
-  <LazyUiCursorGlow v-if="$device.isDesktop" />
+  <ClientOnly>
+    <UiConfirmation />
+    <UiMessages />
+    <Sidebar />
+    <LazyUiCursorGlow v-if="$device.isDesktop" />
+    <LazyPwaRefresher v-if="$pwa?.needRefresh" />
+  </ClientOnly>
 </template>
 
 <script setup lang="ts">

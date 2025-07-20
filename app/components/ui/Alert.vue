@@ -1,7 +1,7 @@
 <template>
   <UiBubble
     role="alert"
-    class="sticky z-50 top-0 inset-x-0 !block px-10 max-sm:pl-4 !rounded-none !shadow-none"
+    class="sticky z-50 top-0 inset-x-0 !block px-14 max-sm:pl-4 !rounded-none !shadow-none"
   >
     <div class="w-full text-center text-xs sm:text-sm">
       <slot />
