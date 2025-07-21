@@ -1,4 +1,7 @@
 <template>
+  <ClientOnly>
+    <LazyPwaRefresher v-if="$pwa?.needRefresh" />
+  </ClientOnly>
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
   <NuxtErrorBoundary @error="onException">
@@ -13,7 +16,6 @@
     <UiMessages />
     <Sidebar />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
-    <LazyPwaRefresher v-if="$pwa?.needRefresh" />
   </ClientOnly>
 </template>
 
