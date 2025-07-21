@@ -40,7 +40,7 @@ export default defineNuxtConfig({
     },
     pwa: {
       devOptions: {
-        enabled: true,
+        enabled: false,
         suppressWarnings: true,
         navigateFallback: '/',
         navigateFallbackAllowlist: [/^\/$/],
@@ -63,6 +63,7 @@ export default defineNuxtConfig({
     public: {
       baseUrl: '',
       defaultModel,
+      // @ts-expect-error
       providers,
     },
   },

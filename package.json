@@ -44,7 +44,7 @@
 		"drizzle-orm": "^0.44.2",
 		"eslint": "^9.28.0",
 		"hashids": "^2.3.0",
-		"nuxt": "^3.17.5",
+		"nuxt": "^4.0.1",
 		"nuxt-svgo": "^4.2.2",
 		"remark-breaks": "^4.0.0",
 		"resend": "^4.5.2",
