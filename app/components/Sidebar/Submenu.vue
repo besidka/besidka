@@ -1,7 +1,7 @@
 <template>
   <details
     ref="modelDropdown"
-    class="relative group dropdown dropdown-center sm:-mx-2 sm:px-2"
+    class="relative group open:group-open dropdown dropdown-center sm:-mx-2 sm:px-2"
     :class="{
       'dropdown-top': isMobileSmall,
       'dropdown-left': !isMobileSmall,

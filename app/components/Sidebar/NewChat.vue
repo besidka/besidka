@@ -14,14 +14,14 @@
         circle
         tooltip-position="left"
         :class="{
-          'max-sm:-translate-y-3': !disabled,
+          'max-sm:-translate-y-3': true,
         }"
-        class="border-none [background:none_!important] shadow-none md:hover:scale-90 transition-transform"
+        class="group border-none [background:none_!important] shadow-none md:hover:scale-90 transition-transform"
       >
         <template #icon>
           <Logo
             short
-            class="size-14 sm:size-11 [--color-logo-eyes-bg:var(--color-white)]"
+            class="size-14 sm:[.group:not(:focus-visible)_&]:size-11 group-focus:sm:size-9 [--color-logo-eyes-bg:var(--color-white)]"
             :class="{
               'text-accent': !disabled,
               'text-primary': disabled

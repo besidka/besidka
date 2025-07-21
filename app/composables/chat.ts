@@ -53,7 +53,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   watch(status, (newStatus) => {
     scrollInterval.value && clearInterval(scrollInterval.value)
 
-    console.log('status changed', newStatus)
     scrollToBottom()
 
     if (newStatus !== 'streaming') {

@@ -1,87 +1,14 @@
 <template>
   <component
-    :is="props.tag === 'summary' ? 'summary' : 'div'"
-    :class="{
-      'tooltip before:font-normal': showTooltip,
-      'before:hidden after:hidden': showTooltip,
-      'md:before:block md:after:block': showTooltip,
-      'z-[2]': props.tag === 'summary',
-      'tooltip-accent':
-        showTooltip && (
-          tooltipStyle === 'accent'
-          || (tooltipStyle === 'inherit' && mode === 'accent')
-        ),
-      'tooltip-primary': showTooltip && (
-          tooltipStyle === 'primary'
-          || (tooltipStyle === 'inherit' && mode === 'primary')
-        ),
-      'tooltip-secondary': showTooltip && (
-          tooltipStyle === 'secondary'
-          || (tooltipStyle === 'inherit' && mode === 'secondary')
-        ),
-      'tooltip-error':
-        showTooltip && (
-          tooltipStyle === 'error'
-          || (tooltipStyle === 'inherit' && mode === 'error')
-        ),
-      'tooltip-warning':
-        showTooltip && (
-          tooltipStyle === 'warning'
-          || (tooltipStyle === 'inherit' && mode === 'warning')
-        ),
-      'tooltip-info':
-        showTooltip && (
-          tooltipStyle === 'info'
-          || (tooltipStyle === 'inherit' && mode === 'info')
-        ),
-      'tooltip-success':
-        showTooltip && (
-          tooltipStyle === 'success'
-          || (tooltipStyle === 'inherit' && mode === 'success')
-        ),
-      'tooltip-left': showTooltip && tooltipPosition === 'left',
-      'tooltip-right': showTooltip && tooltipPosition === 'right',
-      'tooltip-top': showTooltip && tooltipPosition === 'top',
-      'tooltip-bottom': showTooltip && tooltipPosition === 'bottom',
-    }"
+    :is="isTagSummary ? 'summary' : 'div'"
+    :class="containerClasses"
     v-bind="containerAttrs"
   >
     <component
       :is="buttonTag"
       ref="button"
       v-bind="buttonAttrs"
-      class="btn"
-      :class="{
-        'btn-neutral': mode === 'neutral',
-        'btn-accent': mode === 'accent',
-        'btn-primary': mode === 'primary',
-        'btn-secondary': mode === 'secondary',
-        'btn-info': mode === 'info',
-        'btn-warning': mode === 'warning',
-        'btn-error': mode === 'error',
-        'btn-success': mode === 'success',
-        'btn-ghost': ghost,
-        'btn-soft': soft,
-        'btn-outline': outline,
-        'btn-circle': circle,
-        'btn-link': mode === 'link',
-        'btn-disabled': disabled,
-        'btn-xs': size === 'xs',
-        'max-lg:btn-xs': sizeMobile === 'xs',
-        'lg:btn-xs': sizeDesktop === 'xs',
-        'btn-sm': size === 'sm',
-        'max-lg:btn-sm': sizeMobile === 'sm',
-        'lg:btn-sm': sizeDesktop === 'sm',
-        'btn-md': size === 'md',
-        'max-lg:btn-md': sizeMobile === 'md',
-        'lg:btn-md': sizeDesktop === 'md',
-        'btn-lg': size === 'lg',
-        'max-lg:btn-lg': sizeMobile === 'lg',
-        'lg:btn-lg': sizeDesktop === 'lg',
-        'max-lg:btn-square': iconOnly || iconOnlyMobile,
-        'lg:btn-square': iconOnly || iconOnlyDesktop,
-        ...(nativeAttrs.class ? { [`${nativeAttrs.class}`]: true } : {}),
-      }"
+      :class="buttonResultClasses"
     >
       <span
         class="relative z-c2 flex gap-2 items-center"
@@ -144,7 +71,12 @@ const props = withDefaults(defineProps<ButtonProps>(), {
 const slots: Slots = useSlots()
 const nativeAttrs = useAttrs()
 
-const button = ref<HTMLElement | null>(null)
+const container = useTemplateRef<HTMLElement>('container')
+const button = useTemplateRef<HTMLElement>('button')
+
+const isTagSummary = computed<boolean>(() => {
+  return props.tag === 'summary'
+})
 
 const hasCustomIcon = computed<boolean>(() => {
   return !!slots.icon
@@ -163,7 +95,7 @@ const buttonTag = computed<ButtonProps['tag'] | ReturnType<typeof resolveCompone
     ? 'span'
     : props.to
       ? resolveComponent('NuxtLink')
-      : props.tag === 'summary' ? 'span' : props.tag
+      : isTagSummary.value ? 'span' : props.tag
 })
 
 const resultTitle = computed<string>(() => {
@@ -207,10 +139,113 @@ const buttonAttrs = computed<ButtonAttrs>(() => {
 })
 
 const focus = () => {
-  button.value?.focus()
+  isTagSummary.value
+    ? container.value?.focus()
+    : button.value?.focus()
 }
 
 defineExpose({
   focus,
+})
+
+const buttonStyleClasses = computed<Partial<Record<string, boolean>>>(() => {
+  return {
+    'btn': true,
+    'group-open:!btn-active': isTagSummary.value,
+    '[.group:not([open])_&]:btn-ghost': props.ghost && isTagSummary.value,
+    'btn-neutral': props.mode === 'neutral',
+    'btn-accent': props.mode === 'accent',
+    'btn-primary': props.mode === 'primary',
+    'btn-secondary': props.mode === 'secondary',
+    'btn-info': props.mode === 'info',
+    'btn-warning': props.mode === 'warning',
+    'btn-error': props.mode === 'error',
+    'btn-success': props.mode === 'success',
+    'btn-ghost': props.ghost && !isTagSummary.value,
+    'btn-soft': props.soft,
+    'btn-outline': props.outline,
+    'btn-circle': props.circle,
+    'btn-link': props.mode === 'link',
+    'btn-disabled': !!props.disabled,
+    'btn-xs': props.size === 'xs',
+    'max-lg:btn-xs': props.sizeMobile === 'xs',
+    'lg:btn-xs': props.sizeDesktop === 'xs',
+    'btn-sm': props.size === 'sm',
+    'max-lg:btn-sm': props.sizeMobile === 'sm',
+    'lg:btn-sm': props.sizeDesktop === 'sm',
+    'btn-md': props.size === 'md',
+    'max-lg:btn-md': props.sizeMobile === 'md',
+    'lg:btn-md': props.sizeDesktop === 'md',
+    'btn-lg': props.size === 'lg',
+    'max-lg:btn-lg': props.sizeMobile === 'lg',
+    'lg:btn-lg': props.sizeDesktop === 'lg',
+    'max-lg:btn-circle': !props.circle && (props.iconOnly || props.iconOnlyMobile),
+    'lg:btn-circle': !props.circle && (props.iconOnly || props.iconOnlyDesktop),
+    ...(nativeAttrs.class ? { [`${nativeAttrs.class}`]: true } : {}),
+  }
+})
+
+const buttonResultClasses = computed<Partial<Record<string, boolean>>>(() => {
+  return isTagSummary.value ? {} : buttonStyleClasses.value
+})
+
+const tooltipClasses = computed<Partial<Record<string, boolean>>>(() => {
+  return showTooltip.value
+    ? {
+      'tooltip before:font-normal': true,
+      'before:hidden after:hidden': true,
+      'md:before:block md:after:block': true,
+      'group-open:before:opacity-100 group-open:after:opacity-100 [--tt-pos:0]': isTagSummary.value,
+      'tooltip-accent':
+        (
+          props.tooltipStyle === 'accent'
+          || (props.tooltipStyle === 'inherit' && props.mode === 'accent')
+        ),
+      'tooltip-primary': (
+        props.tooltipStyle === 'primary'
+        || (props.tooltipStyle === 'inherit' && props.mode === 'primary')
+      ),
+      'tooltip-secondary': (
+        props.tooltipStyle === 'secondary'
+        || (props.tooltipStyle === 'inherit' && props.mode === 'secondary')
+      ),
+      'tooltip-error':
+        (
+          props.tooltipStyle === 'error'
+          || (props.tooltipStyle === 'inherit' && props.mode === 'error')
+        ),
+      'tooltip-warning':
+        (
+          props.tooltipStyle === 'warning'
+          || (props.tooltipStyle === 'inherit' && props.mode === 'warning')
+        ),
+      'tooltip-info':
+        (
+          props.tooltipStyle === 'info'
+          || (props.tooltipStyle === 'inherit' && props.mode === 'info')
+        ),
+      'tooltip-success':
+        (
+          props.tooltipStyle === 'success'
+          || (props.tooltipStyle === 'inherit' && props.mode === 'success')
+        ),
+      'tooltip-left': props.tooltipPosition === 'left',
+      'tooltip-right': props.tooltipPosition === 'right',
+      'tooltip-top': props.tooltipPosition === 'top',
+      'tooltip-bottom': props.tooltipPosition === 'bottom',
+    }
+    : {}
+})
+
+const containerClasses = computed<Partial<Record<string, boolean>>>(() => {
+  return {
+    ...tooltipClasses.value,
+    ...(isTagSummary.value
+      ? {
+        'z-[2]': true,
+        ...buttonStyleClasses.value,
+      }
+      : {}),
+  }
 })
 </script>
