@@ -7,7 +7,6 @@ export default defineNuxtPlugin(() => {
         return sanitizeHtml(html, {
           allowedTags: [],
           allowedAttributes: {},
-          allowedSchemes: ['http', 'https'],
           disallowedTagsMode: 'recursiveEscape',
         })
       },
