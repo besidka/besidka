@@ -47,7 +47,10 @@
           </div>
           <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
             <MDCCached
-              :value="part.text"
+              :value="m.role === 'user'
+                ? $sanitizeHtml(part.text)
+                : part.text
+              "
               :cache-key="`message-${m.id}-part-${index}`"
               :components="components"
               :parser-options="{ highlight: false }"

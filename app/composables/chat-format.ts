@@ -7,7 +7,7 @@ const components = {
 }
 
 function getUnwrap(role: UIMessage['role']) {
-  const tags = ['strong']
+  const tags = ['strong', 'details']
 
   if (role === 'user') {
     tags.push('pre')

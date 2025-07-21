@@ -109,22 +109,12 @@ const emit = defineEmits<{
 
 const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
-const { replaceUserPre, isWebSearchSupported } = useChatInput()
+const { isWebSearchSupported } = useChatInput()
 const { providers } = getProviders()
 const { scrollToBottom, arrivedState } = useChatScroll()
 
 const message = defineModel<string>('message', {
   default: '',
-  get: (value: string) => {
-    value = replaceUserPre(value)
-
-    return value
-  },
-  set: (value: string) => {
-    value = replaceUserPre(value)
-
-    return value
-  },
 })
 
 const tools = defineModel<Tools>('tools', {
