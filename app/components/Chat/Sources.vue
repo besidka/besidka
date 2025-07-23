@@ -3,8 +3,15 @@
     v-if="sources.length"
     class="collapse collapse-arrow mt-4 border border-base-300 bg-base-100"
   >
-    <input type="checkbox" >
-    <strong class="collapse-title flex items-center gap-2 font-semibold capitalize">
+    <input
+      :id="`sources-${message.id}-checkbox`"
+      :aria-labelledby="`sources-${message.id}-label`"
+      type="checkbox"
+    >
+    <strong
+      :id="`sources-${message.id}-label`"
+      class="collapse-title flex items-center gap-2 font-semibold capitalize"
+    >
       <Icon name="lucide:link" />
       Reference sources
     </strong>
