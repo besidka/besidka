@@ -36,7 +36,6 @@ export const messages = sqliteTable(
     parts: text({ mode: 'json' })
       .notNull()
       .$type<UIMessage['parts']>()
-      // .$type<Record<string, never>>()
       .default(sql`'[]'`),
     tools: text({ mode: 'json' })
       .notNull()

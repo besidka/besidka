@@ -1,4 +1,4 @@
-import type { LanguageModel, ProviderOptions } from 'ai'
+import type { LanguageModel, ProviderOptions, UIMessage } from 'ai'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { streamText, smoothStream, convertToModelMessages } from 'ai'
 import * as schema from '~~/server/db/schema'
@@ -152,10 +152,7 @@ export default defineEventHandler(async (event) => {
       await db.insert(schema.messages).values({
         chatId: chat.id,
         role: 'assistant',
-        parts: [{
-          type: 'text',
-          text: response.text,
-        }],
+        parts: response.content as UIMessage['parts'],
         tools: body.data.tools,
       })
     },
@@ -164,6 +161,7 @@ export default defineEventHandler(async (event) => {
       console.error(error)
     },
   }).toUIMessageStreamResponse({
+    sendSources: true,
     onError: errorHandler,
   })
 })

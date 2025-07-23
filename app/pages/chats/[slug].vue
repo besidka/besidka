@@ -57,6 +57,7 @@
               class="chat-markdown"
               :unwrap="getUnwrap(m.role)"
             />
+            <ChatSources :message="m" />
           </UiBubble>
         </template>
       </div>
