@@ -274,7 +274,7 @@
 }
 
 .chat-markdown {
-  @apply leading-7 text-base-content/80;
+  @apply overflow-x-hidden leading-7 text-base-content/80;
 
   hr {
     @apply my-4 border-t border-base-content/30;
