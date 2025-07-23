@@ -22,9 +22,9 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^2.0.0-beta@latest",
-		"@ai-sdk/openai": "^2.0.0-beta@latest",
-		"@ai-sdk/vue": "^2.0.0-beta@latest",
+		"@ai-sdk/google": "beta",
+		"@ai-sdk/openai": "beta",
+		"@ai-sdk/vue": "beta",
 		"@iconify-json/lucide": "^1.2.46",
 		"@nuxt/eslint": "1.4.1",
 		"@nuxt/fonts": "0.11.4",
@@ -36,7 +36,7 @@
 		"@tailwindcss/vite": "^4.1.8",
 		"@vite-pwa/nuxt": "^1.0.4",
 		"@vueuse/nuxt": "^13.3.0",
-		"ai": "^5.0.0-beta@latest",
+		"ai": "beta",
 		"better-auth": "^1.2.8",
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.0.43",

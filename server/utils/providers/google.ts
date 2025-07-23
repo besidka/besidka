@@ -1,5 +1,5 @@
-import type { ProviderOptions } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
+import type { FormattedTools } from '~~/server/types/tools.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 
 export async function useGoogle(
@@ -41,16 +41,22 @@ export async function useGoogle(
     )
   }
 
-  function getProviderOptions(): ProviderOptions {
+  function getTools(): FormattedTools {
     if (!requestedTools?.length) {
       return {}
     }
 
-    const result: ProviderOptions = {}
+    const result: FormattedTools = {}
 
     if (requestedTools.includes('web_search')) {
-      result.google = {
-        useSearchGrounding: true,
+      if (!result.tools) {
+        result.tools = {}
+      }
+
+      result.tools['web_search_preview'] = google.tools.googleSearch({})
+      result.toolChoice = {
+        type: 'tool',
+        toolName: 'web_search_preview',
       }
     }
 
@@ -60,6 +66,6 @@ export async function useGoogle(
   return {
     instance: getInstance(),
     generateChatTitle,
-    providerOptions: getProviderOptions(),
+    tools: getTools(),
   }
 }

@@ -274,7 +274,7 @@
 }
 
 .chat-markdown {
-  @apply leading-7 text-base-content/80;
+  @apply overflow-x-hidden leading-7 text-base-content/80;
 
   hr {
     @apply my-4 border-t border-base-content/30;
@@ -284,11 +284,11 @@
   }
 
   ul {
-    @apply list-disc my-4 pl-6;
+    @apply list list-disc my-4 pl-6;
   }
 
   ol {
-    @apply list-decimal my-4 pl-6;
+    @apply list list-decimal my-4 pl-6;
   }
 
   li {
@@ -312,6 +312,10 @@
     & > code {
       @apply whitespace-pre-wrap p-1 rounded bg-accent/10 text-accent text-sm;
     }
+  }
+
+  a {
+    @apply link;
   }
 }
 

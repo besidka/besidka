@@ -1,9 +1,12 @@
+import type { UIMessage, ChatStatus } from 'ai'
 import type { Chat, Tools } from '#shared/types/chats.d'
-import { useChat as useChatSdk } from '@ai-sdk/vue'
+import { DefaultChatTransport } from 'ai'
+import { Chat as ChatSdk } from '@ai-sdk/vue'
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const { scrollInterval, scrollToBottom } = useChatScroll()
+  const input = shallowRef<string>('')
 
   chat = toValue(chat)
 
@@ -11,25 +14,22 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     chat.messages[chat.messages.length - 1]?.tools || [],
   )
 
-  const {
-    messages,
-    input,
-    handleSubmit,
-    reload,
-    stop: _stop,
-    status,
-  } = useChatSdk({
+  const chatSdk = new ChatSdk({
     id: chat.id,
-    api: `/api/v1/chats/${chat.slug}`,
-    initialMessages: chat.messages,
-    experimental_prepareRequestBody({ messages }) {
-      return {
-        model: userModel.value,
-        tools: tools.value,
-        messages,
-      }
-    },
-    onError(error) {
+    messages: chat.messages,
+    transport: new DefaultChatTransport({
+      api: `/api/v1/chats/${chat.slug}`,
+      prepareSendMessagesRequest({ messages }) {
+        return {
+          body: {
+            model: userModel.value,
+            tools: tools.value,
+            messages,
+          },
+        }
+      },
+    }),
+    onError(error: any) {
       const { message } = typeof error.message === 'string'
         && error.message[0] === '{'
         ? JSON.parse(error.message)
@@ -39,6 +39,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
+  const messages = computed<UIMessage[]>(() => chatSdk.messages)
+  const status = computed<ChatStatus>(() => chatSdk.status)
+
   onMounted(() => {
     if ((chat?.messages?.length || 0) > 1) {
       scrollToBottom()
@@ -46,7 +49,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       chat?.messages.length === 1
       || chat?.messages.pop()?.role === 'user'
     ) {
-      reload()
+      chatSdk.regenerate()
     }
   })
 
@@ -67,11 +70,15 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   useSetChatTitle(chat.title)
 
+  function handleSubmit() {
+    chatSdk.sendMessage({ text: input.value })
+  }
+
   return {
     messages,
     input,
     handleSubmit,
-    reload,
+    regenerate: chatSdk.regenerate,
     tools,
     status,
   }

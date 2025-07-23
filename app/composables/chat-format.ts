@@ -1,5 +1,5 @@
 import type { DefineComponent } from 'vue'
-import type { UIMessage } from '@ai-sdk/vue'
+import type { UIMessage } from 'ai'
 import ProseStreamPre from '~/components/prose/PreStream.vue'
 
 const components = {

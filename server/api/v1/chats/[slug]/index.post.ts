@@ -1,6 +1,12 @@
-import type { LanguageModel, ProviderOptions } from 'ai'
+import type { LanguageModel } from 'ai'
 import type { FormattedTools } from '~~/server/types/tools.d'
-import { streamText, smoothStream, convertToModelMessages } from 'ai'
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  streamText,
+  smoothStream,
+  convertToModelMessages,
+} from 'ai'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
@@ -104,7 +110,6 @@ export default defineEventHandler(async (event) => {
 
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
-  let providerOptions: ProviderOptions = {}
 
   switch (provider.id) {
     case 'openai': {
@@ -124,7 +129,7 @@ export default defineEventHandler(async (event) => {
     case 'google': {
       const {
         instance: googleInstance,
-        providerOptions: googleProviderOptions,
+        tools: googleTools,
       } = await useGoogle(
         session.user.id,
         model.id,
@@ -132,7 +137,7 @@ export default defineEventHandler(async (event) => {
       )
 
       instance = googleInstance
-      providerOptions = googleProviderOptions
+      parsedTools = googleTools
       break
     }
     default:
@@ -142,29 +147,37 @@ export default defineEventHandler(async (event) => {
       })
   }
 
-  return streamText({
-    model: instance,
-    messages: convertToModelMessages(body.data.messages),
-    experimental_transform: smoothStream(),
-    ...parsedTools,
-    providerOptions,
-    async onFinish(response) {
-      await db.insert(schema.messages).values({
-        chatId: chat.id,
-        role: 'assistant',
-        parts: [{
-          type: 'text',
-          text: response.text,
-        }],
-        tools: body.data.tools,
+  const stream = createUIMessageStream({
+    execute({ writer }) {
+      const result = streamText({
+        model: instance,
+        messages: convertToModelMessages(messages),
+        experimental_transform: smoothStream(),
+        ...parsedTools,
       })
+
+      result.consumeStream()
+
+      writer.merge(result.toUIMessageStream({
+        originalMessages: messages,
+        sendSources: true,
+        onError: errorHandler,
+        async onFinish({ responseMessage }) {
+          if ('id' in responseMessage) {
+            // @ts-expect-error
+            delete responseMessage.id
+          }
+          await db.insert(schema.messages).values({
+            chatId: chat.id,
+            ...responseMessage,
+          })
+        },
+      }))
     },
-    onError(error) {
-      // eslint-disable-next-line no-console
-      console.error(error)
-    },
-  }).toUIMessageStreamResponse({
-    onError: errorHandler,
+  })
+
+  return createUIMessageStreamResponse({
+    stream,
   })
 })
 

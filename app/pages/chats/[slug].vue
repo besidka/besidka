@@ -57,6 +57,10 @@
               class="chat-markdown"
               :unwrap="getUnwrap(m.role)"
             />
+            <LazyChatSources
+              v-if="status === 'ready'"
+              :message="m"
+            />
           </UiBubble>
         </template>
       </div>

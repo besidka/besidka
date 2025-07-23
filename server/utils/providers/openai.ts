@@ -53,7 +53,7 @@ export async function useOpenAI(
         result.tools = {}
       }
 
-      result.tools['web_search_preview'] = openai.tools.webSearchPreview()
+      result.tools['web_search_preview'] = openai.tools.webSearchPreview({})
       result.toolChoice = {
         type: 'tool',
         toolName: 'web_search_preview',
