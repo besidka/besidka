@@ -81,7 +81,7 @@
 		"vite-plugin-eslint2": "^5.0.3",
 		"vitest": "^3.2.2",
 		"vue-tsc": "^2.2.10",
-		"wrangler": "^4.20.5"
+		"wrangler": "^4.26.0"
 	},
 	"lint-staged": {
 		"*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}": [
