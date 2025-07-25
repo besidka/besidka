@@ -40,10 +40,9 @@ export default defineNuxtConfig({
     },
     pwa: {
       devOptions: {
-        enabled: false,
+        enabled: true,
         suppressWarnings: true,
         navigateFallback: '/',
-        navigateFallbackAllowlist: [/^\/$/],
         type: 'module',
       },
     },
