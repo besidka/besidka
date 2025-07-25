@@ -2,7 +2,7 @@
 	"name": "besidka",
 	"type": "module",
 	"scripts": {
-		"build": "nuxt build",
+		"build": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt build",
 		"dev": "nuxt dev --dotenv .dev.vars",
 		"preview": "pnpm run build && wrangler dev --port 3000",
 		"deploy": "pnpm run build && wrangler deploy",
@@ -82,6 +82,19 @@
 		"vitest": "^3.2.4",
 		"vue-tsc": "^2.2.12",
 		"wrangler": "^4.26.0"
+	},
+	"onlyBuiltDependencies": [
+		"rolldown",
+		"@parcel/watcher",
+		"@tailwindcss/oxide",
+		"better-sqlite3",
+		"esbuild",
+		"sharp",
+		"unrs-resolver",
+		"workerd"
+	],
+	"overrides": {
+		"vite": "npm:rolldown-vite@latest"
 	},
 	"lint-staged": {
 		"*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}": [
