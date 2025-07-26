@@ -1,0 +1,21 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: ['main']
+    paths-ignore:
+      - '**/*.md'
+    
+concurrency:
+  group: production
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      environment: production
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read

@@ -1,0 +1,30 @@
+{
+  "name": "besidka",
+  "compatibility_date": "2025-05-20",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "custom_domain": true,
+      "pattern": "besidka.com"
+    },
+    {
+      "pattern": "www.besidka.com/*",
+      "zone_name": "besidka.com"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "besidka",
+      "database_id": "%DB_ID",
+      "migrations_dir": ".drizzle/migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "%KV_ID"
+    }
+  ]
+}
