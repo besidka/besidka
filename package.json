@@ -1,6 +1,7 @@
 {
 	"name": "besidka",
 	"type": "module",
+	"packageManager": "pnpm@10.13.1",
 	"scripts": {
 		"build": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt build",
 		"dev": "nuxt dev --dotenv .dev.vars",
