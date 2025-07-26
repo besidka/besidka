@@ -1,0 +1,19 @@
+name: Deploy the project to Cloudflare Workers
+
+on:
+  push:
+    branches: ['main']
+    paths-ignore:
+      - '**/*.md'
+    
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: "Deploy the main branch"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build the application
+        uses: ./.github/workflows/build.yml
