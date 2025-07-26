@@ -11,9 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: "Deploy the main branch"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Build the application
-        uses: ./.github/workflows/build.yml
+  build:
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
