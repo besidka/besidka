@@ -3,6 +3,8 @@
     ref="messagesContainer"
     class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-68 no-scrollbar"
   >
+
+    <!-- Status: <h1>{{ status }}</h1> -->
     <div
       v-for="m in messages"
       :key="m.id"
@@ -10,17 +12,19 @@
       <div
         v-for="(part, index) in m.parts"
         :key="index"
-        class="chat"
-        :class="{
-          'chat-start': m.role === 'assistant',
-          'chat-end': m.role === 'user',
-        }"
       >
-        <!-- <h1>{{ part.type }}</h1>
-        <template v-if="part.type === 'tool-invocation'">
+        <!-- <h1>{{ part.type }}</h1> -->
+        <!-- <template v-if="part.type === 'tool-invocation'">
           State: <strong>{{ part.toolInvocation.state }}</strong>
         </template> -->
-        <template v-if="part.type === 'text'">
+        <div
+          v-if="part.type === 'text'"
+          class="chat"
+          :class="{
+            'chat-start': m.role === 'assistant',
+            'chat-end': m.role === 'user',
+          }"
+        >
           <div
             class="chat-image avatar rounded-full"
             :class="{
@@ -62,7 +66,7 @@
               :message="m"
             />
           </UiBubble>
-        </template>
+        </div>
       </div>
     </div>
     <ClientOnly>
@@ -107,7 +111,10 @@
     v-model:tools="tools"
     :visible="chatInputVisible"
     :pending="['submitted', 'streaming'].includes(status)"
-    @submit="onSubmit"
+    :stopped="isStopped"
+    :stop="stop"
+    :regenerate="regenerate"
+    @submit="submit"
   />
 </template>
 <script setup lang="ts">
@@ -167,9 +174,12 @@ const {
 const {
   messages,
   input,
-  handleSubmit,
+  submit,
   tools,
   status,
+  isStopped,
+  stop,
+  regenerate,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()
@@ -178,8 +188,4 @@ const chatInputVisible = computed(() => {
   return messages.value.length === 1
     || (messages.value.length > 1 && arrivedState.bottom)
 })
-
-function onSubmit() {
-  handleSubmit()
-}
 </script>

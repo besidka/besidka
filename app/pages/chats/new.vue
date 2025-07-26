@@ -5,6 +5,8 @@
     v-model:tools="tools"
     visible
     :pending="pending"
+    :stop="() => {}"
+    :regenerate="() => {}"
     @submit="onSubmit"
   />
 </template>

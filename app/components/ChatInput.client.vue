@@ -80,10 +80,33 @@
           </div>
           <div>
             <UiButton
+              v-show="pending"
+              mode="accent"
+              soft
+              circle
+              title="Stop"
+              icon-name="lucide:pause"
+              icon-only
+              tooltip-position="left"
+              @click="stop"
+            />
+            <UiButton
+              v-show="!pending && stopped"
+              mode="accent"
+              soft
+              circle
+              title="Regenerate"
+              icon-name="lucide:refresh-ccw"
+              icon-only
+              tooltip-position="left"
+              @click="regenerate"
+            />
+            <UiButton
+              v-show="!pending && !stopped"
               mode="accent"
               circle
-              :disabled="!message.trim() || pending"
-              title="Send Message"
+              :disabled="!hasMessage"
+              :title="hasMessage ? 'Send Message' : 'Message is required'"
               icon-name="lucide:arrow-up"
               icon-only
               tooltip-position="left"
@@ -100,7 +123,10 @@ import type { Tools } from '#shared/types/chats.d'
 
 defineProps<{
   pending?: boolean
+  stopped?: boolean
   visible?: boolean
+  stop: () => void
+  regenerate: () => void
 }>()
 
 const emit = defineEmits<{
@@ -109,8 +135,8 @@ const emit = defineEmits<{
 
 const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
-const { isWebSearchSupported } = useChatInput()
 const { providers } = getProviders()
+const { isWebSearchSupported } = useChatInput()
 const { scrollToBottom, arrivedState } = useChatScroll()
 
 const message = defineModel<string>('message', {
@@ -119,6 +145,10 @@ const message = defineModel<string>('message', {
 
 const tools = defineModel<Tools>('tools', {
   default: [],
+})
+
+const hasMessage = computed<boolean>(() => {
+  return !!message.value.trim().length
 })
 
 const modelDropdown = useTemplateRef<HTMLDetailsElement>('modelDropdown')

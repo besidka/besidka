@@ -7,6 +7,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const { scrollInterval, scrollToBottom } = useChatScroll()
   const input = shallowRef<string>('')
+  const isStopped = shallowRef<boolean>(false)
 
   chat = toValue(chat)
 
@@ -29,6 +30,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         }
       },
     }),
+    onFinish() {
+      isStopped.value = false
+    },
     onError(error: any) {
       const { message } = typeof error.message === 'string'
         && error.message[0] === '{'
@@ -70,14 +74,21 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   useSetChatTitle(chat.title)
 
-  function handleSubmit() {
+  function submit() {
     chatSdk.sendMessage({ text: input.value })
+  }
+
+  function stop() {
+    isStopped.value = true
+    chatSdk.stop()
   }
 
   return {
     messages,
     input,
-    handleSubmit,
+    submit,
+    stop,
+    isStopped,
     regenerate: chatSdk.regenerate,
     tools,
     status,

@@ -162,11 +162,16 @@ export default defineEventHandler(async (event) => {
         originalMessages: messages,
         sendSources: true,
         onError: errorHandler,
-        async onFinish({ responseMessage }) {
+        async onFinish({ isAborted, responseMessage }) {
+          if (isAborted) {
+            return
+          }
+
           if ('id' in responseMessage) {
             // @ts-expect-error
             delete responseMessage.id
           }
+
           await db.insert(schema.messages).values({
             chatId: chat.id,
             ...responseMessage,
