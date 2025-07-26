@@ -1,0 +1,25 @@
+// eslint-disable-next-line @stylistic/max-len
+/** @param {import('@actions/github-script').AsyncFunctionArguments} AsyncFunctionArguments */
+export async function setProject({ github, context }) {
+  const { pull_request: pr } = context.payload
+
+  if ((!pr) || (pr.node_id && pr.project_card)) {
+    return
+  }
+
+  // https://github.com/orgs/besidka/projects/2
+  const projectId = 2
+  const mutation = `
+    mutation($projectId: ID!, $contentId: ID!) {
+      addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+        item {
+          id
+        }
+      }
+    }
+  `
+  await github.graphql(mutation, {
+    projectId: projectId,
+    contentId: pr.node_id,
+  })
+}

@@ -1,0 +1,19 @@
+name: Deploy the project to Cloudflare Workers
+
+on:
+  push:
+    branches: ['main']
+    paths-ignore:
+      - '**/*.md'
+    
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
