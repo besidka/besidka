@@ -1,8 +1,6 @@
-import type { AsyncFunctionArguments } from '@actions/github-script'
-
-export async function displayPreviewUrl(
-  { github, context }: AsyncFunctionArguments,
-) {
+// eslint-disable-next-line @stylistic/max-len
+/** @param {import('@actions/github-script').AsyncFunctionArguments} AsyncFunctionArguments */
+export async function displayPreviewUrl({ github, context }) {
   const { pull_request: pr } = context.payload
   const url = process.env.DEPLOYMENT_URL || 'URL not found'
 

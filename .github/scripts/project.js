@@ -1,8 +1,6 @@
-import type { AsyncFunctionArguments } from '@actions/github-script'
-
-export async function setProject(
-  { github, context }: AsyncFunctionArguments,
-) {
+// eslint-disable-next-line @stylistic/max-len
+/** @param {import('@actions/github-script').AsyncFunctionArguments} AsyncFunctionArguments */
+export async function setProject({ github, context }) {
   const { pull_request: pr } = context.payload
 
   if ((!pr) || (pr.node_id && pr.project_card)) {

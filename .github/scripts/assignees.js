@@ -1,8 +1,6 @@
-import type { AsyncFunctionArguments } from '@actions/github-script'
-
-export async function setAssignees(
-  { github, context }: AsyncFunctionArguments,
-) {
+// eslint-disable-next-line @stylistic/max-len
+/** @param {import('@actions/github-script').AsyncFunctionArguments} AsyncFunctionArguments */
+export async function setAssignees({ github, context }) {
   const { pull_request: pr } = context.payload
 
   if (!pr) {
