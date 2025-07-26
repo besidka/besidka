@@ -3,9 +3,9 @@ import type { AsyncFunctionArguments } from '@actions/github-script'
 export async function setProject(
   { github, context }: AsyncFunctionArguments,
 ) {
-  const { pull_request: pr, action } = context.payload
+  const { pull_request: pr } = context.payload
 
-  if ((!pr || action !== 'opened') || (pr.node_id && pr.project_card)) {
+  if ((!pr) || (pr.node_id && pr.project_card)) {
     return
   }
 

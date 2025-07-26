@@ -3,9 +3,9 @@ import type { AsyncFunctionArguments } from '@actions/github-script'
 export async function setMilestone(
   { github, context }: AsyncFunctionArguments,
 ) {
-  const { pull_request: pr, action } = context.payload
+  const { pull_request: pr } = context.payload
 
-  if (!pr || action !== 'opened' || pr.milestone) {
+  if (!pr || pr.milestone) {
     return
   }
 
