@@ -35,7 +35,7 @@ jobs:
               '${{ github.workspace }}/.github/scripts/pr.js'
             )
 
-            await updatePR()
+            await updatePR({ github, context })
 
   build:
     uses: ./.github/workflows/build.yml
@@ -64,6 +64,6 @@ jobs:
               '${{ github.workspace }}/.github/scripts/preview.js'
             )
 
-            await displayPreviewUrl()
+            await displayPreviewUrl({ github, context })
         env:
           DEPLOYMENT_URL: ${{ needs.build.outputs.url }}

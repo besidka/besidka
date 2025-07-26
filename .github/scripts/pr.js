@@ -1,6 +1,6 @@
 // eslint-disable-next-line @stylistic/max-len
 /** @param {import('@actions/github-script').AsyncFunctionArguments} AsyncFunctionArguments */
-export async function updatePR({ context }) {
+export async function updatePR({ github, context }) {
   const { pull_request: pr } = context.payload
 
   if (!pr) {
@@ -21,9 +21,9 @@ export async function updatePR({ context }) {
   ])
 
   await Promise.all([
-    labelsModule.setLabels(),
-    assigneesModule.setAssignees(),
-    milestoneModule.setMilestone(),
-    projectModule.setProject(),
+    labelsModule.setLabels({ github, context }),
+    assigneesModule.setAssignees({ github, context }),
+    milestoneModule.setMilestone({ github, context }),
+    projectModule.setProject({ github, context }),
   ])
 }

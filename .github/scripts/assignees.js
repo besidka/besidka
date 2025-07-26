@@ -7,7 +7,7 @@ export async function setAssignees({ github, context }) {
     return
   }
 
-  const assignees: string[] = []
+  const assignees = []
 
   if (pr.user.login === context.repo.owner) {
     assignees.push(context.repo.owner)

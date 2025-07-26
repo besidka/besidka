@@ -13,7 +13,7 @@ export async function setLabels({ github, context }) {
   })
 
   const messages = commits.data.map(c => c.commit.message).join('\n')
-  const labels: Array<'feat' | 'fix' | 'docs'> = []
+  const labels = []
 
   if (/^feat\b/i.test(messages)) {
     labels.push('feat')
