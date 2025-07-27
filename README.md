@@ -46,7 +46,7 @@ The steps below are for local development only for the quick start and check.
 
 ### Prerequisites
 
-- [Bun.sh](https://bun.sh/)
+- [PNPM](https://pnpm.io/)
   
 ### Steps
 
@@ -60,7 +60,7 @@ Go to the project directory. Install the dependencies.
 
 ```bash
 cd besidka
-bun install
+pnpm install
 ```
 
 Copy wrangler and ENV related files.
@@ -71,24 +71,24 @@ cp wrangler.jsonc.example wrangler.jsonc
 
 Generate environment types for the project.
 ```bash
-bun run cf-typegen
+pnpm run cf-typegen
 ```
 
 Prepare drizzle migrations.
 ```bash
 # Expected output is .drizzle/migrations/*.sql
-bun run db:generate
+pnpm run db:generate
 ```
 
 Apply the migrations to the D1 database.
 ```bash
 # Expected output is .wrangler/state/v3/d1/*.sqlite
-bunx wrangler d1 migrations apply besidka
+pnpx wrangler d1 migrations apply besidka
 ```
 
 Start the development server.
 ```bash
-bun run dev
+pnpm run dev
 ```
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser.
