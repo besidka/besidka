@@ -9,6 +9,7 @@
 		"build": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt build",
 		"dev": "nuxt dev --dotenv .dev.vars",
 		"preview": "pnpm run build && wrangler dev --port 3000",
+		"upload": "pnpm run build && wrangler versions upload",
 		"deploy": "pnpm run build && wrangler deploy",
 		"generate": "nuxt generate",
 		"dev:prepare": "nuxt prepare",

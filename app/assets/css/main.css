@@ -100,6 +100,20 @@
 
   --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) var(--animate-pulse-iterations, infinite);
   --animate-pulse-once: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 1;
+
+  --animate-zoom: zoom 2s ease-in-out infinite;
+
+  @keyframes zoom {
+    0% {
+      transform: scale(100%);
+    }
+    50% {
+      transform: scale(110%);
+    }
+    100% {
+      transform: scale(100%);
+    }
+  }
 }
 
 @custom-variant light {

@@ -21,11 +21,16 @@
         <template #icon>
           <Logo
             short
-            class="size-14 sm:[.group:not(:focus-visible)_&]:size-11 group-focus:sm:size-9 [--color-logo-eyes-bg:var(--color-white)]"
+            :spinning="spinning"
+            once
+            class="size-14 sm:[.group:not(:focus-visible)_&]:size-11 group-focus:sm:size-9 [--color-logo-eyes-bg:var(--color-white)] sm:-scale-x-100"
             :class="{
               'text-accent': !disabled,
               'text-primary': disabled
             }"
+            @mouseover="spinning = $device.isDesktop"
+            @mouseleave="spinning = false"
+            @blur="spinning = false"
           />
         </template>
       </UiButton>
@@ -45,4 +50,6 @@ const disabled = computed<boolean>(() => {
 const mode = computed<ButtonProps['mode']>(() => {
   return disabled.value ? 'primary' : 'accent'
 })
+
+const spinning = shallowRef<boolean>(false)
 </script>
