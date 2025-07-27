@@ -3,6 +3,8 @@ name: Deploy to Preview
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**/*.md'
     
 concurrency:
   group: preview

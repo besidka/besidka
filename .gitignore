@@ -29,8 +29,6 @@ logs
 !.dev.vars.example
 wrangler*.json*
 !wrangler.json*.example
-!.github/wrangler.jsonc
-!.github/wrangler-preview.jsonc
 
 # Tests
 coverage

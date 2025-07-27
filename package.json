@@ -63,7 +63,6 @@
 		"zod": "^3.25.76"
 	},
 	"devDependencies": {
-		"@actions/github-script": "github:actions/github-script",
 		"@cloudflare/workers-types": "^4.20250725.0",
 		"@commitlint/cli": "^19.8.1",
 		"@commitlint/config-conventional": "^19.8.1",
