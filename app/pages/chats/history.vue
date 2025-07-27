@@ -19,10 +19,14 @@
       >
         <NuxtLink
           :to="`/chats/${chat.slug}`"
-          :data-tip="`Open chat: ${chat.title?.substring(0, 20)}...`"
+          :data-tip="`Open chat: ${chat.title
+              ? chat.title?.substring(0, 20)
+              : 'Untitled Chat'
+            }...`
+          "
           class="tooltip tooltip-bottom"
         >
-          {{ chat.title }}
+          {{ chat.title || 'Untitled Chat' }}
         </NuxtLink>
       </li>
     </ul>

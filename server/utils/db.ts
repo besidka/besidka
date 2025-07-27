@@ -1,4 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1'
+import { EnhancedQueryLogger } from 'drizzle-query-logger'
 import * as schema from '../db/schema'
 
 export function useDb() {
@@ -10,7 +11,9 @@ export function useDb() {
 
   return drizzle(db, {
     schema,
-    logger: useRuntimeConfig(useEvent())?.drizzleDebug,
     casing: 'snake_case',
+    logger: useRuntimeConfig(useEvent())?.drizzleDebug
+      ? new EnhancedQueryLogger()
+      : false,
   })
 }

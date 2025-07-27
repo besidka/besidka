@@ -161,8 +161,6 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-useSetChatTitle(chat.value.title)
-
 const { data: session } = await useLazyFetch('/api/v1/auth/session')
 
 const {

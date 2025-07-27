@@ -71,6 +71,9 @@ importers:
       drizzle-orm:
         specifier: ^0.44.3
         version: 0.44.3(@cloudflare/workers-types@4.20250725.0)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(kysely@0.28.3)
+      drizzle-query-logger:
+        specifier: ^1.0.7
+        version: 1.0.7(drizzle-orm@0.44.3(@cloudflare/workers-types@4.20250725.0)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(kysely@0.28.3))(typescript@5.8.3)
       eslint:
         specifier: ^9.32.0
         version: 9.32.0(jiti@2.5.1)
@@ -4186,6 +4189,12 @@ packages:
         optional: true
       sqlite3:
         optional: true
+
+  drizzle-query-logger@1.0.7:
+    resolution: {integrity: sha512-HVvVhd+qv/SP37CjDCQxh3tTT7WDduY8AJbF/R+hdtbjznJsGxxKB/o9cc+xpdm/WbmOCqL9e0XpyDTZ53M45Q==}
+    peerDependencies:
+      drizzle-orm: ^0.44.3
+      typescript: ^5
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -12288,6 +12297,11 @@ snapshots:
       '@types/better-sqlite3': 7.6.13
       better-sqlite3: 11.10.0
       kysely: 0.28.3
+
+  drizzle-query-logger@1.0.7(drizzle-orm@0.44.3(@cloudflare/workers-types@4.20250725.0)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(kysely@0.28.3))(typescript@5.8.3):
+    dependencies:
+      drizzle-orm: 0.44.3(@cloudflare/workers-types@4.20250725.0)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@11.10.0)(kysely@0.28.3)
+      typescript: 5.8.3
 
   dunder-proto@1.0.1:
     dependencies:
