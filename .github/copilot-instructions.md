@@ -2,7 +2,7 @@
 
 ## Core Stack
 
-- **Runtime:** Bun (for fast, modern JavaScript/TypeScript execution and tooling)
+- **Runtime:** PNPM (for fast, efficient JavaScript/TypeScript package management and execution)
 - **Framework:** Nuxt 4, leveraging Nitro for server-side rendering and API routes
 - **Database:** Cloudflare D1 (SQLite-based), accessed via Drizzle ORM with repository pattern
 - **KV:** Cloudflare KV storage for caching and quick data access
