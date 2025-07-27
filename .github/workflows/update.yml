@@ -37,12 +37,13 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Automatically assign user to PR
+        if: github.event_name == 'pull_request'
         uses: actions-ecosystem/action-add-assignees@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           assignees: ${{ github.actor }}
 
-      - name: Add PR to Milestone
+      - name: Add to MVP Milestone
         uses: andrefcdias/add-to-milestone@v1.3.0
         continue-on-error: true
         with:
@@ -50,12 +51,14 @@ jobs:
           milestone: "MVP"
 
       - name: Add PR to Project
+        if: github.event_name == 'pull_request'
         uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/orgs/${{ github.repository_owner }}/projects/2
           github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
 
       - name: Determine labels to add
+        if: github.event_name == 'pull_request'
         id: labels
         run: |
           labels_to_add=""
@@ -64,12 +67,6 @@ jobs:
           
           for label in "${label_types[@]}"; do
             should_add_label=false
-            
-            if [[ "${{ github.event_name }}" == "issues" ]]; then
-              if [[ "${{ github.event.issue.body }}" == ${label}* ]]; then
-                should_add_label=true
-              fi
-            fi
             
             if [[ "${{ github.event_name }}" == "pull_request" ]]; then
               if [[ "${{ github.event.pull_request.body }}" == ${label}* ]]; then
@@ -94,6 +91,6 @@ jobs:
 
       - name: Add labels
         uses: actions-ecosystem/action-add-labels@v1
-        if: steps.labels.outputs.labels != ''
+        if: github.event_name == 'pull_request' && steps.labels.outputs.labels != ''
         with:
           labels: ${{ steps.labels.outputs.labels }}

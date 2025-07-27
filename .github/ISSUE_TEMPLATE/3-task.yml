@@ -1,0 +1,25 @@
+name: "✍️ Task"
+description: Set a task to improve Besidka
+labels: ["task"]
+type: "Task"
+projects: ["besidka/2"]
+assignees:
+  - serhii-chernenko
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this task!
+  - type: textarea
+    id: task-description
+    attributes:
+      label: Describe the task
+      description: A clear and concise description of what the task is.
+      placeholder: Task description
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: If applicable, add any other context about the problem here
