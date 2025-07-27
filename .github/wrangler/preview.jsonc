@@ -1,0 +1,20 @@
+{
+  "name": "besidka-preview",
+  "compatibility_date": "2025-05-20",
+  "workers_dev": true,
+  "preview_urls": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "besidka-preview",
+      "database_id": "%DB_ID",
+      "migrations_dir": ".drizzle/migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "%KV_ID"
+    }
+  ]
+}

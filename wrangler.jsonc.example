@@ -19,9 +19,7 @@
       "binding": "DB",
       "database_name": "besidka",
       // bunx wrangler d1 create besidka
-      "database_id": "123",
-      // bunx wrangler d1 create besidka-preview
-      "preview_database_id": "456",
+      "database_id": "%DB_ID%",
       "migrations_dir": ".drizzle/migrations"
     }
   ],
@@ -30,9 +28,7 @@
     {
       "binding": "KV",
       // bunx wrangler kv namespace create besidka
-      "id": "123",
-      // bunx wrangler kv namespace create besidka-preview
-      "preview_id": "456"
+      "id": "%KV_ID%"
     }
   ]
 }

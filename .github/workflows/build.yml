@@ -1,0 +1,134 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: false
+        type: string
+        default: production
+    outputs:
+      url:
+        description: "Deployment URL"
+        value: ${{ jobs.build.outputs.deployment-url }}
+      bundle-size:
+        description: "Bundle size information"
+        value: ${{ jobs.build.outputs.bundle-size }}
+      duration:
+        description: "Build duration"
+        value: ${{ jobs.build.outputs.duration }}
+    secrets:
+      WRANGLER_DB_ID:
+        required: true
+      WRANGLER_KV_ID:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      
+jobs:
+  build:
+    name: "Build the application"
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+      bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
+      duration: ${{ steps.calculate-duration.outputs.duration }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Record start time
+        id: start-time
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Run TypeScript type checks
+        run: pnpm run typecheck
+
+      - name: Run tests
+        run: pnpm run coverage
+
+      - name: Generate wrangler.jsonc
+        env:
+          WRANGLER_DB_ID: ${{ secrets.WRANGLER_DB_ID }}
+          WRANGLER_KV_ID: ${{ secrets.WRANGLER_KV_ID }}
+        run: |
+          SOURCE_FILE=".github/wrangler/${{ inputs.environment }}.jsonc"
+          jq '
+            walk(
+              if type == "string" then
+                gsub("%DB_ID"; env.WRANGLER_DB_ID) |
+                gsub("%KV_ID"; env.WRANGLER_KV_ID)
+              else . end
+            )
+          ' "$SOURCE_FILE" > wrangler.jsonc
+
+      - name: Build application
+        env:
+          ROLLDOWN_OPTIONS_VALIDATION: loose
+        run: pnpm run build 2>&1 | tee build-output.log
+
+      - name: Extract and output bundle size
+        run: |
+          SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
+          echo "Bundle Size: $SIZE_INFO"
+          echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
+        id: bundle-size
+
+      - name: Deploy app to Cloudflare Workers via Wrangler
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        with:
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          command: >-
+            ${{ (inputs.environment == 'production' || github.event.pull_request.merged) && 'deploy' || 'versions upload' }}
+
+      - name: Print deployed URL
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: echo $DEPLOYMENT_URL
+
+      - name: Calculate build duration
+        id: calculate-duration
+        run: |
+          START_TIME=${{ steps.start-time.outputs.start-time }}
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          MINUTES=$((DURATION / 60))
+          SECONDS=$((DURATION % 60))
+          if [ $MINUTES -gt 0 ]; then
+            DURATION_FORMAT="${MINUTES}m ${SECONDS}s"
+          else
+            DURATION_FORMAT="${SECONDS}s"
+          fi
+          echo "duration=$DURATION_FORMAT" >> $GITHUB_OUTPUT
+          echo "Build completed in: $DURATION_FORMAT"

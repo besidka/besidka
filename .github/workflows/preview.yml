@@ -1,0 +1,60 @@
+name: Deploy to Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**/*.md'
+    
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      environment: preview
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
+    
+  comment:
+    name: "Comment preview URL on PR"
+    needs: build
+    if: needs.build.outputs.url
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get commit information
+        id: commit-info
+        run: |
+          echo "commit-hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "commit-hash-full=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "pr-commit-hash=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "pr-commit-hash-full=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          echo "commit-author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+
+      - name: Comment preview URL on PR
+        uses: mshick/add-pr-comment@v2
+        with:
+          allow-repeats: true
+          message: |
+            ## Deployed to <img width="16" alt="Cloudflare Workers logo" src="https://workers.cloudflare.com/logo.svg"> Cloudflare Workers
+            
+            | Property | Value |
+            |----------|-------|
+            | Bundle size | ${{ needs.build.outputs.bundle-size }} |
+            | Build duration | ${{ needs.build.outputs.duration }} |
+            | Latest commit (repository) | [`${{ steps.commit-info.outputs.commit-hash }}`](https://github.com/${{ github.repository }}/commit/${{ steps.commit-info.outputs.commit-hash-full }}) |
+            | Latest commit (pull request) | [`${{ steps.commit-info.outputs.pr-commit-hash }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.number }}/commits/${{ steps.commit-info.outputs.pr-commit-hash-full }}) |
+            | Author | [${{ steps.commit-info.outputs.commit-author }}](https://github.com/${{ github.actor }}) |
+            | Preview URL | ${{ needs.build.outputs.url }} |

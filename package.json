@@ -1,6 +1,10 @@
 {
 	"name": "besidka",
 	"type": "module",
+	"packageManager": "pnpm@10.13.1",
+	"engines": {
+		"node": ">=20.0.0 <21.0.0"
+	},
 	"scripts": {
 		"build": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt build",
 		"dev": "nuxt dev --dotenv .dev.vars",
@@ -35,6 +39,7 @@
 		"@nuxtjs/mdc": "^0.17.2",
 		"@tailwindcss/vite": "^4.1.11",
 		"@vite-pwa/nuxt": "^1.0.4",
+		"@vueuse/core": "^13.5.0",
 		"@vueuse/nuxt": "^13.5.0",
 		"ai": "beta",
 		"better-auth": "^1.3.3",
@@ -49,6 +54,7 @@
 		"remark-breaks": "^4.0.0",
 		"resend": "^4.7.0",
 		"sanitize-html": "^2.17.0",
+		"shiki": "^3.8.1",
 		"shiki-stream": "^0.1.2",
 		"tailwindcss": "^4.1.11",
 		"ulid": "^3.0.1",

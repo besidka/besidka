@@ -1,0 +1,99 @@
+name: Update PRs and Issues
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+concurrency:
+  group: update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: "Update PRs and Issues"
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      pull-requests: write
+      issues: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commit messages
+        id: commits
+        if: github.event_name == 'pull_request'
+        run: |
+          # Get all commit messages in the PR
+          COMMIT_MESSAGES=$(git log --format="%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          echo "messages<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MESSAGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Automatically assign user to PR
+        uses: actions-ecosystem/action-add-assignees@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          assignees: ${{ github.actor }}
+
+      - name: Add PR to Milestone
+        uses: andrefcdias/add-to-milestone@v1.3.0
+        continue-on-error: true
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          milestone: "MVP"
+
+      - name: Add PR to Project
+        uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: https://github.com/orgs/${{ github.repository_owner }}/projects/2
+          github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+
+      - name: Determine labels to add
+        id: labels
+        run: |
+          labels_to_add=""
+          
+          label_types=("feat" "fix" "docs")
+          
+          for label in "${label_types[@]}"; do
+            should_add_label=false
+            
+            if [[ "${{ github.event_name }}" == "issues" ]]; then
+              if [[ "${{ github.event.issue.body }}" == ${label}* ]]; then
+                should_add_label=true
+              fi
+            fi
+            
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              if [[ "${{ github.event.pull_request.body }}" == ${label}* ]]; then
+                should_add_label=true
+              fi
+              
+              if [[ "${{ steps.commits.outputs.messages }}" == *"${label}:"* ]] || [[ "${{ steps.commits.outputs.messages }}" == *"${label}("* ]]; then
+                should_add_label=true
+              fi
+            fi
+            
+            if [[ "$should_add_label" == "true" ]]; then
+              if [[ -n "$labels_to_add" ]]; then
+                labels_to_add="${labels_to_add},${label}"
+              else
+                labels_to_add="$label"
+              fi
+            fi
+          done
+          
+          echo "labels=$labels_to_add" >> $GITHUB_OUTPUT
+
+      - name: Add labels
+        uses: actions-ecosystem/action-add-labels@v1
+        if: steps.labels.outputs.labels != ''
+        with:
+          labels: ${{ steps.labels.outputs.labels }}
