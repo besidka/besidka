@@ -86,8 +86,34 @@ export default defineNuxtConfig({
     checker: true,
   },
   svgo: {
-    autoImportPath: '~/assets/icons/logos',
+    autoImportPath: '~/assets/icons',
     defaultImport: 'component',
+    svgoConfig: {
+      multipass: true,
+      plugins: [
+        'removeDimensions',
+        {
+          name: 'preset-default',
+          params: {
+            overrides: {
+              cleanupIds: false,
+              inlineStyles: {
+                onlyMatchedOnce: false,
+              },
+              removeDoctype: false,
+              removeViewBox: false,
+              removeUnknownsAndDefaults: {
+                keepDataAttrs: true,
+                keepAriaAttrs: true,
+                keepRoleAttr: true,
+                unknownAttrs: false,
+                defaultAttrs: false,
+              },
+            },
+          },
+        },
+      ],
+    },
   },
   fonts: {
     defaults: {

@@ -3,17 +3,17 @@
     ref="messagesContainer"
     class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-68 no-scrollbar"
   >
-
-    <!-- Status: <h1>{{ status }}</h1> -->
+    <!-- Status: <strong>{{ status }}</strong> -->
     <div
       v-for="m in messages"
       :key="m.id"
     >
+      <!-- Message ID: <strong>{{ m.id }}</strong> -->
       <div
         v-for="(part, index) in m.parts"
         :key="index"
       >
-        <!-- <h1>{{ part.type }}</h1> -->
+        <!-- Part type: <strong>{{ part.type }}</strong> -->
         <!-- <template v-if="part.type === 'tool-invocation'">
           State: <strong>{{ part.toolInvocation.state }}</strong>
         </template> -->
@@ -69,48 +69,17 @@
         </div>
       </div>
     </div>
-    <ClientOnly>
-      <div
-        v-if="status === 'submitted'"
-        class="chat chat-start w-fit"
-      >
-        <div
-          class="chat-image avatar avatar-placeholder rounded-full"
-        >
-          <div class="w-10 rounded-full bg-base-100">
-            <Logo
-              short
-              class="size-6 text-text"
-            />
-          </div>
-        </div>
-        <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
-          <span class="loading loading-dots loading-md">
-            <span class="sr-only">Loading...</span>
-          </span>
-        </UiBubble>
-      </div>
-
-      <div
-        v-show="!arrivedState.bottom && messages.length > 1"
-        class="fixed z-20 bottom-40 sm:bottom-30 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
-      >
-        <UiButton
-          circle
-          icon-name="lucide:chevrons-down"
-          icon-only
-          title="Scroll to bottom"
-          class="opacity-50 sm:opacity-20 dark:sm:opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-300 [--depth:0]"
-          @click="scrollToBottom"
-        />
-      </div>
-    </ClientOnly>
+    <LazyChatLoader v-show="isLoading" />
+    <LazyChatScroll
+      v-show="isScrollToBottomVisible"
+      @click="scrollToBottom"
+    />
   </div>
   <LazyChatInput
     v-model:message="input"
     v-model:tools="tools"
-    :visible="chatInputVisible"
-    :pending="['submitted', 'streaming'].includes(status)"
+    :visible="isChatInputVisible"
+    :pending="isLoading"
     :stopped="isStopped"
     :stop="stop"
     :regenerate="regenerate"
@@ -175,6 +144,7 @@ const {
   submit,
   tools,
   status,
+  isLoading,
   isStopped,
   stop,
   regenerate,
@@ -182,8 +152,12 @@ const {
 
 const { components, getUnwrap } = useChatFormat()
 
-const chatInputVisible = computed(() => {
+const isChatInputVisible = computed(() => {
   return messages.value.length === 1
     || (messages.value.length > 1 && arrivedState.bottom)
+})
+
+const isScrollToBottomVisible = computed<boolean>(() => {
+  return !arrivedState.bottom && messages.value.length > 1
 })
 </script>

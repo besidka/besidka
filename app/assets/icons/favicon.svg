@@ -1,12 +1,12 @@
 <svg width="30px" height="30px" version="1.1" xmlns="http://www.w3.org/2000/svg"
     xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/"
-    style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;" tabindex="-1">
     <g id="Icon">
         <g id="Body">
-            <path
+            <path id="Tail"
                 d="M9.615,22.932l-7.093,6.186c-0.446,0.389 -1.008,0.401 -1.352,0.028c-0.345,-0.372 -0.381,-1.03 -0.087,-1.583l3.799,-7.146c1.234,1.539 2.93,2.407 4.733,2.515Z"
                 style="fill:currentColor;" />
-            <path
+            <path id="Spin"
                 d="M9.202,4.453c0.68,-2.52 3.172,-4.453 6.077,-4.453c2.906,-0 5.398,1.933 6.078,4.453c2.517,-0.67 5.434,0.526 6.887,3.047c1.452,2.521 1.028,5.65 -0.81,7.5c1.838,1.85 2.262,4.979 0.81,7.5c-1.453,2.521 -4.37,3.717 -6.887,3.047c-0.68,2.52 -3.172,4.453 -6.078,4.453c-2.905,0 -5.397,-1.933 -6.077,-4.453c-2.517,0.67 -5.434,-0.526 -6.887,-3.047c-1.452,-2.521 -1.028,-5.65 0.81,-7.5c-1.838,-1.85 -2.262,-4.979 -0.81,-7.5c1.453,-2.521 4.37,-3.717 6.887,-3.047Z"
                 style="fill:currentColor;" />
         </g>

@@ -45,6 +45,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const messages = computed<UIMessage[]>(() => chatSdk.messages)
   const status = computed<ChatStatus>(() => chatSdk.status)
+  const isLoading = computed<boolean>(() => {
+    const lastMessage = messages.value.at(-1)
+
+    return status.value === 'submitted'
+      || (
+        status.value === 'streaming'
+        && lastMessage?.role === 'assistant'
+        && !lastMessage?.parts?.length
+      )
+  })
 
   onMounted(() => {
     if ((chat?.messages?.length || 0) > 1) {
@@ -92,5 +102,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     regenerate: chatSdk.regenerate,
     tools,
     status,
+    isLoading,
   }
 }

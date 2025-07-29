@@ -13,7 +13,6 @@ export function useChatScroll() {
     },
   })
   const { top: scrollDirectionToTop } = toRefs(directions)
-
   const interval = ref<NodeJS.Timeout | null>(null)
 
   watch(scrollDirectionToTop, () => {
