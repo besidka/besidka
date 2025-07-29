@@ -5,15 +5,10 @@
   >
     <!-- Status: <strong>{{ status }}</strong> -->
     <div
-      v-for="(m, mIdx) in messages"
+      v-for="m in messages"
       :key="m.id"
     >
       <!-- Message ID: <strong>{{ m.id }}</strong> -->
-      <LazyChatLoader
-        v-show="status === 'streaming' && !m.parts.some(part => {
-          return part.type === 'step-start'
-        }) && mIdx === messages.length - 1"
-      />
       <div
         v-for="(part, index) in m.parts"
         :key="index"
@@ -74,17 +69,17 @@
         </div>
       </div>
     </div>
-    <LazyChatLoader v-show="status === 'submitted'"/>
-    <LazyChatLoader
-      v-show="!arrivedState.bottom && messages.length > 1"
+    <LazyChatLoader v-show="isLoading" />
+    <LazyChatScroll
+      v-show="isScrollToBottomVisible"
       @click="scrollToBottom"
     />
   </div>
   <LazyChatInput
     v-model:message="input"
     v-model:tools="tools"
-    :visible="chatInputVisible"
-    :pending="['submitted', 'streaming'].includes(status)"
+    :visible="isChatInputVisible"
+    :pending="isLoading"
     :stopped="isStopped"
     :stop="stop"
     :regenerate="regenerate"
@@ -149,6 +144,7 @@ const {
   submit,
   tools,
   status,
+  isLoading,
   isStopped,
   stop,
   regenerate,
@@ -156,8 +152,12 @@ const {
 
 const { components, getUnwrap } = useChatFormat()
 
-const chatInputVisible = computed(() => {
+const isChatInputVisible = computed(() => {
   return messages.value.length === 1
     || (messages.value.length > 1 && arrivedState.bottom)
+})
+
+const isScrollToBottomVisible = computed<boolean>(() => {
+  return !arrivedState.bottom && messages.value.length > 1
 })
 </script>
