@@ -52,7 +52,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       || (
         status.value === 'streaming'
         && lastMessage?.role === 'assistant'
-        && !!lastMessage?.parts?.length
+        && !lastMessage?.parts?.length
       )
   })
 

@@ -7,14 +7,15 @@
         <Logo
           short
           spinning
-          class="size-6 text-accent motion-safe:animate-pulse motion-safe:animate-zoom"
+          class="size-6 text-accent motion-safe:animate-zoom"
         />
       </div>
     </div>
     <UiBubble
       class="chat-bubble sm:!px-6 !shadow-none w-full"
     >
-      <span class="sr-only">Loading</span>...
+      <SvgoLoader class="w-3 text-accent" />
+      <span class="sr-only">Loading</span>
     </UiBubble>
   </div>
 </template>
