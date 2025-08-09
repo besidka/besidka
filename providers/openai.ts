@@ -3,6 +3,91 @@ export default {
   name: 'OpenAI',
   models: [
     {
+      id: 'gpt-5',
+      name: 'GPT-5',
+      description: 'The best model for coding and agentic tasks across domains',
+      contextLength: 400_000,
+      maxOutputTokens: 128_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$1.25',
+        output: '$10.00',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+    },
+    {
+      id: 'gpt-5-mini',
+      name: 'GPT-5 mini',
+      description: 'A faster, more cost-efficient version of GPT-5 for well-defined tasks',
+      contextLength: 400_000,
+      maxOutputTokens: 128_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$0.25',
+        output: '$2.00',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+    },
+    {
+      id: 'gpt-5-nano',
+      name: 'GPT-5 nano',
+      description: 'Fastest, most cost-efficient version of GPT-5',
+      contextLength: 1_047_576,
+      maxOutputTokens: 128_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$0.05',
+        output: '$0.40',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+    },
+    {
+      id: 'gpt-4.1',
+      name: 'GPT-4.1',
+      description: 'Excels at function calling and instruction following',
+      contextLength: 1_047_576,
+      maxOutputTokens: 32_768,
+      price: {
+        tokens: 1_000_000,
+        input: '$2.00',
+        output: '$8.00',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+    },
+    {
+      id: 'gpt-4.1-mini',
+      name: 'GPT-4.1 mini',
+      description: 'Balanced for intelligence, speed, and cost',
+      contextLength: 1_047_576,
+      maxOutputTokens: 32_768,
+      price: {
+        tokens: 1_000_000,
+        input: '$0.4',
+        output: '$1.60',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+    },
+    {
       id: 'gpt-4.1-nano',
       name: 'GPT-4.1 nano',
       description: 'GPT-4.1 nano is the fastest, most cost-effective GPT-4.1 model.',
@@ -18,23 +103,6 @@ export default {
         output: ['text'],
       },
       tools: [],
-    },
-    {
-      id: 'gpt-4o-mini',
-      name: 'GPT-4o mini',
-      description: 'It is ideal for fine-tuning, and model outputs from a larger model like GPT-4o can be distilled to GPT-4o-mini to produce similar results at lower cost and latency.',
-      contextLength: 128_000,
-      maxOutputTokens: 16_384,
-      price: {
-        tokens: 1_000_000,
-        input: '$0.15',
-        output: '$0.60',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
-      },
-      tools: ['web_search'],
     },
   ],
 }
