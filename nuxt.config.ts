@@ -5,6 +5,9 @@ import { providers, defaultModel } from './providers'
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: true },
+  features: {
+    devLogs: true,
+  },
   nitro: {
     preset: 'cloudflare_module',
     experimental: {
@@ -40,7 +43,7 @@ export default defineNuxtConfig({
     },
     pwa: {
       devOptions: {
-        enabled: true,
+        enabled: false,
         suppressWarnings: true,
         navigateFallback: '/',
         type: 'module',
@@ -48,7 +51,6 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
-    baseUrl: '',
     encryptionHashids: '',
     encryptionKey: '',
     resendApiKey: '',

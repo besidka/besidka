@@ -32,7 +32,7 @@ export function useServerAuth() {
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
-    baseURL: config.baseUrl || getRequestURL(useEvent()).origin,
+    baseURL: getRequestURL(useEvent()).origin,
     advanced: {
       database: {
         useNumberId: true,

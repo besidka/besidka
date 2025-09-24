@@ -1,9 +1,9 @@
 {
 	"name": "besidka",
 	"type": "module",
-	"packageManager": "pnpm@10.13.1",
+	"packageManager": "pnpm@10.17.1",
 	"engines": {
-		"node": ">=20.0.0 <21.0.0"
+		"node": ">=22"
 	},
 	"scripts": {
 		"build": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt build",

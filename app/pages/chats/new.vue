@@ -18,11 +18,9 @@ definePageMeta({
   layout: 'chat',
 })
 
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'New Chat',
-  })
-}
+useSeoMeta({
+  title: 'New Chat',
+})
 
 const message = shallowRef<string>()
 const tools = shallowRef<Tools>([])

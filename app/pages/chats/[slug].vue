@@ -92,12 +92,10 @@ definePageMeta({
   layout: 'chat',
 })
 
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'New Chat',
-    robots: 'noindex, nofollow',
-  })
-}
+useSeoMeta({
+  title: 'New Chat',
+  robots: 'noindex, nofollow',
+})
 
 const route = useRoute()
 

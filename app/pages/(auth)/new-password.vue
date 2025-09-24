@@ -199,12 +199,10 @@ definePageMeta({
   layout: 'auth',
 })
 
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'Set a new password',
-    robots: 'noindex, nofollow',
-  })
-}
+useSeoMeta({
+  title: 'Set a new password',
+  robots: 'noindex, nofollow',
+})
 
 const { Validation } = useValidation()
 const { estimateTimeToCrack } = usePassword()
@@ -302,22 +300,21 @@ const timeToCrackHighlight = computed(() => {
 })
 
 const pending = shallowRef<boolean>(false)
+const { resetPassword } = useAuth()
 
 async function onSubmit() {
-  const { password } = data
+  pending.value = true
 
   try {
-    pending.value = true
-    await $fetch('/api/v1/auth/new-password', {
-      method: 'post',
-      body: {
-        password,
-        token: token.value,
+    await resetPassword({
+      newPassword: data.password,
+      fetchOptions: {
+        async onSuccess() {
+          useSuccessMessage('Password updated successfully!')
+          await navigateTo('/signin')
+        },
       },
     })
-
-    useSuccessMessage('Password updated successfully!')
-    navigateTo('/signin')
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)

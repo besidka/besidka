@@ -3,7 +3,6 @@ import Database from 'better-sqlite3'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 
 export const auth = betterAuth({
-  baseURL: 'http://localhost:3000',
   database: drizzleAdapter(new Database('database.sqlite'), {
     provider: 'sqlite',
     usePlural: true,

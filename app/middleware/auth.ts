@@ -1,14 +1,7 @@
 export default defineNuxtRouteMiddleware(async () => {
-  if (import.meta.server) {
-    return
+  const { loggedIn } = useAuth()
+
+  if (!loggedIn.value) {
+    return navigateTo('/signin')
   }
-
-  const { $auth } = useNuxtApp()
-  const { data: session } = await $auth.useSession(useFetch)
-
-  if (session.value) {
-    return
-  }
-
-  return navigateTo('/signin')
 })

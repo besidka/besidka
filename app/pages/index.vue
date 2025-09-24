@@ -6,9 +6,7 @@
   </div>
 </template>
 <script setup lang="ts">
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'Home',
-  })
-}
+useSeoMeta({
+  title: 'Home',
+})
 </script>
