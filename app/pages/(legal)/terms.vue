@@ -3,9 +3,7 @@
 </template>
 
 <script setup lang="ts">
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'Terms and Conditions',
-  })
-}
+useSeoMeta({
+  title: 'Terms and Conditions',
+})
 </script>

@@ -23,7 +23,7 @@
         tooltip-position="left"
       />
       <SidebarAuthCta />
-      <template v-if="session">
+      <template v-if="loggedIn">
         <LazySidebarNewChat />
         <UiButton
           to="/chats/history"
@@ -41,11 +41,8 @@
   </div>
 </template>
 <script setup lang="ts">
-const { $auth } = useNuxtApp()
-
-const { data: session } = await $auth.useSession(useFetch)
-
 const route = useRoute()
+const { loggedIn } = useAuth()
 const mounted = shallowRef<boolean>(false)
 const visible = shallowRef<boolean>(false)
 

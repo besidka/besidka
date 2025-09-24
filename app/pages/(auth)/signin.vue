@@ -136,11 +136,9 @@ definePageMeta({
   layout: 'auth',
 })
 
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'Sign In',
-  })
-}
+useSeoMeta({
+  title: 'Sign In',
+})
 
 const { Validation } = useValidation()
 
@@ -174,18 +172,23 @@ const data = shallowReactive<Data>({
   rememberMe: true,
 })
 
-const { $auth } = useNuxtApp()
+const { signIn } = useAuth()
 
 const pending = shallowRef<boolean>(false)
 
 async function socialSignIn(provider: 'google' | 'github') {
+  pending.value = true
+
   try {
-    pending.value = true
-    await $auth.signIn.social({
+    await signIn.social({
       provider,
+      callbackURL: '/chats/new',
+      fetchOptions: {
+        onSuccess() {
+          useSuccessMessage(`Successfully signed in with ${provider}`)
+        },
+      },
     })
-    useSuccessMessage(`Successfully signed in with ${provider}`)
-    await navigateTo('/chats/new')
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)
@@ -195,15 +198,20 @@ async function socialSignIn(provider: 'google' | 'github') {
 }
 
 async function onSubmit() {
-  try {
-    pending.value = true
-    await $fetch('/api/v1/auth/sign-in', {
-      method: 'post',
-      body: data,
-    })
+  pending.value = true
 
-    useSuccessMessage('Successfully signed in')
-    await navigateTo('/chats/new')
+  try {
+    await signIn.email({
+      email: data.email,
+      password: data.password,
+      rememberMe: data.rememberMe,
+      callbackURL: '/chats/new',
+      fetchOptions: {
+        onSuccess() {
+          useSuccessMessage('Successfully signed in')
+        },
+      },
+    })
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)

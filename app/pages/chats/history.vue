@@ -33,11 +33,9 @@
   </UiBubble>
 </template>
 <script setup lang="ts">
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'Chats History',
-  })
-}
+useSeoMeta({
+  title: 'Chats History',
+})
 
 const { data: chats, error } = await useFetch('/api/v1/chats/history')
 

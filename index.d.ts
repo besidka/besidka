@@ -3,7 +3,6 @@ import type { Providers } from './shared/types/providers.d'
 declare module 'nuxt/schema' {
 
   interface RuntimeConfig {
-    baseUrl: string
     drizzleDebug?: boolean
     encryptionHashids: string
     encryptionKey: string

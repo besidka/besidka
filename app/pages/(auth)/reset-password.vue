@@ -61,13 +61,12 @@ definePageMeta({
   layout: 'auth',
 })
 
-if (import.meta.server) {
-  useSeoMeta({
-    title: 'Reset Password',
-  })
-}
+useSeoMeta({
+  title: 'Reset Password',
+})
 
 const { Validation } = useValidation()
+const { forgetPassword } = useAuth()
 
 const form = ref<InstanceType<typeof UiForm> | null>()
 
@@ -78,18 +77,20 @@ const data = shallowReactive<Data>({
 const pending = shallowRef<boolean>(false)
 
 async function onSubmit() {
+  pending.value = true
+
   try {
-    pending.value = true
-
-    await $fetch('/api/v1/auth/reset-password', {
-      method: 'post',
-      body: data,
+    await forgetPassword({
+      email: data.email,
+      fetchOptions: {
+        async onSuccess() {
+          useSuccessMessage(
+            'If an account with that email exists, we have sent you reset instructions. Please check your inbox.',
+          )
+          await navigateTo('/signin')
+        },
+      },
     })
-
-    useSuccessMessage(
-      'If an account with that email exists, we have sent you reset instructions. Please check your inbox.',
-    )
-    await navigateTo('/signin')
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)

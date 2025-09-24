@@ -1,5 +1,5 @@
 <template>
-  <LazySidebarSubmenu v-if="session">
+  <LazySidebarSubmenu v-if="loggedIn">
     <template #trigger>
       <UiButton
         ghost
@@ -18,6 +18,7 @@
       :icon-only="true"
       title="Sign out"
       circle
+      :disabled="pending"
       @click="signOut"
     />
     <SidebarThemeSwitcher
@@ -38,7 +39,7 @@
     <UiButton
       mode="accent"
       to="/signin"
-      :disabled="$route.path === '/signin'"
+      :disabled="$route.path === '/signin' || pending"
       icon-name="lucide:log-in"
       :icon-only="true"
       title="Sign in"
@@ -55,22 +56,22 @@
   </template>
 </template>
 <script setup lang="ts">
-const { $auth } = useNuxtApp()
+const $auth = useAuth()
+const { loggedIn } = $auth
 
-const { data: session } = await $auth.useSession(useFetch)
+const pending = shallowRef<boolean>(false)
 
 async function signOut() {
+  pending.value = true
+
   try {
     await $auth.signOut({
-      fetchOptions: {
-        onSuccess() {
-          navigateTo('/signin')
-        },
-      },
+      redirectTo: '/signin',
     })
   } catch (exception: any) {
-    useErrorMessage(exception.statusMessage)
     throw createError(exception)
+  } finally {
+    pending.value = false
   }
 }
 </script>

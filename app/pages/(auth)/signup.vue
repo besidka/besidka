@@ -343,18 +343,22 @@ const timeToCrackHighlight = computed(() => {
   }
 })
 
-const { $auth } = useNuxtApp()
+const { signIn, signUp } = useAuth()
 
 const pending = shallowRef<boolean>(false)
 
 async function socialSignIn(provider: 'google' | 'github') {
   try {
     pending.value = true
-    await $auth.signIn.social({
+    await signIn.social({
       provider,
+      callbackURL: '/chats/new',
+      fetchOptions: {
+        onSuccess() {
+          useSuccessMessage(`Successfully signed in with ${provider}`)
+        },
+      },
     })
-    useSuccessMessage(`Successfully signed in with ${provider}`)
-    await navigateTo('/chats/new')
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)
@@ -364,21 +368,20 @@ async function socialSignIn(provider: 'google' | 'github') {
 }
 
 async function onSubmit() {
-  const { name, email, password } = data
+  pending.value = true
 
   try {
-    pending.value = true
-    await $fetch('/api/v1/auth/sign-up', {
-      method: 'post',
-      body: {
-        name,
-        email,
-        password,
+    await signUp.email({
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      callbackURL: '/signin',
+      fetchOptions: {
+        onSuccess() {
+          useSuccessMessage('Account created successfully! Please check your email to confirm your account.')
+        },
       },
     })
-
-    useSuccessMessage('Account created successfully! Please check your email to confirm your account.')
-    navigateTo('/signin')
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     throw createError(exception)
