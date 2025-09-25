@@ -172,7 +172,7 @@ const data = shallowReactive<Data>({
   rememberMe: true,
 })
 
-const { signIn } = useAuth()
+const { signIn, errorCodes: _errorCodes } = useAuth()
 
 const pending = shallowRef<boolean>(false)
 
@@ -200,23 +200,27 @@ async function socialSignIn(provider: 'google' | 'github') {
 async function onSubmit() {
   pending.value = true
 
-  try {
-    await signIn.email({
-      email: data.email,
-      password: data.password,
-      rememberMe: data.rememberMe,
-      callbackURL: '/chats/new',
-      fetchOptions: {
-        onSuccess() {
-          useSuccessMessage('Successfully signed in')
-        },
+  const { error } = await signIn.email({
+    email: data.email,
+    password: data.password,
+    rememberMe: data.rememberMe,
+    callbackURL: '/chats/new',
+    fetchOptions: {
+      onSuccess() {
+        useSuccessMessage('Successfully signed in')
       },
-    })
-  } catch (exception: any) {
-    useErrorMessage(exception.statusMessage)
-    throw createError(exception)
-  } finally {
-    pending.value = false
+    },
+  })
+
+  if (error) {
+    useErrorMessage(error.message)
+    // if (error.code === errorCodes.EMAIL_NOT_VERIFIED) {
+    //   useErrorMessage('Please verify your email before signing in.')
+    // } else {
+    //   useErrorMessage(error.message)
+    // }
   }
+
+  pending.value = false
 }
 </script>

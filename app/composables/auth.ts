@@ -1,3 +1,5 @@
+// https://github.com/atinux/nuxthub-better-auth/blob/main/app/composables/auth.ts
+
 import type {
   ClientOptions,
   InferSessionFromClient,
@@ -26,17 +28,13 @@ export function useAuth() {
 
     sessionFetching.value = true
 
-    const { data } = await client.useSession(useFetch)
+    const { data } = await client.getSession({
+      fetchOptions: {
+        headers,
+      },
+    })
 
-    session.value = data.value?.session || null
-
-    // if (import.meta.server) {
-    //   const { data } = await client.useSession(useFetch)
-
-    //   session.value = data.value?.session || null
-    // } else if (import.meta.client) {
-    //   session.value = client.useSession()
-    // }
+    session.value = data?.session || null
 
     const userDefaults = {
       image: null,
@@ -46,8 +44,8 @@ export function useAuth() {
       banExpires: null,
     }
     // @ts-expect-error
-    user.value = data.value?.user
-      ? Object.assign({}, userDefaults, data.value.user)
+    user.value = data?.user
+      ? Object.assign({}, userDefaults, data.user)
       : null
     sessionFetching.value = false
 
