@@ -195,8 +195,10 @@ interface Rule extends ValidationRule {
 }
 
 definePageMeta({
-  middleware: 'guest',
   layout: 'auth',
+  auth: {
+    only: 'guest',
+  },
 })
 
 useSeoMeta({

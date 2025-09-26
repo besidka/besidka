@@ -6,6 +6,12 @@ import type {
 } from 'better-auth/client'
 import type { RouteLocationRaw } from 'vue-router'
 import { createAuthClient } from 'better-auth/vue'
+import { defu } from 'defu'
+
+interface RuntimeAuthConfig {
+  redirectUserTo: RouteLocationRaw | string
+  redirectGuestTo: RouteLocationRaw | string
+}
 
 export function useAuth() {
   const headers = import.meta.server ? useRequestHeaders() : undefined
@@ -17,39 +23,50 @@ export function useAuth() {
     },
   })
 
+  const options = defu(
+    useRuntimeConfig().public.auth as Partial<RuntimeAuthConfig>,
+    {
+      redirectUserTo: '/chats/new',
+      redirectGuestTo: '/signin',
+    },
+  )
   const session = useState<InferSessionFromClient<ClientOptions> | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
   const sessionFetching = import.meta.server ? ref(false) : useState('auth:sessionFetching', () => false)
 
-  const fetchSession = async () => {
+  async function fetchSession() {
     if (sessionFetching.value) {
       return
     }
 
     sessionFetching.value = true
 
-    const { data } = await client.getSession({
-      fetchOptions: {
+    try {
+      const data = await $fetch('/api/auth/get-session', {
         headers,
-      },
-    })
+      })
 
-    session.value = data?.session || null
+      // @ts-expect-error
+      session.value = data?.session || null
+      // @ts-expect-error
+      user.value = data?.user
+      // @ts-expect-error
+        ? defu(data.user, {
+          image: null,
+          role: null,
+          banReason: null,
+          banned: null,
+          banExpires: null,
+        })
+        : null
 
-    const userDefaults = {
-      image: null,
-      role: null,
-      banReason: null,
-      banned: null,
-      banExpires: null,
+      return data
+    } catch {
+      session.value = null
+      user.value = null
+    } finally {
+      sessionFetching.value = false
     }
-    // @ts-expect-error
-    user.value = data?.user
-      ? Object.assign({}, userDefaults, data.user)
-      : null
-    sessionFetching.value = false
-
-    return data
   }
 
   if (import.meta.client) {
@@ -84,6 +101,7 @@ export function useAuth() {
         },
       })
     },
+    options,
     fetchSession,
     client,
   }

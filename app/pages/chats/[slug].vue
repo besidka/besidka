@@ -29,7 +29,7 @@
             class="chat-image avatar rounded-full"
             :class="{
               'avatar-placeholder':
-                m.role === 'assistant' || !session?.user.image,
+                m.role === 'assistant' || !user?.image,
                 'max-sm:hidden': m.role === 'assistant',
             }"
           >
@@ -41,9 +41,9 @@
               />
               <template v-else>
                 <img
-                  v-if="session?.user.image"
-                  :alt="session.user.name"
-                  :src="session.user.image"
+                  v-if="user?.image"
+                  :alt="user.name"
+                  :src="user.image"
                 >
                 <Icon v-else name="lucide:user-round" />
               </template>
@@ -88,8 +88,10 @@
 </template>
 <script setup lang="ts">
 definePageMeta({
-  middleware: 'auth',
   layout: 'chat',
+  auth: {
+    only: 'user',
+  },
 })
 
 useSeoMeta({
@@ -128,7 +130,7 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const { data: session } = await useLazyFetch('/api/v1/auth/session')
+const { user } = useAuth()
 
 const {
   messagesContainer,

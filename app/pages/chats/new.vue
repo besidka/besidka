@@ -14,8 +14,10 @@
 import type { Tools } from '#shared/types/chats.d'
 
 definePageMeta({
-  middleware: 'auth',
   layout: 'chat',
+  auth: {
+    only: 'user',
+  },
 })
 
 useSeoMeta({

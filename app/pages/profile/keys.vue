@@ -28,7 +28,9 @@
 </template>
 <script setup lang="ts">
 definePageMeta({
-  middleware: 'auth',
+  auth: {
+    only: 'user',
+  },
 })
 
 useSeoMeta({

@@ -33,6 +33,12 @@
   </UiBubble>
 </template>
 <script setup lang="ts">
+definePageMeta({
+  auth: {
+    only: 'user',
+  },
+})
+
 useSeoMeta({
   title: 'Chats History',
 })
