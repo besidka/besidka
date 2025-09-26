@@ -6,7 +6,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: true },
   features: {
-    devLogs: true,
+    // devLogs: true,
   },
   nitro: {
     preset: 'cloudflare_module',
@@ -66,6 +66,8 @@ export default defineNuxtConfig({
       defaultModel,
       // @ts-expect-error
       providers,
+      redirectUserTo: '/chats/new',
+      redirectGuestTo: '/signin',
     },
   },
   colorMode: {

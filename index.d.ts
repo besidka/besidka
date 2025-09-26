@@ -20,6 +20,8 @@ declare module 'nuxt/schema' {
     baseUrl: string
     defaultModel: string
     providers: Providers
+    redirectUserTo: string
+    redirectGuestTo: string
   }
 
   interface AppConfigInput {
