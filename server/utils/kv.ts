@@ -1,3 +1,5 @@
+import type { KVNamespace } from '@cloudflare/workers-types'
+
 export function useKV() {
   const { KV } = useEvent().context.cloudflare.env
 
@@ -5,5 +7,5 @@ export function useKV() {
     throw createError(`KV not found in ENV: KV`)
   }
 
-  return KV
+  return KV as KVNamespace
 }
