@@ -43,6 +43,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return
     }
 
-    return navigateTo(redirectGuestTo)
+    if (to.meta.auth?.only === 'user') {
+      return navigateTo(redirectGuestTo)
+    }
   }
 })
