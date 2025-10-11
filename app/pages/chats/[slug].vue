@@ -83,6 +83,7 @@
     :stopped="isStopped"
     :stop="stop"
     :regenerate="regenerate"
+    :display-regenerate="displayRegenerate"
     @submit="submit"
   />
 </template>
@@ -148,6 +149,7 @@ const {
   isStopped,
   stop,
   regenerate,
+  displayRegenerate,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()

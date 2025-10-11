@@ -78,31 +78,33 @@
               @click="toggleWebSearch"
             />
           </div>
-          <div>
+          <div class="flex items-center gap-2">
+            <ClientOnly>
+              <UiButton
+                v-show="pending"
+                mode="accent"
+                soft
+                circle
+                title="Stop"
+                icon-name="lucide:pause"
+                icon-only
+                tooltip-position="left"
+                @click="stop"
+              />
+              <UiButton
+                v-show="!pending && displayRegenerate"
+                mode="accent"
+                soft
+                circle
+                title="Regenerate"
+                icon-name="lucide:refresh-ccw"
+                icon-only
+                tooltip-position="left"
+                @click="regenerate"
+              />
+            </ClientOnly>
             <UiButton
-              v-show="pending"
-              mode="accent"
-              soft
-              circle
-              title="Stop"
-              icon-name="lucide:pause"
-              icon-only
-              tooltip-position="left"
-              @click="stop"
-            />
-            <UiButton
-              v-show="!pending && stopped"
-              mode="accent"
-              soft
-              circle
-              title="Regenerate"
-              icon-name="lucide:refresh-ccw"
-              icon-only
-              tooltip-position="left"
-              @click="regenerate"
-            />
-            <UiButton
-              v-show="!pending && !stopped"
+              v-show="!pending && !displayRegenerate"
               mode="accent"
               circle
               :disabled="!hasMessage"
@@ -127,6 +129,7 @@ defineProps<{
   visible?: boolean
   stop: () => void
   regenerate: () => void
+  displayRegenerate?: boolean
 }>()
 
 const emit = defineEmits<{

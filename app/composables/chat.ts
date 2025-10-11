@@ -5,7 +5,6 @@ import { Chat as ChatSdk } from '@ai-sdk/vue'
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
-  const { scrollInterval, scrollToBottom } = useChatScroll()
   const isStopped = shallowRef<boolean>(false)
   const input = useCookie<string>('chat_input', {
     default: () => '',
@@ -47,41 +46,44 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const messages = computed<UIMessage[]>(() => chatSdk.messages)
   const status = computed<ChatStatus>(() => chatSdk.status)
+  const lastMessage = computed<UIMessage | undefined>(() => {
+    return messages.value.at(-1)
+  })
   const isLoading = computed<boolean>(() => {
-    const lastMessage = messages.value.at(-1)
-
     return status.value === 'submitted'
       || (
         status.value === 'streaming'
-        && lastMessage?.role === 'assistant'
-        && !lastMessage?.parts?.length
+        && lastMessage.value?.role === 'assistant'
+        && !lastMessage.value?.parts?.length
+      )
+  })
+  const displayRegenerate = computed<boolean>(() => {
+    return isStopped.value
+      || (
+        !input.value
+        && (
+          lastMessage.value?.role === 'user'
+          || (
+            lastMessage.value?.role === 'assistant'
+            && (
+              !lastMessage.value?.parts?.length
+              || (
+                lastMessage.value?.parts?.length === 1
+                && lastMessage.value?.parts[0]?.type === 'step-start'
+              )
+            )
+          )
+        )
       )
   })
 
   onMounted(() => {
-    if ((chat?.messages?.length || 0) > 1) {
-      scrollToBottom()
-    } else if (
+    if (
       chat?.messages.length === 1
       || chat?.messages.pop()?.role === 'user'
     ) {
       chatSdk.regenerate()
     }
-  })
-
-  watch(status, (newStatus) => {
-    scrollInterval.value && clearInterval(scrollInterval.value)
-
-    scrollToBottom()
-
-    if (newStatus !== 'streaming') {
-      return
-    }
-
-    scrollInterval.value = setInterval(scrollToBottom, 1000)
-  }, {
-    immediate: false,
-    flush: 'post',
   })
 
   useSetChatTitle(chat.title)
@@ -105,5 +107,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     tools,
     status,
     isLoading,
+    displayRegenerate,
   }
 }
