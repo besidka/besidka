@@ -81,7 +81,7 @@
 		"@vue/test-utils": "^2.4.6",
 		"better-sqlite3": "^12.4.1",
 		"conventional-changelog-atom": "^5.0.0",
-		"happy-dom": "^17.6.3",
+		"happy-dom": "^20.0.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.2",
 		"nitro-cloudflare-dev": "^0.2.2",
