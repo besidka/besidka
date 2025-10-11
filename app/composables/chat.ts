@@ -6,8 +6,10 @@ import { Chat as ChatSdk } from '@ai-sdk/vue'
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const { scrollInterval, scrollToBottom } = useChatScroll()
-  const input = shallowRef<string>('')
   const isStopped = shallowRef<boolean>(false)
+  const input = useCookie<string>('chat_input', {
+    default: () => '',
+  })
 
   chat = toValue(chat)
 

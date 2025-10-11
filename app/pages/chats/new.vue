@@ -24,7 +24,9 @@ useSeoMeta({
   title: 'New Chat',
 })
 
-const message = shallowRef<string>()
+const message = useCookie<string>('chat_input', {
+  default: () => '',
+})
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
 
