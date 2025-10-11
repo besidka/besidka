@@ -9,7 +9,8 @@ export function useServerAuth() {
     return _auth
   }
 
-  const config = useRuntimeConfig(useEvent())
+  const event = useEvent()
+  const config = useRuntimeConfig(event)
   const db = useDb()
   const kv = useKV()
   const dataKey = 'auth'
@@ -32,7 +33,7 @@ export function useServerAuth() {
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
-    baseURL: getRequestURL(useEvent()).origin,
+    baseURL: getRequestURL(event).origin,
     advanced: {
       database: {
         useNumberId: true,
