@@ -1,6 +1,6 @@
 <template>
   <div
-    class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-hidden"
+    class="mockup-browser w-full my-4 bg-base-100/50 dark:bg-base-100/50 shadow overflow-x-hidden overscroll-contain"
   >
     <div class="flex items-center justify-between">
       <div class="mockup-browser-toolbar"/>
