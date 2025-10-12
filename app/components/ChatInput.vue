@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed z-50 max-sm:bottom-8 bottom-0 sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
+    class="fixed z-50 max-sm:bottom-8 bottom-[env(safe-area-inset-bottom)] sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
     :class="{
       'translate-y-1/2': !visible,
       'translate-y-0': visible,
