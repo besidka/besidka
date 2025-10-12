@@ -3,22 +3,19 @@
     ref="messagesContainer"
     class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-72 no-scrollbar"
   >
-    <!-- Status: <strong>{{ status }}</strong> -->
     <div
-      v-for="m in messages"
+      v-for="{
+        message: m,
+        textParts,
+        hasSources: msgHasSources,
+      } in messages"
       :key="m.id"
     >
-      <!-- Message ID: <strong>{{ m.id }}</strong> -->
       <div
-        v-for="(part, index) in m.parts"
-        :key="index"
+        v-for="{ part, originalIndex } in textParts"
+        :key="`part-${originalIndex}`"
       >
-        <!-- Part type: <strong>{{ part.type }}</strong> -->
-        <!-- <template v-if="part.type === 'tool-invocation'">
-          State: <strong>{{ part.toolInvocation.state }}</strong>
-        </template> -->
         <div
-          v-if="part.type === 'text'"
           class="chat"
           :class="{
             'chat-start': m.role === 'assistant',
@@ -55,14 +52,18 @@
                 ? $sanitizeHtml(part.text)
                 : part.text
               "
-              :cache-key="`message-${m.id}-part-${index}`"
+              :cache-key="`message-${m.id}-part-${originalIndex}`"
               :components="components"
               :parser-options="{ highlight: false }"
               class="chat-markdown"
               :unwrap="getUnwrap(m.role)"
             />
             <LazyChatSources
-              v-if="status === 'ready'"
+              v-if="
+                m.role === 'assistant'
+                  && msgHasSources
+                  && status === 'ready'
+              "
               :message="m"
             />
           </UiBubble>
@@ -141,6 +142,7 @@ const {
 
 const {
   messages,
+  messagesLength,
   input,
   submit,
   tools,
@@ -155,11 +157,13 @@ const {
 const { components, getUnwrap } = useChatFormat()
 
 const isChatInputVisible = computed(() => {
-  return messages.value.length === 1
-    || (messages.value.length > 1 && arrivedState.bottom)
+  return messagesLength.value === 1
+    || (messagesLength.value > 1 && arrivedState.bottom)
 })
 
 const isScrollToBottomVisible = computed<boolean>(() => {
-  return !arrivedState.bottom && messages.value.length > 1
+  return !arrivedState.bottom && messagesLength.value > 1
 })
 </script>
+
+```

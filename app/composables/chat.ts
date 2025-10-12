@@ -3,6 +3,15 @@ import type { Chat, Tools } from '#shared/types/chats.d'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
 
+export interface ProcessedMessage {
+  message: UIMessage
+  textParts: Array<{
+    part: Extract<UIMessage['parts'][number], { type: 'text' }>
+    originalIndex: number
+  }>
+  hasSources: boolean
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
@@ -44,11 +53,37 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
-  const messages = computed<UIMessage[]>(() => chatSdk.messages)
+  const rawMessages = computed<UIMessage[]>(() => chatSdk.messages)
   const status = computed<ChatStatus>(() => chatSdk.status)
-  const lastMessage = computed<UIMessage | undefined>(() => {
-    return messages.value.at(-1)
+
+  // Pre-process messages for rendering
+  const messages = computed<ProcessedMessage[]>(() => {
+    return rawMessages.value.map((message): ProcessedMessage => {
+      const textParts = message.parts
+        .map((part, index) => ({ part, originalIndex: index }))
+        .filter(({ part }) => part.type === 'text')
+        .map(({ part, originalIndex }) => ({
+          part: part as Extract<typeof part, { type: 'text' }>,
+          originalIndex,
+        }))
+
+      const hasSources = message.parts.some(
+        part => part.type === 'source-url',
+      )
+
+      return {
+        message,
+        textParts,
+        hasSources,
+      }
+    })
   })
+
+  const messagesLength = computed<number>(() => rawMessages.value.length)
+  const lastMessage = computed<UIMessage | undefined>(() => {
+    return rawMessages.value.at(-1)
+  })
+
   const isLoading = computed<boolean>(() => {
     return status.value === 'submitted'
       || (
@@ -99,6 +134,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   return {
     messages,
+    messagesLength,
     input,
     submit,
     stop,
