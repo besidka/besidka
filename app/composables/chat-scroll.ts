@@ -1,12 +1,7 @@
 export function useChatScroll() {
-  const messagesContainer = useState<HTMLDivElement | null>(
-    'messagesContainer',
-    () => null,
-  )
-
   const {
     measure, y, arrivedState, directions,
-  } = useScroll(messagesContainer, {
+  } = useWindowScroll({
     behavior: 'smooth',
     offset: {
       bottom: 200,
@@ -16,10 +11,14 @@ export function useChatScroll() {
   const interval = ref<NodeJS.Timeout | null>(null)
 
   watch(scrollDirectionToTop, () => {
-    interval.value && clearInterval(interval.value)
+    if (interval.value) clearInterval(interval.value)
   }, {
     immediate: false,
     flush: 'post',
+  })
+
+  onMounted(() => {
+    measure()
   })
 
   function scrollToBottom() {
@@ -30,7 +29,6 @@ export function useChatScroll() {
   }
 
   return {
-    messagesContainer,
     scrollToBottom,
     arrivedState,
     scrollInterval: interval,

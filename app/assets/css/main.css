@@ -129,13 +129,8 @@
 }
 
 @layer base {
-  html,
   body {
-    @apply w-full min-h-full;
-  }
-
-  body {
-    @apply font-display;
+    @apply w-full min-h-screen font-display;
   }
 
   strong {
@@ -285,6 +280,10 @@
 
 @utility no-scrollbar {
   @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+}
+
+@utility bottom-safe {
+  bottom: calc(env(safe-area-inset-bottom, 0));
 }
 
 .chat-markdown {

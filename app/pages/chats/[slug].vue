@@ -1,8 +1,5 @@
 <template>
-  <div
-    ref="messagesContainer"
-    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-72 no-scrollbar"
-  >
+  <div class="w-full max-w-4xl mx-auto pt-2 px-4 sm:px-24 pb-72 sm:pb-42">
     <div
       v-for="{
         message: m,
@@ -71,15 +68,11 @@
       </div>
     </div>
     <LazyChatLoader v-show="isLoading" />
-    <LazyChatScroll
-      v-show="isScrollToBottomVisible"
-      @click="scrollToBottom"
-    />
   </div>
   <ChatInput
     v-model:message="input"
     v-model:tools="tools"
-    :visible="isChatInputVisible"
+    :messages-length="messagesLength"
     :pending="isLoading"
     :stopped="isStopped"
     :stop="stop"
@@ -135,12 +128,6 @@ useSeoMeta({
 const { user } = useAuth()
 
 const {
-  messagesContainer,
-  scrollToBottom,
-  arrivedState,
-} = useChatScroll()
-
-const {
   messages,
   messagesLength,
   input,
@@ -155,15 +142,6 @@ const {
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()
-
-const isChatInputVisible = computed(() => {
-  return messagesLength.value === 1
-    || (messagesLength.value > 1 && arrivedState.bottom)
-})
-
-const isScrollToBottomVisible = computed<boolean>(() => {
-  return !arrivedState.bottom && messagesLength.value > 1
-})
 </script>
 
 ```

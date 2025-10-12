@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed max-sm:bottom-[env(safe-area-inset-bottom)] sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 max-sm:left-0 z-50"
+    class="fixed max-sm:bottom-safe sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 max-sm:left-0 z-50"
     :class="{
       'transition-transform duration-500 ease-out': !mounted,
       'max-sm:translate-y-0 sm:translate-x-0': visible,
@@ -9,7 +9,7 @@
     }"
   >
     <UiBubble
-      class="grid max-sm:grid-flow-col max-sm:auto-cols-fr max-sm:place-items-center gap-2 max-sm:!rounded-none sm:!rounded-full !p-2 max-sm:!pb-8"
+      class="grid max-sm:grid-flow-col max-sm:auto-cols-fr max-sm:place-items-center gap-2 max-sm:!rounded-none sm:!rounded-full !p-2 max-sm:!pb-[calc(var(--spacing)_*_4_+_env(safe-area-inset-bottom,0))]"
     >
       <UiButton
         to="/"

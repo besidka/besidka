@@ -1,16 +1,25 @@
 <template>
   <div
-    class="fixed z-50 max-sm:bottom-8 bottom-[env(safe-area-inset-bottom)] sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
+    class="fixed z-50 bottom-safe sm:left-1/2 sm:-translate-x-1/2 max-sm:inset-x-3 transition-transform duration-500 ease-in-out"
     :class="{
-      'translate-y-1/2': !visible,
-      'translate-y-0': visible,
+      [`
+        translate-y-[calc(100%-var(--spacing)_*_40)]
+        sm:translate-y-[calc(100%-var(--spacing)_*_20)]
+      `]:
+        visible && !isChatInputVisibleOnScroll,
+      'translate-y-0': visible && isChatInputVisibleOnScroll,
+      'max-sm:translate-y-24': !visible
     }"
     >
+    <LazyChatScroll
+      v-show="isScrollToBottomVisible"
+      @click="scrollToBottom"
+    />
     <UiBubble
       class="!pb-0 !rounded-b-none !rounded-t-[calc(var(--radius-xl)_+_var(--spacing)_*_2)] !bg-accent/20"
     >
       <div
-        class="p-1 pb-0 max-sm:pb-16 rounded-t-xl bg-base-100/80 dark:bg-base-100/80 shadow-lg"
+        class="p-1 pb-0 max-sm:pb-[calc(var(--spacing)_*_20_+_env(safe-area-inset-bottom,0))] rounded-t-xl bg-base-100/80 dark:bg-base-100/80 shadow-lg"
       >
         <textarea
           ref="textarea"
@@ -134,10 +143,10 @@
 <script setup lang="ts">
 import type { Tools } from '#shared/types/chats.d'
 
-defineProps<{
+const props = defineProps<{
   pending?: boolean
   stopped?: boolean
-  visible?: boolean
+  messagesLength: MaybeRefOrGetter<number>
   stop: () => void
   regenerate: () => void
   displayRegenerate?: boolean
@@ -147,11 +156,15 @@ const emit = defineEmits<{
   submit: []
 }>()
 
+const route = useRoute()
 const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
 const { providers } = getProviders()
 const { isWebSearchSupported } = useChatInput()
-const { scrollToBottom, arrivedState } = useChatScroll()
+const {
+  scrollToBottom,
+  arrivedState,
+} = useChatScroll()
 
 const message = defineModel<string>('message', {
   default: '',
@@ -192,6 +205,23 @@ const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
 })
 
+const isChatInputVisibleOnScroll = computed<boolean>(() => {
+  if (route.path === '/chats/new') {
+    return true
+  }
+
+  const len = toValue(props.messagesLength)
+
+  return len === 1
+    || (len > 1 && arrivedState.bottom)
+})
+
+const isScrollToBottomVisible = computed<boolean>(() => {
+  const len = toValue(props.messagesLength)
+
+  return !arrivedState.bottom && len > 1
+})
+
 function toggleWebSearch() {
   if (!isWebSearchEnabled.value) {
     tools.value = [...tools.value, 'web_search']
@@ -222,6 +252,22 @@ function sendMessage() {
 }
 
 function onFocus() {
-  !arrivedState.bottom && scrollToBottom()
+  if (!arrivedState.bottom) scrollToBottom()
 }
+
+const mounted = shallowRef<boolean>(false)
+const visible = shallowRef<boolean>(false)
+
+onMounted(() => {
+  setTimeout(() => {
+    visible.value = true
+  }, 100)
+  setTimeout(() => {
+    mounted.value = true
+  }, 600)
+})
+
+onBeforeUnmount(() => {
+  mounted.value = false
+})
 </script>

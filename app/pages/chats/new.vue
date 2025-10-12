@@ -3,7 +3,9 @@
   <ChatInput
     v-model:message="message"
     v-model:tools="tools"
-    visible
+    :messages-container="null"
+    :messages-length="0"
+    visible-on-scroll
     :pending="pending"
     :stop="() => {}"
     :regenerate="() => {}"
