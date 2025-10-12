@@ -1,6 +1,6 @@
 <template>
   <LazyBackgroundLogo />
-  <LazyChatInput
+  <ChatInput
     v-model:message="message"
     v-model:tools="tools"
     visible

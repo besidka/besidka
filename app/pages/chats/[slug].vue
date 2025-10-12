@@ -75,7 +75,7 @@
       @click="scrollToBottom"
     />
   </div>
-  <LazyChatInput
+  <ChatInput
     v-model:message="input"
     v-model:tools="tools"
     :visible="isChatInputVisible"
