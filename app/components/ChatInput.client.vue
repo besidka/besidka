@@ -13,8 +13,9 @@
         class="p-1 pb-0 max-sm:pb-16 rounded-t-xl bg-base-100/80 dark:bg-base-100/80 shadow-lg"
       >
         <textarea
-          v-model="message"
-          class="textarea textarea-ghost !bg-transparent w-lg max-w-full h-12 resize-none rounded-[calc(var(--radius-field))]"
+          ref="textarea"
+          v-model="input"
+          class="textarea textarea-ghost !bg-transparent w-lg max-w-full h-12 max-h-[50dvh] rounded-[calc(var(--radius-field))] no-scrollbar resize-none"
           placeholder="Type your message here..."
           :disabled="pending"
           @keydown.enter.exact="handleEnter"
@@ -148,6 +149,9 @@ const message = defineModel<string>('message', {
 
 const tools = defineModel<Tools>('tools', {
   default: [],
+})
+const { textarea, input } = useTextareaAutosize({
+  input: message,
 })
 
 const hasMessage = computed<boolean>(() => {
