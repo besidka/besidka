@@ -1,7 +1,6 @@
 <template>
   <ClientOnly>
     <LazyPwaRefresher v-if="$pwa?.needRefresh" />
-    <LazyPageReloadOnSwipe v-if="$device.isMobileOrTablet" />
   </ClientOnly>
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
