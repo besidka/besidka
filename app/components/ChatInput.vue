@@ -22,17 +22,23 @@
           @focus="onFocus"
         />
         <div class="flex items-center justify-between p-2">
-          <div class="flex items-center gap-2">
+          <div
+            class="grid sm:flex sm:items-center gap-2"
+          >
             <details
               ref="modelDropdown"
-              class="dropdown dropdown-top"
+              class="group dropdown dropdown-top"
             >
               <summary
                 aria-label="Select model"
-                class="btn btn-ghost btn-sm [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
+                class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
               >
                 {{ getModelName(toValue(userModel)) }}
-                <Icon name="lucide:chevron-up" size="14" />
+                <Icon
+                  name="lucide:chevron-down"
+                  size="14"
+                  class="group-open:scale-y-[-1]"
+                />
               </summary>
               <div
                 class="dropdown-content bg-base-100 rounded-box z-50 w-64 shadow-sm"
@@ -59,25 +65,29 @@
                 </ul>
               </div>
             </details>
-            <UiButton
-              v-if="isWebSearchSupported"
-              mode="accent"
-              :ghost="isWebSearchEnabled ? undefined : true"
-              circle
-              icon-name="lucide:globe"
-              :icon-size="16"
-              icon-only
-              :text="isWebSearchEnabled
-                ? 'Disable web search'
-                : 'Enable web search'
-              "
-              tooltip-position="top"
-              size="xs"
-              :class="{
-                'btn-active': isWebSearchEnabled,
-              }"
-              @click="toggleWebSearch"
-            />
+            <div class="max-sm:px-1 sm:contents">
+              <UiButton
+                v-if="isWebSearchSupported"
+                mode="accent"
+                :ghost="isWebSearchEnabled ? undefined : true"
+                :circle="!isWebSearchEnabled"
+                icon-name="lucide:globe"
+                :icon-size="16"
+                :icon-only="!isWebSearchEnabled"
+                :title="isWebSearchEnabled
+                  ? 'Disable web search'
+                  : 'Enable web search'
+                "
+                text="Search"
+                tooltip-position="top"
+                size="xs"
+                class="rounded-full"
+                :class="{
+                  'pl-[5px] btn-active': isWebSearchEnabled,
+                }"
+                @click="toggleWebSearch"
+              />
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <ClientOnly>

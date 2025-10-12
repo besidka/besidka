@@ -1,7 +1,7 @@
 <template>
   <div
     ref="messagesContainer"
-    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-68 no-scrollbar"
+    class="fixed z-10 inset-0 overflow-y-auto w-full max-w-4xl mx-auto pt-8 px-4 sm:px-24 pb-72 no-scrollbar"
   >
     <!-- Status: <strong>{{ status }}</strong> -->
     <div

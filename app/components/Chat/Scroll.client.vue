@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed z-20 bottom-38 sm:bottom-22 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
+    class="fixed z-20 bottom-40 sm:bottom-22 max-sm:right-4 sm:left-1/2 -translate-x-1/2 z-50"
   >
     <UiButton
       circle
