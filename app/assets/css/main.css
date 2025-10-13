@@ -95,6 +95,8 @@
 }
 
 @theme {
+  --breakpoint-xs: 24rem;
+
   --font-display: 'Nunito', sans-serif;
   --font-code: 'Atkinson Hyperlegible Mono', sans-serif;
 

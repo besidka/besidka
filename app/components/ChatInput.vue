@@ -30,9 +30,12 @@
           @keydown.enter.exact="handleEnter"
           @focus="onFocus"
         />
-        <div class="flex items-center justify-between p-2">
+        <div class="flex items-center justify-between gap-2 p-2">
           <div
-            class="grid sm:flex sm:items-center gap-2"
+            class="flex items-center gap-2"
+            :class="{
+              'max-xs:grid': isWebSearchEnabled
+            }"
           >
             <details
               ref="modelDropdown"
