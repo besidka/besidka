@@ -43,21 +43,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const { loggedIn } = useAuth()
-const mounted = shallowRef<boolean>(false)
-const visible = shallowRef<boolean>(false)
-
-onMounted(() => {
-  setTimeout(() => {
-    visible.value = true
-  }, 100)
-  setTimeout(() => {
-    mounted.value = true
-  }, 600)
-})
-
-onBeforeUnmount(() => {
-  mounted.value = false
-})
+const { mounted, visible } = useAnimateAppear()
 
 const isHomePage = computed(() => route.fullPath === '/')
 </script>

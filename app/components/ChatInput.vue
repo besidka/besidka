@@ -258,19 +258,5 @@ function onFocus() {
   if (!arrivedState.bottom) scrollToBottom()
 }
 
-const mounted = shallowRef<boolean>(false)
-const visible = shallowRef<boolean>(false)
-
-onMounted(() => {
-  setTimeout(() => {
-    visible.value = true
-  }, 100)
-  setTimeout(() => {
-    mounted.value = true
-  }, 600)
-})
-
-onBeforeUnmount(() => {
-  mounted.value = false
-})
+const { visible } = useAnimateAppear()
 </script>

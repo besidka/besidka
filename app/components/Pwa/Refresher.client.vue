@@ -1,9 +1,12 @@
 <template>
   <UiAlert
-    class="transition-transform -translate-y-full duration-500 ease-in"
+    class="-translate-y-full"
     :class="{
-      'translate-y-0': mounted,
+      'transition-transform duration-500 ease-in': !mounted,
+      'translate-y-0': visible,
+      '!hidden': !isVisible,
     }"
+    @click="isVisible = false"
   >
     <span>
       The app has been updated. Please refresh it to see the latest changes.
@@ -19,11 +22,6 @@
 </template>
 
 <script setup lang="ts">
-const mounted = shallowRef<boolean>(false)
-
-onMounted(() => {
-  setTimeout(() => {
-    mounted.value = true
-  }, 2000)
-})
+const { mounted, visible } = useAnimateAppear()
+const isVisible = shallowRef<boolean>(true)
 </script>
