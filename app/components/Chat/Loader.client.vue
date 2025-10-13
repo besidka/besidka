@@ -3,11 +3,11 @@
     <div
       class="chat-image avatar avatar-placeholder rounded-full overflow-visible"
     >
-      <div class="w-10 rounded-full bg-base-100">
+      <div class="w-10 rounded-full bg-base-100 dark:bg-base-content">
         <Logo
           short
-          spinning
-          class="size-6 motion-safe:animate-zoom"
+          animate
+          class="size-6 text-text dark:text-base-100 motion-safe:animate-zoom"
         />
       </div>
     </div>
