@@ -26,7 +26,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const { loggedIn, options, fetchSession } = useAuth()
   const { only, redirectUserTo, redirectGuestTo } = defu(to.meta?.auth, options)
 
-  if (import.meta.client && !loggedIn) {
+  if (import.meta.client && !loggedIn.value) {
     await fetchSession()
   }
 

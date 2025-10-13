@@ -34,6 +34,12 @@ export function useServerAuth() {
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
     baseURL: getRequestURL(event).origin,
+    session: {
+      cookieCache: {
+        enabled: true,
+        maxAge: 60 * 5, // 5 minutes cache
+      },
+    },
     advanced: {
       database: {
         useNumberId: true,
