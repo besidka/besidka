@@ -27,11 +27,11 @@
                 'max-sm:hidden': m.role === 'assistant',
             }"
           >
-            <div class="w-10 rounded-full bg-base-100 dark:bg-base-content">
+            <div class="w-10 rounded-full bg-base-100 dark:bg-base-content text-text dark:text-base-100">
               <Logo
                 v-if="m.role === 'assistant'"
                 short
-                class="size-6 text-text dark:text-base-100"
+                class="size-6"
               />
               <template v-else>
                 <img
