@@ -3,9 +3,6 @@ export function useChatScroll() {
     measure, y, arrivedState, directions,
   } = useWindowScroll({
     behavior: 'smooth',
-    offset: {
-      bottom: 200,
-    },
   })
   const { top: scrollDirectionToTop } = toRefs(directions)
   const interval = ref<NodeJS.Timeout | null>(null)
@@ -17,16 +14,25 @@ export function useChatScroll() {
     flush: 'post',
   })
 
-  onMounted(() => {
-    measure()
-  })
-
   function scrollToBottom() {
     if (import.meta.server) return
 
     measure()
-    y.value += Number.MAX_SAFE_INTEGER
+    nextTick(() => {
+      y.value += Number.MAX_SAFE_INTEGER
+    })
   }
+
+  onMounted(() => {
+    // It's not a bug, it's a feature
+    // Needed especially for the PWA mode
+    // Scroll to bottom on page load works only after 2 animation frames
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToBottom()
+      })
+    })
+  })
 
   return {
     scrollToBottom,
