@@ -300,7 +300,7 @@
 
   ol,
   ul {
-    @apply list my-4 pl-4 marker:text-accent;
+    @apply list my-4 ml-8 marker:text-accent;
   }
 
   ol {
@@ -311,8 +311,20 @@
     @apply list-disc;
   }
 
+  ol[start],
+  ul[start] {
+    & > li {
+      @apply font-semibold;
+    }
+    
+    & + ul,
+    & + li {
+      @apply ml-12;
+    }
+  }
+
   li {
-    @apply pl-2;
+    @apply pl-1;
   }
 
   thead {
