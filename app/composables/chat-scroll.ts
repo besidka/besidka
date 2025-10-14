@@ -34,6 +34,10 @@ export function useChatScroll() {
     })
   })
 
+  const nuxtApp = useNuxtApp()
+
+  nuxtApp.hook('chat:submit', scrollToBottom)
+
   return {
     scrollToBottom,
     arrivedState,

@@ -122,8 +122,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   useSetChatTitle(chat.title)
 
+  const nuxtApp = useNuxtApp()
+
   function submit() {
-    chatSdk.sendMessage({ text: input.value })
+    const payload = { text: input.value }
+
+    chatSdk.sendMessage(payload)
+    nuxtApp.callHook('chat:submit', payload)
   }
 
   function stop() {
