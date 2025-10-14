@@ -85,11 +85,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const isLoading = computed<boolean>(() => {
+    // TODO: investigate why step-start and reasoning parts are here
+    // even when disabled in server/api/v1/chats/[slug]/index.post.ts
+    // console.log(
+    //   JSON.parse(JSON.stringify(lastMessage.value?.parts)),
+    // )
     return status.value === 'submitted'
       || (
         status.value === 'streaming'
         && lastMessage.value?.role === 'assistant'
-        && !lastMessage.value?.parts?.length
+        && !lastMessage.value.parts?.some(part => part.type === 'text')
       )
   })
   const displayRegenerate = computed<boolean>(() => {
@@ -100,13 +105,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           lastMessage.value?.role === 'user'
           || (
             lastMessage.value?.role === 'assistant'
-            && (
-              !lastMessage.value?.parts?.length
-              || (
-                lastMessage.value?.parts?.length === 1
-                && lastMessage.value?.parts[0]?.type === 'step-start'
-              )
-            )
+            && !lastMessage.value.parts?.some(part => part.type === 'text')
           )
         )
       )
