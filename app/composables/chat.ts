@@ -114,7 +114,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   onMounted(() => {
     if (
       chat?.messages.length === 1
-      || chat?.messages.pop()?.role === 'user'
+      || chat?.messages.at(-1)?.role === 'user'
     ) {
       chatSdk.regenerate()
     }

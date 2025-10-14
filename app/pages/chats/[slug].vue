@@ -143,5 +143,3 @@ const {
 
 const { components, getUnwrap } = useChatFormat()
 </script>
-
-```
