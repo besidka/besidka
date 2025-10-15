@@ -134,7 +134,7 @@ export default defineNuxtConfig({
   },
   icon: {
     serverBundle: {
-      collections: ['lucide'],
+      remote: 'jsdelivr',
     },
   },
   future: {
