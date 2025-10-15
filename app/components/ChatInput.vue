@@ -181,7 +181,7 @@ const { textarea, input } = useTextareaAutosize({
 })
 
 const hasMessage = computed<boolean>(() => {
-  return !!message.value.trim().length
+  return !!input.value?.trim().length
 })
 
 const modelDropdown = useTemplateRef<HTMLDetailsElement>('modelDropdown')
