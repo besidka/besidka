@@ -177,9 +177,6 @@ importers:
       nitropack:
         specifier: ^2.12.7
         version: 2.12.7(@netlify/blobs@9.1.2)(better-sqlite3@12.4.1)(drizzle-orm@0.44.6(@cloudflare/workers-types@4.20251011.0)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.4.1)(kysely@0.28.8))
-      rollup-plugin-visualizer:
-        specifier: ^6.0.4
-        version: 6.0.4(rollup@4.52.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

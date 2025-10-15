@@ -1,5 +1,4 @@
 import tailwindcss from '@tailwindcss/vite'
-import { visualizer } from 'rollup-plugin-visualizer'
 import { providers, defaultModel } from './providers'
 
 export default defineNuxtConfig({
@@ -149,7 +148,6 @@ export default defineNuxtConfig({
     },
     plugins: [
       tailwindcss(),
-      visualizer(),
     ],
   },
   css: ['./assets/css/main.css'],
