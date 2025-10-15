@@ -1,18 +1,20 @@
+import type { H3Event } from 'h3'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import * as schema from '../db/schema'
 
 let _auth: ReturnType<typeof betterAuth>
 
-export function useServerAuth() {
+export function useServerAuth(event?: H3Event) {
   if (_auth) {
     return _auth
   }
 
-  const event = useEvent()
+  event = event ?? useEvent()
+
   const config = useRuntimeConfig(event)
-  const db = useDb()
-  const kv = useKV()
+  const db = useDb(event)
+  const kv = useKV(event)
   const dataKey = 'auth'
 
   const { send: sendEmail } = useEmail()
@@ -33,7 +35,7 @@ export function useServerAuth() {
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
-    baseURL: getRequestURL(event).origin,
+    baseURL: getBaseURL(event),
     session: {
       cookieCache: {
         enabled: true,
@@ -96,4 +98,21 @@ export function useServerAuth() {
   })
 
   return _auth
+}
+
+function getBaseURL(event: H3Event): string {
+  let baseURL = useRuntimeConfig(event).public.baseUrl
+
+  if (!baseURL) {
+    try {
+      baseURL = getRequestURL(event).origin
+    } catch (_exception) {
+      if (import.meta.dev) {
+        // eslint-disable-next-line no-console
+        console.log('Failed to get base URL:', _exception)
+      }
+    }
+  }
+
+  return baseURL
 }
