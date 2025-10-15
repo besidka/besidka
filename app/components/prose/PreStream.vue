@@ -89,18 +89,28 @@ const codeLines = computed<number>(() => {
 })
 
 const lang = computed<string>(() => {
+  let language = props.language
+
   switch (props.language) {
     case 'vue':
-      return 'vue'
+      language = 'vue'
+      break
     case 'javascript':
-      return 'js'
+      language = 'js'
+      break
     case 'typescript':
-      return 'ts'
+      language = 'ts'
+      break
     case 'css':
-      return 'css'
+      language = 'css'
+      break
     default:
-      return props.language
+      language = props.language
   }
+
+  const loadedLanguages = highlighter.getLoadedLanguages()
+
+  return loadedLanguages.includes(language) ? language : 'text'
 })
 
 const key = computed<string>(() => {
@@ -141,15 +151,21 @@ onMounted(() => {
   timer.value = setInterval(() => {
     if (props.code.length !== savedCodeState.value.length) {
       savedCodeState.value = props.code
+
       return
     }
 
     updateExpandedState()
-    timer.value && clearTimeout(timer.value)
+
+    if (timer.value) {
+      clearTimeout(timer.value)
+    }
   }, 1000)
 })
 
 onBeforeUnmount(() => {
-  timer.value && clearTimeout(timer.value)
+  if (timer.value) {
+    clearTimeout(timer.value)
+  }
 })
 </script>
