@@ -32,7 +32,9 @@ export function useAuth() {
   )
   const session = useState<InferSessionFromClient<ClientOptions> | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
-  const sessionFetching = import.meta.server ? ref(false) : useState('auth:sessionFetching', () => false)
+  const sessionFetching = import.meta.server
+    ? shallowRef(false)
+    : useState('auth:sessionFetching', () => false)
 
   async function fetchSession() {
     if (sessionFetching.value) {
@@ -42,15 +44,24 @@ export function useAuth() {
     sessionFetching.value = true
 
     try {
-      const data = await $fetch('/api/auth/get-session', {
-        headers,
-      })
+      let data: Awaited<ReturnType<typeof client.getSession>>['data']
 
-      // @ts-expect-error
+      if (import.meta.server) {
+        data = await $fetch('/api/auth/get-session', {
+          headers,
+        })
+      } else {
+        const result = await client.getSession({
+          fetchOptions: {
+            headers,
+          },
+        })
+
+        data = result.data
+      }
+
       session.value = data?.session || null
-      // @ts-expect-error
       user.value = data?.user
-      // @ts-expect-error
         ? defu(data.user, {
           image: null,
           role: null,
@@ -80,7 +91,7 @@ export function useAuth() {
   return {
     session,
     user,
-    loggedIn: computed(() => !!session.value),
+    loggedIn: computed<boolean>(() => !!session.value),
     signIn: client.signIn,
     signUp: client.signUp,
     forgetPassword: client.forgetPassword,
