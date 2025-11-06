@@ -37,7 +37,7 @@
         v-if="pending"
         class="fixed z-[9999] inset-0 grid place-content-center background-gradient"
       >
-        <div class="flex flex-col gap-4 items-center">
+        <div class="flex flex-col gap-4 items-center z-10">
           <SvgoFaviconForAnimation
             short
             animate
@@ -64,15 +64,11 @@ const { setFavicon } = useThemeFavicon()
 const colorMode = useColorMode()
 const { isIos } = useDevice()
 
-const pending = useLocalStorage<boolean>('theme-reload-pending', false)
+const pending = shallowRef<boolean>(false)
 
 onBeforeMount(() => {
   setFavicon(colorMode.preference as FaviconTheme)
   setThemeColorMeta(colorMode.preference as FaviconTheme)
-
-  if (pending.value) {
-    pending.value = false
-  }
 })
 
 function prefersColorSchemeHandler(event: MediaQueryListEvent) {
