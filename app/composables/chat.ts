@@ -40,8 +40,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         }
       },
     }),
-    onFinish() {
-      isStopped.value = false
+    onFinish({ isAbort, isDisconnect, isError }) {
+      if (isAbort || isDisconnect || isError) {
+        isStopped.value = true
+      }
     },
     onError(error: any) {
       const { message } = typeof error.message === 'string'
@@ -97,18 +99,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         && !lastMessage.value.parts?.some(part => part.type === 'text')
       )
   })
+
+  const displayStop = computed<boolean>(() => {
+    return ['submitted', 'streaming'].includes(status.value)
+      && !isStopped.value
+  })
+
   const displayRegenerate = computed<boolean>(() => {
-    return isStopped.value
-      || (
-        !input.value
-        && (
-          lastMessage.value?.role === 'user'
-          || (
-            lastMessage.value?.role === 'assistant'
-            && !lastMessage.value.parts?.some(part => part.type === 'text')
-          )
-        )
-      )
+    return isStopped.value || status.value === 'error'
   })
 
   onMounted(() => {
@@ -132,8 +130,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   function stop() {
-    isStopped.value = true
     chatSdk.stop()
+    nuxtApp.callHook('chat:stop')
+  }
+
+  function regenerate() {
+    isStopped.value = false
+    chatSdk.regenerate()
+    nuxtApp.callHook('chat:regenerate')
   }
 
   return {
@@ -143,10 +147,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     submit,
     stop,
     isStopped,
-    regenerate: chatSdk.regenerate,
+    regenerate,
     tools,
     status,
     isLoading,
     displayRegenerate,
+    displayStop,
   }
 }

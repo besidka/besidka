@@ -1,5 +1,13 @@
 <template>
-  <LazyBackgroundLogo />
+  <ChatContainer>
+    <ChatMessage
+      role="assistant"
+      :hide-assistant-avatar-on-mobile="false"
+    >
+      How can I assist you today?
+    </ChatMessage>
+    <LazyBackgroundLogo />
+  </ChatContainer>
   <ChatInput
     v-model:message="message"
     v-model:tools="tools"

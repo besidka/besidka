@@ -1,87 +1,95 @@
 <template>
-  <div class="w-full max-w-4xl mx-auto pt-2 px-4 sm:px-24 pb-72 sm:pb-42">
-    <div
-      v-for="{
-        message: m,
-        textParts,
-        hasSources: msgHasSources,
-      } in messages"
-      :key="m.id"
-    >
+  <div
+    ref="scrollContainerRef"
+    class="
+      flex-1 overflow-y-auto
+      pt-[var(--sat)] pb-[var(--sab)]
+      [-webkit-overflow-scrolling:touch]
+    "
+  >
+    <ChatContainer>
+      <ClientOnly>
+        <template #fallback>
+          <ChatSkeleton :messages-length="messagesLength" />
+        </template>
+      </ClientOnly>
       <div
-        v-for="{ part, originalIndex } in textParts"
-        :key="`part-${originalIndex}`"
+        v-for="({
+          message: m,
+          textParts,
+          hasSources: msgHasSources,
+        }, messageIndex) in messages"
+        :key="`message-${m.id}`"
+        :ref="messagesDomRefs.set"
+        :class="{
+          'opacity-0 pointer-events-none': hideMessages
+        }"
+        :data-role="m.role"
+        :data-message-id="m.id"
       >
-        <div
-          class="chat"
+        <ChatMessage
+          v-for="{ part, originalIndex } in textParts"
+          :key="isLastAssistantMessage(messageIndex)
+            ? `message-${m.id}-part-${originalIndex}-${status}`
+            : `message-${m.id}-part-${originalIndex}`
+          "
+          :role="m.role"
           :class="{
-            'chat-start': m.role === 'assistant',
-            'chat-end': m.role === 'user',
+            'opacity-0': status === 'streaming'
+              && isLastUserMessage(messageIndex)
+              && waitingForDimensions,
           }"
+          data-markdown
         >
-          <div
-            class="chat-image avatar rounded-full"
-            :class="{
-              'avatar-placeholder':
-                m.role === 'assistant' || !user?.image,
-                'max-sm:hidden': m.role === 'assistant',
-            }"
-          >
-            <div class="w-10 rounded-full bg-base-100 dark:bg-base-content text-text dark:text-base-100">
-              <Logo
-                v-if="m.role === 'assistant'"
-                short
-                class="size-6"
-              />
-              <template v-else>
-                <img
-                  v-if="user?.image"
-                  :alt="user.name"
-                  :src="user.image"
-                >
-                <Icon v-else name="lucide:user-round" />
-              </template>
-            </div>
-          </div>
-          <UiBubble class="chat-bubble sm:!px-6 !shadow-none w-full">
-            <MDCCached
-              :value="m.role === 'user'
-                ? $sanitizeHtml(part.text)
-                : part.text
-              "
-              :cache-key="`message-${m.id}-part-${originalIndex}`"
-              :components="components"
-              :parser-options="{ highlight: false }"
-              class="chat-markdown"
-              :unwrap="getUnwrap(m.role)"
-            />
-            <LazyChatSources
-              v-if="
-                m.role === 'assistant'
-                  && msgHasSources
-                  && status === 'ready'
-              "
-              :message="m"
-            />
-          </UiBubble>
-        </div>
+          <MDCCached
+            :key="isLastAssistantMessage(messageIndex)
+              ? `mdc-${m.id}-part-${originalIndex}-${status}`
+              : `mdc-${m.id}-part-${originalIndex}`
+            "
+            :value="m.role === 'user'
+              ? $sanitizeHtml(part.text)
+              : part.text
+            "
+            :cache-key="isLastAssistantMessage(messageIndex)
+              ? `mdc-${m.id}-part-${originalIndex}-${status}`
+              : `mdc-${m.id}-part-${originalIndex}`
+            "
+            :components="components"
+            :parser-options="{ highlight: false }"
+            class="chat-markdown"
+            :unwrap="getUnwrap(m.role)"
+          />
+          <LazyChatSources
+            v-if="
+              m.role === 'assistant'
+                && msgHasSources
+                && status === 'ready'
+            "
+            :message="m"
+          />
+        </ChatMessage>
       </div>
-    </div>
-    <LazyChatLoader v-show="isLoading" />
+      <LazyChatLoader :show="isLoading" />
+      <div ref="messagesEndRef" />
+    </ChatContainer>
+    <div :style="{ height: `${spacerHeight}px` }" />
   </div>
   <ChatInput
     v-model:message="input"
     v-model:tools="tools"
     :messages-length="messagesLength"
-    :pending="isLoading"
     :stopped="isStopped"
     :stop="stop"
     :regenerate="regenerate"
     :display-regenerate="displayRegenerate"
+    :display-stop="displayStop"
+    :status="status"
     @submit="submit"
   />
 </template>
 <script setup lang="ts">
+import type { ChatStatus } from 'ai'
+
 definePageMeta({
   layout: 'chat',
   auth: {
@@ -125,8 +133,6 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const { user } = useAuth()
-
 const {
   messages,
   messagesLength,
@@ -139,7 +145,48 @@ const {
   stop,
   regenerate,
   displayRegenerate,
+  displayStop,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()
+const hideMessages = shallowRef<boolean>(true)
+
+const scrollContainerRef = ref<HTMLDivElement | null>(null)
+const messagesEndRef = ref<HTMLDivElement | null>(null)
+
+const nuxtApp = useNuxtApp()
+const messagesDomRefs = useTemplateRefsList<HTMLDivElement>()
+
+onMounted(() => {
+  hideMessages.value = false
+
+  nuxtApp.callHook('chat:rendered', scrollContainerRef)
+})
+
+const { spacerHeight, waitingForDimensions } = useChatScroll({
+  scrollContainerRef,
+  messagesEndRef,
+  messagesDomRefs,
+  status: status as Ref<ChatStatus>,
+  messagesLength: messagesLength as Ref<number>,
+})
+
+function isLastUserMessage(index: number): boolean {
+  const msg = messages.value[index]
+
+  if (!msg || msg.message.role !== 'user') return false
+
+  const lastMsg = messages.value[messages.value.length - 1]
+
+  return index === messages.value.length - 1
+    || (index === messages.value.length - 2 && lastMsg?.message.role === 'assistant')
+}
+
+function isLastAssistantMessage(index: number): boolean {
+  const msg = messages.value[index]
+
+  if (!msg || msg.message.role !== 'assistant') return false
+
+  return index === messages.value.length - 1
+}
 </script>

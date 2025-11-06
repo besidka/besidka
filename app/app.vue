@@ -4,13 +4,27 @@
   </ClientOnly>
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
-  <NuxtErrorBoundary @error="onException">
-    <template #error>
-      <NuxtLayout />
-    </template>
-    <NuxtLayout />
-  </NuxtErrorBoundary>
   <NuxtLoadingIndicator />
+  <div class="flex flex-col h-screen overflow-hidden">
+    <div
+      :class="{
+        'contents': $route.name === 'chats-slug',
+        [`
+          flex-1 overflow-y-auto
+          pt-[var(--sat)]
+          pb-[calc(var(--spacing)_*_40_+_var(--sab))]
+          [-webkit-overflow-scrolling:touch]
+        `]: $route.name !== 'chats-slug',
+      }"
+    >
+      <NuxtErrorBoundary @error="onException">
+        <template #error>
+          <NuxtLayout />
+        </template>
+        <NuxtLayout />
+      </NuxtErrorBoundary>
+    </div>
+  </div>
   <ClientOnly>
     <UiConfirmation />
     <UiMessages />

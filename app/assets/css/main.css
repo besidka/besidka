@@ -32,6 +32,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-secondary: var(--color-white);
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-600);
+  --color-accent-bg: var(--color-pink-400);
   --color-accent-content: var(--color-white);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-white);
@@ -75,6 +76,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-secondary: var(--color-stone-100);
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-300);
+  --color-accent-bg: var(--color-pink-950);
   --color-accent-content: var(--color-stone-950);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-stone-100);
@@ -126,6 +128,20 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
       transform: scale(100%);
     }
   }
+
+  --animate-fade-in: fade-in 300ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      transform: translateY(100px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
 }
 
 @custom-variant light {
@@ -141,8 +157,17 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 }
 
 @layer base {
+  html {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+
   body {
-    @apply w-full min-h-screen font-display;
+    @apply overflow-hidden w-full h-screen font-display;
+    position: relative;
+    width: 100%;
+    height: 100%;
   }
 
   strong {
@@ -248,14 +273,6 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
     @apply font-normal;
   }
 
-  .bubble {
-    @apply rounded-xl bg-white/50 shadow-2xl backdrop-blur-3xl;
-
-    @variant dark {
-      @apply bg-white/10;
-    }
-  }
-
   .btn {
     outline-color: var(--custom-outline-color, var(--btn-color));
 
@@ -288,6 +305,18 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
       }
     }
   }
+
+  .chat {
+    @apply flex py-0;
+  }
+
+  .chat-end {
+    @apply flex-row-reverse;
+  }
+
+  .chat-bubble {
+    @apply max-w-none;
+  }
 }
 
 @utility no-scrollbar {
@@ -297,6 +326,18 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 @utility bottom-safe {
   bottom: calc(env(safe-area-inset-bottom, 0));
 }
+@utility bubble-without-background {
+  @apply rounded-xl shadow-2xl backdrop-blur-3xl;
+}
+
+@utility bubble {
+  @apply bubble-without-background bg-white/50;
+
+  @variant dark {
+    @apply bg-white/10;
+  }
+}
+
 /* Get values from app.config.ts */
 @utility main-background {
   @variant light {
@@ -331,6 +372,25 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   }
   
 }
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+@layer components {
+
+  .bubble {
+    @apply bubble;
+  }
+
+  .bubble-without-background {
+    @apply bubble-without-background;
+  }
+}
+
 html {
   @apply overscroll-none main-background;
 }
