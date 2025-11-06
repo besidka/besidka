@@ -15,9 +15,7 @@ export interface ProcessedMessage {
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
-  const input = useCookie<string>('chat_input', {
-    default: () => '',
-  })
+  const input = useLocalStorage<string>('chat_input', '')
 
   chat = toValue(chat)
 

@@ -86,7 +86,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { messages } = body.data
+  const { messages, model: userModel } = body.data
   const lastMessage = messages[messages.length - 1]
 
   if (
@@ -104,7 +104,7 @@ export default defineEventHandler(async (event) => {
       })
   }
 
-  const { provider, model } = useChatProvider()
+  const { provider, model } = useChatProvider(userModel)
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools

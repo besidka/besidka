@@ -1,11 +1,10 @@
-export function useChatProvider(): {
-  provider: Provider
-  model: Model
-  modelName: Model['name']
-} {
-  const event = useEvent()
-  const { model: userModel } = parseCookies(event)
-
+export function useChatProvider(
+  userModel: string,
+): {
+    provider: Provider
+    model: Model
+    modelName: Model['name']
+  } {
   if (!userModel) {
     throw createError({
       statusCode: 400,

@@ -2,6 +2,7 @@ import type { Chat } from '#shared/types/chats.d'
 
 export async function useSetChatTitle(title?: Chat['title']) {
   const route = useRoute()
+  const { userModel } = useUserModel()
 
   const {
     data: chatTitle,
@@ -13,6 +14,10 @@ export async function useSetChatTitle(title?: Chat['title']) {
       key: `chat-title-${route.params.slug}`,
       cache: 'force-cache',
       immediate: !title,
+      body: {
+        model: userModel.value,
+      },
+      default: () => title || null,
     },
   )
 
@@ -35,7 +40,11 @@ export async function useSetChatTitle(title?: Chat['title']) {
   })
 
   watch(chatTitle, (value) => {
-    value && useSeoMeta({
+    if (!value) {
+      return
+    }
+
+    useSeoMeta({
       title: value,
     })
   }, {

@@ -5,7 +5,7 @@
     :class="{
       // On mobile devices
       // When page is only loaded, is has to be animated from offscreen
-      'max-sm:translate-y-[calc(var(--spacing)_*_20_+_var(--sab))]':
+      'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
 
       // On mobile devices
@@ -159,49 +159,40 @@
                 />
               </div>
             </div>
-            <ClientOnly>
-              <template #fallback>
-                <div class="flex items-center gap-2">
-                  <div class="skeleton size-10 rounded-full" />
-                </div>
-              </template>
-              <template #default>
-                <div class="flex items-center gap-2">
-                  <UiButton
-                    v-show="displayStop"
-                    mode="accent"
-                    circle
-                    title="Stop"
-                    icon-name="lucide:square"
-                    icon-only
-                    tooltip-position="left"
-                    @click="stop"
-                  />
-                  <UiButton
-                    v-show="displayRegenerate"
-                    mode="accent"
-                    soft
-                    circle
-                    title="Regenerate"
-                    icon-name="lucide:refresh-ccw"
-                    icon-only
-                    tooltip-position="left"
-                    @click="regenerate"
-                  />
-                  <UiButton
-                    v-show="!displayStop && !displayRegenerate"
-                    mode="accent"
-                    circle
-                    :disabled="!hasMessage"
-                    :title="hasMessage ? 'Send Message' : 'Message is required'"
-                    icon-name="lucide:arrow-up"
-                    icon-only
-                    tooltip-position="left"
-                    @click="sendMessage"
-                  />
-                </div>
-              </template>
-            </ClientOnly>
+            <div class="flex items-center gap-2">
+              <UiButton
+                v-show="displayStop"
+                mode="accent"
+                circle
+                title="Stop"
+                icon-name="lucide:square"
+                icon-only
+                tooltip-position="left"
+                @click="stop"
+              />
+              <UiButton
+                v-show="displayRegenerate"
+                mode="accent"
+                soft
+                circle
+                title="Regenerate"
+                icon-name="lucide:refresh-ccw"
+                icon-only
+                tooltip-position="left"
+                @click="regenerate"
+              />
+              <UiButton
+                v-show="!displayStop && !displayRegenerate"
+                mode="accent"
+                circle
+                :disabled="!hasMessage"
+                :title="hasMessage ? 'Send Message' : 'Message is required'"
+                icon-name="lucide:arrow-up"
+                icon-only
+                tooltip-position="left"
+                @click="sendMessage"
+              />
+            </div>
           </div>
         </div>
       </UiBubble>
@@ -232,6 +223,7 @@ const { userModel } = useUserModel()
 const { providers } = getProviders()
 const { isWebSearchSupported } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
+const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
 
 const isKeyboardVisible = shallowRef<boolean>(false)
@@ -368,8 +360,6 @@ function sendMessage() {
   emit('submit')
   message.value = ''
 }
-
-const { visible } = useAnimateAppear()
 
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
