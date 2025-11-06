@@ -166,14 +166,6 @@ export default defineNuxtConfig({
           content: 'Open-source AI chat application. Bring your API key and start chatting with available LLMs!',
         },
         {
-          name: 'theme-color',
-          content: '#F9C3E3',
-        },
-        {
-          name: 'background-color',
-          content: '#F9C3E3',
-        },
-        {
           name: 'apple-mobile-web-app-title',
           content: 'Besidka',
         },

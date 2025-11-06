@@ -32,6 +32,21 @@
         </span>
       </template>
     </UiButton>
+    <Teleport to="body">
+      <div
+        v-if="pending"
+        class="fixed z-[9999] inset-0 grid place-content-center background-gradient"
+      >
+        <div class="flex flex-col gap-4 items-center">
+          <SvgoFaviconForAnimation
+            short
+            animate
+            class="size-12 text-accent [&_#Spin]:animate-[spin_3s_ease-in-out_infinite] [&_#Spin]:origin-center"
+          />
+          Applying theme color...
+        </div>
+      </div>
+    </Teleport>
   </ClientOnly>
 </template>
 
@@ -47,13 +62,80 @@ defineProps<Props>()
 
 const { setFavicon } = useThemeFavicon()
 const colorMode = useColorMode()
+const { isIos } = useDevice()
+
+const pending = useLocalStorage<boolean>('theme-reload-pending', false)
 
 onBeforeMount(() => {
   setFavicon(colorMode.preference as FaviconTheme)
+  setThemeColorMeta(colorMode.preference as FaviconTheme)
+
+  if (pending.value) {
+    pending.value = false
+  }
 })
 
+function prefersColorSchemeHandler(event: MediaQueryListEvent) {
+  setThemeColorMeta(event.matches ? 'dark' : 'light')
+}
+
+onMounted(() => {
+  const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+  darkModeQuery.addEventListener('change', prefersColorSchemeHandler)
+})
+
+onBeforeUnmount(() => {
+  const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+  darkModeQuery.removeEventListener('change', prefersColorSchemeHandler)
+})
+
+function setThemeColorMeta(theme: FaviconTheme) {
+  const appConfig = useAppConfig()
+
+  let themeColorMeta = document.querySelector('meta[name="theme-color"]')
+
+  if (!themeColorMeta) {
+    themeColorMeta = document.createElement('meta')
+    themeColorMeta.setAttribute('name', 'theme-color')
+    document.head.appendChild(themeColorMeta)
+  }
+
+  if (
+    theme === 'light'
+    && window.matchMedia('(prefers-color-scheme: dark)').matches
+  ) {
+    themeColorMeta.setAttribute(
+      'content',
+      appConfig.themeColor['lightForDark'],
+    )
+  } else {
+    themeColorMeta.setAttribute('content', appConfig.themeColor[theme])
+  }
+}
+
+async function reloadStandaloneApp() {
+  if (!isIos) {
+    return
+  }
+
+  pending.value = true
+  await nextTick()
+
+  setTimeout(() => {
+    reloadNuxtApp({
+      force: true,
+    })
+  }, 500)
+}
+
 function changeColorMode() {
-  colorMode.value = colorMode.value === 'light' ? 'dark' : 'light'
+  const result = colorMode.value === 'light' ? 'dark' : 'light'
+
+  colorMode.value = result
+  setThemeColorMeta(result as FaviconTheme)
+  reloadStandaloneApp()
 }
 
 const checked = computed<boolean>(() => colorMode.value !== 'light')

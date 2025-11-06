@@ -1,6 +1,7 @@
 <svg width="30px" height="30px" version="1.1" xmlns="http://www.w3.org/2000/svg"
     xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/"
-    style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;" tabindex="-1">
+    style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;" tabindex="-1"
+    focusable="false" aria-hidden="true">
     <g id="Icon">
         <g id="Body">
             <path id="Tail"
@@ -12,11 +13,11 @@
         </g>
         <g id="Eyes">
             <g id="Right-eye" serif:id="Right eye">
-                <ellipse cx="11.422" cy="12.996" rx="3.321" ry="4.134" style="fill:var(--color-logo-eyes-bg);" />
+                <ellipse cx="11.422" cy="12.996" rx="3.321" ry="4.134" style="fill:#fff;" />
                 <ellipse cx="12.489" cy="12.996" rx="1.067" ry="1.126" style="fill:currentColor;" />
             </g>
             <g id="Left-eye" serif:id="Left eye">
-                <ellipse cx="20.524" cy="12.674" rx="2.967" ry="3.811" style="fill:var(--color-logo-eyes-bg);" />
+                <ellipse cx="20.524" cy="12.674" rx="2.967" ry="3.811" style="fill:#fff;" />
                 <ellipse cx="21.477" cy="12.674" rx="0.954" ry="1.038" style="fill:currentColor;" />
             </g>
         </g>

@@ -1,3 +1,13 @@
+/* 
+The difference between dark:xx and @variant dark
+is that dark:xx is @media (prefers-color-scheme: dark) {}
+that relies only on system theme preference
+while @variant dark is for when the user explicitly
+sets the app theme to dark mode and the class is added to the html element.
+The same for light:xx and @variant light.
+Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
+*/
+
 @import "tailwindcss";
 
 @source "../../";
@@ -47,7 +57,7 @@
   --color-skeleton: var(--color-gray-300);
   --color-skeleton-overlay: var(--color-gray-200);
 
-  --color-logo-eyes-bg: var(--color-base-100);
+  --color-logo-eyes-bg: var(--color-white);
 }
 
 
@@ -287,6 +297,51 @@
 @utility bottom-safe {
   bottom: calc(env(safe-area-inset-bottom, 0));
 }
+/* Get values from app.config.ts */
+@utility main-background {
+  @variant light {
+    @apply bg-[#fde4f1];
+
+    @media (prefers-color-scheme: dark) {
+      @apply bg-[#834f68];
+    }
+  }
+
+  @variant dark {
+    @apply bg-[#4b283c];
+  }
+}
+
+@utility background-gradient {
+  @apply main-background;
+
+  &::before {
+    @apply content-[''] fixed inset-0 pointer-events-none bg-gradient-to-tr 
+      /* from-pink-500/10 via-pink-500/5 to-pink-500/20 */
+      from-[#fce0ee] via-[#fde9f3] to-[#fdcee6]
+    ;
+  }
+
+  @variant dark {
+    &::before {
+      /* @apply from-pink-500/5 via-pink-500/20 to-pink-500/10; */
+      @apply from-[#31282f] via-[#512a40] to-[#3c2834];
+
+    }
+  }
+  
+}
+html {
+  @apply overscroll-none main-background;
+}
+
+body {
+  @apply background-gradient;
+}
+
+.icon {
+  @apply size-6;
+}
 
 .chat-markdown {
   @apply overflow-x-hidden leading-7 text-base-content/80;
@@ -357,22 +412,4 @@
   a {
     @apply link;
   }
-}
-
-html {
-  @apply bg-pink-50 dark:bg-zinc-800;
-
-  &::before {
-    @apply content-[''] fixed inset-0 -z-10 pointer-events-none bg-gradient-to-tr from-pink-500/10 via-pink-500/5 to-pink-500/20;
-  }
-
-  @variant dark {
-    &::before {
-      @apply from-pink-500/5 via-pink-500/20 to-pink-500/10;
-    }
-  }
-}
-
-.icon {
-  @apply size-6;
 }
