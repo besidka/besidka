@@ -1,10 +1,10 @@
 export function useChatProvider(
   userModel: string,
 ): {
-    provider: Provider
-    model: Model
-    modelName: Model['name']
-  } {
+  provider: Provider
+  model: Model
+  modelName: Model['name']
+} {
   if (!userModel) {
     throw createError({
       statusCode: 400,
