@@ -137,7 +137,7 @@ export default defineNuxtConfig({
     },
   },
   future: {
-    compatibilityVersion: 4,
+    compatibilityVersion: 5,
   },
   typescript: {
     typeCheck: true,
@@ -180,6 +180,9 @@ export default defineNuxtConfig({
   },
   experimental: {
     componentIslands: true,
+    viteEnvironmentApi: true,
+    extractAsyncDataHandlers: true,
+    typescriptPlugin: true,
   },
   mdc: {
     remarkPlugins: {

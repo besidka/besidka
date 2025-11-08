@@ -97,17 +97,25 @@ export function useAuth() {
     forgetPassword: client.forgetPassword,
     resetPassword: client.resetPassword,
     errorCodes: client.$ERROR_CODES,
-    async signOut({ redirectTo }: { redirectTo?: RouteLocationRaw } = {}) {
+    async signOut({
+      redirectTo,
+    }: {
+      redirectTo?: RouteLocationRaw
+    } = {}) {
       await client.signOut({
         fetchOptions: {
-          onSuccess: async () => {
+          async onSuccess() {
             session.value = null
             user.value = null
-            if (redirectTo) {
-              await reloadNuxtApp({
-                path: redirectTo.toString(),
-              })
+
+            if (!redirectTo) {
+              return
             }
+
+            await reloadNuxtApp({
+              path: redirectTo.toString(),
+              force: true,
+            })
           },
         },
       })
