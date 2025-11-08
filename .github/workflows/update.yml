@@ -45,7 +45,7 @@ jobs:
         uses: actions/add-to-project@v1.0.2
         with:
           project-url: https://github.com/orgs/${{ github.repository_owner }}/projects/2
-          github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          github-token: ${{ secrets.PROJECT_ACTIONS_GITHUB_TOKEN }}
 
       - name: Determine labels to add
         id: labels

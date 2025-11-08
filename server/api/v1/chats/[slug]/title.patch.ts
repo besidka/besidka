@@ -14,6 +14,18 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const body = await readValidatedBody(event, z.object({
+    model: z.string().nonempty(),
+  }).safeParse)
+
+  if (body.error) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid request body',
+      data: body.error,
+    })
+  }
+
   const session = await useUserSession()
 
   if (!session) {
@@ -56,7 +68,7 @@ export default defineEventHandler(async (event) => {
     return chat.title
   }
 
-  const { provider, model } = useChatProvider()
+  const { provider, model } = useChatProvider(body.data.model)
 
   if (!chat.messages.length) {
     return null

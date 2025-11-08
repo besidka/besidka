@@ -31,7 +31,8 @@ export default defineEventHandler(async (event) => {
         role: z.enum(['system', 'user', 'assistant']),
         createdAt: z.coerce.date().optional(),
         annotations: z.array(z.string()).optional(),
-        parts: z.array(z.any()).min(1, 'At least one part is required'),
+        parts: z.array(z.any()),
+        tools: z.array(z.any()).optional(),
         experimental_attachments: z.array(
           z.object({
             name: z.string().optional(),
@@ -85,7 +86,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { messages } = body.data
+  const { messages, model: userModel } = body.data
   const lastMessage = messages[messages.length - 1]
 
   if (
@@ -103,7 +104,7 @@ export default defineEventHandler(async (event) => {
       })
   }
 
-  const { provider, model } = useChatProvider()
+  const { provider, model } = useChatProvider(userModel)
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools
@@ -161,6 +162,9 @@ export default defineEventHandler(async (event) => {
       writer.merge(result.toUIMessageStream({
         originalMessages: messages,
         sendSources: true,
+        // TODO: investigate why false doesn't work here
+        sendStart: false,
+        sendReasoning: false,
         onError: errorHandler,
         async onFinish({ isAborted, responseMessage }) {
           if (isAborted) {

@@ -3,7 +3,7 @@
     :is="logo"
     class="outline-none"
     :class="{
-      spinning,
+      animated: animate,
       once,
     }"
   />
@@ -12,7 +12,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   short?: boolean
-  spinning?: boolean
+  animate?: boolean
   once?: boolean
 }>()
 
@@ -26,12 +26,12 @@ const logo = computed<ReturnType<typeof resolveComponent>>(() => {
 <style scoped>
 @reference "~/assets/css/main.css";
 
-.spinning :deep(#Spin) {
+.animated :deep(#Spin) {
   @apply motion-safe:animate-[spin_2s_ease-in-out_infinite]
         origin-center;
 }
 
-.spinning.once :deep(#Spin) {
+.animated.once :deep(#Spin) {
   @apply motion-safe:animate-[spin_2s_ease-in-out_1]
         origin-center;
 }

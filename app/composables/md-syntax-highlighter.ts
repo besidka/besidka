@@ -1,5 +1,8 @@
 import type { HighlighterGeneric } from 'shiki'
-import { createHighlighter, bundledLanguages } from 'shiki/bundle/full'
+// Use `full` when bundle size is not an issue
+// https://shiki.style/guide/bundles
+// import { createHighlighter, bundledLanguages } from 'shiki/bundle/full'
+import { createHighlighter, bundledLanguages } from 'shiki/bundle/web'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 
 let highlighter: HighlighterGeneric<any, any> | null = null

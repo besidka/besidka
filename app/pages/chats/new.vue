@@ -1,9 +1,19 @@
 <template>
-  <LazyBackgroundLogo />
-  <LazyChatInput
+  <ChatContainer>
+    <ChatMessage
+      role="assistant"
+      :hide-assistant-avatar-on-mobile="false"
+    >
+      How can I assist you today?
+    </ChatMessage>
+    <LazyBackgroundLogo />
+  </ChatContainer>
+  <ChatInput
     v-model:message="message"
     v-model:tools="tools"
-    visible
+    :messages-container="null"
+    :messages-length="0"
+    visible-on-scroll
     :pending="pending"
     :stop="() => {}"
     :regenerate="() => {}"
@@ -24,7 +34,7 @@ useSeoMeta({
   title: 'New Chat',
 })
 
-const message = shallowRef<string>()
+const message = useLocalStorage<string>('chat_input', '')
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
 

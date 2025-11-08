@@ -1,3 +1,13 @@
+/* 
+The difference between dark:xx and @variant dark
+is that dark:xx is @media (prefers-color-scheme: dark) {}
+that relies only on system theme preference
+while @variant dark is for when the user explicitly
+sets the app theme to dark mode and the class is added to the html element.
+The same for light:xx and @variant light.
+Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
+*/
+
 @import "tailwindcss";
 
 @source "../../";
@@ -22,6 +32,7 @@
   --color-secondary: var(--color-white);
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-600);
+  --color-accent-bg: var(--color-pink-400);
   --color-accent-content: var(--color-white);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-white);
@@ -47,7 +58,7 @@
   --color-skeleton: var(--color-gray-300);
   --color-skeleton-overlay: var(--color-gray-200);
 
-  --color-logo-eyes-bg: var(--color-base-100);
+  --color-logo-eyes-bg: var(--color-white);
 }
 
 
@@ -65,6 +76,7 @@
   --color-secondary: var(--color-stone-100);
   --color-secondary-content: var(--color-stone-800);
   --color-accent: var(--color-pink-300);
+  --color-accent-bg: var(--color-pink-950);
   --color-accent-content: var(--color-stone-950);
   --color-neutral: var(--color-stone-800);
   --color-neutral-content: var(--color-stone-100);
@@ -95,6 +107,8 @@
 }
 
 @theme {
+  --breakpoint-xs: 24rem;
+
   --font-display: 'Nunito', sans-serif;
   --font-code: 'Atkinson Hyperlegible Mono', sans-serif;
 
@@ -114,6 +128,20 @@
       transform: scale(100%);
     }
   }
+
+  --animate-fade-in: fade-in 300ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      transform: translateY(100px);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
 }
 
 @custom-variant light {
@@ -129,13 +157,17 @@
 }
 
 @layer base {
-  html,
-  body {
-    @apply w-full h-full overflow-x-hidden;
+  html {
+    position: fixed;
+    width: 100%;
+    height: 100%;
   }
 
   body {
-    @apply font-display;
+    @apply overflow-hidden w-full h-screen font-display;
+    position: relative;
+    width: 100%;
+    height: 100%;
   }
 
   strong {
@@ -241,14 +273,6 @@
     @apply font-normal;
   }
 
-  .bubble {
-    @apply rounded-xl bg-white/50 shadow-2xl backdrop-blur-3xl;
-
-    @variant dark {
-      @apply bg-white/10;
-    }
-  }
-
   .btn {
     outline-color: var(--custom-outline-color, var(--btn-color));
 
@@ -281,10 +305,102 @@
       }
     }
   }
+
+  .chat {
+    @apply flex py-0;
+  }
+
+  .chat-end {
+    @apply flex-row-reverse;
+  }
+
+  .chat-bubble {
+    @apply max-w-none;
+  }
 }
 
 @utility no-scrollbar {
   @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
+}
+
+@utility bottom-safe {
+  bottom: calc(env(safe-area-inset-bottom, 0));
+}
+@utility bubble-without-background {
+  @apply rounded-xl shadow-2xl backdrop-blur-3xl;
+}
+
+@utility bubble {
+  @apply bubble-without-background bg-white/50;
+
+  @variant dark {
+    @apply bg-white/10;
+  }
+}
+
+/* Get values from app.config.ts */
+@utility main-background {
+  @variant light {
+    @apply bg-[#fde4f1];
+
+    @media (prefers-color-scheme: dark) {
+      @apply bg-[#834f68];
+    }
+  }
+
+  @variant dark {
+    @apply bg-[#4b283c];
+  }
+}
+
+@utility background-gradient {
+  @apply main-background;
+
+  &::before {
+    @apply content-[''] fixed inset-0 pointer-events-none bg-gradient-to-tr 
+      /* from-pink-500/10 via-pink-500/5 to-pink-500/20 */
+      from-[#fce0ee] via-[#fde9f3] to-[#fdcee6]
+    ;
+  }
+
+  @variant dark {
+    &::before {
+      /* @apply from-pink-500/5 via-pink-500/20 to-pink-500/10; */
+      @apply from-[#31282f] via-[#512a40] to-[#3c2834];
+
+    }
+  }
+  
+}
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+@layer components {
+
+  .bubble {
+    @apply bubble;
+  }
+
+  .bubble-without-background {
+    @apply bubble-without-background;
+  }
+}
+
+html {
+  @apply overscroll-none main-background;
+}
+
+body {
+  @apply background-gradient;
+}
+
+.icon {
+  @apply size-6;
 }
 
 .chat-markdown {
@@ -294,23 +410,48 @@
     @apply my-4 border-t border-base-content/30;
   }
   strong {
-    @apply font-bold text-base-content;
+    @apply font-semibold;
   }
 
+  ol,
   ul {
-    @apply list list-disc my-4 pl-6;
+    @apply list my-4 ml-8 marker:text-accent;
   }
 
   ol {
-    @apply list list-decimal my-4 pl-6;
+    @apply list-decimal;
+  }
+
+  ul {
+    @apply list-disc;
+  }
+
+  ol[start],
+  ul[start] {
+    & > li {
+      @apply font-semibold;
+    }
+    
+    & + ul,
+    & + li {
+      @apply ml-12;
+    }
   }
 
   li {
-    @apply pl-6;
+    @apply pl-1;
   }
 
-  table {
-    @apply table;
+  thead {
+    @apply text-accent;
+
+    tr {
+      @apply !bg-pink-100 dark:!bg-pink-950 dark:text-base-content;
+    }
+  }
+
+  tbody tr {
+    @apply even:bg-pink-100/30 dark:even:bg-pink-100/5;
   }
 
   blockquote {
@@ -331,16 +472,4 @@
   a {
     @apply link;
   }
-}
-
-html {
-  @apply bg-gradient-to-tr from-pink-500/20 via-pink-500/10 to-pink-500/30;
-
-  @variant dark {
-    @apply dark:from-pink-500/30 dark:via-pink-500/10;
-  }
-}
-
-.icon {
-  @apply size-6;
 }

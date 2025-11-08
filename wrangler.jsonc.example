@@ -1,6 +1,6 @@
 {
   "name": "besidka",
-  "compatibility_date": "2025-05-20",
+  "compatibility_date": "2025-10-01",
   // Uncomment this the following line if you want to use a custom domain
   // "workers_dev": false,
   // "routes": [

@@ -165,6 +165,7 @@ const buttonStyleClasses = computed<Partial<Record<string, boolean>>>(() => {
     'btn-soft': props.soft,
     'btn-outline': props.outline,
     'btn-circle': props.circle,
+    'btn-square': props.square,
     'btn-link': props.mode === 'link',
     'btn-disabled': !!props.disabled,
     'btn-xs': props.size === 'xs',
@@ -179,8 +180,10 @@ const buttonStyleClasses = computed<Partial<Record<string, boolean>>>(() => {
     'btn-lg': props.size === 'lg',
     'max-lg:btn-lg': props.sizeMobile === 'lg',
     'lg:btn-lg': props.sizeDesktop === 'lg',
-    'max-lg:btn-circle': !props.circle && (props.iconOnly || props.iconOnlyMobile),
-    'lg:btn-circle': !props.circle && (props.iconOnly || props.iconOnlyDesktop),
+    'max-lg:btn-circle': props.circle && (props.iconOnly || props.iconOnlyMobile),
+    'lg:btn-circle': props.circle && (props.iconOnly || props.iconOnlyDesktop),
+    'max-lg:btn-square': props.square && (props.iconOnly || props.iconOnlyMobile),
+    'lg:btn-square': props.square && (props.iconOnly || props.iconOnlyDesktop),
     ...(nativeAttrs.class ? { [`${nativeAttrs.class}`]: true } : {}),
   }
 })

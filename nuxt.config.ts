@@ -1,5 +1,4 @@
 import tailwindcss from '@tailwindcss/vite'
-import { visualizer } from 'rollup-plugin-visualizer'
 import { providers, defaultModel } from './providers'
 
 export default defineNuxtConfig({
@@ -134,7 +133,7 @@ export default defineNuxtConfig({
   },
   icon: {
     serverBundle: {
-      collections: ['lucide'],
+      remote: 'jsdelivr',
     },
   },
   future: {
@@ -149,7 +148,6 @@ export default defineNuxtConfig({
     },
     plugins: [
       tailwindcss(),
-      visualizer(),
     ],
   },
   css: ['./assets/css/main.css'],
@@ -166,14 +164,6 @@ export default defineNuxtConfig({
         {
           name: 'description',
           content: 'Open-source AI chat application. Bring your API key and start chatting with available LLMs!',
-        },
-        {
-          name: 'theme-color',
-          content: '#F9C3E3',
-        },
-        {
-          name: 'background-color',
-          content: '#F9C3E3',
         },
         {
           name: 'apple-mobile-web-app-title',

@@ -3,11 +3,19 @@ import type { Chat, Tools } from '#shared/types/chats.d'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
 
+export interface ProcessedMessage {
+  message: UIMessage
+  textParts: Array<{
+    part: Extract<UIMessage['parts'][number], { type: 'text' }>
+    originalIndex: number
+  }>
+  hasSources: boolean
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
-  const { scrollInterval, scrollToBottom } = useChatScroll()
-  const input = shallowRef<string>('')
   const isStopped = shallowRef<boolean>(false)
+  const input = useLocalStorage<string>('chat_input', '')
 
   chat = toValue(chat)
 
@@ -30,8 +38,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         }
       },
     }),
-    onFinish() {
-      isStopped.value = false
+    onFinish({ isAbort, isDisconnect, isError }) {
+      if (isAbort || isDisconnect || isError) {
+        isStopped.value = true
+      }
     },
     onError(error: any) {
       const { message } = typeof error.message === 'string'
@@ -43,65 +53,103 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
-  const messages = computed<UIMessage[]>(() => chatSdk.messages)
+  const rawMessages = computed<UIMessage[]>(() => chatSdk.messages)
   const status = computed<ChatStatus>(() => chatSdk.status)
-  const isLoading = computed<boolean>(() => {
-    const lastMessage = messages.value.at(-1)
 
+  // Pre-process messages for rendering
+  const messages = computed<ProcessedMessage[]>(() => {
+    return rawMessages.value.map((message): ProcessedMessage => {
+      const textParts = message.parts
+        .map((part, index) => ({ part, originalIndex: index }))
+        .filter(({ part }) => part.type === 'text')
+        .map(({ part, originalIndex }) => ({
+          part: part as Extract<typeof part, { type: 'text' }>,
+          originalIndex,
+        }))
+
+      const hasSources = message.parts.some(
+        part => part.type === 'source-url',
+      )
+
+      return {
+        message,
+        textParts,
+        hasSources,
+      }
+    })
+  })
+
+  const messagesLength = computed<number>(() => rawMessages.value.length)
+  const lastMessage = computed<UIMessage | undefined>(() => {
+    return rawMessages.value.at(-1)
+  })
+
+  const isLoading = computed<boolean>(() => {
+    // TODO: investigate why step-start and reasoning parts are here
+    // even when disabled in server/api/v1/chats/[slug]/index.post.ts
+    // console.log(
+    //   JSON.parse(JSON.stringify(lastMessage.value?.parts)),
+    // )
     return status.value === 'submitted'
       || (
         status.value === 'streaming'
-        && lastMessage?.role === 'assistant'
-        && !lastMessage?.parts?.length
+        && lastMessage.value?.role === 'assistant'
+        && !lastMessage.value.parts?.some(part => part.type === 'text')
       )
   })
 
+  const displayStop = computed<boolean>(() => {
+    return ['submitted', 'streaming'].includes(status.value)
+      && !isStopped.value
+  })
+
+  const displayRegenerate = computed<boolean>(() => {
+    return isStopped.value || status.value === 'error'
+  })
+
   onMounted(() => {
-    if ((chat?.messages?.length || 0) > 1) {
-      scrollToBottom()
-    } else if (
+    if (
       chat?.messages.length === 1
-      || chat?.messages.pop()?.role === 'user'
+      || chat?.messages.at(-1)?.role === 'user'
     ) {
       chatSdk.regenerate()
     }
   })
 
-  watch(status, (newStatus) => {
-    scrollInterval.value && clearInterval(scrollInterval.value)
-
-    scrollToBottom()
-
-    if (newStatus !== 'streaming') {
-      return
-    }
-
-    scrollInterval.value = setInterval(scrollToBottom, 1000)
-  }, {
-    immediate: false,
-    flush: 'post',
-  })
-
   useSetChatTitle(chat.title)
 
+  const nuxtApp = useNuxtApp()
+
   function submit() {
-    chatSdk.sendMessage({ text: input.value })
+    const payload = { text: input.value }
+
+    chatSdk.sendMessage(payload)
+    nuxtApp.callHook('chat:submit', payload)
   }
 
   function stop() {
-    isStopped.value = true
     chatSdk.stop()
+    nuxtApp.callHook('chat:stop')
+  }
+
+  function regenerate() {
+    isStopped.value = false
+    chatSdk.regenerate()
+    nuxtApp.callHook('chat:regenerate')
   }
 
   return {
     messages,
+    messagesLength,
     input,
     submit,
     stop,
     isStopped,
-    regenerate: chatSdk.regenerate,
+    regenerate,
     tools,
     status,
     isLoading,
+    displayRegenerate,
+    displayStop,
   }
 }

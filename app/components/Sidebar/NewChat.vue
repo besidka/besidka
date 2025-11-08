@@ -12,25 +12,26 @@
         :icon-only="true"
         title="Start new chat"
         circle
+        :tooltip="disabled ? null : undefined"
         tooltip-position="left"
         :class="{
-          'max-sm:-translate-y-3': true,
+          [`
+            max-sm:-translate-y-3
+            max-sm:active:!-translate-y-3
+          `]: !disabled,
+          'scale-70 sm:scale-90': disabled,
         }"
-        class="group border-none [background:none_!important] shadow-none md:hover:scale-90 transition-transform"
+        class="group border-none [background:none_!important] shadow-none sm:hover:scale-90 transition-transform"
       >
         <template #icon>
           <Logo
             short
-            :spinning="spinning"
             once
             class="size-14 sm:[.group:not(:focus-visible)_&]:size-11 group-focus:sm:size-9 [--color-logo-eyes-bg:var(--color-white)] sm:-scale-x-100"
             :class="{
               'text-accent': !disabled,
-              'text-primary': disabled
+              'text-stone-400': disabled
             }"
-            @mouseover="spinning = $device.isDesktop"
-            @mouseleave="spinning = false"
-            @blur="spinning = false"
           />
         </template>
       </UiButton>
@@ -50,6 +51,4 @@ const disabled = computed<boolean>(() => {
 const mode = computed<ButtonProps['mode']>(() => {
   return disabled.value ? 'primary' : 'accent'
 })
-
-const spinning = shallowRef<boolean>(false)
 </script>

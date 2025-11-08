@@ -1,8 +1,9 @@
 {
 	"files.associations": {
-		"wrangler.json": "jsonc",
-		"wrangler.jsonc.example": "jsonc",
-		".env.*": "properties",
+		"wrangler.json*": "jsonc",
+		".env*": "properties",
 		".dev.vars*": "properties"
-	}
+	},
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "dbaeumer.vscode-eslint"
 }

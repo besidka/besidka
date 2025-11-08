@@ -5,12 +5,6 @@
   "lang": "en",
   "scope": "/",
   "start_url": "/chats/new",
-  "background_color": "#f9c3e3",
-  "theme_color": "#f9c3e3",
-  "dark_theme": {
-    "background_color": "#5b2a41",
-    "theme_color": "#5b2a41"
-  },
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
