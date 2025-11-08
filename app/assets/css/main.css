@@ -308,10 +308,10 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 
   .chat {
     @apply flex py-0;
-  }
 
-  .chat-end {
-    @apply flex-row-reverse;
+    &.chat-end {
+      @apply flex-row-reverse;
+    }
   }
 
   .chat-bubble {
@@ -335,6 +335,16 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 
   @variant dark {
     @apply bg-white/10;
+  }
+
+  &.chat-bubble {
+    .chat-start & {
+      @apply rounded-bl-none;
+    }
+
+    .chat-end & {
+      @apply rounded-br-none;
+    }
   }
 }
 
