@@ -262,8 +262,8 @@ export const useFieldFile = (
   props: FieldFileProps,
   emit: (event: 'change', files: FileList) => void,
   parentComponentName: MaybeRefOrGetter<string> = defaultParentComponentName,
-): Omit<FieldData, 'value' | 'placeholder' | 'rules' | 'listeners'> &
-  {
+): Omit<FieldData, 'value' | 'placeholder' | 'rules' | 'listeners'>
+  & {
     multiple: ComputedRef<boolean>
     accept: ComputedRef<string>
   } => {

@@ -1,22 +1,22 @@
 export type Styles = string | string[]
 
-type ButtonMode =
-  | 'default'
-  | 'neutral'
-  | 'accent'
-  | 'primary'
-  | 'secondary'
-  | 'error'
-  | 'link'
-  | 'info'
-  | 'warning'
-  | 'success'
+type ButtonMode
+  = | 'default'
+    | 'neutral'
+    | 'accent'
+    | 'primary'
+    | 'secondary'
+    | 'error'
+    | 'link'
+    | 'info'
+    | 'warning'
+    | 'success'
 
-type ButtonSize =
-  | 'xs'
-  | 'sm'
-  | 'md'
-  | 'lg'
+type ButtonSize
+  = | 'xs'
+    | 'sm'
+    | 'md'
+    | 'lg'
 
 export interface ButtonProps {
   to?: string
