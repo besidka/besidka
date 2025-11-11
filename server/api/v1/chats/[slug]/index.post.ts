@@ -1,4 +1,5 @@
 import type { LanguageModel } from 'ai'
+import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import {
   createUIMessageStream,
@@ -25,6 +26,7 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
     tools: z.array(z.enum(['web_search'])),
+    reasoning: z.boolean().default(false),
     messages: z.array(
       z.object({
         id: z.string().nonempty(),
@@ -101,6 +103,7 @@ export default defineEventHandler(async (event) => {
         role: 'user',
         parts: lastMessage.parts,
         tools: body.data.tools,
+        reasoning: body.data.reasoning,
       })
   }
 
@@ -111,34 +114,47 @@ export default defineEventHandler(async (event) => {
 
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
+  const providerOptions: SharedV2ProviderOptions = {}
 
   switch (provider.id) {
     case 'openai': {
       const {
         instance: openAiInstance,
         tools: openAiTools,
+        providerOptions: openAiProviderOptions,
       } = await useOpenAI(
         session.user.id,
         model.id,
         requestedTools,
+        body.data.reasoning,
       )
 
       instance = openAiInstance
       parsedTools = openAiTools
+      Object.assign(providerOptions, {
+        openai: openAiProviderOptions,
+      })
+
       break
     }
     case 'google': {
       const {
         instance: googleInstance,
         tools: googleTools,
+        providerOptions: googleProviderOptions,
       } = await useGoogle(
         session.user.id,
         model.id,
         requestedTools,
+        body.data.reasoning,
       )
 
       instance = googleInstance
       parsedTools = googleTools
+      Object.assign(providerOptions, {
+        google: googleProviderOptions,
+      })
+
       break
     }
     default:
@@ -155,6 +171,7 @@ export default defineEventHandler(async (event) => {
         messages: convertToModelMessages(messages),
         experimental_transform: smoothStream(),
         ...parsedTools,
+        providerOptions,
       })
 
       result.consumeStream()
@@ -162,9 +179,7 @@ export default defineEventHandler(async (event) => {
       writer.merge(result.toUIMessageStream({
         originalMessages: messages,
         sendSources: true,
-        // TODO: investigate why false doesn't work here
-        sendStart: false,
-        sendReasoning: false,
+        sendReasoning: !!body.data.reasoning,
         onError: errorHandler,
         async onFinish({ isAborted, responseMessage }) {
           if (isAborted) {

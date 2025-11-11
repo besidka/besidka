@@ -1,24 +1,24 @@
 <template>
   <div
-    v-if="sources.length"
-    class="collapse collapse-arrow mt-4 border border-base-300 bg-base-100"
+    v-if="parts.length > 0"
+    class="collapse collapse-arrow my-2 border border-base-300 bg-base-100"
   >
     <input
-      :id="`sources-${message.id}-checkbox`"
-      :aria-labelledby="`sources-${message.id}-label`"
+      :id="`url-sources-${message.id}-checkbox`"
+      :aria-labelledby="`url-sources-${message.id}-label`"
       type="checkbox"
     >
     <strong
-      :id="`sources-${message.id}-label`"
-      class="collapse-title flex items-center gap-2 font-semibold capitalize"
+      :id="`url-sources-${message.id}-label`"
+      class="collapse-title flex items-center gap-2 py-3 font-semibold text-sm"
     >
       <Icon name="lucide:link" />
-      Reference sources
+      Links
     </strong>
-    <div class="collapse-content text-sm">
+    <div class="collapse-content ml-6 text-sm">
       <ul class="list list-disc list-inside gap-1">
         <li
-          v-for="source in sources"
+          v-for="source in parts"
           :key="source.sourceId"
         >
           <NuxtLink
@@ -43,9 +43,9 @@ const props = defineProps<{
   message: UIMessage
 }>()
 
-const sources = computed<SourceUrlUIPart[]>(() => {
+const parts = computed<SourceUrlUIPart[]>(() => {
   return props.message.parts.filter((part) => {
     return part.type === 'source-url'
-  }) as SourceUrlUIPart[]
+  })
 })
 </script>

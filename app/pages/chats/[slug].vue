@@ -2,71 +2,73 @@
   <div
     ref="scrollContainerRef"
     class="
-      flex-1 overflow-y-auto
+      overflow-y-auto overflow-x-hidden z-10
+      flex-1
       pt-[var(--sat)] pb-[var(--sab)]
       [-webkit-overflow-scrolling:touch]
+      mask-linear-1 mask-linear-from-base-100
+      mask-linear-to-base-100
     "
   >
     <ChatContainer>
       <ClientOnly>
         <template #fallback>
-          <ChatSkeleton :messages-length="messagesLength" />
+          <ChatSkeleton :messages-length="chatSdk.messages.length" />
         </template>
       </ClientOnly>
       <div
-        v-for="({
-          message: m,
-          textParts,
-          hasSources: msgHasSources,
-        }, messageIndex) in messages"
+        v-for="(m, messageIndex) in chatSdk.messages"
         :key="`message-${m.id}`"
-        :ref="messagesDomRefs.set"
-        :class="{
-          'opacity-0 pointer-events-none': hideMessages
-        }"
+        ref="messagesDomRefs"
         :data-role="m.role"
         :data-message-id="m.id"
+        :data-hide-content="shouldDisplayMessage(m.id) ? undefined : true"
+        class="
+          [&[data-hide-content=true]_>_div]:hidden
+          [&[data-hide-content=true]_+_div]:-top-3
+        "
+        :class="{
+          'opacity-0 pointer-events-none': hideMessages,
+        }"
       >
-        <ChatMessage
-          v-for="{ part, originalIndex } in textParts"
-          :key="isLastAssistantMessage(messageIndex)
-            ? `message-${m.id}-part-${originalIndex}-${status}`
-            : `message-${m.id}-part-${originalIndex}`
-          "
-          :role="m.role"
-          :class="{
-            'opacity-0': status === 'streaming'
-              && isLastUserMessage(messageIndex)
-              && waitingForDimensions,
-          }"
-          data-markdown
-        >
-          <MDCCached
-            :key="isLastAssistantMessage(messageIndex)
-              ? `mdc-${m.id}-part-${originalIndex}-${status}`
-              : `mdc-${m.id}-part-${originalIndex}`
-            "
-            :value="m.role === 'user'
-              ? $sanitizeHtml(part.text)
-              : part.text
-            "
-            :cache-key="isLastAssistantMessage(messageIndex)
-              ? `mdc-${m.id}-part-${originalIndex}-${status}`
-              : `mdc-${m.id}-part-${originalIndex}`
-            "
-            :components="components"
-            :parser-options="{ highlight: false }"
-            class="chat-markdown"
-            :unwrap="getUnwrap(m.role)"
-          />
-          <LazyChatSources
-            v-if="
-              m.role === 'assistant'
-                && msgHasSources
-                && status === 'ready'
-            "
+        <ChatMessage :role="m.role">
+          <ChatReasoning
             :message="m"
+            :status="chatSdk.status"
           />
+          <div
+            v-for="(part, index) in m.parts"
+            :key="isLastAssistantMessage(messageIndex)
+              ? `message-${m.id}-part-${index}-${chatSdk.status}`
+              : `message-${m.id}-part-${index}`
+            "
+            :class="{
+              'opacity-0': chatSdk.status === 'streaming'
+                && isLastUserMessage(messageIndex)
+                && waitingForDimensions,
+            }"
+          >
+            <MDCCached
+              v-if="part.type === 'text'"
+              :key="isLastAssistantMessage(messageIndex)
+                ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
+                : `mdc-${m.id}-part-${index}`
+              "
+              :value="m.role === 'user'
+                ? $sanitizeHtml(part.text)
+                : part.text
+              "
+              :cache-key="isLastAssistantMessage(messageIndex)
+                ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
+                : `mdc-${m.id}-part-${index}`
+              "
+              :components="components"
+              :parser-options="{ highlight: false }"
+              class="chat-markdown"
+              :unwrap="getUnwrap(m.role)"
+            />
+          </div>
+          <ChatUrlSources :message="m" />
         </ChatMessage>
       </div>
       <LazyChatLoader :show="isLoading" />
@@ -77,19 +79,18 @@
   <ChatInput
     v-model:message="input"
     v-model:tools="tools"
-    :messages-length="messagesLength"
+    v-model:reasoning="isReasoningEnabled"
+    :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
     :stop="stop"
     :regenerate="regenerate"
     :display-regenerate="displayRegenerate"
     :display-stop="displayStop"
-    :status="status"
+    :status="chatSdk.status"
     @submit="submit"
   />
 </template>
 <script setup lang="ts">
-import type { ChatStatus } from 'ai'
-
 definePageMeta({
   layout: 'chat',
   auth: {
@@ -134,18 +135,20 @@ useSeoMeta({
 })
 
 const {
-  messages,
-  messagesLength,
+  chatSdk,
   input,
   submit,
   tools,
-  status,
   isLoading,
   isStopped,
   stop,
   regenerate,
   displayRegenerate,
   displayStop,
+  isReasoningEnabled,
+  isLastUserMessage,
+  isLastAssistantMessage,
+  shouldDisplayMessage,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()
@@ -155,7 +158,7 @@ const scrollContainerRef = ref<HTMLDivElement | null>(null)
 const messagesEndRef = ref<HTMLDivElement | null>(null)
 
 const nuxtApp = useNuxtApp()
-const messagesDomRefs = useTemplateRefsList<HTMLDivElement>()
+const messagesDomRefs = useTemplateRef<HTMLDivElement[]>('messagesDomRefs')
 
 onMounted(() => {
   hideMessages.value = false
@@ -167,26 +170,6 @@ const { spacerHeight, waitingForDimensions } = useChatScroll({
   scrollContainerRef,
   messagesEndRef,
   messagesDomRefs,
-  status: status as Ref<ChatStatus>,
-  messagesLength: messagesLength as Ref<number>,
+  chatSdk,
 })
-
-function isLastUserMessage(index: number): boolean {
-  const msg = messages.value[index]
-
-  if (!msg || msg.message.role !== 'user') return false
-
-  const lastMsg = messages.value[messages.value.length - 1]
-
-  return index === messages.value.length - 1
-    || (index === messages.value.length - 2 && lastMsg?.message.role === 'assistant')
-}
-
-function isLastAssistantMessage(index: number): boolean {
-  const msg = messages.value[index]
-
-  if (!msg || msg.message.role !== 'assistant') return false
-
-  return index === messages.value.length - 1
-}
 </script>

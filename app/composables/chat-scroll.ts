@@ -1,5 +1,5 @@
-import type { Ref } from 'vue'
-import type { ChatStatus, UIMessage } from 'ai'
+import type { Ref, ShallowRef } from 'vue'
+import type { UIMessage } from 'ai'
 
 type MessageData = {
   id: UIMessage['id']
@@ -9,10 +9,9 @@ type MessageData = {
 
 export interface ChatScrollOptions {
   scrollContainerRef: Ref<HTMLElement | null>
-  messagesDomRefs: Ref<HTMLDivElement[]>
+  messagesDomRefs: Readonly<ShallowRef<HTMLDivElement[] | null>>
   messagesEndRef: Ref<HTMLElement | null>
-  status: Ref<ChatStatus>
-  messagesLength: Ref<number>
+  chatSdk: ReturnType<typeof useChat>['chatSdk']
 }
 
 const INITIAL_SPACER_PADDING: number = 12
@@ -27,8 +26,7 @@ export function useChatScroll(
     scrollContainerRef,
     messagesDomRefs,
     messagesEndRef,
-    status,
-    messagesLength,
+    chatSdk,
   } = options
 
   const nuxtApp = useNuxtApp()
@@ -46,8 +44,12 @@ export function useChatScroll(
   const assistantDebounceTimer = shallowRef<NodeJS.Timeout | null>(null)
   let lastAssistantMessageId: string | null = null
 
-  watch(messagesDomRefs, (newRefs, _, onCleanup) => {
-    const last = newRefs.at(-1)
+  onUpdated(() => {
+    if (!import.meta.client) {
+      return
+    }
+
+    const last = messagesDomRefs.value?.at(-1)
 
     if (!last) {
       return
@@ -66,7 +68,7 @@ export function useChatScroll(
           return
         }
 
-        setTimeout(async () => {
+        setTimeout(() => {
           if (capturedUserMessages.has(messageId)) {
             return
           }
@@ -79,11 +81,13 @@ export function useChatScroll(
             offsetTop: last.offsetTop,
           }
 
-          if (status.value === 'submitted' || status.value === 'streaming') {
-            await pushUserMessageToTop()
-
-            waitingForDimensions.value = false
+          if (!['submitted', 'streaming'].includes(chatSdk.status)) {
+            return
           }
+
+          pushUserMessageToTop()
+
+          waitingForDimensions.value = false
         }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
 
         break
@@ -100,17 +104,17 @@ export function useChatScroll(
           lastAssistantMessageId = messageId
         }
 
-        assistantDebounceTimer.value = setTimeout(async () => {
+        assistantDebounceTimer.value = setTimeout(() => {
           assistantMessageData.value = {
             id: messageId,
             height: last.offsetHeight,
             offsetTop: last.offsetTop,
           }
 
-          if (status.value === 'ready') {
+          if (chatSdk.status === 'ready') {
             capturedAssistantMessages.add(messageId)
 
-            await adjustSpacerAfterResponse()
+            adjustSpacerAfterResponse()
           }
         }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
 
@@ -118,19 +122,10 @@ export function useChatScroll(
       default:
         return
     }
-
-    onCleanup(() => {
-      if (assistantDebounceTimer.value) {
-        clearTimeout(assistantDebounceTimer.value)
-      }
-    })
-  }, {
-    deep: true,
-    flush: 'post',
   })
 
   async function adjustSpacerAfterResponse() {
-    if (messagesLength.value <= 2) {
+    if (chatSdk.messages.length <= 1) {
       return
     }
 
@@ -142,17 +137,19 @@ export function useChatScroll(
     if (
       !container
       || !messagesEnd
-      || !messagesLength.value
+      || !chatSdk.messages.length
       || !userMessage
       || !assistantMessage
     ) {
       return
     }
 
+    spacerHeight.value = 0
+
+    await nextTick()
+
     const containerHeight = container.clientHeight
-    const contentHeight = messagesEnd.offsetTop
     const scrollableSpace = containerHeight - inputHeight.value
-    const userMessageOffsetTop = userMessage.offsetTop
     const userMessageHeight = userMessage.height
     const assistantMessageHeight = assistantMessage.height
     const conversationPairHeight = userMessageHeight + assistantMessageHeight
@@ -165,8 +162,11 @@ export function useChatScroll(
      * We set the spacer to push the user message
      */
     let resultSpacer: number
-      = userMessageOffsetTop - contentHeight + containerHeight
-        - safeAreaTop.value - MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES
+      = userMessage.offsetTop - safeAreaTop.value
+        + containerHeight - messagesEnd.offsetTop
+        - MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES
+
+    let extraSpaceForScroll: number = 0
 
     /**
      * @description Special case
@@ -200,6 +200,7 @@ export function useChatScroll(
          * we have to add extra space for that.
          */
         resultSpacer = inputHeight.value + extraSpacerForTallUserMessage
+        extraSpaceForScroll = INITIAL_SPACER_PADDING
       }
     } else {
       resultSpacer += extraSpacerForTallUserMessage
@@ -210,10 +211,17 @@ export function useChatScroll(
     nuxtApp.callHook('chat-spacer:changed', resultSpacer)
 
     await nextTick()
+
+    container.scrollTo({
+      top: userMessage.offsetTop
+        + extraSpacerForTallUserMessage
+        - extraSpaceForScroll,
+      behavior: 'instant',
+    })
   }
 
   async function pushUserMessageToTop() {
-    if (messagesLength.value <= 1) {
+    if (chatSdk.messages.length <= 1) {
       return
     }
 
@@ -237,7 +245,7 @@ export function useChatScroll(
       - INITIAL_SPACER_PADDING
 
     if (
-      messagesLength.value > 2
+      chatSdk.messages.length > 2
       && messageHeight > MESSAGE_3_LINES_HEIGHT
     ) {
       resultSpacer += messageHeight + 16 - MESSAGE_3_LINES_HEIGHT

@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
           role: true,
           parts: true,
           tools: true,
+          reasoning: true,
         },
       },
     },

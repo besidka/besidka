@@ -107,7 +107,8 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 }
 
 @theme {
-  --breakpoint-xs: 24rem;
+  --breakpoint-xs: 29rem;
+  --breakpoint-xxs: 24rem;
 
   --font-display: 'Nunito', sans-serif;
   --font-code: 'Atkinson Hyperlegible Mono', sans-serif;

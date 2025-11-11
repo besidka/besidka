@@ -1,15 +1,18 @@
-import type { UIMessage, ChatStatus } from 'ai'
+import type {
+  UIMessage,
+  TextUIPart,
+  SourceUrlUIPart,
+  ReasoningUIPart,
+} from 'ai'
 import type { Chat, Tools } from '#shared/types/chats.d'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
 
 export interface ProcessedMessage {
   message: UIMessage
-  textParts: Array<{
-    part: Extract<UIMessage['parts'][number], { type: 'text' }>
-    originalIndex: number
-  }>
-  hasSources: boolean
+  reasoningParts: ReasoningUIPart[]
+  textParts: TextUIPart[]
+  sourceUrlParts: SourceUrlUIPart[]
 }
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
@@ -23,6 +26,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     chat.messages[chat.messages.length - 1]?.tools || [],
   )
 
+  const isReasoningEnabled = shallowRef<boolean>(
+    chat.messages[chat.messages.length - 1]?.reasoning || false,
+  )
+
   const chatSdk = new ChatSdk({
     id: chat.id,
     messages: chat.messages,
@@ -34,6 +41,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             model: userModel.value,
             tools: tools.value,
             messages,
+            reasoning: isReasoningEnabled.value,
           },
         }
       },
@@ -53,58 +61,45 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
-  const rawMessages = computed<UIMessage[]>(() => chatSdk.messages)
-  const status = computed<ChatStatus>(() => chatSdk.status)
-
-  // Pre-process messages for rendering
-  const messages = computed<ProcessedMessage[]>(() => {
-    return rawMessages.value.map((message): ProcessedMessage => {
-      const textParts = message.parts
-        .map((part, index) => ({ part, originalIndex: index }))
-        .filter(({ part }) => part.type === 'text')
-        .map(({ part, originalIndex }) => ({
-          part: part as Extract<typeof part, { type: 'text' }>,
-          originalIndex,
-        }))
-
-      const hasSources = message.parts.some(
-        part => part.type === 'source-url',
-      )
-
-      return {
-        message,
-        textParts,
-        hasSources,
-      }
-    })
-  })
-
-  const messagesLength = computed<number>(() => rawMessages.value.length)
   const lastMessage = computed<UIMessage | undefined>(() => {
-    return rawMessages.value.at(-1)
+    return chatSdk.messages.at(-1)
   })
 
   const isLoading = computed<boolean>(() => {
-    // TODO: investigate why step-start and reasoning parts are here
-    // even when disabled in server/api/v1/chats/[slug]/index.post.ts
-    // console.log(
-    //   JSON.parse(JSON.stringify(lastMessage.value?.parts)),
-    // )
-    return status.value === 'submitted'
-      || (
-        status.value === 'streaming'
-        && lastMessage.value?.role === 'assistant'
-        && !lastMessage.value.parts?.some(part => part.type === 'text')
-      )
+    if (chatSdk.status === 'submitted') {
+      return true
+    } else if (chatSdk.status !== 'streaming') {
+      return false
+    } else if (lastMessage.value?.role !== 'assistant') {
+      return false
+    } else if (!lastMessage.value.parts?.length) {
+      return true
+    }
+
+    const result: boolean = true
+
+    for (const part of lastMessage.value.parts) {
+      if (!['reasoning', 'text'].includes(part.type)) {
+        continue
+      }
+
+      const p = part as TextUIPart | ReasoningUIPart
+
+      if (p.text?.length) {
+        return false
+      }
+    }
+
+    return result
   })
 
   const displayStop = computed<boolean>(() => {
-    return ['submitted', 'streaming'].includes(status.value)
+    return ['submitted', 'streaming'].includes(chatSdk.status)
       && !isStopped.value
   })
 
   const displayRegenerate = computed<boolean>(() => {
-    return isStopped.value || status.value === 'error'
+    return isStopped.value || chatSdk.status === 'error'
   })
 
   onMounted(() => {
@@ -138,18 +133,57 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     nuxtApp.callHook('chat:regenerate')
   }
 
+  function isLastUserMessage(index: number): boolean {
+    const msg = chatSdk.messages[index]
+
+    if (!msg || msg.role !== 'user') return false
+
+    const lastMsg = chatSdk.messages[chatSdk.messages.length - 1]
+
+    return index === chatSdk.messages.length - 1
+      || (index === chatSdk.messages.length - 2 && lastMsg?.role === 'assistant')
+  }
+
+  function isLastAssistantMessage(index: number): boolean {
+    const msg = chatSdk.messages[index]
+
+    if (!msg || msg.role !== 'assistant') return false
+
+    return index === chatSdk.messages.length - 1
+  }
+
+  function shouldDisplayMessage(id: UIMessage['id']): boolean {
+    const message = chatSdk.messages.find(m => m.id === id)
+
+    if (!message) {
+      return false
+    } else if (message.role === 'user') {
+      return true
+    }
+
+    return message.parts?.some((part) => {
+      return (part.type === 'reasoning' && part.text?.length)
+        || (part.type === 'text' && part.text?.length)
+    }) || false
+  }
+
   return {
-    messages,
-    messagesLength,
+    chatSdk,
+    messages: chatSdk.messages,
+    messagesLength: chatSdk.messages.length,
     input,
     submit,
     stop,
     isStopped,
     regenerate,
     tools,
-    status,
+    isReasoningEnabled,
+    status: chatSdk.status,
     isLoading,
     displayRegenerate,
     displayStop,
+    isLastUserMessage,
+    isLastAssistantMessage,
+    shouldDisplayMessage,
   }
 }
