@@ -37,6 +37,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - [x] Resumable Streams. Continue generation after page refresh
 - [x] Bring Your Own Key. _Securely stored in a database_
 - [x] Web search. _Get real-time information from the web_
+- [x] Thinking (Reasoning). _Breaking down a problem into steps to provide more accurate responses_
 
 ## Local installation
 
