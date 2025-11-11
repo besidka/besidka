@@ -92,7 +92,10 @@
             <div
               class="flex items-center gap-2"
               :class="{
-                'max-xs:grid': isWebSearchEnabled
+                'max-xs:grid max-xs:gap-0':
+                  isWebSearchEnabled && isReasoningEnabled,
+                'max-xxs:grid max-xxs:gap-0':
+                  isWebSearchEnabled || isReasoningEnabled,
               }"
             >
               <details
@@ -103,7 +106,16 @@
                   aria-label="Select model"
                   class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
                 >
-                  {{ getModelName(toValue(userModel)) }}
+                  <span
+                    class="block truncate text-left"
+                    :class="{
+                      'max-xs:w-20 max-xxs:w-auto':
+                        !(isWebSearchEnabled && isReasoningEnabled)
+                         && (isWebSearchEnabled || isReasoningEnabled),
+                    }"
+                  >
+                    {{ getModelName(toValue(userModel)) }}
+                  </span>
                   <Icon
                     name="lucide:chevron-down"
                     size="14"
@@ -118,16 +130,68 @@
                       v-for="provider in providers"
                       :key="provider.id"
                     >
-                      <span class="menu-title">
+                      <span class="menu-title flex items-center gap-2">
+                        <SvgoGeminiShort
+                          v-if="provider.id === 'google'"
+                          class="w-4 fill-base-content/40"
+                        />
+                        <SvgoOpenai
+                          v-if="provider.id === 'openai'"
+                          class="w-4 fill-base-content/40"
+                        />
                         {{ provider.name }}
                       </span>
                       <ul>
-                        <li v-for="model in provider.models" :key="model.id">
+                        <li
+                          v-for="model in provider.models"
+                          :key="model.id"
+                        >
                           <button
                             type="button"
-                            @click="userModel = model.id"
+                            class="flex items-center"
+                            :class="{
+                              'menu-active': userModel === model.id,
+                              'tooltip tooltip-right': $device.isDesktop
+                            }"
+                            :aria-label="`Choose ${model.name}`"
+                            :data-tip="model.price
+                              ? `${model.price.input} / ${model.price.output}`
+                              : undefined
+                            "
+                            @click="selectModel(model.id)"
                           >
-                            {{ model.name }}
+                            <span class="grow">{{ model.name }}</span>
+                            <span class="shrink-0 flex gap-1 items-center">
+                              <span
+                                v-if="model.reasoning"
+                                class="shrink-0 flex items-center p-0.5 rounded-full bg-warning-content"
+                                :class="{
+                                  'tooltip tooltip-warning tooltip-top':
+                                    $device.isDesktop
+                                }"
+                                data-tip="Thinking"
+                              >
+                                <Icon
+                                  name="lucide:brain"
+                                  class="text-warning"
+                                />
+                              </span>
+                              <span
+                                v-if="model.tools.includes('web_search')"
+                                class="shrink-0 flex items-center p-0.5 rounded-full bg-info-content"
+                                :class="{
+                                  'tooltip tooltip-info tooltip-top':
+                                    $device.isDesktop
+                                }"
+                                data-tip="Web search"
+                              >
+                                <Icon
+                                  v-if="model.tools.includes('web_search')"
+                                  name="lucide:globe"
+                                  class="text-info"
+                                />
+                              </span>
+                            </span>
                           </button>
                         </li>
                       </ul>
@@ -135,7 +199,7 @@
                   </ul>
                 </div>
               </details>
-              <div class="max-sm:px-1 sm:contents">
+              <div class="flex items-center gap-2 my-2 px-1">
                 <UiButton
                   v-if="isWebSearchSupported"
                   mode="accent"
@@ -156,6 +220,27 @@
                     'pl-[5px] btn-active': isWebSearchEnabled,
                   }"
                   @click="toggleWebSearch"
+                />
+                <UiButton
+                  v-if="isReasoningSupported"
+                  mode="accent"
+                  :ghost="isReasoningEnabled ? undefined : true"
+                  :circle="!isReasoningEnabled"
+                  icon-name="lucide:brain"
+                  :icon-size="16"
+                  :icon-only="!isReasoningEnabled"
+                  :title="isReasoningEnabled
+                    ? 'Disable thinking'
+                    : 'Enable thinking'
+                  "
+                  text="Thinking"
+                  tooltip-position="top"
+                  size="xs"
+                  class="rounded-full"
+                  :class="{
+                    'pl-[5px] btn-active': isReasoningEnabled,
+                  }"
+                  @click="isReasoningEnabled = !isReasoningEnabled"
                 />
               </div>
             </div>
@@ -221,7 +306,7 @@ const route = useRoute()
 const { isDesktop } = useDevice()
 const { userModel } = useUserModel()
 const { providers } = getProviders()
-const { isWebSearchSupported } = useChatInput()
+const { isWebSearchSupported, isReasoningSupported } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
@@ -283,6 +368,19 @@ const message = defineModel<string>('message', {
 const tools = defineModel<Tools>('tools', {
   default: [],
 })
+
+const isReasoningEnabled = defineModel<boolean>('reasoning', {
+  default: false,
+})
+
+watch(isReasoningSupported, (supported) => {
+  if (!supported) {
+    isReasoningEnabled.value = false
+  }
+}, {
+  immediate: true,
+})
+
 const { textarea, input } = useTextareaAutosize({
   input: message,
 })
@@ -310,6 +408,14 @@ watch(isDropdownHovered, (hovered) => {
   immediate: false,
   flush: 'post',
 })
+
+function selectModel(modelId: string) {
+  userModel.value = modelId
+
+  if (modelDropdown.value) {
+    modelDropdown.value.open = false
+  }
+}
 
 const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
@@ -370,9 +476,22 @@ onMounted(() => {
   }, 4)
 })
 
+watch(chatInputHeight, (newHeight) => {
+  if (input.value) {
+    return
+  }
+
+  nuxtApp.callHook('chat-input:height', newHeight)
+})
+
 onUnmounted(() => {
   if (blurTimeout.value) {
     clearTimeout(blurTimeout.value)
   }
+})
+
+onStartTyping(() => {
+  nuxtApp.callHook('chat:scroll-to-bottom')
+  textarea.value?.focus()
 })
 </script>

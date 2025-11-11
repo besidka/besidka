@@ -1,7 +1,7 @@
 <template>
   <div
     data-chat-messages
-    class="grid gap-3 w-full max-w-4xl mx-auto pt-2 px-4 sm:px-24"
+    class="grid gap-3 w-full pt-2"
   >
     <slot />
   </div>

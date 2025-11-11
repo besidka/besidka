@@ -41,6 +41,7 @@ export const messages = sqliteTable(
       .notNull()
       .$type<Array<'web_search'>>()
       .default(sql`'[]'`),
+    reasoning: integer({ mode: 'boolean' }).default(false),
   }, table => [
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),
   ],

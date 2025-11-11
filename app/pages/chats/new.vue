@@ -11,6 +11,7 @@
   <ChatInput
     v-model:message="message"
     v-model:tools="tools"
+    v-model:reasoning="reasoning"
     :messages-container="null"
     :messages-length="0"
     visible-on-scroll
@@ -37,6 +38,7 @@ useSeoMeta({
 const message = useLocalStorage<string>('chat_input', '')
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
+const reasoning = shallowRef<boolean>(false)
 
 async function onSubmit() {
   pending.value = true
@@ -47,6 +49,7 @@ async function onSubmit() {
       body: {
         message: message.value,
         tools: tools.value,
+        reasoning: reasoning.value,
       },
       cache: 'no-cache',
     })

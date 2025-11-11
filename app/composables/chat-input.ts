@@ -9,7 +9,16 @@ export function useChatInput() {
     return !!model?.tools.includes('web_search')
   })
 
+  const isReasoningSupported = computed<boolean>(() => {
+    if (!userModel) return false
+
+    const { model } = getModel(toValue(userModel))
+
+    return !!model?.reasoning
+  })
+
   return {
     isWebSearchSupported,
+    isReasoningSupported,
   }
 }

@@ -15,6 +15,7 @@ export interface Model {
     output: string[]
   }
   tools: Tools
+  reasoning?: boolean
 }
 
 export interface Provider {

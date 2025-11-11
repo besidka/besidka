@@ -3,6 +3,7 @@ import * as schema from '~~/server/db/schema'
 const rules = z.object({
   message: z.string().trim().min(1),
   tools: z.array(z.enum(['web_search'])),
+  reasoning: z.boolean().default(false),
 })
 
 export default defineEventHandler(async (event) => {
@@ -55,6 +56,7 @@ export default defineEventHandler(async (event) => {
         text: body.data.message,
       }],
       tools: body.data.tools,
+      reasoning: body.data.reasoning,
     })
 
   return {

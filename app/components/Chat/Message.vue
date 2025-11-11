@@ -1,7 +1,7 @@
 <template>
   <div
     ref="element"
-    class="chat"
+    class="chat w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24"
     :class="{
       'chat-start': role === 'assistant',
       'chat-end': role === 'user',
@@ -16,7 +16,12 @@
             && role === 'assistant',
       }"
     >
-      <div class="w-10 rounded-full bg-base-100 dark:bg-base-content text-text dark:text-base-100">
+      <div
+        class="w-10 rounded-full bg-base-100 text-text"
+        :class="{
+          'dark:bg-base-content/50 dark:text-base-100': role === 'assistant'
+        }"
+      >
         <Logo
           v-if="role === 'assistant'"
           short

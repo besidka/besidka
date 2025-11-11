@@ -1,3 +1,4 @@
+import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -6,6 +7,7 @@ export async function useGoogle(
   userId: string,
   model: string,
   requestedTools: Tools,
+  requestedReasoning?: boolean,
 ) {
   const data = await useDb().query.keys.findFirst({
     where(keys, { and, eq }) {
@@ -63,9 +65,32 @@ export async function useGoogle(
     return result
   }
 
+  function getProviderOptions(): SharedV2ProviderOptions {
+    const result: SharedV2ProviderOptions = {}
+
+    const { model: modelData } = getModel(model)
+
+    if (requestedReasoning && modelData?.reasoning) {
+      /**
+       * @example
+       * https://ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai#thinking
+       * https://ai.google.dev/gemini-api/docs/thinking
+       */
+      Object.assign(result, {
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: -1,
+        },
+      })
+    }
+
+    return result
+  }
+
   return {
     instance: getInstance(),
     generateChatTitle,
     tools: getTools(),
+    providerOptions: getProviderOptions(),
   }
 }

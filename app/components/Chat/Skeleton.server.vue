@@ -1,5 +1,5 @@
 <template>
-  <div class="grid gap-3 w-full">
+  <div class="grid gap-3 w-full sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
     <div
       v-for="(_, index) in Array(Math.min(messagesLength, 2))"
       :key="index"
