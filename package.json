@@ -46,7 +46,7 @@
 		"@vueuse/core": "^14.0.0",
 		"@vueuse/nuxt": "^14.0.0",
 		"ai": "^5.0.89",
-		"better-auth": "^1.3.34",
+		"better-auth": "^1.4.0",
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.4.7",
 		"defu": "^6.1.4",
