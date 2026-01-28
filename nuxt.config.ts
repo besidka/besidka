@@ -2,13 +2,14 @@ import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers'
 
 export default defineNuxtConfig({
-  compatibilityDate: '2025-05-15',
+  compatibilityDate: '2026-01-28',
   devtools: { enabled: true },
   features: {
     // devLogs: true,
   },
   nitro: {
     preset: 'cloudflare_module',
+    // minify: false,
     experimental: {
       asyncContext: true,
     },
@@ -73,7 +74,6 @@ export default defineNuxtConfig({
     dataValue: 'theme',
   },
   modules: [
-    'nitro-cloudflare-dev',
     '@nuxt/eslint',
     '@nuxt/fonts',
     '@nuxt/icon',

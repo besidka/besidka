@@ -86,8 +86,6 @@
 		"happy-dom": "^20.0.10",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.6",
-		"nitro-cloudflare-dev": "^0.2.2",
-		"nitropack": "^2.12.9",
 		"typescript": "^5.9.3",
 		"vite-plugin-eslint2": "^5.0.4",
 		"vitest": "^4.0.8",

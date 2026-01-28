@@ -13,8 +13,8 @@ export function useServerAuth(event?: H3Event) {
   event = event ?? useEvent()
 
   const config = useRuntimeConfig(event)
-  const db = useDb(event)
-  const kv = useKV(event)
+  const db = useDb()
+  const kv = useKV()
   const dataKey = 'auth'
 
   const { send: sendEmail } = useEmail()
