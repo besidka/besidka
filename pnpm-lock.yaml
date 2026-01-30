@@ -39,8 +39,8 @@ importers:
         specifier: ^3.5.2
         version: 3.5.2(magicast@0.5.1)
       '@nuxtjs/device':
-        specifier: ^3.2.4
-        version: 3.2.4
+        specifier: ^4.0.0
+        version: 4.0.0
       '@nuxtjs/mdc':
         specifier: ^0.18.2
         version: 0.18.2(magicast@0.5.1)
@@ -2119,8 +2119,8 @@ packages:
   '@nuxtjs/color-mode@3.5.2':
     resolution: {integrity: sha512-cC6RfgZh3guHBMLLjrBB2Uti5eUoGM9KyauOaYS9ETmxNWBMTvpgjvSiSJp1OFljIXPIqVTJ3xtJpSNZiO3ZaA==}
 
-  '@nuxtjs/device@3.2.4':
-    resolution: {integrity: sha512-jIvN6QeodBNrUrL/1FCHk4bebsiLsGHlJd8c/m2ksLrGY4IZ0npA8IYhDTdYV92epGxoe8+3iZOzCjav+6TshQ==}
+  '@nuxtjs/device@4.0.0':
+    resolution: {integrity: sha512-Tkbvde/GInmigbS/n3X3X+qXJWi6hsYrViKpZrakaBBYY3NbGYJb0c8aVxd3vI636HBbOhu0I39rv7MSjP7w8Q==}
 
   '@nuxtjs/mdc@0.18.2':
     resolution: {integrity: sha512-pdeWd2/oOPriPVa1F6QNoK4fZCp/b4sxEVoouXJJCETCBIFSNS4OOtdRTY1ATLM1Gr+6ZvNyNPABvaaUEGC4Lw==}
@@ -10468,7 +10468,7 @@ snapshots:
     transitivePeerDependencies:
       - magicast
 
-  '@nuxtjs/device@3.2.4':
+  '@nuxtjs/device@4.0.0':
     dependencies:
       defu: 6.1.4
 
