@@ -38,7 +38,7 @@
 		"@nuxt/fonts": "0.12.1",
 		"@nuxt/icon": "2.1.0",
 		"@nuxt/image": "^2.0.0",
-		"@nuxtjs/color-mode": "^3.5.2",
+		"@nuxtjs/color-mode": "^4.0.0",
 		"@nuxtjs/device": "^3.2.4",
 		"@nuxtjs/mdc": "^0.18.2",
 		"@tailwindcss/vite": "^4.1.17",
