@@ -64,10 +64,9 @@ cd besidka
 pnpm install
 ```
 
-Copy wrangler and ENV related files.
+Copy ENV related files.
 ```bash
 cp .dev.vars.example .dev.vars
-cp wrangler.jsonc.example wrangler.jsonc
 ```
 
 Generate environment types for the project.
@@ -90,6 +89,11 @@ pnpx wrangler d1 migrations apply besidka
 Start the development server.
 ```bash
 pnpm run dev
+```
+
+or to start Cloudflare Workers preview server
+```bash
+pnpm run preview
 ```
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser.

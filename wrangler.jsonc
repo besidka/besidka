@@ -1,0 +1,85 @@
+{
+	"name": "besidka-preview",
+	"compatibility_date": "2026-01-28",
+	"workers_dev": true,
+	"preview_urls": true,
+	"main": ".output/server/index.mjs",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".output/public"
+	},
+	"compatibility_flags": [
+		"nodejs_compat",
+		"no_nodejs_compat_v2",
+		"nodejs_als"
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"placement": {
+		"mode": "smart"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "besidka-preview",
+			"database_id": "d30ca34f-9b29-4846-a77b-fcbda41cb598",
+			"migrations_dir": ".drizzle/migrations"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "6ee10a2a05034ba092a9fb815f633e06"
+		}
+	],
+	"r2_buckets": [
+		{
+			"bucket_name": "besidka-preview",
+			"binding": "R2_BUCKET"
+		}
+	],
+	"env": {
+		"production": {
+			"name": "besidka",
+			"workers_dev": false,
+			"preview_urls": false,
+			"main": ".output/server/index.mjs",
+			"assets": {
+				"binding": "ASSETS",
+				"directory": ".output/public"
+			},
+			"routes": [
+				{
+					"custom_domain": true,
+					"pattern": "besidka.com"
+				},
+				{
+					"pattern": "www.besidka.com/*",
+					"zone_name": "besidka.com"
+				}
+			],
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "besidka",
+					"database_id": "4d03fd8e-027e-4485-bd11-f387b1677e88",
+					"migrations_dir": ".drizzle/migrations"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "KV",
+					"id": "eb7450a0ca6f4e6ba0b7ab7fd92f3e6a"
+				}
+			],
+			"r2_buckets": [
+				{
+					"bucket_name": "besidka",
+					"binding": "R2_BUCKET"
+				}
+			]
+		}
+	}
+}

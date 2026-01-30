@@ -68,9 +68,6 @@ jobs:
       - name: Run tests
         run: pnpm run coverage
 
-      - name: Copy wrangler config
-        run: cp ".github/wrangler/${{ inputs.environment }}.jsonc" wrangler.jsonc
-
       - name: Build application
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
@@ -90,7 +87,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          command: deploy
+          command: ${{ inputs.environment == 'production' && 'deploy --env production' || 'deploy' }}
 
       - name: Print deployed URL
         env:

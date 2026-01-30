@@ -14,17 +14,8 @@ export default defineNuxtConfig({
       asyncContext: true,
     },
     cloudflare: {
-      deployConfig: true,
+      deployConfig: false,
       nodeCompat: true,
-      wrangler: {
-        observability: {
-          enabled: true,
-          head_sampling_rate: 1,
-        },
-        placement: {
-          mode: 'smart',
-        },
-      },
     },
   },
   $development: {
