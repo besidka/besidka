@@ -23,10 +23,11 @@ logs
 # Local env files
 .env*
 
-# wrangler files
+# Cloudflare
 .wrangler
 .dev.vars*
 !.dev.vars.example
+worker-configuration.d.ts
 
 # Tests
 coverage
