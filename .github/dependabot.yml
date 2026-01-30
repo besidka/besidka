@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    # Group minor and patch updates together to reduce PR noise
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+    # Dependabot will only update dependencies listed in package.json
+    # Transitive dependency updates (like lodash) will be ignored/fail gracefully
+    ignore:
+      # Prevent ALL automatic updates for critical packages - require manual review
+      - dependency-name: "nuxt"
+      - dependency-name: "better-auth"
+      - dependency-name: "tailwindcss"
+      - dependency-name: "daisyui"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
+      include: "scope"

@@ -197,9 +197,7 @@ export default defineNuxtConfig({
     registerWebManifestInRouteRules: true,
     workbox: {
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
-    },
-    injectManifest: {
-      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+      navigateFallback: null,
     },
     client: {
       installPrompt: true,

@@ -1,0 +1,6 @@
+# CODEOWNERS file
+# This file defines individuals or teams responsible for code in this repository
+# Users/teams listed here will be automatically requested for review when PRs are opened
+
+# Assign @serhii-chernenko as the owner for all files in the repository
+* @serhii-chernenko
