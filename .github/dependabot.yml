@@ -20,6 +20,12 @@ updates:
           - "patch"
     # Dependabot will only update dependencies listed in package.json
     # Transitive dependency updates (like lodash) will be ignored/fail gracefully
+    ignore:
+      # Prevent ALL automatic updates for critical packages - require manual review
+      - dependency-name: "nuxt"
+      - dependency-name: "better-auth"
+      - dependency-name: "tailwindcss"
+      - dependency-name: "daisyui"
     labels:
       - "dependencies"
     commit-message:
