@@ -29,7 +29,7 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^2.0.29",
+		"@ai-sdk/google": "^3.0.18",
 		"@ai-sdk/openai": "^2.0.64",
 		"@ai-sdk/provider": "^2.0.0",
 		"@ai-sdk/vue": "^2.0.89",
