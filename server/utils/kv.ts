@@ -1,4 +1,5 @@
 import type { KVNamespace } from '@cloudflare/workers-types'
+// @ts-ignore
 import { env } from 'cloudflare:workers'
 
 export function useKV() {
