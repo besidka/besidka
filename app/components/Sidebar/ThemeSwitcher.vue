@@ -4,6 +4,7 @@
       <SidebarSkeleton />
     </template>
     <UiButton
+      data-testid="theme-switcher"
       ghost
       circle
       :tooltip-position="tipsPosition"
@@ -12,29 +13,30 @@
       @click="changeColorMode"
     >
       <template #icon>
-        <span class="swap swap-rotate">
-          <Icon
-            :class="{
-              'swap-off': !checked,
-              'swap-on': checked,
-            }"
-            name="lucide:sun"
-            size="20"
-          />
-          <Icon
-            :class="{
-              'swap-off': checked,
-              'swap-on': !checked,
-            }"
-            name="lucide:moon"
-            size="20"
-          />
-        </span>
+        <Icon
+          v-if="currentPreference === 'light'"
+          data-testid="theme-icon-light"
+          name="lucide:sun"
+          size="20"
+        />
+        <Icon
+          v-else-if="currentPreference === 'dark'"
+          data-testid="theme-icon-dark"
+          name="lucide:moon"
+          size="20"
+        />
+        <Icon
+          v-else
+          data-testid="theme-icon-system"
+          name="lucide:sun-moon"
+          size="20"
+        />
       </template>
     </UiButton>
     <Teleport to="body">
       <div
         v-if="pending"
+        data-testid="theme-switcher-loading"
         class="fixed z-[9999] inset-0 grid place-content-center background-gradient"
       >
         <div class="flex flex-col gap-4 items-center z-10">
@@ -51,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import type { FaviconTheme } from '~/types/favicon.d'
+import type { FaviconTheme, ThemePreference } from '~/types/favicon.d'
 
 interface Props {
   tips?: boolean
@@ -66,13 +68,23 @@ const { isIos } = useDevice()
 
 const pending = shallowRef<boolean>(false)
 
+const currentPreference = computed<ThemePreference>(() => {
+  return colorMode.preference as ThemePreference
+})
+
+const resolvedTheme = computed<FaviconTheme>(() => {
+  return colorMode.value as FaviconTheme
+})
+
 onBeforeMount(() => {
-  setFavicon(colorMode.preference as FaviconTheme)
-  setThemeColorMeta(colorMode.preference as FaviconTheme)
+  setFavicon(resolvedTheme.value)
+  setThemeColorMeta(resolvedTheme.value)
 })
 
 function prefersColorSchemeHandler(event: MediaQueryListEvent) {
-  setThemeColorMeta(event.matches ? 'dark' : 'light')
+  if (currentPreference.value === 'system') {
+    setThemeColorMeta(event.matches ? 'dark' : 'light')
+  }
 }
 
 onMounted(() => {
@@ -87,9 +99,9 @@ onBeforeUnmount(() => {
   darkModeQuery.removeEventListener('change', prefersColorSchemeHandler)
 })
 
-function setThemeColorMeta(theme: FaviconTheme) {
-  const appConfig = useAppConfig()
+const appConfig = useAppConfig()
 
+function setThemeColorMeta(theme: FaviconTheme) {
   let themeColorMeta = document.querySelector('meta[name="theme-color"]')
 
   if (!themeColorMeta) {
@@ -127,21 +139,32 @@ async function reloadStandaloneApp() {
 }
 
 function changeColorMode() {
-  const result = colorMode.value === 'light' ? 'dark' : 'light'
+  const nextPreference: ThemePreference
+    = currentPreference.value === 'light'
+      ? 'dark'
+      : currentPreference.value === 'dark'
+        ? 'system'
+        : 'light'
 
-  colorMode.value = result
-  setThemeColorMeta(result as FaviconTheme)
+  colorMode.preference = nextPreference
+  setThemeColorMeta(resolvedTheme.value)
   reloadStandaloneApp()
 }
 
-const checked = computed<boolean>(() => colorMode.value !== 'light')
+watch(resolvedTheme, (newTheme) => {
+  setFavicon(newTheme)
 
-watch(checked, (value: boolean) => {
-  colorMode.preference = !value ? 'light' : 'dark'
-  setFavicon(colorMode.preference as FaviconTheme)
+  if (currentPreference.value === 'system') {
+    setThemeColorMeta(newTheme)
+  }
 })
 
 const label = computed<string>(() => {
-  return checked.value ? 'Switch to light theme' : 'Switch to dark theme'
+  switch (currentPreference.value) {
+    case 'light': return 'Switch to dark theme'
+    case 'dark': return 'Switch to system theme'
+    case 'system': return 'Switch to light theme'
+    default: return 'Switch theme'
+  }
 })
 </script>
