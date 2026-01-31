@@ -15,8 +15,23 @@ on:
         description: "Bundle size information"
         value: ${{ jobs.build.outputs.bundle-size }}
       duration:
-        description: "Build duration"
+        description: "Total duration"
         value: ${{ jobs.build.outputs.duration }}
+      test-unit-time:
+        description: "Unit tests duration"
+        value: ${{ jobs.build.outputs.test-unit-time }}
+      test-integration-time:
+        description: "Integration tests duration"
+        value: ${{ jobs.build.outputs.test-integration-time }}
+      test-e2e-time:
+        description: "E2E tests duration"
+        value: ${{ jobs.build.outputs.test-e2e-time }}
+      build-time:
+        description: "Nuxt build duration"
+        value: ${{ jobs.build.outputs.build-time }}
+      deploy-time:
+        description: "Cloudflare deploy duration"
+        value: ${{ jobs.build.outputs.deploy-time }}
     secrets:
       CLOUDFLARE_ACCOUNT_ID:
         required: true
@@ -32,6 +47,11 @@ jobs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
       duration: ${{ steps.calculate-duration.outputs.duration }}
+      test-unit-time: ${{ steps.test-unit.outputs.duration }}
+      test-integration-time: ${{ steps.test-integration.outputs.duration }}
+      test-e2e-time: ${{ steps.test-e2e.outputs.duration }}
+      build-time: ${{ steps.build-app.outputs.duration }}
+      deploy-time: ${{ steps.deploy-app.outputs.duration }}
 
     permissions:
       id-token: write
@@ -44,6 +64,9 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Fetch full history for accurate affected test detection on PRs
+          fetch-depth: 0
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -65,20 +88,136 @@ jobs:
       - name: Run TypeScript type checks
         run: pnpm run typecheck
 
-      - name: Run tests
-        run: pnpm run coverage
+      - name: Run unit tests (PR - affected only)
+        if: github.event_name == 'pull_request'
+        id: test-unit-pr
+        run: |
+          START=$(date +%s)
+          node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=unit
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Affected unit tests completed in ${DURATION}s"
+
+      - name: Run all unit tests (main)
+        if: github.event_name != 'pull_request'
+        id: test-unit-main
+        run: |
+          START=$(date +%s)
+          pnpm run test:unit
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ All unit tests completed in ${DURATION}s"
+
+      - name: Set unit test duration output
+        id: test-unit
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "duration=${{ steps.test-unit-pr.outputs.duration }}" >> $GITHUB_OUTPUT
+          else
+            echo "duration=${{ steps.test-unit-main.outputs.duration }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run integration tests (PR - affected only)
+        if: github.event_name == 'pull_request'
+        id: test-integration-pr
+        run: |
+          START=$(date +%s)
+          node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=integration
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Affected integration tests completed in ${DURATION}s"
+
+      - name: Run all integration tests (main)
+        if: github.event_name != 'pull_request'
+        id: test-integration-main
+        run: |
+          START=$(date +%s)
+          pnpm run test:integration
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ All integration tests completed in ${DURATION}s"
+
+      - name: Set integration test duration output
+        id: test-integration
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "duration=${{ steps.test-integration-pr.outputs.duration }}" >> $GITHUB_OUTPUT
+          else
+            echo "duration=${{ steps.test-integration-main.outputs.duration }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: Run E2E tests (PR - affected only)
+        if: github.event_name == 'pull_request'
+        id: test-e2e-pr
+        run: |
+          START=$(date +%s)
+          node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=e2e
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Affected E2E tests completed in ${DURATION}s"
+        env:
+          CI: true
+
+      - name: Run all E2E tests (main)
+        if: github.event_name != 'pull_request'
+        id: test-e2e-main
+        run: |
+          START=$(date +%s)
+          pnpm run test:e2e
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ All E2E tests completed in ${DURATION}s"
+        env:
+          CI: true
+
+      - name: Set E2E test duration output
+        id: test-e2e
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "duration=${{ steps.test-e2e-pr.outputs.duration }}" >> $GITHUB_OUTPUT
+          else
+            echo "duration=${{ steps.test-e2e-main.outputs.duration }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always() && (steps.test-e2e-pr.outcome != 'skipped' || steps.test-e2e-main.outcome != 'skipped')
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
 
       - name: Build application
+        id: build-app
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
-        run: pnpm run build 2>&1 | tee build-output.log
+        run: |
+          START=$(date +%s)
+          pnpm run build 2>&1 | tee build-output.log
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Build completed in ${DURATION}s"
 
       - name: Extract and output bundle size
+        id: bundle-size
         run: |
           SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
           echo "Bundle Size: $SIZE_INFO"
           echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
-        id: bundle-size
+
+      - name: Record deploy start time
+        id: deploy-start
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Deploy app to Cloudflare Workers via Wrangler
         id: deploy
@@ -89,23 +228,55 @@ jobs:
           packageManager: pnpm
           command: ${{ inputs.environment == 'production' && 'deploy --env production' || 'deploy' }}
 
+      - name: Calculate deploy time
+        id: deploy-app
+        run: |
+          START=${{ steps.deploy-start.outputs.start-time }}
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Deploy completed in ${DURATION}s"
+
       - name: Print deployed URL
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: echo $DEPLOYMENT_URL
 
-      - name: Calculate build duration
+      - name: Calculate total duration and print summary
         id: calculate-duration
         run: |
           START_TIME=${{ steps.start-time.outputs.start-time }}
           END_TIME=$(date +%s)
-          DURATION=$((END_TIME - START_TIME))
-          MINUTES=$((DURATION / 60))
-          SECONDS=$((DURATION % 60))
+          TOTAL_DURATION=$((END_TIME - START_TIME))
+          MINUTES=$((TOTAL_DURATION / 60))
+          SECONDS=$((TOTAL_DURATION % 60))
           if [ $MINUTES -gt 0 ]; then
             DURATION_FORMAT="${MINUTES}m ${SECONDS}s"
           else
             DURATION_FORMAT="${SECONDS}s"
           fi
           echo "duration=$DURATION_FORMAT" >> $GITHUB_OUTPUT
-          echo "Build completed in: $DURATION_FORMAT"
+
+          # Print beautiful summary
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║                    BUILD SUMMARY                           ║"
+          echo "╠════════════════════════════════════════════════════════════╣"
+          echo "║                                                            ║"
+          echo "║  📊 Test Results:                                          ║"
+          echo "║     • Unit tests:        ${{ steps.test-unit.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • Integration tests: ${{ steps.test-integration.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • E2E tests:         ${{ steps.test-e2e.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║                                                            ║"
+          echo "║  🏗️  Build Process:                                        ║"
+          echo "║     • Nuxt build:        ${{ steps.build-app.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • Bundle size:       ${{ steps.bundle-size.outputs.bundle-size }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║                                                            ║"
+          echo "║  🚀 Deployment:                                            ║"
+          echo "║     • Deploy time:       ${{ steps.deploy-app.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • URL:               ${{ steps.deploy.outputs.deployment-url }}" | awk '{printf "%-60s║\n", $0}' | head -c 66
+          echo "║                                                            ║"
+          echo "║  ⏱️  Total Time:          ${DURATION_FORMAT}" | awk '{printf "%-60s║\n", $0}'
+          echo "║                                                            ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
