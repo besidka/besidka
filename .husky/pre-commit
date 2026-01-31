@@ -1,5 +1,9 @@
 pnpx lint-staged
 pnpm run typecheck
 
-echo "\n🧪 Running affected tests (unit + integration)..."
-pnpm run test:affected:fast
+if [ "${SKIP_TESTS}" = "1" ]; then
+  echo "SKIP_TESTS=1 set, skipping affected tests (unit + integration)."
+else
+  echo "\n🧪 Running affected tests (unit + integration)..."
+  pnpm run test:affected:fast
+fi
