@@ -196,6 +196,10 @@ jobs:
           path: playwright-report/
           retention-days: 30
 
+      - name: Generate test coverage
+        if: always()
+        run: pnpm run coverage
+
       - name: Upload test coverage
         uses: codecov/codecov-action@v4
         if: always()

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { beforeAll, afterEach, afterAll } from 'vitest'
 
 /**
  * MSW handlers for API mocking

@@ -20,8 +20,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should cycle through all three theme preferences', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(30000)
+    test.setTimeout(45000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
     const themes = []
@@ -44,8 +43,6 @@ test.describe('Theme Switching', () => {
   })
 
   test('should update theme-color meta tag', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-
     // Check if theme-color meta tag exists
     const themeColorMeta = page.locator('meta[name="theme-color"]')
     const content = await themeColorMeta.getAttribute('content')
@@ -56,8 +53,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should change theme-color meta tag when theme changes', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(15000)
+    test.setTimeout(20000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
     const themeColorMeta = page.locator('meta[name="theme-color"]')
@@ -74,8 +70,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should persist theme preference on page reload', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(15000)
+    test.setTimeout(20000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
 
@@ -96,8 +91,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should persist theme preference in localStorage', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(10000)
+    test.setTimeout(15000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
 
@@ -111,7 +105,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should show correct icon for light theme', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
+    test.setTimeout(15000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
     const title = await themeSwitcher.getAttribute('title')
@@ -125,8 +119,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should show correct icon for dark theme', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(20000)
+    test.setTimeout(30000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
 
@@ -150,8 +143,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should show correct icon for system theme', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(20000)
+    test.setTimeout(30000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
 
@@ -175,8 +167,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should update favicon when theme changes', async ({ page }) => {
-    test.skip(process.env.CI === 'true', 'Skipping theme test in CI')
-    test.setTimeout(10000)
+    test.setTimeout(15000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
 
@@ -229,7 +220,7 @@ test.describe('Theme Switching', () => {
 
   test('should show loading overlay on iOS when changing theme', async ({ page, browserName }) => {
     test.skip(browserName !== 'webkit', 'Only test iOS behavior on WebKit')
-    test.skip(process.env.CI === 'true', 'Skipping in CI')
+    test.setTimeout(15000)
 
     const themeSwitcher = page.getByTestId('theme-switcher')
 

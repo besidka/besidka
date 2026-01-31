@@ -11,8 +11,6 @@ export default defineVitestConfig({
       'tests/unit/**/*.spec.ts',
       'tests/integration/**/*.spec.ts',
     ],
-    // Enable test change detection for better --changed support
-    watch: true,
     // Configure git integration for --changed flag
     forceRerunTriggers: [
       '**/vitest.config.mts',

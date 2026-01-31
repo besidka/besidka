@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Get the remote branch being pushed to
+remote="$1"
+url="$2"
+
+# Get the current branch name
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+# Get the upstream branch (default to origin/main if not set)
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "origin/main")
+
+echo "\n🧪 Running affected tests (unit + integration) against $upstream..."
+node scripts/test-affected.mjs --base="$upstream" --type=unit
+node scripts/test-affected.mjs --base="$upstream" --type=integration
