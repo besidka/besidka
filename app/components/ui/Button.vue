@@ -107,35 +107,57 @@ const resultTitle = computed<string>(() => {
 })
 
 const containerAttrs = computed<ButtonContainerAttrs>(() => {
-  return props.disabled && props.tooltip === null
+  const baseAttrs = props.disabled && props.tooltip === null
     ? {}
     : {
       'data-tip': props.tooltip === null ? undefined : toValue(resultTitle),
     }
+
+  if (isTagSummary.value) {
+    const { class: _, ...restAttrs } = nativeAttrs
+    const title = toValue(resultTitle)
+    const summaryAttrs = title ? { title, 'aria-label': title } : {}
+    return { ...baseAttrs, ...summaryAttrs, ...restAttrs }
+  }
+
+  return baseAttrs
 })
 
 const buttonAttrs = computed<ButtonAttrs>(() => {
   const result = {}
 
   if (props.disabled) {
-    return result
+    // Even when disabled, pass through native attrs (except class and onClick)
+    const { class: _, onClick: __, ...restAttrs } = nativeAttrs
+    const title = toValue(resultTitle)
+    const disabledAttrs = title ? { title, 'aria-label': title } : {}
+    return isTagSummary.value
+      ? result
+      : { ...result, ...disabledAttrs, ...restAttrs }
   }
 
   const title = toValue(resultTitle)
 
-  return Object.assign(
-    result,
-    props.to
-      ? {
-        'to': props.to,
-        'aria-label': title,
-      }
-      : {
-        'type': props.tag === 'button' ? props.type : undefined,
-        'aria-label': title,
-        'onClick': nativeAttrs.onClick,
-      },
-  )
+  // Extract native attrs (excluding class which is handled separately)
+  const { class: _, onClick, ...restAttrs } = nativeAttrs
+
+  const specificAttrs = props.to
+    ? {
+      'to': props.to,
+      'aria-label': title,
+      'title': title,
+    }
+    : {
+      'type': props.tag === 'button' ? props.type : undefined,
+      'aria-label': title,
+      'title': title,
+      'onClick': onClick,
+    }
+
+  // Only add native attrs when button is the interactive element (not summary)
+  return isTagSummary.value
+    ? Object.assign(result, specificAttrs)
+    : Object.assign(result, specificAttrs, restAttrs)
 })
 
 const focus = () => {

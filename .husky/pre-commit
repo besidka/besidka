@@ -1,2 +1,5 @@
 pnpx lint-staged
 pnpm run typecheck
+
+echo "\n🧪 Running affected tests (unit + integration)..."
+pnpm run test:affected:fast

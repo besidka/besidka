@@ -31,6 +31,9 @@ worker-configuration.d.ts
 
 # Tests
 coverage
+playwright-report
+test-results
+.playwright
 
 # Drizzle ORM
 .drizzle
