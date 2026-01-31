@@ -58,7 +58,7 @@ jobs:
         run: |
           labels_to_add=""
 
-          label_types=("feat" "fix" "docs")
+          label_types=("feat" "fix" "docs" "test")
 
           for label in "${label_types[@]}"; do
             should_add_label=false
