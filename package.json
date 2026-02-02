@@ -55,7 +55,7 @@
 		"@ai-sdk/google": "^2.0.29",
 		"@ai-sdk/openai": "^2.0.64",
 		"@ai-sdk/provider": "^2.0.0",
-		"@ai-sdk/vue": "^2.0.89",
+		"@ai-sdk/vue": "^3.0.68",
 		"@iconify-json/lucide": "1.2.72",
 		"@nuxt/eslint": "1.10.0",
 		"@nuxt/fonts": "0.12.1",
