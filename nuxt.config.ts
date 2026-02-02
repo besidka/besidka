@@ -30,7 +30,7 @@ export default defineNuxtConfig({
       },
     },
     runtimeConfig: {
-      drizzleDebug: true,
+      drizzleDebug: false,
     },
     pwa: {
       devOptions: {
@@ -171,6 +171,8 @@ export default defineNuxtConfig({
     viteEnvironmentApi: true,
     extractAsyncDataHandlers: true,
     typescriptPlugin: true,
+    // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
+    nitroAutoImports: true,
   },
   mdc: {
     remarkPlugins: {
