@@ -7,7 +7,7 @@ on:
       - '**/*.md'
     
 concurrency:
-  group: preview
+  group: preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
