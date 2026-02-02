@@ -49,12 +49,13 @@ jobs:
           allow-repeats: true
           message: |
             ## Deployed to <img width="16" alt="Cloudflare Workers logo" src="https://workers.cloudflare.com/logo.svg"> Cloudflare Workers
-            
+
             | Property | Value |
             |----------|-------|
-            | Bundle size | ${{ needs.build.outputs.bundle-size }} |
-            | Build duration | ${{ needs.build.outputs.duration }} |
-            | Latest commit (repository) | [`${{ steps.commit-info.outputs.commit-hash }}`](https://github.com/${{ github.repository }}/commit/${{ steps.commit-info.outputs.commit-hash-full }}) |
-            | Latest commit (pull request) | [`${{ steps.commit-info.outputs.pr-commit-hash }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.number }}/commits/${{ steps.commit-info.outputs.pr-commit-hash-full }}) |
-            | Author | [${{ steps.commit-info.outputs.commit-author }}](https://github.com/${{ github.actor }}) |
-            | Preview URL | ${{ needs.build.outputs.url }} |
+            | **Tests** | Unit: ${{ needs.build.outputs.test-unit-time }} \| Integration: ${{ needs.build.outputs.test-integration-time }} \| E2E: ${{ needs.build.outputs.test-e2e-time }} |
+            | **Build** | Nuxt: ${{ needs.build.outputs.build-time }} \| Bundle: ${{ needs.build.outputs.bundle-size }} |
+            | **Deploy** | ${{ needs.build.outputs.deploy-time }} |
+            | **Total time** | ${{ needs.build.outputs.duration }} |
+            | **Latest commit** | PR: [`${{ steps.commit-info.outputs.pr-commit-hash }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.number }}/commits/${{ steps.commit-info.outputs.pr-commit-hash-full }}) \| Repo: [`${{ steps.commit-info.outputs.commit-hash }}`](https://github.com/${{ github.repository }}/commit/${{ steps.commit-info.outputs.commit-hash-full }}) |
+            | **Author** | [${{ steps.commit-info.outputs.commit-author }}](https://github.com/${{ github.actor }}) |
+            | **Preview URL** | ${{ needs.build.outputs.url }} |
