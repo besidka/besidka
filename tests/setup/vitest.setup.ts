@@ -42,7 +42,7 @@ vi.mock('better-auth/vue', () => ({
       email: vi.fn(),
     },
     signOut: vi.fn(),
-    forgetPassword: vi.fn(),
+    requestPasswordReset: vi.fn(),
     resetPassword: vi.fn(),
     getSession: vi.fn(() => Promise.resolve({ data: null })),
     $store: {
