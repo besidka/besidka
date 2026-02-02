@@ -89,3 +89,77 @@ const testMappings = [
 ```
 
 See [../docs/test-optimization.md](../docs/test-optimization.md) for detailed documentation.
+
+## clean-gh-runs.sh
+
+Bulk delete GitHub Actions workflow runs by title pattern. Useful for cleaning up dependency bump runs from Dependabot or automated tools.
+
+### Usage
+
+```bash
+# Use default patterns (deps bumps + npm_and_yarn)
+./scripts/clean-gh-runs.sh
+
+# Auto-confirm without prompt
+./scripts/clean-gh-runs.sh --yes
+
+# Custom patterns
+./scripts/clean-gh-runs.sh "chore(deps)" "build:"
+
+# Increase search limit
+./scripts/clean-gh-runs.sh --limit 500
+
+# Show help
+./scripts/clean-gh-runs.sh --help
+```
+
+### Default patterns
+
+The script searches for runs with titles containing:
+- `chore(deps-dev): bump`
+- `chore(deps): bump`
+- `npm_and_yarn`
+
+### How it works
+
+1. Fetches recent workflow runs via `gh run list`
+2. Filters runs by title patterns using `jq`
+3. Shows preview and asks for confirmation
+4. Deletes matching runs sequentially
+
+### Examples
+
+**Quick cleanup with defaults:**
+```bash
+$ ./scripts/clean-gh-runs.sh --yes
+
+🔍 Searching for workflow runs matching patterns...
+   - "chore(deps-dev): bump"
+   - "chore(deps): bump"
+   - "npm_and_yarn"
+
+📋 Found 20 matching workflow run(s):
+
+  [21600762800] chore(deps): bump the production-dependencies group... (completed/success)
+  [21600574134] chore(deps-dev): bump the development-dependencies... (completed/success)
+  ...
+
+🗑️  Deleting workflow runs...
+  ✓ Deleted run 21600762800
+  ✓ Deleted run 21600574134
+  ...
+
+✅ Done! Deleted 20 run(s).
+```
+
+**Custom patterns:**
+```bash
+$ ./scripts/clean-gh-runs.sh "ci:" "test:"
+
+🔍 Searching for workflow runs matching patterns...
+   - "ci:"
+   - "test:"
+
+📋 Found 5 matching workflow run(s):
+...
+```
