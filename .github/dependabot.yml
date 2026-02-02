@@ -28,7 +28,10 @@ updates:
       - dependency-name: "@tailwindcss/vite"
 
       - dependency-name: "better-auth"
+      
+      # https://github.com/saadeghi/daisyui/issues/4413
       - dependency-name: "daisyui"
+      
       - dependency-name: "nuxt"
       
       # https://github.com/resend/resend-node/issues/826
