@@ -69,8 +69,8 @@ importers:
         specifier: ^1.6.2
         version: 1.6.2(typescript@5.9.3)
       daisyui:
-        specifier: ^5.5.16
-        version: 5.5.16
+        specifier: 5.4.7
+        version: 5.4.7
       defu:
         specifier: ^6.1.4
         version: 6.1.4
@@ -111,8 +111,8 @@ importers:
         specifier: ^0.1.4
         version: 0.1.4(react@19.2.4)(vue@3.5.27(typescript@5.9.3))
       tailwindcss:
-        specifier: 4.1.17
-        version: 4.1.17
+        specifier: ^4.1.18
+        version: 4.1.18
       ulid:
         specifier: ^3.0.2
         version: 3.0.2
@@ -4019,8 +4019,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  daisyui@5.5.16:
-    resolution: {integrity: sha512-EPGcgduRIwXoQPuIl+r2BXRQsOutvf7UEB/mBfRiD2fdOYYnUqDU5PNp2eONnRqo1DxSsnD01gCRPccH65FWtQ==}
+  daisyui@5.4.7:
+    resolution: {integrity: sha512-2wYO61vTPCXk7xEBgnzLZAYoE0xS5IRLu/GSq0vORpB+cTrtubdx69NnA0loc0exvCY1s2fYL4lGZtFHe2ohNQ==}
 
   dargs@8.1.0:
     resolution: {integrity: sha512-wAV9QHOsNbwnWdNW2FYvE1P56wtgSbM+3SZcdGiWQILwVjACCXDCI3Ai8QlCjMDB8YK5zySiXZYBiwGmNY3lnw==}
@@ -7211,6 +7211,9 @@ packages:
 
   tailwindcss@4.1.17:
     resolution: {integrity: sha512-j9Ee2YjuQqYT9bbRTfTZht9W/ytp5H+jJpZKiYdP/bpnXARAuELt9ofP0lPnmHjbga7SNQIxdTAXCmtKVYjN+Q==}
+
+  tailwindcss@4.1.18:
+    resolution: {integrity: sha512-4+Z+0yiYyEtUVCScyfHCxOYP06L5Ne+JiHhY2IjR2KWMIWhJOYZKLSGZaP5HkZ8+bY0cxfzwDE5uOmzFXyIwxw==}
 
   tapable@2.3.0:
     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
@@ -12126,7 +12129,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  daisyui@5.5.16: {}
+  daisyui@5.4.7: {}
 
   dargs@8.1.0: {}
 
@@ -16031,6 +16034,8 @@ snapshots:
   tagged-tag@1.0.0: {}
 
   tailwindcss@4.1.17: {}
+
+  tailwindcss@4.1.18: {}
 
   tapable@2.3.0: {}
 

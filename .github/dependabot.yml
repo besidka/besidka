@@ -31,13 +31,12 @@ updates:
       
       # https://github.com/saadeghi/daisyui/issues/4413
       - dependency-name: "daisyui"
-      
+
       - dependency-name: "nuxt"
       
       # https://github.com/resend/resend-node/issues/826
       - dependency-name: "resend"
 
-      - dependency-name: "tailwindcss"
       - dependency-name: "vue-router"
     labels:
       - "dependencies"
