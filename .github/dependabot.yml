@@ -24,10 +24,17 @@ updates:
     # https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/optimizing-pr-creation-version-updates
     ignore:
       # Prevent ALL automatic updates for critical packages - require manual review
-      - dependency-name: "nuxt"
+      # Buttons style side-issue with 4.1.18+
+      - dependency-name: "@tailwindcss/vite"
+
       - dependency-name: "better-auth"
-      - dependency-name: "tailwindcss"
       - dependency-name: "daisyui"
+      - dependency-name: "nuxt"
+      
+      # https://github.com/resend/resend-node/issues/826
+      - dependency-name: "resend"
+
+      - dependency-name: "tailwindcss"
       - dependency-name: "vue-router"
     labels:
       - "dependencies"
