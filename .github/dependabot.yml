@@ -26,8 +26,6 @@ updates:
       # Prevent ALL automatic updates for critical packages - require manual review
       # Buttons style side-issue with 4.1.18+
       - dependency-name: "@tailwindcss/vite"
-
-      - dependency-name: "better-auth"
       
       # https://github.com/saadeghi/daisyui/issues/4413
       - dependency-name: "daisyui"
@@ -36,8 +34,6 @@ updates:
       
       # https://github.com/resend/resend-node/issues/826
       - dependency-name: "resend"
-
-      - dependency-name: "vue-router"
     labels:
       - "dependencies"
     commit-message:

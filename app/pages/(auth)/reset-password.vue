@@ -68,7 +68,7 @@ useSeoMeta({
 })
 
 const { Validation } = useValidation()
-const { forgetPassword } = useAuth()
+const { requestPasswordReset } = useAuth()
 
 const form = ref<InstanceType<typeof UiForm> | null>()
 
@@ -82,7 +82,7 @@ async function onSubmit() {
   pending.value = true
 
   try {
-    await forgetPassword({
+    await requestPasswordReset({
       email: data.email,
       fetchOptions: {
         async onSuccess() {

@@ -1,7 +1,7 @@
 // https://github.com/atinux/nuxthub-better-auth/blob/main/app/composables/auth.ts
 
 import type {
-  ClientOptions,
+  BetterAuthClientOptions,
   InferSessionFromClient,
 } from 'better-auth/client'
 import type { RouteLocationRaw } from 'vue-router'
@@ -31,7 +31,7 @@ export function useAuth() {
       redirectGuestTo: '/signin',
     },
   )
-  const session = useState<InferSessionFromClient<ClientOptions> | null>('auth:session', () => null)
+  const session = useState<InferSessionFromClient<BetterAuthClientOptions> | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
   const sessionFetching = import.meta.server
     ? shallowRef(false)
@@ -95,7 +95,7 @@ export function useAuth() {
     loggedIn: computed<boolean>(() => !!session.value),
     signIn: client.signIn,
     signUp: client.signUp,
-    forgetPassword: client.forgetPassword,
+    requestPasswordReset: client.requestPasswordReset,
     resetPassword: client.resetPassword,
     errorCodes: client.$ERROR_CODES,
     async signOut({

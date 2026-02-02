@@ -92,7 +92,7 @@ export function mockAuthComposable(
       email: vi.fn(),
     },
     signOut: vi.fn(),
-    forgetPassword: vi.fn(),
+    requestPasswordReset: vi.fn(),
     resetPassword: vi.fn(),
     fetchSession: vi.fn(),
     errorCodes: {
