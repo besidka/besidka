@@ -29,6 +29,8 @@
   </div>
 </template>
 <script setup lang="ts">
+import type { Providers, Provider } from '#shared/types/providers.d'
+
 definePageMeta({
   auth: {
     only: 'user',
@@ -47,13 +49,13 @@ const providers = computed<Providers>(() => {
 })
 
 const isOpenAiEnabled = computed<boolean>(() => {
-  return providers.value.some((provider) => {
+  return providers.value.some((provider: Provider) => {
     return provider.id === 'openai'
   })
 })
 
 const isGoogleEnabled = computed<boolean>(() => {
-  return providers.value.some((provider) => {
+  return providers.value.some((provider: Provider) => {
     return provider.id === 'google'
   })
 })

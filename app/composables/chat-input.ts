@@ -2,17 +2,21 @@ export function useChatInput() {
   const { userModel } = useUserModel()
 
   const isWebSearchSupported = computed<boolean>(() => {
-    if (!userModel) return false
+    const currentModel = toValue(userModel)
 
-    const { model } = getModel(toValue(userModel))
+    if (!currentModel) return false
+
+    const { model } = getModel(currentModel)
 
     return !!model?.tools.includes('web_search')
   })
 
   const isReasoningSupported = computed<boolean>(() => {
-    if (!userModel) return false
+    const currentModel = toValue(userModel)
 
-    const { model } = getModel(toValue(userModel))
+    if (!currentModel) return false
+
+    const { model } = getModel(currentModel)
 
     return !!model?.reasoning
   })

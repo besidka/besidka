@@ -59,6 +59,19 @@ pnpm run deploy           # Build and deploy to Cloudflare Workers
 
 ### Key Patterns
 
+**Shared types import**: Always use the `#shared` alias for importing types and utilities from the `shared/` directory. Never use relative imports.
+  ```typescript
+  // Correct - use #shared alias
+  import type { User } from '#shared/types/auth.d'
+  import type { Chat } from '#shared/types/chats.d'
+  import type { Providers, Provider, Model } from '#shared/types/providers.d'
+  import { getModel } from '#shared/utils/model'
+
+  // Wrong - relative imports
+  import type { User } from '../../shared/types/auth.d'
+  import { getModel } from '../shared/utils/model'
+  ```
+
 **Server utilities auto-import**: Functions in `server/utils/` are auto-imported. Key utilities:
 - `useDb(event?)` - Get Drizzle D1 database instance
 - `useKV(event?)` - Get Cloudflare KV instance

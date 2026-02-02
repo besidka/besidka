@@ -91,6 +91,8 @@
   />
 </template>
 <script setup lang="ts">
+import type { Chat } from '#shared/types/chats.d'
+
 definePageMeta({
   layout: 'chat',
   auth: {
