@@ -21,12 +21,15 @@ updates:
           - "patch"
     # Dependabot will only update dependencies listed in package.json
     # Transitive dependency updates (like lodash) will be ignored/fail gracefully
+    # https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/optimizing-pr-creation-version-updates
     ignore:
       # Prevent ALL automatic updates for critical packages - require manual review
       - dependency-name: "nuxt"
       - dependency-name: "better-auth"
       - dependency-name: "tailwindcss"
       - dependency-name: "daisyui"
+      - dependency-name: "drizzle-orm"
+      - dependency-name: "zod"
     labels:
       - "dependencies"
     commit-message:
