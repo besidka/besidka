@@ -69,8 +69,8 @@ importers:
         specifier: ^1.6.2
         version: 1.6.2(typescript@5.9.3)
       daisyui:
-        specifier: 5.4.7
-        version: 5.4.7
+        specifier: ^5.5.16
+        version: 5.5.16
       defu:
         specifier: ^6.1.4
         version: 6.1.4
@@ -4019,8 +4019,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  daisyui@5.4.7:
-    resolution: {integrity: sha512-2wYO61vTPCXk7xEBgnzLZAYoE0xS5IRLu/GSq0vORpB+cTrtubdx69NnA0loc0exvCY1s2fYL4lGZtFHe2ohNQ==}
+  daisyui@5.5.16:
+    resolution: {integrity: sha512-EPGcgduRIwXoQPuIl+r2BXRQsOutvf7UEB/mBfRiD2fdOYYnUqDU5PNp2eONnRqo1DxSsnD01gCRPccH65FWtQ==}
 
   dargs@8.1.0:
     resolution: {integrity: sha512-wAV9QHOsNbwnWdNW2FYvE1P56wtgSbM+3SZcdGiWQILwVjACCXDCI3Ai8QlCjMDB8YK5zySiXZYBiwGmNY3lnw==}
@@ -12126,7 +12126,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  daisyui@5.4.7: {}
+  daisyui@5.5.16: {}
 
   dargs@8.1.0: {}
 
