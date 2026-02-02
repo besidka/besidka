@@ -37,10 +37,10 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    // {
-    //   name: 'chromium',
-    //   use: { ...devices['Desktop Chrome'] },
-    // },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
     // {
     //   name: 'firefox',
     //   use: { ...devices['Desktop Firefox'] },
@@ -53,10 +53,10 @@ export default defineConfig({
     //   name: 'mobile-chrome',
     //   use: { ...devices['Pixel 5'] },
     // },
-    {
-      name: 'mobile-safari',
-      use: { ...devices['iPhone 12'] },
-    },
+    // {
+    //   name: 'mobile-safari',
+    //   use: { ...devices['iPhone 12'] },
+    // },
     /* Test against branded browsers. */
     // {
     //   name: 'Microsoft Edge',
@@ -71,6 +71,5 @@ export default defineConfig({
     command: 'pnpm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
   },
 })

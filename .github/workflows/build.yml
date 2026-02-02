@@ -167,6 +167,8 @@ jobs:
           echo "✅ Affected E2E tests completed in ${DURATION}s"
         env:
           CI: true
+          #DEBUG: pw:webserver
+          #NODE_OPTIONS: --trace-warnings
 
       - name: Run all E2E tests (main)
         if: github.event_name != 'pull_request'
@@ -180,6 +182,8 @@ jobs:
           echo "✅ All E2E tests completed in ${DURATION}s"
         env:
           CI: true
+          #DEBUG: pw:webserver
+          #NODE_OPTIONS: --trace-warnings
 
       - name: Set E2E test duration output
         id: test-e2e

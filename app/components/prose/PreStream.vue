@@ -44,7 +44,7 @@
         <ProsePre v-bind="props">
           <ShikiCachedRenderer
             :key="key"
-            :highlighter="highlighter"
+            :highlighter="highlighter as any"
             :code="trimmedCode"
             :lang="lang"
             :theme="$colorMode.value === 'dark'
