@@ -77,7 +77,7 @@ export default defineNuxtConfig({
     '@vite-pwa/nuxt',
   ],
   eslint: {
-    checker: true,
+    checker: process.env.CI !== 'true',
   },
   svgo: {
     autoImportPath: '~/assets/icons',
