@@ -28,6 +28,7 @@ updates:
       - dependency-name: "better-auth"
       - dependency-name: "tailwindcss"
       - dependency-name: "daisyui"
+      - dependency-name: "vue-router"
     labels:
       - "dependencies"
     commit-message:
