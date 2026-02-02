@@ -5,6 +5,7 @@ import type {
   InferSessionFromClient,
 } from 'better-auth/client'
 import type { RouteLocationRaw } from 'vue-router'
+import type { User } from '#shared/types/auth.d'
 import { createAuthClient } from 'better-auth/vue'
 import { defu } from 'defu'
 

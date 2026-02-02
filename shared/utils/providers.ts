@@ -1,3 +1,5 @@
+import type { Providers } from '#shared/types/providers.d'
+
 export function getProviders(): {
   providers: Providers
 } {

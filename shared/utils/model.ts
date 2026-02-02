@@ -1,3 +1,5 @@
+import type { Provider, Model } from '#shared/types/providers.d'
+
 export function getModel(modelId: string): {
   modelName: Model['name']
   model: Model | null
