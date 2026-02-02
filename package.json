@@ -78,7 +78,7 @@
 		"drizzle-query-logger": "^1.1.2",
 		"eslint": "^9.39.2",
 		"hashids": "^2.3.0",
-		"nuxt": "4.2.1",
+		"nuxt": "^4.3.0",
 		"nuxt-svgo": "^4.2.6",
 		"remark-breaks": "^4.0.0",
 		"resend": "6.8.0",
