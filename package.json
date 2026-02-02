@@ -78,7 +78,7 @@
 		"drizzle-query-logger": "^1.1.2",
 		"eslint": "^9.39.2",
 		"hashids": "^2.3.0",
-		"nuxt": "^4.2.1",
+		"nuxt": "4.2.2",
 		"nuxt-svgo": "^4.2.6",
 		"remark-breaks": "^4.0.0",
 		"resend": "^6.9.1",
@@ -119,6 +119,14 @@
 		"vue-tsc": "^3.2.4",
 		"whatwg-fetch": "^3.6.20",
 		"wrangler": "^4.61.1"
+	},
+	"peerDependencies": {
+		"@react-email/render": "^2.0.4"
+	},
+	"peerDependenciesMeta": {
+		"@react-email/render": {
+			"optional": true
+		}
 	},
 	"onlyBuiltDependencies": [
 		"rolldown",

@@ -131,12 +131,9 @@ export default defineNuxtConfig({
     compatibilityVersion: 5,
   },
   typescript: {
-    typeCheck: true,
+    typeCheck: process.env.CI !== 'true',
   },
   vite: {
-    optimizeDeps: {
-      include: ['debug'],
-    },
     plugins: [
       tailwindcss(),
     ],

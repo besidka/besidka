@@ -3,7 +3,10 @@ import { test, expect } from '@playwright/test'
 test.describe('Theme Switching', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('[data-testid="theme-switcher"]', {
+      timeout: 10000,
+    })
   })
 
   test('should display theme switcher button', async ({ page }) => {
