@@ -192,8 +192,10 @@ export default defineEventHandler(async (event) => {
           }
 
           await db.insert(schema.messages).values({
-            chatId: chat.id,
             ...responseMessage,
+            chatId: chat.id,
+            tools: body.data.tools,
+            reasoning: body.data.reasoning,
           })
         },
       }))
