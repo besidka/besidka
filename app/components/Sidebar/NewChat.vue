@@ -21,7 +21,7 @@
           `]: !disabled,
           'scale-70 sm:scale-90': disabled,
         }"
-        class="group border-none [background:none_!important] shadow-none sm:hover:scale-90 transition-transform"
+        class="group border-none bg-transparent shadow-none sm:hover:scale-90 transition-transform"
       >
         <template #icon>
           <Logo
