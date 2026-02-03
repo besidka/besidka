@@ -16,20 +16,37 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       environment: production
-      skip_build: false
     secrets: inherit
     permissions:
       id-token: write
       contents: read
 
   update-preview:
-    name: Deploy to Preview (reuse build)
+    name: Promote PR to Preview
     needs: build-production
-    uses: ./.github/workflows/build.yml
-    with:
-      environment: preview
-      skip_build: true
-    secrets: inherit
+    runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
+
+    steps:
+      - name: Get merged PR number
+        id: pr
+        uses: actions-ecosystem/action-get-merged-pull-request@v1
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Promote PR version to preview
+        if: steps.pr.outputs.number
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          command: deploy --alias pr-${{ steps.pr.outputs.number }}
+
+      - name: Skip if no PR found
+        if: "!steps.pr.outputs.number"
+        run: |
+          echo "⚠️  No merged PR found for this commit"
+          echo "Preview environment not updated (direct push to main)"

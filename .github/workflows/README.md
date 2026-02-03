@@ -14,32 +14,28 @@ This directory contains CI/CD workflows for building, testing, and deploying Bes
 │  │   └─ build.yml (full pipeline)                              │
 │  │       ├─ Tests (unit, integration, e2e)                     │
 │  │       ├─ Build                                              │
-│  │       └─ Deploy to {hash}-besidka-preview                   │
+│  │       └─ Deploy version with alias pr-{number}             │
 │  │                                                              │
-│  │  Result: Commit-specific versioned worker                   │
-│  │  URL: https://{7-char-hash}-besidka-preview.workers.dev    │
+│  │  Result: Two preview URLs (commit hash + PR alias)         │
+│  │  URLs: https://{hash}-besidka-preview.chernenko.workers.dev│
+│  │        https://pr-{number}-besidka-preview.chernenko.workers.dev│
 │                                                                  │
 │  Push to Main (Production)                                      │
 │  ├─ production.yml                                              │
 │  │   ├─ build-production job                                   │
-│  │   │   └─ build.yml (full pipeline, skip_build=false)       │
+│  │   │   └─ build.yml (full pipeline)                         │
 │  │   │       ├─ Tests (all)                                    │
 │  │   │       ├─ Build                                          │
-│  │   │       ├─ Upload artifact                                │
 │  │   │       └─ Deploy to production                           │
 │  │   │                                                          │
 │  │   └─ update-preview job (runs after build-production)       │
-│  │       └─ build.yml (deploy-only, skip_build=true)          │
-│  │           ├─ Download artifact                              │
-│  │           └─ Deploy to preview                              │
+│  │       ├─ Get merged PR number                               │
+│  │       └─ Promote PR version to preview                      │
+│  │           └─ wrangler deploy --alias pr-{number}           │
 │  │                                                              │
-│  │  Result: Both environments updated with same build          │
+│  │  Result: Production updated, PR version promoted to preview │
 │  │  Production: https://besidka.com                            │
-│  │  Preview: https://besidka-preview.workers.dev               │
-│                                                                  │
-│  PR Close/Merge                                                 │
-│  └─ cleanup.yml                                                 │
-│      └─ Delete all {hash}-besidka-preview workers for PR       │
+│  │  Preview: https://besidka-preview.chernenko.workers.dev     │
 │                                                                  │
 │  PR Update (commits, labels, etc.)                             │
 │  └─ update.yml                                                  │
@@ -57,29 +53,24 @@ The core workflow that runs tests, builds, and deploys the application. Used by 
 **Inputs:**
 - `environment` (string, default: `production`) - Target environment (production/preview)
 - `worker_name_prefix` (string, optional) - Commit hash for versioned deployment
-- `skip_build` (boolean, default: `false`) - Skip tests/build, download artifact instead
+- `pr_number` (number, optional) - PR number for alias
 
 **Behavior:**
 
-1. **Full Pipeline Mode** (`skip_build: false`):
-   - Install dependencies
-   - Run linters (ESLint, TypeScript)
-   - Run tests (unit, integration, e2e)
-   - Build application
-   - Upload build artifact (`build-output-{run-id}`)
-   - Deploy to Cloudflare Workers
-
-2. **Deploy-Only Mode** (`skip_build: true`):
-   - Download build artifact from previous job
-   - Deploy to Cloudflare Workers
-   - All test/build outputs return "skipped" or "reused"
+1. Install dependencies
+2. Run linters (ESLint, TypeScript)
+3. Run tests (unit, integration, e2e)
+4. Build application
+5. Deploy to Cloudflare Workers
 
 **Deployment Logic:**
 
 ```bash
 # Versioned deployment (PR)
 if worker_name_prefix is set:
-  Deploy to: {first-7-chars}-besidka-preview
+  Command: wrangler versions upload --preview-alias pr-{pr_number}
+  Worker: besidka-preview (version)
+  URLs: auto-hash + pr-{number} alias
 
 # Environment-based deployment
 elif environment == "production":
@@ -90,10 +81,12 @@ else:
 
 **Outputs:**
 - `url` - Deployment URL
-- `bundle-size` - Bundle size or "reused from previous build"
+- `preview-hash-url` - Version preview URL (auto hash)
+- `preview-alias-url` - Version preview alias URL (PR number)
+- `bundle-size` - Bundle size information
 - `duration` - Total pipeline duration
-- `test-*-time` - Test durations or "skipped"
-- `build-time` - Build duration or "skipped"
+- `test-*-time` - Test durations
+- `build-time` - Build duration
 - `deploy-time` - Deployment duration
 
 ### `preview.yml` - PR Deployments
@@ -103,61 +96,65 @@ Triggers on pull requests to deploy commit-specific preview environments.
 **Behavior:**
 1. Calls `build.yml` with:
    - `environment: preview`
-   - `worker_name_prefix: {commit-sha}` (full 40-char SHA, truncated to 7 in build.yml)
-2. Posts deployment comment to PR with metrics and URL
+   - `worker_name_prefix: {commit-sha}` (signals PR deployment)
+   - `pr_number: {number}` (for preview alias)
+2. Posts deployment comment to PR with metrics and both URLs
 
 **Result:**
-- Each commit gets its own worker: `{hash}-besidka-preview.workers.dev`
-- Old versions remain accessible until PR closes
+- Each commit creates a version with two URLs
+- Auto-hash URL: permanent commit-specific link
+- PR alias URL: stable URL for entire PR
 - Shared preview resources (D1, KV, R2)
 
 **Example:**
 ```
-Commit abc1234... → https://abc1234-besidka-preview.workers.dev
-Commit def5678... → https://def5678-besidka-preview.workers.dev
+PR #123, Commit abc1234:
+├─ Auto hash: https://10a5f53f-besidka-preview.chernenko.workers.dev
+└─ PR alias:  https://pr-123-besidka-preview.chernenko.workers.dev
 ```
 
 ### `production.yml` - Production Deployments
 
-Triggers on push to `main` branch. Optimized to run tests once and deploy to both environments.
+Triggers on push to `main` branch. Deploys to production, then promotes PR version to preview.
 
 **Behavior:**
 
 1. **Job 1: build-production**
-   - Calls `build.yml` with `skip_build: false`
-   - Runs full test suite
+   - Calls `build.yml` with full pipeline
+   - Runs all tests
    - Builds application
-   - Uploads artifact (`build-output-{run-id}`)
    - Deploys to production
 
 2. **Job 2: update-preview** (runs after job 1)
-   - Calls `build.yml` with `skip_build: true`
-   - Downloads artifact from job 1
-   - Deploys to preview (general staging domain)
+   - Gets merged PR number via GitHub API
+   - Uses `wrangler deploy --alias pr-{number}` to promote PR version to preview
+   - No rebuild needed - reuses version from PR deployment
+   - Skips if no PR found (direct push to main)
 
 **Optimization:**
-- Before: Ran full pipeline twice (~16-24 minutes)
-- After: Runs tests once, deploys twice (~9-11 minutes)
-- **~50% time reduction**
+- No artifacts needed
+- No rebuild for preview
+- Promotes existing PR version
+- Fast: just API call + deployment (~10-20 seconds)
 
 **Result:**
 - Production: `https://besidka.com`
-- Preview: `https://besidka-preview.workers.dev`
-- Both environments run identical build artifacts
+- Preview: `https://besidka-preview.chernenko.workers.dev`
+- Preview runs the exact code that was in the merged PR
 
-### `cleanup.yml` - PR Worker Cleanup
+### Preview Alias Cleanup (Automatic)
 
-Triggers when a PR is closed (merged or rejected). Deletes all versioned workers for that PR.
+Preview aliases automatically clean up when exceeding 1,000 deployments (Cloudflare retention limit).
 
-**Behavior:**
-1. Fetch all commit SHAs from the PR via GitHub API
-2. For each commit, delete worker: `{hash}-besidka-preview`
-3. Ignore errors if worker doesn't exist
+**How it works:**
+- Each PR commit creates a Worker version with alias: `pr-{number}-besidka-preview.chernenko.workers.dev`
+- Versions belong to the single `besidka-preview` worker (not separate workers)
+- Cloudflare automatically deletes oldest aliases when limit reached
+- Typical PR volume (1-5 commits) means 200+ PRs before cleanup needed
 
-**Why:**
-- Prevents worker accumulation (10,000 worker limit per account)
-- Keeps Cloudflare dashboard clean
-- Removes unused preview environments
+**No manual cleanup workflow required** - Cloudflare handles this automatically.
+
+The previous `cleanup.yml` workflow has been removed as it's no longer needed.
 
 ### `update.yml` - PR Auto-Labeling
 
@@ -172,59 +169,74 @@ Triggers on PR events (open, synchronize, reopen) and workflow runs. Automatical
 
 ### Versioned PR Deployments
 
-Each PR commit gets a unique worker URL using the first 7 characters of the commit SHA:
+Each PR commit creates a Worker version with two preview URLs:
 
 ```
 PR #123 with 3 commits:
-├─ abc1234-besidka-preview.workers.dev  (commit 1)
-├─ def5678-besidka-preview.workers.dev  (commit 2)
-└─ 9abcdef-besidka-preview.workers.dev  (commit 3)  ← latest
 
-All three remain accessible until PR closes.
+Commit 1 (abc1234):
+├─ Auto hash: https://10a5f53f-besidka-preview.chernenko.workers.dev (permanent)
+└─ PR alias:  https://pr-123-besidka-preview.chernenko.workers.dev (updated)
+
+Commit 2 (def5678):
+├─ Auto hash: https://2b7e4a9c-besidka-preview.chernenko.workers.dev (permanent)
+└─ PR alias:  https://pr-123-besidka-preview.chernenko.workers.dev (updated)
+
+Commit 3 (9abcdef):
+├─ Auto hash: https://8f3d1c7e-besidka-preview.chernenko.workers.dev (permanent)
+└─ PR alias:  https://pr-123-besidka-preview.chernenko.workers.dev (updated)
 ```
 
+**Two URLs per commit:**
+1. **Auto-hash URL**: Unique per commit, never changes, permanent link
+2. **PR alias URL**: Stable per PR, updates with each commit, easy to remember
+
 **Benefits:**
-- Test multiple versions simultaneously
-- Share specific commit URLs with reviewers
-- Compare behavior across commits
-- No conflicts between concurrent PRs
+- Share single PR URL with reviewers (`pr-123-besidka-preview.chernenko.workers.dev`)
+- Permanent commit-specific URLs for comparison
+- ONE worker in dashboard (besidka-preview) instead of many
+- No manual cleanup needed (auto-expires after 1,000 aliases)
+- No conflicts between PRs (separate PR numbers)
 
-**Trade-offs:**
-- Shared preview resources (D1, KV, R2)
-- Data conflicts possible if testing overlapping features
-- Uses build minutes on every commit
+**How it works:**
+- `wrangler versions upload --preview-alias pr-{number}` creates a version
+- All versions belong to the same `besidka-preview` worker
+- Versions share worker bindings (D1, KV, R2)
 
-### Build Artifact Reuse
+### Alias-Based Version Promotion
 
-Production deployments optimize CI time by building once and deploying twice:
+Production deployments optimize CI time by promoting existing PR versions instead of rebuilding:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Job 1: build-production                        │
-│  ├─ Run tests (7-10 minutes)                    │
-│  ├─ Build app (1-2 minutes)                     │
-│  ├─ Upload .output/ artifact                    │
-│  └─ Deploy to production                        │
+│  PR #123 Deployment (preview.yml)               │
+│  └─ wrangler versions upload --preview-alias pr-123 │
 │      ↓                                           │
-│  .output/ artifact (retention: 1 day)           │
-│      ↓                                           │
-│  Job 2: update-preview                          │
-│  ├─ Download .output/ artifact (10-20 seconds)  │
-│  └─ Deploy to preview                           │
+│  Version created with two URLs:                 │
+│  ├─ Hash: {hash}-besidka-preview.workers.dev   │
+│  └─ Alias: pr-123-besidka-preview.workers.dev  │
+│                                                  │
+│  PR Merged to Main (production.yml)             │
+│  ├─ Job 1: Build + deploy to production         │
+│  └─ Job 2: Promote PR version                   │
+│      └─ wrangler deploy --alias pr-123          │
+│          ↓                                       │
+│  Preview updated without rebuild (10-20 sec)    │
+│      besidka-preview.chernenko.workers.dev      │
 └─────────────────────────────────────────────────┘
 ```
 
 **Why this works:**
-- Nuxt `runtimeConfig` evaluated at runtime, not build time
-- Cloudflare bindings accessed at runtime via `event.context.cloudflare.env`
-- Environment selection happens during deployment (`--env production` vs default)
-- Same build artifact works for both environments
+- PR creates version with alias `pr-{number}`
+- `wrangler deploy --alias pr-{number}` promotes that version to main preview
+- No rebuild needed - exact same code from PR
+- Environment selection happens at deployment (bindings differ between preview/prod)
 
-**Artifact details:**
-- Name: `build-output-{github.run_id}` (unique per workflow run)
-- Contents: `.output/` directory (Nuxt build output)
-- Retention: 1 day (auto-cleanup)
-- Size: ~5-10 MB compressed
+**Benefits:**
+- Simple workflow (no artifacts)
+- Fast preview updates
+- Guaranteed consistency (exact PR code)
+- No wasted build time
 
 ### Cloudflare Environments
 
@@ -264,15 +276,6 @@ concurrency:
 - New pushes cancel in-progress deployments
 - Ensures deployment consistency
 
-### `cleanup.yml`
-```yaml
-concurrency:
-  group: cleanup-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-```
-- One cleanup per PR at a time
-- Prevents race conditions
-
 ## Secrets Required
 
 Configured in GitHub repository settings:
@@ -307,9 +310,9 @@ paths:
 ### View Deployment Status
 
 **PR deployments:**
-- Check PR comments for deployment URL and metrics
+- Check PR comments for deployment URLs (both hash and alias) and metrics
 - GitHub Actions tab → "Build" workflow run
-- Cloudflare dashboard → Workers → `{hash}-besidka-preview`
+- Cloudflare dashboard → Workers → `besidka-preview` (single worker with versions)
 
 **Production deployments:**
 - GitHub Actions tab → "Deploy to Production" workflow run
@@ -325,10 +328,6 @@ paths:
 **Issue: Artifact not found (deploy-only mode)**
 - Cause: First job failed or didn't upload artifact
 - Solution: Check `build-production` job logs, ensure tests passed
-
-**Issue: Worker not deleted during cleanup**
-- Cause: Worker name mismatch or already deleted
-- Solution: Check cleanup logs, verify worker name pattern in Cloudflare dashboard
 
 **Issue: Type errors in workflows**
 - Cause: Modified `.yml` files without validation
@@ -357,8 +356,8 @@ pnpm run deploy
 # Production environment
 pnpm run deploy --env production
 
-# Versioned worker (PR simulation)
-pnpm run deploy --name abc1234-besidka-preview
+# Versioned deployment with alias (PR simulation)
+wrangler versions upload --preview-alias pr-test
 ```
 
 ## Performance Metrics
@@ -368,10 +367,10 @@ Typical workflow durations:
 | Workflow | Tests | Build | Deploy | Total |
 |----------|-------|-------|--------|-------|
 | PR (preview.yml) | 4-6 min | 1-2 min | 30-60s | 6-9 min |
-| Production (before optimization) | 8-12 min (×2) | 2-4 min (×2) | 1-2 min (×2) | 16-24 min |
-| Production (after optimization) | 4-6 min (×1) | 1-2 min (×1) | 30-60s (×2) | 9-11 min |
+| Production (artifact-based, deprecated) | 4-6 min (×1) | 1-2 min (×1) | 30-60s (×2) | 9-11 min |
+| Production (alias-based, current) | 4-6 min (×1) | 1-2 min (×1) | 30-60s + 10-20s | 7-10 min |
 
-**Optimization savings:** ~50% reduction in production deployment time.
+**Optimization savings:** Alias-based approach is ~1-2 minutes faster and simpler than artifact-based.
 
 ## Future Improvements
 

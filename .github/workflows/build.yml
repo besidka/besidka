@@ -12,15 +12,20 @@ on:
         type: string
         default: ''
         description: "Optional commit hash for versioned deployment (e.g., abc1234)"
-      skip_build:
+      pr_number:
         required: false
-        type: boolean
-        default: false
-        description: "Skip tests and build steps (requires build artifact from previous job)"
+        type: number
+        description: "PR number for alias (e.g., 113 for pr-113-besidka-preview.chernenko.workers.dev)"
     outputs:
       url:
         description: "Deployment URL"
         value: ${{ jobs.build.outputs.deployment-url }}
+      preview-hash-url:
+        description: "Version preview URL (auto hash)"
+        value: ${{ jobs.build.outputs.preview-hash-url }}
+      preview-alias-url:
+        description: "Version preview alias URL (PR number)"
+        value: ${{ jobs.build.outputs.preview-alias-url }}
       bundle-size:
         description: "Bundle size information"
         value: ${{ jobs.build.outputs.bundle-size }}
@@ -55,6 +60,8 @@ jobs:
     environment: ${{ inputs.environment }}
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+      preview-hash-url: ${{ steps.preview-urls.outputs.hash-url }}
+      preview-alias-url: ${{ steps.preview-urls.outputs.alias-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
       duration: ${{ steps.calculate-duration.outputs.duration }}
       test-unit-time: ${{ steps.test-unit.outputs.duration }}
@@ -90,21 +97,18 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        if: ${{ !inputs.skip_build }}
         run: pnpm install --frozen-lockfile
 
       - name: Run ESLint
-        if: ${{ !inputs.skip_build }}
         run: pnpm run lint
 
       - name: Run TypeScript type checks
-        if: ${{ !inputs.skip_build }}
         run: |
           pnpm run dev:prepare
           pnpm run typecheck
 
       - name: Run unit tests (PR - affected only)
-        if: ${{ !inputs.skip_build && github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
         id: test-unit-pr
         run: |
           START=$(date +%s)
@@ -115,7 +119,7 @@ jobs:
           echo "✅ Affected unit tests completed in ${DURATION}s"
 
       - name: Run all unit tests (main)
-        if: ${{ !inputs.skip_build && github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' }}
         id: test-unit-main
         run: |
           START=$(date +%s)
@@ -128,16 +132,14 @@ jobs:
       - name: Set unit test duration output
         id: test-unit
         run: |
-          if [ "${{ inputs.skip_build }}" == "true" ]; then
-            echo "duration=skipped" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "duration=${{ steps.test-unit-pr.outputs.duration }}" >> $GITHUB_OUTPUT
           else
             echo "duration=${{ steps.test-unit-main.outputs.duration }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Run integration tests (PR - affected only)
-        if: ${{ !inputs.skip_build && github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
         id: test-integration-pr
         run: |
           START=$(date +%s)
@@ -148,7 +150,7 @@ jobs:
           echo "✅ Affected integration tests completed in ${DURATION}s"
 
       - name: Run all integration tests (main)
-        if: ${{ !inputs.skip_build && github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' }}
         id: test-integration-main
         run: |
           START=$(date +%s)
@@ -161,20 +163,17 @@ jobs:
       - name: Set integration test duration output
         id: test-integration
         run: |
-          if [ "${{ inputs.skip_build }}" == "true" ]; then
-            echo "duration=skipped" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "duration=${{ steps.test-integration-pr.outputs.duration }}" >> $GITHUB_OUTPUT
           else
             echo "duration=${{ steps.test-integration-main.outputs.duration }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Install Playwright browsers
-        if: ${{ !inputs.skip_build }}
         run: pnpm exec playwright install --with-deps
 
       - name: Run E2E tests (PR - affected only)
-        if: ${{ !inputs.skip_build && github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
         id: test-e2e-pr
         run: |
           START=$(date +%s)
@@ -189,7 +188,7 @@ jobs:
           #NODE_OPTIONS: --trace-warnings
 
       - name: Run all E2E tests (main)
-        if: ${{ !inputs.skip_build && github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' }}
         id: test-e2e-main
         run: |
           START=$(date +%s)
@@ -206,9 +205,7 @@ jobs:
       - name: Set E2E test duration output
         id: test-e2e
         run: |
-          if [ "${{ inputs.skip_build }}" == "true" ]; then
-            echo "duration=skipped" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "duration=${{ steps.test-e2e-pr.outputs.duration }}" >> $GITHUB_OUTPUT
           else
             echo "duration=${{ steps.test-e2e-main.outputs.duration }}" >> $GITHUB_OUTPUT
@@ -223,7 +220,6 @@ jobs:
           retention-days: 30
 
       - name: Build application
-        if: ${{ !inputs.skip_build }}
         id: build-app-run
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
@@ -237,15 +233,9 @@ jobs:
 
       - name: Set build time output
         id: build-app
-        run: |
-          if [ "${{ inputs.skip_build }}" == "true" ]; then
-            echo "duration=skipped" >> $GITHUB_OUTPUT
-          else
-            echo "duration=${{ steps.build-app-run.outputs.duration }}" >> $GITHUB_OUTPUT
-          fi
+        run: echo "duration=${{ steps.build-app-run.outputs.duration }}" >> $GITHUB_OUTPUT
 
       - name: Extract and output bundle size
-        if: ${{ !inputs.skip_build }}
         id: bundle-size-extract
         run: |
           SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
@@ -254,15 +244,9 @@ jobs:
 
       - name: Set bundle size output
         id: bundle-size
-        run: |
-          if [ "${{ inputs.skip_build }}" == "true" ]; then
-            echo "bundle-size=reused from previous build" >> $GITHUB_OUTPUT
-          else
-            echo "bundle-size=${{ steps.bundle-size-extract.outputs.bundle-size }}" >> $GITHUB_OUTPUT
-          fi
+        run: echo "bundle-size=${{ steps.bundle-size-extract.outputs.bundle-size }}" >> $GITHUB_OUTPUT
 
       - name: Verify build output exists
-        if: ${{ !inputs.skip_build }}
         run: |
           echo "Checking if .output/ directory exists..."
           if [ ! -d ".output" ]; then
@@ -286,23 +270,6 @@ jobs:
           echo "Disk usage:"
           du -sh .output/
 
-      - name: Upload build output
-        if: ${{ !inputs.skip_build }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output-${{ github.run_id }}
-          path: .output/
-          retention-days: 1
-          if-no-files-found: error
-          include-hidden-files: true
-
-      - name: Download build output
-        if: ${{ inputs.skip_build }}
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output-${{ github.run_id }}
-          path: .output/
-
       - name: Record deploy start time
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
@@ -311,8 +278,8 @@ jobs:
         id: deploy-cmd
         run: |
           if [ -n "${{ inputs.worker_name_prefix }}" ]; then
-            SHORT_HASH=$(echo '${{ inputs.worker_name_prefix }}' | cut -c1-7)
-            echo "command=deploy --name ${SHORT_HASH}-besidka-preview" >> $GITHUB_OUTPUT
+            PR_NUM=${{ inputs.pr_number || 'dev' }}
+            echo "command=versions upload --preview-alias pr-${PR_NUM}" >> $GITHUB_OUTPUT
           elif [ "${{ inputs.environment }}" == "production" ]; then
             echo "command=deploy --env production" >> $GITHUB_OUTPUT
           else
@@ -326,7 +293,25 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
           command: ${{ steps.deploy-cmd.outputs.command }}
+
+      - name: Extract preview URLs from deployment output
+        id: preview-urls
+        run: |
+          # The deployment-url output contains the main deployment URL
+          # For versions upload, this will be the auto-hash URL
+          HASH_URL="${{ steps.deploy.outputs.deployment-url }}"
+
+          # Construct alias URL (PR-based)
+          if [ -n "${{ inputs.pr_number }}" ]; then
+            ALIAS_URL="https://pr-${{ inputs.pr_number }}-besidka-preview.chernenko.workers.dev"
+          else
+            ALIAS_URL=""
+          fi
+
+          echo "hash-url=${HASH_URL}" >> $GITHUB_OUTPUT
+          echo "alias-url=${ALIAS_URL}" >> $GITHUB_OUTPUT
 
       - name: Calculate deploy time
         id: deploy-app
