@@ -449,6 +449,28 @@ Conventional commits with types: `feat`, `fix`, `docs`, `style`, `refactor`, `pe
 
 Subject must be sentence-case or lower-case.
 
+## GitHub Actions
+
+**Token usage**: Always use `${{ github.token }}` instead of `${{ secrets.GITHUB_TOKEN }}`:
+
+```yaml
+# Correct - recommended syntax
+env:
+  GH_TOKEN: ${{ github.token }}
+  GITHUB_TOKEN: ${{ github.token }}
+
+# Wrong - deprecated syntax
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Both refer to the same automatically-generated token, but `github.token` is GitHub's current recommendation for:
+- Clearer semantics (context value, not a user-configured secret)
+- Shorter, more readable syntax
+- Consistency with official documentation
+
+**Permissions**: Token permissions are controlled by the workflow's `permissions` block, not the syntax used to access it.
+
 ## Documentation References
 
 ### Nuxt

@@ -99,5 +99,5 @@ jobs:
         uses: actions-ecosystem/action-add-labels@v1
         if: steps.labels.outputs.labels != ''
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ github.token }}
           labels: ${{ steps.labels.outputs.labels }}

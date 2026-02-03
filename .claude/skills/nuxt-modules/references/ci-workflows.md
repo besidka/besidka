@@ -99,7 +99,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           check-name: ci
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          repo-token: ${{ github.token }}
           wait-interval: 10
 
   release:
@@ -123,7 +123,7 @@ jobs:
       - name: GitHub Release
         run: pnpm dlx changelogithub
         env:
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Publish to npm
         run: npm publish --provenance --access public

@@ -261,6 +261,31 @@ jobs:
             echo "bundle-size=${{ steps.bundle-size-extract.outputs.bundle-size }}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Verify build output exists
+        if: ${{ !inputs.skip_build }}
+        run: |
+          echo "Checking if .output/ directory exists..."
+          if [ ! -d ".output" ]; then
+            echo "❌ ERROR: .output/ directory not found!"
+            echo "Build may have failed silently."
+            echo ""
+            echo "Current directory contents:"
+            ls -la
+            echo ""
+            echo "Checking for common build output locations:"
+            ls -la dist/ 2>/dev/null || echo "No dist/ directory"
+            ls -la build/ 2>/dev/null || echo "No build/ directory"
+            exit 1
+          fi
+
+          echo "✅ .output/ directory exists"
+          echo ""
+          echo "Contents of .output/:"
+          ls -lah .output/
+          echo ""
+          echo "Disk usage:"
+          du -sh .output/
+
       - name: Upload build output
         if: ${{ !inputs.skip_build }}
         uses: actions/upload-artifact@v4
@@ -268,6 +293,7 @@ jobs:
           name: build-output-${{ github.run_id }}
           path: .output/
           retention-days: 1
+          if-no-files-found: error
 
       - name: Download build output
         if: ${{ inputs.skip_build }}

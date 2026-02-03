@@ -11,7 +11,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-pr-state:
+    name: "Check PR state"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check if PR is still open
+        run: |
+          STATE=$(gh pr view ${{ github.event.pull_request.number }} --json state --jq '.state')
+          echo "PR state: $STATE"
+
+          if [ "$STATE" != "OPEN" ]; then
+            echo "PR is $STATE, canceling workflow"
+            gh run cancel ${{ github.run_id }}
+            exit 1
+          fi
+
+          echo "PR is open, proceeding with deployment"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+
   build:
+    needs: check-pr-state
     uses: ./.github/workflows/build.yml
     with:
       environment: preview
