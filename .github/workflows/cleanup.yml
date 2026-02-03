@@ -1,0 +1,52 @@
+name: Cleanup PR Deployments
+
+on:
+  pull_request_target:
+    types: [closed]
+
+concurrency:
+  group: cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    name: Delete versioned workers for PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Get PR commits
+        id: commits
+        run: |
+          # Fetch all commits from this PR
+          COMMITS=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits \
+            --jq '.[].sha' | cut -c1-7)
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete versioned workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: |
+            echo "Cleaning up workers for PR #${{ github.event.pull_request.number }}"
+
+            COMMITS="${{ steps.commits.outputs.commits }}"
+
+            # Delete each versioned worker
+            while IFS= read -r hash; do
+              if [ -n "$hash" ]; then
+                WORKER_NAME="${hash}-besidka-preview"
+                echo "Deleting worker: $WORKER_NAME"
+
+                # Delete worker (ignore errors if worker doesn't exist)
+                delete "$WORKER_NAME" --force || echo "Worker $WORKER_NAME not found or already deleted"
+              fi
+            done <<< "$COMMITS"
+
+            echo "✅ Cleanup completed for PR #${{ github.event.pull_request.number }}"

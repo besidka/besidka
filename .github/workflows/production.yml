@@ -11,10 +11,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-production:
+    name: Build and Deploy to Production
     uses: ./.github/workflows/build.yml
     with:
       environment: production
+      skip_build: false
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
+
+  update-preview:
+    name: Deploy to Preview (reuse build)
+    needs: build-production
+    uses: ./.github/workflows/build.yml
+    with:
+      environment: preview
+      skip_build: true
     secrets: inherit
     permissions:
       id-token: write
