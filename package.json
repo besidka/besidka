@@ -92,7 +92,7 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260131.0",
+		"@cloudflare/workers-types": "^4.20260203.0",
 		"@commitlint/cli": "^20.4.1",
 		"@commitlint/config-conventional": "^20.4.1",
 		"@commitlint/format": "^20.4.0",
@@ -107,7 +107,7 @@
 		"@vitest/ui": "^4.0.18",
 		"@vue/test-utils": "^2.4.6",
 		"better-sqlite3": "^12.6.2",
-		"happy-dom": "^20.4.0",
+		"happy-dom": "^20.5.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
 		"msw": "^2.12.7",
