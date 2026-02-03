@@ -3,6 +3,17 @@ export default {
   name: 'Google AI Studio',
   models: [
     {
+      id: 'gemini-3-pro-preview',
+      name: 'Gemini 3 Pro',
+      price: {
+        tokens: 1_000_000,
+        input: 'from $2.00',
+        output: 'from $12.00',
+      },
+      tools: ['web_search'],
+      reasoning: true,
+    },
+    {
       id: 'gemini-2.5-pro',
       name: 'Gemini 2.5 Pro',
       price: {
@@ -14,7 +25,18 @@ export default {
       reasoning: true,
     },
     {
-      id: 'gemini-2.5-flash',
+      id: 'gemini-3-flash-preview',
+      name: 'Gemini 3 Flash',
+      price: {
+        tokens: 1_000_000,
+        input: '$0.50',
+        output: '$3.00',
+      },
+      tools: ['web_search'],
+      reasoning: true,
+    },
+    {
+      id: 'gemini-2.5-flash-preview-09-2025',
       name: 'Gemini 2.5 Flash',
       price: {
         tokens: 1_000_000,
@@ -25,7 +47,7 @@ export default {
       reasoning: true,
     },
     {
-      id: 'gemini-2.5-flash-lite',
+      id: 'gemini-2.5-flash-lite-preview-09-2025',
       default: true,
       name: 'Gemini 2.5 Flash-Lite',
       price: {
@@ -35,33 +57,6 @@ export default {
       },
       tools: ['web_search'],
       reasoning: true,
-    },
-    {
-      id: 'gemini-2.0-flash',
-      name: 'Gemini 2.0 Flash',
-      price: {
-        tokens: 1_000_000,
-        input: '$0.10',
-        output: '$0.40',
-      },
-      tools: ['web_search'],
-    },
-    {
-      id: 'gemini-2.0-flash-lite',
-      name: 'Gemini 2.0 Flash-Lite',
-      description: 'Best for cost-efficient performance',
-      contextLength: 1_000_000,
-      maxOutputTokens: 8_000,
-      price: {
-        tokens: 1_000_000,
-        input: '$0.075',
-        output: '$0.30',
-      },
-      modalities: {
-        input: ['text', 'image', 'video', 'audio'],
-        output: ['text'],
-      },
-      tools: ['web_search'],
     },
   ],
 }
