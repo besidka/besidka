@@ -7,6 +7,16 @@ on:
         required: false
         type: string
         default: production
+      worker_name_prefix:
+        required: false
+        type: string
+        default: ''
+        description: "Optional commit hash for versioned deployment (e.g., abc1234)"
+      skip_build:
+        required: false
+        type: boolean
+        default: false
+        description: "Skip tests and build steps (requires build artifact from previous job)"
     outputs:
       url:
         description: "Deployment URL"
@@ -80,18 +90,21 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: ${{ !inputs.skip_build }}
         run: pnpm install --frozen-lockfile
 
       - name: Run ESLint
+        if: ${{ !inputs.skip_build }}
         run: pnpm run lint
 
       - name: Run TypeScript type checks
+        if: ${{ !inputs.skip_build }}
         run: |
           pnpm run dev:prepare
           pnpm run typecheck
 
       - name: Run unit tests (PR - affected only)
-        if: github.event_name == 'pull_request'
+        if: ${{ !inputs.skip_build && github.event_name == 'pull_request' }}
         id: test-unit-pr
         run: |
           START=$(date +%s)
@@ -102,7 +115,7 @@ jobs:
           echo "✅ Affected unit tests completed in ${DURATION}s"
 
       - name: Run all unit tests (main)
-        if: github.event_name != 'pull_request'
+        if: ${{ !inputs.skip_build && github.event_name != 'pull_request' }}
         id: test-unit-main
         run: |
           START=$(date +%s)
@@ -115,14 +128,16 @@ jobs:
       - name: Set unit test duration output
         id: test-unit
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ inputs.skip_build }}" == "true" ]; then
+            echo "duration=skipped" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "duration=${{ steps.test-unit-pr.outputs.duration }}" >> $GITHUB_OUTPUT
           else
             echo "duration=${{ steps.test-unit-main.outputs.duration }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Run integration tests (PR - affected only)
-        if: github.event_name == 'pull_request'
+        if: ${{ !inputs.skip_build && github.event_name == 'pull_request' }}
         id: test-integration-pr
         run: |
           START=$(date +%s)
@@ -133,7 +148,7 @@ jobs:
           echo "✅ Affected integration tests completed in ${DURATION}s"
 
       - name: Run all integration tests (main)
-        if: github.event_name != 'pull_request'
+        if: ${{ !inputs.skip_build && github.event_name != 'pull_request' }}
         id: test-integration-main
         run: |
           START=$(date +%s)
@@ -146,17 +161,20 @@ jobs:
       - name: Set integration test duration output
         id: test-integration
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ inputs.skip_build }}" == "true" ]; then
+            echo "duration=skipped" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "duration=${{ steps.test-integration-pr.outputs.duration }}" >> $GITHUB_OUTPUT
           else
             echo "duration=${{ steps.test-integration-main.outputs.duration }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Install Playwright browsers
+        if: ${{ !inputs.skip_build }}
         run: pnpm exec playwright install --with-deps
 
       - name: Run E2E tests (PR - affected only)
-        if: github.event_name == 'pull_request'
+        if: ${{ !inputs.skip_build && github.event_name == 'pull_request' }}
         id: test-e2e-pr
         run: |
           START=$(date +%s)
@@ -171,7 +189,7 @@ jobs:
           #NODE_OPTIONS: --trace-warnings
 
       - name: Run all E2E tests (main)
-        if: github.event_name != 'pull_request'
+        if: ${{ !inputs.skip_build && github.event_name != 'pull_request' }}
         id: test-e2e-main
         run: |
           START=$(date +%s)
@@ -188,7 +206,9 @@ jobs:
       - name: Set E2E test duration output
         id: test-e2e
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ inputs.skip_build }}" == "true" ]; then
+            echo "duration=skipped" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "duration=${{ steps.test-e2e-pr.outputs.duration }}" >> $GITHUB_OUTPUT
           else
             echo "duration=${{ steps.test-e2e-main.outputs.duration }}" >> $GITHUB_OUTPUT
@@ -203,7 +223,8 @@ jobs:
           retention-days: 30
 
       - name: Build application
-        id: build-app
+        if: ${{ !inputs.skip_build }}
+        id: build-app-run
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
         run: |
@@ -214,16 +235,62 @@ jobs:
           echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
           echo "✅ Build completed in ${DURATION}s"
 
+      - name: Set build time output
+        id: build-app
+        run: |
+          if [ "${{ inputs.skip_build }}" == "true" ]; then
+            echo "duration=skipped" >> $GITHUB_OUTPUT
+          else
+            echo "duration=${{ steps.build-app-run.outputs.duration }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Extract and output bundle size
-        id: bundle-size
+        if: ${{ !inputs.skip_build }}
+        id: bundle-size-extract
         run: |
           SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
           echo "Bundle Size: $SIZE_INFO"
           echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
 
+      - name: Set bundle size output
+        id: bundle-size
+        run: |
+          if [ "${{ inputs.skip_build }}" == "true" ]; then
+            echo "bundle-size=reused from previous build" >> $GITHUB_OUTPUT
+          else
+            echo "bundle-size=${{ steps.bundle-size-extract.outputs.bundle-size }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload build output
+        if: ${{ !inputs.skip_build }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-${{ github.run_id }}
+          path: .output/
+          retention-days: 1
+
+      - name: Download build output
+        if: ${{ inputs.skip_build }}
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-${{ github.run_id }}
+          path: .output/
+
       - name: Record deploy start time
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Prepare deployment command
+        id: deploy-cmd
+        run: |
+          if [ -n "${{ inputs.worker_name_prefix }}" ]; then
+            SHORT_HASH=$(echo '${{ inputs.worker_name_prefix }}' | cut -c1-7)
+            echo "command=deploy --name ${SHORT_HASH}-besidka-preview" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.environment }}" == "production" ]; then
+            echo "command=deploy --env production" >> $GITHUB_OUTPUT
+          else
+            echo "command=deploy" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy app to Cloudflare Workers via Wrangler
         id: deploy
@@ -232,7 +299,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          command: ${{ inputs.environment == 'production' && 'deploy --env production' || 'deploy' }}
+          command: ${{ steps.deploy-cmd.outputs.command }}
 
       - name: Calculate deploy time
         id: deploy-app

@@ -15,6 +15,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       environment: preview
+      worker_name_prefix: ${{ github.event.pull_request.head.sha }}
     secrets: inherit
     permissions:
       id-token: write
@@ -59,3 +60,6 @@ jobs:
             | **Latest commit** | PR: [`${{ steps.commit-info.outputs.pr-commit-hash }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.number }}/commits/${{ steps.commit-info.outputs.pr-commit-hash-full }}) \| Repo: [`${{ steps.commit-info.outputs.commit-hash }}`](https://github.com/${{ github.repository }}/commit/${{ steps.commit-info.outputs.commit-hash-full }}) |
             | **Author** | [${{ steps.commit-info.outputs.commit-author }}](https://github.com/${{ github.actor }}) |
             | **Preview URL** | ${{ needs.build.outputs.url }} |
+
+            ---
+            _**Note**: This is a commit-specific versioned deployment. The general preview domain (`besidka-preview.workers.dev`) will be updated when this PR is merged to main._
