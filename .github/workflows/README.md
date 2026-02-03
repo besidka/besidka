@@ -28,7 +28,7 @@ This directory contains CI/CD workflows for building, testing, and deploying Bes
 │  │   │       ├─ Build                                          │
 │  │   │       └─ Deploy to production                           │
 │  │   │                                                          │
-│  │   └─ update-preview job (runs after build-production)       │
+│  │   └─ update-preview job
 │  │       ├─ Get merged PR number                               │
 │  │       └─ Promote PR version to preview                      │
 │  │           └─ wrangler deploy --alias pr-{number}           │
@@ -125,7 +125,7 @@ Triggers on push to `main` branch. Deploys to production, then promotes PR versi
    - Builds application
    - Deploys to production
 
-2. **Job 2: update-preview** (runs after job 1)
+2. **Job 2: update-preview** (runs in parallel)
    - Gets merged PR number via GitHub API
    - Uses `wrangler deploy --alias pr-{number}` to promote PR version to preview
    - No rebuild needed - reuses version from PR deployment
