@@ -23,6 +23,7 @@ export interface ButtonProps {
   type?: 'button' | 'submit' | 'reset'
   soft?: boolean
   ghost?: boolean
+  ghostLegacy?: boolean
   outline?: boolean
   circle?: boolean
   square?: boolean

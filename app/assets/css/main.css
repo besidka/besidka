@@ -484,3 +484,11 @@ body {
     @apply link;
   }
 }
+
+.btn-ghost-legacy {
+  @layer daisyui.l1 {
+    &:not(.btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn)) {
+      --btn-fg: var(--color-base-content, currentColor);
+    }
+  }
+}

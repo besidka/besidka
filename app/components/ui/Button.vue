@@ -184,6 +184,7 @@ const buttonStyleClasses = computed<Partial<Record<string, boolean>>>(() => {
     'btn-error': props.mode === 'error',
     'btn-success': props.mode === 'success',
     'btn-ghost': props.ghost && !isTagSummary.value,
+    'btn-ghost btn-ghost-legacy': props.ghostLegacy && !isTagSummary.value,
     'btn-soft': props.soft,
     'btn-outline': props.outline,
     'btn-circle': props.circle,
