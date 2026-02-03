@@ -18,16 +18,30 @@ export interface ProcessedMessage {
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
-  const input = useLocalStorage<string>('chat_input', '')
+  const input = useLocalStorage<string>('chat_input', '', {
+    shallow: true,
+  })
 
   chat = toValue(chat)
 
-  const tools = shallowRef<Tools>(
+  const tools = useLocalStorage<Tools>(
+    'chat_tools',
     chat.messages[chat.messages.length - 1]?.tools || [],
+    {
+      shallow: true,
+      listenToStorageChanges: false,
+      mergeDefaults: (_, defaults) => defaults,
+    },
   )
 
-  const isReasoningEnabled = shallowRef<boolean>(
+  const isReasoningEnabled = useLocalStorage<boolean>(
+    'chat_reasoning',
     chat.messages[chat.messages.length - 1]?.reasoning || false,
+    {
+      shallow: true,
+      listenToStorageChanges: false,
+      mergeDefaults: (_, defaults) => defaults,
+    },
   )
 
   const chatSdk = new ChatSdk({

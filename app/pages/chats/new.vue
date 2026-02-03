@@ -35,10 +35,16 @@ useSeoMeta({
   title: 'New Chat',
 })
 
-const message = useLocalStorage<string>('chat_input', '')
-const tools = shallowRef<Tools>([])
+const message = useLocalStorage<string>('chat_input', '', {
+  shallow: true,
+})
+const tools = useLocalStorage<Tools>('chat_tools', [], {
+  shallow: true,
+})
+const reasoning = useLocalStorage<boolean>('chat_reasoning', false, {
+  shallow: true,
+})
 const pending = shallowRef<boolean>(false)
-const reasoning = shallowRef<boolean>(false)
 
 async function onSubmit() {
   pending.value = true
