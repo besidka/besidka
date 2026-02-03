@@ -26,12 +26,17 @@ updates:
       # Prevent ALL automatic updates for critical packages - require manual review
       # Buttons style side-issue with 4.1.18+
       - dependency-name: "@tailwindcss/vite"
-      
+
       # https://github.com/saadeghi/daisyui/issues/4413
       - dependency-name: "daisyui"
-      
+
       # https://github.com/resend/resend-node/issues/826
       - dependency-name: "resend"
+
+      # Keep @types/node aligned with Node.js runtime version (v24 LTS)
+      # Only allow minor/patch updates, prevent major version bumps
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
     commit-message:
