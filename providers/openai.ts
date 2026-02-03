@@ -2,24 +2,25 @@ export default {
   id: 'openai',
   name: 'OpenAI',
   models: [
-    {
-      id: 'gpt-5-pro',
-      name: 'GPT-5 Pro',
-      description: 'Version of GPT-5 that produces smarter and more precise responses',
-      contextLength: 400_000,
-      maxOutputTokens: 272_000,
-      price: {
-        tokens: 1_000_000,
-        input: '$15.00',
-        output: '$120.00',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
-      },
-      tools: ['web_search'],
-      reasoning: true,
-    },
+    // {
+    //   id: 'gpt-5-pro',
+    //   name: 'GPT-5 Pro',
+    //   description:
+    //    'Version of GPT-5 that produces smarter and more precise responses',
+    //   contextLength: 400_000,
+    //   maxOutputTokens: 272_000,
+    //   price: {
+    //     tokens: 1_000_000,
+    //     input: '$15.00',
+    //     output: '$120.00',
+    //   },
+    //   modalities: {
+    //     input: ['text', 'image'],
+    //     output: ['text'],
+    //   },
+    //   tools: ['web_search'],
+    //   reasoning: true,
+    // },
     {
       id: 'gpt-5.2',
       name: 'GPT-5.2',
