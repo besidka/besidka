@@ -118,7 +118,7 @@
 		"vitest-environment-nuxt": "^1.0.1",
 		"vue-tsc": "^3.2.4",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.61.1"
+		"wrangler": "^4.62.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
