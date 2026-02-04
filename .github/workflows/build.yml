@@ -279,7 +279,8 @@ jobs:
         run: |
           if [ -n "${{ inputs.worker_name_prefix }}" ]; then
             PR_NUM=${{ inputs.pr_number || 'dev' }}
-            echo "command=versions upload --preview-alias pr-${PR_NUM}" >> $GITHUB_OUTPUT
+            PR_URL="https://github.com/${{ github.repository }}/pull/${{ inputs.pr_number }}"
+            echo "command=versions upload --preview-alias pr-${PR_NUM} --message \"${PR_URL}\"" >> $GITHUB_OUTPUT
           elif [ "${{ inputs.environment }}" == "production" ]; then
             echo "command=deploy --env production" >> $GITHUB_OUTPUT
           else

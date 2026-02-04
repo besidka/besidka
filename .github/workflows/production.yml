@@ -46,25 +46,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
 
-      - name: Checkout
+      - name: List versions and find PR version
         if: steps.pr.outputs.number
-        uses: actions/checkout@v4
+        id: find-version
+        run: |
+          # Get list of versions in JSON format
+          VERSIONS_JSON=$(npx wrangler versions list --json 2>&1)
 
-      - name: Setup PNPM
-        if: steps.pr.outputs.number
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
+          # Find version with matching PR alias
+          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${{ steps.pr.outputs.number }}" '
+            .[]
+            | select(.annotations."workers/alias" == $alias)
+            | .id
+          ' | head -n 1)
 
-      - name: Promote PR version to preview
-        if: steps.pr.outputs.number
+          if [ -z "$VERSION_ID" ]; then
+            echo "❌ No version found with alias pr-${{ steps.pr.outputs.number }}"
+            echo "This may happen if:"
+            echo "  1. PR was closed/merged before preview deployment finished"
+            echo "  2. Version was manually deleted from Cloudflare"
+            echo "  3. Direct push to main (no PR)"
+            exit 1
+          fi
+
+          echo "version-id=$VERSION_ID" >> $GITHUB_OUTPUT
+          echo "✅ Found version: $VERSION_ID for PR #${{ steps.pr.outputs.number }}"
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy found version to preview
+        if: steps.pr.outputs.number && steps.find-version.outputs.version-id
         uses: cloudflare/wrangler-action@v3
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          packageManager: pnpm
           wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
-          command: deploy --alias pr-${{ steps.pr.outputs.number }}
+          command: versions deploy ${{ steps.find-version.outputs.version-id }}
 
       - name: Skip if no PR found
         if: "!steps.pr.outputs.number"
