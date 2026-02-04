@@ -46,14 +46,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
 
+      - name: Find the latest uploaded worker version of PR
+        if: steps.pr.outputs.number
+        uses: cloudflare/wrangler-action@v3
+        id: list-versions
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          command: versions list --json
+
       - name: List versions and find PR version
         if: steps.pr.outputs.number
         id: find-version
+        env:
+          VERSIONS_JSON: ${{ steps.list-versions.outputs.command-output }}
         run: |
-          # Get list of versions in JSON format
-          VERSIONS_JSON=$(npx wrangler versions list --json 2>&1)
-
-          # Find version with matching PR alias
           VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${{ steps.pr.outputs.number }}" '
             .[]
             | select(.annotations."workers/alias" == $alias)
@@ -71,9 +79,6 @@ jobs:
 
           echo "version-id=$VERSION_ID" >> $GITHUB_OUTPUT
           echo "✅ Found version: $VERSION_ID for PR #${{ steps.pr.outputs.number }}"
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy found version to preview
         if: steps.pr.outputs.number && steps.find-version.outputs.version-id
