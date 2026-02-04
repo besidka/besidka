@@ -203,7 +203,7 @@
                 <UiButton
                   v-if="isWebSearchSupported"
                   mode="accent"
-                  :ghost-legacy="isWebSearchEnabled ? undefined : true"
+                  :ghost="isWebSearchEnabled ? undefined : true"
                   :circle="!isWebSearchEnabled"
                   icon-name="lucide:globe"
                   :icon-size="16"
@@ -224,7 +224,7 @@
                 <UiButton
                   v-if="isReasoningSupported"
                   mode="accent"
-                  :ghost-legacy="isReasoningEnabled ? undefined : true"
+                  :ghost="isReasoningEnabled ? undefined : true"
                   :circle="!isReasoningEnabled"
                   icon-name="lucide:brain"
                   :icon-size="16"

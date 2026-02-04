@@ -485,10 +485,15 @@ body {
   }
 }
 
-.btn-ghost-legacy {
-  @layer daisyui.l1 {
-    &:not(.btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn)) {
-      --btn-fg: var(--color-base-content, currentColor);
+/* https://github.com/saadeghi/daisyui/issues/4413#event-22477057789 */
+@utility btn-ghost-legacy {
+  &:not(.btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn)) {
+    --btn-fg: var(--color-base-content, currentColor);
+
+    &.btn-disabled {
+      @supports (color: color-mix(in lab, red, red)) {
+        --btn-fg: color-mix(in oklch, var(--color-base-content) 20%, #0000);
+      }
     }
   }
 }
