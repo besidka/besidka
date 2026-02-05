@@ -5,6 +5,14 @@ on:
     branches: ['main']
     paths-ignore:
       - '**/*.md'
+      - '.claude/**'
+      - '.github/**'
+      - '.husky/**'
+      - '.vscode/**'
+      - 'docs/**'
+      - 'lib/**'
+      - 'scripts/**'
+      - 'commitlint.config.ts'
     
 concurrency:
   group: production
@@ -13,13 +21,205 @@ concurrency:
 jobs:
   build-production:
     name: Build and Deploy to Production
-    uses: ./.github/workflows/build.yml
-    with:
-      environment: production
-    secrets: inherit
+    runs-on: ubuntu-latest
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+      bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
+      duration: ${{ steps.calculate-duration.outputs.duration }}
+      test-unit-time: ${{ steps.test-unit.outputs.duration }}
+      test-integration-time: ${{ steps.test-integration.outputs.duration }}
+      test-e2e-time: ${{ steps.test-e2e.outputs.duration }}
+      build-time: ${{ steps.build-app.outputs.duration }}
+      deploy-time: ${{ steps.deploy-app.outputs.duration }}
+
     permissions:
       id-token: write
       contents: read
+
+    steps:
+      - name: Record start time
+        id: start-time
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Run TypeScript type checks
+        run: |
+          pnpm run dev:prepare
+          pnpm run typecheck
+
+      - name: Run all unit tests
+        id: test-unit
+        run: |
+          START=$(date +%s)
+          pnpm run test:unit
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ All unit tests completed in ${DURATION}s"
+
+      - name: Run all integration tests
+        id: test-integration
+        run: |
+          START=$(date +%s)
+          pnpm run test:integration
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ All integration tests completed in ${DURATION}s"
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: Run all E2E tests
+        id: test-e2e
+        run: |
+          START=$(date +%s)
+          pnpm run test:e2e
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ All E2E tests completed in ${DURATION}s"
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: '!cancelled()'
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Build application
+        id: build-app
+        env:
+          ROLLDOWN_OPTIONS_VALIDATION: loose
+        run: |
+          START=$(date +%s)
+          pnpm run build 2>&1 | tee build-output.log
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Build completed in ${DURATION}s"
+
+      - name: Extract bundle size
+        id: bundle-size
+        run: |
+          SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
+          echo "Bundle Size: $SIZE_INFO"
+          echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
+
+      - name: Verify build output exists
+        run: |
+          echo "Checking if .output/ directory exists..."
+          if [ ! -d ".output" ]; then
+            echo "❌ ERROR: .output/ directory not found!"
+            echo "Build may have failed silently."
+            echo ""
+            echo "Current directory contents:"
+            ls -la
+            echo ""
+            echo "Checking for common build output locations:"
+            ls -la dist/ 2>/dev/null || echo "No dist/ directory"
+            ls -la build/ 2>/dev/null || echo "No build/ directory"
+            exit 1
+          fi
+
+          echo "✅ .output/ directory exists"
+          echo ""
+          echo "Contents of .output/:"
+          ls -lah .output/
+          echo ""
+          echo "Disk usage:"
+          du -sh .output/
+
+      - name: Record deploy start time
+        id: deploy-start
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Deploy app to Cloudflare Workers via Wrangler
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          command: deploy --env production
+
+      - name: Calculate deploy time
+        id: deploy-app
+        run: |
+          START=${{ steps.deploy-start.outputs.start-time }}
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Deploy completed in ${DURATION}s"
+
+      - name: Print deployed URL
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: echo $DEPLOYMENT_URL
+
+      - name: Calculate total duration and print summary
+        id: calculate-duration
+        run: |
+          START_TIME=${{ steps.start-time.outputs.start-time }}
+          END_TIME=$(date +%s)
+          TOTAL_DURATION=$((END_TIME - START_TIME))
+          MINUTES=$((TOTAL_DURATION / 60))
+          SECONDS=$((TOTAL_DURATION % 60))
+          if [ $MINUTES -gt 0 ]; then
+            DURATION_FORMAT="${MINUTES}m ${SECONDS}s"
+          else
+            DURATION_FORMAT="${SECONDS}s"
+          fi
+          echo "duration=$DURATION_FORMAT" >> $GITHUB_OUTPUT
+
+          # Print beautiful summary
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════╗"
+          echo "║                    BUILD SUMMARY                           ║"
+          echo "╠════════════════════════════════════════════════════════════╣"
+          echo "║                                                            ║"
+          echo "║  📊 Test Results:                                          ║"
+          echo "║     • Unit tests:        ${{ steps.test-unit.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • Integration tests: ${{ steps.test-integration.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • E2E tests:         ${{ steps.test-e2e.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║                                                            ║"
+          echo "║  🏗️  Build Process:                                        ║"
+          echo "║     • Nuxt build:        ${{ steps.build-app.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • Bundle size:       ${{ steps.bundle-size.outputs.bundle-size }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║                                                            ║"
+          echo "║  🚀 Deployment:                                            ║"
+          echo "║     • Deploy time:       ${{ steps.deploy-app.outputs.duration }}" | awk '{printf "%-60s║\n", $0}'
+          echo "║     • URL:               ${{ steps.deploy.outputs.deployment-url }}" | awk '{printf "%-60s║\n", $0}' | head -c 66
+          echo "║                                                            ║"
+          echo "║  ⏱️  Total Time:          ${DURATION_FORMAT}" | awk '{printf "%-60s║\n", $0}'
+          echo "║                                                            ║"
+          echo "╚════════════════════════════════════════════════════════════╝"
+          echo ""
 
   update-preview:
     name: Promote PR to Preview
@@ -69,19 +269,20 @@ jobs:
           ' | head -n 1)
 
           if [ -z "$VERSION_ID" ]; then
-            echo "❌ No version found with alias pr-${{ steps.pr.outputs.number }}"
+            echo "No version found with alias pr-${{ steps.pr.outputs.number }}"
             echo "This may happen if:"
             echo "  1. PR was closed/merged before preview deployment finished"
             echo "  2. Version was manually deleted from Cloudflare"
             echo "  3. Direct push to main (no PR)"
-            exit 1
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "version-id=$VERSION_ID" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "Found version: $VERSION_ID for PR #${{ steps.pr.outputs.number }}"
           fi
 
-          echo "version-id=$VERSION_ID" >> $GITHUB_OUTPUT
-          echo "✅ Found version: $VERSION_ID for PR #${{ steps.pr.outputs.number }}"
-
       - name: Deploy found version to preview
-        if: steps.pr.outputs.number && steps.find-version.outputs.version-id
+        if: steps.find-version.outputs.found == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

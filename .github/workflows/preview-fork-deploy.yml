@@ -1,0 +1,127 @@
+name: Deploy Fork Preview
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  deploy-fork-preview:
+    name: Deploy Fork PR Preview
+    if: >
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/deploy-preview')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Check commenter permissions
+        run: |
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/${{ github.event.comment.user.login }}/permission" --jq '.permission')
+          if [[ "$PERMISSION" != "admin" && "$PERMISSION" != "write" && "$PERMISSION" != "maintain" ]]; then
+            echo "User ${{ github.event.comment.user.login }} does not have write access ($PERMISSION)"
+            exit 1
+          fi
+          echo "User ${{ github.event.comment.user.login }} has $PERMISSION access"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Get PR details
+        id: pr
+        run: |
+          PR_JSON=$(gh api "${{ github.event.issue.pull_request.url }}")
+          HEAD_SHA=$(echo "$PR_JSON" | jq -r '.head.sha')
+          PR_NUMBER=${{ github.event.issue.number }}
+          PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.user.login')
+          echo "sha=$HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "sha-short=$(echo "$HEAD_SHA" | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+          echo "Deploying fork PR #$PR_NUMBER (commit: $(echo "$HEAD_SHA" | cut -c1-7))"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Find latest successful build run
+        id: find-run
+        run: |
+          RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/preview-build.yml/runs?head_sha=${{ steps.pr.outputs.sha }}&status=success&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful build found for SHA ${{ steps.pr.outputs.sha }}"
+            exit 1
+          fi
+          echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "Found build run: $RUN_ID"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.find-run.outputs.run-id }}
+          name: preview-build
+          path: .output/
+          github-token: ${{ github.token }}
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Record deploy start time
+        id: deploy-start
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Cloudflare Workers
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          command: versions upload --preview-alias pr-${{ steps.pr.outputs.number }} --message "https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}"
+
+      - name: Calculate deploy time
+        id: deploy-time
+        run: |
+          START=${{ steps.deploy-start.outputs.start-time }}
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "Deploy completed in ${DURATION}s"
+
+      - name: Extract preview URLs
+        id: urls
+        run: |
+          HASH_URL="${{ steps.deploy.outputs.deployment-url }}"
+          ALIAS_URL="https://pr-${{ steps.pr.outputs.number }}-besidka-preview.chernenko.workers.dev"
+
+          echo "hash-url=${HASH_URL}" >> $GITHUB_OUTPUT
+          echo "alias-url=${ALIAS_URL}" >> $GITHUB_OUTPUT
+
+      - name: Comment preview URL on PR
+        uses: mshick/add-pr-comment@v2
+        with:
+          issue: ${{ steps.pr.outputs.number }}
+          allow-repeats: true
+          message: |
+            ## Deployed to <img width="16" alt="Cloudflare Workers logo" src="https://workers.cloudflare.com/logo.svg"> Cloudflare Workers (fork PR)
+
+            Triggered by @${{ github.event.comment.user.login }} via `/deploy-preview`
+
+            | Property | Value |
+            |----------|-------|
+            | **Author** | [@${{ steps.pr.outputs.author }}](https://github.com/${{ steps.pr.outputs.author }}) |
+            | **Deploy** | ${{ steps.deploy-time.outputs.duration }} |
+            | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}/commits/${{ steps.pr.outputs.sha }}) |
+            | **Preview URL (commit)** | ${{ steps.urls.outputs.hash-url }} |
+            | **Preview URL (PR)** | ${{ steps.urls.outputs.alias-url }} |
+
+            ---
+            _Deployed from fork PR after maintainer approval._

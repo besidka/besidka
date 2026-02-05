@@ -1,0 +1,168 @@
+name: Preview Deploy
+
+on:
+  workflow_run:
+    workflows: ["Preview Build"]
+    types: [completed]
+
+concurrency:
+  group: preview-deploy-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      statuses: write
+
+    steps:
+      - name: Get PR metadata from event context
+        id: pr
+        run: |
+          PR_NUMBER=$(echo '${{ toJSON(github.event.workflow_run.pull_requests) }}' | jq -r '.[0].number // empty')
+          PR_SHA="${{ github.event.workflow_run.head_sha }}"
+          PR_SHA_SHORT=$(echo "$PR_SHA" | cut -c1-7)
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR found for this workflow run"
+            exit 1
+          fi
+
+          echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "sha=$PR_SHA" >> $GITHUB_OUTPUT
+          echo "sha-short=$PR_SHA_SHORT" >> $GITHUB_OUTPUT
+
+      - name: Check if PR is from fork
+        id: fork-check
+        run: |
+          HEAD_REPO="${{ github.event.workflow_run.head_repository.full_name }}"
+          BASE_REPO="${{ github.event.workflow_run.repository.full_name }}"
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "is-fork=true" >> $GITHUB_OUTPUT
+            echo "Fork PR detected ($HEAD_REPO != $BASE_REPO)"
+          else
+            echo "is-fork=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip deploy for fork PRs
+        if: steps.fork-check.outputs.is-fork == 'true'
+        uses: mshick/add-pr-comment@v2
+        with:
+          issue: ${{ steps.pr.outputs.number }}
+          allow-repeats: false
+          message: |
+            Preview deployment skipped for fork PRs (security policy).
+            A maintainer can comment `/deploy-preview` to trigger deployment.
+
+      - name: Set deploy status for fork PRs
+        if: steps.fork-check.outputs.is-fork == 'true'
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.sha }}" \
+            -f state=success \
+            -f context="Preview Deploy" \
+            -f description="Skipped (fork PR - use /deploy-preview)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout base branch
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: preview-build
+          path: .output/
+          github-token: ${{ github.token }}
+
+      - name: Setup PNPM
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Record deploy start time
+        if: steps.fork-check.outputs.is-fork == 'false'
+        id: deploy-start
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Cloudflare Workers
+        if: steps.fork-check.outputs.is-fork == 'false'
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          command: versions upload --preview-alias pr-${{ steps.pr.outputs.number }} --message "https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}"
+
+      - name: Calculate deploy time
+        if: steps.fork-check.outputs.is-fork == 'false'
+        id: deploy-time
+        run: |
+          START=${{ steps.deploy-start.outputs.start-time }}
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "Deploy completed in ${DURATION}s"
+
+      - name: Extract preview URLs
+        if: steps.fork-check.outputs.is-fork == 'false'
+        id: urls
+        run: |
+          HASH_URL="${{ steps.deploy.outputs.deployment-url }}"
+          ALIAS_URL="https://pr-${{ steps.pr.outputs.number }}-besidka-preview.chernenko.workers.dev"
+
+          echo "hash-url=${HASH_URL}" >> $GITHUB_OUTPUT
+          echo "alias-url=${ALIAS_URL}" >> $GITHUB_OUTPUT
+
+      - name: Comment preview URL on PR
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: mshick/add-pr-comment@v2
+        with:
+          issue: ${{ steps.pr.outputs.number }}
+          allow-repeats: true
+          message: |
+            ## Deployed to <img width="16" alt="Cloudflare Workers logo" src="https://workers.cloudflare.com/logo.svg"> Cloudflare Workers
+
+            | Property | Value |
+            |----------|-------|
+            | **Author** | [@${{ github.event.workflow_run.actor.login }}](https://github.com/${{ github.event.workflow_run.actor.login }}) |
+            | **Deploy** | ${{ steps.deploy-time.outputs.duration }} |
+            | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}/commits/${{ steps.pr.outputs.sha }}) |
+            | **Preview URL (commit)** | ${{ steps.urls.outputs.hash-url }} |
+            | **Preview URL (PR)** | ${{ steps.urls.outputs.alias-url }} |
+
+            ---
+            _**Note**:
+            Each commit gets a unique preview URL (auto-hash).
+            The PR preview URL ${{ steps.urls.outputs.alias-url }} updates with each commit._
+
+      - name: Set deploy status success
+        if: steps.fork-check.outputs.is-fork == 'false' && success()
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.sha }}" \
+            -f state=success \
+            -f context="Preview Deploy" \
+            -f description="Deployed to preview" \
+            -f target_url="${{ steps.urls.outputs.alias-url }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Set deploy status failure
+        if: steps.fork-check.outputs.is-fork == 'false' && failure()
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ steps.pr.outputs.sha }}" \
+            -f state=failure \
+            -f context="Preview Deploy" \
+            -f description="Preview deployment failed"
+        env:
+          GH_TOKEN: ${{ github.token }}
