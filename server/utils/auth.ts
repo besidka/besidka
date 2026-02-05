@@ -36,6 +36,7 @@ export function useServerAuth(event?: H3Event) {
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
     baseURL: getBaseURL(event),
+    trustedOrigins: getTrustedOrigins(event),
     session: {
       cookieCache: {
         enabled: true,
@@ -115,4 +116,40 @@ function getBaseURL(event: H3Event): string {
   }
 
   return baseURL
+}
+
+function getTrustedOrigins(event: H3Event): string[] {
+  const config = useRuntimeConfig(event)
+  const baseUrl = config.public.baseUrl
+
+  if (!baseUrl) {
+    return []
+  }
+
+  const origins: string[] = [baseUrl]
+  const url = new URL(baseUrl)
+  const hostname = url.hostname
+
+  // Preview environment: hostname contains 'preview'
+  if (hostname.includes('preview')) {
+    // Generate wildcard: example.workers.dev -> *-example.workers.dev
+    origins.push(`${url.protocol}//*-${hostname}`)
+  } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Development: localhost or 127.0.0.1
+    origins.push('http://localhost:*', 'http://127.0.0.1:*')
+  } else {
+    // Production: add www/apex domain variant
+    const parts = hostname.split('.')
+
+    if (parts.length === 2) {
+      // Apex domain (e.g., besidka.com) -> add www variant
+      origins.push(`${url.protocol}//www.${hostname}`)
+    } else if (hostname.startsWith('www.')) {
+      // www domain -> add apex variant
+      const apexDomain = hostname.replace('www.', '')
+      origins.push(`${url.protocol}//${apexDomain}`)
+    }
+  }
+
+  return origins
 }
