@@ -226,6 +226,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      WORKER_NAME: besidka-preview
 
     steps:
       - name: Get merged PR number
@@ -254,7 +256,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
-          command: versions list --json
+          command: versions list --json --name ${{ env.WORKER_NAME }}
 
       - name: List versions and find PR version
         if: steps.pr.outputs.number
@@ -288,7 +290,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
-          command: versions deploy ${{ steps.find-version.outputs.version-id }}
+          command: versions deploy ${{ steps.find-version.outputs.version-id }} --name ${{ env.WORKER_NAME }}
 
       - name: Skip if no PR found
         if: "!steps.pr.outputs.number"
