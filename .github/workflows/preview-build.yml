@@ -38,9 +38,67 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
 
+  check-latest-commit:
+    name: Check latest commit paths
+    needs: check-pr-state
+    runs-on: ubuntu-latest
+    outputs:
+      should-skip: ${{ steps.paths.outputs.should-skip }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Evaluate latest commit paths
+        id: paths
+        run: |
+          python - <<'PY'
+          import fnmatch
+          import subprocess
+
+          ignored = [
+              '**/*.md',
+              '.ai/**',
+              '.claude/**',
+              '.github/**',
+              '.husky/**',
+              '.vscode/**',
+              'docs/**',
+              'lib/**',
+              'scripts/**',
+              'commitlint.config.ts',
+              '.*rc',
+          ]
+
+          output = subprocess.check_output(
+              ['git', 'diff', '--name-only', 'HEAD^', 'HEAD'],
+              text=True,
+          )
+          files = [line.strip() for line in output.splitlines() if line.strip()]
+
+          def is_ignored(path: str) -> bool:
+              return any(fnmatch.fnmatch(path, pattern) for pattern in ignored)
+
+          should_skip = bool(files) and all(is_ignored(path) for path in files)
+          print(f"Files: {files}")
+          print(f"should-skip={str(should_skip).lower()}")
+
+          with open('paths_output.txt', 'w', encoding='utf-8') as handle:
+              handle.write(f"should-skip={str(should_skip).lower()}\n")
+          PY
+
+      - name: Set job output
+        run: |
+          cat paths_output.txt >> $GITHUB_OUTPUT
+
   build:
     name: Build PR
-    needs: check-pr-state
+    needs:
+      - check-pr-state
+      - check-latest-commit
+    if: needs.check-latest-commit.outputs.should-skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
