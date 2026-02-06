@@ -82,13 +82,22 @@ jobs:
             fi
           done
 
-          # Check for dependencies label
           if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
+            # Check for dependencies label
             if [[ "$COMMIT_MESSAGES" == *"chore(deps"* ]]; then
               if [[ -n "$labels_to_add" ]]; then
                 labels_to_add="${labels_to_add},dependencies"
               else
                 labels_to_add="dependencies"
+              fi
+            fi
+
+            # Check for critical label
+            if [[ "$COMMIT_MESSAGES" == *"security"* ]]; then
+              if [[ -n "$labels_to_add" ]]; then
+                labels_to_add="${labels_to_add},critical"
+              else
+                labels_to_add="critical"
               fi
             fi
           fi
