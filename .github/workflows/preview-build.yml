@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened]
     paths-ignore:
       - '**/*.md'
+      - '.ai/**'
       - '.claude/**'
       - '.github/**'
       - '.husky/**'
@@ -13,6 +14,7 @@ on:
       - 'lib/**'
       - 'scripts/**'
       - 'commitlint.config.ts'
+      - '.*rc'
 
 concurrency:
   group: preview-build-${{ github.event.pull_request.number }}

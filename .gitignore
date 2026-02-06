@@ -45,3 +45,9 @@ database.sqlite
 # Vite
 stats.html
 
+# Agent symlinks
+CLAUDE.md
+.claude/skills
+.cursor/rules
+.windsurf/rules
+.github/copilot-instructions.md

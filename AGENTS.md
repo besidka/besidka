@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Google, OpenAI) and pay for what they use.
@@ -344,7 +340,7 @@ watchEffect((onCleanup) => {
 
 **IMPORTANT: Never use `console.log()` or `console.error()` in server code.** Use evlog for structured logging and error handling.
 
-This project uses [evlog](https://evlog.dev) for structured logging with wide events. See `.claude/skills/evlog/` for detailed patterns and examples.
+This project uses [evlog](https://evlog.dev) for structured logging with wide events. See `.ai/skills/evlog/` for detailed patterns and examples.
 
 ### Server-Side Logging
 
@@ -386,8 +382,8 @@ export default defineEventHandler(async (event) => {
 ```
 
 **Reference files:**
-- Wide events patterns: `.claude/skills/evlog/references/wide-events.md`
-- Structured errors: `.claude/skills/evlog/references/structured-errors.md`
+- Wide events patterns: `.ai/skills/evlog/references/wide-events.md`
+- Structured errors: `.ai/skills/evlog/references/structured-errors.md`
 
 ### Frontend Error Handling
 
