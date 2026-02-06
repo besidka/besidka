@@ -83,23 +83,36 @@ jobs:
           done
 
           if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
-            # Check for dependencies label
-            if [[ "$COMMIT_MESSAGES" == *"chore(deps"* ]]; then
-              if [[ -n "$labels_to_add" ]]; then
-                labels_to_add="${labels_to_add},dependencies"
-              else
-                labels_to_add="dependencies"
-              fi
-            fi
+            add_label() {
+              local label="$1"
 
-            # Check for critical label
-            if [[ "$COMMIT_MESSAGES" == *"security"* ]]; then
-              if [[ -n "$labels_to_add" ]]; then
-                labels_to_add="${labels_to_add},critical"
-              else
-                labels_to_add="critical"
+              if [[ ",$labels_to_add," == *",${label},"* ]]; then
+                return
               fi
-            fi
+
+              if [[ -n "$labels_to_add" ]]; then
+                labels_to_add="${labels_to_add},${label}"
+              else
+                labels_to_add="$label"
+              fi
+            }
+
+            label_rules=(
+              "dependencies:chore(deps,security(snyk)"
+              "critical:security"
+            )
+
+            for rule in "${label_rules[@]}"; do
+              IFS=':' read -r label patterns <<< "$rule"
+              IFS=',' read -ra pattern_list <<< "$patterns"
+
+              for pattern in "${pattern_list[@]}"; do
+                if [[ "$COMMIT_MESSAGES" == *"$pattern"* ]]; then
+                  add_label "$label"
+                  break
+                fi
+              done
+            done
           fi
 
           echo "labels=$labels_to_add" >> $GITHUB_OUTPUT
