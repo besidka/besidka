@@ -123,6 +123,6 @@ async function main() {
 }
 
 main().catch((exception) => {
-  log(`ERROR Failed to create agent links: ${exception}`)
-  process.exit(1)
+  log(`WARN Failed to create agent links: ${exception}`)
+  process.exit(0)
 })

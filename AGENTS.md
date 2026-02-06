@@ -340,7 +340,7 @@ watchEffect((onCleanup) => {
 
 **IMPORTANT: Never use `console.log()` or `console.error()` in server code.** Use evlog for structured logging and error handling.
 
-This project uses [evlog](https://evlog.dev) for structured logging with wide events. See `.claude/skills/evlog/` for detailed patterns and examples.
+This project uses [evlog](https://evlog.dev) for structured logging with wide events. See `.ai/skills/evlog/` for detailed patterns and examples.
 
 ### Server-Side Logging
 
@@ -382,8 +382,8 @@ export default defineEventHandler(async (event) => {
 ```
 
 **Reference files:**
-- Wide events patterns: `.claude/skills/evlog/references/wide-events.md`
-- Structured errors: `.claude/skills/evlog/references/structured-errors.md`
+- Wide events patterns: `.ai/skills/evlog/references/wide-events.md`
+- Structured errors: `.ai/skills/evlog/references/structured-errors.md`
 
 ### Frontend Error Handling
 
