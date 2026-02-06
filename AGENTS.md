@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Google, OpenAI) and pay for what they use.

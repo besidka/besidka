@@ -18,7 +18,6 @@
 		"dev:prepare": "nuxt prepare",
 		"typecheck": "nuxt typecheck",
 		"analyze": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt analyze",
-		"postinstall": "nuxt prepare",
 		"cf-typegen": "pnpx wrangler types",
 		"lint": "eslint",
 		"format": "eslint --fix",
@@ -49,7 +48,8 @@
 		"remote:db:migrate": "pnpx wrangler d1 migrations apply DB --remote",
 		"prod:db:migrate": "pnpx wrangler d1 migrations apply DB --env production --remote",
 		"db:studio": "drizzle-kit studio",
-		"prepare": "husky"
+		"prepare": "husky",
+		"postinstall": "node scripts/setup-ai-agents.mjs && nuxt prepare"
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^2.0.52",
