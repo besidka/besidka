@@ -165,10 +165,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const stream = createUIMessageStream({
-    execute({ writer }) {
+    async execute({ writer }) {
       const result = streamText({
         model: instance,
-        messages: convertToModelMessages(messages),
+        messages: await convertToModelMessages(messages),
         experimental_transform: smoothStream(),
         ...parsedTools,
         providerOptions,
