@@ -83,7 +83,7 @@ pnpm run db:generate
 Apply the migrations to the D1 database.
 ```bash
 # Expected output is .wrangler/state/v3/d1/*.sqlite
-pnpx wrangler d1 migrations apply besidka
+pnpx wrangler d1 migrations apply DB
 ```
 
 Start the development server.
