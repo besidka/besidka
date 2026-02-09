@@ -53,7 +53,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^2.0.52",
-		"@ai-sdk/openai": "^2.0.89",
+		"@ai-sdk/openai": "^3.0.26",
 		"@ai-sdk/provider": "^2.0.1",
 		"@ai-sdk/vue": "^2.0.128",
 		"@iconify-json/lucide": "^1.2.89",
