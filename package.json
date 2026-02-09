@@ -68,7 +68,7 @@
 		"@vite-pwa/nuxt": "^1.1.1",
 		"@vueuse/core": "^14.2.0",
 		"@vueuse/nuxt": "^14.2.0",
-		"ai": "^5.0.128",
+		"ai": "^6.0.78",
 		"better-auth": "^1.4.18",
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.5.18",
