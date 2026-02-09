@@ -292,7 +292,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
-          command: versions deploy ${{ steps.find-version.outputs.version-id }} --name ${{ env.WORKER_NAME }}
+          command: versions deploy --version-id ${{ steps.find-version.outputs.version-id }} --name ${{ env.WORKER_NAME }} --yes
 
       - name: Skip if no PR found
         if: "!steps.pr.outputs.number"

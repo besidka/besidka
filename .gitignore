@@ -51,3 +51,6 @@ CLAUDE.md
 .cursor/rules
 .windsurf/rules
 .github/copilot-instructions.md
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.github/instructions/snyk_rules.instructions.md
