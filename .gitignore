@@ -36,7 +36,7 @@ test-results
 .playwright
 
 # Drizzle ORM
-.drizzle
+.drizzle*
 
 # Better Auth
 auth-schema.ts

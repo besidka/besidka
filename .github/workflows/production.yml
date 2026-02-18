@@ -93,6 +93,15 @@ jobs:
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
+        
+      - name: Apply DB migrations for E2E
+        uses: cloudflare/wrangler-action@v3
+        with:
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.66.0' }}
+          preCommands: pnpm run db:generate
+          command: -v
+          postCommands: 'echo "Y" | pnpm exec wrangler d1 migrations apply DB --local'
 
       - name: Run all E2E tests
         id: test-e2e
