@@ -10,6 +10,8 @@ NUXT_ENCRYPTION_KEY=secret
 NUXT_RESEND_API_KEY=
 NUXT_RESEND_SENDER_NOREPLY=noreply@domain.com
 NUXT_RESEND_SENDER_PERSONALIZED=serhii@domain.com
+# Set true in CI E2E to skip real email sending
+NUXT_EMAIL_NOOP_ENABLED=false
 
 # Better Auth
 NUXT_BETTER_AUTH_SECRET=secret

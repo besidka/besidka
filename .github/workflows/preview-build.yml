@@ -180,6 +180,15 @@ jobs:
           echo "✅ Affected E2E tests completed in ${DURATION}s"
         env:
           CI: true
+          NUXT_PUBLIC_BASE_URL: http://localhost:3000
+          NUXT_ENCRYPTION_HASHIDS: secret
+          NUXT_ENCRYPTION_KEY: secret
+          NUXT_BETTER_AUTH_SECRET: secret
+          NUXT_EMAIL_NOOP_ENABLED: true
+          NUXT_FILES_RETENTION_CLEANUP_ENABLED: true
+          NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE: 100
+          NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS: 20000
+          NUXT_FILES_MAINTENANCE_TOKEN: token
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
