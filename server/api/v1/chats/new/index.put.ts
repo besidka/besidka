@@ -1,7 +1,24 @@
+import type { TextUIPart, FileUIPart } from 'ai'
 import * as schema from '~~/server/db/schema'
+import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
+
+const textPart = z.object({
+  type: z.literal('text'),
+  text: z.string().min(1),
+})
+
+const filePart = z.object({
+  type: z.literal('file'),
+  mediaType: z.string(),
+  filename: z.string().optional(),
+  url: z.string(),
+  providerMetadata: z.any().optional(),
+})
 
 const rules = z.object({
-  message: z.string().trim().min(1),
+  parts: z.array(z.union([textPart, filePart])).nonempty().refine((parts) => {
+    return parts.some(part => part.type === 'text')
+  }),
   tools: z.array(z.enum(['web_search'])),
   reasoning: z.boolean().default(false),
 })
@@ -23,22 +40,19 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
+  const userId = parseInt(session.user.id)
+
+  await validateMessageFilePolicy(
+    userId,
+    body.data.parts,
+  )
+
   const db = useDb()
-
-  const user = await db.query.users.findFirst({
-    where(users, { eq }) {
-      return eq(users.id, parseInt(session.user.id))
-    },
-  })
-
-  if (!user) {
-    return useUnauthorizedError()
-  }
 
   const chat = await db
     .insert(schema.chats)
     .values({
-      userId: user.id,
+      userId,
     })
     .returning({
       id: schema.chats.id,
@@ -51,10 +65,7 @@ export default defineEventHandler(async (event) => {
     .values({
       chatId: chat.id,
       role: 'user',
-      parts: [{
-        type: 'text',
-        text: body.data.message,
-      }],
+      parts: body.data.parts as (TextUIPart | FileUIPart)[],
       tools: body.data.tools,
       reasoning: body.data.reasoning,
     })

@@ -1,6 +1,7 @@
-import type { LanguageModel } from 'ai'
+import type { LanguageModel, UIMessage } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
+import { useLogger } from 'evlog'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -9,8 +10,14 @@ import {
   convertToModelMessages,
 } from 'ai'
 import * as schema from '~~/server/db/schema'
+import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
+import {
+  normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
+  sanitizeMessagesForModelContext,
+} from '~~/server/utils/files/assistant-files'
 
 export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const params = await getValidatedRouterParams(event, z.object({
     slug: z.ulid(),
   }).safeParse)
@@ -60,12 +67,14 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
+  const userId = parseInt(session.user.id)
+
   const db = useDb()
   const chat = await db.query.chats.findFirst({
     where(chats, { and, eq }) {
       return and(
         eq(chats.slug, params.data.slug),
-        eq(chats.userId, parseInt(session.user.id)),
+        eq(chats.userId, userId),
       )
     },
     columns: {
@@ -74,8 +83,12 @@ export default defineEventHandler(async (event) => {
     with: {
       messages: {
         columns: {
+          id: true,
           role: true,
+          parts: true,
           tools: true,
+          reasoning: true,
+          createdAt: true,
         },
       },
     },
@@ -88,20 +101,64 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { messages, model: userModel } = body.data
-  const lastMessage = messages[messages.length - 1]
+  const { messages: newMessages, model: userModel } = body.data
+  const newMessage = newMessages[0]
 
-  if (
-    lastMessage
-    && lastMessage.role === 'user'
-    && messages.length > 1
-  ) {
+  if (!newMessage) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'No message provided',
+    })
+  }
+
+  const previousMessages = chat.messages.map(message => ({
+    id: message.id,
+    role: message.role,
+    parts: message.parts,
+    createdAt: message.createdAt,
+    tools: message.tools,
+    reasoning: message.reasoning,
+  }))
+
+  const allMessages = [...previousMessages, newMessage]
+  const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
+
+  if (!newMessage.parts || newMessage.parts.length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Message must include at least one part (text or file)',
+    })
+  }
+
+  await validateMessageFilePolicy(
+    userId,
+    newMessage.parts as UIMessage['parts'],
+  )
+
+  const {
+    messages: messagesForAI,
+    missingFiles,
+  } = await convertFilesForAI(modelContextMessages)
+
+  const lastPersistedMessage = previousMessages[previousMessages.length - 1]
+  const isDuplicateUserMessage = (
+    newMessage.role === 'user'
+    && lastPersistedMessage?.role === 'user'
+    && hasSameParts(
+      lastPersistedMessage.parts as UIMessage['parts'],
+      newMessage.parts as UIMessage['parts'],
+    )
+    && hasSameTools(lastPersistedMessage.tools, body.data.tools)
+    && !!lastPersistedMessage.reasoning === !!body.data.reasoning
+  )
+
+  if (newMessage.role === 'user' && !isDuplicateUserMessage) {
     await db
       .insert(schema.messages)
       .values({
         chatId: chat.id,
         role: 'user',
-        parts: lastMessage.parts,
+        parts: newMessage.parts,
         tools: body.data.tools,
         reasoning: body.data.reasoning,
       })
@@ -166,9 +223,21 @@ export default defineEventHandler(async (event) => {
 
   const stream = createUIMessageStream({
     async execute({ writer }) {
+      if (missingFiles.length > 0) {
+        writer.write({
+          type: 'data-missing-files',
+          data: {
+            count: missingFiles.length,
+            filenames: missingFiles
+              .map(file => file.filename)
+              .filter((name): name is string => Boolean(name)),
+          },
+        })
+      }
+
       const result = streamText({
         model: instance,
-        messages: await convertToModelMessages(messages),
+        messages: await convertToModelMessages(messagesForAI),
         experimental_transform: smoothStream(),
         ...parsedTools,
         providerOptions,
@@ -177,7 +246,7 @@ export default defineEventHandler(async (event) => {
       result.consumeStream()
 
       writer.merge(result.toUIMessageStream({
-        originalMessages: messages,
+        originalMessages: messagesForAI,
         sendSources: true,
         sendReasoning: !!body.data.reasoning,
         onError: errorHandler,
@@ -191,11 +260,21 @@ export default defineEventHandler(async (event) => {
             delete responseMessage.id
           }
 
-          await db.insert(schema.messages).values({
-            ...responseMessage,
+          const normalizationInput = {
+            parts: responseMessage.parts as UIMessage['parts'],
+            providerId: provider.id,
             chatId: chat.id,
-            tools: body.data.tools,
-            reasoning: body.data.reasoning,
+            userId,
+            logger,
+          }
+          const normalizedParts = await normalizeAssistantParts(
+            normalizationInput,
+          )
+
+          await db.insert(schema.messages).values({
+            chatId: chat.id,
+            ...responseMessage,
+            parts: normalizedParts,
           })
         },
       }))
@@ -221,4 +300,18 @@ function errorHandler(error: unknown) {
   }
 
   return JSON.stringify(error)
+}
+
+function hasSameParts(
+  leftParts: UIMessage['parts'],
+  rightParts: UIMessage['parts'],
+): boolean {
+  return JSON.stringify(leftParts || []) === JSON.stringify(rightParts || [])
+}
+
+function hasSameTools(
+  leftTools: Array<'web_search'>,
+  rightTools: Array<'web_search'>,
+): boolean {
+  return JSON.stringify(leftTools || []) === JSON.stringify(rightTools || [])
 }

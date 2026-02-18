@@ -69,7 +69,7 @@ function runTests(tests, testType) {
   if (e2eTests.length > 0 && (testType === 'e2e' || testType === 'all')) {
     console.log('\n🎭 Running e2e tests...\n')
     e2eTests.forEach((test) => {
-      execSync(`npx playwright test ${test}`, { stdio: 'inherit' })
+      execSync(`pnpm exec playwright test ${test}`, { stdio: 'inherit' })
     })
   }
 }

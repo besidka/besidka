@@ -17,30 +17,40 @@ const addMessage = (message: Message) => {
   ]
 }
 
-export const useErrorMessage = (text: string = '') => {
+export const useErrorMessage = (title: string = '', description?: string) => {
   addMessage({
-    text: text || 'Something went wrong',
+    title: title || 'Something went wrong',
+    description,
     type: 'error' as MessageType,
   })
 }
 
-export const useSuccessMessage = (text: string) => {
+export const useSuccessMessage = (
+  title: string,
+  description?: string,
+) => {
   addMessage({
-    text,
+    title,
+    description,
     type: 'success' as MessageType,
   })
 }
 
-export const useInfoMessage = (text: string) => {
+export const useInfoMessage = (title: string, description?: string) => {
   addMessage({
-    text,
+    title,
+    description,
     type: 'info' as MessageType,
   })
 }
 
-export const useWarningMessage = (text: string) => {
+export const useWarningMessage = (
+  title: string,
+  description?: string,
+) => {
   addMessage({
-    text,
+    title,
+    description,
     type: 'warning' as MessageType,
   })
 }

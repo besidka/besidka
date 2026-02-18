@@ -40,7 +40,7 @@
       method="dialog"
       class="modal-backdrop"
     >
-      <button>close</button>
+      <button>Close</button>
     </form>
   </dialog>
 </template>
@@ -60,7 +60,7 @@ withDefaults(defineProps<Props>(), {
 
 const confirmation = useConfirmation()
 
-const modal = ref<HTMLDialogElement | null>(null)
+const modal = useTemplateRef<HTMLDialogElement>('modal')
 
 watch(confirmation, () => {
   if (!modal.value) return

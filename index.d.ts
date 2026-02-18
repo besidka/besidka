@@ -1,4 +1,5 @@
 import type { Providers } from './shared/types/providers.d'
+import type { AllowedFileFormats } from './shared/types/files.d'
 
 declare module 'nuxt/schema' {
 
@@ -14,6 +15,13 @@ declare module 'nuxt/schema' {
     googleClientSecret: string
     githubClientId: string
     githubClientSecret: string
+    filesHardMaxStorageBytes: number
+    filesGlobalTransformLimitMonthly: number
+    enableAssistantFilePersistence: boolean
+    filesRetentionCleanupEnabled: boolean
+    filesRetentionCleanupBatchSize: number
+    filesRetentionCleanupMaxRuntimeMs: number
+    filesMaintenanceToken: string
   }
 
   interface PublicRuntimeConfig {
@@ -22,6 +30,9 @@ declare module 'nuxt/schema' {
     providers: Providers
     redirectUserTo: string
     redirectGuestTo: string
+    allowedFileFormats: AllowedFileFormats
+    maxFilesPerMessage: number
+    maxMessageFilesBytes: number
   }
 
   interface AppConfigInput {

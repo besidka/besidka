@@ -5,6 +5,7 @@ import type {
   ReasoningUIPart,
 } from 'ai'
 import type { Chat, Tools } from '#shared/types/chats.d'
+import type { FileMetadata } from '#shared/types/files.d'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
 
@@ -18,30 +19,17 @@ export interface ProcessedMessage {
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
-  const input = useLocalStorage<string>('chat_input', '', {
-    shallow: true,
-  })
+  const input = useLocalStorage<string>('chat_input', '')
+  const files = ref<FileMetadata[]>([])
 
   chat = toValue(chat)
 
-  const tools = useLocalStorage<Tools>(
-    'chat_tools',
+  const tools = shallowRef<Tools>(
     chat.messages[chat.messages.length - 1]?.tools || [],
-    {
-      shallow: true,
-      listenToStorageChanges: false,
-      mergeDefaults: (_, defaults) => defaults,
-    },
   )
 
-  const isReasoningEnabled = useLocalStorage<boolean>(
-    'chat_reasoning',
+  const isReasoningEnabled = shallowRef<boolean>(
     chat.messages[chat.messages.length - 1]?.reasoning || false,
-    {
-      shallow: true,
-      listenToStorageChanges: false,
-      mergeDefaults: (_, defaults) => defaults,
-    },
   )
 
   const chatSdk = new ChatSdk({
@@ -50,11 +38,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     transport: new DefaultChatTransport({
       api: `/api/v1/chats/${chat.slug}`,
       prepareSendMessagesRequest({ messages }) {
+        const lastMessage = messages[messages.length - 1]
+
         return {
           body: {
             model: userModel.value,
             tools: tools.value,
-            messages,
+            messages: [lastMessage],
             reasoning: isReasoningEnabled.value,
           },
         }
@@ -72,6 +62,24 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         : error
 
       useErrorMessage(message)
+    },
+    onData(dataPart) {
+      if (dataPart.type !== 'data-missing-files') {
+        return
+      }
+
+      const { count, filenames } = dataPart.data as {
+        count: number
+        filenames: string[]
+      }
+
+      if (count === 1 && filenames[0]) {
+        useWarningMessage(`File "${filenames[0]}" is no longer available`)
+      } else {
+        useWarningMessage(
+          `${count} attached ${count === 1 ? 'file is' : 'files are'} no longer available`,
+        )
+      }
     },
   })
 
@@ -129,11 +137,30 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const nuxtApp = useNuxtApp()
 
-  function submit() {
-    const payload = { text: input.value }
+  async function submit() {
+    const parts: any[] = []
 
-    chatSdk.sendMessage(payload)
-    nuxtApp.callHook('chat:submit', payload)
+    if (input.value.trim()) {
+      parts.push({
+        type: 'text',
+        text: input.value,
+      })
+    }
+
+    if (files.value.length > 0) {
+      const fileParts = await convertFilesToUIParts(files.value)
+
+      parts.push(...fileParts)
+    }
+
+    chatSdk.messages.push({
+      id: crypto.randomUUID(),
+      role: 'user',
+      parts,
+      createdAt: new Date(),
+    } as any)
+
+    chatSdk.regenerate()
   }
 
   function stop() {
@@ -148,26 +175,31 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   function isLastUserMessage(index: number): boolean {
-    const msg = chatSdk.messages[index]
+    const message = chatSdk.messages[index]
 
-    if (!msg || msg.role !== 'user') return false
+    if (!message || message.role !== 'user') return false
 
-    const lastMsg = chatSdk.messages[chatSdk.messages.length - 1]
+    const lastMessage = chatSdk.messages[chatSdk.messages.length - 1]
 
     return index === chatSdk.messages.length - 1
-      || (index === chatSdk.messages.length - 2 && lastMsg?.role === 'assistant')
+      || (
+        index === chatSdk.messages.length - 2
+        && lastMessage?.role === 'assistant'
+      )
   }
 
   function isLastAssistantMessage(index: number): boolean {
-    const msg = chatSdk.messages[index]
+    const message = chatSdk.messages[index]
 
-    if (!msg || msg.role !== 'assistant') return false
+    if (!message || message.role !== 'assistant') return false
 
     return index === chatSdk.messages.length - 1
   }
 
   function shouldDisplayMessage(id: UIMessage['id']): boolean {
-    const message = chatSdk.messages.find(m => m.id === id)
+    const message = chatSdk.messages.find(
+      candidate => candidate.id === id,
+    )
 
     if (!message) {
       return false
@@ -199,5 +231,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isLastUserMessage,
     isLastAssistantMessage,
     shouldDisplayMessage,
+    files,
   }
 }

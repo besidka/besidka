@@ -23,6 +23,7 @@ tests/
 │   ├── middleware/            # Middleware tests
 │   └── api/                   # API route tests
 └── e2e/                        # End-to-end tests
+    ├── auth.setup.ts           # Setup project: creates authenticated storage state
     ├── auth/                  # Authentication flows
     ├── chat/                  # Chat functionality
     ├── settings/              # Settings & preferences
@@ -62,6 +63,10 @@ pnpm run test:e2e:debug
 # Run specific browser
 pnpm run test:e2e:chromium
 ```
+
+`test:e2e` runs the `setup` Playwright project first, which creates
+`.playwright/auth-user.json`. Non-auth specs then reuse this authenticated
+state by default.
 
 ### All Tests
 ```bash
@@ -110,15 +115,31 @@ describe('useValidation', () => {
 
 ```typescript
 import { test, expect } from '@playwright/test'
-import { signIn } from '../helpers/auth'
 
 test.describe('Feature Name', () => {
   test('should do something', async ({ page }) => {
-    await page.goto('/')
-    await expect(page.locator('h1')).toBeVisible()
+    await page.goto('/chats/new')
+    await expect(page).toHaveURL('/chats/new')
   })
 })
 ```
+
+### E2E Auth Strategy
+
+- Active non-auth specs run with preloaded authenticated `storageState`.
+- Auth flows are covered in dedicated specs under `tests/e2e/auth/`.
+- Auth specs should override storage state to empty:
+
+```typescript
+test.use({
+  storageState: {
+    cookies: [],
+    origins: [],
+  },
+})
+```
+
+- API-first auth helpers live in `tests/e2e/helpers/auth.ts`.
 
 ### Using Test Helpers
 

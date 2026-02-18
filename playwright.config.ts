@@ -1,5 +1,16 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const AUTH_STATE_PATH = '.playwright/auth-user.json'
+const WEB_SERVER_ENV = {
+  ...process.env,
+  CI: 'true',
+  NUXT_PUBLIC_BASE_URL: 'http://localhost:3000',
+  NUXT_ENCRYPTION_HASHIDS: 'secret',
+  NUXT_ENCRYPTION_KEY: 'secret',
+  NUXT_BETTER_AUTH_SECRET: 'secret',
+  NUXT_EMAIL_NOOP_ENABLED: 'true',
+}
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -13,7 +24,7 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './tests/e2e',
-  testIgnore: '*todo/**/*.spec.ts',
+  testIgnore: '**/todo/**/*.spec.ts',
   timeout: 10_000,
   fullyParallel: true,
   // Fail the build on CI
@@ -38,8 +49,20 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+    },
+    {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+      testIgnore: [
+        /auth\.setup\.ts/,
+        '**/todo/**/*.spec.ts',
+      ],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: AUTH_STATE_PATH,
+      },
     },
     // {
     //   name: 'firefox',
@@ -68,8 +91,10 @@ export default defineConfig({
     // },
   ],
   webServer: {
-    command: 'pnpm run dev',
+    command: 'pnpm run db:migrate && pnpm run dev',
+    env: WEB_SERVER_ENV,
     url: 'http://localhost:3000',
+    timeout: 120_000,
     reuseExistingServer: !process.env.CI,
   },
 })

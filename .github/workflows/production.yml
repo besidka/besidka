@@ -103,16 +103,6 @@ jobs:
           command: -v
           postCommands: 'echo "Y" | pnpm exec wrangler d1 migrations apply DB --local'
 
-      - name: Generate DB migrations for E2E
-        run: pnpm run db:generate
-        
-      - name: Apply DB migrations for E2E
-        uses: cloudflare/wrangler-action@v3
-        with:
-          packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.66.0' }}
-          command: 'echo "Y" | pnpm exec wrangler d1 migrations apply DB --local'
-
       - name: Run all E2E tests
         id: test-e2e
         run: |

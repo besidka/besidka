@@ -17,7 +17,7 @@
         class="alert alert-soft block w-full p-0 border-0 !shadow-lg max-sm:!rounded-none"
         :class="{
           'alert-error': message.type === 'error',
-          'alert-success text-success-content': message.type === 'success',
+          'alert-success': message.type === 'success',
           'alert-info': message.type === 'info',
           'alert-warning': message.type === 'warning',
         }"

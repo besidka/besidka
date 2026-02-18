@@ -1,21 +1,32 @@
 import { test, expect } from '@playwright/test'
 
+test.use({
+  storageState: {
+    cookies: [],
+    origins: [],
+  },
+})
+
 test.describe('Theme Switching', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
-    await page.waitForSelector('[data-testid="theme-switcher"]', {
+    await page.waitForSelector('[data-testid="theme-switcher"]:visible', {
       timeout: 10000,
     })
   })
 
   test('should display theme switcher button', async ({ page }) => {
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
     await expect(themeSwitcher).toBeVisible({ timeout: 10000 })
   })
 
   test('should show correct tooltip text for each theme state', async ({ page }) => {
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
     const title = await themeSwitcher.getAttribute('title')
 
     // Should show one of the expected tooltip texts
@@ -25,7 +36,9 @@ test.describe('Theme Switching', () => {
   test('should cycle through all three theme preferences', async ({ page }) => {
     test.setTimeout(45000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
     const themes = []
 
     // Record initial theme
@@ -58,7 +71,9 @@ test.describe('Theme Switching', () => {
   test('should change theme-color meta tag when theme changes', async ({ page }) => {
     test.setTimeout(20000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
     const themeColorMeta = page.locator('meta[name="theme-color"]')
 
     // Change theme
@@ -75,7 +90,9 @@ test.describe('Theme Switching', () => {
   test('should persist theme preference on page reload', async ({ page }) => {
     test.setTimeout(20000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Change theme
     await themeSwitcher.click({ timeout: 10000 })
@@ -88,7 +105,9 @@ test.describe('Theme Switching', () => {
     await page.waitForLoadState('networkidle')
 
     // Theme should persist
-    const themeSwitcherAfterReload = page.getByTestId('theme-switcher')
+    const themeSwitcherAfterReload = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
     const themeAfterReload = await themeSwitcherAfterReload.getAttribute('title', { timeout: 10000 })
     expect(themeAfterReload).toBe(themeAfterClick)
   })
@@ -96,7 +115,9 @@ test.describe('Theme Switching', () => {
   test('should persist theme preference in localStorage', async ({ page }) => {
     test.setTimeout(15000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Change theme
     await themeSwitcher.click({ timeout: 10000 })
@@ -110,7 +131,9 @@ test.describe('Theme Switching', () => {
   test('should show correct icon for light theme', async ({ page }) => {
     test.setTimeout(15000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
     const title = await themeSwitcher.getAttribute('title')
 
     // If we're in light mode (button says "Switch to dark")
@@ -124,7 +147,9 @@ test.describe('Theme Switching', () => {
   test('should show correct icon for dark theme', async ({ page }) => {
     test.setTimeout(30000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Click until we get to dark mode
     let title = await themeSwitcher.getAttribute('title', { timeout: 10000 })
@@ -148,7 +173,9 @@ test.describe('Theme Switching', () => {
   test('should show correct icon for system theme', async ({ page }) => {
     test.setTimeout(30000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Click until we get to system mode
     let title = await themeSwitcher.getAttribute('title', { timeout: 10000 })
@@ -172,7 +199,9 @@ test.describe('Theme Switching', () => {
   test('should update favicon when theme changes', async ({ page }) => {
     test.setTimeout(15000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Change theme
     await themeSwitcher.click({ timeout: 10000 })
@@ -190,7 +219,9 @@ test.describe('Theme Switching', () => {
   })
 
   test('should be accessible via keyboard navigation', async ({ page }) => {
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Focus the theme switcher
     await themeSwitcher.focus()
@@ -225,7 +256,9 @@ test.describe('Theme Switching', () => {
     test.skip(browserName !== 'webkit', 'Only test iOS behavior on WebKit')
     test.setTimeout(15000)
 
-    const themeSwitcher = page.getByTestId('theme-switcher')
+    const themeSwitcher = page
+      .locator('[data-testid="theme-switcher"]:visible')
+      .first()
 
     // Click theme switcher
     await themeSwitcher.click({ timeout: 10000 })

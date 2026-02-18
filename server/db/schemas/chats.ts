@@ -7,6 +7,7 @@ import { ulid } from 'ulid'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 import { publicId } from '../../utils/custom-db-types'
+import { chatShares } from './chat-shares'
 
 export const chats = sqliteTable(
   'chats',
@@ -53,6 +54,7 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
     references: [users.id],
   }),
   messages: many(messages),
+  shares: many(chatShares),
 }))
 
 export const messagesRelations = relations(messages, ({ one }) => ({

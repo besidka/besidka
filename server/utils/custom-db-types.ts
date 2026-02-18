@@ -8,7 +8,7 @@ function getHashidsInstance(): Hashids {
     return hashidsInstance
   }
 
-  const { encryptionHashids } = useRuntimeConfig(useEvent())
+  const { encryptionHashids } = useRuntimeConfig()
 
   hashidsInstance = new Hashids(encryptionHashids, 16)
 

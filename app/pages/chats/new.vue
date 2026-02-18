@@ -10,6 +10,7 @@
   </ChatContainer>
   <ChatInput
     v-model:message="message"
+    v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     :messages-container="null"
@@ -22,7 +23,9 @@
   />
 </template>
 <script setup lang="ts">
+import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
+import type { FileMetadata } from '#shared/types/files.d'
 
 definePageMeta({
   layout: 'chat',
@@ -35,16 +38,11 @@ useSeoMeta({
   title: 'New Chat',
 })
 
-const message = useLocalStorage<string>('chat_input', '', {
-  shallow: true,
-})
-const tools = useLocalStorage<Tools>('chat_tools', [], {
-  shallow: true,
-})
-const reasoning = useLocalStorage<boolean>('chat_reasoning', false, {
-  shallow: true,
-})
+const message = useLocalStorage<string>('chat_input', '')
+const files = ref<FileMetadata[]>([])
+const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
+const reasoning = shallowRef<boolean>(false)
 
 async function onSubmit() {
   pending.value = true
@@ -53,7 +51,21 @@ async function onSubmit() {
     const response = await $fetch('/api/v1/chats/new', {
       method: 'put',
       body: {
-        message: message.value,
+        parts: [
+          {
+            type: 'text',
+            text: message.value,
+          } as TextUIPart,
+          ...(files.value.length
+            ? files.value.map((file): FileUIPart => ({
+              type: 'file',
+              mediaType: file.type,
+              filename: file.name,
+              url: getFileUrl(file.storageKey),
+            }))
+            : []
+          ),
+        ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         reasoning: reasoning.value,
       },
