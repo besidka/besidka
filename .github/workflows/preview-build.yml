@@ -168,6 +168,14 @@ jobs:
         if: steps.check-e2e.outputs.has-tests == 'true'
         run: pnpm exec playwright install --with-deps
 
+      - name: Generate DB migrations for E2E
+        if: steps.check-e2e.outputs.has-tests == 'true'
+        run: pnpm run db:generate
+
+      - name: Apply DB migrations for E2E
+        if: steps.check-e2e.outputs.has-tests == 'true'
+        run: yes | pnpm exec wrangler d1 migrations apply DB --local
+
       - name: Run affected E2E tests
         id: test-e2e
         if: steps.check-e2e.outputs.has-tests == 'true'
