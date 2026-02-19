@@ -91,6 +91,15 @@ Triggers on push to `main`. Two parallel jobs:
 
 **update-preview**: Finds the PR version by alias and promotes it to the preview environment. Skips gracefully if no PR found (direct push to main) or no version exists.
 
+### `cleanup-runs.yml` - Workflow Run Cleanup
+
+Triggers once per day (`cron: 23 3 * * *`) and manually via
+`workflow_dispatch`.
+
+1. Checks out the repository
+2. Runs `./scripts/clean-gh-runs.sh --yes --limit 500`
+3. Deletes skipped runs and runs matching cleanup title patterns
+
 ## Security Model
 
 ### The Split Workflow Pattern

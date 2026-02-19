@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Clean up GitHub Actions workflow runs by title pattern
+# Clean up GitHub Actions workflow runs by title pattern and skipped status
 # Usage: ./scripts/clean-gh-runs.sh [--limit N] [--yes] [pattern1] [pattern2] ...
 
 set -e
@@ -58,21 +58,38 @@ fi
 
 echo "🔍 Searching for workflow runs matching patterns..."
 printf '   - "%s"\n' "${PATTERNS[@]}"
+echo "   - skipped runs (conclusion == skipped)"
+echo "   - failed runs (conclusion == failure)"
+echo "   - cancelled runs (conclusion == cancelled)"
 echo ""
 
 # Build jq filter for multiple patterns
-JQ_FILTER='.[] | select('
-for i in "${!PATTERNS[@]}"; do
-  if [ $i -gt 0 ]; then
-    JQ_FILTER+=" or "
+PATTERN_FILTER=''
+for index in "${!PATTERNS[@]}"; do
+  if [ "$index" -gt 0 ]; then
+    PATTERN_FILTER+=" or "
   fi
-  JQ_FILTER+=".displayTitle | contains(\"${PATTERNS[$i]}\")"
+
+  PATTERN_FILTER+="("
+  PATTERN_FILTER+="((.displayTitle // \"\") | contains(\"${PATTERNS[$index]}\"))"
+  PATTERN_FILTER+=" or "
+  PATTERN_FILTER+="((.workflowName // \"\") | contains(\"${PATTERNS[$index]}\"))"
+  PATTERN_FILTER+=" or "
+  PATTERN_FILTER+="((.name // \"\") | contains(\"${PATTERNS[$index]}\"))"
+  PATTERN_FILTER+=")"
 done
+
+JQ_FILTER='.[] | select('
+JQ_FILTER+='((.conclusion // "") == "skipped")'
+JQ_FILTER+=' or ((.conclusion // "") == "failure")'
+JQ_FILTER+=' or ((.conclusion // "") == "cancelled")'
+JQ_FILTER+=" or ($PATTERN_FILTER)"
 JQ_FILTER+=')'
 
 # Fetch and filter runs
 set +e
-RUN_IDS=$(gh run list --limit "$LIMIT" --json databaseId,displayTitle 2>/dev/null | \
+RUN_IDS=$(gh run list --limit "$LIMIT" \
+  --json databaseId,displayTitle,workflowName,name,conclusion 2>/dev/null | \
   jq -r "$JQ_FILTER | .databaseId" 2>/dev/null)
 JQ_EXIT=$?
 set -e
@@ -89,8 +106,9 @@ echo "📋 Found $RUN_COUNT matching workflow run(s):"
 echo ""
 
 # Show preview of runs to be deleted
-gh run list --limit "$LIMIT" --json databaseId,displayTitle,status,conclusion | \
-  jq -r "$JQ_FILTER | \"  [\(.databaseId)] \(.displayTitle) (\(.status)/\(.conclusion // \"pending\"))\"" | \
+gh run list --limit "$LIMIT" \
+  --json databaseId,displayTitle,workflowName,name,status,conclusion | \
+  jq -r "$JQ_FILTER | \"  [\(.databaseId)] [\(.workflowName // .name // \"unknown\")] \(.displayTitle) (\(.status)/\(.conclusion // \"pending\"))\"" | \
   head -20
 
 if [ "$RUN_COUNT" -gt 20 ]; then

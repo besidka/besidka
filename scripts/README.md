@@ -92,7 +92,9 @@ See [../docs/test-optimization.md](../docs/test-optimization.md) for detailed do
 
 ## clean-gh-runs.sh
 
-Bulk delete GitHub Actions workflow runs by title pattern. Useful for cleaning up dependency bump runs from Dependabot or automated tools.
+Bulk delete GitHub Actions workflow runs by title pattern and skipped
+conclusion. Useful for cleaning up dependency bump runs from Dependabot or
+automated tools.
 
 ### Usage
 
@@ -120,10 +122,13 @@ The script searches for runs with titles containing:
 - `chore(deps): bump`
 - `npm_and_yarn`
 
+Skipped runs (`conclusion == skipped`) are always included, even when they do
+not match these title patterns.
+
 ### How it works
 
 1. Fetches recent workflow runs via `gh run list`
-2. Filters runs by title patterns using `jq`
+2. Filters runs by title patterns and skipped conclusion using `jq`
 3. Shows preview and asks for confirmation
 4. Deletes matching runs sequentially
 

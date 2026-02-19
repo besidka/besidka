@@ -1,0 +1,27 @@
+name: Cleanup workflow runs
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cleanup-workflow-runs
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    name: Delete skipped and matched runs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clean workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/clean-gh-runs.sh --yes --limit 500
