@@ -22,8 +22,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  resolve-preview-context:
+    name: Resolve preview context
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.pr.outputs.number }}
+      is-direct: ${{ steps.direct-push.outputs.is-direct }}
+      drizzle-changed: ${{ steps.detect-drizzle.outputs.changed }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get merged PR number
+        id: pr
+        run: |
+          PR_NUMBER=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq '.[0].number // empty' 2>/dev/null || echo "")
+
+          if [ -n "$PR_NUMBER" ]; then
+            echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "✅ Found merged PR #$PR_NUMBER"
+          else
+            echo "⚠️ No PR found for commit ${{ github.sha }}"
+            echo "This was likely a direct push to main"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Detect direct push
+        id: direct-push
+        run: |
+          if [ -z "${{ steps.pr.outputs.number }}" ]; then
+            echo "is-direct=true" >> $GITHUB_OUTPUT
+            echo "ℹ️ Direct push detected"
+          else
+            echo "is-direct=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Merge commit from PR #${{ steps.pr.outputs.number }}"
+          fi
+
+      - name: Detect drizzle changes
+        id: detect-drizzle
+        run: |
+          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
+          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✅ .drizzle changes detected"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No .drizzle changes detected"
+          fi
+
   build-production:
     name: Build and Deploy to Production
+    needs: resolve-preview-context
     runs-on: ubuntu-latest
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
@@ -48,18 +104,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Detect drizzle changes
-        id: detect-drizzle
-        run: |
-          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
-          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ .drizzle changes detected"
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No .drizzle changes detected"
-          fi
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -195,12 +239,21 @@ jobs:
           echo "Disk usage:"
           du -sh .output/
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-build
+          path: .output/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Record deploy start time
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Apply migrations to production database
-        if: steps.detect-drizzle.outputs.changed == 'true'
+        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -276,6 +329,9 @@ jobs:
 
   update-preview:
     name: Promote PR to Preview
+    needs:
+      - resolve-preview-context
+      - build-production
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -283,43 +339,8 @@ jobs:
       WORKER_NAME: besidka-preview
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect drizzle changes
-        id: detect-drizzle
-        run: |
-          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
-          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ .drizzle changes detected"
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No .drizzle changes detected"
-          fi
-
-      - name: Get merged PR number
-        id: pr
-        run: |
-          # Query GitHub API for PRs associated with this commit
-          PR_NUMBER=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
-            --jq '.[0].number // empty' 2>/dev/null || echo "")
-
-          if [ -n "$PR_NUMBER" ]; then
-            echo "number=$PR_NUMBER" >> $GITHUB_OUTPUT
-            echo "✅ Found merged PR #$PR_NUMBER"
-          else
-            echo "⚠️  No PR found for commit ${{ github.sha }}"
-            echo "This was likely a direct push to main"
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-
       - name: Find the latest uploaded worker version of PR
-        if: steps.pr.outputs.number
+        if: needs.resolve-preview-context.outputs.pr-number
         uses: cloudflare/wrangler-action@v3
         id: list-versions
         with:
@@ -329,41 +350,30 @@ jobs:
           command: versions list --json --name ${{ env.WORKER_NAME }}
 
       - name: List versions and find PR version
-        if: steps.pr.outputs.number
+        if: needs.resolve-preview-context.outputs.pr-number
         id: find-version
         env:
+          PR_NUMBER: ${{ needs.resolve-preview-context.outputs.pr-number }}
           VERSIONS_JSON: ${{ steps.list-versions.outputs.command-output }}
         run: |
-          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${{ steps.pr.outputs.number }}" '
+          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${PR_NUMBER}" '
             .[]
             | select(.annotations."workers/alias" == $alias)
             | .id
           ' | head -n 1)
 
           if [ -z "$VERSION_ID" ]; then
-            echo "No version found with alias pr-${{ steps.pr.outputs.number }}"
+            echo "No version found with alias pr-${PR_NUMBER}"
             echo "This may happen if:"
             echo "  1. PR was closed/merged before preview deployment finished"
             echo "  2. Version was manually deleted from Cloudflare"
-            echo "  3. Direct push to main (no PR)"
+            echo "  3. Alias was not created for this PR deployment"
             echo "found=false" >> $GITHUB_OUTPUT
           else
             echo "version-id=$VERSION_ID" >> $GITHUB_OUTPUT
             echo "found=true" >> $GITHUB_OUTPUT
-            echo "Found version: $VERSION_ID for PR #${{ steps.pr.outputs.number }}"
+            echo "Found version: $VERSION_ID for PR #${PR_NUMBER}"
           fi
-
-      - name: Apply migrations to preview database
-        if: steps.detect-drizzle.outputs.changed == 'true'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
-          preCommands: pnpm run db:generate
-          command: -v
-          postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env
 
       - name: Deploy found version to preview
         if: steps.find-version.outputs.found == 'true'
@@ -374,8 +384,84 @@ jobs:
           wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: versions deploy --version-id ${{ steps.find-version.outputs.version-id }} --name ${{ env.WORKER_NAME }} --yes
 
-      - name: Skip if no PR found
-        if: "!steps.pr.outputs.number"
+      - name: Skip promotion for direct push
+        if: needs.resolve-preview-context.outputs.pr-number == ''
         run: |
-          echo "⚠️  No merged PR found for this commit"
-          echo "Preview environment not updated (direct push to main)"
+          echo "⚠️ No merged PR found for commit ${{ github.sha }}"
+          echo "Skipping version promotion to preview"
+
+  deploy-preview-direct-push:
+    name: Deploy preview for direct push
+    needs:
+      - resolve-preview-context
+      - build-production
+    if: needs.resolve-preview-context.outputs.is-direct == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: preview-build
+          path: .output/
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Apply migrations to preview database
+        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+          preCommands: pnpm run db:generate
+          command: -v
+          postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env
+
+      - name: Deploy preview for direct push
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+
+  cleanup-preview-build-artifact:
+    name: Cleanup preview build artifact
+    needs:
+      - build-production
+      - update-preview
+      - deploy-preview-direct-push
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Delete preview-build artifact
+        run: |
+          ARTIFACT_IDS=$(gh api --paginate "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.name == "preview-build") | .id')
+
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "No preview-build artifacts found for run ${{ github.run_id }}"
+            exit 0
+          fi
+
+          for artifactId in $ARTIFACT_IDS; do
+            gh api "repos/${{ github.repository }}/actions/artifacts/${artifactId}" \
+              -X DELETE
+            echo "Deleted preview-build artifact ${artifactId}"
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -89,7 +89,10 @@ Triggers on push to `main`. Two parallel jobs:
 
 **build-production**: Full test suite, build, deploy to production.
 
-**update-preview**: Finds the PR version by alias and promotes it to the preview environment. Skips gracefully if no PR found (direct push to main) or no version exists.
+**update-preview**: Finds the PR version by alias and promotes it to the
+preview environment. For direct pushes to `main` (no PR), it runs a plain
+preview deploy. If a PR exists but no version alias is found, it skips
+promotion gracefully.
 
 ### `cleanup-runs.yml` - Workflow Run Cleanup
 
@@ -184,12 +187,16 @@ Commit 2 (def5678):
 
 ## Alias-Based Version Promotion
 
-When a PR merges to main, `production.yml` promotes the existing PR version to the preview environment instead of rebuilding:
+When a PR merges to main, `production.yml` promotes the existing PR version
+to the preview environment instead of rebuilding:
 
 1. PR creates version with alias `pr-{number}` via `wrangler versions upload`
 2. On merge, `wrangler versions deploy` promotes that version
 3. No rebuild needed - exact same code from PR
 4. Fast: API call only (~10-20 seconds)
+
+For direct pushes to `main` without an associated PR, `production.yml` falls
+back to a standard `wrangler deploy` for preview.
 
 ## Cloudflare Environments
 
