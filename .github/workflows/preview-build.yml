@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - '**/*.md'
       - '.ai/**'
-      - '.drizzle/**'
       - '.claude/**'
       - '.github/**'
       - '.husky/**'
