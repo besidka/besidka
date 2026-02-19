@@ -1,4 +1,7 @@
 name: Deploy Fork Preview
+run-name: >-
+  Deploy Fork Preview · PR #${{ github.event.issue.number }} ·
+  @${{ github.event.comment.user.login }}
 
 on:
   issue_comment:

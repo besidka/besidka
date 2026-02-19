@@ -27,8 +27,8 @@ const Configuration: UserConfig = {
     ],
     'subject-case': [
       RuleConfigSeverity.Error,
-      'always',
-      ['sentence-case', 'lower-case'],
+      'never',
+      ['upper-case'],
     ],
   },
 }
