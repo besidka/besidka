@@ -55,6 +55,7 @@ vi.stubGlobal('$fetch', $fetch.create({
 vi.mock('better-auth/vue', () => ({
   createAuthClient: vi.fn(() => ({
     signIn: {
+      social: vi.fn(),
       email: vi.fn(),
     },
     signUp: {

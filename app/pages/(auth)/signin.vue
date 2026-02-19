@@ -13,7 +13,7 @@
         <UiButton
           text="Sign in with Google"
           class="w-full"
-          :disabled="pending"
+          :disabled="pending || isSocialOAuthDisabled"
           @click="socialSignIn('google')"
         >
           <template #icon>
@@ -25,7 +25,7 @@
         <UiButton
           text="Sign in with GitHub"
           class="w-full"
-          :disabled="pending"
+          :disabled="pending || isSocialOAuthDisabled"
           @click="socialSignIn('github')"
         >
           <template #icon>
@@ -34,6 +34,9 @@
         </UiButton>
       </li>
     </ul>
+    <LazyAuthInAppAlert
+      v-if="displayEmbeddedBrowserWarning"
+    />
     <div class="divider">or continue with</div>
     <UiForm
       ref="form"
@@ -177,23 +180,22 @@ const data = shallowReactive<Data>({
 const { signIn, errorCodes: _errorCodes } = useAuth()
 
 const pending = shallowRef<boolean>(false)
+const isSocialOAuthDisabled = computed<boolean>(() => {
+  if (!import.meta.client) {
+    return false
+  }
+
+  return isLikelyEmbeddedBrowser()
+})
+const displayEmbeddedBrowserWarning = computed<boolean>(() => {
+  return isSocialOAuthDisabled.value
+})
 
 async function socialSignIn(provider: 'google' | 'github') {
   pending.value = true
 
   try {
-    await signIn.social({
-      provider,
-      callbackURL: '/chats/new',
-      fetchOptions: {
-        onSuccess() {
-          useSuccessMessage(`Successfully signed in with ${provider}`)
-        },
-      },
-    })
-  } catch (exception: any) {
-    useErrorMessage(exception.statusMessage)
-    throw createError(exception)
+    await signInWithSocialOAuth(provider, '/chats/new')
   } finally {
     pending.value = false
   }

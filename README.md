@@ -41,6 +41,20 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - [x] File attachments. _Send images or PDFs to models_
 - [x] File manager. _Reuse temporary files across chats_
 
+## OAuth troubleshooting
+
+### Social OAuth in in-app browsers
+
+- **Symptom:** Google or GitHub social sign-in is unavailable, or Google shows
+  `403: disallowed_useragent`.
+- **Cause:** The app is opened in an embedded/in-app browser
+  (for example Threads, Instagram, Facebook, TikTok), and OAuth providers
+  may block these user agents.
+- **Resolution:** Open the same page in your system browser
+  (Chrome/Safari/Firefox) and try again with social sign-in.
+- **Config sanity check:** Ensure your Google OAuth app has this redirect URI:
+  `https://<your-domain>/api/auth/callback/google`
+
 ## Local installation
 
 Pay your attention that the project is designed to run on Cloudflare Workers. It requires additional steps to run it via Cloudflare Workers preview or deploy to the production environment.
