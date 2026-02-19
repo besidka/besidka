@@ -29,15 +29,17 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 
 ## Features
 
-- [x] **PINK**. _Dark/light themes supported_
-- [x] Chat with Various LLMs
-- [x] Authentication (Email + Password, Google, GitHub)
-- [x] Browser Friendly. Easy to Try
-- [x] Syntax Highlighting. Beautiful code formatting and highlighting
-- [x] Resumable Streams. Continue generation after page refresh
-- [x] Bring Your Own Key. _Securely stored in a database_
-- [x] Web search. _Get real-time information from the web_
-- [x] Thinking (Reasoning). _Breaking down a problem into steps to provide more accurate responses_
+- [x] **PINK**. _Dark and light themes_
+- [x] Multiple LLMs. _OpenAI and Google AI Studio support_
+- [x] Authentication. _Email/password, Google, and GitHub sign-in_
+- [x] Browser-friendly. _Try it without installation_
+- [x] Syntax highlighting. _Readable, formatted code blocks_
+- [x] Resumable streams. _Continue responses after refresh_
+- [x] Bring your own key. _Use your own API keys_
+- [x] Web search. _Get real-time web context_
+- [x] Thinking mode. _Step-by-step reasoning for better answers_
+- [x] File attachments. _Send images or PDFs to models_
+- [x] File manager. _Reuse temporary files across chats_
 
 ## Local installation
 
