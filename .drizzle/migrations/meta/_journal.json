@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1750198659026,
+      "tag": "0000_fast_the_call",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1751817904679,
+      "tag": "0001_oval_blizzard",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1751991972529,
+      "tag": "0002_icy_zombie",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1753220017976,
+      "tag": "0003_classy_lila_cheney",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1753472029063,
+      "tag": "0004_last_shinko_yamashiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1760374363619,
+      "tag": "0005_flippant_nightmare",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1762712937641,
+      "tag": "0006_complete_firebrand",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1763298114947,
+      "tag": "0007_next_bloodscream",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1771349980111,
+      "tag": "0008_aromatic_starjammers",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1771373965893,
+      "tag": "0009_chubby_sumo",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1771380000000,
+      "tag": "0010_gentle_arbiter",
+      "breakpoints": true
+    }
+  ]
+}
