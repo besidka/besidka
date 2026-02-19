@@ -49,6 +49,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect drizzle changes
+        id: detect-drizzle
+        run: |
+          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
+          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✅ .drizzle changes detected"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No .drizzle changes detected"
+          fi
+
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
@@ -187,6 +199,18 @@ jobs:
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
+      - name: Apply migrations to production database
+        if: steps.detect-drizzle.outputs.changed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+          preCommands: pnpm run db:generate
+          command: -v
+          postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
+
       - name: Deploy app to Cloudflare Workers via Wrangler
         id: deploy
         uses: cloudflare/wrangler-action@v3
@@ -194,7 +218,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: deploy --env production
 
       - name: Calculate deploy time
@@ -259,6 +283,23 @@ jobs:
       WORKER_NAME: besidka-preview
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect drizzle changes
+        id: detect-drizzle
+        run: |
+          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
+          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "✅ .drizzle changes detected"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ No .drizzle changes detected"
+          fi
+
       - name: Get merged PR number
         id: pr
         run: |
@@ -284,7 +325,7 @@ jobs:
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: versions list --json --name ${{ env.WORKER_NAME }}
 
       - name: List versions and find PR version
@@ -312,13 +353,25 @@ jobs:
             echo "Found version: $VERSION_ID for PR #${{ steps.pr.outputs.number }}"
           fi
 
+      - name: Apply migrations to preview database
+        if: steps.detect-drizzle.outputs.changed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+          preCommands: pnpm run db:generate
+          command: -v
+          postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env
+
       - name: Deploy found version to preview
         if: steps.find-version.outputs.found == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: ${{ vars.WRANGLER_VERSION || '4.62.0' }}
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: versions deploy --version-id ${{ steps.find-version.outputs.version-id }} --name ${{ env.WORKER_NAME }} --yes
 
       - name: Skip if no PR found

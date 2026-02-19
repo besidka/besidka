@@ -44,6 +44,10 @@ pnpm run deploy           # Build and deploy to Cloudflare Workers
 - `shared/` - Code shared between client and server (types, utility functions)
 - `providers/` - LLM provider configurations (Google, OpenAI models)
 
+### Project Docs
+
+- `docs/files.md` - Files functionality, upload flow, and Workers constraints
+
 ### Tech Stack
 
 - **Framework**: Nuxt 4 with Nitro server preset for Cloudflare Workers
@@ -69,10 +73,10 @@ pnpm run deploy           # Build and deploy to Cloudflare Workers
   ```
 
 **Server utilities auto-import**: Functions in `server/utils/` are auto-imported. Key utilities:
-- `useDb(event?)` - Get Drizzle D1 database instance
-- `useKV(event?)` - Get Cloudflare KV instance
-- `useServerAuth(event?)` - Get Better Auth instance
-- `useSession(event?)` - Get current user session
+- `useDb()` - Get Drizzle D1 database instance
+- `useKV()` - Get Cloudflare KV instance
+- `useServerAuth()` - Get Better Auth instance
+- `useUserSession()` - Get current user session
 
 **Database schema**: Defined in `server/db/schemas/*.ts`, exported from `server/db/schema.ts`. Uses snake_case column naming.
 
@@ -91,8 +95,15 @@ Configured in `wrangler.jsonc`:
 - `IMAGES` - Cloudflare Images binding
 
 **Binding access patterns**:
-- For D1 and KV: use `event.context.cloudflare.env.{BINDING}`
-- For R2: use `(globalThis as any).__env__['R2_BUCKET']` - this is intentional and correct, do NOT change to `event.context.cloudflare.env`
+```ts
+// @ts-ignore
+import { env } from 'cloudflare:workers'
+```
+
+- For D1 and KV: use `const { KV } = env`
+- For R2: use `const { R2_BUCKET } = env` 
+
+This is intentional and correct, do NOT change to `event.context.cloudflare.env`
 
 **Simultaneous connection limit**: Workers can only have **6 simultaneous connections** to external services (R2, KV, fetch). Operations beyond 6 are queued. If queued operations wait too long, the Worker hangs with "script will never generate a response" error.
 
@@ -116,7 +127,7 @@ for (const key of keys) {
 **Async context in parallel execution**: When using `Promise.all`/`Promise.allSettled`, always capture binding references before entering parallel loops to avoid async context loss:
 ```typescript
 // Correct - capture before parallel execution
-const storage = useFileStorage(event)
+const storage = useFileStorage()
 
 // Wrong - useFileStorage() calls useEvent() inside parallel callback
 await Promise.allSettled(
@@ -126,14 +137,46 @@ await Promise.allSettled(
 )
 ```
 
+**Async context default usage**: Inside a normal request lifecycle, prefer
+`useEvent()`/auto-imported composables directly and avoid threading `event`
+through utility function signatures. Pass or capture explicit references only
+in risky async fan-out contexts (parallel callbacks, timers, detached jobs).
+
 **DELETE requests with body**: Per RFC 9110, DELETE request bodies have "no generally defined semantics" and Cloudflare's edge network may strip them. Use POST for bulk operations requiring a body:
 ```typescript
 // Wrong - body may be stripped by edge network
-$fetch('/api/v1/files/bulk', { method: 'DELETE', body: { ids } })
+$fetch('/api/v1/files/delete/bulk', { method: 'DELETE', body: { ids } })
 
 // Correct - POST preserves body
-$fetch('/api/v1/files/bulk', { method: 'POST', body: { ids } })
+$fetch('/api/v1/files/delete/bulk', { method: 'POST', body: { ids } })
 ```
+
+### Async Context and Connection Guidance
+
+#### Default Rule
+
+- In normal request flow, use `useEvent()`/auto-imported utilities directly.
+- Do not thread `event` through utility signatures unless needed.
+
+#### Background Runtime Rule
+
+- In infra utilities that may run outside request handlers (`db`, `kv`,
+  `storage`, shared `utils`), do not call `useEvent()`.
+- For runtime config in such utilities, use `useRuntimeConfig()` directly.
+- Scheduled/queue/background paths must rely on bindings + runtime config, not
+  request context.
+
+#### Explicit Capture Rule
+
+- Capture bindings or context explicitly only in risky fan-out contexts:
+  - `Promise.all` / `Promise.allSettled` loops,
+  - delayed callbacks/timers,
+  - detached/background async jobs.
+
+#### Connection Saturation Rule
+
+- Prefer sequential operations for per-item R2/KV calls.
+- Use batch APIs when available (for example, R2 batch delete where applicable).
 
 ## File Management
 
@@ -143,7 +186,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 - `GET /` - List files with pagination and search
 - `DELETE /[id]` - Delete single file
 - `PATCH /[id]/name` - Rename file
-- `POST /bulk` - Bulk delete files (uses POST because DELETE with body is unreliable per RFC 9110)
+- `POST /delete/bulk` - Bulk delete files (uses POST because DELETE with body is unreliable per RFC 9110)
 
 **Composables**:
 - `useFileManager()` - File browser state (files, selection, search, pagination)
@@ -157,9 +200,12 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 - `DropZone.client.vue` - Drag-drop upload zone
 
 **Patterns**:
+- For GET data needed during component setup/mount, use `useFetch` or
+  `useLazyFetch` (prefer `useLazyFetch` when navigation must not block).
+- Use `$fetch` for mutation requests and imperative user-triggered actions.
 - Use `$fetch` with `query` option, not query strings in URLs:
   ```typescript
-  // Correct
+  // Correct for imperative/user-triggered fetches
   $fetch('/api/v1/files', { query: { offset, limit } })
   // Wrong - causes Vue Router warnings
   $fetch(`/api/v1/files?offset=${offset}&limit=${limit}`)
@@ -190,15 +236,23 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     return file.name
   })
 
+  files.findIndex((file) => {
+    return file.storageKey === storageKey
+  })
+
   // Wrong - implicit returns broken across lines
   if (condition)
     return value
 
   files.map((file, index) =>
     file.name)
+
+  files.findIndex(file =>
+    file.storageKey === storageKey)
   ```
 - Prefix unused variables with `_`
 - Do not add inline comments within functions unless explicitly requested. For large functions (80+ lines), a JSDoc-style comment above the function is acceptable
+- Strictly follow this code style guide; when asked to refactor, apply it across the entire requested scope.
 - Use descriptive variable names, avoid abbreviations:
   ```typescript
   // Correct
@@ -218,13 +272,15 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     row.columns.forEach((column, columnIndex) => ...)
   })
   ```
-- Add types explicitly for reactive variables where not inferred:
+- Add types explicitly for reactive variables where not inferred. Primitives should use `shallowRef`:
   ```typescript
   // Correct
-  const count = ref<number>(0)
+  const isOpen = shallowRef<boolean>(false)
+  const count = shallowRef<number>(0)
   const name = shallowRef<string>('')
 
   // Wrong
+  const isOpen = ref(false)
   const count = ref(0)
   const name = shallowRef('')
   ```
@@ -263,6 +319,26 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     return sorted
   }
   ```
+- When returning from a block after a `catch`, add a blank line before
+  the `return` for readability:
+  ```typescript
+  // Correct
+  try {
+    await cache.get(key)
+  } catch (exception) {
+    logger.set()
+
+    return null
+  }
+
+  // Wrong
+  try {
+    await cache.get(key)
+  } catch (exception) {
+    logger.set()
+    return null
+  }
+  ```
 - Use early exit (guard clauses) to avoid deep nesting:
   ```typescript
   // Correct
@@ -281,6 +357,11 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     }
   }
   ```
+
+## Reviews
+
+- When `/review` is requested, include style preferences from this file
+  in the review analysis.
 
 ### Vue/Nuxt Patterns
 
@@ -301,8 +382,38 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
   ```
 - Use `shallowRef()` for primitives instead of `ref()` for better performance
 - Rely on Nuxt auto-imports; avoid explicit imports unless required to resolve errors
+- For GET requests on component setup/mount, use `useFetch`/`useLazyFetch`
+  instead of custom `$fetch` calls in `onMounted`.
+- For `$fetch`/`useFetch`/`useLazyFetch`, prefer Nuxt/Nitro route-type
+  inference. Do not add explicit generic response types or extra type imports
+  unless typecheck fails without them (for example, some dynamic route cases).
 - Custom runtime hooks: declare types in `app/types/runtime-hooks.d.ts`, not in `index.d.ts`
 - Nuxt hooks registered via `nuxtApp.hook()` do not require cleanup in `onUnmounted`
+- Runtime DOM selectors must not use `data-testid`. Reserve `data-testid` for
+  tests only; use explicit JS hook classes (`js-*`) for runtime queries:
+  ```vue
+  <!-- Good -->
+  <dialog class="js-files-modal modal modal-bottom sm:modal-middle" />
+  ```
+  ```typescript
+  // Good
+  const isFilesModalOpen = !!document.querySelector(
+    'dialog.js-files-modal[open]',
+  )
+  ```
+  ```vue
+  <!-- Bad -->
+  <dialog
+    data-testid="files-modal"
+    class="modal modal-bottom sm:modal-middle"
+  />
+  ```
+  ```typescript
+  // Bad
+  const isFilesModalOpen = !!document.querySelector(
+    'dialog[data-testid="files-modal"][open]',
+  )
+  ```
 - When editing large components (100+ lines), check for existing composable declarations before adding new ones (e.g., `useNuxtApp()`, `useRoute()`, `useRouter()`). Search the entire `<script setup>` block to avoid duplicate declarations that cause "Cannot redeclare block-scoped variable" errors
 
 ### Watchers
@@ -351,17 +462,17 @@ This project uses [evlog](https://evlog.dev) for structured logging with wide ev
 import { useLogger, createError } from 'evlog'
 
 export default defineEventHandler(async (event) => {
-  const log = useLogger(event)  // Auto-created, auto-emitted
+  const logger = useLogger(event)  // Auto-created, auto-emitted
 
   // Accumulate context throughout request
-  log.set({ user: { id: user.id, plan: user.plan } })
-  log.set({ cart: { items: 3, total: 9999 } })
+  logger.set({ user: { id: user.id, plan: user.plan } })
+  logger.set({ cart: { items: 3, total: 9999 } })
 
   // Non-critical errors (swallowed, logged as context)
   try {
     await cache.set(key, value)
   } catch (exception) {
-    log.set({
+    logger.set({
       cache: {
         operation: 'write',
         error: exception instanceof Error ? exception.message : String(exception),
@@ -377,9 +488,14 @@ export default defineEventHandler(async (event) => {
     fix: 'Try a different payment method',
   })
 
-  // log.emit() called automatically at request end
+  // logger.emit() called automatically at request end
 })
 ```
+
+**Logger naming and helpers**
+- Prefer the variable name `logger` instead of `log`.
+- When passing a logger into helper functions, place it last in the
+  parameter list so primary inputs come first.
 
 **Reference files:**
 - Wide events patterns: `.ai/skills/evlog/references/wide-events.md`
@@ -394,24 +510,27 @@ import { parseError } from 'evlog'
 
 try {
   await $fetch('/api/checkout')
-} catch (err) {
-  const exception = parseError(err)
+} catch (exception) {
+  const parsedException = parseError(exception)
 
-  // exception.message - user-facing title (required)
-  // exception.why - technical reason (optional)
-  // exception.fix - actionable solution (optional)
-  // exception.link - documentation URL (optional)
-  useErrorMessage(exception.message || 'Something went wrong', exception.why)
+  // parsedException.message - user-facing title (required)
+  // parsedException.why - technical reason (optional)
+  // parsedException.fix - actionable solution (optional)
+  // parsedException.link - documentation URL (optional)
+  useErrorMessage(
+    parsedException.message || 'Something went wrong',
+    parsedException.why,
+  )
 }
 ```
 
 **Why `parseError`?** When the server throws `createError()`, it's serialized to an HTTP response. The client needs `parseError()` to extract all structured fields (`message`, `why`, `fix`, `link`) from the error response.
 
 **Pattern for all client-side error handling:**
-- Catch as `err` (unknown type)
-- Use `parseError(err)` to extract structured fields
-- Pass `exception.message` as title, `exception.why` as description
-- Never use `exception?.data?.message` or `exception.statusMessage`
+- Catch as `exception` (unknown type)
+- Use `parseError(exception)` to extract structured fields
+- Pass `parsedException.message` as title, `parsedException.why` as description
+- Never use `parsedException?.data?.message` or `parsedException.statusMessage`
 
 ## Automated Checks
 
@@ -436,6 +555,8 @@ try {
 - `no-console` - Warnings only, can be ignored unless explicitly requested to fix
 - Type errors - Must be fixed; use proper types, check for missing imports or wrong types
 - Unused variables - Prefix with underscore (`_variable`) or remove if truly unused
+- For infra utility changes, verify no accidental `useEvent()` usage in
+  request-agnostic modules.
 
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
 
@@ -478,50 +599,14 @@ Both refer to the same automatically-generated token, but `github.token` is GitH
 
 ### Nuxt
 
-When implementing complex features, making architectural decisions, or answering questions about Nuxt best practices, use the **Nuxt MCP server** tools efficiently.
+Before using Nuxt MCP docs, check local Nuxt best-practice guidance in the
+skills directory: `.ai/skills/nuxt/SKILL.md`.
+
+When implementing complex features, making architectural decisions, or answering questions about Nuxt best practices, use all the nested MD files in `.ai/skills/nuxt/references/`
 
 **IMPORTANT: Token-efficient usage**
-- NEVER read MCP resources directly (`resource://nuxt-com/*`) - they consume 70k+ tokens
-- NEVER use `list_documentation_pages` as the first step - it returns ~80k chars (~30k tokens)
-- ALWAYS infer the documentation path directly and use `get_documentation_page`
 
-**Path patterns (use these to infer paths directly):**
-
-| Category | Pattern | Example |
-|----------|---------|---------|
-| Composables | `/docs/4.x/api/composables/{kebab-case}` | `useState` → `use-state` |
-| Components | `/docs/4.x/api/components/{kebab-case}` | `NuxtLink` → `nuxt-link` |
-| Utils | `/docs/4.x/api/utils/{kebab-case}` | `clearNuxtData` → `clear-nuxt-data` |
-| Commands | `/docs/4.x/api/commands/{name}` | `nuxi` commands |
-| Config | `/docs/4.x/api/configuration/{name}` | `nuxt-config` |
-| Getting Started | `/docs/4.x/getting-started/{topic}` | `installation`, `state-management` |
-| Guide | `/docs/4.x/guide/{category}/{topic}` | `guide/concepts/rendering` |
-
-**Workflow (direct fetch first):**
-```
-1. Infer path from topic (e.g., useState → /docs/4.x/api/composables/use-state)
-2. Call get_documentation_page(path: "...") directly (~2-3k tokens)
-3. Only if error/404 → fall back to list_documentation_pages as last resort
-```
-
-**Common composable paths:**
-- `useState` → `/docs/4.x/api/composables/use-state`
-- `useFetch` → `/docs/4.x/api/composables/use-fetch`
-- `useAsyncData` → `/docs/4.x/api/composables/use-async-data`
-- `useNuxtApp` → `/docs/4.x/api/composables/use-nuxt-app`
-- `useRuntimeConfig` → `/docs/4.x/api/composables/use-runtime-config`
-- `useHead` → `/docs/4.x/api/composables/use-head`
-- `useRoute` → `/docs/4.x/api/composables/use-route`
-- `useRouter` → `/docs/4.x/api/composables/use-router`
-- `useCookie` → `/docs/4.x/api/composables/use-cookie`
-- `useError` → `/docs/4.x/api/composables/use-error`
-
-**Other tools (use sparingly):**
-- `list_modules` / `get_module` - Only for module compatibility questions
-- `list_deploy_providers` / `get_deploy_provider` - Only for deployment questions
-- `list_blog_posts` / `get_blog_post` - Only for release notes/announcements
-
-Always use version "4.x" for this project.
+NEVER read MCP resources directly (`resource://nuxt-com/*`) - they consume 70k+ tokens
 
 ### DaisyUI
 

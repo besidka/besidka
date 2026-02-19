@@ -40,6 +40,14 @@
 			"binding": "R2_BUCKET"
 		}
 	],
+	"images": {
+    "binding": "IMAGES"
+  },
+	"triggers": {
+		"crons": [
+			"0 * * * *"
+		]
+	},
 	"env": {
 		"production": {
 			"name": "besidka",
@@ -60,6 +68,11 @@
 					"zone_name": "besidka.com"
 				}
 			],
+			"triggers": {
+				"crons": [
+					"0 * * * *"
+				]
+			},
 			"d1_databases": [
 				{
 					"binding": "DB",
@@ -79,7 +92,10 @@
 					"bucket_name": "besidka",
 					"binding": "R2_BUCKET"
 				}
-			]
+			],
+			"images": {
+				"binding": "IMAGES"
+			}
 		}
 	}
 }

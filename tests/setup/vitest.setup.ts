@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import { config } from '@vue/test-utils'
+import { $fetch } from 'ofetch'
 
 /**
  * Mock Nuxt auto-imports
@@ -9,17 +10,27 @@ vi.mock('#app', () => ({
     $i18n: {
       t: (key: string) => key,
     },
+    callHook: vi.fn(),
+    hook: vi.fn(),
   })),
   useState: vi.fn((key: string, init?: () => any) => {
-    const state = ref(init ? init() : null)
+    const state = ref<unknown>(init ? init() : null)
+
     return state
   }),
   useRuntimeConfig: vi.fn(() => ({
     public: {
-      auth: {
-        redirectUserTo: '/chats/new',
-        redirectGuestTo: '/signin',
-      },
+      redirectUserTo: '/chats/new',
+      redirectGuestTo: '/signin',
+      allowedFileFormats: [
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'application/pdf',
+        'text/plain',
+      ],
+      maxFilesPerMessage: 10,
+      maxMessageFilesBytes: 1000 * 1024 * 1024,
     },
   })),
   navigateTo: vi.fn(),
@@ -27,7 +38,15 @@ vi.mock('#app', () => ({
   useRequestURL: vi.fn(() => new URL('http://localhost:3000')),
   reloadNuxtApp: vi.fn(),
   defineNuxtRouteMiddleware: vi.fn(middleware => middleware),
+  defineNuxtPlugin: vi.fn(plugin => plugin),
   abortNavigation: vi.fn(),
+}))
+
+/**
+ * Stub $fetch to allow MSW interception in tests
+ */
+vi.stubGlobal('$fetch', $fetch.create({
+  baseURL: 'http://localhost',
 }))
 
 /**
@@ -98,3 +117,7 @@ config.global.stubs = {
     template: '<div><slot /></div>',
   },
 }
+
+vi.stubGlobal('useErrorMessage', vi.fn())
+vi.stubGlobal('useSuccessMessage', vi.fn())
+vi.stubGlobal('useWarningMessage', vi.fn())

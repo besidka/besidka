@@ -11,7 +11,14 @@
           size="20"
           class="shrink-0"
         />
-        <span>{{ message.text }}</span>
+        <div
+          v-if="message.description"
+          class="flex flex-col gap-0.5"
+        >
+          <span class="font-bold">{{ messageTitle }}</span>
+          <span class="text-xs opacity-80">{{ message.description }}</span>
+        </div>
+        <span v-else>{{ messageTitle }}</span>
       </div>
       <button
         ref="removeButton"
@@ -56,6 +63,10 @@ const {
 const progress = shallowRef<number>(100)
 const interval = ref<NodeJS.Timeout | null>(null)
 const removeButton = ref<HTMLButtonElement | null>(null)
+
+const messageTitle = computed(() => {
+  return props.message.title || props.message.text || 'Notification'
+})
 
 const messages = useMessages()
 

@@ -48,6 +48,16 @@ export function getChangedFiles(base = 'HEAD') {
 
 export function getAffectedTests(changedFiles) {
   const affectedTests = new Set()
+  const filesModuleTests = [
+    'tests/unit/composables/chat-files.spec.ts',
+    'tests/unit/composables/file-manager.spec.ts',
+    'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/upload-with-progress.spec.ts',
+    'tests/integration/api/files-upload.spec.ts',
+    'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/server/convert-files-for-ai.spec.ts',
+    'tests/e2e/chat/files.spec.ts',
+  ]
 
   const testMappings = [
     {
@@ -64,6 +74,50 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/components/ThemeSwitcher.spec.ts',
         'tests/e2e/settings/theme.spec.ts',
       ],
+    },
+    {
+      pattern: /^app\/components\/ChatInput\/Files\/.*\.vue$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/components\/Chat\/Files\.vue$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/composables\/(chat-files|file-manager)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/files\/.*\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/routes\/files\/.*\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/utils\/(file-governance|convert-files-for-ai|file-share-access)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^shared\/types\/files\.d\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly|chat-shares)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/db\/schema\.ts$/,
+      tests: filesModuleTests,
     },
     {
       pattern: /^app\/composables\/.*\.ts$/,

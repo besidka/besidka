@@ -1,3 +1,7 @@
 export * from './schemas/auth'
 export * from './schemas/chats'
 export * from './schemas/keys'
+export * from './schemas/files'
+export * from './schemas/chat-shares'
+export * from './schemas/storages'
+export * from './schemas/image-transform-usage-monthly'

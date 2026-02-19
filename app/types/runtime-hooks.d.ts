@@ -11,6 +11,8 @@ declare module '#app' {
     'chat-input:visibility-changed': (visible: boolean) => void
     'chat-spacer:changed': (height: number) => void
     'device-keyboard:state-changed': (isOpen: boolean) => void
+    'files:uploaded': () => void
+    'files:deleted': (fileIds: string[]) => void
   }
 }
 

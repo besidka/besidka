@@ -32,6 +32,7 @@
         }"
       >
         <ChatMessage :role="m.role">
+          <ChatFiles :message="m" />
           <ChatReasoning
             :message="m"
             :status="chatSdk.status"
@@ -78,6 +79,7 @@
   </div>
   <ChatInput
     v-model:message="input"
+    v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="isReasoningEnabled"
     :messages-length="chatSdk.messages.length"
@@ -91,8 +93,6 @@
   />
 </template>
 <script setup lang="ts">
-import type { Chat } from '#shared/types/chats.d'
-
 definePageMeta({
   layout: 'chat',
   auth: {
@@ -151,6 +151,7 @@ const {
   isLastUserMessage,
   isLastAssistantMessage,
   shouldDisplayMessage,
+  files,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()

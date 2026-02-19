@@ -3,6 +3,8 @@ import { relations } from 'drizzle-orm'
 import { defaultSchemaTimestamps } from '../../utils/schema'
 import { chats } from './chats'
 import { keys } from './keys'
+import { files } from './files'
+import { storages } from './storages'
 
 export const users = sqliteTable('users', {
   ...defaultSchemaTimestamps,
@@ -61,6 +63,15 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   key: one(keys, {
     fields: [users.id],
     references: [keys.userId],
+  }),
+  files: many(files),
+  file: one(files, {
+    fields: [users.id],
+    references: [files.userId],
+  }),
+  storage: one(storages, {
+    fields: [users.id],
+    references: [storages.userId],
   }),
 }))
 

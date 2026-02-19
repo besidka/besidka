@@ -3,67 +3,25 @@
     ref="chatInputRef"
     class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-1/2 sm:-translate-x-1/2 sm:w-3xl sm:max-w-full transition-transform duration-500 ease-in-out"
     :class="{
-      // On mobile devices
-      // When page is only loaded, is has to be animated from offscreen
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
-
-      // On mobile devices
-      // When page is scrolled to bottom, show chat input
-      // On iOS when the keyboard is not visible,
-      // apply safe area (with safe area)
       'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]':
         visible && isChatInputVisibleOnScroll
         && isKeyboardVisible && hasSafeAreaBottom,
-
-      // On mobile devices
-      // When page is scrolled to bottom, show chat input
-      // On iOS when the keyboard is not visible, no safe area
       'max-sm:translate-y-0':
         visible && isChatInputVisibleOnScroll && !hasSafeAreaBottom,
-
-      // On mobile devices
-      // When page is scrolled to bottom, show chat input
-      // On iOS when the keyboard is visible, apply safe area
       'max-sm:translate-y-[var(--sab)]':
         visible && isChatInputVisibleOnScroll
         && !isKeyboardVisible && hasSafeAreaBottom,
-
-      // On mobile devices
-      // When page is scrolled to bottom, show chat input
-      // On iOS when the keyboard is visible, no safe area
-      // 'max-sm:translate-y-0':
-      //   visible && isChatInputVisibleOnScroll
-      // && !isKeyboardVisible && !hasSafeAreaBottom,
-      // On mobile devices
-      // When page is not scrolled to bottom,
-      // hide chat input partially offscreen
-      // On iOS when the keyboard is not visible,
-      // apply safe area (with safe area)
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_20-var(--sab))]':
         visible && !isChatInputVisibleOnScroll
         && isKeyboardVisible && hasSafeAreaBottom,
-
-      // On mobile devices
-      // When page is not scrolled to bottom,
-      // hide chat input partially offscreen
-      // On iOS when the keyboard is not visible, no safe area
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_20)]':
         visible && !isChatInputVisibleOnScroll
         && isKeyboardVisible && !hasSafeAreaBottom,
-
-      // On mobile devices
-      // When page is not scrolled to bottom,
-      // hide chat input partially offscreen
-      // On iOS when the keyboard is visible, apply safe area
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_18-var(--sab))]':
         visible && !isChatInputVisibleOnScroll
         && !isKeyboardVisible && hasSafeAreaBottom,
-
-      // On mobile devices
-      // When page is not scrolled to bottom,
-      // hide chat input partially offscreen
-      // On iOS when the keyboard is visible, no safe area
       'max-sm:translate-y-[calc(100%-var(--spacing)_*_18)]':
         visible && !isChatInputVisibleOnScroll
         && !isKeyboardVisible && !hasSafeAreaBottom,
@@ -72,12 +30,32 @@
         visible && !isChatInputVisibleOnScroll,
     }"
   >
+    <LazyChatInputFilesDropZone
+      v-if="$device.isDesktop"
+      @files-dropped="uploadFiles"
+    />
     <LazyChatScroll v-show="!isChatInputVisibleOnScroll" />
     <div class="flex justify-center w-full px-4">
       <UiBubble
         class="grow !p-0 !rounded-b-none !rounded-t-xl !border-0 ring-12 ring-accent/20 !bg-transparent"
       >
-        <div class="p-1 pb-0 bg-transparent shadow-lg max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]">
+        <div
+          class="p-1 pb-0 bg-transparent shadow-lg max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
+          :class="{
+            'pt-0.5 px-1.5': files.length
+          }"
+        >
+          <!-- Attached Files Preview with Upload Progress -->
+          <LazyChatInputFilesAttachedPreview
+            :files="files"
+            :uploading-files="uploadingFiles"
+            :uploading-count="uploadingCount"
+            @remove="removeAttachedFile"
+            @remove-all="removeAllFiles"
+            @cancel="cancelUpload"
+            @retry="retryUpload"
+            @cancel-all="cancelAllUploads"
+          />
           <textarea
             ref="textarea"
             v-model="input"
@@ -90,116 +68,28 @@
           />
           <div class="flex items-center justify-between gap-2 p-2">
             <div
-              class="flex items-center gap-2"
+              class="max-xs:grid max-xs:gap-0 flex items-center gap-2"
               :class="{
-                'max-xs:grid max-xs:gap-0':
+                'max-sm:grid max-xs:gap-0':
                   isWebSearchEnabled && isReasoningEnabled,
                 'max-xxs:grid max-xxs:gap-0':
                   isWebSearchEnabled || isReasoningEnabled,
               }"
             >
-              <details
-                ref="modelDropdown"
-                class="group dropdown dropdown-top"
-              >
-                <summary
-                  aria-label="Select model"
-                  class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
-                >
-                  <span
-                    class="block truncate text-left"
-                    :class="{
-                      'max-xs:w-20 max-xxs:w-auto':
-                        !(isWebSearchEnabled && isReasoningEnabled)
-                         && (isWebSearchEnabled || isReasoningEnabled),
-                    }"
-                  >
-                    {{ getModelName(toValue(userModel)) }}
-                  </span>
-                  <Icon
-                    name="lucide:chevron-down"
-                    size="14"
-                    class="group-open:scale-y-[-1]"
-                  />
-                </summary>
-                <div
-                  class="dropdown-content bg-base-100 rounded-box z-50 w-64 shadow-sm"
-                >
-                  <ul class="menu menu-xs w-full">
-                    <li
-                      v-for="provider in providers"
-                      :key="provider.id"
-                    >
-                      <span class="menu-title flex items-center gap-2">
-                        <SvgoGeminiShort
-                          v-if="provider.id === 'google'"
-                          class="w-4 fill-base-content/40"
-                        />
-                        <SvgoOpenai
-                          v-if="provider.id === 'openai'"
-                          class="w-4 fill-base-content/40"
-                        />
-                        {{ provider.name }}
-                      </span>
-                      <ul>
-                        <li
-                          v-for="model in provider.models"
-                          :key="model.id"
-                        >
-                          <button
-                            type="button"
-                            class="flex items-center"
-                            :class="{
-                              'menu-active': userModel === model.id,
-                              'tooltip tooltip-right': $device.isDesktop
-                            }"
-                            :aria-label="`Choose ${model.name}`"
-                            :data-tip="model.price
-                              ? `${model.price.input} / ${model.price.output}`
-                              : undefined
-                            "
-                            @click="selectModel(model.id)"
-                          >
-                            <span class="grow">{{ model.name }}</span>
-                            <span class="shrink-0 flex gap-1 items-center">
-                              <span
-                                v-if="model.reasoning"
-                                class="shrink-0 flex items-center p-0.5 rounded-full bg-warning-content"
-                                :class="{
-                                  'tooltip tooltip-warning tooltip-top':
-                                    $device.isDesktop
-                                }"
-                                data-tip="Thinking"
-                              >
-                                <Icon
-                                  name="lucide:brain"
-                                  class="text-warning"
-                                />
-                              </span>
-                              <span
-                                v-if="model.tools.includes('web_search')"
-                                class="shrink-0 flex items-center p-0.5 rounded-full bg-info-content"
-                                :class="{
-                                  'tooltip tooltip-info tooltip-top':
-                                    $device.isDesktop
-                                }"
-                                data-tip="Web search"
-                              >
-                                <Icon
-                                  v-if="model.tools.includes('web_search')"
-                                  name="lucide:globe"
-                                  class="text-info"
-                                />
-                              </span>
-                            </span>
-                          </button>
-                        </li>
-                      </ul>
-                    </li>
-                  </ul>
-                </div>
-              </details>
+              <LazyChatInputModelsTrigger
+                hydrate-on-idle
+                :is-web-search-enabled="isWebSearchEnabled"
+                :is-reasoning-enabled="isReasoningEnabled"
+              />
               <div class="flex items-center gap-2 my-2 px-1">
+                <LazyChatInputFilesTrigger
+                  hydrate-on-idle
+                  :files="files"
+                  @detach-all="files = []"
+                  @detach="onFilesDetached"
+                  @attach="onFilesAttached"
+                  @upload="uploadFiles"
+                />
                 <UiButton
                   v-if="isWebSearchSupported"
                   mode="accent"
@@ -287,6 +177,7 @@
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
+import type { FileMetadata } from '#shared/types/files.d'
 
 const props = defineProps<{
   stopped?: boolean
@@ -304,8 +195,6 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const { isDesktop } = useDevice()
-const { userModel } = useUserModel()
-const { providers } = getProviders()
 const { isWebSearchSupported, isReasoningSupported } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -365,6 +254,10 @@ const message = defineModel<string>('message', {
   default: '',
 })
 
+const files = defineModel<FileMetadata[]>('files', {
+  default: () => [],
+})
+
 const tools = defineModel<Tools>('tools', {
   default: [],
 })
@@ -373,12 +266,24 @@ const isReasoningEnabled = defineModel<boolean>('reasoning', {
   default: false,
 })
 
+const {
+  uploadFiles,
+  uploadingFiles,
+  uploadingCount,
+  cancelUpload,
+  retryUpload,
+  cancelAllUploads,
+  removeAttachedFile,
+  removeAllFiles,
+} = useChatFiles(files)
+
 watch(isReasoningSupported, (supported) => {
   if (!supported) {
     isReasoningEnabled.value = false
   }
 }, {
   immediate: true,
+  flush: 'post',
 })
 
 const { textarea, input } = useTextareaAutosize({
@@ -388,34 +293,6 @@ const { textarea, input } = useTextareaAutosize({
 const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
 })
-
-const modelDropdown = useTemplateRef<HTMLDetailsElement>('modelDropdown')
-const isDropdownHovered = useElementHover(modelDropdown)
-
-onClickOutside(modelDropdown, () => {
-  if (modelDropdown.value?.open) {
-    modelDropdown.value.open = false
-  }
-})
-
-watch(isDropdownHovered, (hovered) => {
-  if (!modelDropdown.value || !isDesktop) {
-    return
-  }
-
-  modelDropdown.value.open = hovered
-}, {
-  immediate: false,
-  flush: 'post',
-})
-
-function selectModel(modelId: string) {
-  userModel.value = modelId
-
-  if (modelDropdown.value) {
-    modelDropdown.value.open = false
-  }
-}
 
 const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
@@ -441,12 +318,34 @@ watchPostEffect(() => {
 function toggleWebSearch() {
   if (!isWebSearchEnabled.value) {
     tools.value = [...tools.value, 'web_search']
+
     return
   }
 
   tools.value = tools.value.filter((tool) => {
     return tool !== 'web_search'
   })
+}
+
+function onFilesAttached(
+  attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
+) {
+  const existingKeys = new Set(files.value.map(file => file.storageKey))
+  const newFiles = attachedFiles.filter(
+    file => !existingKeys.has(file.storageKey),
+  )
+
+  if (newFiles.length === 0) {
+    return
+  }
+
+  files.value.push(...newFiles as FileMetadata[])
+}
+
+function onFilesDetached(fileIds: string[]) {
+  const idsToDetach = new Set(fileIds)
+
+  files.value = files.value.filter(file => !idsToDetach.has(file.id))
 }
 
 function handleEnter(event: KeyboardEvent) {
@@ -463,8 +362,12 @@ function sendMessage() {
     return useWarningMessage('Please enter a message before sending.')
   }
 
+  const text = message.value
+
   emit('submit')
   message.value = ''
+  files.value = []
+  nuxtApp.callHook('chat:submit', { text })
 }
 
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
@@ -482,7 +385,7 @@ watch(chatInputHeight, (newHeight) => {
   }
 
   nuxtApp.callHook('chat-input:height', newHeight)
-})
+}, { flush: 'post' })
 
 onUnmounted(() => {
   if (blurTimeout.value) {
@@ -493,5 +396,54 @@ onUnmounted(() => {
 onStartTyping(() => {
   nuxtApp.callHook('chat:scroll-to-bottom')
   textarea.value?.focus()
+})
+
+function onPaste(event: ClipboardEvent) {
+  const isFilesModalOpen = !!document.querySelector(
+    'dialog.js-files-modal[open]',
+  )
+
+  if (isFilesModalOpen) {
+    return
+  }
+
+  const items = event.clipboardData?.items
+
+  if (!items) {
+    return
+  }
+
+  const imageFiles: File[] = []
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+
+      if (file) {
+        imageFiles.push(file)
+      }
+    }
+  }
+
+  if (imageFiles.length > 0) {
+    event.preventDefault()
+    uploadFiles(imageFiles)
+  }
+}
+
+onMounted(() => {
+  if (!isDesktop) {
+    return
+  }
+
+  document.addEventListener('paste', onPaste)
+})
+
+onUnmounted(() => {
+  if (!isDesktop) {
+    return
+  }
+
+  document.removeEventListener('paste', onPaste)
 })
 </script>

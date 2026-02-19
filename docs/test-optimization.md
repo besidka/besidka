@@ -81,11 +81,14 @@ Custom script (`scripts/test-affected.mjs`) that:
 |--------------|----------------|
 | `app/components/Sidebar/ThemeSwitcher.vue` | `tests/unit/components/ThemeSwitcher.spec.ts`<br>`tests/e2e/settings/theme.spec.ts` |
 | `app/components/ui/Button.vue` | `tests/unit/components/ThemeSwitcher.spec.ts`<br>`tests/e2e/settings/theme.spec.ts` |
+| `app/components/ChatInput/Files/**` | `tests/unit/composables/chat-files.spec.ts`<br>`tests/unit/composables/file-manager.spec.ts`<br>`tests/unit/utils/files.spec.ts`<br>`tests/unit/utils/upload-with-progress.spec.ts`<br>`tests/integration/api/files-upload.spec.ts`<br>`tests/integration/api/files-delete.spec.ts`<br>`tests/integration/server/convert-files-for-ai.spec.ts`<br>`tests/e2e/chat/files.spec.ts` |
+| `server/api/v1/files/**` | `tests/unit/composables/chat-files.spec.ts`<br>`tests/unit/composables/file-manager.spec.ts`<br>`tests/unit/utils/files.spec.ts`<br>`tests/unit/utils/upload-with-progress.spec.ts`<br>`tests/integration/api/files-upload.spec.ts`<br>`tests/integration/api/files-delete.spec.ts`<br>`tests/integration/server/convert-files-for-ai.spec.ts`<br>`tests/e2e/chat/files.spec.ts` |
 
 ### Auto-mapping
 
 - `app/composables/foo.ts` → `tests/unit/composables/foo.spec.ts`
 - `app/utils/bar.ts` → `tests/unit/utils/bar.spec.ts`
+- File module paths use explicit group mapping to run the files unit + integration + e2e suite together.
 
 ### Core Files (Run All Tests)
 

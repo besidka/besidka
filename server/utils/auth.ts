@@ -17,8 +17,6 @@ export function useServerAuth(event?: H3Event) {
   const kv = useKV()
   const dataKey = 'auth'
 
-  const { send: sendEmail } = useEmail()
-
   _auth = betterAuth({
     secret: config.betterAuthSecret,
     database: drizzleAdapter(db, {
@@ -55,6 +53,8 @@ export function useServerAuth(event?: H3Event) {
       autoSignIn: import.meta.dev,
       requireEmailVerification: !import.meta.dev,
       async sendResetPassword({ user, url }) {
+        const { send: sendEmail } = useEmail()
+
         await sendEmail({
           to: user.email,
           subject: 'Reset your password',
@@ -71,6 +71,8 @@ export function useServerAuth(event?: H3Event) {
           console.log(`Verification link for ${user.email}: ${url}`)
           return
         }
+
+        const { send: sendEmail } = useEmail()
 
         await sendEmail({
           to: user.email,

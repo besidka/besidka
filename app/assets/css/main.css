@@ -108,7 +108,9 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 
 @theme {
   --breakpoint-xs: 29rem;
-  --breakpoint-xxs: 24rem;
+  --breakpoint-xxs: 26rem;
+
+  --text-2xs: .625rem;
 
   --font-display: 'Nunito', sans-serif;
   --font-code: 'Atkinson Hyperlegible Mono', sans-serif;
@@ -180,6 +182,12 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
  * Change the background color of the skeleton loader
  * https://github.com/saadeghi/daisyui/blob/master/src/components/styled/skeleton.css 
  */
+@layer components {
+  .skeleton:not(.skeleton--default) {
+    @apply rounded-full;
+  }
+}
+
 @layer utilities {
 
   .checkbox {
@@ -190,7 +198,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   .badge {
     --size-selector: 0.1875rem;
   }
-  
+
   .tooltip::before {
     --radius-field: .25rem;
   }
@@ -202,9 +210,8 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   .tab-content {
     @apply bg-base-100 border-base-300 p-6;
   }
-  
+
   .skeleton:not(.skeleton--default) {
-      @apply rounded-full;
       background-color: var(--color-skeleton);
       background-image: linear-gradient(
         105deg,

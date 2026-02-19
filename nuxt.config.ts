@@ -9,13 +9,11 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'cloudflare_module',
-    // minify: false,
     experimental: {
       asyncContext: true,
     },
     cloudflare: {
       deployConfig: false,
-      nodeCompat: true,
     },
   },
   $development: {
@@ -44,6 +42,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     encryptionHashids: '',
     encryptionKey: '',
+    emailNoopEnabled: false,
     resendApiKey: '',
     resendSenderNoreply: '',
     resendSenderPersonalized: '',
@@ -52,6 +51,13 @@ export default defineNuxtConfig({
     googleClientSecret: '',
     githubClientId: '',
     githubClientSecret: '',
+    filesHardMaxStorageBytes: 1 * 1024 * 1024 * 1024, // 1GB
+    filesGlobalTransformLimitMonthly: 1000,
+    enableAssistantFilePersistence: false,
+    filesRetentionCleanupEnabled: false,
+    filesRetentionCleanupBatchSize: 100,
+    filesRetentionCleanupMaxRuntimeMs: 20000,
+    filesMaintenanceToken: '',
     public: {
       baseUrl: '',
       defaultModel,
@@ -59,6 +65,15 @@ export default defineNuxtConfig({
       providers,
       redirectUserTo: '/chats/new',
       redirectGuestTo: '/signin',
+      allowedFileFormats: [
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'application/pdf',
+        'text/plain',
+      ],
+      maxFilesPerMessage: 10,
+      maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
     },
   },
   colorMode: {
@@ -75,6 +90,7 @@ export default defineNuxtConfig({
     'nuxt-svgo',
     '@vueuse/nuxt',
     '@vite-pwa/nuxt',
+    'evlog/nuxt',
   ],
   eslint: {
     checker: process.env.CI !== 'true',

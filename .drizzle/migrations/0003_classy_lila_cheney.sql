@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `sources` text DEFAULT '[]' NOT NULL;
