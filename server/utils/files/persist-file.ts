@@ -5,12 +5,15 @@ import {
   normalizeMediaType,
 } from '#shared/utils/files'
 import { useLogger } from 'evlog'
+import type { RequestLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import {
   getEffectiveUserFilePolicy,
   getUserStorageUsageBytes,
 } from '~~/server/utils/files/file-governance'
+
+type ServerLogger = RequestLogger<Record<string, unknown>>
 
 type StoragePutResponse = Awaited<
   ReturnType<ReturnType<typeof useFileStorage>['put']>
@@ -25,7 +28,7 @@ export interface PersistFileInput {
   source?: FileSource
   originMessageId?: number | null
   originProvider?: string | null
-  logger?: ReturnType<typeof useLogger>
+  logger?: ServerLogger
 }
 
 export type PersistedFile = Pick<
@@ -220,7 +223,7 @@ interface RollbackPersistedFileInput {
   mediaType: string
   fileSize: number
   source: FileSource
-  logger: ReturnType<typeof useLogger>
+  logger: ServerLogger
 }
 
 async function rollbackPersistedFile(

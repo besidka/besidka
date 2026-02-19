@@ -93,14 +93,14 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260207.0",
-		"@commitlint/cli": "^20.4.1",
-		"@commitlint/config-conventional": "^20.4.1",
+		"@cloudflare/workers-types": "^4.20260219.0",
+		"@commitlint/cli": "^20.4.2",
+		"@commitlint/config-conventional": "^20.4.2",
 		"@commitlint/format": "^20.4.0",
 		"@commitlint/types": "^20.4.0",
 		"@nuxt/test-utils": "^4.0.0",
 		"@playwright/test": "^1.58.2",
-		"@stylistic/eslint-plugin": "^5.8.0",
+		"@stylistic/eslint-plugin": "^5.9.0",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^24.10.12",
 		"@types/sanitize-html": "^2.16.0",
@@ -108,7 +108,7 @@
 		"@vitest/ui": "^4.0.18",
 		"@vue/test-utils": "^2.4.6",
 		"better-sqlite3": "^12.6.2",
-		"happy-dom": "^20.5.3",
+		"happy-dom": "^20.6.3",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
 		"msw": "^2.12.9",
@@ -119,7 +119,7 @@
 		"vitest-environment-nuxt": "^1.0.1",
 		"vue-tsc": "^3.2.4",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.63.0"
+		"wrangler": "^4.67.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
