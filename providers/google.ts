@@ -3,6 +3,17 @@ export default {
   name: 'Google AI Studio',
   models: [
     {
+      id: 'gemini-3.1-pro-preview',
+      name: 'Gemini 3.1 Pro',
+      price: {
+        tokens: 1_000_000,
+        input: 'from $2.00',
+        output: 'from $12.00',
+      },
+      tools: ['web_search'],
+      reasoning: true,
+    },
+    {
       id: 'gemini-3-pro-preview',
       name: 'Gemini 3 Pro',
       price: {
@@ -36,7 +47,7 @@ export default {
       reasoning: true,
     },
     {
-      id: 'gemini-2.5-flash-preview-09-2025',
+      id: 'gemini-2.5-flash',
       name: 'Gemini 2.5 Flash',
       price: {
         tokens: 1_000_000,
@@ -47,7 +58,7 @@ export default {
       reasoning: true,
     },
     {
-      id: 'gemini-2.5-flash-lite-preview-09-2025',
+      id: 'gemini-2.5-flash-lite',
       default: true,
       name: 'Gemini 2.5 Flash-Lite',
       price: {
