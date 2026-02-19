@@ -164,9 +164,19 @@ jobs:
           --base=origin/${{ github.base_ref }}
           --type=e2e
 
-      - name: Install Playwright browsers
+      - name: Cache Playwright browsers
+        id: playwright-cache
         if: steps.check-e2e.outputs.has-tests == 'true'
-        run: pnpm exec playwright install --with-deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright browsers
+        if: steps.check-e2e.outputs.has-tests == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
 
       - name: Generate DB migrations for E2E
         if: steps.check-e2e.outputs.has-tests == 'true'
@@ -197,6 +207,7 @@ jobs:
           NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE: 100
           NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS: 20000
           NUXT_FILES_MAINTENANCE_TOKEN: token
+          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
