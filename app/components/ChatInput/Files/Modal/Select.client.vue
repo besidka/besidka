@@ -43,34 +43,35 @@
         </p>
       </div>
 
-      <!-- Files Grid View -->
-      <LazyChatInputFilesModalSelectGridView
-        v-else-if="viewMode === 'grid'"
-        ref="gridViewRef"
-        :files="files"
-        :selected-ids="selectedIds"
-        :is-touch-selecting="isTouchSelecting"
-        :touched-indices="touchedIndices"
-        @file-click="onFileClick"
-        @rename="openRenameModal"
-        @delete="confirmDelete"
-      />
-
-      <!-- Files List View -->
-      <LazyChatInputFilesModalSelectListView
-        v-else
-        ref="listViewRef"
-        :files="files"
-        :selected-ids="selectedIds"
-        :is-touch-selecting="isTouchSelecting"
-        :touched-indices="touchedIndices"
-        :all-selected="allSelected"
-        :has-selection="hasSelection"
-        @file-click="onFileClick"
-        @rename="openRenameModal"
-        @delete="confirmDelete"
-        @toggle-select-all="handleToggleSelectAll"
-      />
+      <template v-else>
+        <KeepAlive>
+          <LazyChatInputFilesModalSelectGridView
+            v-if="viewMode === 'grid'"
+            ref="gridViewRef"
+            :files="files"
+            :selected-ids="selectedIds"
+            :is-touch-selecting="isTouchSelecting"
+            :touched-indices="touchedIndices"
+            @file-click="onFileClick"
+            @rename="openRenameModal"
+            @delete="confirmDelete"
+          />
+          <LazyChatInputFilesModalSelectListView
+            v-else
+            ref="listViewRef"
+            :files="files"
+            :selected-ids="selectedIds"
+            :is-touch-selecting="isTouchSelecting"
+            :touched-indices="touchedIndices"
+            :all-selected="allSelected"
+            :has-selection="hasSelection"
+            @file-click="onFileClick"
+            @rename="openRenameModal"
+            @delete="confirmDelete"
+            @toggle-select-all="handleToggleSelectAll"
+          />
+        </KeepAlive>
+      </template>
 
       <!-- Load More -->
       <div
@@ -179,6 +180,7 @@ const touchStartIndex = shallowRef<number | null>(null)
 const touchedIndices = ref<Set<number>>(new Set())
 const touchSwipeHandled = shallowRef<boolean>(false)
 const autoSelectedIds = ref<Set<string>>(new Set())
+const isComponentActive = shallowRef<boolean>(false)
 
 function getFileIndexFromElement(element: Element | null): number | null {
   if (!element) return null
@@ -255,20 +257,55 @@ function detachTouchListeners(element: HTMLElement | null) {
   element.removeEventListener('touchend', handleTouchEnd)
 }
 
-watch(viewMode, async (_, __, onCleanup) => {
-  await nextTick()
-
+function getViewContainers() {
   const gridContainer = gridViewRef.value?.containerRef ?? null
   const listContainer = listViewRef.value?.containerRef ?? null
+
+  return {
+    gridContainer,
+    listContainer,
+  }
+}
+
+function attachInteractionListeners() {
+  if (!isComponentActive.value) {
+    return
+  }
+
+  document.removeEventListener('keydown', onSearchShortcut)
+  document.addEventListener('keydown', onSearchShortcut)
+
+  const { gridContainer, listContainer } = getViewContainers()
 
   detachTouchListeners(gridContainer)
   detachTouchListeners(listContainer)
   attachTouchListeners(gridContainer)
   attachTouchListeners(listContainer)
+}
+
+function detachInteractionListeners() {
+  document.removeEventListener('keydown', onSearchShortcut)
+
+  const { gridContainer, listContainer } = getViewContainers()
+
+  detachTouchListeners(gridContainer)
+  detachTouchListeners(listContainer)
+}
+
+async function rebindInteractionListeners() {
+  if (!isComponentActive.value) {
+    return
+  }
+
+  await nextTick()
+  attachInteractionListeners()
+}
+
+watch(viewMode, async (_, __, onCleanup) => {
+  await rebindInteractionListeners()
 
   onCleanup(() => {
-    detachTouchListeners(gridContainer)
-    detachTouchListeners(listContainer)
+    detachInteractionListeners()
   })
 }, { flush: 'post' })
 
@@ -427,7 +464,10 @@ function syncAttachedSelection() {
   }
 }
 
-watch(files, syncAttachedSelection, { flush: 'post' })
+watch(files, async () => {
+  syncAttachedSelection()
+  await rebindInteractionListeners()
+}, { flush: 'post' })
 watch(() => props.attachedIds, syncAttachedSelection, { flush: 'post' })
 watch(() => filePolicyResponse.value, (response) => {
   if (!response) {
@@ -443,28 +483,26 @@ watch(() => filePolicyResponse.value, (response) => {
 nuxtApp.hook('files:uploaded', () => fetchFiles(true))
 
 onMounted(async () => {
+  isComponentActive.value = true
   await fetchFiles(true)
 
   syncAttachedSelection()
-  document.addEventListener('keydown', onSearchShortcut)
+  await rebindInteractionListeners()
+})
 
-  await nextTick()
+onActivated(async () => {
+  isComponentActive.value = true
+  await rebindInteractionListeners()
+})
 
-  const gridContainer = gridViewRef.value?.containerRef ?? null
-  const listContainer = listViewRef.value?.containerRef ?? null
-
-  attachTouchListeners(gridContainer)
-  attachTouchListeners(listContainer)
+onDeactivated(() => {
+  isComponentActive.value = false
+  detachInteractionListeners()
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', onSearchShortcut)
-
-  const gridContainer = gridViewRef.value?.containerRef ?? null
-  const listContainer = listViewRef.value?.containerRef ?? null
-
-  detachTouchListeners(gridContainer)
-  detachTouchListeners(listContainer)
+  isComponentActive.value = false
+  detachInteractionListeners()
   reset()
 })
 
