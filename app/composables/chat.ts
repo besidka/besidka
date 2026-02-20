@@ -138,6 +138,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const nuxtApp = useNuxtApp()
 
   async function submit() {
+    isStopped.value = false
+
     const parts: any[] = []
 
     if (input.value.trim()) {
