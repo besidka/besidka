@@ -5,6 +5,7 @@
         ref="modal"
         data-testid="files-modal"
         class="js-files-modal modal modal-bottom sm:modal-middle"
+        @close="onModalClosed"
       >
         <div class="modal-box max-w-2xl max-h-[80vh] flex flex-col">
           <form method="dialog">
@@ -42,18 +43,21 @@
               @change="activeTab = 'upload'"
             >
           </div>
-          <ChatInputFilesModalSelect
-            v-if="activeTab === 'select'"
-            :attached-ids="attachedIds"
-            class="flex-1 min-h-0"
-            @attach="onFilesAttached"
-            @detach="onFilesDetached"
-            @deleted="storageUsage?.fetch()"
-          />
-          <ChatInputFilesModalUpload
-            v-if="activeTab === 'upload'"
-            @upload="onFilesUploaded"
-          />
+          <KeepAlive>
+            <ChatInputFilesModalSelect
+              v-if="activeTab === 'select'"
+              ref="selectTabRef"
+              :attached-ids="attachedIds"
+              class="flex-1 min-h-0"
+              @attach="onFilesAttached"
+              @detach="onFilesDetached"
+              @deleted="storageUsage?.fetch()"
+            />
+            <ChatInputFilesModalUpload
+              v-else-if="activeTab === 'upload'"
+              @upload="onFilesUploaded"
+            />
+          </KeepAlive>
         </div>
         <form
           method="dialog"
@@ -71,6 +75,10 @@ import type { FileMetadata } from '#shared/types/files.d'
 import type { FileManagerFile } from '~/types/file-manager'
 
 type Tab = 'select' | 'upload'
+type SelectTabRef = {
+  reset: () => void
+  fetchFiles: (reset?: boolean) => Promise<boolean>
+}
 
 defineProps<{
   attachedIds: Set<string>
@@ -83,10 +91,32 @@ const emit = defineEmits<{
 }>()
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
-const closeBtn = useTemplateRef<HTMLButtonElement>('close')
+const closeBtn = useTemplateRef<HTMLButtonElement>('closeBtn')
 const storageUsage = useTemplateRef('storageUsage')
+const selectTabRef = shallowRef<SelectTabRef | null>(null)
 
 const activeTab = shallowRef<Tab | null>(null)
+const shouldRefreshSelect = shallowRef<boolean>(false)
+
+async function refreshSelectTabIfNeeded() {
+  if (activeTab.value !== 'select' || !shouldRefreshSelect.value) {
+    return
+  }
+
+  await nextTick()
+
+  if (!selectTabRef.value) {
+    return
+  }
+
+  selectTabRef.value.reset()
+
+  const didRefresh = await selectTabRef.value.fetchFiles(true)
+
+  if (didRefresh) {
+    shouldRefreshSelect.value = false
+  }
+}
 
 function open(tab: Tab): void {
   activeTab.value = tab
@@ -105,8 +135,12 @@ function close(): void {
   if (modal.value?.open) {
     modal.value.close()
   }
+}
 
+function onModalClosed(): void {
   activeTab.value = null
+  shouldRefreshSelect.value = true
+  selectTabRef.value?.reset()
 }
 
 function onFilesAttached(files: FileManagerFile[]) {
@@ -130,6 +164,10 @@ function onFilesUploaded(files: File[]) {
   emit('upload', files)
   close()
 }
+
+watch([activeTab, selectTabRef], () => {
+  void refreshSelectTabIfNeeded()
+}, { flush: 'post' })
 
 defineExpose({
   open,
