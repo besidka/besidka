@@ -146,7 +146,7 @@
                 @click="stop"
               />
               <UiButton
-                v-show="displayRegenerate"
+                v-show="canShowRegenerate"
                 mode="accent"
                 soft
                 circle
@@ -157,7 +157,7 @@
                 @click="regenerate"
               />
               <UiButton
-                v-show="!displayStop && !displayRegenerate"
+                v-show="!displayStop && !canShowRegenerate"
                 mode="accent"
                 circle
                 :disabled="!hasMessage"
@@ -292,6 +292,10 @@ const { textarea, input } = useTextareaAutosize({
 
 const hasMessage = computed<boolean>(() => {
   return !!input.value?.trim().length
+})
+
+const canShowRegenerate = computed<boolean>(() => {
+  return !!props.displayRegenerate && !hasMessage.value
 })
 
 const isWebSearchEnabled = computed<boolean>(() => {
