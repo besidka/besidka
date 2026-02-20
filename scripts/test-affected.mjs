@@ -52,7 +52,7 @@ function runTests(tests, testType) {
 
   if (unitTests.length > 0 && (testType === 'unit' || testType === 'all')) {
     console.log('📝 Running unit tests...\n')
-    execSync(`vitest run --reporter=verbose --run ${unitTests.join(' ')}`, {
+    execSync(`pnpm exec vitest run --reporter=verbose --run ${unitTests.join(' ')}`, {
       stdio: 'inherit',
       shell: true,
     })
@@ -60,7 +60,7 @@ function runTests(tests, testType) {
 
   if (integrationTests.length > 0 && (testType === 'integration' || testType === 'all')) {
     console.log('🔗 Running integration tests...\n')
-    execSync(`vitest run --reporter=verbose --run ${integrationTests.join(' ')}`, {
+    execSync(`pnpm exec vitest run --reporter=verbose --run ${integrationTests.join(' ')}`, {
       stdio: 'inherit',
       shell: true,
     })
