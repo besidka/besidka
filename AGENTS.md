@@ -251,6 +251,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     file.storageKey === storageKey)
   ```
 - Prefix unused variables with `_`
+- **Never remove `console.log`, `debugger` statements, or commented-out code without explicit confirmation from the user.** If you think something should be removed, ask first.
 - Do not add inline comments within functions unless explicitly requested. For large functions (80+ lines), a JSDoc-style comment above the function is acceptable
 - Strictly follow this code style guide; when asked to refactor, apply it across the entire requested scope.
 - Use descriptive variable names, avoid abbreviations:
@@ -414,6 +415,12 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     'dialog[data-testid="files-modal"][open]',
   )
   ```
+- Tests must prefer `data-testid` selectors and must not rely on `js-*` hook
+  classes when a test id is available.
+- If an element needs both runtime JS querying and test automation querying,
+  include both selectors on the element (`js-*` class + `data-testid`) and keep
+  usage separated:
+  runtime code uses `js-*`, tests use `data-testid`.
 - When editing large components (100+ lines), check for existing composable declarations before adding new ones (e.g., `useNuxtApp()`, `useRoute()`, `useRouter()`). Search the entire `<script setup>` block to avoid duplicate declarations that cause "Cannot redeclare block-scoped variable" errors
 
 ### Watchers

@@ -16,11 +16,14 @@ export interface ProcessedMessage {
   sourceUrlParts: SourceUrlUIPart[]
 }
 
+type Scenario = 'short' | 'long' | 'reasoning'
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
   const input = useLocalStorage<string>('chat_input', '')
   const files = ref<FileMetadata[]>([])
+  const route = useRoute()
 
   chat = toValue(chat)
 
@@ -32,11 +35,33 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     chat.messages[chat.messages.length - 1]?.reasoning || false,
   )
 
+  const testScenario = computed<Scenario | null>(() => {
+    if (!import.meta.dev || route.path !== '/chats/test') {
+      return null
+    }
+
+    const scenario = route.query.scenario as string
+
+    if (
+      scenario === 'short'
+      || scenario === 'long'
+      || scenario === 'reasoning'
+    ) {
+      return scenario
+    }
+
+    return 'short'
+  })
+
+  const api = computed<string>(() => {
+    return `/api/v1/chats/${testScenario.value ? `test?scenario=${testScenario.value}` : chat.slug}`
+  })
+
   const chatSdk = new ChatSdk({
     id: chat.id,
     messages: chat.messages,
     transport: new DefaultChatTransport({
-      api: `/api/v1/chats/${chat.slug}`,
+      api: api.value,
       prepareSendMessagesRequest({ messages }) {
         const lastMessage = messages[messages.length - 1]
 
@@ -126,8 +151,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   onMounted(() => {
     if (
-      chat?.messages.length === 1
-      || chat?.messages.at(-1)?.role === 'user'
+      (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
+      && (route.path !== '/chats/test' || 'regenerate' in route.query)
     ) {
       chatSdk.regenerate()
     }
