@@ -14,10 +14,20 @@ export interface ChatScrollOptions {
   chatSdk: ReturnType<typeof useChat>['chatSdk']
 }
 
+const INITIAL_SPACER_HEIGHT: number = 500
 const INITIAL_SPACER_PADDING: number = 12
 const MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES: number = 12
 const MESSAGE_3_LINES_HEIGHT: number = 100
-const DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS: number = 100
+
+// Could be 100 for small chats
+// but rendering many DOM elements for long conversations could take more time,
+// so 150 is safer value
+//
+// Just wait for response from http://localhost:3000/chats/test?scenario=long&regenerate&messages=21
+// Scroll to down,
+// if chat input overlaps AI message (it's on the bottom of the screen)
+// then increase the value
+const DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS: number = 150
 
 export function useChatScroll(
   options: ChatScrollOptions,
@@ -34,7 +44,7 @@ export function useChatScroll(
 
   const userMessageData = shallowRef<MessageData | null>(null)
   const assistantMessageData = shallowRef<MessageData | null>(null)
-  const spacerHeight = shallowRef<number>(INITIAL_SPACER_PADDING)
+  const spacerHeight = shallowRef<number>(INITIAL_SPACER_HEIGHT)
   const inputHeight = shallowRef<number>(0)
 
   const waitingForDimensions = shallowRef<boolean>(false)
@@ -43,8 +53,21 @@ export function useChatScroll(
   const capturedAssistantMessages = new Set<string>()
   const assistantDebounceTimer = shallowRef<NodeJS.Timeout | null>(null)
   let lastAssistantMessageId: string | null = null
+  const inputHeightTimer = shallowRef<NodeJS.Timeout | null>(null)
+  const spacerComputedByPush = shallowRef<boolean>(false)
+  const isInitialPageLoad = shallowRef<boolean>(true)
 
-  onUpdated(() => {
+  function getPushUserMessageBehaviorForLoad(): ScrollBehavior {
+    if (!isInitialPageLoad.value) {
+      return 'smooth'
+    }
+
+    isInitialPageLoad.value = false
+
+    return 'instant'
+  }
+
+  function captureMessageDimensions() {
     if (!import.meta.client) {
       return
     }
@@ -82,10 +105,12 @@ export function useChatScroll(
           }
 
           if (!['submitted', 'streaming'].includes(chatSdk.status)) {
+            pushUserMessageToTop('instant')
+
             return
           }
 
-          pushUserMessageToTop()
+          pushUserMessageToTop(getPushUserMessageBehaviorForLoad())
 
           waitingForDimensions.value = false
         }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
@@ -122,7 +147,23 @@ export function useChatScroll(
       default:
         return
     }
+  }
+
+  onMounted(() => {
+    captureMessageDimensions()
+
+    setTimeout(() => {
+      // If pushUserMessageToTop(getPushUserMessageBehaviorForLoad())
+      // was not called in captureMessageDimensions for some reason,
+      // we ensure that manual scroll will be instant on initial page load,
+      // not smooth, to prevent wrong scroll position after loading the page.
+      // but WILL be smooth manual push in case
+      // pushUserMessageToTop(getPushUserMessageBehaviorForLoad())
+      // was NOT called in captureMessageDimensions
+      isInitialPageLoad.value = false
+    }, 1000)
   })
+  onUpdated(captureMessageDimensions)
 
   async function adjustSpacerAfterResponse() {
     if (chatSdk.messages.length <= 1) {
@@ -143,10 +184,6 @@ export function useChatScroll(
     ) {
       return
     }
-
-    spacerHeight.value = 0
-
-    await nextTick()
 
     const containerHeight = container.clientHeight
     const scrollableSpace = containerHeight - inputHeight.value
@@ -179,7 +216,7 @@ export function useChatScroll(
     if (userMessageHeight > MESSAGE_3_LINES_HEIGHT) {
       extraSpacerForTallUserMessage = userMessageHeight - MESSAGE_3_LINES_HEIGHT
         // unknown value in this formula to make it work properly
-        + 16
+        + 4
     }
 
     if (conversationPairHeight > scrollableSpace) {
@@ -220,19 +257,15 @@ export function useChatScroll(
     })
   }
 
-  async function pushUserMessageToTop() {
-    if (chatSdk.messages.length <= 1) {
-      return
-    }
-
+  async function pushUserMessageToTop(behavior: ScrollBehavior = 'smooth') {
     const container = scrollContainerRef.value
     const messagesEnd = messagesEndRef.value
 
     if (!container || !userMessageData.value || !messagesEnd) {
+      messagesEndRef?.value?.scrollIntoView({ behavior })
+
       return
     }
-
-    let resultSpacer: number = 0
 
     const containerHeight = container.clientHeight
     const contentHeight = messagesEnd.offsetTop
@@ -241,30 +274,57 @@ export function useChatScroll(
       height: messageHeight,
     } = userMessageData.value
 
-    resultSpacer = userMessageOffsetTop - contentHeight + containerHeight
-      - INITIAL_SPACER_PADDING
+    let resultSpacer: number
+      = userMessageOffsetTop - contentHeight + containerHeight
+        - INITIAL_SPACER_PADDING
 
-    if (
-      chatSdk.messages.length > 2
-      && messageHeight > MESSAGE_3_LINES_HEIGHT
-    ) {
+    if (messageHeight > MESSAGE_3_LINES_HEIGHT) {
       resultSpacer += messageHeight + 16 - MESSAGE_3_LINES_HEIGHT
     }
 
+    spacerComputedByPush.value = true
     spacerHeight.value = resultSpacer
 
     nuxtApp.callHook('chat-spacer:changed', resultSpacer)
 
     await nextTick()
 
-    messagesEndRef?.value?.scrollIntoView()
+    messagesEndRef?.value?.scrollIntoView({
+      behavior,
+    })
+  }
+
+  function resetSpacer() {
+    spacerHeight.value = inputHeight.value
+    nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
+  }
+
+  function shouldResetSpacerOnScrollToBottom(): boolean {
+    const container = scrollContainerRef.value
+    const userMessage = userMessageData.value
+    const assistantMessage = assistantMessageData.value
+
+    if (!container || !userMessage || !assistantMessage) {
+      return true
+    }
+
+    const scrollableSpace: number = container.clientHeight - inputHeight.value
+    const lastPairHeight: number = userMessage.height + assistantMessage.height
+      + MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES
+
+    return lastPairHeight > scrollableSpace
   }
 
   nuxtApp.hook('chat:submit', () => {
+    spacerComputedByPush.value = false
     waitingForDimensions.value = true
   })
 
   nuxtApp.hook('chat:scroll-to-bottom', () => {
+    if (shouldResetSpacerOnScrollToBottom()) {
+      resetSpacer()
+    }
+
     messagesEndRef?.value?.scrollIntoView({ behavior: 'smooth' })
   })
 
@@ -276,33 +336,39 @@ export function useChatScroll(
    * Because the textarea could be resized on typing,
    * depends on the length of the input.
    */
-  nuxtApp.hook('chat-input:height', async (height: number) => {
+  nuxtApp.hook('chat-input:height', (height: number) => {
     if (inputHeight.value !== height) {
       inputHeight.value = height - safeAreaBottom.value
     }
 
-    if (!scrollContainerRef.value) {
+    if (!scrollContainerRef.value || spacerComputedByPush.value) {
       return
     }
 
-    /**
-     * @description
-     * Actually here had to be
-     * + INITIAL_SPACER_PADDING - MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES
-     * But while they are equal to each other we can skip them
-     */
-    const resultSpacer: number = height - safeAreaBottom.value
+    if (inputHeightTimer.value) {
+      clearTimeout(inputHeightTimer.value)
+    }
 
-    spacerHeight.value = resultSpacer
+    inputHeightTimer.value = setTimeout(() => {
+      const lastMessage = chatSdk.messages.at(-1)
 
-    nuxtApp.callHook('chat-spacer:changed', resultSpacer)
+      if (
+        !userMessageData.value
+        && lastMessage?.role !== 'user'
+      ) {
+        spacerHeight.value = inputHeight.value
 
-    await nextTick()
+        nuxtApp.callHook(
+          'chat-spacer:changed',
+          spacerHeight.value,
+        )
 
-    scrollContainerRef.value.scrollTo({
-      top: scrollContainerRef.value.scrollHeight,
-      behavior: 'instant',
-    })
+        scrollContainerRef.value?.scrollTo({
+          top: scrollContainerRef.value?.scrollHeight ?? 0,
+          behavior: 'instant',
+        })
+      }
+    }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
   })
 
   nuxtApp.hook('chat:regenerate', pushUserMessageToTop)

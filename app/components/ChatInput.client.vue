@@ -245,7 +245,7 @@ nuxtApp.hook('chat:rendered', (container) => {
   }
 
   scrollContainerRef.value = container.value
-  messagesContainerRef.value = container.value.querySelector('[data-chat-messages]')
+  messagesContainerRef.value = container.value.querySelector('.js-chat-messages-container')
 })
 
 nuxtApp.hook('chat-spacer:changed', () => measure())
@@ -376,17 +376,21 @@ function sendMessage() {
 
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
-
-onMounted(() => {
-  setTimeout(() => {
-    nuxtApp.callHook('chat-input:height', chatInputHeight.value)
-  }, 4)
-})
+const isSentHeightOnMounted = shallowRef<boolean>(false)
 
 watch(chatInputHeight, (newHeight) => {
   if (input.value) {
+    if (!isSentHeightOnMounted.value) {
+      isSentHeightOnMounted.value = true
+
+      nuxtApp.callHook('chat-input:height', newHeight)
+      nuxtApp.callHook('chat:scroll-to-bottom')
+    }
+
     return
   }
+
+  isSentHeightOnMounted.value = true
 
   nuxtApp.callHook('chat-input:height', newHeight)
 }, { flush: 'post' })

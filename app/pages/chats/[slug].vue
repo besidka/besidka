@@ -107,11 +107,44 @@ useSeoMeta({
 
 const route = useRoute()
 
+const isTestChat = computed<boolean>(() => {
+  return import.meta.dev && route.path === '/chats/test'
+})
+
+const key = computed<string>(() => {
+  if (!isTestChat.value) {
+    return `chat-${route.params.slug}`
+  }
+
+  return `test-chat-${route.query.scenario}-${route.query.messages || 1}`
+})
+
+const query = computed(() => {
+  if (!isTestChat.value) {
+    return {
+      scenario: undefined,
+      messages: undefined,
+    }
+  }
+
+  let scenario = route.query.scenario as string
+
+  if (!['short', 'long', 'reasoning'].includes(scenario)) {
+    scenario = 'short'
+  }
+
+  return {
+    scenario,
+    messages: route.query.messages as string || '1',
+  }
+})
+
 const { data: chat, error: chatError } = await useFetch<Chat>(
-  `/api/v1/chats/${route.params.slug}`,
+  () => `/api/v1/chats/${isTestChat.value ? 'test' : route.params.slug}`,
   {
-    key: `chat-${route.params.slug}`,
+    key,
     cache: 'force-cache',
+    query,
   },
 )
 
