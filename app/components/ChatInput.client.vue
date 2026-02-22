@@ -377,12 +377,6 @@ function sendMessage() {
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
 
-onMounted(() => {
-  setTimeout(() => {
-    nuxtApp.callHook('chat-input:height', chatInputHeight.value)
-  }, 4)
-})
-
 watch(chatInputHeight, (newHeight) => {
   if (input.value) {
     return
