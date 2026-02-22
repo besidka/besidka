@@ -18,7 +18,16 @@ const INITIAL_SPACER_HEIGHT: number = 500
 const INITIAL_SPACER_PADDING: number = 12
 const MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES: number = 12
 const MESSAGE_3_LINES_HEIGHT: number = 100
-const DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS: number = 100
+
+// Could be 100 for small chats
+// but rendering many DOM elements for long conversations could take more time,
+// so 150 is safer value
+//
+// Just wait for response from http://localhost:3000/chats/test?scenario=long&regenerate&messages=21
+// Scroll to down,
+// if chat input overlaps AI message (it's on the bottom of the screen)
+// then increase the value
+const DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS: number = 150
 
 export function useChatScroll(
   options: ChatScrollOptions,
@@ -46,6 +55,17 @@ export function useChatScroll(
   let lastAssistantMessageId: string | null = null
   const inputHeightTimer = shallowRef<NodeJS.Timeout | null>(null)
   const spacerComputedByPush = shallowRef<boolean>(false)
+  const isInitialPageLoad = shallowRef<boolean>(true)
+
+  function getPushUserMessageBehaviorForLoad(): ScrollBehavior {
+    if (!isInitialPageLoad.value) {
+      return 'smooth'
+    }
+
+    isInitialPageLoad.value = false
+
+    return 'instant'
+  }
 
   function captureMessageDimensions() {
     if (!import.meta.client) {
@@ -90,7 +110,7 @@ export function useChatScroll(
             return
           }
 
-          pushUserMessageToTop()
+          pushUserMessageToTop(getPushUserMessageBehaviorForLoad())
 
           waitingForDimensions.value = false
         }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
@@ -129,7 +149,20 @@ export function useChatScroll(
     }
   }
 
-  onMounted(captureMessageDimensions)
+  onMounted(() => {
+    captureMessageDimensions()
+
+    setTimeout(() => {
+      // If pushUserMessageToTop(getPushUserMessageBehaviorForLoad())
+      // was not called in captureMessageDimensions for some reason,
+      // we ensure that manual scroll will be instant on initial page load,
+      // not smooth, to prevent wrong scroll position after loading the page.
+      // but WILL be smooth manual push in case
+      // pushUserMessageToTop(getPushUserMessageBehaviorForLoad())
+      // was NOT called in captureMessageDimensions
+      isInitialPageLoad.value = false
+    }, 1000)
+  })
   onUpdated(captureMessageDimensions)
 
   async function adjustSpacerAfterResponse() {
@@ -335,8 +368,6 @@ export function useChatScroll(
           behavior: 'instant',
         })
       }
-
-      pushUserMessageToTop('instant')
     }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
   })
 

@@ -1,4 +1,5 @@
 import type { UIMessageChunk } from 'ai'
+
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -167,8 +168,6 @@ export default defineEventHandler(async (event) => {
       .enum(['short', 'long', 'reasoning'])
       .default('short'),
   }).safeParse)
-
-  console.log('query', query)
 
   if (query.error) {
     throw createError({

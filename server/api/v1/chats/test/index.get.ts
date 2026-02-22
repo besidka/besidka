@@ -1,3 +1,5 @@
+import type { ReasoningUIPart, TextUIPart } from 'ai'
+
 const shortMessage = 'test first message in the chat'
 const longMessage = `Here is text with three paragraphs:
 
@@ -45,17 +47,14 @@ export default defineEventHandler(async (event) => {
         ...(index % 2 === 0 && scenario === 'reasoning'
           ? [{
             type: 'reasoning',
-            reasoning: {
-              thought: `Thought for message ${index + 1}`,
-              plan: `Plan for message ${index + 1}`,
-              conclusion: `Conclusion for message ${index + 1}`,
-            },
-          }]
+            text: `Thought for message ${index + 1}`,
+            state: 'done',
+          }] as ReasoningUIPart[]
           : []),
         {
           type: 'text',
           text,
-        },
+        } as TextUIPart,
       ],
       tools: [],
       reasoning: scenario === 'reasoning',

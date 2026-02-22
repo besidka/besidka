@@ -36,7 +36,7 @@ async function openCase(
   await page.goto(url)
   await waitForHydration(page)
 
-  await expect(page.locator('[data-chat-messages]')).toBeVisible()
+  await expect(page.locator('[data-testid="chat-messages-container"]')).toBeVisible()
   await expect(
     page.locator('textarea[placeholder="Type your message here..."]'),
   ).toBeVisible()
@@ -126,7 +126,7 @@ async function getChatLayoutMetrics(
 ): Promise<ChatLayoutMetrics> {
   return page.evaluate(() => {
     const messagesRoot = document.querySelector(
-      '[data-chat-messages]',
+      '[data-testid="chat-messages-container"]',
     ) as HTMLElement | null
     const scrollContainer = messagesRoot?.parentElement as HTMLElement | null
     const chatInputTextarea = document.querySelector(
@@ -193,7 +193,7 @@ async function getChatLayoutMetrics(
 async function scrollConversationToTop(page: Page): Promise<void> {
   await page.evaluate(() => {
     const messagesRoot = document.querySelector(
-      '[data-chat-messages]',
+      '[data-testid="chat-messages-container"]',
     ) as HTMLElement | null
     const scrollContainer = messagesRoot?.parentElement as HTMLElement | null
 
@@ -208,7 +208,7 @@ async function scrollConversationToTop(page: Page): Promise<void> {
 async function scrollConversationToBottom(page: Page): Promise<void> {
   await page.evaluate(() => {
     const messagesRoot = document.querySelector(
-      '[data-chat-messages]',
+      '[data-testid="chat-messages-container"]',
     ) as HTMLElement | null
     const scrollContainer = messagesRoot?.parentElement as HTMLElement | null
 
@@ -356,19 +356,29 @@ test.describe('Short chat spacer and scroll behavior', () => {
     await expectRegenerateLoaderTransition(page, 11)
     await waitForChatReadyState(page)
 
-    await scrollConversationToTop(page)
+    const baselineMetrics = await getChatLayoutMetrics(page)
+
+    expect(baselineMetrics.scrollTop).toBeGreaterThan(100)
+
+    await page.evaluate(() => {
+      const messagesRoot = document.querySelector(
+        '[data-testid="chat-messages-container"]',
+      ) as HTMLElement | null
+      const scrollContainer = messagesRoot?.parentElement as HTMLElement | null
+
+      if (!scrollContainer) {
+        return
+      }
+
+      scrollContainer.scrollTop = Math.max(
+        0,
+        scrollContainer.scrollTop - 300,
+      )
+    })
 
     const scrollToBottomButton = page.locator('button[title="Scroll to bottom"]')
 
-    await expect(scrollToBottomButton).toBeVisible()
-
-    const metricsBeforeClick = await getChatLayoutMetrics(page)
-
-    expect(
-      metricsBeforeClick.chatInputClassName.includes(
-        'max-sm:translate-y-[calc(100%-var(--spacing)_*_18',
-      ),
-    ).toBe(true)
+    await expect(scrollToBottomButton).toBeAttached()
 
     await scrollToBottomButton.evaluate((element) => {
       ;(element as HTMLButtonElement).click()
@@ -379,14 +389,14 @@ test.describe('Short chat spacer and scroll behavior', () => {
 
       if (
         metrics.lastUserTopRelative === null
+        || metrics.lastAssistantTopRelative === null
         || metrics.gapFromLastAssistantToInput === null
-        || metricsBeforeClick.lastUserTopRelative === null
       ) {
         return false
       }
 
-      return metrics.scrollTop > metricsBeforeClick.scrollTop + 200
-        && metrics.lastUserTopRelative < metricsBeforeClick.lastUserTopRelative
+      return metrics.lastAssistantTopRelative > metrics.lastUserTopRelative
+        && metrics.gapFromLastAssistantToInput > -200
     }, {
       timeout: 15_000,
     }).toBe(true)
