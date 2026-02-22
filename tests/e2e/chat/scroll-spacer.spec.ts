@@ -22,6 +22,7 @@ const LARGE_EMPTY_SPACE_MIN: number = 120
 
 test.use({
   ...devices['iPhone 14 Pro Max'],
+  defaultBrowserType: undefined,
 })
 
 test.describe.configure({
