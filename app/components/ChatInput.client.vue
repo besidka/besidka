@@ -377,11 +377,8 @@ function sendMessage() {
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
 const isSentHeightOnMounted = shallowRef<boolean>(false)
-const updatesHeightOnMounted = shallowRef<number>(0)
 
 watch(chatInputHeight, (newHeight) => {
-  updatesHeightOnMounted.value += 1
-
   if (input.value) {
     if (!isSentHeightOnMounted.value) {
       isSentHeightOnMounted.value = true
