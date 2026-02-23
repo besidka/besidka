@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { lastLoginMethod } from 'better-auth/plugins'
 import * as schema from '../db/schema'
 
 let _auth: ReturnType<typeof betterAuth>
@@ -98,6 +99,9 @@ export function useServerAuth(event?: H3Event) {
         allowDifferentEmails: false,
       },
     },
+    plugins: [
+      lastLoginMethod({ storeInDatabase: true }),
+    ],
   })
 
   return _auth

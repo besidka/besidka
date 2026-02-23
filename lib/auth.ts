@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import Database from 'better-sqlite3'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { lastLoginMethod } from 'better-auth/plugins'
 
 export const auth = betterAuth({
   database: drizzleAdapter(new Database('database.sqlite'), {
@@ -40,4 +41,7 @@ export const auth = betterAuth({
       allowDifferentEmails: false,
     },
   },
+  plugins: [
+    lastLoginMethod({ storeInDatabase: true }),
+  ],
 })

@@ -10,33 +10,43 @@
     </div>
     <ul class="grid gap-4 p-3">
       <li>
-        <UiButton
-          text="Sign in with Google"
-          class="w-full"
-          :disabled="pending || isSocialOAuthDisabled"
-          @click="socialSignIn('google')"
-        >
-          <template #icon>
-            <SvgoGoogle class="icon" />
-          </template>
-        </UiButton>
+        <AuthLastUsedContainer>
+          <Transition name="slide-fade">
+            <LazyAuthLastUsedBadge v-if="lastLoginMethod === 'google'" />
+          </Transition>
+          <UiButton
+            text="Sign in with Google"
+            block
+            :mode="lastLoginMethod === 'google' ? 'accent' : 'primary'"
+            :disabled="pending || isSocialOAuthDisabled"
+            @click="socialSignIn('google')"
+          >
+            <template #icon>
+              <SvgoGoogle class="icon" />
+            </template>
+          </UiButton>
+        </AuthLastUsedContainer>
       </li>
       <li>
-        <UiButton
-          text="Sign in with GitHub"
-          class="w-full"
-          :disabled="pending || isSocialOAuthDisabled"
-          @click="socialSignIn('github')"
-        >
-          <template #icon>
-            <SvgoGithub class="icon" />
-          </template>
-        </UiButton>
+        <AuthLastUsedContainer>
+          <Transition name="slide-fade">
+            <LazyAuthLastUsedBadge v-if="lastLoginMethod === 'github'" />
+          </Transition>
+          <UiButton
+            text="Sign in with GitHub"
+            block
+            :mode="lastLoginMethod === 'github' ? 'accent' : 'primary'"
+            :disabled="pending || isSocialOAuthDisabled"
+            @click="socialSignIn('github')"
+          >
+            <template #icon>
+              <SvgoGithub class="icon" />
+            </template>
+          </UiButton>
+        </AuthLastUsedContainer>
       </li>
     </ul>
-    <LazyAuthInAppAlert
-      v-if="displayEmbeddedBrowserWarning"
-    />
+    <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
     <div class="divider">or continue with</div>
     <UiForm
       ref="form"
@@ -111,13 +121,20 @@
         </div>
       </UiFormFieldset>
       <UiFormFieldset class="flex justify-center mt-4">
-        <UiButton
-          type="submit"
-          :text="pending ? 'Signing in...' : 'Sign in'"
-          icon-name="lucide:log-in"
-          class="w-full"
-          :disabled="pending"
-        />
+        <AuthLastUsedContainer>
+          <Transition name="slide-fade">
+            <LazyAuthLastUsedBadge v-if="lastLoginMethod === 'email'" />
+          </Transition>
+          <UiButton
+            type="submit"
+            block
+            :mode="lastLoginMethod === 'email' ? 'accent' : 'primary'"
+            :text="pending ? 'Signing in...' : 'Sign in'"
+            icon-name="lucide:log-in"
+            class="w-full"
+            :disabled="pending"
+          />
+        </AuthLastUsedContainer>
       </UiFormFieldset>
     </UiForm>
     <p class="py-2 text-center">
@@ -147,7 +164,6 @@ useSeoMeta({
 
 const { Validation } = useValidation()
 
-const form = ref<InstanceType<typeof UiForm> | null>()
 const displayPassword = shallowRef<boolean>(false)
 
 const type = computed<'password' | 'text'>(() => {
@@ -177,7 +193,7 @@ const data = shallowReactive<Data>({
   rememberMe: true,
 })
 
-const { signIn, errorCodes: _errorCodes } = useAuth()
+const { signIn, errorCodes: _errorCodes, lastLoginMethod } = useAuth()
 
 const pending = shallowRef<boolean>(false)
 const isSocialOAuthDisabled = computed<boolean>(() => {
@@ -228,3 +244,18 @@ async function onSubmit() {
   pending.value = false
 }
 </script>
+<style scoped>
+  .slide-fade-enter-active {
+    transition: all 0.3s ease-out;
+  }
+
+  .slide-fade-leave-active {
+    transition: all 0.8s cubic-bezier(1, 0.5, 0.8, 1);
+  }
+
+  .slide-fade-enter-from,
+  .slide-fade-leave-to {
+    transform: translateY(5px);
+    opacity: 0;
+  }
+</style>

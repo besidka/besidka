@@ -190,6 +190,7 @@ const buttonStyleClasses = computed<Partial<Record<string, boolean>>>(() => {
     'btn-outline': props.outline,
     'btn-circle': props.circle,
     'btn-square': props.square,
+    'btn-block': props.block,
     'btn-link': props.mode === 'link',
     'btn-disabled': !!props.disabled,
     'btn-xs': props.size === 'xs',
@@ -273,6 +274,7 @@ const containerClasses = computed<Partial<Record<string, boolean>>>(() => {
         ...buttonStyleClasses.value,
       }
       : {}),
+    'w-full': props.block,
   }
 })
 </script>
