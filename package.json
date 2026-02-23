@@ -52,7 +52,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^3.0.30",
-		"@ai-sdk/openai": "^3.0.26",
+		"@ai-sdk/openai": "^3.0.31",
 		"@ai-sdk/provider": "^3.0.8",
 		"@ai-sdk/vue": "^3.0.97",
 		"@iconify-json/lucide": "^1.2.93",
@@ -75,7 +75,7 @@
 		"drizzle-kit": "^0.31.9",
 		"drizzle-orm": "0.45.1",
 		"drizzle-query-logger": "^1.1.2",
-		"eslint": "^9.39.2",
+		"eslint": "^9.39.3",
 		"evlog": "1.11.0",
 		"hashids": "^2.3.0",
 		"nuxt": "^4.3.1",
@@ -101,7 +101,7 @@
 		"@playwright/test": "^1.58.2",
 		"@stylistic/eslint-plugin": "^5.9.0",
 		"@types/better-sqlite3": "^7.6.13",
-		"@types/node": "^24.10.12",
+		"@types/node": "^24.10.13",
 		"@types/sanitize-html": "^2.16.0",
 		"@vitest/coverage-v8": "^4.0.18",
 		"@vitest/ui": "^4.0.18",
@@ -110,7 +110,7 @@
 		"happy-dom": "^20.7.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.2.7",
-		"msw": "^2.12.9",
+		"msw": "^2.12.10",
 		"playwright-core": "^1.58.2",
 		"typescript": "^5.9.3",
 		"vite-plugin-eslint2": "^5.0.5",
@@ -118,7 +118,7 @@
 		"vitest-environment-nuxt": "^1.0.1",
 		"vue-tsc": "^3.2.5",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.67.0"
+		"wrangler": "^4.68.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
