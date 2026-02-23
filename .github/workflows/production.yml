@@ -339,23 +339,21 @@ jobs:
       WORKER_NAME: besidka-preview
 
     steps:
-      - name: Find the latest uploaded worker version of PR
-        if: needs.resolve-preview-context.outputs.pr-number
-        uses: cloudflare/wrangler-action@v3
-        id: list-versions
-        with:
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
-          command: versions list --json --name ${{ env.WORKER_NAME }}
-
-      - name: List versions and find PR version
+      - name: Find version for PR
         if: needs.resolve-preview-context.outputs.pr-number
         id: find-version
         env:
           PR_NUMBER: ${{ needs.resolve-preview-context.outputs.pr-number }}
-          VERSIONS_JSON: ${{ steps.list-versions.outputs.command-output }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # Capture JSON silently - never printed to logs to avoid leaking author emails
+          VERSIONS_JSON=$(npx wrangler versions list \
+            --json --name ${{ env.WORKER_NAME }} 2>/tmp/wrangler-stderr) || {
+            cat /tmp/wrangler-stderr >&2
+            exit 1
+          }
+
           VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${PR_NUMBER}" '
             .[]
             | select(.annotations."workers/alias" == $alias)
