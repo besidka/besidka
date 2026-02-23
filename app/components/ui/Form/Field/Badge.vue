@@ -28,14 +28,14 @@
     </template>
   </template>
   <span
-    v-else
-    class="indicator-item badge z-10 badge-soft lowercase"
+    v-else-if="!required"
+    class="indicator-item indicator-top indicator-end badge badge-xs z-10 badge-soft lowercase -translate-x-1 -translate-y-1/2"
     :class="{
       'badge-sm': !size || size === 'sm',
       'badge-xs': size === 'xs',
     }"
   >
-    {{ required ? labelRequired : labelOptional }}
+    {{ labelOptional }}
   </span>
 </template>
 
