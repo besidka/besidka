@@ -13,6 +13,7 @@ export const users = sqliteTable('users', {
   email: text().notNull().unique(),
   emailVerified: integer({ mode: 'boolean' }).notNull(),
   image: text(),
+  lastLoginMethod: text(),
 })
 
 export const sessions = sqliteTable('sessions', {

@@ -7,6 +7,7 @@ import type {
 import type { RouteLocationRaw } from 'vue-router'
 import type { User } from '#shared/types/auth.d'
 import { createAuthClient } from 'better-auth/vue'
+import { lastLoginMethodClient } from 'better-auth/client/plugins'
 import { defu } from 'defu'
 
 interface RuntimeAuthConfig {
@@ -22,6 +23,7 @@ export function useAuth() {
     fetchOptions: {
       headers,
     },
+    plugins: [lastLoginMethodClient()],
   })
 
   const options = defu(
@@ -31,11 +33,18 @@ export function useAuth() {
       redirectGuestTo: '/signin',
     },
   )
+
   const session = useState<InferSessionFromClient<BetterAuthClientOptions> | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
   const sessionFetching = import.meta.server
     ? shallowRef(false)
     : useState('auth:sessionFetching', () => false)
+
+  const lastLoginMethod = useState<string | null>('auth:lastLoginMethod', () => null)
+
+  onMounted(() => {
+    lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
+  })
 
   async function fetchSession() {
     if (sessionFetching.value) {
@@ -124,5 +133,6 @@ export function useAuth() {
     options,
     fetchSession,
     client,
+    lastLoginMethod,
   }
 }

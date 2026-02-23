@@ -31,7 +31,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-primary-content: var(--color-white);
   --color-secondary: var(--color-white);
   --color-secondary-content: var(--color-stone-800);
-  --color-accent: var(--color-pink-600);
+  --color-accent: var(--color-pink-700);
   --color-accent-bg: var(--color-pink-400);
   --color-accent-content: var(--color-white);
   --color-neutral: var(--color-stone-800);

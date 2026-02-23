@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "567e0d6c-5caa-4c12-8368-eb275a48eeeb",
-  "prevId": "e234d8c8-36d7-4eed-a75e-317ccbd4c4b8",
+  "id": "7be30d28-fb0a-443b-857d-2a93976f0f93",
+  "prevId": "567e0d6c-5caa-4c12-8368-eb275a48eeeb",
   "tables": {
     "accounts": {
       "name": "accounts",
@@ -247,6 +247,13 @@
         },
         "image": {
           "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_login_method": {
+          "name": "last_login_method",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
