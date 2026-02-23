@@ -49,7 +49,6 @@
     <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
     <div class="divider">or continue with</div>
     <UiForm
-      ref="form"
       class="w-full"
       @submit="onSubmit"
     >
@@ -131,7 +130,6 @@
             :mode="lastLoginMethod === 'email' ? 'accent' : 'primary'"
             :text="pending ? 'Signing in...' : 'Sign in'"
             icon-name="lucide:log-in"
-            class="w-full"
             :disabled="pending"
           />
         </AuthLastUsedContainer>

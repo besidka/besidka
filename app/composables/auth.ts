@@ -33,19 +33,18 @@ export function useAuth() {
       redirectGuestTo: '/signin',
     },
   )
-  const lastLoginMethod = shallowRef<string | null>(null)
-
-  if (import.meta.client) {
-    onMounted(() => {
-      lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
-    })
-  }
 
   const session = useState<InferSessionFromClient<BetterAuthClientOptions> | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
   const sessionFetching = import.meta.server
     ? shallowRef(false)
     : useState('auth:sessionFetching', () => false)
+
+  const lastLoginMethod = useState<string | null>('auth:lastLoginMethod', () => null)
+
+  onMounted(() => {
+    lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
+  })
 
   async function fetchSession() {
     if (sessionFetching.value) {
@@ -135,6 +134,5 @@ export function useAuth() {
     fetchSession,
     client,
     lastLoginMethod,
-    isLastUsedLoginMethod: client.isLastUsedLoginMethod,
   }
 }
