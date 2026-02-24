@@ -200,6 +200,22 @@ const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
 
+const message = defineModel<string>('message', {
+  default: '',
+})
+
+const files = defineModel<FileMetadata[]>('files', {
+  default: () => [],
+})
+
+const tools = defineModel<Tools>('tools', {
+  default: [],
+})
+
+const isReasoningEnabled = defineModel<boolean>('reasoning', {
+  default: false,
+})
+
 const isKeyboardVisible = shallowRef<boolean>(false)
 
 const blurTimeout = ref<NodeJS.Timeout | null>(null)
@@ -249,22 +265,6 @@ nuxtApp.hook('chat:rendered', (container) => {
 })
 
 nuxtApp.hook('chat-spacer:changed', () => measure())
-
-const message = defineModel<string>('message', {
-  default: '',
-})
-
-const files = defineModel<FileMetadata[]>('files', {
-  default: () => [],
-})
-
-const tools = defineModel<Tools>('tools', {
-  default: [],
-})
-
-const isReasoningEnabled = defineModel<boolean>('reasoning', {
-  default: false,
-})
 
 const {
   uploadFiles,
@@ -330,6 +330,28 @@ function toggleWebSearch() {
     return tool !== 'web_search'
   })
 }
+
+onMounted(async () => {
+  await nextTick()
+
+  if (
+    !isWebSearchEnabled.value
+    && isWebSearchSupported.value
+    && /https?:\/\//.test(input.value)
+  ) {
+    tools.value = [...tools.value, 'web_search']
+  }
+})
+
+watch(input, (newValue) => {
+  if (
+    !isWebSearchEnabled.value
+    && isWebSearchSupported.value
+    && /https?:\/\//.test(newValue)
+  ) {
+    tools.value = [...tools.value, 'web_search']
+  }
+})
 
 function onFilesAttached(
   attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
