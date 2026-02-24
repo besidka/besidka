@@ -331,6 +331,18 @@ function toggleWebSearch() {
   })
 }
 
+onMounted(async () => {
+  await nextTick()
+
+  if (
+    !isWebSearchEnabled.value
+    && isWebSearchSupported.value
+    && /https?:\/\//.test(input.value)
+  ) {
+    tools.value = [...tools.value, 'web_search']
+  }
+})
+
 watch(input, (newValue) => {
   if (
     !isWebSearchEnabled.value
@@ -339,9 +351,6 @@ watch(input, (newValue) => {
   ) {
     tools.value = [...tools.value, 'web_search']
   }
-}, {
-  immediate: true,
-  flush: 'post',
 })
 
 function onFilesAttached(

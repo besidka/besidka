@@ -122,3 +122,19 @@ config.global.stubs = {
 vi.stubGlobal('useErrorMessage', vi.fn())
 vi.stubGlobal('useSuccessMessage', vi.fn())
 vi.stubGlobal('useWarningMessage', vi.fn())
+
+/**
+ * Suppress Vue lifecycle hook warnings in tests
+ * when composables are called outside component context
+ */
+const originalWarn = console.warn
+console.warn = (...args: unknown[]) => {
+  const message = String(args[0])
+
+  if (message.includes('is called when there is no active'
+    + ' component instance')) {
+    return
+  }
+
+  originalWarn(...args)
+}
