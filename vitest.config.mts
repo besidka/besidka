@@ -51,5 +51,8 @@ export default defineVitestConfig({
         statements: 70,
       },
     },
+    onConsoleLog: (log) => {
+      return !log.startsWith('<Suspense>')
+    },
   },
 })
