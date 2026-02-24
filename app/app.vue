@@ -5,14 +5,14 @@
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
   <NuxtLoadingIndicator />
-  <div class="flex flex-col h-screen overflow-hidden">
+  <div class="flex flex-col h-svh overflow-hidden">
     <div
       :class="{
         'contents': $route.name === 'chats-slug',
         [`
           flex-1 overflow-y-auto
           pt-[var(--sat)]
-          pb-[calc(var(--spacing)_*_40_+_var(--sab))]
+          max-sm:pb-[calc(var(--spacing)_*_40_+_var(--sab))]
           [-webkit-overflow-scrolling:touch]
         `]: $route.name !== 'chats-slug',
       }"

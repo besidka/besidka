@@ -1,6 +1,6 @@
 <template>
   <UiBubble class="grow w-full min-sm:max-w-md z-20">
-    <div class="my-4 text-center">
+    <div class="my-2 sm:my-4 text-center">
       <h1 class="mb-2 text-3xl font-bold capitalize">
         Create account
       </h1>
@@ -38,7 +38,7 @@
       v-if="displayEmbeddedBrowserWarning"
       page="sign-up"
     />
-    <div class="divider">or continue with</div>
+    <div class="divider max-sm:my-2">or continue with</div>
     <UiForm
       ref="form"
       class="w-full"
@@ -205,7 +205,7 @@
           v-model="data.agreeToTerms"
           :rules="[Validation.required()]"
           :disabled="pending"
-          class="-mt-3"
+          class="sm:-mt-3"
         >
           Agree to the <NuxtLink to="/terms" class="underline hover:no-underline">Terms of Service</NuxtLink> and <NuxtLink to="/privacy" class="underline hover:no-underline">Privacy Policy</NuxtLink>
         </UiFormCheckbox>

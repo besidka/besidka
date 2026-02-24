@@ -1,6 +1,6 @@
 <template>
   <UiBubble class="grow sm:w-md max-w-full">
-    <div class="my-4 text-center">
+    <div class="my-2 sm:my-4 text-center">
       <h1 class="mb-2 text-3xl font-bold capitalize">
         Forgot password?
       </h1>

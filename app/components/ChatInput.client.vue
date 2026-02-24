@@ -35,12 +35,12 @@
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="!isChatInputVisibleOnScroll" />
-    <div class="flex justify-center w-full px-4">
+    <div class="flex justify-center w-full px-2">
       <UiBubble
-        class="grow !p-0 !rounded-b-none !rounded-t-xl !border-0 ring-12 ring-accent/20 !bg-transparent"
+        class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
       >
         <div
-          class="p-1 pb-0 bg-transparent shadow-lg max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
+          class="p-1 pb-0 bg-transparent max-sm:pb-[calc(var(--spacing)_*_20_+_var(--sab))]"
           :class="{
             'pt-0.5 px-1.5': files.length
           }"
@@ -59,7 +59,7 @@
           <textarea
             ref="textarea"
             v-model="input"
-            class="textarea p-4 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-[var(--radius-field)] border-0 no-scrollbar resize-none"
+            class="textarea p-4 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
             placeholder="Type your message here..."
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"

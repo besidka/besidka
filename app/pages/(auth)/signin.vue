@@ -1,6 +1,6 @@
 <template>
   <UiBubble class="grow sm:w-md max-w-full">
-    <div class="my-4 text-center">
+    <div class="my-2 sm:my-4 text-center">
       <h1 class="mb-2 text-3xl font-bold capitalize">
         Welcome back
       </h1>
@@ -47,7 +47,7 @@
       </li>
     </ul>
     <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
-    <div class="divider">or continue with</div>
+    <div class="divider max-sm:my-2">or continue with</div>
     <UiForm
       class="w-full"
       @submit="onSubmit"
@@ -104,7 +104,7 @@
             </span>
           </template>
         </UiFormInput>
-        <div class="flex items-center justify-between gap-2 -mt-3">
+        <div class="flex items-center justify-between gap-2 sm:-mt-3">
           <UiFormCheckbox
             v-model="data.rememberMe"
             :disabled="pending"

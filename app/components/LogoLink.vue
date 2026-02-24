@@ -1,7 +1,7 @@
 <template>
   <NuxtLink
     to="/"
-    class="btn w-35 h-auto max-w-full mb-0 p-0 !no-underline"
+    class="relative z-10 btn w-35 h-auto max-w-full mb-0 p-0 !no-underline"
     :class="{
       'btn-circle btn-primary': !asLink,
       'btn-link': asLink,

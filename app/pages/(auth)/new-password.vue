@@ -1,6 +1,6 @@
 <template>
   <UiBubble class="grow w-full min-sm:max-w-md z-20">
-    <div class="my-4 text-center">
+    <div class="my-2 sm:my-4 text-center">
       <h1 class="mb-2 text-3xl font-bold capitalize">
         <template v-if="!token">
           Invalid reset link
