@@ -1,32 +1,46 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-	<rect width="10" height="10" x="1" y="1" fill="currentColor" rx="1">
-		<animate id="svgSpinnersBlocksShuffle30" fill="freeze" attributeName="x" begin="0;svgSpinnersBlocksShuffle3b.end"
-			dur="0.2s" values="1;13" />
-		<animate id="svgSpinnersBlocksShuffle31" fill="freeze" attributeName="y" begin="svgSpinnersBlocksShuffle38.end"
-			dur="0.2s" values="1;13" />
-		<animate id="svgSpinnersBlocksShuffle32" fill="freeze" attributeName="x" begin="svgSpinnersBlocksShuffle39.end"
-			dur="0.2s" values="13;1" />
-		<animate id="svgSpinnersBlocksShuffle33" fill="freeze" attributeName="y" begin="svgSpinnersBlocksShuffle3a.end"
-			dur="0.2s" values="13;1" />
-	</rect>
-	<rect width="10" height="10" x="1" y="13" fill="currentColor" rx="1">
-		<animate id="svgSpinnersBlocksShuffle34" fill="freeze" attributeName="y" begin="svgSpinnersBlocksShuffle30.end"
-			dur="0.2s" values="13;1" />
-		<animate id="svgSpinnersBlocksShuffle35" fill="freeze" attributeName="x" begin="svgSpinnersBlocksShuffle31.end"
-			dur="0.2s" values="1;13" />
-		<animate id="svgSpinnersBlocksShuffle36" fill="freeze" attributeName="y" begin="svgSpinnersBlocksShuffle32.end"
-			dur="0.2s" values="1;13" />
-		<animate id="svgSpinnersBlocksShuffle37" fill="freeze" attributeName="x" begin="svgSpinnersBlocksShuffle33.end"
-			dur="0.2s" values="13;1" />
-	</rect>
-	<rect width="10" height="10" x="13" y="13" fill="currentColor" rx="1">
-		<animate id="svgSpinnersBlocksShuffle38" fill="freeze" attributeName="x" begin="svgSpinnersBlocksShuffle34.end"
-			dur="0.2s" values="13;1" />
-		<animate id="svgSpinnersBlocksShuffle39" fill="freeze" attributeName="y" begin="svgSpinnersBlocksShuffle35.end"
-			dur="0.2s" values="13;1" />
-		<animate id="svgSpinnersBlocksShuffle3a" fill="freeze" attributeName="x" begin="svgSpinnersBlocksShuffle36.end"
-			dur="0.2s" values="1;13" />
-		<animate id="svgSpinnersBlocksShuffle3b" fill="freeze" attributeName="y" begin="svgSpinnersBlocksShuffle37.end"
-			dur="0.2s" values="1;13" />
-	</rect>
+	<circle cx="4" cy="12" r="0" fill="currentColor">
+		<animate fill="freeze" attributeName="r" begin="0;SVGUppsBdVN.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="0;3" />
+		<animate fill="freeze" attributeName="cx" begin="SVGqCgsydxJ.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="4;12" />
+		<animate fill="freeze" attributeName="cx" begin="SVG3PwDNd6F.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="12;20" />
+		<animate id="SVG3V8yEdYE" fill="freeze" attributeName="r" begin="SVG6wCQhd9Q.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="3;0" />
+		<animate id="SVGUppsBdVN" fill="freeze" attributeName="cx" begin="SVG3V8yEdYE.end" dur="0.001s" values="20;4" />
+	</circle>
+	<circle cx="4" cy="12" r="3" fill="currentColor">
+		<animate fill="freeze" attributeName="cx" begin="0;SVGUppsBdVN.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="4;12" />
+		<animate fill="freeze" attributeName="cx" begin="SVGqCgsydxJ.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="12;20" />
+		<animate id="SVG4PgJdbds" fill="freeze" attributeName="r" begin="SVG3PwDNd6F.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="3;0" />
+		<animate id="SVG6wCQhd9Q" fill="freeze" attributeName="cx" begin="SVG4PgJdbds.end" dur="0.001s" values="20;4" />
+		<animate fill="freeze" attributeName="r" begin="SVG6wCQhd9Q.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="0;3" />
+	</circle>
+	<circle cx="12" cy="12" r="3" fill="currentColor">
+		<animate fill="freeze" attributeName="cx" begin="0;SVGUppsBdVN.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="12;20" />
+		<animate id="SVG38aCdcdI" fill="freeze" attributeName="r" begin="SVGqCgsydxJ.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="3;0" />
+		<animate id="SVG3PwDNd6F" fill="freeze" attributeName="cx" begin="SVG38aCdcdI.end" dur="0.001s" values="20;4" />
+		<animate fill="freeze" attributeName="r" begin="SVG3PwDNd6F.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="0;3" />
+		<animate fill="freeze" attributeName="cx" begin="SVG6wCQhd9Q.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="4;12" />
+	</circle>
+	<circle cx="20" cy="12" r="3" fill="currentColor">
+		<animate id="SVGwaWzveSq" fill="freeze" attributeName="r" begin="0;SVGUppsBdVN.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="3;0" />
+		<animate id="SVGqCgsydxJ" fill="freeze" attributeName="cx" begin="SVGwaWzveSq.end" dur="0.001s" values="20;4" />
+		<animate fill="freeze" attributeName="r" begin="SVGqCgsydxJ.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="0;3" />
+		<animate fill="freeze" attributeName="cx" begin="SVG3PwDNd6F.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="4;12" />
+		<animate fill="freeze" attributeName="cx" begin="SVG6wCQhd9Q.end" calcMode="spline" dur="0.5s"
+			keySplines=".36,.6,.31,1" values="12;20" />
+	</circle>
 </svg>

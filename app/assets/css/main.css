@@ -335,17 +335,27 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   bottom: calc(env(safe-area-inset-bottom, 0));
 }
 @utility bubble-without-background {
-  @apply rounded-xl shadow-2xl backdrop-blur-3xl;
+  @apply rounded-2xl backdrop-blur-lg backdrop-saturate-150;
 }
 
 @utility bubble {
-  @apply bubble-without-background bg-white/50;
+  @apply bubble-without-background bg-white/40 border border-white/60;
+  box-shadow:
+    0 8px 32px -4px rgb(0 0 0 / 0.1),
+    0 2px 8px -2px rgb(0 0 0 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.8);
 
   @variant dark {
-    @apply bg-white/10;
+    @apply bg-white/10 border-white/15;
+    box-shadow:
+      0 8px 32px -4px rgb(0 0 0 / 0.4),
+      0 2px 8px -2px rgb(0 0 0 / 0.2),
+      inset 0 1px 0 rgb(255 255 255 / 0.1);
   }
 
   &.chat-bubble {
+    @apply border-0;
+
     .chat-start & {
       @apply rounded-bl-none;
     }

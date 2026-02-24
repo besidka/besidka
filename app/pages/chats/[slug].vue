@@ -10,7 +10,7 @@
       mask-linear-to-base-100
     "
   >
-    <ChatContainer>
+    <ChatContainer class="!gap-0">
       <ClientOnly>
         <template #fallback>
           <ChatSkeleton :messages-length="chatSdk.messages.length" />
@@ -26,6 +26,7 @@
         class="
           [&[data-hide-content=true]_>_div]:hidden
           [&[data-hide-content=true]_+_div]:-top-3
+          mt-3 first:mt-0
         "
         :class="{
           'opacity-0 pointer-events-none': hideMessages,
