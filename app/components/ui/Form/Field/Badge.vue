@@ -29,7 +29,7 @@
   </template>
   <span
     v-else-if="!required"
-    class="indicator-item indicator-top indicator-end badge badge-xs z-10 badge-soft lowercase -translate-x-1 -translate-y-1/2"
+    class="indicator-item indicator-top indicator-end badge z-10 badge-soft lowercase -translate-x-1 -translate-y-1/2"
     :class="{
       'badge-sm': !size || size === 'sm',
       'badge-xs': size === 'xs',
@@ -58,6 +58,6 @@ withDefaults(defineProps<{
   iconSize: '20',
   labelRequired: 'Required',
   labelOptional: 'Optional',
-  size: 'sm',
+  size: 'xs',
 })
 </script>
