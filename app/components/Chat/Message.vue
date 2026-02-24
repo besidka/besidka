@@ -16,16 +16,11 @@
             && role === 'assistant',
       }"
     >
-      <div
-        class="w-10 rounded-full bg-base-100 text-text"
-        :class="{
-          'dark:bg-base-content/50 dark:text-base-100': role === 'assistant'
-        }"
-      >
+      <div class="bubble w-9 rounded-full bg-base-100 dark:bg-base-content/50 text-text dark:text-base-100">
         <Logo
           v-if="role === 'assistant'"
           short
-          class="size-6"
+          class="size-5"
         />
         <template v-else>
           <img
@@ -37,7 +32,7 @@
         </template>
       </div>
     </div>
-    <div class="bubble chat-bubble sm:px-6 shadow-none w-full">
+    <div class="bubble chat-bubble shadow-none w-full">
       <slot />
     </div>
   </div>

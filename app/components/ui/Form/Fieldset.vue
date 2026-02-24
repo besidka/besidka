@@ -1,5 +1,5 @@
 <template>
-  <fieldset class="fieldset grid gap-8 w-full">
+  <fieldset class="fieldset grid gap-4 sm:gap-8 w-full">
     <legend
       v-if="legend"
       class="fieldset-legend"
