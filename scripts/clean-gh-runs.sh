@@ -135,10 +135,10 @@ FAILED=0
 
 while IFS= read -r id; do
   if echo "y" | gh run delete "$id" &>/dev/null; then
-    ((DELETED++))
+    DELETED=$((DELETED + 1))
     echo "  ✓ Deleted run $id"
   else
-    ((FAILED++))
+    FAILED=$((FAILED + 1))
     echo "  ✗ Failed to delete run $id"
   fi
 done <<< "$RUN_IDS"
