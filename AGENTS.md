@@ -78,6 +78,16 @@ pnpm run deploy           # Build and deploy to Cloudflare Workers
 - `useServerAuth()` - Get Better Auth instance
 - `useUserSession()` - Get current user session
 
+**Server utility imports**: When a server utility is not auto-imported (e.g., nested helpers), use the `~~/` alias. Never use relative imports in server code.
+  ```typescript
+  // Correct - use ~~ alias
+  import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
+
+  // Wrong - relative imports
+  import { getReasoningStepsCount } from './utils'
+  import { getReasoningStepsCount } from '../../utils/chats/test/steps-count'
+  ```
+
 **Database schema**: Defined in `server/db/schemas/*.ts`, exported from `server/db/schema.ts`. Uses snake_case column naming.
 
 **API routes**: Located in `server/api/v1/`. Chat endpoints stream AI responses.
@@ -250,7 +260,19 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
   files.findIndex(file =>
     file.storageKey === storageKey)
   ```
-- Prefix unused variables with `_`
+- Remove unused variables entirely instead of prefixing with `_`. For function parameters, omit them from the signature:
+  ```typescript
+  // Correct - omit unused parameter
+  export default defineEventHandler(async () => {
+
+  // Wrong - underscore prefix
+  export default defineEventHandler(async (_event) => {
+  ```
+  Use `_` prefix only when the parameter cannot be omitted (e.g., it precedes a used parameter):
+  ```typescript
+  // Correct - _ prefix needed to reach second parameter
+  files.map((_file, index) => index)
+  ```
 - **Never remove `console.log`, `debugger` statements, or commented-out code without explicit confirmation from the user.** If you think something should be removed, ask first.
 - Do not add inline comments within functions unless explicitly requested. For large functions (80+ lines), a JSDoc-style comment above the function is acceptable
 - Strictly follow this code style guide; when asked to refactor, apply it across the entire requested scope.
@@ -385,9 +407,17 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 - Rely on Nuxt auto-imports; avoid explicit imports unless required to resolve errors
 - For GET requests on component setup/mount, use `useFetch`/`useLazyFetch`
   instead of custom `$fetch` calls in `onMounted`.
-- For `$fetch`/`useFetch`/`useLazyFetch`, prefer Nuxt/Nitro route-type
-  inference. Do not add explicit generic response types or extra type imports
-  unless typecheck fails without them (for example, some dynamic route cases).
+- Always `await` data-fetching composables (`useFetch`, `useLazyFetch`,
+  `useAsyncData`, `useLazyAsyncData`) when calling them directly in
+  `<script setup>` or page/component code. However, **do not `await` them
+  inside wrapper composables** — this causes unexpected behavior. See
+  [Nuxt docs](https://nuxt.com/docs/api/composables/use-async-data).
+- For `$fetch`/`useFetch`/`useLazyFetch`/`useAsyncData`/`useLazyAsyncData`,
+  prefer Nuxt/Nitro route-type inference.
+- Do not add explicit generic response types for those APIs by default
+  (for example, avoid `$fetch<Foo>()` and `useFetch<Foo>()`).
+- Add explicit response generics only when typecheck cannot be solved with
+  inferred route types, and keep that exception minimal and local.
 - Custom runtime hooks: declare types in `app/types/runtime-hooks.d.ts`, not in `index.d.ts`
 - Nuxt hooks registered via `nuxtApp.hook()` do not require cleanup in `onUnmounted`
 - Runtime DOM selectors must not use `data-testid`. Reserve `data-testid` for

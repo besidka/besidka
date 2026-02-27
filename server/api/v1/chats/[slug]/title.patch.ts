@@ -84,6 +84,7 @@ export default defineEventHandler(async (event) => {
         session.user.id,
         model.id,
         [],
+        'off',
       )
 
       title = await generateChatTitle(initialMessages)
@@ -94,6 +95,7 @@ export default defineEventHandler(async (event) => {
         session.user.id,
         model.id,
         [],
+        'off',
       )
 
       title = await generateChatTitle(initialMessages)

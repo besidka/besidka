@@ -36,14 +36,12 @@
           <ChatFiles :message="m" />
           <ChatReasoning
             :message="m"
+            :reasoning-level="getMessageReasoning(m, messageIndex)"
             :status="chatSdk.status"
           />
           <div
             v-for="(part, index) in m.parts"
-            :key="isLastAssistantMessage(messageIndex)
-              ? `message-${m.id}-part-${index}-${chatSdk.status}`
-              : `message-${m.id}-part-${index}`
-            "
+            :key="`message-${m.id}-part-${index}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
@@ -52,10 +50,7 @@
           >
             <MDCCached
               v-if="part.type === 'text'"
-              :key="isLastAssistantMessage(messageIndex)
-                ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
-                : `mdc-${m.id}-part-${index}`
-              "
+              :key="`mdc-${m.id}-part-${index}`"
               :value="m.role === 'user'
                 ? $sanitizeHtml(part.text)
                 : part.text
@@ -82,7 +77,7 @@
     v-model:message="input"
     v-model:files="files"
     v-model:tools="tools"
-    v-model:reasoning="isReasoningEnabled"
+    v-model:reasoning="reasoning"
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
     :stop="stop"
@@ -117,7 +112,7 @@ const key = computed<string>(() => {
     return `chat-${route.params.slug}`
   }
 
-  return `test-chat-${route.query.scenario}-${route.query.messages || 1}`
+  return `test-chat-${route.query.scenario}-${route.query.messages || 1}-${route.query.effort || 'medium'}`
 })
 
 const query = computed(() => {
@@ -125,18 +120,25 @@ const query = computed(() => {
     return {
       scenario: undefined,
       messages: undefined,
+      effort: undefined,
     }
   }
 
   let scenario = route.query.scenario as string
+  let effort = route.query.effort as string
 
   if (!['short', 'long', 'reasoning'].includes(scenario)) {
     scenario = 'short'
   }
 
+  if (!['off', 'low', 'medium', 'high'].includes(effort)) {
+    effort = 'medium'
+  }
+
   return {
     scenario,
     messages: route.query.messages as string || '1',
+    effort,
   }
 })
 
@@ -181,7 +183,8 @@ const {
   regenerate,
   displayRegenerate,
   displayStop,
-  isReasoningEnabled,
+  reasoning,
+  getMessageReasoning,
   isLastUserMessage,
   isLastAssistantMessage,
   shouldDisplayMessage,

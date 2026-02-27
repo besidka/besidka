@@ -27,7 +27,7 @@ test.describe('Theme Switching', () => {
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')
       .first()
-    const title = await themeSwitcher.getAttribute('title')
+    const title = await themeSwitcher.getAttribute('aria-label')
 
     // Should show one of the expected tooltip texts
     expect(title).toMatch(/Switch to (dark|light|system) theme/)
@@ -42,14 +42,14 @@ test.describe('Theme Switching', () => {
     const themes = []
 
     // Record initial theme
-    let currentTitle = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+    let currentTitle = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
     themes.push(currentTitle)
 
     // Click 3 times to cycle through all themes
     for (let i = 0; i < 3; i++) {
       await themeSwitcher.click({ timeout: 10000 })
       await page.waitForTimeout(1000)
-      currentTitle = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+      currentTitle = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
       themes.push(currentTitle)
     }
 
@@ -98,7 +98,7 @@ test.describe('Theme Switching', () => {
     await themeSwitcher.click({ timeout: 10000 })
     await page.waitForTimeout(1000)
 
-    const themeAfterClick = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+    const themeAfterClick = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
 
     // Reload page
     await page.reload()
@@ -108,7 +108,7 @@ test.describe('Theme Switching', () => {
     const themeSwitcherAfterReload = page
       .locator('[data-testid="theme-switcher"]:visible')
       .first()
-    const themeAfterReload = await themeSwitcherAfterReload.getAttribute('title', { timeout: 10000 })
+    const themeAfterReload = await themeSwitcherAfterReload.getAttribute('aria-label', { timeout: 10000 })
     expect(themeAfterReload).toBe(themeAfterClick)
   })
 
@@ -134,7 +134,7 @@ test.describe('Theme Switching', () => {
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')
       .first()
-    const title = await themeSwitcher.getAttribute('title')
+    const title = await themeSwitcher.getAttribute('aria-label')
 
     // If we're in light mode (button says "Switch to dark")
     if (title?.includes('dark')) {
@@ -152,13 +152,13 @@ test.describe('Theme Switching', () => {
       .first()
 
     // Click until we get to dark mode
-    let title = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+    let title = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
     let clicks = 0
 
     while (!title?.includes('system') && clicks < 3) {
       await themeSwitcher.click({ timeout: 10000 })
       await page.waitForTimeout(1000)
-      title = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+      title = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
       clicks++
     }
 
@@ -178,13 +178,13 @@ test.describe('Theme Switching', () => {
       .first()
 
     // Click until we get to system mode
-    let title = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+    let title = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
     let clicks = 0
 
     while (!title?.includes('light') && clicks < 3) {
       await themeSwitcher.click({ timeout: 10000 })
       await page.waitForTimeout(1000)
-      title = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+      title = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
       clicks++
     }
 
@@ -226,14 +226,14 @@ test.describe('Theme Switching', () => {
     // Focus the theme switcher
     await themeSwitcher.focus()
 
-    const initialTitle = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+    const initialTitle = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
 
     // Press Enter to activate
     await page.keyboard.press('Enter')
     await page.waitForTimeout(1000)
 
     // Theme should have changed
-    const newTitle = await themeSwitcher.getAttribute('title', { timeout: 10000 })
+    const newTitle = await themeSwitcher.getAttribute('aria-label', { timeout: 10000 })
     expect(newTitle).not.toBe(initialTitle)
   })
 

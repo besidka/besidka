@@ -22,8 +22,8 @@ export async function sendMessage(page: Page, message: string) {
  */
 export async function waitForResponse(page: Page, timeout: number = 30000) {
   // Wait for the loading indicator to appear and then disappear
-  await page.waitForSelector('[data-testid="ai-thinking"]', { timeout: 5000 }).catch(() => {})
-  await page.waitForSelector('[data-testid="ai-thinking"]', { state: 'hidden', timeout }).catch(() => {})
+  await page.waitForSelector('[data-testid="ai-reasoning"]', { timeout: 5000 }).catch(() => {})
+  await page.waitForSelector('[data-testid="ai-reasoning"]', { state: 'hidden', timeout }).catch(() => {})
 }
 
 /**

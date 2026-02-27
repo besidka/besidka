@@ -80,7 +80,7 @@
                           'tooltip tooltip-warning tooltip-top':
                             $device.isDesktop
                         }"
-                        data-tip="Thinking"
+                        data-tip="Reasoning"
                       >
                         <Icon
                           name="lucide:brain"

@@ -1,7 +1,7 @@
 <template>
   <details
     ref="dropdown"
-    class="dropdown dropdown-right dropdown-end"
+    class="dropdown dropdown-top dropdown-start"
   >
     <summary
       data-testid="files-trigger"
@@ -18,9 +18,9 @@
       </span>
     </summary>
     <ClientOnly>
-      <div class="dropdown-content z-50 w-48 pl-2">
+      <div class="dropdown-content z-50 w-48 pb-2">
         <div class="bg-base-100 rounded-box w-full shadow-sm">
-          <ul class="menu menu-xs max-md:gap-2 w-full">
+          <ul class="menu menu-xs w-full">
             <li>
               <button
                 data-testid="files-open-select"

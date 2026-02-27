@@ -1,3 +1,5 @@
+import type { ReasoningCapability } from './reasoning.d'
+
 export interface Model {
   id: string
   name: string
@@ -14,8 +16,8 @@ export interface Model {
     input: string[]
     output: string[]
   }
-  tools: Tools
-  reasoning?: boolean
+  tools: Array<'web_search'>
+  reasoning?: ReasoningCapability
 }
 
 export interface Provider {

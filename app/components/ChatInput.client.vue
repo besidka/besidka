@@ -71,15 +71,15 @@
               class="max-xs:grid max-xs:gap-0 flex items-center gap-2"
               :class="{
                 'max-sm:grid max-xs:gap-0':
-                  isWebSearchEnabled && isReasoningEnabled,
+                  isWebSearchEnabled && isReasoningActive,
                 'max-xxs:grid max-xxs:gap-0':
-                  isWebSearchEnabled || isReasoningEnabled,
+                  isWebSearchEnabled || isReasoningActive,
               }"
             >
               <LazyChatInputModelsTrigger
                 hydrate-on-idle
                 :is-web-search-enabled="isWebSearchEnabled"
-                :is-reasoning-enabled="isReasoningEnabled"
+                :is-reasoning-enabled="isReasoningActive"
               />
               <div class="flex items-center gap-2 my-2 px-1">
                 <LazyChatInputFilesTrigger
@@ -111,27 +111,39 @@
                   }"
                   @click="toggleWebSearch"
                 />
-                <UiButton
-                  v-if="isReasoningSupported"
-                  mode="accent"
-                  :ghost="isReasoningEnabled ? undefined : true"
-                  :circle="!isReasoningEnabled"
-                  icon-name="lucide:brain"
-                  :icon-size="16"
-                  :icon-only="!isReasoningEnabled"
-                  :title="isReasoningEnabled
-                    ? 'Disable thinking'
-                    : 'Enable thinking'
+                <LazyChatInputReasoningTrigger
+                  v-if="isReasoningSupported && reasoningMode === 'levels'"
+                  v-model:reasoning="reasoning"
+                  hydrate-on-idle
+                  :levels="reasoningCapability?.mode === 'levels'
+                    ? reasoningCapability.levels
+                    : []
                   "
-                  text="Thinking"
+                />
+                <UiButton
+                  v-else-if="isReasoningSupported"
+                  mode="accent"
+                  :ghost="isReasoningActive ? undefined : true"
+                  :circle="!isReasoningActive"
+                  :icon-only="!isReasoningActive"
+                  text="Reasoning"
+                  :icon-size="16"
+                  :title="isReasoningActive
+                    ? 'Disable reasoning'
+                    : 'Enable reasoning'
+                  "
                   tooltip-position="top"
                   size="xs"
-                  class="rounded-full"
+                  class="rounded-full pl-[5px]"
                   :class="{
-                    'pl-[5px] btn-active': isReasoningEnabled,
+                    'btn-active': isReasoningActive,
                   }"
-                  @click="isReasoningEnabled = !isReasoningEnabled"
-                />
+                  @click="toggleReasoning"
+                >
+                  <template #icon>
+                    <SvgoThinkMedium class="size-4 text-current" />
+                  </template>
+                </UiButton>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -178,6 +190,7 @@
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 
 const props = defineProps<{
   stopped?: boolean
@@ -195,7 +208,12 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const { isDesktop } = useDevice()
-const { isWebSearchSupported, isReasoningSupported } = useChatInput()
+const {
+  isWebSearchSupported,
+  isReasoningSupported,
+  reasoningCapability,
+  reasoningMode,
+} = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
@@ -212,8 +230,12 @@ const tools = defineModel<Tools>('tools', {
   default: [],
 })
 
-const isReasoningEnabled = defineModel<boolean>('reasoning', {
-  default: false,
+const reasoning = defineModel<ReasoningLevel>('reasoning', {
+  default: 'off',
+})
+
+const isReasoningActive = computed<boolean>(() => {
+  return isReasoningEnabled(reasoning.value)
 })
 
 const isKeyboardVisible = shallowRef<boolean>(false)
@@ -277,14 +299,24 @@ const {
   removeAllFiles,
 } = useChatFiles(files)
 
-watch(isReasoningSupported, (supported) => {
-  if (!supported) {
-    isReasoningEnabled.value = false
-  }
-}, {
-  immediate: true,
-  flush: 'post',
-})
+watch(
+  [isReasoningSupported, reasoningCapability],
+  ([supported, capability]) => {
+    if (!supported || !capability) {
+      reasoning.value = 'off'
+
+      return
+    }
+
+    if (!isReasoningLevelSupported(reasoning.value, capability)) {
+      reasoning.value = 'off'
+    }
+  },
+  {
+    immediate: true,
+    flush: 'post',
+  },
+)
 
 const { textarea, input } = useTextareaAutosize({
   input: message,
@@ -329,6 +361,16 @@ function toggleWebSearch() {
   tools.value = tools.value.filter((tool) => {
     return tool !== 'web_search'
   })
+}
+
+function toggleReasoning() {
+  if (isReasoningActive.value) {
+    reasoning.value = 'off'
+
+    return
+  }
+
+  reasoning.value = 'medium'
 }
 
 onMounted(async () => {

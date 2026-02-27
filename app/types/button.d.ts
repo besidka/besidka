@@ -54,7 +54,6 @@ export interface ButtonContainerAttrs {
 
 export interface ButtonAttrs {
   'type'?: string
-  'title'?: string
   'to'?: string
   'class'?: string
   'aria-label'?: string

@@ -19,7 +19,10 @@ export default {
     //     output: ['text'],
     //   },
     //   tools: ['web_search'],
-    //   reasoning: true,
+    //   reasoning: {
+    //     mode: 'levels',
+    //     levels: ['low', 'medium', 'high'],
+    //   },
     // },
     {
       id: 'gpt-5.2',
@@ -37,7 +40,10 @@ export default {
         output: ['text'],
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gpt-5.1',
@@ -55,7 +61,10 @@ export default {
         output: ['text'],
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gpt-5',
@@ -73,7 +82,10 @@ export default {
         output: ['text'],
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gpt-5-mini',
@@ -91,7 +103,10 @@ export default {
         output: ['text'],
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gpt-5-nano',
@@ -109,7 +124,10 @@ export default {
         output: ['text'],
       },
       tools: [],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
   ],
 }

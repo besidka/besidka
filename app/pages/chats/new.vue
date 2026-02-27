@@ -26,6 +26,7 @@
 import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 
 definePageMeta({
   layout: 'chat',
@@ -42,7 +43,12 @@ const message = useLocalStorage<string>('chat_input', '')
 const files = ref<FileMetadata[]>([])
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
-const reasoning = shallowRef<boolean>(false)
+const reasoning = useLocalStorage<ReasoningLevel>(
+  'settings_reasoning_level',
+  'off',
+)
+
+reasoning.value = normalizeReasoningLevel(reasoning.value)
 
 async function onSubmit() {
   pending.value = true
