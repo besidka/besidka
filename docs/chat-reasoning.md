@@ -70,7 +70,11 @@ Why:
 - Header title:
   - `Reasoning process` (steady),
   - `Reasoning` while streaming before full title parse,
-  - parsed streaming title when complete markdown title appears.
+  - parsed streaming title when complete markdown title appears,
+  - plain-text fallback when markdown titles are missing:
+    - use first sentence as title,
+    - if sentence is long, cut by first comma,
+    - supports `.` `!` `?` and `。` `！` `？` sentence endings.
 - Duration label:
   - live seconds during reasoning stream,
   - final duration after stream ends.
@@ -79,6 +83,10 @@ Why:
   - streaming step marker uses loader,
   - finished steps use complete marker,
   - each step is collapsible.
+
+Note:
+- Current fallback title length threshold is static (`80` chars).
+- Future option: make this threshold configurable per model or effort level.
 
 ### Auto-expand/follow logic
 - Global preference: `reasoningExpanded`.

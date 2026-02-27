@@ -407,6 +407,11 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 - Rely on Nuxt auto-imports; avoid explicit imports unless required to resolve errors
 - For GET requests on component setup/mount, use `useFetch`/`useLazyFetch`
   instead of custom `$fetch` calls in `onMounted`.
+- Always `await` data-fetching composables (`useFetch`, `useLazyFetch`,
+  `useAsyncData`, `useLazyAsyncData`) when calling them directly in
+  `<script setup>` or page/component code. However, **do not `await` them
+  inside wrapper composables** — this causes unexpected behavior. See
+  [Nuxt docs](https://nuxt.com/docs/api/composables/use-async-data).
 - For `$fetch`/`useFetch`/`useLazyFetch`/`useAsyncData`/`useLazyAsyncData`,
   prefer Nuxt/Nitro route-type inference.
 - Do not add explicit generic response types for those APIs by default

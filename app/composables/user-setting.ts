@@ -1,3 +1,5 @@
+import { parseError } from 'evlog'
+
 export function useUserSetting() {
   const activeUserId = useState<string | null>(
     'user-settings:active-user-id',
@@ -11,27 +13,25 @@ export function useUserSetting() {
     'user-settings:reasoning-expanded',
     () => null,
   )
+  const isLoadingSettings = useState<boolean>(
+    'user-settings:is-loading',
+    () => false,
+  )
+  const isSavingSettings = useState<boolean>(
+    'user-settings:is-saving',
+    () => false,
+  )
+  const settingsError = useState<string | null>(
+    'user-settings:error',
+    () => null,
+  )
+  const lastSyncToken = useState<number>(
+    'user-settings:sync-token',
+    () => 0,
+  )
   const fallbackReasoningExpanded = useLocalStorage<boolean>(
     'settings_reasoning_expanded',
     false,
-  )
-  const {
-    data: settingsResponse,
-    error: settingsResponseError,
-    pending: isLoadingSettings,
-    execute: executeLoadUserSettings,
-  } = useLazyAsyncData(
-    'profile-settings',
-    () => {
-      return $fetch('/api/v1/profiles/settings')
-    },
-    {
-      server: false,
-      immediate: false,
-      default: () => ({
-        reasoningExpanded: fallbackReasoningExpanded.value,
-      }),
-    },
   )
 
   const reasoningExpanded = computed<boolean>(() => {
@@ -46,9 +46,9 @@ export function useUserSetting() {
     return serverReasoningExpanded.value
   })
 
-  async function loadUserSettings(userId: string) {
+  async function syncForUser(userId: string) {
     activeUserId.value = userId
-    const requestedUserId = userId
+    settingsError.value = null
 
     if (
       loadedUserId.value === userId
@@ -57,50 +57,72 @@ export function useUserSetting() {
       return
     }
 
-    if (isLoadingSettings.value) {
+    if (isLoadingSettings.value && activeUserId.value === userId) {
       return
     }
 
+    const syncToken = lastSyncToken.value + 1
+    lastSyncToken.value = syncToken
+    isLoadingSettings.value = true
+
     try {
-      await executeLoadUserSettings()
+      const response = await $fetch('/api/v1/profiles/settings')
 
       if (
-        activeUserId.value !== requestedUserId
-        || settingsResponseError.value
-        || !settingsResponse.value
+        activeUserId.value !== userId
+        || lastSyncToken.value !== syncToken
       ) {
-        loadedUserId.value = null
-        serverReasoningExpanded.value = null
-
         return
       }
 
       const nextReasoningExpanded = Boolean(
-        settingsResponse.value.reasoningExpanded,
+        response.reasoningExpanded,
       )
 
       loadedUserId.value = userId
       serverReasoningExpanded.value = nextReasoningExpanded
       fallbackReasoningExpanded.value = nextReasoningExpanded
-    } catch (_exception) {
+    } catch (exception) {
+      if (
+        activeUserId.value !== userId
+        || lastSyncToken.value !== syncToken
+      ) {
+        return
+      }
+
       loadedUserId.value = null
       serverReasoningExpanded.value = null
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to load profile settings'
+    } finally {
+      if (lastSyncToken.value === syncToken) {
+        isLoadingSettings.value = false
+      }
     }
   }
 
-  async function setReasoningExpanded(reasoningExpanded: boolean) {
-    fallbackReasoningExpanded.value = reasoningExpanded
+  async function setReasoningExpanded(
+    reasoningExpanded: boolean,
+  ) {
+    settingsError.value = null
 
-    if (
-      activeUserId.value
-      && loadedUserId.value === activeUserId.value
-    ) {
-      serverReasoningExpanded.value = reasoningExpanded
-    }
+    const previousFallbackReasoningExpanded
+      = fallbackReasoningExpanded.value
+    fallbackReasoningExpanded.value = reasoningExpanded
 
     if (!activeUserId.value) {
       return
     }
+
+    const currentUserId = activeUserId.value as string
+    const previousServerReasoningExpanded
+      = serverReasoningExpanded.value as boolean
+
+    serverReasoningExpanded.value = reasoningExpanded
+    isSavingSettings.value = true
 
     try {
       await $fetch('/api/v1/profiles/settings', {
@@ -110,26 +132,47 @@ export function useUserSetting() {
         },
       })
 
-      loadedUserId.value = activeUserId.value
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
       serverReasoningExpanded.value = reasoningExpanded
       fallbackReasoningExpanded.value = reasoningExpanded
-    } catch (_exception) {
-      return
+    } catch (exception) {
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverReasoningExpanded.value = previousServerReasoningExpanded
+      fallbackReasoningExpanded.value = previousFallbackReasoningExpanded
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      isSavingSettings.value = false
     }
   }
 
-  function resetUserSettings() {
+  function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
     serverReasoningExpanded.value = null
+    settingsError.value = null
+    isLoadingSettings.value = false
+    isSavingSettings.value = false
   }
 
   return {
     activeUserId,
     reasoningExpanded,
     isLoadingSettings,
-    loadUserSettings,
+    isSavingSettings,
+    settingsError,
+    syncForUser,
     setReasoningExpanded,
-    resetUserSettings,
+    clearUserContext,
   }
 }
