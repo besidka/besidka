@@ -143,8 +143,8 @@
                   <template #icon>
                     <SvgoThinkMedium class="size-4 text-current" />
                   </template>
-                />
-              </uibutton></div>
+                </UiButton>
+              </div>
             </div>
             <div class="flex items-center gap-2">
               <UiButton

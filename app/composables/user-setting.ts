@@ -82,7 +82,7 @@ export function useUserSetting() {
       loadedUserId.value = userId
       serverReasoningExpanded.value = nextReasoningExpanded
       fallbackReasoningExpanded.value = nextReasoningExpanded
-    } catch {
+    } catch (_exception) {
       loadedUserId.value = null
       serverReasoningExpanded.value = null
     }
@@ -113,7 +113,7 @@ export function useUserSetting() {
       loadedUserId.value = activeUserId.value
       serverReasoningExpanded.value = reasoningExpanded
       fallbackReasoningExpanded.value = reasoningExpanded
-    } catch {
+    } catch (_exception) {
       return
     }
   }

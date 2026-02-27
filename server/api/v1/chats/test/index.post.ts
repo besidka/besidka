@@ -4,9 +4,10 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
 } from 'ai'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 
 type Scenario = 'short' | 'long' | 'reasoning'
-type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
 
 const INITIAL_DELAY: number = 800
 const TEXT_CHUNK_DELAY: number = 50
@@ -107,7 +108,7 @@ function buildReasoningChunks(
 
 function getChunksForScenario(
   scenario: Scenario,
-  effort: ReasoningEffort,
+  effort: ReasoningLevel,
 ): UIMessageChunk[] {
   const effectiveScenario = scenario === 'reasoning' && effort === 'off'
     ? 'short'
@@ -236,22 +237,4 @@ export default defineEventHandler(async (event) => {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function getReasoningStepsCount(
-  effort: ReasoningEffort,
-): number {
-  if (effort === 'off') {
-    return 0
-  }
-
-  if (effort === 'low') {
-    return 2
-  }
-
-  if (effort === 'high') {
-    return 6
-  }
-
-  return 4
 }

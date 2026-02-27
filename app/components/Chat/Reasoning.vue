@@ -133,10 +133,6 @@
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import {
-  extractLastCompleteReasoningTitle,
-  parseReasoningSections,
-} from '../../utils/reasoning'
 
 const props = defineProps<{
   message: UIMessage
@@ -151,7 +147,10 @@ interface ReasoningStep {
 }
 
 const reasoningIcon = computed<string>(() => {
-  return `SvgoThink${props.reasoningLevel.charAt(0).toUpperCase() + props.reasoningLevel.slice(1)}`
+  const level = props.reasoningLevel
+  const capitalized = level.charAt(0).toUpperCase() + level.slice(1)
+
+  return `SvgoThink${capitalized}`
 })
 
 const reasoningParts = computed<ReasoningUIPart[]>(() => {
@@ -205,9 +204,9 @@ const activeStreamingStepId = computed<string>(() => {
 })
 
 const streamingTitle = shallowRef<string>('')
-const streamingTitleUpdateTimer = ref<ReturnType<typeof setTimeout> | null>(
-  null,
-)
+const streamingTitleUpdateTimer = shallowRef<
+  ReturnType<typeof setTimeout> | null
+>(null)
 const latestStreamingTitleCandidate = computed<string>(() => {
   const latestReasoningText = reasoningParts.value.at(-1)?.text || ''
 
@@ -241,7 +240,9 @@ const { reasoningExpanded: isReasoningExpanded } = useUserSetting()
 const isMainExpanded = shallowRef<boolean>(false)
 const expandedStepId = shallowRef<string>('')
 const isStreamingExpandOverride = shallowRef<boolean>(false)
-const reasoningInterval = ref<ReturnType<typeof setInterval> | null>(null)
+const reasoningInterval = shallowRef<
+  ReturnType<typeof setInterval> | null
+>(null)
 
 const reasoningLabel = computed<string>(() => {
   if (isReasoningStreaming.value && reasoningSeconds.value > 0) {
@@ -340,7 +341,6 @@ watch(
       return
     }
 
-    // Avoid opening too early while more reasoning steps may still arrive.
     if (streaming && !textStarted) {
       return
     }

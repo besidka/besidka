@@ -2,6 +2,12 @@ import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
+  const session = await useUserSession()
+
+  if (!session) {
+    return useUnauthorizedError()
+  }
+
   const body = await readValidatedBody(event, z.object({
     reasoningExpanded: z.boolean(),
   }).safeParse)
@@ -12,12 +18,6 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Invalid request body',
       data: body.error,
     })
-  }
-
-  const session = await useUserSession()
-
-  if (!session) {
-    return useUnauthorizedError()
   }
 
   const db = useDb()

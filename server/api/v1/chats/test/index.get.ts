@@ -1,5 +1,6 @@
 import type { ReasoningUIPart, TextUIPart } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 
 const shortMessage = 'Test message'
 const longMessage = `Here is text with three paragraphs:
@@ -79,21 +80,3 @@ export default defineEventHandler(async (event) => {
     }),
   }
 })
-
-function getReasoningStepsCount(
-  effort: 'off' | 'low' | 'medium' | 'high',
-): number {
-  if (effort === 'off') {
-    return 0
-  }
-
-  if (effort === 'low') {
-    return 2
-  }
-
-  if (effort === 'high') {
-    return 6
-  }
-
-  return 4
-}
