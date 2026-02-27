@@ -423,7 +423,7 @@ jobs:
           wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           preCommands: pnpm run db:generate
           command: -v
-          postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env
+          postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
       - name: Deploy preview for direct push
         uses: cloudflare/wrangler-action@v3
