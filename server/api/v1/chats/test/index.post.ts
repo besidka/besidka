@@ -3,13 +3,15 @@ import type { UIMessageChunk } from 'ai'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
-  simulateReadableStream,
 } from 'ai'
 
 type Scenario = 'short' | 'long' | 'reasoning'
+type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
 
 const INITIAL_DELAY: number = 800
-const CHUNK_DELAY: number = 50
+const TEXT_CHUNK_DELAY: number = 50
+const REASONING_CHUNK_DELAY: number = 100
+const REASONING_STEP_DELAY: number = 300
 
 const SHORT_TEXT: string
   = 'This is a short response from the AI. '
@@ -45,18 +47,6 @@ const LONG_TEXT: string[] = [
   + 'tempore, cum soluta nobis est eligendi optio cumque '
   + 'nihil impedit quo minus id quod maxime placeat.',
 ]
-
-const REASONING_TEXT: string
-  = 'Let me think about this step by step. '
-    + 'First, I need to consider the context. '
-    + 'Then I should analyze the key factors. '
-    + 'Finally, I can formulate a response.'
-
-const REASONING_RESPONSE: string
-  = 'Based on my analysis, here is a thoughtful '
-    + 'response that demonstrates reasoning capability. '
-    + 'The key insight is that structured thinking '
-    + 'leads to better outcomes.'
 
 function splitIntoChunks(text: string): string[] {
   const words = text.split(' ')
@@ -117,8 +107,13 @@ function buildReasoningChunks(
 
 function getChunksForScenario(
   scenario: Scenario,
+  effort: ReasoningEffort,
 ): UIMessageChunk[] {
-  switch (scenario) {
+  const effectiveScenario = scenario === 'reasoning' && effort === 'off'
+    ? 'short'
+    : scenario
+
+  switch (effectiveScenario) {
     case 'short':
       return buildTextChunks(SHORT_TEXT, 'test-text-0')
     case 'long': {
@@ -131,16 +126,32 @@ function getChunksForScenario(
     }
     case 'reasoning': {
       const chunks: UIMessageChunk[] = []
+      const stepsCount = getReasoningStepsCount(effort)
 
-      chunks.push(
-        ...buildReasoningChunks(
-          REASONING_TEXT,
-          'test-reasoning-0',
-        ),
-      )
+      for (
+        let stepIndex = 0;
+        stepIndex < stepsCount;
+        stepIndex++
+      ) {
+        const stepText
+          = `**Step ${stepIndex + 1}**\n\n`
+            + 'This is the reasoning for step '
+            + `${stepIndex + 1}. It provides insights `
+            + 'and explanations related to the '
+            + 'user\'s message, helping to break '
+            + 'down complex ideas into more '
+            + 'digestible parts.'
+
+        chunks.push(
+          ...buildReasoningChunks(
+            stepText,
+            `test-reasoning-${stepIndex}`,
+          ),
+        )
+      }
       chunks.push(
         ...buildTextChunks(
-          REASONING_RESPONSE,
+          LONG_TEXT.join('\n\n'),
           'test-text-0',
         ),
       )
@@ -167,6 +178,8 @@ export default defineEventHandler(async (event) => {
     scenario: z
       .enum(['short', 'long', 'reasoning'])
       .default('short'),
+    messages: z.string().regex(/^\d+$/).default('1').transform(Number),
+    effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
   }).safeParse)
 
   if (query.error) {
@@ -177,19 +190,68 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const chunks = getChunksForScenario(query.data.scenario)
+  const chunks = getChunksForScenario(
+    query.data.scenario,
+    query.data.effort,
+  )
 
   const stream = createUIMessageStream({
     execute({ writer }) {
-      const simulated = simulateReadableStream({
-        chunks,
-        initialDelayInMs: INITIAL_DELAY,
-        chunkDelayInMs: CHUNK_DELAY,
+      const readable = new ReadableStream<UIMessageChunk>({
+        async start(controller) {
+          await delay(INITIAL_DELAY)
+          let previousType: string = ''
+
+          for (const chunk of chunks) {
+            if (
+              previousType === 'reasoning-end'
+              && (
+                chunk.type === 'text-start'
+                || chunk.type === 'reasoning-start'
+              )
+            ) {
+              await delay(REASONING_STEP_DELAY)
+            }
+
+            const chunkDelay
+              = chunk.type.startsWith('reasoning')
+                ? REASONING_CHUNK_DELAY
+                : TEXT_CHUNK_DELAY
+
+            await delay(chunkDelay)
+            controller.enqueue(chunk)
+            previousType = chunk.type
+          }
+
+          controller.close()
+        },
       })
 
-      writer.merge(simulated)
+      writer.merge(readable)
     },
   })
 
   return createUIMessageStreamResponse({ stream })
 })
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function getReasoningStepsCount(
+  effort: ReasoningEffort,
+): number {
+  if (effort === 'off') {
+    return 0
+  }
+
+  if (effort === 'low') {
+    return 2
+  }
+
+  if (effort === 'high') {
+    return 6
+  }
+
+  return 4
+}

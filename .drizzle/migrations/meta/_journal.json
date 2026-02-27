@@ -85,6 +85,13 @@
       "when": 1771876622024,
       "tag": "0011_misty_garia",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1772122520334,
+      "tag": "0012_silky_scourge",
+      "breakpoints": true
     }
   ]
 }

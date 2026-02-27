@@ -11,7 +11,10 @@ export default {
         output: 'from $12.00',
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'high'],
+      },
     },
     {
       id: 'gemini-3-pro-preview',
@@ -22,7 +25,10 @@ export default {
         output: 'from $12.00',
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'high'],
+      },
     },
     {
       id: 'gemini-2.5-pro',
@@ -33,7 +39,10 @@ export default {
         output: 'from $10.00',
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gemini-3-flash-preview',
@@ -44,7 +53,10 @@ export default {
         output: '$3.00',
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gemini-2.5-flash',
@@ -55,7 +67,10 @@ export default {
         output: '$2.50',
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
     {
       id: 'gemini-2.5-flash-lite',
@@ -67,7 +82,10 @@ export default {
         output: '$0.40',
       },
       tools: ['web_search'],
-      reasoning: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
     },
   ],
 }

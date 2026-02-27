@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
     tools: z.array(z.enum(['web_search'])),
-    reasoning: z.boolean().default(false),
+    reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
     messages: z.array(
       z.object({
         id: z.string().nonempty(),
@@ -149,7 +149,7 @@ export default defineEventHandler(async (event) => {
       newMessage.parts as UIMessage['parts'],
     )
     && hasSameTools(lastPersistedMessage.tools, body.data.tools)
-    && !!lastPersistedMessage.reasoning === !!body.data.reasoning
+    && lastPersistedMessage.reasoning === body.data.reasoning
   )
 
   if (newMessage.role === 'user' && !isDuplicateUserMessage) {
@@ -248,7 +248,7 @@ export default defineEventHandler(async (event) => {
       writer.merge(result.toUIMessageStream({
         originalMessages: messagesForAI,
         sendSources: true,
-        sendReasoning: !!body.data.reasoning,
+        sendReasoning: body.data.reasoning !== 'off',
         onError: errorHandler,
         async onFinish({ isAborted, responseMessage }) {
           if (isAborted) {
@@ -275,6 +275,7 @@ export default defineEventHandler(async (event) => {
             chatId: chat.id,
             ...responseMessage,
             parts: normalizedParts,
+            reasoning: body.data.reasoning,
           })
         },
       }))

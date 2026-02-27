@@ -6,6 +6,7 @@ import type {
 } from 'ai'
 import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
 
@@ -16,46 +17,25 @@ export interface ProcessedMessage {
   sourceUrlParts: SourceUrlUIPart[]
 }
 
-type Scenario = 'short' | 'long' | 'reasoning'
-
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
   const input = useLocalStorage<string>('chat_input', '')
   const files = ref<FileMetadata[]>([])
-  const route = useRoute()
 
   chat = toValue(chat)
 
   const tools = shallowRef<Tools>(
     chat.messages[chat.messages.length - 1]?.tools || [],
   )
-
-  const isReasoningEnabled = shallowRef<boolean>(
-    chat.messages[chat.messages.length - 1]?.reasoning || false,
+  const savedReasoningLevel = useLocalStorage<ReasoningLevel>(
+    'settings_reasoning_level',
+    'off',
   )
-
-  const testScenario = computed<Scenario | null>(() => {
-    if (!import.meta.dev || route.path !== '/chats/test') {
-      return null
-    }
-
-    const scenario = route.query.scenario as string
-
-    if (
-      scenario === 'short'
-      || scenario === 'long'
-      || scenario === 'reasoning'
-    ) {
-      return scenario
-    }
-
-    return 'short'
-  })
-
-  const api = computed<string>(() => {
-    return `/api/v1/chats/${testScenario.value ? `test?scenario=${testScenario.value}` : chat.slug}`
-  })
+  const reasoning = shallowRef<ReasoningLevel>(
+    normalizeReasoningLevel(savedReasoningLevel.value),
+  )
+  const { api, shouldAutoRegenerate } = useChatTest(chat, reasoning)
 
   const chatSdk = new ChatSdk({
     id: chat.id,
@@ -70,7 +50,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
             model: userModel.value,
             tools: tools.value,
             messages: [lastMessage],
-            reasoning: isReasoningEnabled.value,
+            reasoning: reasoning.value,
           },
         }
       },
@@ -152,7 +132,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   onMounted(() => {
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
-      && (route.path !== '/chats/test' || 'regenerate' in route.query)
+      && shouldAutoRegenerate.value
     ) {
       chatSdk.regenerate()
     }
@@ -185,6 +165,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       role: 'user',
       parts,
       createdAt: new Date(),
+      reasoning: reasoning.value,
     } as any)
 
     chatSdk.regenerate()
@@ -240,6 +221,48 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }) || false
   }
 
+  function getMessageReasoning(
+    message: UIMessage,
+    index: number,
+  ): ReasoningLevel {
+    const persistedReasoning = normalizeReasoningLevel(
+      (message as UIMessage & {
+        reasoning?: unknown
+      }).reasoning,
+    )
+
+    if (persistedReasoning !== 'off') {
+      return persistedReasoning
+    }
+
+    if (message.role !== 'assistant') {
+      return persistedReasoning
+    }
+
+    for (let messageIndex = index - 1; messageIndex >= 0; messageIndex -= 1) {
+      const candidate = chatSdk.messages[messageIndex]
+
+      if (candidate?.role !== 'user') {
+        continue
+      }
+
+      return normalizeReasoningLevel(
+        (candidate as UIMessage & {
+          reasoning?: unknown
+        }).reasoning,
+      )
+    }
+
+    return 'off'
+  }
+
+  watch(reasoning, (level) => {
+    savedReasoningLevel.value = level
+  }, {
+    immediate: true,
+    flush: 'post',
+  })
+
   return {
     chatSdk,
     messages: chatSdk.messages,
@@ -250,7 +273,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isStopped,
     regenerate,
     tools,
-    isReasoningEnabled,
+    reasoning,
+    getMessageReasoning,
     status: chatSdk.status,
     isLoading,
     displayRegenerate,

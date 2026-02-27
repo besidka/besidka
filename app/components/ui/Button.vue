@@ -116,7 +116,7 @@ const containerAttrs = computed<ButtonContainerAttrs>(() => {
   if (isTagSummary.value) {
     const { class: _, ...restAttrs } = nativeAttrs
     const title = toValue(resultTitle)
-    const summaryAttrs = title ? { title, 'aria-label': title } : {}
+    const summaryAttrs = title ? { 'aria-label': title } : {}
     return { ...baseAttrs, ...summaryAttrs, ...restAttrs }
   }
 
@@ -130,7 +130,7 @@ const buttonAttrs = computed<ButtonAttrs>(() => {
     // Even when disabled, pass through native attrs (except class and onClick)
     const { class: _, onClick: __, ...restAttrs } = nativeAttrs
     const title = toValue(resultTitle)
-    const disabledAttrs = title ? { title, 'aria-label': title } : {}
+    const disabledAttrs = title ? { 'aria-label': title } : {}
     return isTagSummary.value
       ? result
       : { ...result, ...disabledAttrs, ...restAttrs }
@@ -145,12 +145,10 @@ const buttonAttrs = computed<ButtonAttrs>(() => {
     ? {
       'to': props.to,
       'aria-label': title,
-      'title': title,
     }
     : {
       'type': props.tag === 'button' ? props.type : undefined,
       'aria-label': title,
-      'title': title,
       'onClick': onClick,
     }
 

@@ -11,18 +11,39 @@ export function useChatInput() {
     return !!model?.tools.includes('web_search')
   })
 
-  const isReasoningSupported = computed<boolean>(() => {
+  const reasoningCapability = computed(() => {
     const currentModel = toValue(userModel)
 
-    if (!currentModel) return false
+    if (!currentModel) {
+      return null
+    }
 
     const { model } = getModel(currentModel)
 
-    return !!model?.reasoning
+    return getReasoningCapability(model)
+  })
+
+  const isReasoningSupported = computed<boolean>(() => {
+    return !!reasoningCapability.value
+  })
+
+  const reasoningMode = computed<'none' | 'toggle' | 'levels'>(() => {
+    if (!reasoningCapability.value) {
+      return 'none'
+    }
+
+    return reasoningCapability.value.mode
+  })
+
+  const reasoningLevels = computed(() => {
+    return getReasoningDropdownLevels(reasoningCapability.value)
   })
 
   return {
     isWebSearchSupported,
+    reasoningCapability,
+    reasoningMode,
+    reasoningLevels,
     isReasoningSupported,
   }
 }

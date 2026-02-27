@@ -1,13 +1,19 @@
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import {
+  resolveReasoningLevelForModel,
+  toGoogleGemini25ReasoningBudget,
+  toGoogleReasoningLevel,
+} from './reasoning'
 
 export async function useGoogle(
   userId: string,
   model: string,
   requestedTools: Tools,
-  requestedReasoning?: boolean,
+  requestedReasoning: ReasoningLevel,
 ) {
   const data = await useDb().query.keys.findFirst({
     where(keys, { and, eq }) {
@@ -69,17 +75,30 @@ export async function useGoogle(
     const result: SharedV2ProviderOptions = {}
 
     const { model: modelData } = getModel(model)
+    const reasoningLevel = resolveReasoningLevelForModel(
+      modelData,
+      requestedReasoning,
+    )
 
-    if (requestedReasoning && modelData?.reasoning) {
+    if (reasoningLevel !== 'off') {
       /**
        * @example
        * https://ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai#thinking
        * https://ai.google.dev/gemini-api/docs/thinking
        */
+      const isGemini25Model = model.startsWith('gemini-2.5')
+      const googleReasoningLevel = isGemini25Model
+        ? null
+        : toGoogleReasoningLevel(model, reasoningLevel)
+      const googleReasoningBudget = isGemini25Model
+        ? toGoogleGemini25ReasoningBudget(reasoningLevel)
+        : null
+
       Object.assign(result, {
         thinkingConfig: {
           includeThoughts: true,
-          thinkingBudget: -1,
+          thinkingBudget: googleReasoningBudget ?? undefined,
+          thinkingLevel: googleReasoningLevel ?? undefined,
         },
       })
     }

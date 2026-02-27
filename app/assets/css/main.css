@@ -183,7 +183,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
  * https://github.com/saadeghi/daisyui/blob/master/src/components/styled/skeleton.css 
  */
 @layer components {
-  .skeleton:not(.skeleton--default) {
+  .skeleton:not(.skeleton--default):not(.skeleton-text) {
     @apply rounded-full;
   }
 }
@@ -211,7 +211,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
     @apply bg-base-100 border-base-300 p-6;
   }
 
-  .skeleton:not(.skeleton--default) {
+  .skeleton:not(.skeleton--default):not(.skeleton-text) {
       background-color: var(--color-skeleton);
       background-image: linear-gradient(
         105deg,

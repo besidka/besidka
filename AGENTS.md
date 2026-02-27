@@ -385,9 +385,12 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
 - Rely on Nuxt auto-imports; avoid explicit imports unless required to resolve errors
 - For GET requests on component setup/mount, use `useFetch`/`useLazyFetch`
   instead of custom `$fetch` calls in `onMounted`.
-- For `$fetch`/`useFetch`/`useLazyFetch`, prefer Nuxt/Nitro route-type
-  inference. Do not add explicit generic response types or extra type imports
-  unless typecheck fails without them (for example, some dynamic route cases).
+- For `$fetch`/`useFetch`/`useLazyFetch`/`useAsyncData`/`useLazyAsyncData`,
+  prefer Nuxt/Nitro route-type inference.
+- Do not add explicit generic response types for those APIs by default
+  (for example, avoid `$fetch<Foo>()` and `useFetch<Foo>()`).
+- Add explicit response generics only when typecheck cannot be solved with
+  inferred route types, and keep that exception minimal and local.
 - Custom runtime hooks: declare types in `app/types/runtime-hooks.d.ts`, not in `index.d.ts`
 - Nuxt hooks registered via `nuxtApp.hook()` do not require cleanup in `onUnmounted`
 - Runtime DOM selectors must not use `data-testid`. Reserve `data-testid` for

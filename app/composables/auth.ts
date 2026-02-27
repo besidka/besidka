@@ -17,6 +17,7 @@ interface RuntimeAuthConfig {
 
 export function useAuth() {
   const headers = import.meta.server ? useRequestHeaders() : undefined
+  const { loadUserSettings, resetUserSettings } = useUserSetting()
 
   const client = createAuthClient({
     baseURL: useRequestURL().origin,
@@ -81,10 +82,17 @@ export function useAuth() {
         })
         : null
 
+      if (!data?.user?.id) {
+        resetUserSettings()
+      } else if (import.meta.client) {
+        void loadUserSettings(String(data.user.id))
+      }
+
       return data
     } catch {
       session.value = null
       user.value = null
+      resetUserSettings()
     } finally {
       sessionFetching.value = false
     }
@@ -117,6 +125,7 @@ export function useAuth() {
           async onSuccess() {
             session.value = null
             user.value = null
+            resetUserSettings()
 
             if (!redirectTo) {
               return

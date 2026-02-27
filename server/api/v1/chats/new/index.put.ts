@@ -20,7 +20,7 @@ const rules = z.object({
     return parts.some(part => part.type === 'text')
   }),
   tools: z.array(z.enum(['web_search'])),
-  reasoning: z.boolean().default(false),
+  reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
 })
 
 export default defineEventHandler(async (event) => {
