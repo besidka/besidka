@@ -255,6 +255,15 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Upload drizzle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-drizzle
+          path: .drizzle/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Get PR commit info
         if: success()
         id: pr

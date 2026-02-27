@@ -14,10 +14,11 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  │   ├─ Lint + typecheck                                         │
 │  │   ├─ Affected tests (unit, integration, e2e)                  │
 │  │   ├─ Build application                                        │
-│  │   └─ Upload artifacts (build output + metrics)                │
+│  │   └─ Upload artifacts (build output + .drizzle + metrics)     │
 │  │                                                               │
 │  └─ preview-deploy.yml (workflow_run, privileged)                │
 │      ├─ Download artifacts from build                            │
+│      ├─ Apply DB migrations from PR .drizzle artifact            │
 │      ├─ Deploy to Cloudflare Workers (version with PR alias)     │
 │      └─ Comment preview URLs + metrics on PR                     │
 │                                                                  │
@@ -61,7 +62,7 @@ Triggers on `pull_request` events. Runs in the PR author's context without acces
 3. Lint + typecheck
 4. Run affected tests only (based on changed files vs base branch)
 5. Build application
-6. Upload build output and metrics as artifacts
+6. Upload build output, `.drizzle`, and metrics as artifacts
 
 ### `preview-deploy.yml` - PR Deploy
 
@@ -69,9 +70,10 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
 
 1. Extract PR number and SHA from `workflow_run` event context (not from artifacts)
 2. Check if PR is from a fork - skip deploy if so
-3. Download build artifact and metrics
-4. Deploy to Cloudflare Workers with PR alias
-5. Comment preview URLs and metrics on PR
+3. Download build and `.drizzle` artifacts from the same build run
+4. Apply preview D1 migrations from the downloaded `.drizzle` artifact
+5. Deploy to Cloudflare Workers with PR alias
+6. Comment preview URLs and metrics on PR
 
 ### `preview-fork-deploy.yml` - Fork PR Deploy (Maintainer-Triggered)
 
@@ -121,6 +123,10 @@ The solution is a two-phase approach:
 **Fork detection**: Compares `workflow_run.head_repository.full_name` with `workflow_run.repository.full_name`. External contributors can only create PRs from forks, never push branches directly.
 
 **Maintainer-gated fork deployment**: Fork PRs skip automatic deployment. A maintainer must explicitly approve by commenting `/deploy-preview`, which triggers a permission-checked workflow.
+
+**Migration source consistency**: `preview-build.yml` uploads `.drizzle` as an
+artifact, and `preview-deploy.yml` applies migrations from that exact artifact
+before deploy. This keeps preview DB schema aligned with the deployed PR build.
 
 **Artifact trust boundary**: Build artifacts from forks contain untrusted code. The `/deploy-preview` command means "I reviewed this PR and trust it enough to deploy to preview" - analogous to clicking "Approve and Run" on fork workflow runs.
 

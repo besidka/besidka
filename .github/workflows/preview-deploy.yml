@@ -38,20 +38,6 @@ jobs:
           echo "sha=$PR_SHA" >> $GITHUB_OUTPUT
           echo "sha-short=$PR_SHA_SHORT" >> $GITHUB_OUTPUT
 
-      - name: Detect drizzle changes
-        id: detect-drizzle
-        run: |
-          CHANGED_FILES=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}/files" --jq '.[].filename')
-          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ .drizzle changes detected"
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No .drizzle changes detected"
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Check if PR is from fork
         id: fork-check
         run: |
@@ -84,9 +70,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Checkout base branch
+      - name: Checkout PR head
         if: steps.fork-check.outputs.is-fork == 'false'
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
 
       - name: Download build artifact
         if: steps.fork-check.outputs.is-fork == 'false'
@@ -95,6 +83,15 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           name: preview-build
           path: .output/
+          github-token: ${{ github.token }}
+
+      - name: Download drizzle artifact
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: preview-drizzle
+          path: .
           github-token: ${{ github.token }}
 
       - name: Setup PNPM
@@ -109,14 +106,13 @@ jobs:
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Apply migrations to preview database
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.detect-drizzle.outputs.changed == 'true'
+        if: steps.fork-check.outputs.is-fork == 'false'
         uses: cloudflare/wrangler-action@v3
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
           wranglerVersion: ${{ vars.WRANGLER_VERSION }}
-          preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
