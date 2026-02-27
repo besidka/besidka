@@ -1,7 +1,11 @@
 <template>
   <details
     ref="dropdown"
-    class="dropdown dropdown-top dropdown-end"
+    class="dropdown dropdown-top"
+    :class="{
+      'dropdown-end': isWebSearchEnabled,
+      'max-xs:dropdown-start xs:dropdown-end': !isWebSearchEnabled
+    }"
   >
     <summary
       data-testid="reasoning-trigger"
@@ -97,6 +101,7 @@ import type {
 
 const props = defineProps<{
   levels: ReasoningEnabledLevel[]
+  isWebSearchEnabled?: boolean
 }>()
 
 const reasoning = defineModel<ReasoningLevel>('reasoning', {

@@ -114,7 +114,7 @@
                 <LazyChatInputReasoningTrigger
                   v-if="isReasoningSupported && reasoningMode === 'levels'"
                   v-model:reasoning="reasoning"
-                  hydrate-on-idle
+                  :is-web-search-enabled="isWebSearchEnabled"
                   :levels="reasoningCapability?.mode === 'levels'
                     ? reasoningCapability.levels
                     : []
