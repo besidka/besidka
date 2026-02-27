@@ -149,6 +149,7 @@
             <div class="flex items-center gap-2">
               <UiButton
                 v-show="displayStop"
+                data-testid="stop-generation"
                 mode="accent"
                 circle
                 title="Stop"
@@ -159,6 +160,7 @@
               />
               <UiButton
                 v-show="canShowRegenerate"
+                data-testid="regenerate"
                 mode="accent"
                 soft
                 circle
@@ -170,6 +172,7 @@
               />
               <UiButton
                 v-show="!displayStop && !canShowRegenerate"
+                data-testid="send-message"
                 mode="accent"
                 circle
                 :disabled="!hasMessage"

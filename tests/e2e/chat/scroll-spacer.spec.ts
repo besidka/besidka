@@ -60,7 +60,7 @@ async function waitForAssistantMessageCount(
 
 async function waitForChatReadyState(page: Page): Promise<void> {
   await expect(
-    page.locator('button[title="Stop"]').first(),
+    page.locator('button[data-testid="stop-generation"]').first(),
   ).toBeHidden({ timeout: 30_000 })
 }
 
@@ -377,7 +377,7 @@ test.describe('Short chat spacer and scroll behavior', () => {
       )
     })
 
-    const scrollToBottomButton = page.locator('button[title="Scroll to bottom"]')
+    const scrollToBottomButton = page.locator('button[data-testid="scroll-to-bottom"]')
 
     await expect(scrollToBottomButton).toBeAttached()
 
@@ -464,7 +464,7 @@ test.describe('Long chat spacer and scroll behavior', () => {
 
     await scrollConversationToTop(page)
 
-    const scrollToBottomButton = page.locator('button[title="Scroll to bottom"]')
+    const scrollToBottomButton = page.locator('button[data-testid="scroll-to-bottom"]')
 
     await expect(scrollToBottomButton).toBeVisible()
     await scrollToBottomButton.click()

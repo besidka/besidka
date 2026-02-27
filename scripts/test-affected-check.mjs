@@ -73,6 +73,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/ThemeSwitcher.spec.ts',
         'tests/e2e/settings/theme.spec.ts',
+        'tests/e2e/chat/scroll-spacer.spec.ts',
       ],
     },
     {
