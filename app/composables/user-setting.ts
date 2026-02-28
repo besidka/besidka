@@ -13,6 +13,10 @@ export function useUserSetting() {
     'user-settings:reasoning-expanded',
     () => null,
   )
+  const serverAllowExternalLinks = useState<boolean | null>(
+    'user-settings:allow-external-links',
+    () => null,
+  )
   const isLoadingSettings = useState<boolean>(
     'user-settings:is-loading',
     () => false,
@@ -44,6 +48,17 @@ export function useUserSetting() {
     }
 
     return serverReasoningExpanded.value
+  })
+
+  const allowExternalLinks = computed<boolean>(() => {
+    if (
+      !activeUserId.value
+      || loadedUserId.value !== activeUserId.value
+    ) {
+      return false
+    }
+
+    return serverAllowExternalLinks.value ?? false
   })
 
   async function syncForUser(userId: string) {
@@ -82,6 +97,7 @@ export function useUserSetting() {
       loadedUserId.value = userId
       serverReasoningExpanded.value = nextReasoningExpanded
       fallbackReasoningExpanded.value = nextReasoningExpanded
+      serverAllowExternalLinks.value = response.allowExternalLinks ?? null
     } catch (exception) {
       if (
         activeUserId.value !== userId
@@ -92,6 +108,7 @@ export function useUserSetting() {
 
       loadedUserId.value = null
       serverReasoningExpanded.value = null
+      serverAllowExternalLinks.value = null
 
       const parsedException = parseError(exception)
 
@@ -156,10 +173,54 @@ export function useUserSetting() {
     }
   }
 
+  async function setAllowExternalLinks(value: boolean) {
+    settingsError.value = null
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousValue = serverAllowExternalLinks.value
+
+    serverAllowExternalLinks.value = value
+    isSavingSettings.value = true
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          allowExternalLinks: value,
+        },
+      })
+
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverAllowExternalLinks.value = value
+    } catch (exception) {
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverAllowExternalLinks.value = previousValue
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      isSavingSettings.value = false
+    }
+  }
+
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
     serverReasoningExpanded.value = null
+    serverAllowExternalLinks.value = null
     settingsError.value = null
     isLoadingSettings.value = false
     isSavingSettings.value = false
@@ -168,11 +229,13 @@ export function useUserSetting() {
   return {
     activeUserId,
     reasoningExpanded,
+    allowExternalLinks,
     isLoadingSettings,
     isSavingSettings,
     settingsError,
     syncForUser,
     setReasoningExpanded,
+    setAllowExternalLinks,
     clearUserContext,
   }
 }

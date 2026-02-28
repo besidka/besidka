@@ -58,6 +58,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/e2e/chat/files.spec.ts',
   ]
+  const profileSettingsTests = [
+    'tests/integration/api/profile-settings.spec.ts',
+  ]
 
   const testMappings = [
     {
@@ -85,7 +88,15 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/components\/ui\/Confirmation\.vue$/,
+      tests: filesModuleTests,
+    },
+    {
       pattern: /^app\/composables\/(chat-files|file-manager)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/composables\/confirmation\.ts$/,
       tests: filesModuleTests,
     },
     {
@@ -118,7 +129,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/db\/schema\.ts$/,
-      tests: filesModuleTests,
+      tests: [
+        ...filesModuleTests,
+        ...profileSettingsTests,
+      ],
     },
     {
       pattern: /^app\/composables\/.*\.ts$/,
@@ -129,6 +143,14 @@ export function getAffectedTests(changedFiles) {
 
         return existsSync(testFile) ? [testFile] : []
       },
+    },
+    {
+      pattern: /^server\/api\/v1\/profiles\/settings\/index\.(get|patch)\.ts$/,
+      tests: profileSettingsTests,
+    },
+    {
+      pattern: /^server\/db\/schemas\/user-settings\.ts$/,
+      tests: profileSettingsTests,
     },
     {
       pattern: /^app\/utils\/.*\.ts$/,

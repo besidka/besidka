@@ -1,25 +1,51 @@
-import type { Confirmation, ConfirmationCallback } from '~/types/confirmation.d'
+import type { ConfirmOptions, ConfirmResult } from '~/types/confirmation.d'
 
-export const useConfirmation = () => {
-  return useState<Confirmation | null>('confirmation', () => null)
+interface QueueEntry {
+  options: ConfirmOptions
+  resolve: (result: ConfirmResult | null) => void
 }
 
-export const useConfirmationModal = (
-  callback: ConfirmationCallback,
-  args: any[] = [],
-  text: string = '',
-  alert: boolean = false,
-) => {
-  const confirmation = useConfirmation()
+const queue: QueueEntry[] = []
 
-  if (confirmation.value) {
-    return
+export const useConfirmation = () => {
+  return useState<ConfirmOptions | null>('confirmation', () => null)
+}
+
+export async function useConfirm(
+  options: ConfirmOptions,
+): Promise<ConfirmResult | null> {
+  const current = useConfirmation()
+
+  return new Promise((resolve) => {
+    queue.push({ options, resolve })
+
+    if (!current.value) {
+      current.value = queue[0]!.options
+    }
+  })
+}
+
+export function resolveConfirmation(result: ConfirmResult | null) {
+  if (queue.length === 0) return
+
+  const current = useConfirmation()
+  const entry = queue.shift()!
+
+  current.value = null
+  entry.resolve(result)
+
+  nextTick(() => {
+    if (queue.length > 0) {
+      current.value = queue[0]!.options
+    }
+  })
+}
+
+export function resetConfirmationState() {
+  for (const entry of queue) {
+    entry.resolve(null)
   }
 
-  confirmation.value = {
-    text: text ?? 'Confirm',
-    callback,
-    args,
-    alert,
-  }
+  queue.splice(0)
+  useConfirmation().value = null
 }

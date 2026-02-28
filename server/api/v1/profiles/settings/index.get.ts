@@ -11,10 +11,12 @@ export default defineEventHandler(async () => {
     },
     columns: {
       reasoningExpanded: true,
+      allowExternalLinks: true,
     },
   })
 
   return {
     reasoningExpanded: settings?.reasoningExpanded ?? false,
+    allowExternalLinks: settings?.allowExternalLinks ?? null,
   }
 })

@@ -324,20 +324,26 @@ async function scrollToEnd() {
   })
 }
 
-function removeAttachedFile(storageKey: FileMetadata['storageKey']) {
-  useConfirmationModal(
-    emit,
-    ['remove', storageKey],
-    'Are you sure you want to detach this file?',
-  )
+async function removeAttachedFile(storageKey: FileMetadata['storageKey']) {
+  const result = await useConfirm({
+    text: 'Are you sure you want to detach this file?',
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  emit('remove', storageKey)
 }
 
-function removeAllFiles() {
-  useConfirmationModal(
-    emit,
-    ['removeAll'],
-    `Detach all ${totalFilesCount.value} files?`,
-  )
+async function removeAllFiles() {
+  const result = await useConfirm({
+    text: `Detach all ${totalFilesCount.value} files?`,
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  emit('removeAll')
 }
 
 watch(() => uploadingFilesArray.value.length, (newCount, oldCount) => {

@@ -158,11 +158,14 @@ async function deleteKeys() {
   }
 }
 
-function onDeleteKeys() {
-  useConfirmationModal(
-    deleteKeys,
-    [],
-    'Are you sure you want to delete your OpenAI API key?',
-  )
+async function onDeleteKeys() {
+  const result = await useConfirm({
+    text: 'Are you sure you want to delete your OpenAI API key?',
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  await deleteKeys()
 }
 </script>

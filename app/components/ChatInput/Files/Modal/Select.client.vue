@@ -383,22 +383,28 @@ async function handleDeleteSelected() {
   }
 }
 
-function confirmDelete(file: FileManagerFile) {
-  useConfirmationModal(
-    () => handleDelete(file.id),
-    [],
-    `Are you sure you want to delete "${truncateFilename(file.name, 30)}"?`,
-    true,
-  )
+async function confirmDelete(file: FileManagerFile) {
+  const result = await useConfirm({
+    text: `Are you sure you want to delete "${truncateFilename(file.name, 30)}"?`,
+    alert: true,
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  await handleDelete(file.id)
 }
 
-function confirmDeleteSelected() {
-  useConfirmationModal(
-    handleDeleteSelected,
-    [],
-    `Are you sure you want to delete ${selectedCount.value} file${selectedCount.value === 1 ? '' : 's'}?`,
-    true,
-  )
+async function confirmDeleteSelected() {
+  const result = await useConfirm({
+    text: `Are you sure you want to delete ${selectedCount.value} file${selectedCount.value === 1 ? '' : 's'}?`,
+    alert: true,
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  await handleDeleteSelected()
 }
 
 function attachSelected() {

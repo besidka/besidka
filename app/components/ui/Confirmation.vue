@@ -2,6 +2,7 @@
   <dialog
     ref="modal"
     class="modal modal-bottom sm:modal-middle"
+    @cancel.prevent="decline"
   >
     <div class="modal-box">
       <h3
@@ -14,51 +15,99 @@
         {{ confirmation.text }}
       </h3>
       <p
-        v-if="confirmation?.alert"
+        v-if="confirmation?.subtitle"
+        class="pt-4 text-sm text-base-content/70"
+      >
+        {{ confirmation.subtitle }}
+      </p>
+      <p
+        v-else-if="confirmation?.alert"
         class="py-4"
       >
         Be careful, this action cannot be undone.
         It could affect other parts of the system that depends on it.
       </p>
       <div class="modal-action">
-        <form method="dialog">
-          <button class="btn btn-error btn-outline">
-            {{ confirmation ? labelDecline : 'Close' }}
-          </button>
-        </form>
         <button
-          v-if="confirmation"
           type="button"
-          class="btn btn-primary"
-          @click="confirm"
+          data-testid="confirmation-decline"
+          class="btn btn-error btn-ghost btn-sm"
+          @click="decline"
         >
-          {{ labelConfirm }}
+          {{ confirmation ? labelDecline : 'Close' }}
         </button>
+        <button
+          v-if="confirmation && actions.length === 1"
+          type="button"
+          data-testid="confirmation-action-0"
+          class="btn btn-primary btn-sm"
+          @click="confirmAt(0)"
+        >
+          {{ actions[0] }}
+        </button>
+        <div
+          v-else-if="confirmation && actions.length > 1"
+          data-testid="confirmation-actions-split"
+          class="join"
+        >
+          <button
+            type="button"
+            data-testid="confirmation-action-0"
+            class="btn light:btn-primary dark:btn-secondary btn-sm join-item"
+            @click="confirmAt(0)"
+          >
+            {{ actions[0] }}
+          </button>
+          <details class="dropdown dropdown-top dropdown-end join-item">
+            <summary class="btn light:btn-primary dark:btn-secondary btn-sm join-item px-2">
+              <Icon name="lucide:chevron-up" size="14" />
+            </summary>
+            <div class="dropdown-content z-50 w-32 pb-2">
+              <ul class="grid gap-2 w-full bg-base-100 rounded-box w-full shadow-sm">
+                <li
+                  v-for="(action, index) in actions.slice(1)"
+                  :key="index"
+                >
+                  <button
+                    type="button"
+                    :data-testid="`confirmation-action-${index + 1}`"
+                    class="btn light:btn-primary dark:btn-secondary btn-sm btn-block"
+                    @click="confirmAt(index + 1)"
+                  >
+                    {{ action }}
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </details>
+        </div>
       </div>
     </div>
-    <form
-      method="dialog"
+    <button
+      type="button"
       class="modal-backdrop"
-    >
-      <button>Close</button>
-    </form>
+      aria-label="Close"
+      @click="decline"
+    />
   </dialog>
 </template>
 
 <script setup lang="ts">
-import type { Confirmation } from '~/types/confirmation.d'
-
 interface Props {
   labelDecline?: string
-  labelConfirm?: string
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   labelDecline: 'Decline',
-  labelConfirm: 'Confirm',
 })
 
 const confirmation = useConfirmation()
+
+const actions = computed(() => confirmation.value?.actions ?? [])
+
+const labelDecline = computed<string>(() => {
+  return confirmation.value?.labelDecline ?? props.labelDecline
+})
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 
@@ -70,25 +119,15 @@ watch(confirmation, () => {
     : modal.value.close()
 })
 
-const decline = () => {
-  confirmation.value = null
+function confirmAt(index: number) {
+  const label = actions.value[index]!
+
+  resolveConfirmation({ label, index })
 }
 
-const confirm = () => {
-  const { callback, args } = confirmation.value as Confirmation
-
-  confirmation.value = null
-  callback && args && callback(...args)
-  modal.value?.close()
+function decline() {
+  resolveConfirmation(null)
 }
-
-onMounted(() => {
-  modal.value?.addEventListener('close', decline)
-})
-
-onUnmounted(() => {
-  modal.value?.removeEventListener('close', decline)
-})
 </script>
 
 <style scoped>

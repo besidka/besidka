@@ -9,7 +9,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedBody(event, z.object({
-    reasoningExpanded: z.boolean(),
+    reasoningExpanded: z.boolean().optional(),
+    allowExternalLinks: z.boolean().nullable().optional(),
   }).safeParse)
 
   if (body.error) {
@@ -31,18 +32,35 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  if (existingSettings) {
-    await db.update(schema.userSettings).set({
-      reasoningExpanded: body.data.reasoningExpanded,
-    }).where(eq(schema.userSettings.userId, userId))
-  } else {
-    await db.insert(schema.userSettings).values({
-      userId,
-      reasoningExpanded: body.data.reasoningExpanded,
+  const fieldUpdates: {
+    reasoningExpanded?: boolean
+    allowExternalLinks?: boolean | null
+  } = {}
+
+  if (body.data.reasoningExpanded !== undefined) {
+    fieldUpdates.reasoningExpanded = body.data.reasoningExpanded
+  }
+
+  if ('allowExternalLinks' in body.data) {
+    fieldUpdates.allowExternalLinks = body.data.allowExternalLinks ?? null
+  }
+
+  if (Object.keys(fieldUpdates).length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'No fields to update',
     })
   }
 
-  return {
-    reasoningExpanded: body.data.reasoningExpanded,
+  if (existingSettings) {
+    await db.update(schema.userSettings).set(fieldUpdates)
+      .where(eq(schema.userSettings.userId, userId))
+  } else {
+    await db.insert(schema.userSettings).values({
+      userId,
+      ...fieldUpdates,
+    })
   }
+
+  return fieldUpdates
 })
