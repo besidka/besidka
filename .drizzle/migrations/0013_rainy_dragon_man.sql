@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `allow_external_links` integer;

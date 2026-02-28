@@ -1,8 +1,12 @@
-export type ConfirmationCallback = (...args: any[]) => void | Promise<any>
+export interface ConfirmOptions {
+  text?: string
+  subtitle?: string
+  alert?: boolean
+  actions: string[]
+  labelDecline?: string
+}
 
-export interface Confirmation {
-  callback: ConfirmationCallback
-  text: string
-  args: any[]
-  alert: boolean
+export interface ConfirmResult {
+  label: string
+  index: number
 }

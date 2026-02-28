@@ -141,12 +141,15 @@ function detachAllFiles() {
   closeDropdown()
 }
 
-function onDetachAllFiles() {
-  useConfirmationModal(
-    detachAllFiles,
-    [],
-    'Are you sure you want to detach all files?',
-  )
+async function onDetachAllFiles() {
+  const result = await useConfirm({
+    text: 'Are you sure you want to detach all files?',
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  detachAllFiles()
 }
 
 function onFilesAttached(

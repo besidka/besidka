@@ -153,11 +153,14 @@ async function deleteKey() {
   }
 }
 
-function onDeleteKey() {
-  useConfirmationModal(
-    deleteKey,
-    [],
-    'Are you sure you want to delete your Google AI Studio key?',
-  )
+async function onDeleteKey() {
+  const result = await useConfirm({
+    text: 'Are you sure you want to delete your Google AI Studio key?',
+    actions: ['Confirm'],
+  })
+
+  if (!result) return
+
+  await deleteKey()
 }
 </script>

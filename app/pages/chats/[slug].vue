@@ -131,7 +131,7 @@ const query = computed(() => {
     scenario = 'short'
   }
 
-  if (!['off', 'low', 'medium', 'high'].includes(effort)) {
+  if (!['low', 'medium', 'high', 'off'].includes(effort)) {
     effort = 'medium'
   }
 

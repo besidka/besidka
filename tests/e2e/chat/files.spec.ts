@@ -199,6 +199,7 @@ async function openFilesModal(
   const actionButton = page.getByTestId(actionTestId)
 
   await expect(actionButton).toBeVisible()
+  await expect(page.getByTestId('files-modal')).toBeAttached({ timeout: 10000 })
   await actionButton.evaluate((element) => {
     ;(element as HTMLButtonElement).click()
   })

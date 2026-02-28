@@ -2,7 +2,6 @@ import {
   sqliteTable,
   text,
   integer,
-  uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import { relations } from 'drizzle-orm'
 import { defaultSchemaTimestamps } from '../../utils/schema'
@@ -10,6 +9,7 @@ import { chats } from './chats'
 import { keys } from './keys'
 import { files } from './files'
 import { storages } from './storages'
+import { userSettings } from './user-settings'
 
 export const users = sqliteTable('users', {
   ...defaultSchemaTimestamps,
@@ -57,23 +57,6 @@ export const verifications = sqliteTable('verifications', {
   expiresAt: integer({ mode: 'timestamp' }).notNull(),
 })
 
-export const userSettings = sqliteTable(
-  'user_settings',
-  {
-    ...defaultSchemaTimestamps,
-    id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
-    userId: integer({ mode: 'number' })
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    reasoningExpanded: integer({ mode: 'boolean' })
-      .notNull()
-      .default(false),
-  },
-  table => [
-    uniqueIndex('uq_user_settings_user').on(table.userId),
-  ],
-)
-
 export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
@@ -112,13 +95,6 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
 export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, {
     fields: [sessions.userId],
-    references: [users.id],
-  }),
-}))
-
-export const userSettingsRelations = relations(userSettings, ({ one }) => ({
-  user: one(users, {
-    fields: [userSettings.userId],
     references: [users.id],
   }),
 }))

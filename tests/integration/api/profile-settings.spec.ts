@@ -141,6 +141,7 @@ describe('profile settings API', () => {
 
     expect(response).toEqual({
       reasoningExpanded: false,
+      allowExternalLinks: null,
     })
   })
 
@@ -182,6 +183,7 @@ describe('profile settings API', () => {
 
     expect(getResponse).toEqual({
       reasoningExpanded: false,
+      allowExternalLinks: null,
     })
   })
 
