@@ -2,6 +2,7 @@
   <details
     v-if="sources.length > 0"
     class="group collapse mt-2"
+    @toggle="onToggle"
   >
     <summary
       :id="`sources-url-${message.id}-label`"
@@ -43,7 +44,19 @@ const MAX_TITLE_LENGTH = 30
 
 const props = defineProps<{
   message: UIMessage
+  isLast?: boolean
 }>()
+
+const nuxtApp = useNuxtApp()
+
+async function onToggle(event: Event) {
+  if (!(event.target as HTMLDetailsElement).open || !props.isLast) {
+    return
+  }
+
+  await nextTick()
+  nuxtApp.callHook('chat:scroll-to-bottom')
+}
 
 const { allowExternalLinks, setAllowExternalLinks } = useUserSetting()
 
