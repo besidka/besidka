@@ -65,10 +65,7 @@
               :unwrap="getUnwrap(m.role)"
             />
           </div>
-          <ChatUrlSources
-            :message="m"
-            :is-last="messageIndex === chatSdk.messages.length - 1"
-          />
+          <ChatUrlSources :message="m" />
         </ChatMessage>
       </div>
       <LazyChatLoader :show="isLoading" />
