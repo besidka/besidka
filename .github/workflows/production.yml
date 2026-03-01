@@ -24,7 +24,7 @@ concurrency:
 jobs:
   resolve-preview-context:
     name: Resolve preview context
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       pr-number: ${{ steps.pr.outputs.number }}
       is-direct: ${{ steps.direct-push.outputs.is-direct }}
@@ -80,7 +80,7 @@ jobs:
   build-production:
     name: Build and Deploy to Production
     needs: resolve-preview-context
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
@@ -332,7 +332,7 @@ jobs:
     needs:
       - resolve-preview-context
       - build-production
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
     env:
@@ -394,7 +394,7 @@ jobs:
       - resolve-preview-context
       - build-production
     if: needs.resolve-preview-context.outputs.is-direct == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
 
@@ -440,7 +440,7 @@ jobs:
       - update-preview
       - deploy-preview-direct-push
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       actions: write
       contents: read

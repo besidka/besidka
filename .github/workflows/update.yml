@@ -7,7 +7,7 @@ on:
 jobs:
   update:
     name: "Update PRs"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       id-token: write
       pull-requests: write
