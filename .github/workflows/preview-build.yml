@@ -24,7 +24,7 @@ concurrency:
 jobs:
   check-pr-state:
     name: Check PR state
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
     steps:
@@ -42,7 +42,7 @@ jobs:
   check-latest-commit:
     name: Check latest commit paths
     needs: check-pr-state
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       should-skip: ${{ steps.paths.outputs.should-skip }}
     steps:
@@ -100,7 +100,7 @@ jobs:
       - check-pr-state
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       statuses: write
