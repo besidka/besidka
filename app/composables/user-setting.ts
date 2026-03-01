@@ -13,6 +13,10 @@ export function useUserSetting() {
     'user-settings:reasoning-expanded',
     () => null,
   )
+  const serverReasoningAutoHide = useState<boolean | null>(
+    'user-settings:reasoning-auto-hide',
+    () => null,
+  )
   const serverAllowExternalLinks = useState<boolean | null>(
     'user-settings:allow-external-links',
     () => null,
@@ -37,6 +41,10 @@ export function useUserSetting() {
     'settings_reasoning_expanded',
     false,
   )
+  const fallbackReasoningAutoHide = useLocalStorage<boolean>(
+    'settings_reasoning_auto_hide',
+    true,
+  )
 
   const reasoningExpanded = computed<boolean>(() => {
     if (
@@ -48,6 +56,18 @@ export function useUserSetting() {
     }
 
     return serverReasoningExpanded.value
+  })
+
+  const reasoningAutoHide = computed<boolean>(() => {
+    if (
+      !activeUserId.value
+      || loadedUserId.value !== activeUserId.value
+      || serverReasoningAutoHide.value === null
+    ) {
+      return fallbackReasoningAutoHide.value
+    }
+
+    return serverReasoningAutoHide.value
   })
 
   const allowExternalLinks = computed<boolean>(() => {
@@ -93,10 +113,15 @@ export function useUserSetting() {
       const nextReasoningExpanded = Boolean(
         response.reasoningExpanded,
       )
+      const nextReasoningAutoHide = Boolean(
+        response.reasoningAutoHide ?? true,
+      )
 
       loadedUserId.value = userId
       serverReasoningExpanded.value = nextReasoningExpanded
       fallbackReasoningExpanded.value = nextReasoningExpanded
+      serverReasoningAutoHide.value = nextReasoningAutoHide
+      fallbackReasoningAutoHide.value = nextReasoningAutoHide
       serverAllowExternalLinks.value = response.allowExternalLinks ?? null
     } catch (exception) {
       if (
@@ -108,6 +133,7 @@ export function useUserSetting() {
 
       loadedUserId.value = null
       serverReasoningExpanded.value = null
+      serverReasoningAutoHide.value = null
       serverAllowExternalLinks.value = null
 
       const parsedException = parseError(exception)
@@ -173,6 +199,56 @@ export function useUserSetting() {
     }
   }
 
+  async function setReasoningAutoHide(value: boolean) {
+    settingsError.value = null
+
+    const previousFallbackReasoningAutoHide
+      = fallbackReasoningAutoHide.value
+    fallbackReasoningAutoHide.value = value
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousServerReasoningAutoHide
+      = serverReasoningAutoHide.value as boolean
+
+    serverReasoningAutoHide.value = value
+    isSavingSettings.value = true
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          reasoningAutoHide: value,
+        },
+      })
+
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverReasoningAutoHide.value = value
+      fallbackReasoningAutoHide.value = value
+    } catch (exception) {
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverReasoningAutoHide.value = previousServerReasoningAutoHide
+      fallbackReasoningAutoHide.value = previousFallbackReasoningAutoHide
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      isSavingSettings.value = false
+    }
+  }
+
   async function setAllowExternalLinks(value: boolean) {
     settingsError.value = null
 
@@ -220,6 +296,7 @@ export function useUserSetting() {
     activeUserId.value = null
     loadedUserId.value = null
     serverReasoningExpanded.value = null
+    serverReasoningAutoHide.value = null
     serverAllowExternalLinks.value = null
     settingsError.value = null
     isLoadingSettings.value = false
@@ -229,12 +306,14 @@ export function useUserSetting() {
   return {
     activeUserId,
     reasoningExpanded,
+    reasoningAutoHide,
     allowExternalLinks,
     isLoadingSettings,
     isSavingSettings,
     settingsError,
     syncForUser,
     setReasoningExpanded,
+    setReasoningAutoHide,
     setAllowExternalLinks,
     clearUserContext,
   }

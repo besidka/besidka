@@ -235,7 +235,10 @@ const activeStreamingTitle = computed<string>(() => {
 
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
-const { reasoningExpanded: isReasoningExpanded } = useUserSetting()
+const {
+  reasoningExpanded: isReasoningExpanded,
+  reasoningAutoHide,
+} = useUserSetting()
 
 const isMainExpanded = shallowRef<boolean>(false)
 const expandedStepId = shallowRef<string>('')
@@ -282,6 +285,10 @@ watch(
 
 watch(hasTextPart, (textStarted, hadText) => {
   if (!textStarted || hadText) {
+    return
+  }
+
+  if (!reasoningAutoHide.value) {
     return
   }
 

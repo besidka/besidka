@@ -30,6 +30,7 @@ describe('user settings sync plugin', () => {
   it('syncs settings immediately when auth user is already available', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       reasoningExpanded: true,
+      reasoningAutoHide: true,
     })
     const { user } = useAuth()
     const { activeUserId, reasoningExpanded } = useUserSetting()
@@ -51,6 +52,7 @@ describe('user settings sync plugin', () => {
   it('clears user context when auth user becomes null', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       reasoningExpanded: false,
+      reasoningAutoHide: true,
     })
     const { user } = useAuth()
     const { activeUserId } = useUserSetting()
@@ -76,6 +78,7 @@ describe('user settings sync plugin', () => {
   it('does not trigger sync again when user id stays unchanged', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       reasoningExpanded: false,
+      reasoningAutoHide: true,
     })
     const { user } = useAuth()
 

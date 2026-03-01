@@ -60,6 +60,8 @@ export function getAffectedTests(changedFiles) {
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
+    'tests/unit/composables/user-setting.spec.ts',
+    'tests/unit/plugins/user-settings-sync.client.spec.ts',
   ]
 
   const testMappings = [
@@ -150,6 +152,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/db\/schemas\/user-settings\.ts$/,
+      tests: profileSettingsTests,
+    },
+    {
+      pattern: /^app\/components\/Chat\/(UrlSources|Reasoning)\.vue$/,
+      tests: profileSettingsTests,
+    },
+    {
+      pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,
+      tests: profileSettingsTests,
+    },
+    {
+      pattern: /^app\/plugins\/.*user-settings.*\.ts$/,
       tests: profileSettingsTests,
     },
     {

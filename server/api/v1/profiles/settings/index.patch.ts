@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     reasoningExpanded: z.boolean().optional(),
+    reasoningAutoHide: z.boolean().optional(),
     allowExternalLinks: z.boolean().nullable().optional(),
   }).safeParse)
 
@@ -34,11 +35,16 @@ export default defineEventHandler(async (event) => {
 
   const fieldUpdates: {
     reasoningExpanded?: boolean
+    reasoningAutoHide?: boolean
     allowExternalLinks?: boolean | null
   } = {}
 
   if (body.data.reasoningExpanded !== undefined) {
     fieldUpdates.reasoningExpanded = body.data.reasoningExpanded
+  }
+
+  if (body.data.reasoningAutoHide !== undefined) {
+    fieldUpdates.reasoningAutoHide = body.data.reasoningAutoHide
   }
 
   if ('allowExternalLinks' in body.data) {

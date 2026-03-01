@@ -30,39 +30,67 @@
       <div class="dropdown-content z-50 w-44 pb-2">
         <div class="bg-base-100 rounded-box w-full shadow-sm">
           <ul class="menu menu-xs w-full">
-            <li class="menu-title text-xs pt-2">
-              Reasoning steps
-            </li>
-            <li class="">
-              <fieldset class="fieldset p-0">
-                <label
-                  class="label cursor-pointer py-1 px-2 justify-between gap-2"
-                >
-                  <span
-                    class="flex items-center gap-2"
-                    :class="{
-                      'text-primary dark:text-primary-content':
-                        reasoningExpanded
-                    }"
-                  >
-                    <Icon
-                      :name="`lucide:eye${reasoningExpanded ? '' : '-off'}`"
-                      size="16"
-                    />
-                    <span class="label-text text-xs">
-                      {{ reasoningExpanded ? 'Visible' : 'Hidden' }}
-                    </span>
-                  </span>
-                  <input
-                    data-testid="reasoning-expanded-toggle"
-                    type="checkbox"
-                    class="toggle toggle-xs"
-                    :checked="reasoningExpanded"
-                    @change="onReasoningExpandedChange"
-                  >
-                </label>
-              </fieldset>
-            </li>
+            <TransitionGroup name="slide-fade">
+              <template v-if="reasoning !== 'off'">
+                <li class="menu-title text-xs pt-2">
+                  Reasoning steps
+                </li>
+                <Transition name="slide-fade">
+                  <li v-if="reasoningExpanded">
+                    <fieldset class="fieldset p-0">
+                      <label
+                        data-tip="Once reasoning done"
+                        class="tooltip tooltip-top label cursor-pointer py-1 px-2 justify-between gap-2 text-primary dark:text-primary-content"
+                      >
+                        <span class="flex items-center gap-2">
+                          <Icon name="lucide:timer-reset" size="16" />
+                          <span class="label-text text-xs text-primary dark:text-primary-content">
+                            Auto-hide
+                          </span>
+                        </span>
+                        <input
+                          data-testid="reasoning-auto-hide-toggle"
+                          type="checkbox"
+                          class="toggle toggle-xs"
+                          :checked="reasoningAutoHide"
+                          @change="onReasoningAutoHideChange"
+                        >
+                      </label>
+                    </fieldset>
+                  </li>
+                </Transition>
+                <li>
+                  <fieldset class="fieldset p-0">
+                    <label
+                      class="label cursor-pointer py-1 px-2 justify-between gap-2 text-primary dark:text-primary-content"
+                    >
+                      <span
+                        class="flex items-center gap-2"
+                        :class="{
+                          'text-primary dark:text-primary-content':
+                            reasoningExpanded
+                        }"
+                      >
+                        <Icon
+                          name="lucide:list-tree"
+                          size="16"
+                        />
+                        <span class="label-text text-xs">
+                          Expanded
+                        </span>
+                      </span>
+                      <input
+                        data-testid="reasoning-expanded-toggle"
+                        type="checkbox"
+                        class="toggle toggle-xs"
+                        :checked="reasoningExpanded"
+                        @change="onReasoningExpandedChange"
+                      >
+                    </label>
+                  </fieldset>
+                </li>
+              </template>
+            </TransitionGroup>
             <li class="menu-title text-xs">
               Reasoning effort
             </li>
@@ -112,7 +140,12 @@ const { isIos, isAndroid } = useDevice()
 
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 const isDropdownHovered = useElementHover(dropdown)
-const { reasoningExpanded, setReasoningExpanded } = useUserSetting()
+const {
+  reasoningExpanded,
+  reasoningAutoHide,
+  setReasoningExpanded,
+  setReasoningAutoHide,
+} = useUserSetting()
 
 const isReasoningActive = computed<boolean>(() => {
   return reasoning.value !== 'off'
@@ -141,10 +174,6 @@ watch(isDropdownHovered, (hovered) => {
 
 function selectLevel(level: ReasoningLevel) {
   reasoning.value = level
-
-  if (dropdown.value?.open) {
-    dropdown.value.open = false
-  }
 }
 
 function getIconComponent(level: ReasoningLevel): string {
@@ -160,4 +189,24 @@ function onReasoningExpandedChange(event: Event) {
 
   void setReasoningExpanded(target.checked)
 }
+
+function onReasoningAutoHideChange(event: Event) {
+  const target = event.target as HTMLInputElement | null
+
+  if (!target) {
+    return
+  }
+
+  void setReasoningAutoHide(target.checked)
+}
 </script>
+<style scoped>
+  .slide-fade-enter-active {
+    transition: all 0.1s ease-in;
+  }
+
+  .slide-fade-enter-from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+</style>
