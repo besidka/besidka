@@ -18,6 +18,9 @@ export const userSettings = sqliteTable(
     reasoningExpanded: integer({ mode: 'boolean' })
       .notNull()
       .default(false),
+    reasoningAutoHide: integer({ mode: 'boolean' })
+      .notNull()
+      .default(true),
     allowExternalLinks: integer({ mode: 'boolean' }),
   },
   table => [

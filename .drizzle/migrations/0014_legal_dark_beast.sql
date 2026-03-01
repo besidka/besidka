@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `reasoning_auto_hide` integer DEFAULT true NOT NULL;

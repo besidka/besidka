@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 interface SettingsRecord {
   id: number
   reasoningExpanded: boolean
+  reasoningAutoHide: boolean
+  allowExternalLinks: boolean | null
 }
 
 function createDbMock() {
@@ -13,11 +15,15 @@ function createDbMock() {
   })
   const insertValues = vi.fn().mockImplementation(async (values: {
     userId: number
-    reasoningExpanded: boolean
+    reasoningExpanded?: boolean
+    reasoningAutoHide?: boolean
+    allowExternalLinks?: boolean | null
   }) => {
     currentSettings = {
       id: 1,
-      reasoningExpanded: values.reasoningExpanded,
+      reasoningExpanded: values.reasoningExpanded ?? false,
+      reasoningAutoHide: values.reasoningAutoHide ?? true,
+      allowExternalLinks: values.allowExternalLinks ?? null,
     }
   })
   const insert = vi.fn(() => ({
@@ -27,11 +33,21 @@ function createDbMock() {
     return undefined
   })
   const updateSet = vi.fn().mockImplementation((values: {
-    reasoningExpanded: boolean
+    reasoningExpanded?: boolean
+    reasoningAutoHide?: boolean
+    allowExternalLinks?: boolean | null
   }) => {
     currentSettings = {
       id: 1,
-      reasoningExpanded: values.reasoningExpanded,
+      reasoningExpanded: values.reasoningExpanded
+        ?? currentSettings?.reasoningExpanded
+        ?? false,
+      reasoningAutoHide: values.reasoningAutoHide
+        ?? currentSettings?.reasoningAutoHide
+        ?? true,
+      allowExternalLinks: 'allowExternalLinks' in values
+        ? (values.allowExternalLinks ?? null)
+        : (currentSettings?.allowExternalLinks ?? null),
     }
 
     return {
@@ -141,6 +157,7 @@ describe('profile settings API', () => {
 
     expect(response).toEqual({
       reasoningExpanded: false,
+      reasoningAutoHide: true,
       allowExternalLinks: null,
     })
   })
@@ -183,7 +200,70 @@ describe('profile settings API', () => {
 
     expect(getResponse).toEqual({
       reasoningExpanded: false,
+      reasoningAutoHide: true,
       allowExternalLinks: null,
+    })
+  })
+
+  it('saves and returns reasoningAutoHide', async () => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        reasoningAutoHide: false,
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      reasoningAutoHide: false,
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toEqual({
+      reasoningExpanded: false,
+      reasoningAutoHide: false,
+      allowExternalLinks: null,
+    })
+  })
+
+  it('saves and returns allowExternalLinks', async () => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        allowExternalLinks: true,
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      allowExternalLinks: true,
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toEqual({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      allowExternalLinks: true,
     })
   })
 
