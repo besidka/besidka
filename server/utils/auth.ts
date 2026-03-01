@@ -1,24 +1,29 @@
-import type { H3Event } from 'h3'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { lastLoginMethod } from 'better-auth/plugins'
+import { lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
 import * as schema from '../db/schema'
 
-let _auth: ReturnType<typeof betterAuth>
+type ServerAuth = ReturnType<typeof createAuth>
 
-export function useServerAuth(event?: H3Event) {
-  if (_auth) {
-    return _auth
+let _auth: ServerAuth | undefined
+
+export function useServerAuth(): ServerAuth {
+  if (!_auth) {
+    _auth = createAuth()
   }
 
-  event = event ?? useEvent()
+  return _auth
+}
 
-  const config = useRuntimeConfig(event)
+function createAuth() {
+  const config = useRuntimeConfig()
   const db = useDb()
   const kv = useKV()
   const dataKey = 'auth'
 
-  _auth = betterAuth({
+  const allowedHosts = getAllowedHosts(config.public.baseUrl)
+
+  return betterAuth({
     secret: config.betterAuthSecret,
     database: drizzleAdapter(db, {
       provider: 'sqlite',
@@ -34,8 +39,11 @@ export function useServerAuth(event?: H3Event) {
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
-    baseURL: getBaseURL(event),
-    trustedOrigins: getTrustedOrigins(event),
+    baseURL: {
+      allowedHosts,
+      protocol: 'auto',
+      fallback: config.public.baseUrl || undefined,
+    },
     session: {
       cookieCache: {
         enabled: true,
@@ -44,9 +52,7 @@ export function useServerAuth(event?: H3Event) {
     },
     advanced: {
       database: {
-        useNumberId: true,
-        generateId: false,
-        usePlural: true,
+        generateId: 'serial',
       },
     },
     emailAndPassword: {
@@ -100,62 +106,38 @@ export function useServerAuth(event?: H3Event) {
       },
     },
     plugins: [
+      oAuthProxy({ productionURL: config.public.baseUrl }),
       lastLoginMethod({ storeInDatabase: true }),
     ],
   })
-
-  return _auth
 }
 
-function getBaseURL(event: H3Event): string {
-  let baseURL = useRuntimeConfig(event).public.baseUrl
-
-  if (!baseURL) {
-    try {
-      baseURL = getRequestURL(event).origin
-    } catch (_exception) {
-      if (import.meta.dev) {
-        // eslint-disable-next-line no-console
-        console.log('Failed to get base URL:', _exception)
-      }
-    }
-  }
-
-  return baseURL
-}
-
-function getTrustedOrigins(event: H3Event): string[] {
-  const config = useRuntimeConfig(event)
-  const baseUrl = config.public.baseUrl
-
+function getAllowedHosts(baseUrl: string): string[] {
   if (!baseUrl) {
     return []
   }
 
-  const origins: string[] = [baseUrl]
   const url = new URL(baseUrl)
+  const host = url.host
   const hostname = url.hostname
 
-  // Preview environment: hostname contains 'preview'
-  if (hostname.includes('preview')) {
-    // Generate wildcard: example.workers.dev -> *-example.workers.dev
-    origins.push(`${url.protocol}//*-${hostname}`)
-  } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    // Development: localhost or 127.0.0.1
-    origins.push('http://localhost:*', 'http://127.0.0.1:*')
-  } else {
-    // Production: add www/apex domain variant
-    const parts = hostname.split('.')
-
-    if (parts.length === 2) {
-      // Apex domain (e.g., besidka.com) -> add www variant
-      origins.push(`${url.protocol}//www.${hostname}`)
-    } else if (hostname.startsWith('www.')) {
-      // www domain -> add apex variant
-      const apexDomain = hostname.replace('www.', '')
-      origins.push(`${url.protocol}//${apexDomain}`)
-    }
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return [host, 'localhost:*', '127.0.0.1:*']
   }
 
-  return origins
+  const parts = hostname.split('.')
+  const twoPartDomain = parts.slice(-2).join('.')
+
+  if (hostname === twoPartDomain) {
+    return [host, `www.${hostname}`]
+  }
+
+  if (hostname === `www.${twoPartDomain}`) {
+    return [host, twoPartDomain]
+  }
+
+  const subdomain = parts[0]
+  const rest = parts.slice(1).join('.')
+
+  return [host, `*-${subdomain}.${rest}`]
 }
