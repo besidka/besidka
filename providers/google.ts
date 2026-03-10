@@ -17,6 +17,20 @@ export default {
       },
     },
     {
+      id: 'gemini-3.1-flash-lite-preview',
+      name: 'Gemini 3.1 Flash Lite',
+      price: {
+        tokens: 1_000_000,
+        input: '$0.25',
+        output: '$1.50',
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'gemini-3-pro-preview',
       name: 'Gemini 3 Pro',
       price: {
@@ -31,12 +45,12 @@ export default {
       },
     },
     {
-      id: 'gemini-2.5-pro',
-      name: 'Gemini 2.5 Pro',
+      id: 'gemini-3-flash-preview',
+      name: 'Gemini 3 Flash',
       price: {
         tokens: 1_000_000,
-        input: 'from $1.25',
-        output: 'from $10.00',
+        input: '$0.50',
+        output: '$3.00',
       },
       tools: ['web_search'],
       reasoning: {
@@ -45,12 +59,12 @@ export default {
       },
     },
     {
-      id: 'gemini-3-flash-preview',
-      name: 'Gemini 3 Flash',
+      id: 'gemini-2.5-pro',
+      name: 'Gemini 2.5 Pro',
       price: {
         tokens: 1_000_000,
-        input: '$0.50',
-        output: '$3.00',
+        input: 'from $1.25',
+        output: 'from $10.00',
       },
       tools: ['web_search'],
       reasoning: {
