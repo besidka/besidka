@@ -82,11 +82,17 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
-  if (messagesToCopy.length > 0) {
+  // D1/SQLite limits bound parameters per statement (~100).
+  // Each message row binds 7 params, so cap batches at 10 rows (70 params).
+  const CHUNK_SIZE = 10
+
+  for (let i = 0; i < messagesToCopy.length; i += CHUNK_SIZE) {
+    const chunk = messagesToCopy.slice(i, i + CHUNK_SIZE)
+
     await db
       .insert(schema.messages)
       .values(
-        messagesToCopy.map(message => ({
+        chunk.map(message => ({
           chatId: newChat.id,
           role: message.role,
           parts: message.parts,
