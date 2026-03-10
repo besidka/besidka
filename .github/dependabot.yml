@@ -23,9 +23,6 @@ updates:
     # Transitive dependency updates (like lodash) will be ignored/fail gracefully
     # https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/optimizing-pr-creation-version-updates
     ignore:
-      # https://github.com/resend/resend-node/issues/826
-      - dependency-name: "resend"
-
       # Keep @types/node aligned with Node.js runtime version (v24 LTS)
       # Only allow minor/patch updates, prevent major version bumps
       - dependency-name: "@types/node"
