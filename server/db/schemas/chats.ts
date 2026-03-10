@@ -19,6 +19,7 @@ export const chats = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text().default(''),
     shared: integer({ mode: 'boolean' }),
+    pinnedAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_chat_user').on(table.id, table.userId),
