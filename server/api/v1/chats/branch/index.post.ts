@@ -1,0 +1,102 @@
+import * as schema from '~~/server/db/schema'
+
+const rules = z.object({
+  chatSlug: z.string().ulid(),
+  messageId: z.string().min(1),
+})
+
+export default defineEventHandler(async (event) => {
+  const body = await readValidatedBody(event, rules.safeParse)
+
+  if (body.error) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid request body',
+      data: body.error,
+    })
+  }
+
+  const session = await useUserSession()
+
+  if (!session?.user) {
+    return useUnauthorizedError()
+  }
+
+  const userId = parseInt(session.user.id)
+  const db = useDb()
+
+  const chat = await db.query.chats.findFirst({
+    where(chats, { and, eq }) {
+      return and(
+        eq(chats.slug, body.data.chatSlug),
+        eq(chats.userId, userId),
+      )
+    },
+    columns: {
+      id: true,
+      title: true,
+    },
+    with: {
+      messages: {
+        columns: {
+          id: true,
+          role: true,
+          parts: true,
+          tools: true,
+          reasoning: true,
+        },
+      },
+    },
+  })
+
+  if (!chat) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Chat not found.',
+    })
+  }
+
+  const branchIndex = chat.messages.findIndex((message) => {
+    return message.id === body.data.messageId
+  })
+
+  if (branchIndex === -1) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Message not found in this chat.',
+    })
+  }
+
+  const messagesToCopy = chat.messages.slice(0, branchIndex + 1)
+
+  const title = chat.title
+    ? `Branch: ${chat.title}`
+    : 'Branch'
+
+  const newChat = await db
+    .insert(schema.chats)
+    .values({ userId, title })
+    .returning({
+      id: schema.chats.id,
+      slug: schema.chats.slug,
+    })
+    .get()
+
+  if (messagesToCopy.length > 0) {
+    await db
+      .insert(schema.messages)
+      .values(
+        messagesToCopy.map(message => ({
+          chatId: newChat.id,
+          role: message.role,
+          parts: message.parts,
+          tools: message.tools,
+          reasoning: message.reasoning,
+        })),
+      )
+  }
+
+  return {
+    slug: newChat.slug,
+  }
+})

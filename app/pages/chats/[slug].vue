@@ -32,7 +32,11 @@
           'opacity-0 pointer-events-none': hideMessages,
         }"
       >
-        <ChatMessage :role="m.role">
+        <ChatMessage
+          :role="m.role"
+          :message-id="m.id"
+          @branch="branchFromMessage"
+        >
           <ChatFiles :message="m" />
           <ChatReasoning
             :message="m"
@@ -212,4 +216,30 @@ const { spacerHeight, waitingForDimensions } = useChatScroll({
   messagesDomRefs,
   chatSdk,
 })
+
+const branchPending = shallowRef(false)
+
+async function branchFromMessage(messageId: string) {
+  branchPending.value = true
+
+  try {
+    const response = await $fetch('/api/v1/chats/branch', {
+      method: 'post',
+      body: {
+        chatSlug: route.params.slug,
+        messageId,
+      },
+    })
+
+    navigateTo(`/chats/${response.slug}`)
+  } catch (exception: any) {
+    useErrorMessage(
+      exception.data?.statusMessage
+      || exception.statusMessage
+      || 'An error occurred while branching.',
+    )
+  } finally {
+    branchPending.value = false
+  }
+}
 </script>
