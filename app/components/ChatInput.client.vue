@@ -67,28 +67,53 @@
             @blur="onKeyboardBlur"
           />
           <div class="flex items-center justify-between gap-2 p-2">
-            <div
-              class="max-xs:grid max-xs:gap-0 flex items-center gap-2"
-              :class="{
-                'max-sm:grid max-xs:gap-0':
-                  isWebSearchEnabled && isReasoningActive,
-                'max-xxs:grid max-xxs:gap-0':
-                  isWebSearchEnabled || isReasoningActive,
-              }"
-            >
-              <LazyChatInputModelsTrigger
-                hydrate-on-idle
-                :is-web-search-enabled="isWebSearchEnabled"
-                :is-reasoning-enabled="isReasoningActive"
-              />
-              <div class="flex items-center gap-2 my-2 px-1">
+            <div class="flex items-center gap-2 max-sm:grow">
+              <div class="max-sm:grow min-w-0">
+                <LazyChatInputModelsTrigger
+                  hydrate-on-idle
+                  :is-web-search-enabled="isWebSearchEnabled"
+                  :is-reasoning-enabled="isReasoningActive"
+                />
+              </div>
+              <div class="hidden sm:flex items-center gap-2 my-2 px-1">
+                <div
+                  v-if="displayFolderPicker"
+                  class="join"
+                >
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-accent join-item"
+                    :class="{
+                      'btn-ghost btn-ghost-legacy !px-1.5 rounded-full':
+                        !folderContext,
+                      'rounded-l-full': folderContext
+                    }"
+                    :aria-label="folderContext
+                      ? `Current folder: ${folderContext.name}`
+                      : 'Select folder'"
+                    @click="emit('open-folder-picker')"
+                  >
+                    <Icon
+                      :name="`lucide:folder${folderContext ? '-check' : ''}`"
+                      size="14"
+                    />
+                    {{ folderContext ? folderContext.name : '' }}
+                  </button>
+                  <button
+                    v-if="folderContext"
+                    type="button"
+                    class="btn btn-accent btn-xs join-item rounded-r-full"
+                    aria-label="Remove folder"
+                    @click="emit('clear-folder-context')"
+                  >
+                    <Icon name="lucide:x" size="12" />
+                  </button>
+                </div>
                 <LazyChatInputFilesTrigger
                   hydrate-on-idle
                   :files="files"
                   @detach-all="files = []"
-                  @detach="onFilesDetached"
-                  @attach="onFilesAttached"
-                  @upload="uploadFiles"
+                  @open="openFilesModal"
                 />
                 <UiButton
                   v-if="isWebSearchSupported"
@@ -145,6 +170,29 @@
                   </template>
                 </UiButton>
               </div>
+              <LazyChatInputToolbarMore
+                hydrate-on-idle
+                :is-web-search-supported="isWebSearchSupported"
+                :is-web-search-enabled="isWebSearchEnabled"
+                :is-reasoning-supported="isReasoningSupported"
+                :is-reasoning-active="isReasoningActive"
+                :reasoning-mode="reasoningMode"
+                :reasoning="reasoning"
+                :levels="reasoningCapability?.mode === 'levels'
+                  ? reasoningCapability.levels
+                  : []
+                "
+                :display-folder-picker="displayFolderPicker"
+                :folder-context="folderContext"
+                :files-count="files.length"
+                @toggle-web-search="toggleWebSearch"
+                @open-folder-picker="emit('open-folder-picker')"
+                @clear-folder-context="emit('clear-folder-context')"
+                @open-files-select="openFilesModal('select')"
+                @open-files-upload="openFilesModal('upload')"
+                @select-reasoning-level="reasoning = $event"
+                @toggle-reasoning="toggleReasoning"
+              />
             </div>
             <div class="flex items-center gap-2">
               <UiButton
@@ -188,12 +236,22 @@
       </UiBubble>
     </div>
   </div>
+  <ClientOnly>
+    <LazyChatInputFilesModal
+      ref="filesModalRef"
+      :attached-ids="attachedIds"
+      @attach="onFilesAttached"
+      @detach="onFilesDetached"
+      @upload="uploadFiles"
+    />
+  </ClientOnly>
 </template>
 <script setup lang="ts">
 import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
   stopped?: boolean
@@ -203,10 +261,17 @@ const props = defineProps<{
   displayRegenerate?: boolean
   displayStop?: boolean
   status?: ChatStatus
+  folderContext?: {
+    id: string
+    name: string
+  } | null
+  displayFolderPicker?: boolean
 }>()
 
 const emit = defineEmits<{
-  submit: []
+  'submit': []
+  'clear-folder-context': []
+  'open-folder-picker': []
 }>()
 
 const route = useRoute()
@@ -439,6 +504,18 @@ function sendMessage() {
   message.value = ''
   files.value = []
   nuxtApp.callHook('chat:submit', { text })
+}
+
+const filesModalRef = useTemplateRef<
+  InstanceType<typeof LazyChatInputFilesModal>
+>('filesModalRef')
+
+const attachedIds = computed<Set<FileMetadata['id']>>(() => {
+  return new Set(files.value.map(file => file.id))
+})
+
+function openFilesModal(tab: 'select' | 'upload') {
+  filesModalRef.value?.open(tab)
 }
 
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')

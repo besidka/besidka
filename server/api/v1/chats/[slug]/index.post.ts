@@ -2,6 +2,7 @@ import type { LanguageModel, UIMessage } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger } from 'evlog'
+import { eq } from 'drizzle-orm'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -79,6 +80,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      folderId: true,
     },
     with: {
       messages: {
@@ -153,6 +155,8 @@ export default defineEventHandler(async (event) => {
   )
 
   if (newMessage.role === 'user' && !isDuplicateUserMessage) {
+    const activityAt = new Date()
+
     await db
       .insert(schema.messages)
       .values({
@@ -162,6 +166,16 @@ export default defineEventHandler(async (event) => {
         tools: body.data.tools,
         reasoning: body.data.reasoning,
       })
+
+    await db.update(schema.chats)
+      .set({ activityAt })
+      .where(eq(schema.chats.id, chat.id))
+
+    if (chat.folderId) {
+      await db.update(schema.folders)
+        .set({ activityAt })
+        .where(eq(schema.folders.id, chat.folderId))
+    }
   }
 
   const { provider, model } = useChatProvider(userModel)

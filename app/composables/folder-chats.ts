@@ -1,0 +1,335 @@
+import { parseError } from 'evlog'
+import type { Folder, FolderChatsResponse } from '#shared/types/folders.d'
+import type { HistoryChat } from '#shared/types/history.d'
+
+interface FolderChatsCacheEntry {
+  folder: Folder | null
+  pinned: HistoryChat[]
+  chats: HistoryChat[]
+  nextCursor: string | null
+  hasLoaded: boolean
+  lastFetchedAt: number | null
+}
+
+export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
+  const nuxtApp = useNuxtApp()
+  const resolvedFolderId = computed(() => toValue(folderId))
+  const cache = useState<Record<string, FolderChatsCacheEntry>>(
+    'folder-chats:cache',
+    () => ({}),
+  )
+
+  const folder = useState<Folder | null>('folder-chats:folder', () => null)
+  const pinned = useState<HistoryChat[]>('folder-chats:pinned', () => [])
+  const chats = useState<HistoryChat[]>('folder-chats:chats', () => [])
+  const nextCursor = useState<string | null>('folder-chats:cursor', () => null)
+
+  const isLoadingInitial = shallowRef<boolean>(false)
+  const isRefreshing = shallowRef<boolean>(false)
+  const isLoadingMore = shallowRef<boolean>(false)
+
+  const cacheKey = computed(() => {
+    return `folder:${resolvedFolderId.value}`
+  })
+
+  const hasCachedData = computed(() => {
+    return !!cache.value[cacheKey.value]?.hasLoaded
+  })
+
+  const hasMore = computed(() => nextCursor.value !== null)
+
+  function applyEntry(entry: FolderChatsCacheEntry) {
+    folder.value = entry.folder
+    pinned.value = entry.pinned
+    chats.value = entry.chats
+    nextCursor.value = entry.nextCursor
+  }
+
+  function setEntry(entry: FolderChatsCacheEntry) {
+    cache.value = {
+      ...cache.value,
+      [cacheKey.value]: entry,
+    }
+
+    applyEntry(entry)
+  }
+
+  function prime(response: FolderChatsResponse) {
+    setEntry({
+      folder: response.folder,
+      pinned: response.pinned,
+      chats: response.chats,
+      nextCursor: response.nextCursor,
+      hasLoaded: true,
+      lastFetchedAt: Date.now(),
+    })
+  }
+
+  function hydrateFromCache() {
+    const entry = cache.value[cacheKey.value]
+
+    if (!entry?.hasLoaded) {
+      return false
+    }
+
+    applyEntry(entry)
+
+    return true
+  }
+
+  async function fetchFolderChats(options?: {
+    reset?: boolean
+    background?: boolean
+    cursor?: string | null
+  }) {
+    const { reset = true, background = false, cursor = null } = options || {}
+
+    if (!resolvedFolderId.value) {
+      return
+    }
+
+    if (reset) {
+      if (background) {
+        isRefreshing.value = true
+      } else {
+        isLoadingInitial.value = true
+      }
+    } else {
+      isLoadingMore.value = true
+    }
+
+    try {
+      const response = await $fetch(
+        `/api/v1/folders/${resolvedFolderId.value}/chats`,
+        {
+          query: cursor ? { cursor } : undefined,
+        },
+      )
+
+      if (reset) {
+        setEntry({
+          folder: response.folder,
+          pinned: response.pinned,
+          chats: response.chats,
+          nextCursor: response.nextCursor,
+          hasLoaded: true,
+          lastFetchedAt: Date.now(),
+        })
+      } else {
+        const updatedChats = [...chats.value, ...response.chats]
+
+        setEntry({
+          folder: folder.value,
+          pinned: pinned.value,
+          chats: updatedChats,
+          nextCursor: response.nextCursor,
+          hasLoaded: true,
+          lastFetchedAt: Date.now(),
+        })
+      }
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to load chats',
+          parsedException.why,
+        )
+      })
+    } finally {
+      isLoadingInitial.value = false
+      isRefreshing.value = false
+      isLoadingMore.value = false
+    }
+  }
+
+  async function hydrateAndRefresh() {
+    const hasCache = hydrateFromCache()
+
+    if (!hasCache) {
+      folder.value = null
+      pinned.value = []
+      chats.value = []
+      nextCursor.value = null
+    }
+
+    await fetchFolderChats({
+      reset: true,
+      background: hasCache,
+    })
+  }
+
+  async function loadMore() {
+    if (!hasMore.value || isLoadingMore.value) {
+      return
+    }
+
+    await fetchFolderChats({
+      reset: false,
+      cursor: nextCursor.value,
+    })
+  }
+
+  function updateLists(
+    updater: (items: HistoryChat[]) => HistoryChat[],
+    nextFolder: Folder | null = folder.value,
+  ) {
+    const entry = cache.value[cacheKey.value] || {
+      folder: nextFolder,
+      pinned: [],
+      chats: [],
+      nextCursor: null,
+      hasLoaded: false,
+      lastFetchedAt: null,
+    }
+
+    setEntry({
+      ...entry,
+      folder: nextFolder,
+      pinned: updater(entry.pinned),
+      chats: updater(entry.chats),
+    })
+  }
+
+  function removeChat(chatId: string) {
+    updateLists((items) => {
+      return items.filter(chat => chat.id !== chatId)
+    })
+  }
+
+  function renameChat(chatId: string, title: string) {
+    const existingChat = [...pinned.value, ...chats.value].find((chat) => {
+      return chat.id === chatId
+    })
+
+    if (!existingChat) {
+      return
+    }
+
+    const updatedChat = {
+      ...existingChat,
+      title,
+      activityAt: new Date().toISOString(),
+    }
+
+    setEntry({
+      folder: folder.value,
+      pinned: existingChat.pinnedAt
+        ? pinned.value.map((chat) => {
+          return chat.id === chatId ? updatedChat : chat
+        })
+        : pinned.value,
+      chats: existingChat.pinnedAt
+        ? chats.value
+        : [
+          updatedChat,
+          ...chats.value.filter((chat) => {
+            return chat.id !== chatId
+          }),
+        ],
+      nextCursor: nextCursor.value,
+      hasLoaded: true,
+      lastFetchedAt: Date.now(),
+    })
+  }
+
+  function moveChat(chatId: string, folderTargetId: string | null) {
+    if (folderTargetId !== resolvedFolderId.value) {
+      removeChat(chatId)
+
+      return
+    }
+
+    updateLists((items) => {
+      return items.map((chat) => {
+        return chat.id === chatId
+          ? { ...chat, folderId: folderTargetId }
+          : chat
+      })
+    })
+  }
+
+  function togglePin(chatId: string, pinnedAt: string | null) {
+    const allChats = [...pinned.value, ...chats.value]
+    const targetChat = allChats.find(chat => chat.id === chatId)
+
+    if (!targetChat) {
+      return
+    }
+
+    const updatedChat = {
+      ...targetChat,
+      pinnedAt,
+      activityAt: new Date().toISOString(),
+    }
+
+    if (pinnedAt) {
+      setEntry({
+        folder: folder.value,
+        pinned: [
+          updatedChat,
+          ...pinned.value.filter(chat => chat.id !== chatId),
+        ],
+        chats: chats.value.filter(chat => chat.id !== chatId),
+        nextCursor: nextCursor.value,
+        hasLoaded: true,
+        lastFetchedAt: Date.now(),
+      })
+
+      return
+    }
+
+    setEntry({
+      folder: folder.value,
+      pinned: pinned.value.filter(chat => chat.id !== chatId),
+      chats: [updatedChat, ...chats.value.filter(chat => chat.id !== chatId)],
+      nextCursor: nextCursor.value,
+      hasLoaded: true,
+      lastFetchedAt: Date.now(),
+    })
+  }
+
+  function updateFolder(nextFolder: Folder) {
+    const entry = cache.value[cacheKey.value] || {
+      folder: nextFolder,
+      pinned: pinned.value,
+      chats: chats.value,
+      nextCursor: nextCursor.value,
+      hasLoaded: true,
+      lastFetchedAt: Date.now(),
+    }
+
+    setEntry({
+      ...entry,
+      folder: nextFolder,
+    })
+  }
+
+  watch(resolvedFolderId, () => {
+    if (!resolvedFolderId.value) {
+      return
+    }
+
+    hydrateAndRefresh()
+  })
+
+  return {
+    folder,
+    pinned,
+    chats,
+    nextCursor,
+    hasMore,
+    hasCachedData,
+    isLoadingInitial,
+    isRefreshing,
+    isLoadingMore,
+    prime,
+    hydrateAndRefresh,
+    loadMore,
+    removeChat,
+    renameChat,
+    moveChat,
+    togglePin,
+    updateFolder,
+  }
+}

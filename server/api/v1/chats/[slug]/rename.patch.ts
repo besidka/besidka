@@ -1,9 +1,21 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
+  const params = await getValidatedRouterParams(event, z.object({
+    slug: z.ulid(),
+  }).safeParse)
+
+  if (params.error) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid request parameters',
+      data: params.error,
+    })
+  }
+
   const body = await readValidatedBody(event, z.object({
-    chatId: z.string().nonempty(),
+    title: z.string().trim().min(1).max(200),
   }).safeParse)
 
   if (body.error) {
@@ -21,18 +33,16 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDb()
+  const userId = parseInt(session.user.id)
 
   const chat = await db.query.chats.findFirst({
     where(chats, { and, eq }) {
       return and(
-        eq(chats.id, body.data.chatId),
-        eq(chats.userId, parseInt(session.user.id)),
+        eq(chats.slug, params.data.slug),
+        eq(chats.userId, userId),
       )
     },
-    columns: {
-      id: true,
-      pinnedAt: true,
-    },
+    columns: { id: true },
   })
 
   if (!chat) {
@@ -42,11 +52,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const newPinnedAt = chat.pinnedAt ? null : new Date()
-
   await db.update(schema.chats)
-    .set({ pinnedAt: newPinnedAt, activityAt: new Date() })
-    .where(eq(schema.chats.id, chat.id))
+    .set({
+      title: body.data.title,
+      activityAt: new Date(),
+    })
+    .where(and(
+      eq(schema.chats.id, chat.id),
+      eq(schema.chats.userId, userId),
+    ))
 
-  return { pinnedAt: newPinnedAt }
+  return { title: body.data.title }
 })

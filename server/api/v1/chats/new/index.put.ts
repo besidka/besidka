@@ -21,6 +21,7 @@ const rules = z.object({
   }),
   tools: z.array(z.enum(['web_search'])),
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
+  folderId: z.string().nonempty().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -49,10 +50,29 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
 
+  let folderId: string | undefined
+
+  if (body.data.folderId) {
+    const folder = await db.query.folders.findFirst({
+      where(folders, { and, eq }) {
+        return and(
+          eq(folders.id, body.data.folderId!),
+          eq(folders.userId, userId),
+        )
+      },
+      columns: { id: true },
+    })
+
+    if (folder) {
+      folderId = folder.id
+    }
+  }
+
   const chat = await db
     .insert(schema.chats)
     .values({
       userId,
+      ...(folderId ? { folderId } : {}),
     })
     .returning({
       id: schema.chats.id,

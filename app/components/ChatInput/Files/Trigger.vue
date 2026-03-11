@@ -69,41 +69,22 @@
       </div>
     </ClientOnly>
   </details>
-  <ClientOnly>
-    <LazyChatInputFilesModal
-      ref="filesModal"
-      :attached-ids="attachedIds"
-      @attach="onFilesAttached"
-      @detach="onFilesDetached"
-      @upload="onFilesUpload"
-    />
-  </ClientOnly>
 </template>
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
-import { LazyChatInputFilesModal } from '#components'
 
-const props = defineProps<{
+defineProps<{
   files: FileMetadata[]
 }>()
 
-const attachedIds = computed<Set<FileMetadata['id']>>(() => {
-  return new Set(props.files.map(file => file.id))
-})
-
 const emit = defineEmits<{
   detachAll: []
-  attach: [files: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[]]
-  detach: [fileIds: string[]]
-  upload: [files: File[]]
+  open: [tab: 'select' | 'upload']
 }>()
 
 const { isIos, isAndroid } = useDevice()
 
-const filesModal = ref<
-  InstanceType<typeof LazyChatInputFilesModal> | null
->(null)
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 
 const isDropdownHovered = useElementHover(dropdown)
@@ -133,12 +114,7 @@ function closeDropdown() {
 
 function openModal(tab: 'select' | 'upload') {
   closeDropdown()
-  filesModal.value?.open(tab)
-}
-
-function detachAllFiles() {
-  emit('detachAll')
-  closeDropdown()
+  emit('open', tab)
 }
 
 async function onDetachAllFiles() {
@@ -149,20 +125,7 @@ async function onDetachAllFiles() {
 
   if (!result) return
 
-  detachAllFiles()
-}
-
-function onFilesAttached(
-  files: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
-) {
-  emit('attach', files)
-}
-
-function onFilesDetached(fileIds: string[]) {
-  emit('detach', fileIds)
-}
-
-function onFilesUpload(files: File[]) {
-  emit('upload', files)
+  emit('detachAll')
+  closeDropdown()
 }
 </script>

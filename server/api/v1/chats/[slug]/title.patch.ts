@@ -106,6 +106,7 @@ export default defineEventHandler(async (event) => {
   const { title: savedTitle } = await db.update(schema.chats)
     .set({
       title,
+      activityAt: new Date(),
     })
     .where(eq(schema.chats.id, chat.id))
     .returning({ title: schema.chats.title })

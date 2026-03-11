@@ -7,10 +7,7 @@
     <div class="modal-box">
       <h3
         v-if="confirmation"
-        class="text-lg font-bold"
-        :class="{
-          'text-center': !confirmation.alert,
-        }"
+        class="text-center text-lg font-bold"
       >
         {{ confirmation.text }}
       </h3>
@@ -20,18 +17,18 @@
       >
         {{ confirmation.subtitle }}
       </p>
-      <p
+      <div
         v-else-if="confirmation?.alert"
-        class="py-4"
+        role="alert"
+        class="alert alert-error alert-soft my-4 justify-center text-sm"
       >
         Be careful, this action cannot be undone.
-        It could affect other parts of the system that depends on it.
-      </p>
+      </div>
       <div class="modal-action">
         <button
           type="button"
           data-testid="confirmation-decline"
-          class="btn btn-error btn-ghost btn-sm"
+          class="btn btn-ghost btn-sm"
           @click="decline"
         >
           {{ confirmation ? labelDecline : 'Close' }}
@@ -40,7 +37,11 @@
           v-if="confirmation && actions.length === 1"
           type="button"
           data-testid="confirmation-action-0"
-          class="btn btn-primary btn-sm"
+          class="btn btn-sm"
+          :class="{
+            'btn-primary': !confirmation?.alert,
+            'btn-error': confirmation?.alert
+          }"
           @click="confirmAt(0)"
         >
           {{ actions[0] }}
