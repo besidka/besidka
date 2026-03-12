@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useFolderChats } from '../../../app/composables/folder-chats'
 import {
   createFolder,
@@ -10,6 +10,22 @@ import {
   installMockNuxtState,
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+
+  return {
+    promise,
+    resolve,
+    reject,
+  }
+}
 
 describe('useFolderChats', () => {
   beforeEach(() => {
@@ -148,5 +164,64 @@ describe('useFolderChats', () => {
     await remountedFirstFolderChats.hydrateAndRefresh()
 
     expect(remountedFirstFolderChats.folder.value?.id).toBe('folder-1')
+  })
+
+  it('ignores stale folder responses after navigating to another folder', async () => {
+    const folderA = createFolder({ id: 'folder-a', name: 'Folder A' })
+    const folderB = createFolder({ id: 'folder-b', name: 'Folder B' })
+    const folderARequest = createDeferred<
+      ReturnType<typeof createFolderChatsResponse>
+    >()
+    const folderBRequest = createDeferred<
+      ReturnType<typeof createFolderChatsResponse>
+    >()
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/folders/folder-a/chats') {
+        return folderARequest.promise
+      }
+
+      if (url === '/api/v1/folders/folder-b/chats') {
+        return folderBRequest.promise
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const folderId = ref('folder-a')
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const folderChats = useFolderChats(folderId)
+    const firstRequest = folderChats.hydrateAndRefresh()
+
+    folderId.value = 'folder-b'
+    await nextTick()
+
+    folderBRequest.resolve(createFolderChatsResponse({
+      folder: folderB,
+      chats: [createHistoryChat({ id: 'chat-b', folderId: 'folder-b' })],
+    }))
+    await Promise.resolve()
+    await nextTick()
+
+    expect(folderChats.folder.value?.id).toBe('folder-b')
+    expect(folderChats.chats.value.map(chat => chat.id)).toEqual(['chat-b'])
+
+    folderARequest.resolve(createFolderChatsResponse({
+      folder: folderA,
+      chats: [createHistoryChat({ id: 'chat-a', folderId: 'folder-a' })],
+    }))
+    await firstRequest
+    await Promise.resolve()
+    await nextTick()
+
+    expect(folderChats.folder.value?.id).toBe('folder-b')
+    expect(folderChats.chats.value.map(chat => chat.id)).toEqual(['chat-b'])
+
+    folderId.value = 'folder-a'
+    await nextTick()
+
+    expect(folderChats.hasCachedData.value).toBe(true)
+    expect(folderChats.folder.value?.id).toBe('folder-a')
+    expect(folderChats.chats.value.map(chat => chat.id)).toEqual(['chat-a'])
   })
 })

@@ -45,17 +45,19 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
     nextCursor.value = entry.nextCursor
   }
 
-  function setEntry(entry: FolderChatsCacheEntry) {
+  function setEntry(entryCacheKey: string, entry: FolderChatsCacheEntry) {
     cache.value = {
       ...cache.value,
-      [cacheKey.value]: entry,
+      [entryCacheKey]: entry,
     }
 
-    applyEntry(entry)
+    if (entryCacheKey === cacheKey.value) {
+      applyEntry(entry)
+    }
   }
 
   function prime(response: FolderChatsResponse) {
-    setEntry({
+    setEntry(cacheKey.value, {
       folder: response.folder,
       pinned: response.pinned,
       chats: response.chats,
@@ -99,15 +101,22 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
     }
 
     try {
+      const requestFolderId = resolvedFolderId.value
+      const requestCacheKey = cacheKey.value
+      const currentEntry = cache.value[requestCacheKey]
+      const currentFolder = currentEntry?.folder || folder.value
+      const currentPinned = currentEntry?.pinned || pinned.value
+      const currentChats = currentEntry?.chats || chats.value
+
       const response = await $fetch(
-        `/api/v1/folders/${resolvedFolderId.value}/chats`,
+        `/api/v1/folders/${requestFolderId}/chats`,
         {
           query: cursor ? { cursor } : undefined,
         },
       )
 
       if (reset) {
-        setEntry({
+        setEntry(requestCacheKey, {
           folder: response.folder,
           pinned: response.pinned,
           chats: response.chats,
@@ -116,11 +125,11 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
           lastFetchedAt: Date.now(),
         })
       } else {
-        const updatedChats = [...chats.value, ...response.chats]
+        const updatedChats = [...currentChats, ...response.chats]
 
-        setEntry({
-          folder: folder.value,
-          pinned: pinned.value,
+        setEntry(requestCacheKey, {
+          folder: currentFolder,
+          pinned: currentPinned,
           chats: updatedChats,
           nextCursor: response.nextCursor,
           hasLoaded: true,
@@ -183,7 +192,7 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
       lastFetchedAt: null,
     }
 
-    setEntry({
+    setEntry(cacheKey.value, {
       ...entry,
       folder: nextFolder,
       pinned: updater(entry.pinned),
@@ -212,7 +221,7 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
       activityAt: new Date().toISOString(),
     }
 
-    setEntry({
+    setEntry(cacheKey.value, {
       folder: folder.value,
       pinned: existingChat.pinnedAt
         ? pinned.value.map((chat) => {
@@ -264,7 +273,7 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
     }
 
     if (pinnedAt) {
-      setEntry({
+      setEntry(cacheKey.value, {
         folder: folder.value,
         pinned: [
           updatedChat,
@@ -279,7 +288,7 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
       return
     }
 
-    setEntry({
+    setEntry(cacheKey.value, {
       folder: folder.value,
       pinned: pinned.value.filter(chat => chat.id !== chatId),
       chats: [updatedChat, ...chats.value.filter(chat => chat.id !== chatId)],
@@ -299,7 +308,7 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
       lastFetchedAt: Date.now(),
     }
 
-    setEntry({
+    setEntry(cacheKey.value, {
       ...entry,
       folder: nextFolder,
     })

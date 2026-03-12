@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { useLogger, createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -33,6 +34,24 @@ export default defineEventHandler(async (event) => {
     folderId: body.data.folderId,
   })
 
+  const chats = await db.query.chats.findMany({
+    where(chats, { and, eq, inArray }) {
+      return and(
+        eq(chats.userId, userId),
+        inArray(chats.id, body.data.chatIds),
+      )
+    },
+    columns: {
+      id: true,
+      folderId: true,
+    },
+  })
+  const sourceFolderIds = chats
+    .map(chat => chat.folderId)
+    .filter((folderId) => {
+      return folderId !== null && folderId !== body.data.folderId
+    })
+
   if (body.data.folderId !== null) {
     const folder = await db.query.folders.findFirst({
       where(folders, { and, eq }) {
@@ -52,26 +71,34 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    const activityAt = new Date()
+
     await db.update(schema.chats)
-      .set({ folderId: folder.id, activityAt: new Date() })
+      .set({ folderId: folder.id, activityAt })
       .where(and(
         eq(schema.chats.userId, userId),
         inArray(schema.chats.id, body.data.chatIds),
       ))
 
     await db.update(schema.folders)
-      .set({ activityAt: new Date() })
+      .set({ activityAt })
       .where(eq(schema.folders.id, folder.id))
+
+    await refreshFolderActivityAt(sourceFolderIds, userId, db)
 
     return { success: true }
   }
 
+  const activityAt = new Date()
+
   await db.update(schema.chats)
-    .set({ folderId: sql`NULL`, activityAt: new Date() })
+    .set({ folderId: sql`NULL`, activityAt })
     .where(and(
       eq(schema.chats.userId, userId),
       inArray(schema.chats.id, body.data.chatIds),
     ))
+
+  await refreshFolderActivityAt(sourceFolderIds, userId, db)
 
   return { success: true }
 })

@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { useLogger, createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -51,7 +52,7 @@ export default defineEventHandler(async (event) => {
         eq(chats.userId, userId),
       )
     },
-    columns: { id: true },
+    columns: { id: true, folderId: true },
   })
 
   if (!chat) {
@@ -80,26 +81,38 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    const activityAt = new Date()
+
     await db.update(schema.chats)
-      .set({ folderId: folder.id, activityAt: new Date() })
+      .set({ folderId: folder.id, activityAt })
       .where(and(
         eq(schema.chats.id, chat.id),
         eq(schema.chats.userId, userId),
       ))
 
     await db.update(schema.folders)
-      .set({ activityAt: new Date() })
+      .set({ activityAt })
       .where(eq(schema.folders.id, folder.id))
+
+    if (chat.folderId && chat.folderId !== folder.id) {
+      await refreshFolderActivityAt([chat.folderId], userId, db)
+    }
 
     return { folderId: folder.id }
   }
 
+  const activityAt = new Date()
+
   await db.update(schema.chats)
-    .set({ folderId: sql`NULL`, activityAt: new Date() })
+    .set({ folderId: sql`NULL`, activityAt })
     .where(and(
       eq(schema.chats.id, chat.id),
       eq(schema.chats.userId, userId),
     ))
+
+  if (chat.folderId) {
+    await refreshFolderActivityAt([chat.folderId], userId, db)
+  }
 
   return { folderId: null }
 })

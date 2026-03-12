@@ -13,37 +13,37 @@
   </div>
 
   <UiBubble class="flex flex-col gap-4">
-    <div
-      role="tablist"
-      class="tabs tabs-box tabs-sm"
+    <nav
+      aria-label="History sections"
+      class="tabs tabs-border"
     >
       <NuxtLink
         to="/chats/history"
-        role="tab"
-        class="tab w-1/2"
+        class="tab grow"
         :class="{ 'tab-active': activeTab === 'chats' }"
+        :aria-current="activeTab === 'chats' ? 'page' : undefined"
       >
         <Icon
-        size="14"
-        name="lucide:message-circle"
+          size="14"
+          name="lucide:message-circle"
           class="mr-2"
         />
         Chats
       </NuxtLink>
       <NuxtLink
         to="/chats/folders"
-        role="tab"
-        class="tab w-1/2"
+        class="tab grow"
         :class="{ 'tab-active': activeTab === 'folders' }"
+        :aria-current="activeTab === 'folders' ? 'page' : undefined"
       >
-       <Icon
+        <Icon
           name="lucide:folders"
           size="14"
           class="mr-2"
         />
         Folders
       </NuxtLink>
-    </div>
+    </nav>
 
     <slot name="toolbar" />
     <slot name="secondary-tabs" />

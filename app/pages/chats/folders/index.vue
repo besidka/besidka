@@ -51,35 +51,26 @@
 
     <template #secondary-tabs>
       <div
-        role="tablist"
+        role="radiogroup"
+        aria-label="Folder visibility"
         class="tabs tabs-box tabs-sm shrink-0"
       >
-        <button
-          role="tab"
-          class="tab w-1/2"
-          :class="{ 'tab-active': !showArchived }"
-          @click="showArchived = false"
+        <input
+          type="radio"
+          name="folder_visibility"
+          class="tab grow"
+          aria-label="Active"
+          :checked="!showArchived"
+          @change="showArchived = false"
         >
-          <Icon
-            name="lucide:folder-check"
-            size="14"
-            class="mr-2"
-          />
-          Active
-        </button>
-        <button
-          role="tab"
-          class="tab w-1/2"
-          :class="{ 'tab-active': showArchived }"
-          @click="showArchived = true"
+        <input
+          type="radio"
+          name="folder_visibility"
+          class="tab grow"
+          aria-label="Archived"
+          :checked="showArchived"
+          @change="showArchived = true"
         >
-          <Icon
-            name="lucide:archive"
-            size="14"
-            class="mr-2"
-          />
-          Archived
-        </button>
       </div>
     </template>
 

@@ -69,6 +69,9 @@ The folder detail response includes:
 - Unpinned chats inside a folder use cursor pagination
 - Pinned chats are returned separately
 - Cache key format: `folder:${folderId}`
+- Fetch results are written back to the cache entry that started the request, so
+  late responses from a previously viewed folder do not overwrite the current
+  folder view
 
 ### Chat actions inside a folder
 
@@ -112,13 +115,19 @@ immediately.
 
 ## Activity Semantics
 
-Folder `activityAt` currently changes when chats are moved into a folder:
+Folder `activityAt` changes when folder chat membership changes:
 
-- single chat move into folder
-- bulk move into folder
+- creating a new chat inside a folder
+- single chat move into a folder
+- bulk move into a folder
+- moving chats out of a folder, including moving them to root
 
-Folder rename, pin, and archive update folder metadata but do not currently
-change `activityAt`.
+When chats move out of a folder, the source folder is recomputed from its
+latest remaining chat. If the folder becomes empty, it falls back to the
+folder creation time.
+
+Folder rename, pin, and archive update folder metadata but do not change
+`activityAt`.
 
 ## APIs
 
@@ -180,8 +189,21 @@ Covered cases:
 - debounced search
 - sort and archive filter queries
 - folder detail cursor loading
+- folder detail ignores stale responses after folder navigation
 - folder detail rename/remove/move behavior
 - folder detail pinning and folder metadata updates
+
+Additional coverage:
+
+- `tests/integration/api/chats-history.spec.ts`
+- `tests/integration/api/chats-new.spec.ts`
+- `tests/unit/utils/folder-activity.spec.ts`
+
+Covered cases:
+
+- move endpoints refresh source folder activity
+- creating a chat inside a folder bumps folder activity
+- folder activity recomputation falls back to folder creation time when empty
 
 ### Integration coverage
 

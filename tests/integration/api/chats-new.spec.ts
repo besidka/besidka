@@ -1,0 +1,111 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({
+  validateMessageFilePolicy: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/utils/files/file-governance', () => ({
+  validateMessageFilePolicy: mocks.validateMessageFilePolicy,
+}))
+
+async function getNewChatHandler() {
+  const module = await import('../../../server/api/v1/chats/new/index.put')
+
+  return module.default
+}
+
+describe('new chat API', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
+
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('createError', (input: {
+      statusCode?: number
+      statusMessage?: string
+      data?: unknown
+    }) => {
+      const exception = new Error(input.statusMessage || 'Error')
+
+      Object.assign(exception, input)
+
+      return exception
+    })
+    vi.stubGlobal('useUnauthorizedError', () => {
+      throw (globalThis as any).createError({
+        statusCode: 401,
+        statusMessage: 'Unauthorized',
+      })
+    })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: '1' },
+    }))
+  })
+
+  it('bumps folder activity when creating a new chat inside a folder', async () => {
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-1',
+          slug: 'chat-1',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(async () => undefined)
+    const folderUpdateWhere = vi.fn(async () => undefined)
+    const folderUpdateSet = vi.fn(() => ({
+      where: folderUpdateWhere,
+    }))
+    const db = {
+      query: {
+        folders: {
+          findFirst: vi.fn(async () => ({ id: 'folder-1' })),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({
+          values: chatsInsertValues,
+        })
+        .mockReturnValueOnce({
+          values: messagesInsertValues,
+        }),
+      update: vi.fn(() => ({
+        set: folderUpdateSet,
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        parts: [{ type: 'text', text: 'Hello' }],
+        tools: [],
+        reasoning: 'off',
+        folderId: 'folder-1',
+      },
+    } as any)
+
+    expect(response).toEqual({ slug: 'chat-1' })
+    expect(mocks.validateMessageFilePolicy).toHaveBeenCalledWith(
+      1,
+      [{ type: 'text', text: 'Hello' }],
+    )
+    expect(chatsInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 1,
+      folderId: 'folder-1',
+      activityAt: expect.any(Date),
+    }))
+    expect(folderUpdateSet).toHaveBeenCalledWith({
+      activityAt: expect.any(Date),
+    })
+    expect(folderUpdateWhere).toHaveBeenCalledTimes(1)
+  })
+})

@@ -6,6 +6,7 @@ import { createHistoryCursor } from '../../../server/utils/chats/history/cursor'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
+  refreshFolderActivityAt: vi.fn(async () => undefined),
 }))
 
 vi.mock('evlog', () => ({
@@ -27,6 +28,10 @@ vi.mock('evlog', () => ({
 
     return exception
   },
+}))
+
+vi.mock('~~/server/utils/folders/activity', () => ({
+  refreshFolderActivityAt: mocks.refreshFolderActivityAt,
 }))
 
 async function getHistoryHandler() {
@@ -111,6 +116,7 @@ describe('chat history API', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    mocks.refreshFolderActivityAt.mockResolvedValue(undefined)
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -328,7 +334,7 @@ describe('chat history API', () => {
     }))
   })
 
-  it('moves chats into folders and updates folder activity for single and bulk actions', async () => {
+  it('moves chats into folders and refreshes source folder activity for single and bulk actions', async () => {
     const singleHandler = await getFolderMoveHandler()
     const bulkHandler = await getBulkFolderMoveHandler()
     const schema = await import('../../../server/db/schema')
@@ -343,7 +349,14 @@ describe('chat history API', () => {
     const db = {
       query: {
         chats: {
-          findFirst: vi.fn(async () => ({ id: 'chat-1' })),
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            folderId: 'folder-source',
+          })),
+          findMany: vi.fn(async () => ([
+            { id: 'chat-1', folderId: 'folder-source' },
+            { id: 'chat-2', folderId: 'folder-other' },
+          ])),
         },
         folders: {
           findFirst: vi.fn(async () => ({ id: 'folder-1' })),
@@ -384,5 +397,17 @@ describe('chat history API', () => {
     expect(folderSet).toHaveBeenCalledWith(expect.objectContaining({
       activityAt: expect.any(Date),
     }))
+    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+      1,
+      ['folder-source'],
+      1,
+      db,
+    )
+    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+      2,
+      ['folder-source', 'folder-other'],
+      1,
+      db,
+    )
   })
 })

@@ -1,4 +1,5 @@
 import type { TextUIPart, FileUIPart } from 'ai'
+import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event) => {
   )
 
   const db = useDb()
+  const activityAt = new Date()
 
   let folderId: string | undefined
 
@@ -72,6 +74,7 @@ export default defineEventHandler(async (event) => {
     .insert(schema.chats)
     .values({
       userId,
+      activityAt,
       ...(folderId ? { folderId } : {}),
     })
     .returning({
@@ -89,6 +92,15 @@ export default defineEventHandler(async (event) => {
       tools: body.data.tools,
       reasoning: body.data.reasoning,
     })
+
+  if (folderId) {
+    await db.update(schema.folders)
+      .set({ activityAt })
+      .where(and(
+        eq(schema.folders.id, folderId),
+        eq(schema.folders.userId, userId),
+      ))
+  }
 
   return {
     slug: chat.slug,

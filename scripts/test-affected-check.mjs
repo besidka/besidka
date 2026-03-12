@@ -63,6 +63,21 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
   ]
+  const historyFoldersTests = [
+    'tests/unit/components/HistoryPageShell.spec.ts',
+    'tests/unit/composables/history.spec.ts',
+    'tests/unit/composables/folders.spec.ts',
+    'tests/unit/composables/folder-chats.spec.ts',
+    'tests/unit/components/HistoryChatSections.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/pages/folders-index.spec.ts',
+    'tests/unit/utils/date-groups.spec.ts',
+    'tests/unit/utils/folder-activity.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/folders.spec.ts',
+    'tests/integration/pages/history-cache.spec.ts',
+  ]
 
   const testMappings = [
     {
@@ -106,12 +121,36 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/composables\/(history|folders|folder-chats)\.ts$/,
+      tests: historyFoldersTests,
+    },
+    {
       pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/components\/History\/.*\.vue$/,
+      tests: historyFoldersTests,
+    },
+    {
+      pattern: /^app\/pages\/chats\/(history|new)\.vue$/,
+      tests: historyFoldersTests,
+    },
+    {
+      pattern: /^app\/pages\/chats\/folders\/.*\.vue$/,
+      tests: historyFoldersTests,
+    },
+    {
       pattern: /^server\/api\/v1\/files\/.*\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/.*\.ts$/,
+      tests: historyFoldersTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/folders\/.*\.ts$/,
+      tests: historyFoldersTests,
     },
     {
       pattern: /^server\/routes\/files\/.*\.ts$/,
@@ -126,6 +165,18 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
+      tests: historyFoldersTests,
+    },
+    {
+      pattern: /^server\/utils\/folders\/.*\.ts$/,
+      tests: historyFoldersTests,
+    },
+    {
+      pattern: /^shared\/(types\/(history|folders)\.d\.ts|utils\/date-groups\.ts)$/,
+      tests: historyFoldersTests,
+    },
+    {
       pattern: /^shared\/types\/files\.d\.ts$/,
       tests: filesModuleTests,
     },
@@ -134,9 +185,14 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^server\/db\/schemas\/(chats|folders|messages)\.ts$/,
+      tests: historyFoldersTests,
+    },
+    {
       pattern: /^server\/db\/schema\.ts$/,
       tests: [
         ...filesModuleTests,
+        ...historyFoldersTests,
         ...profileSettingsTests,
       ],
     },

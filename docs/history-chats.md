@@ -99,11 +99,20 @@ The current implementation refreshes `activityAt` for:
 
 - rename
 - pin / unpin
+- creating a new chat inside a folder
 - add to folder
 - remove from folder
 - bulk folder moves
 
-This affects ordering and date-group placement.
+For folder assignment changes, chat `activityAt` is refreshed and the affected
+folder `activityAt` values are kept in sync as well:
+
+- destination folders are bumped immediately on move
+- source folders are recomputed from their latest remaining chat when chats are
+  moved out
+
+This affects ordering and date-group placement for chats and activity sorting
+for folders.
 
 ## Date Grouping
 
@@ -186,8 +195,9 @@ Covered cases:
 - next cursor calculation
 - rename endpoint
 - delete endpoints
-- folder move endpoints
+- folder move endpoints, including source-folder activity refresh
 - pin endpoint
+- new chat in folder updates folder activity
 - cache persistence across remount-style navigation
 
 ### Useful commands
