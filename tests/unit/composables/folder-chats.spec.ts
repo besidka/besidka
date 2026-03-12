@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick, ref } from 'vue'
+import { effectScope, nextTick, ref, type EffectScope } from 'vue'
 import { useFolderChats } from '../../../app/composables/folder-chats'
 import {
   createFolder,
@@ -27,6 +27,21 @@ function createDeferred<T>() {
   }
 }
 
+const scopes: EffectScope[] = []
+
+function createFolderChatsComposable(folderId: ReturnType<typeof ref<string>>) {
+  const scope = effectScope()
+  const folderChats = scope.run(() => useFolderChats(folderId))
+
+  scopes.push(scope)
+
+  if (!folderChats) {
+    throw new Error('Failed to create folder chats composable')
+  }
+
+  return folderChats
+}
+
 describe('useFolderChats', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -38,6 +53,9 @@ describe('useFolderChats', () => {
   })
 
   afterEach(() => {
+    scopes.splice(0).forEach((scope) => {
+      scope.stop()
+    })
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -166,7 +184,7 @@ describe('useFolderChats', () => {
     expect(remountedFirstFolderChats.folder.value?.id).toBe('folder-1')
   })
 
-  it('ignores stale folder responses after navigating to another folder', async () => {
+  it('queues the active folder refresh after navigating away mid-request', async () => {
     const folderA = createFolder({ id: 'folder-a', name: 'Folder A' })
     const folderB = createFolder({ id: 'folder-b', name: 'Folder B' })
     const folderARequest = createDeferred<
@@ -196,19 +214,24 @@ describe('useFolderChats', () => {
     folderId.value = 'folder-b'
     await nextTick()
 
-    folderBRequest.resolve(createFolderChatsResponse({
-      folder: folderB,
-      chats: [createHistoryChat({ id: 'chat-b', folderId: 'folder-b' })],
-    }))
-    await Promise.resolve()
-    await nextTick()
-
-    expect(folderChats.folder.value?.id).toBe('folder-b')
-    expect(folderChats.chats.value.map(chat => chat.id)).toEqual(['chat-b'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(folderChats.folder.value).toBeNull()
 
     folderARequest.resolve(createFolderChatsResponse({
       folder: folderA,
       chats: [createHistoryChat({ id: 'chat-a', folderId: 'folder-a' })],
+    }))
+    await Promise.resolve()
+    await nextTick()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/folders/folder-b/chats', {
+      query: undefined,
+    })
+
+    folderBRequest.resolve(createFolderChatsResponse({
+      folder: folderB,
+      chats: [createHistoryChat({ id: 'chat-b', folderId: 'folder-b' })],
     }))
     await firstRequest
     await Promise.resolve()
@@ -223,5 +246,44 @@ describe('useFolderChats', () => {
     expect(folderChats.hasCachedData.value).toBe(true)
     expect(folderChats.folder.value?.id).toBe('folder-a')
     expect(folderChats.chats.value.map(chat => chat.id)).toEqual(['chat-a'])
+  })
+
+  it('blocks load-more while a cached refresh is already in flight', async () => {
+    const folderId = ref('folder-1')
+    const folder = createFolder({ id: 'folder-1', name: 'Folder one' })
+    const refreshDeferred = createDeferred<
+      ReturnType<typeof createFolderChatsResponse>
+    >()
+    const fetchMock = vi.fn(() => refreshDeferred.promise)
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const folderChats = createFolderChatsComposable(folderId)
+    folderChats.prime(createFolderChatsResponse({
+      folder,
+      chats: [createHistoryChat({ id: 'chat-cached' })],
+      nextCursor: '2026-03-10T10:00:00.000Z',
+    }))
+
+    const refreshRequest = folderChats.hydrateAndRefresh()
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await folderChats.loadMore()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    refreshDeferred.resolve(createFolderChatsResponse({
+      folder,
+      chats: [createHistoryChat({ id: 'chat-fresh' })],
+      nextCursor: null,
+    }))
+    await refreshRequest
+
+    expect(folderChats.chats.value.map(chat => chat.id)).toEqual([
+      'chat-fresh',
+    ])
+    expect(folderChats.nextCursor.value).toBeNull()
   })
 })

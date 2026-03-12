@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs'
 import { defineComponent, nextTick } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
+import {
+  installMockNuxtState,
+  resetMockNuxtState,
+} from '../../setup/helpers/nuxt-state'
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void
@@ -26,6 +31,8 @@ describe('chats new page', () => {
   const replace = vi.fn()
 
   beforeEach(() => {
+    resetMockNuxtState()
+    installMockNuxtState()
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     vi.stubGlobal('useRoute', () => route)
@@ -42,6 +49,7 @@ describe('chats new page', () => {
   afterEach(() => {
     route.query = {}
     replace.mockReset()
+    resetMockNuxtState()
   })
 
   it('ignores stale folder lookups after the user selects another folder', async () => {
@@ -143,5 +151,17 @@ describe('chats new page', () => {
     expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
       'folder-b|Folder B',
     )
+  })
+
+  it('stores folder context in serialized Nuxt state', () => {
+    const source = readFileSync(
+      `${process.cwd()}/app/pages/chats/new.vue`,
+      'utf8',
+    )
+
+    expect(source).toContain(
+      'const folderContext = useState<{ id: string, name: string } | null>(',
+    )
+    expect(source).toContain('\'chats-new:folder-context\'')
   })
 })

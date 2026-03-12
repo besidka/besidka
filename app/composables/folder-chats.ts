@@ -27,6 +27,8 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
   const isLoadingInitial = shallowRef<boolean>(false)
   const isRefreshing = shallowRef<boolean>(false)
   const isLoadingMore = shallowRef<boolean>(false)
+  const isLoading = shallowRef<boolean>(false)
+  const queuedResetKey = shallowRef<string | null>(null)
 
   const cacheKey = computed(() => {
     return `folder:${resolvedFolderId.value}`
@@ -85,10 +87,22 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
     cursor?: string | null
   }) {
     const { reset = true, background = false, cursor = null } = options || {}
+    const requestCacheKey = cacheKey.value
+    let retryOptions: { background: boolean } | null = null
 
     if (!resolvedFolderId.value) {
       return
     }
+
+    if (isLoading.value) {
+      if (reset) {
+        queuedResetKey.value = requestCacheKey
+      }
+
+      return
+    }
+
+    isLoading.value = true
 
     if (reset) {
       if (background) {
@@ -102,7 +116,6 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
 
     try {
       const requestFolderId = resolvedFolderId.value
-      const requestCacheKey = cacheKey.value
       const currentEntry = cache.value[requestCacheKey]
       const currentFolder = currentEntry?.folder || folder.value
       const currentPinned = currentEntry?.pinned || pinned.value
@@ -146,9 +159,33 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
         )
       })
     } finally {
+      isLoading.value = false
       isLoadingInitial.value = false
       isRefreshing.value = false
       isLoadingMore.value = false
+
+      const retryKey = queuedResetKey.value
+      const shouldRetryQueuedReset = retryKey !== null
+        && retryKey !== requestCacheKey
+        && retryKey === cacheKey.value
+
+      if (shouldRetryQueuedReset) {
+        const retryHasCache = !!cache.value[retryKey]?.hasLoaded
+
+        queuedResetKey.value = null
+        retryOptions = {
+          background: retryHasCache,
+        }
+      } else {
+        queuedResetKey.value = null
+      }
+    }
+
+    if (retryOptions) {
+      await fetchFolderChats({
+        reset: true,
+        background: retryOptions.background,
+      })
     }
   }
 
@@ -169,7 +206,7 @@ export function useFolderChats(folderId: MaybeRefOrGetter<string>) {
   }
 
   async function loadMore() {
-    if (!hasMore.value || isLoadingMore.value) {
+    if (!hasMore.value || isLoading.value) {
       return
     }
 

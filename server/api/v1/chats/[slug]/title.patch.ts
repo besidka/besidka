@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -33,16 +34,18 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDb()
+  const userId = parseInt(session.user.id)
   const chat = await db.query.chats.findFirst({
     where(chats, { and, eq }) {
       return and(
         eq(chats.slug, params.data.slug),
-        eq(chats.userId, parseInt(session.user.id)),
+        eq(chats.userId, userId),
       )
     },
     columns: {
       id: true,
       title: true,
+      folderId: true,
     },
     with: {
       messages: {
@@ -111,6 +114,10 @@ export default defineEventHandler(async (event) => {
     .where(eq(schema.chats.id, chat.id))
     .returning({ title: schema.chats.title })
     .get()
+
+  if (chat.folderId) {
+    await refreshFolderActivityAt([chat.folderId], userId, db)
+  }
 
   return savedTitle
 })

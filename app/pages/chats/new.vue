@@ -62,14 +62,19 @@ const reasoning = useLocalStorage<ReasoningLevel>(
 const folderId = shallowRef<string | null>(
   (route.query.folderId as string) || null,
 )
-const folderContext = shallowRef<{ id: string, name: string } | null>(
-  folderId.value
-    ? {
-      id: folderId.value,
-      name: 'Folder',
-    }
-    : null,
+const folderContext = useState<{ id: string, name: string } | null>(
+  'chats-new:folder-context',
+  () => null,
 )
+
+if (!folderId.value) {
+  folderContext.value = null
+} else if (folderContext.value?.id !== folderId.value) {
+  folderContext.value = {
+    id: folderId.value,
+    name: 'Folder',
+  }
+}
 
 reasoning.value = normalizeReasoningLevel(reasoning.value)
 
