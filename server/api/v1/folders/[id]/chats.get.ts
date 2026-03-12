@@ -1,6 +1,10 @@
-import { and, desc, eq, isNotNull, isNull, lt } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull, lt, or } from 'drizzle-orm'
 import { useLogger, createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import {
+  createHistoryCursor,
+  parseHistoryCursor,
+} from '~~/server/utils/chats/history/cursor'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
@@ -62,9 +66,16 @@ export default defineEventHandler(async (event) => {
     ? parseInt(query.limit as string)
     : DEFAULT_LIMIT
   const limit = Math.min(Math.max(rawLimit, 1), MAX_LIMIT)
+  const parsedCursor = parseHistoryCursor(cursor)
 
-  const cursorFilter = cursor
-    ? lt(schema.chats.activityAt, new Date(cursor))
+  const cursorFilter = parsedCursor
+    ? or(
+      lt(schema.chats.activityAt, parsedCursor.activityAt),
+      and(
+        eq(schema.chats.activityAt, parsedCursor.activityAt),
+        lt(schema.chats.id, parsedCursor.id),
+      ),
+    )
     : undefined
 
   const pinnedQuery = db.select({
@@ -111,14 +122,14 @@ export default defineEventHandler(async (event) => {
       isNull(schema.chats.pinnedAt),
       cursorFilter,
     ))
-    .orderBy(desc(schema.chats.activityAt))
+    .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
     .limit(limit)
 
   const [pinned, chats] = await db.batch([pinnedQuery, chatsQuery])
 
   const lastChat = chats[chats.length - 1]
   const nextCursor = chats.length === limit && lastChat
-    ? lastChat.activityAt.toISOString()
+    ? createHistoryCursor(lastChat)
     : null
 
   return {

@@ -12,6 +12,7 @@ vi.mock('#app', () => ({
     },
     callHook: vi.fn(),
     hook: vi.fn(),
+    runWithContext: (callback: () => unknown) => callback(),
   })),
   useState: vi.fn((key: string, init?: () => any) => {
     const state = ref<unknown>(init ? init() : null)
@@ -127,7 +128,9 @@ vi.stubGlobal('useWarningMessage', vi.fn())
  * Suppress Vue lifecycle hook warnings in tests
  * when composables are called outside component context
  */
+// eslint-disable-next-line no-console
 const originalWarn = console.warn
+// eslint-disable-next-line no-console
 console.warn = (...args: unknown[]) => {
   const message = String(args[0])
 

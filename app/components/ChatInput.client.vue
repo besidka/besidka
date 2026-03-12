@@ -67,15 +67,15 @@
             @blur="onKeyboardBlur"
           />
           <div class="flex items-center justify-between gap-2 p-2">
-            <div class="flex items-center gap-2 max-sm:grow">
-              <div class="max-sm:grow min-w-0">
+            <div class="flex items-center gap-2 max-md:grow">
+              <div class="max-md:grow min-w-0">
                 <LazyChatInputModelsTrigger
                   hydrate-on-idle
                   :is-web-search-enabled="isWebSearchEnabled"
                   :is-reasoning-enabled="isReasoningActive"
                 />
               </div>
-              <div class="hidden sm:flex items-center gap-2 my-2 px-1">
+              <div class="hidden md:flex items-center gap-2 my-2 px-1">
                 <div
                   v-if="displayFolderPicker"
                   class="join"

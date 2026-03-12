@@ -1,5 +1,20 @@
-import { and, desc, eq, isNotNull, isNull, lt, like } from 'drizzle-orm'
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  or,
+} from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import {
+  compareHistoryCursorRows,
+  createHistoryCursor,
+  parseHistoryCursor,
+} from '~~/server/utils/chats/history/cursor'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
@@ -24,6 +39,7 @@ export default defineEventHandler(async () => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+  const parsedCursor = parseHistoryCursor(cursor)
 
   const columns = {
     id: schema.chats.id,
@@ -42,8 +58,14 @@ export default defineEventHandler(async () => {
     ? like(schema.chats.title, searchPattern)
     : undefined
 
-  const cursorFilter = cursor
-    ? lt(schema.chats.activityAt, new Date(cursor))
+  const cursorFilter = parsedCursor
+    ? or(
+      lt(schema.chats.activityAt, parsedCursor.activityAt),
+      and(
+        eq(schema.chats.activityAt, parsedCursor.activityAt),
+        lt(schema.chats.id, parsedCursor.id),
+      ),
+    )
     : undefined
 
   if (hasSearch) {
@@ -57,27 +79,27 @@ export default defineEventHandler(async () => {
         eq(schema.chats.userId, userId),
         titleFilter,
       ))
-      .orderBy(desc(schema.chats.activityAt))
+      .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
       .limit(limit)
 
-    const contentMatchQuery = db.select({
-      ...columns,
-      matchedContent: schema.messages.parts,
-    })
+    const contentMatchQuery = db.select(columns)
       .from(schema.chats)
       .leftJoin(
         schema.folders,
         eq(schema.folders.id, schema.chats.folderId),
       )
-      .innerJoin(
-        schema.messages,
-        eq(schema.messages.chatId, schema.chats.id),
-      )
       .where(and(
         eq(schema.chats.userId, userId),
-        like(schema.messages.parts, searchPattern!),
+        exists(
+          db.select({ id: schema.messages.id })
+            .from(schema.messages)
+            .where(and(
+              eq(schema.messages.chatId, schema.chats.id),
+              like(schema.messages.parts, searchPattern!),
+            )),
+        ),
       ))
-      .orderBy(desc(schema.chats.activityAt))
+      .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
       .limit(limit)
 
     const [titleMatches, contentMatches] = await db.batch([
@@ -111,9 +133,7 @@ export default defineEventHandler(async () => {
       }
     }
 
-    merged.sort((a, b) => {
-      return b.activityAt.getTime() - a.activityAt.getTime()
-    })
+    merged.sort(compareHistoryCursorRows)
 
     const pinned = merged.filter(chat => chat.pinnedAt !== null)
     const chats = merged.filter(chat => chat.pinnedAt === null)
@@ -149,14 +169,14 @@ export default defineEventHandler(async () => {
       isNull(schema.chats.pinnedAt),
       cursorFilter,
     ))
-    .orderBy(desc(schema.chats.activityAt))
+    .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
     .limit(limit)
 
   const [pinned, chats] = await db.batch([pinnedQuery, chatsQuery])
 
   const lastChat = chats[chats.length - 1]
   const nextCursor = chats.length === limit && lastChat
-    ? lastChat.activityAt.toISOString()
+    ? createHistoryCursor(lastChat)
     : null
 
   return {

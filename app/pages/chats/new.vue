@@ -50,6 +50,7 @@ useSeoMeta({
 })
 
 const route = useRoute()
+const router = useRouter()
 const message = useLocalStorage<string>('chat_input', '')
 const files = ref<FileMetadata[]>([])
 const tools = shallowRef<Tools>([])
@@ -61,14 +62,11 @@ const reasoning = useLocalStorage<ReasoningLevel>(
 const folderId = shallowRef<string | null>(
   (route.query.folderId as string) || null,
 )
-const folderName = shallowRef<string>(
-  (route.query.folderName as string) || '',
-)
 const folderContext = shallowRef<{ id: string, name: string } | null>(
   folderId.value
     ? {
       id: folderId.value,
-      name: folderName.value || 'Folder',
+      name: 'Folder',
     }
     : null,
 )
@@ -82,40 +80,94 @@ interface FolderPickerInstance {
 
 const folderPickerRef = shallowRef<FolderPickerInstance | null>(null)
 
-function clearFolder() {
-  folderId.value = null
-  folderName.value = ''
-  folderContext.value = null
+function updateFolderQuery(
+  nextFolderId: string | null,
+) {
+  if (import.meta.server) {
+    return
+  }
+
+  router.replace({
+    query: {
+      ...route.query,
+      folderId: nextFolderId || undefined,
+    },
+  })
 }
 
-watch(folderId, async (nextFolderId) => {
+function clearFolder() {
+  folderId.value = null
+  folderContext.value = null
+
+  updateFolderQuery(null)
+}
+
+async function fetchFolderContext(nextFolderId: string) {
+  return import.meta.server
+    ? await useRequestFetch()(`/api/v1/folders/${nextFolderId}`)
+    : await $fetch(`/api/v1/folders/${nextFolderId}`)
+}
+
+async function syncFolderContext(
+  nextFolderId: string | null,
+  canApply: () => boolean = () => true,
+) {
   if (!nextFolderId) {
-    folderContext.value = null
+    if (canApply()) {
+      folderContext.value = null
+    }
 
     return
   }
 
-  folderContext.value = {
-    id: nextFolderId,
-    name: folderName.value || 'Folder',
+  if (canApply()) {
+    folderContext.value = {
+      id: nextFolderId,
+      name: 'Folder',
+    }
   }
 
   try {
-    const folder = await $fetch(`/api/v1/folders/${nextFolderId}`)
+    const folder = await fetchFolderContext(nextFolderId)
 
-    folderName.value = folder.name
+    if (!canApply()) {
+      return
+    }
+
     folderContext.value = {
       id: folder.id,
       name: folder.name,
     }
   } catch (exception) {
+    if (!canApply()) {
+      return
+    }
+
     const parsedException = parseError(exception)
 
     if (parsedException.status === 404) {
       clearFolder()
     }
   }
-}, { immediate: true })
+}
+
+if (import.meta.server && folderId.value) {
+  await syncFolderContext(folderId.value)
+}
+
+if (import.meta.client) {
+  watch(folderId, async (nextFolderId, _previousFolderId, onCleanup) => {
+    let isStale = false
+
+    onCleanup(() => {
+      isStale = true
+    })
+
+    await syncFolderContext(nextFolderId, () => {
+      return !isStale && folderId.value === nextFolderId
+    })
+  }, { immediate: true })
+}
 
 function openFolderPicker() {
   folderPickerRef.value?.open(folderId.value)
@@ -126,13 +178,14 @@ function onFolderPickerSubmit(payload: {
   folderName: string | null
 }) {
   folderId.value = payload.folderId
-  folderName.value = payload.folderName || ''
   folderContext.value = payload.folderId
     ? {
       id: payload.folderId,
       name: payload.folderName || 'Folder',
     }
     : null
+
+  updateFolderQuery(payload.folderId)
 }
 
 async function onSubmit() {

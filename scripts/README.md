@@ -168,3 +168,84 @@ $ ./scripts/clean-gh-runs.sh "ci:" "test:"
 📋 Found 5 matching workflow run(s):
 ...
 ```
+
+## seed-chats.sh
+
+Seed D1 history data for an existing user without relying on Nuxt, Nitro tasks,
+or Drizzle seed context.
+
+This workflow is intended for:
+
+- local D1 by default, while keeping Wrangler behavior
+- preview remote D1 with `--remote`
+- production remote D1 with `--remote --env production`
+
+The same wrapper always goes through Wrangler D1 execute.
+
+Examples of the underlying mode:
+
+```bash
+pnpm exec wrangler d1 execute DB --local ...
+pnpm exec wrangler d1 execute DB --remote ...
+```
+
+### What it seeds
+
+- `100` chats
+- `6` messages per chat
+  - `3` user
+  - `3` assistant
+- `20` folders
+- `34` chats assigned to folders
+- a small showcase mix of:
+  - pinned chats
+  - pinned folders
+  - archived folders
+Re-running the script for the same user first clears all chats and folders for
+that user, then inserts the demo dataset again.
+
+### Requirements
+
+- the user must already exist in `users`
+- the script does **not** create auth rows, sessions, or passwords
+- Wrangler must already be authenticated for the target account
+
+### Usage
+
+```bash
+# Seed local D1 (default)
+./scripts/seed-chats.sh --email test@test.com
+
+# Cleanup only
+./scripts/seed-chats.sh --email test@test.com --cleanup
+
+# Seed preview remote D1
+./scripts/seed-chats.sh --email test@test.com --remote
+
+# Seed production remote D1
+./scripts/seed-chats.sh --email test@test.com --remote --env production
+
+# Use a different D1 binding name if needed
+./scripts/seed-chats.sh --email test@test.com --binding DB
+```
+
+### How it works
+
+1. Resolves the target user by email from D1 in the selected mode
+2. Reads the current max integer ids for `folders`, `chats`, and `messages`
+3. Generates deterministic SQL in a temporary file
+4. Executes that SQL through Wrangler using either `--local` or `--remote`
+
+If `--cleanup` is provided, the script skips data generation and removes all
+chats and folders for that user.
+
+### Notes
+
+- `scripts/seed-chats.mjs` is the pure SQL generator/parser helper
+- ids are inserted explicitly because these tables use integer driver ids behind
+  the app-level public id mapping
+- timestamps are written explicitly so the seeded data renders well in history
+  and folder views
+- `--env` is only valid together with `--remote`
+- cleanup is intentionally broad and deletes all chats and folders for the
+  selected user

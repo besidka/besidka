@@ -7,7 +7,7 @@ type MessageData = {
   offsetTop: number
 }
 
-export interface ChatScrollOptions {
+export interface ChatScrollSpacerOptions {
   scrollContainerRef: Ref<HTMLElement | null>
   messagesDomRefs: Readonly<ShallowRef<HTMLDivElement[] | null>>
   messagesEndRef: Ref<HTMLElement | null>
@@ -29,8 +29,8 @@ const MESSAGE_3_LINES_HEIGHT: number = 100
 // then increase the value
 const DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS: number = 150
 
-export function useChatScroll(
-  options: ChatScrollOptions,
+export function useChatScrollSpacer(
+  options: ChatScrollSpacerOptions,
 ) {
   const {
     scrollContainerRef,
@@ -214,7 +214,8 @@ export function useChatScroll(
     let extraSpacerForTallUserMessage: number = 0
 
     if (userMessageHeight > MESSAGE_3_LINES_HEIGHT) {
-      extraSpacerForTallUserMessage = userMessageHeight - MESSAGE_3_LINES_HEIGHT
+      extraSpacerForTallUserMessage = userMessageHeight
+        - MESSAGE_3_LINES_HEIGHT
         // unknown value in this formula to make it work properly
         + 4
     }
@@ -309,7 +310,8 @@ export function useChatScroll(
     }
 
     const scrollableSpace: number = container.clientHeight - inputHeight.value
-    const lastPairHeight: number = userMessage.height + assistantMessage.height
+    const lastPairHeight: number = userMessage.height
+      + assistantMessage.height
       + MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES
 
     return lastPairHeight > scrollableSpace

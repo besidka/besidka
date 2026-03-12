@@ -1,7 +1,7 @@
 <template>
   <details
     ref="dropdown"
-    class="dropdown dropdown-top dropdown-end sm:hidden"
+    class="dropdown dropdown-top dropdown-end md:hidden"
   >
     <summary
       class="indicator btn btn-sm btn-ghost btn-circle"

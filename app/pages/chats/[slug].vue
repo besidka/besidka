@@ -210,7 +210,7 @@ onMounted(() => {
   nuxtApp.callHook('chat:rendered', scrollContainerRef)
 })
 
-const { spacerHeight, waitingForDimensions } = useChatScroll({
+const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
   messagesDomRefs,
