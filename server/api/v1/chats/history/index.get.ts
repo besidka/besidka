@@ -14,6 +14,7 @@ import {
   createHistoryCursor,
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
+import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
@@ -29,10 +30,11 @@ export default defineEventHandler(async () => {
 
   const query = getQuery(useEvent())
   const cursor = query.cursor as string | undefined
-  const rawLimit = query.limit
-    ? parseInt(query.limit as string)
-    : DEFAULT_LIMIT
-  const limit = Math.min(Math.max(rawLimit, 1), MAX_LIMIT)
+  const limit = parsePaginationLimit(
+    query.limit as string | undefined,
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+  )
   const search = (query.search as string | undefined)?.trim() ?? ''
   const hasSearch = search.length >= MIN_SEARCH_LENGTH
 

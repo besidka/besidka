@@ -26,6 +26,7 @@ export function useHistory() {
   const isSearching = shallowRef<boolean>(false)
   const isRefreshing = shallowRef<boolean>(false)
   const hasMore = computed(() => nextCursor.value !== null)
+  const queuedResetKey = shallowRef<string | null>(null)
 
   const selectedIds = ref<Set<string>>(new Set())
   const isSelectionMode = shallowRef<boolean>(false)
@@ -82,8 +83,14 @@ export function useHistory() {
     background?: boolean
   }) {
     const { reset = false, background = false } = options || {}
+    const requestKey = activeKey.value
+    let retryOptions: { background: boolean } | null = null
 
     if (isLoading.value) {
+      if (reset) {
+        queuedResetKey.value = requestKey
+      }
+
       return
     }
 
@@ -98,7 +105,6 @@ export function useHistory() {
     }
 
     try {
-      const requestKey = activeKey.value
       const requestSearch = search.value
       const currentEntry = cache.value[requestKey]
       const currentChats = currentEntry?.chats || chats.value
@@ -140,8 +146,32 @@ export function useHistory() {
     } finally {
       isLoading.value = false
       isLoadingInitial.value = false
-      isSearching.value = false
       isRefreshing.value = false
+
+      const retryKey = queuedResetKey.value
+      const shouldRetryQueuedReset = retryKey !== null
+        && retryKey !== requestKey
+        && retryKey === activeKey.value
+
+      if (shouldRetryQueuedReset) {
+        const retryHasCache = !!cache.value[retryKey]?.hasLoaded
+
+        queuedResetKey.value = null
+        isSearching.value = search.value.length >= 2
+        retryOptions = {
+          background: retryHasCache,
+        }
+      } else {
+        queuedResetKey.value = null
+        isSearching.value = false
+      }
+    }
+
+    if (retryOptions) {
+      await fetchHistory({
+        reset: true,
+        background: retryOptions.background,
+      })
     }
   }
 

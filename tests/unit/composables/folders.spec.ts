@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, type EffectScope } from 'vue'
 import { useFolders } from '../../../app/composables/folders'
 import {
   createFolder,
@@ -25,6 +26,21 @@ function createDeferred<T>() {
   }
 }
 
+const scopes: EffectScope[] = []
+
+function createFoldersComposable() {
+  const scope = effectScope()
+  const folders = scope.run(() => useFolders())
+
+  scopes.push(scope)
+
+  if (!folders) {
+    throw new Error('Failed to create folders composable')
+  }
+
+  return folders
+}
+
 describe('useFolders', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -36,6 +52,10 @@ describe('useFolders', () => {
   })
 
   afterEach(() => {
+    scopes.splice(0).forEach((scope) => {
+      scope.stop()
+    })
+    vi.clearAllTimers()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -53,10 +73,10 @@ describe('useFolders', () => {
     const fetchMock = vi.fn(() => deferred.promise)
     vi.stubGlobal('$fetch', fetchMock)
 
-    const firstFolders = useFolders()
+    const firstFolders = createFoldersComposable()
     firstFolders.prime(createFoldersResponse({ folders: [cachedFolder] }))
 
-    const secondFolders = useFolders()
+    const secondFolders = createFoldersComposable()
     const refreshPromise = secondFolders.hydrateAndRefresh()
 
     expect(secondFolders.folders.value).toEqual([cachedFolder])
@@ -90,7 +110,7 @@ describe('useFolders', () => {
       return Promise.resolve({ success: true })
     }))
 
-    const folders = useFolders()
+    const folders = createFoldersComposable()
     folders.prime(createFoldersResponse({ folders: [folder] }))
 
     const result = await folders.createFolder('Projects')
@@ -129,7 +149,7 @@ describe('useFolders', () => {
       }))
     }))
 
-    const folders = useFolders()
+    const folders = createFoldersComposable()
     folders.search.value = 'Alpha'
     folders.prime(createFoldersResponse({ folders: [visibleFolder] }))
 
@@ -171,7 +191,7 @@ describe('useFolders', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const folders = useFolders()
+    const folders = createFoldersComposable()
     await folders.hydrateAndRefresh()
 
     folders.search.value = 'Alpha'

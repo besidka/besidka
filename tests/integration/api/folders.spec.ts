@@ -296,4 +296,38 @@ describe('folders API', () => {
     expect(response.chats).toEqual([firstChat, secondChat])
     expect(response.nextCursor).toBe(createHistoryCursor(secondChat))
   })
+
+  it('falls back to the default limit when the folder chat limit is invalid', async () => {
+    const handler = await getFolderChatsHandler()
+    const folder = createFolder({ id: 'folder-1', name: 'Inbox' })
+    const pinnedSelectChain = createSelectChain()
+    const chatsSelectChain = createSelectChain()
+    const chat = withDateFields(createHistoryChat({
+      id: 'chat-1',
+      folderId: 'folder-1',
+    }))
+    const db = {
+      query: {
+        folders: {
+          findFirst: vi.fn(async () => folder),
+        },
+      },
+      select: vi.fn()
+        .mockReturnValueOnce(pinnedSelectChain)
+        .mockReturnValueOnce(chatsSelectChain),
+      batch: vi.fn(async () => {
+        return [[], [chat]]
+      }),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { id: 'folder-1' },
+      query: { limit: 'foo' },
+    } as any)
+
+    expect(response.chats).toEqual([chat])
+    expect(chatsSelectChain.limit).toHaveBeenCalledWith(30)
+  })
 })

@@ -203,6 +203,30 @@ describe('chat history API', () => {
     expect(db.batch).not.toHaveBeenCalled()
   })
 
+  it('falls back to the default limit when the history limit is invalid', async () => {
+    const handler = await getHistoryHandler()
+    const match = withDateFields(createHistoryChat({
+      id: 'chat-1',
+      title: 'Roadmap alpha',
+    }))
+    const searchSelectChain = createSelectChain([match])
+    const db = {
+      select: vi.fn(() => searchSelectChain),
+      batch: vi.fn(),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useEvent', () => ({
+      query: { search: 'map', limit: 'foo' },
+    }))
+    vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
+
+    const response = await handler()
+
+    expect(response.chats).toEqual([match])
+    expect(searchSelectChain.limit).toHaveBeenCalledWith(30)
+  })
+
   it('returns pinned chats separately and computes the next cursor', async () => {
     const handler = await getHistoryHandler()
     const pinnedChat = withDateFields(createHistoryChat({
@@ -326,7 +350,7 @@ describe('chat history API', () => {
     )
   })
 
-  it('pins chats and updates activity timestamps', async () => {
+  it('pins chats, updates activity timestamps, and refreshes folder activity', async () => {
     const handler = await getPinHandler()
     const updateWhere = vi.fn(async () => undefined)
     const updateSet = vi.fn(() => ({
@@ -337,6 +361,7 @@ describe('chat history API', () => {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
+            folderId: 'folder-1',
             pinnedAt: null,
           })),
         },
@@ -357,6 +382,11 @@ describe('chat history API', () => {
       pinnedAt: expect.any(Date),
       activityAt: expect.any(Date),
     }))
+    expect(mocks.refreshFolderActivityAt).toHaveBeenCalledWith(
+      ['folder-1'],
+      1,
+      db,
+    )
   })
 
   it('moves chats into folders and refreshes source folder activity for single and bulk actions', async () => {

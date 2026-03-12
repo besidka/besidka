@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, type EffectScope } from 'vue'
 import { useHistory } from '../../../app/composables/history'
 import {
   createHistoryChat,
@@ -25,6 +26,21 @@ function createDeferred<T>() {
   }
 }
 
+const scopes: EffectScope[] = []
+
+function createHistoryComposable() {
+  const scope = effectScope()
+  const history = scope.run(() => useHistory())
+
+  scopes.push(scope)
+
+  if (!history) {
+    throw new Error('Failed to create history composable')
+  }
+
+  return history
+}
+
 describe('useHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -36,6 +52,10 @@ describe('useHistory', () => {
   })
 
   afterEach(() => {
+    scopes.splice(0).forEach((scope) => {
+      scope.stop()
+    })
+    vi.clearAllTimers()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -47,13 +67,13 @@ describe('useHistory', () => {
     const fetchMock = vi.fn(() => deferred.promise)
     vi.stubGlobal('$fetch', fetchMock)
 
-    const firstHistory = useHistory()
+    const firstHistory = createHistoryComposable()
     firstHistory.prime(createHistoryResponse({
       chats: [cachedChat],
       nextCursor: '2026-03-10T10:00:00.000Z',
     }))
 
-    const secondHistory = useHistory()
+    const secondHistory = createHistoryComposable()
     const refreshPromise = secondHistory.hydrateAndRefresh()
 
     expect(secondHistory.chats.value).toEqual([cachedChat])
@@ -88,7 +108,7 @@ describe('useHistory', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     await history.hydrateAndRefresh()
 
     history.search.value = 'Report'
@@ -121,7 +141,7 @@ describe('useHistory', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({
       chats: [firstChat],
       nextCursor: '2026-03-09T10:00:00.000Z',
@@ -144,7 +164,7 @@ describe('useHistory', () => {
       })
     }))
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [chat] }))
 
     await history.togglePin(chat.id)
@@ -167,7 +187,7 @@ describe('useHistory', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats }))
 
     history.enterSelectionMode('chat-1', 0)
@@ -206,7 +226,7 @@ describe('useHistory', () => {
     const fetchMock = vi.fn(() => deferred.promise)
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({
       chats: [chatOne, chatTwo, chatThree],
     }))
@@ -237,7 +257,7 @@ describe('useHistory', () => {
     const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
     const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [chatOne, chatTwo] }))
     history.enterSelectionMode(chatOne.id, 0)
     history.handleSelect(chatTwo.id, 1, false)
@@ -257,7 +277,7 @@ describe('useHistory', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [chatOne, chatTwo] }))
     history.enterSelectionMode(chatOne.id, 0)
     history.handleSelect(chatTwo.id, 1, false)
@@ -286,7 +306,7 @@ describe('useHistory', () => {
     const fetchMock = vi.fn(() => deferred.promise)
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({
       chats: [chatOne, chatTwo, chatThree],
     }))
@@ -340,7 +360,7 @@ describe('useHistory', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [newerChat, olderChat] }))
 
     await history.renameChat('chat-1', 'chat-1', 'Renamed chat')
@@ -364,7 +384,7 @@ describe('useHistory', () => {
     })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const history = useHistory()
+    const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [chat] }))
 
     await history.moveChatToFolder('chat-1', 'chat-1', 'folder-2', 'Inbox')

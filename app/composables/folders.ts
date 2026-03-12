@@ -176,6 +176,16 @@ export function useFolders() {
     })
   }
 
+  function updateVisibleFolders(
+    items: Folder[],
+    folderId: string,
+    update: (folder: Folder) => Folder,
+  ) {
+    return sortFolders(items.map((folder) => {
+      return folder.id === folderId ? update(folder) : folder
+    }).filter(matchesActiveFilters))
+  }
+
   async function createFolder(name: string) {
     isCreating.value = true
 
@@ -225,16 +235,14 @@ export function useFolders() {
       })
 
       updateEntry((entry) => {
-        const update = (items: Folder[]) => {
-          return items.map((folder) => {
-            return folder.id === folderId ? { ...folder, name } : folder
-          })
-        }
-
         return {
           ...entry,
-          folders: update(entry.folders),
-          pinned: update(entry.pinned),
+          folders: updateVisibleFolders(entry.folders, folderId, (folder) => {
+            return { ...folder, name }
+          }),
+          pinned: updateVisibleFolders(entry.pinned, folderId, (folder) => {
+            return { ...folder, name }
+          }),
         }
       })
 
