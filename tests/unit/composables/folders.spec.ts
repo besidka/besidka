@@ -132,6 +132,85 @@ describe('useFolders', () => {
     expect(folders.folders.value.map(folder => folder.id)).toEqual([])
   })
 
+  it('re-sorts pinned folders when pinning while sorting by name', async () => {
+    const alphaFolder = createFolder({ id: 'folder-1', name: 'Alpha' })
+    const zuluFolder = createFolder({
+      id: 'folder-2',
+      name: 'Zulu',
+      pinnedAt: '2026-03-10T10:00:00.000Z',
+    })
+    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+      method?: string
+    }) => {
+      if (url === '/api/v1/folders' && !options?.method) {
+        return Promise.resolve(createFoldersResponse({
+          folders: [alphaFolder],
+          pinned: [zuluFolder],
+        }))
+      }
+
+      return Promise.resolve({ pinnedAt: '2026-03-11T10:00:00.000Z' })
+    }))
+
+    const folders = createFoldersComposable()
+    folders.sortBy.value = 'name'
+    await flushPromises()
+    await flushPromises()
+
+    await folders.togglePin('folder-1')
+
+    expect(folders.folders.value).toEqual([])
+    expect(folders.pinned.value.map(folder => folder.name)).toEqual([
+      'Alpha',
+      'Zulu',
+    ])
+  })
+
+  it('re-sorts folders when unpinning while sorting by activity', async () => {
+    const newestFolder = createFolder({
+      id: 'folder-1',
+      name: 'Newest',
+      activityAt: '2026-03-11T09:00:00.000Z',
+    })
+    const middleFolder = createFolder({
+      id: 'folder-2',
+      name: 'Middle',
+      activityAt: '2026-03-10T09:00:00.000Z',
+    })
+    const oldestPinnedFolder = createFolder({
+      id: 'folder-3',
+      name: 'Oldest',
+      activityAt: '2026-03-09T09:00:00.000Z',
+      pinnedAt: '2026-03-11T08:00:00.000Z',
+    })
+    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+      method?: string
+    }) => {
+      if (url === '/api/v1/folders' && !options?.method) {
+        return Promise.resolve(createFoldersResponse({
+          folders: [newestFolder, middleFolder],
+          pinned: [oldestPinnedFolder],
+        }))
+      }
+
+      return Promise.resolve({ pinnedAt: null })
+    }))
+
+    const folders = createFoldersComposable()
+    folders.sortBy.value = 'activity'
+    await flushPromises()
+    await flushPromises()
+
+    await folders.togglePin('folder-3')
+
+    expect(folders.pinned.value).toEqual([])
+    expect(folders.folders.value.map(folder => folder.id)).toEqual([
+      'folder-1',
+      'folder-2',
+      'folder-3',
+    ])
+  })
+
   it('does not insert a created folder into a filtered view when it does not match', async () => {
     vi.useFakeTimers()
 
@@ -192,6 +271,9 @@ describe('useFolders', () => {
     vi.stubGlobal('$fetch', fetchMock)
 
     const folders = createFoldersComposable()
+    folders.sortBy.value = 'activity'
+    await flushPromises()
+    await flushPromises()
     await folders.hydrateAndRefresh()
 
     folders.search.value = 'Alpha'

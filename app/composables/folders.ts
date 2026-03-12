@@ -280,19 +280,19 @@ export function useFolders() {
             folders: entry.folders.filter((candidate) => {
               return candidate.id !== folderId
             }),
-            pinned: [
+            pinned: sortFolders([
               { ...folder, pinnedAt: newPinnedAt },
               ...entry.pinned.filter(candidate => candidate.id !== folderId),
-            ],
+            ]),
           }
         }
 
         return {
           ...entry,
-          folders: [
+          folders: sortFolders([
             { ...folder, pinnedAt: null },
             ...entry.folders.filter(candidate => candidate.id !== folderId),
-          ],
+          ]),
           pinned: entry.pinned.filter(candidate => candidate.id !== folderId),
         }
       })

@@ -30,6 +30,7 @@ describe('HistoryChatSections', () => {
             activityAt: '2026-02-10T09:00:00.000Z',
           }),
         ],
+        groupedAt: '2026-03-11T12:00:00.000Z',
         isLoadingInitial: false,
         isSelectionMode: false,
         emptyStateMode: 'history',

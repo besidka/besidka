@@ -7,43 +7,54 @@ export interface DateGroup<TChat extends HasActivityAt> {
   chats: TChat[]
 }
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000
+const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+function getUtcDayStart(date: Date | string): number {
+  const value = new Date(date)
+
+  return Date.UTC(
+    value.getUTCFullYear(),
+    value.getUTCMonth(),
+    value.getUTCDate(),
+  )
+}
+
 function getGroupLabel(date: Date | string, now: Date): string {
-  const today = new Date(now)
-  today.setHours(0, 0, 0, 0)
+  const today = getUtcDayStart(now)
+  const yesterday = today - DAY_IN_MS
+  const sevenDaysAgo = today - (DAY_IN_MS * 7)
+  const chatDate = getUtcDayStart(date)
 
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-
-  const sevenDaysAgo = new Date(today)
-  sevenDaysAgo.setDate(today.getDate() - 7)
-
-  const chatDate = new Date(date)
-  chatDate.setHours(0, 0, 0, 0)
-
-  if (chatDate.getTime() === today.getTime()) {
+  if (chatDate === today) {
     return 'Today'
   }
 
-  if (chatDate.getTime() === yesterday.getTime()) {
+  if (chatDate === yesterday) {
     return 'Yesterday'
   }
 
-  if (chatDate.getTime() > sevenDaysAgo.getTime()) {
+  if (chatDate > sevenDaysAgo) {
     return 'Previous 7 days'
   }
 
-  return new Date(date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  return MONTH_FORMATTER.format(new Date(date))
 }
 
 export function groupByDate<TChat extends HasActivityAt>(
   chats: TChat[],
+  now: Date | string = new Date(),
 ): DateGroup<TChat>[] {
-  const now = new Date()
+  const referenceNow = new Date(now)
   const groups: Map<string, TChat[]> = new Map()
   const order: string[] = []
 
   for (const chat of chats) {
-    const label = getGroupLabel(chat.activityAt, now)
+    const label = getGroupLabel(chat.activityAt, referenceNow)
 
     if (!groups.has(label)) {
       groups.set(label, [])

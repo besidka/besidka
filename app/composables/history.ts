@@ -459,8 +459,7 @@ export function useHistory() {
         }
       })
 
-      selectedIds.value.delete(chatId)
-      selectedIds.value = new Set(selectedIds.value)
+      clearCompletedSelection([chatId])
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage('Chat deleted')

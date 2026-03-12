@@ -134,6 +134,7 @@ const props = withDefaults(
   defineProps<{
     pinned: HistoryChat[]
     chats: HistoryChat[]
+    groupedAt?: Date | string
     isLoadingInitial: boolean
     isSelectionMode: boolean
     selectedIds?: Set<string>
@@ -143,6 +144,7 @@ const props = withDefaults(
   }>(),
   {
     selectedIds: () => new Set<string>(),
+    groupedAt: undefined,
     emptyActionTo: undefined,
     emptyActionLabel: undefined,
   },
@@ -158,7 +160,7 @@ const emit = defineEmits<{
   'remove-from-folder': [chatId: string, slug: string]
 }>()
 
-const groups = computed(() => groupByDate(props.chats))
+const groups = computed(() => groupByDate(props.chats, props.groupedAt))
 
 const flatChatIndexMap = computed(() => {
   const map = new Map<string, number>()

@@ -50,6 +50,7 @@
     <HistoryChatSections
       :pinned="pinned"
       :chats="chats"
+      :grouped-at="groupedAt"
       :is-loading-initial="isLoadingInitial && !hasCachedData"
       :is-selection-mode="false"
       :empty-state-mode="'folder'"
@@ -105,6 +106,9 @@ definePageMeta({
 const route = useRoute()
 const nuxtApp = useNuxtApp()
 const folderId = computed(() => route.params.id as string)
+const groupedAt = useState<string>('folder-chats:grouped-at', () => {
+  return new Date().toISOString()
+})
 
 const {
   folder,
@@ -123,6 +127,10 @@ const {
   togglePin,
   updateFolder,
 } = useFolderChats(folderId)
+
+if (import.meta.client && !nuxtApp.isHydrating) {
+  groupedAt.value = new Date().toISOString()
+}
 
 if (import.meta.server && !hasCachedData.value) {
   const requestFetch = useRequestFetch()
@@ -163,6 +171,10 @@ const isFolderModalSubmitting = shallowRef<boolean>(false)
 
 onMounted(() => {
   hydrateAndRefresh()
+})
+
+watch(folderId, () => {
+  groupedAt.value = new Date().toISOString()
 })
 
 useIntersectionObserver(

@@ -338,7 +338,7 @@ describe('useHistory', () => {
     expect(history.isSelectionMode.value).toBe(true)
   })
 
-  it('renames and deletes a single chat', async () => {
+  it('renames chats and exits selection mode when deleting the last selected chat', async () => {
     const olderChat = createHistoryChat({
       id: 'chat-1',
       slug: 'chat-1',
@@ -374,7 +374,9 @@ describe('useHistory', () => {
       method: 'DELETE',
     })
     expect(history.chats.value.map(chat => chat.id)).toEqual(['chat-1'])
+    expect(history.selectedCount.value).toBe(0)
     expect(history.selectedIds.value.has('chat-2')).toBe(false)
+    expect(history.isSelectionMode.value).toBe(false)
   })
 
   it('moves a single chat into and out of a folder', async () => {

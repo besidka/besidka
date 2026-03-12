@@ -1,13 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   formatActivityAge,
   groupByDate,
 } from '../../../shared/utils/date-groups'
 
+const defaultTimeZone = process.env.TZ
+
 describe('date groups', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-11T12:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    process.env.TZ = defaultTimeZone
+    vi.useRealTimers()
   })
 
   it('groups chats using the current date labels', () => {
@@ -24,6 +31,17 @@ describe('date groups', () => {
       'Previous 7 days',
       'February 2026',
     ])
+  })
+
+  it('uses UTC day buckets for a stable SSR hydration reference time', () => {
+    process.env.TZ = 'Europe/Warsaw'
+
+    const groups = groupByDate(
+      [{ activityAt: '2026-03-10T23:30:00.000Z', id: 'late-night' }],
+      '2026-03-11T00:15:00.000Z',
+    )
+
+    expect(groups.map(group => group.label)).toEqual(['Yesterday'])
   })
 
   it('formats relative activity age', () => {

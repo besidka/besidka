@@ -24,6 +24,7 @@
     <HistoryChatSections
       :pinned="pinned"
       :chats="chats"
+      :grouped-at="groupedAt"
       :is-loading-initial="isLoadingInitial && !hasCachedData"
       :is-selection-mode="isSelectionMode"
       :selected-ids="selectedIds"
@@ -75,6 +76,8 @@ useSeoMeta({
   title: 'Chats History',
 })
 
+const nuxtApp = useNuxtApp()
+
 const {
   chats,
   pinned,
@@ -100,6 +103,14 @@ const {
   moveChatToFolder,
   moveSelectedToFolder,
 } = useHistory()
+
+const groupedAt = useState<string>('history:grouped-at', () => {
+  return new Date().toISOString()
+})
+
+if (import.meta.client && !nuxtApp.isHydrating) {
+  groupedAt.value = new Date().toISOString()
+}
 
 if (import.meta.server && !hasCachedData.value) {
   const requestFetch = useRequestFetch()
