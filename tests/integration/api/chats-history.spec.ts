@@ -86,14 +86,20 @@ async function getBulkFolderMoveHandler() {
   return module.default
 }
 
-function createSelectChain() {
+function createSelectChain<T>(result?: T) {
   const chain = {
     from: vi.fn(() => chain),
     leftJoin: vi.fn(() => chain),
     innerJoin: vi.fn(() => chain),
     where: vi.fn(() => chain),
     orderBy: vi.fn(() => chain),
-    limit: vi.fn(() => chain),
+    limit: vi.fn(() => {
+      if (result !== undefined) {
+        return Promise.resolve(result)
+      }
+
+      return chain
+    }),
   }
 
   return chain
@@ -153,57 +159,48 @@ describe('chat history API', () => {
     }))
   })
 
-  it('merges title and message search matches, dedupes them, and disables cursors', async () => {
+  it('applies the search limit after combining search matches', async () => {
     const handler = await getHistoryHandler()
-    const titleMatch = withDateFields(createHistoryChat({
-      id: 'chat-title',
-      title: 'Roadmap',
+    const newestMatch = withDateFields(createHistoryChat({
+      id: 'chat-newest',
+      title: 'Roadmap alpha',
       activityAt: '2026-03-11T11:00:00.000Z',
       pinnedAt: '2026-03-11T09:00:00.000Z',
     }))
-    const sharedMatch = withDateFields(createHistoryChat({
-      id: 'chat-shared',
-      title: 'Shared',
+    const secondNewestMatch = withDateFields(createHistoryChat({
+      id: 'chat-second',
+      title: 'Roadmap beta',
       activityAt: '2026-03-10T11:00:00.000Z',
     }))
-    const messageMatch = withDateFields(createHistoryChat({
-      id: 'chat-message',
-      title: 'Support thread',
-      activityAt: '2026-03-09T11:00:00.000Z',
-    }))
-    const titleSelectChain = createSelectChain()
+    const searchSelectChain = createSelectChain([
+      newestMatch,
+      secondNewestMatch,
+    ])
     const contentSelectChain = createSelectChain()
-    const messagesSelectChain = createSelectChain()
     const db = {
       select: vi.fn()
-        .mockReturnValueOnce(titleSelectChain)
-        .mockReturnValueOnce(contentSelectChain)
-        .mockReturnValue(messagesSelectChain),
-      batch: vi.fn(async () => {
-        return [
-          [titleMatch, sharedMatch],
-          [sharedMatch, messageMatch],
-        ]
-      }),
+        .mockReturnValueOnce(searchSelectChain)
+        .mockReturnValue(contentSelectChain),
+      batch: vi.fn(),
     }
 
     vi.stubGlobal('useDb', () => db)
     vi.stubGlobal('useEvent', () => ({
-      query: { search: 'map' },
+      query: { search: 'map', limit: '2' },
     }))
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
     const response = await handler()
 
     expect(response.pinned.map((chat: { id: string }) => chat.id)).toEqual([
-      'chat-title',
+      'chat-newest',
     ])
     expect(response.chats.map((chat: { id: string }) => chat.id)).toEqual([
-      'chat-shared',
-      'chat-message',
+      'chat-second',
     ])
     expect(response.nextCursor).toBeNull()
-    expect(contentSelectChain.innerJoin).not.toHaveBeenCalled()
+    expect(searchSelectChain.limit).toHaveBeenCalledWith(2)
+    expect(db.batch).not.toHaveBeenCalled()
   })
 
   it('returns pinned chats separately and computes the next cursor', async () => {
@@ -249,7 +246,10 @@ describe('chat history API', () => {
     const db = {
       query: {
         chats: {
-          findFirst: vi.fn(async () => ({ id: 'chat-1' })),
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            folderId: 'folder-1',
+          })),
         },
       },
       update: vi.fn(() => ({
@@ -270,6 +270,11 @@ describe('chat history API', () => {
       activityAt: expect.any(Date),
     }))
     expect(updateWhere).toHaveBeenCalled()
+    expect(mocks.refreshFolderActivityAt).toHaveBeenCalledWith(
+      ['folder-1'],
+      1,
+      db,
+    )
   })
 
   it('deletes chats through single and bulk endpoints', async () => {

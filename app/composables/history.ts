@@ -180,6 +180,21 @@ export function useHistory() {
     setEntry(activeKey.value, update(currentEntry))
   }
 
+  function clearCompletedSelection(chatIds: string[]) {
+    const completedChatIds = new Set(chatIds)
+
+    selectedIds.value = new Set(
+      Array.from(selectedIds.value).filter((chatId) => {
+        return !completedChatIds.has(chatId)
+      }),
+    )
+
+    if (selectedIds.value.size === 0) {
+      isSelectionMode.value = false
+      lastSelectedIndex.value = null
+    }
+  }
+
   async function togglePin(chatId: string) {
     try {
       const result = await $fetch('/api/v1/chats/history/pin', {
@@ -299,6 +314,7 @@ export function useHistory() {
     if (selectedIds.value.size === 0) return
 
     const chatIds = Array.from(selectedIds.value)
+    const selectedChatIds = new Set(chatIds)
     const chunks = []
 
     for (let index = 0; index < chatIds.length; index += 90) {
@@ -316,13 +332,16 @@ export function useHistory() {
       updateEntry((entry) => {
         return {
           ...entry,
-          chats: entry.chats.filter(chat => !selectedIds.value.has(chat.id)),
-          pinned: entry.pinned.filter(chat => !selectedIds.value.has(chat.id)),
+          chats: entry.chats.filter((chat) => {
+            return !selectedChatIds.has(chat.id)
+          }),
+          pinned: entry.pinned.filter((chat) => {
+            return !selectedChatIds.has(chat.id)
+          }),
         }
       })
 
-      selectedIds.value = new Set()
-      isSelectionMode.value = false
+      clearCompletedSelection(chatIds)
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(
@@ -478,6 +497,7 @@ export function useHistory() {
     if (selectedIds.value.size === 0) return
 
     const chatIds = Array.from(selectedIds.value)
+    const selectedChatIds = new Set(chatIds)
     const chunks = []
 
     for (let index = 0; index < chatIds.length; index += 90) {
@@ -495,7 +515,7 @@ export function useHistory() {
       updateEntry((entry) => {
         const update = (items: HistoryChat[]) => {
           return items.map((chat) => {
-            return selectedIds.value.has(chat.id)
+            return selectedChatIds.has(chat.id)
               ? { ...chat, folderId, folderName }
               : chat
           })
@@ -508,8 +528,7 @@ export function useHistory() {
         }
       })
 
-      selectedIds.value = new Set()
-      isSelectionMode.value = false
+      clearCompletedSelection(chatIds)
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(

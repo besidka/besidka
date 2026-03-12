@@ -11,7 +11,6 @@ import {
 } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
-  compareHistoryCursorRows,
   createHistoryCursor,
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
@@ -54,10 +53,6 @@ export default defineEventHandler(async () => {
 
   const searchPattern = hasSearch ? `%${search}%` : null
 
-  const titleFilter = searchPattern
-    ? like(schema.chats.title, searchPattern)
-    : undefined
-
   const cursorFilter = parsedCursor
     ? or(
       lt(schema.chats.activityAt, parsedCursor.activityAt),
@@ -69,7 +64,7 @@ export default defineEventHandler(async () => {
     : undefined
 
   if (hasSearch) {
-    const titleMatchQuery = db.select(columns)
+    const searchMatches = await db.select(columns)
       .from(schema.chats)
       .leftJoin(
         schema.folders,
@@ -77,66 +72,23 @@ export default defineEventHandler(async () => {
       )
       .where(and(
         eq(schema.chats.userId, userId),
-        titleFilter,
-      ))
-      .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
-      .limit(limit)
-
-    const contentMatchQuery = db.select(columns)
-      .from(schema.chats)
-      .leftJoin(
-        schema.folders,
-        eq(schema.folders.id, schema.chats.folderId),
-      )
-      .where(and(
-        eq(schema.chats.userId, userId),
-        exists(
-          db.select({ id: schema.messages.id })
-            .from(schema.messages)
-            .where(and(
-              eq(schema.messages.chatId, schema.chats.id),
-              like(schema.messages.parts, searchPattern!),
-            )),
+        or(
+          like(schema.chats.title, searchPattern!),
+          exists(
+            db.select({ id: schema.messages.id })
+              .from(schema.messages)
+              .where(and(
+                eq(schema.messages.chatId, schema.chats.id),
+                like(schema.messages.parts, searchPattern!),
+              )),
+          ),
         ),
       ))
       .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
       .limit(limit)
 
-    const [titleMatches, contentMatches] = await db.batch([
-      titleMatchQuery,
-      contentMatchQuery,
-    ])
-
-    const seen = new Set<string>()
-    const merged: Array<typeof titleMatches[number]> = []
-
-    for (const chat of titleMatches) {
-      if (!seen.has(chat.id)) {
-        seen.add(chat.id)
-        merged.push(chat)
-      }
-    }
-
-    for (const chat of contentMatches) {
-      if (!seen.has(chat.id)) {
-        seen.add(chat.id)
-        merged.push({
-          id: chat.id,
-          slug: chat.slug,
-          title: chat.title,
-          createdAt: chat.createdAt,
-          activityAt: chat.activityAt,
-          pinnedAt: chat.pinnedAt,
-          folderId: chat.folderId,
-          folderName: chat.folderName,
-        })
-      }
-    }
-
-    merged.sort(compareHistoryCursorRows)
-
-    const pinned = merged.filter(chat => chat.pinnedAt !== null)
-    const chats = merged.filter(chat => chat.pinnedAt === null)
+    const pinned = searchMatches.filter(chat => chat.pinnedAt !== null)
+    const chats = searchMatches.filter(chat => chat.pinnedAt === null)
 
     return {
       pinned,

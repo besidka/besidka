@@ -198,6 +198,41 @@ describe('useHistory', () => {
     expect(history.isSelectionMode.value).toBe(false)
   })
 
+  it('uses the original selection snapshot when bulk delete resolves', async () => {
+    const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
+    const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
+    const chatThree = createHistoryChat({ id: 'chat-3', title: 'Chat 3' })
+    const deferred = createDeferred<{ success: boolean }>()
+    const fetchMock = vi.fn(() => deferred.promise)
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const history = useHistory()
+    history.prime(createHistoryResponse({
+      chats: [chatOne, chatTwo, chatThree],
+    }))
+    history.enterSelectionMode(chatOne.id, 0)
+    history.handleSelect(chatTwo.id, 1, false)
+
+    const deletePromise = history.deleteSelected()
+    await flushPromises()
+
+    history.deselectAll()
+    history.enterSelectionMode(chatThree.id, 2)
+
+    deferred.resolve({ success: true })
+    await deletePromise
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/delete/bulk', {
+      method: 'POST',
+      body: {
+        chatIds: ['chat-1', 'chat-2'],
+      },
+    })
+    expect(history.chats.value.map(chat => chat.id)).toEqual(['chat-3'])
+    expect(Array.from(history.selectedIds.value)).toEqual(['chat-3'])
+    expect(history.isSelectionMode.value).toBe(true)
+  })
+
   it('clears selection when the search key changes', async () => {
     const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
     const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
@@ -241,6 +276,46 @@ describe('useHistory', () => {
       'Projects',
     ])
     expect(history.selectedCount.value).toBe(0)
+  })
+
+  it('uses the original selection snapshot when bulk move resolves', async () => {
+    const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
+    const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
+    const chatThree = createHistoryChat({ id: 'chat-3', title: 'Chat 3' })
+    const deferred = createDeferred<{ success: boolean }>()
+    const fetchMock = vi.fn(() => deferred.promise)
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const history = useHistory()
+    history.prime(createHistoryResponse({
+      chats: [chatOne, chatTwo, chatThree],
+    }))
+    history.enterSelectionMode(chatOne.id, 0)
+    history.handleSelect(chatTwo.id, 1, false)
+
+    const movePromise = history.moveSelectedToFolder('folder-9', 'Projects')
+    await flushPromises()
+
+    history.deselectAll()
+    history.enterSelectionMode(chatThree.id, 2)
+
+    deferred.resolve({ success: true })
+    await movePromise
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/folder/bulk', {
+      method: 'POST',
+      body: {
+        chatIds: ['chat-1', 'chat-2'],
+        folderId: 'folder-9',
+      },
+    })
+    expect(history.chats.value).toMatchObject([
+      { id: 'chat-1', folderId: 'folder-9', folderName: 'Projects' },
+      { id: 'chat-2', folderId: 'folder-9', folderName: 'Projects' },
+      { id: 'chat-3', folderId: null, folderName: null },
+    ])
+    expect(Array.from(history.selectedIds.value)).toEqual(['chat-3'])
+    expect(history.isSelectionMode.value).toBe(true)
   })
 
   it('renames and deletes a single chat', async () => {
