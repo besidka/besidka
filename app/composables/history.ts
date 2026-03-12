@@ -196,18 +196,41 @@ export function useHistory() {
     await fetchHistory({ reset: false })
   }
 
-  function updateEntry(
-    update: (entry: HistoryCacheEntry) => HistoryCacheEntry,
+  function updateEntries(
+    update: (
+      entry: HistoryCacheEntry,
+      cacheKey: string,
+    ) => HistoryCacheEntry,
   ) {
-    const currentEntry = cache.value[activeKey.value] || {
-      chats: chats.value,
-      pinned: pinned.value,
-      nextCursor: nextCursor.value,
-      hasLoaded: true,
-      lastFetchedAt: Date.now(),
+    const nextCache = { ...cache.value }
+    let hasActiveEntry = false
+
+    for (const [cacheKey, entry] of Object.entries(cache.value)) {
+      if (!entry.hasLoaded) {
+        continue
+      }
+
+      nextCache[cacheKey] = update(entry, cacheKey)
+
+      if (cacheKey === activeKey.value) {
+        hasActiveEntry = true
+      }
     }
 
-    setEntry(activeKey.value, update(currentEntry))
+    if (!hasActiveEntry) {
+      nextCache[activeKey.value] = update({
+        chats: chats.value,
+        pinned: pinned.value,
+        nextCursor: nextCursor.value,
+        hasLoaded: true,
+        lastFetchedAt: Date.now(),
+      }, activeKey.value)
+    }
+
+    cache.value = nextCache
+    chats.value = nextCache[activeKey.value]?.chats || []
+    pinned.value = nextCache[activeKey.value]?.pinned || []
+    nextCursor.value = nextCache[activeKey.value]?.nextCursor || null
   }
 
   function clearCompletedSelection(chatIds: string[]) {
@@ -244,7 +267,7 @@ export function useHistory() {
         activityAt: new Date().toISOString(),
       }
 
-      updateEntry((entry) => {
+      updateEntries((entry) => {
         if (newPinnedAt) {
           return {
             ...entry,
@@ -359,7 +382,7 @@ export function useHistory() {
         })
       }
 
-      updateEntry((entry) => {
+      updateEntries((entry) => {
         return {
           ...entry,
           chats: entry.chats.filter((chat) => {
@@ -397,7 +420,7 @@ export function useHistory() {
         body: { title },
       })
 
-      updateEntry((entry) => {
+      updateEntries((entry) => {
         const existingChat = [...entry.pinned, ...entry.chats].find((chat) => {
           return chat.id === chatId
         })
@@ -451,7 +474,7 @@ export function useHistory() {
         method: 'DELETE',
       })
 
-      updateEntry((entry) => {
+      updateEntries((entry) => {
         return {
           ...entry,
           chats: entry.chats.filter(chat => chat.id !== chatId),
@@ -488,7 +511,7 @@ export function useHistory() {
         body: { folderId },
       })
 
-      updateEntry((entry) => {
+      updateEntries((entry) => {
         const update = (items: HistoryChat[]) => {
           return items.map((chat) => {
             return chat.id === chatId
@@ -541,7 +564,7 @@ export function useHistory() {
         })
       }
 
-      updateEntry((entry) => {
+      updateEntries((entry) => {
         const update = (items: HistoryChat[]) => {
           return items.map((chat) => {
             return selectedChatIds.has(chat.id)

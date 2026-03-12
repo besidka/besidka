@@ -1,12 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  refreshFolderActivityAt: vi.fn(async () => undefined),
   generateChatTitle: vi.fn(async () => 'Generated title'),
-}))
-
-vi.mock('~~/server/utils/folders/activity', () => ({
-  refreshFolderActivityAt: mocks.refreshFolderActivityAt,
 }))
 
 async function getTitleHandler() {
@@ -19,7 +14,6 @@ describe('chat title API', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    mocks.refreshFolderActivityAt.mockResolvedValue(undefined)
     mocks.generateChatTitle.mockResolvedValue('Generated title')
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -67,10 +61,16 @@ describe('chat title API', () => {
     })))
   })
 
-  it('refreshes folder activity after generating a title for a folder chat', async () => {
+  it('saves a generated title without bumping chat activity', async () => {
     const handler = await getTitleHandler()
-    const updateGet = vi.fn(() => ({
-      title: 'Generated title',
+    const set = vi.fn(() => ({
+      where: vi.fn(() => ({
+        returning: vi.fn(() => ({
+          get: vi.fn(() => ({
+            title: 'Generated title',
+          })),
+        })),
+      })),
     }))
     const db = {
       query: {
@@ -88,13 +88,7 @@ describe('chat title API', () => {
         },
       },
       update: vi.fn(() => ({
-        set: vi.fn(() => ({
-          where: vi.fn(() => ({
-            returning: vi.fn(() => ({
-              get: updateGet,
-            })),
-          })),
-        })),
+        set,
       })),
     }
 
@@ -109,10 +103,8 @@ describe('chat title API', () => {
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
       'Create a roadmap for Q2',
     )
-    expect(mocks.refreshFolderActivityAt).toHaveBeenCalledWith(
-      ['folder-1'],
-      1,
-      db,
-    )
+    expect(set).toHaveBeenCalledWith({
+      title: 'Generated title',
+    })
   })
 })

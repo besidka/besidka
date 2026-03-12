@@ -407,4 +407,78 @@ describe('useHistory', () => {
       folderName: null,
     })
   })
+
+  it('keeps default and search caches in sync after mutations', async () => {
+    const renameRefresh = createDeferred<
+      ReturnType<typeof createHistoryResponse>
+    >()
+    const deleteRefresh = createDeferred<
+      ReturnType<typeof createHistoryResponse>
+    >()
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/rename')) {
+        return Promise.resolve({ title: 'Renamed report' })
+      }
+
+      if (url.endsWith('/chat-1')) {
+        return Promise.resolve({ success: true })
+      }
+
+      if (fetchMock.mock.calls.filter(([callUrl]) => {
+        return callUrl === '/api/v1/chats/history'
+      }).length === 1) {
+        return renameRefresh.promise
+      }
+
+      return deleteRefresh.promise
+    })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const defaultChat = createHistoryChat({
+      id: 'chat-1',
+      slug: 'chat-1',
+      title: 'Quarterly report',
+    })
+    const searchChat = createHistoryChat({
+      id: 'chat-1',
+      slug: 'chat-1',
+      title: 'Quarterly report',
+    })
+
+    const history = createHistoryComposable()
+    history.prime(createHistoryResponse({ chats: [defaultChat] }))
+
+    history.search.value = 'report'
+    history.prime(createHistoryResponse({ chats: [searchChat] }))
+
+    await history.renameChat('chat-1', 'chat-1', 'Renamed report')
+
+    history.search.value = ''
+
+    const hydratePromise = history.hydrateAndRefresh()
+
+    expect(history.chats.value[0]?.title).toBe('Renamed report')
+
+    renameRefresh.resolve(createHistoryResponse({
+      chats: [createHistoryChat({
+        id: 'chat-1',
+        slug: 'chat-1',
+        title: 'Renamed report',
+      })],
+    }))
+    await hydratePromise
+
+    await history.deleteChat('chat-1', 'chat-1')
+
+    history.search.value = 'report'
+
+    const searchHydratePromise = history.hydrateAndRefresh()
+
+    expect(history.chats.value).toEqual([])
+
+    deleteRefresh.resolve(createHistoryResponse({
+      chats: [],
+    }))
+    await searchHydratePromise
+  })
 })

@@ -159,48 +159,71 @@ describe('chat history API', () => {
     }))
   })
 
-  it('applies the search limit after combining search matches', async () => {
+  it('returns all pinned search matches and paginates matching chats', async () => {
     const handler = await getHistoryHandler()
-    const newestMatch = withDateFields(createHistoryChat({
-      id: 'chat-newest',
-      title: 'Roadmap alpha',
-      activityAt: '2026-03-11T11:00:00.000Z',
+    const pinnedMatch = withDateFields(createHistoryChat({
+      id: 'chat-pinned',
+      title: 'Roadmap pinned',
       pinnedAt: '2026-03-11T09:00:00.000Z',
     }))
-    const secondNewestMatch = withDateFields(createHistoryChat({
-      id: 'chat-second',
+    const firstMatch = withDateFields(createHistoryChat({
+      id: 'chat-first',
       title: 'Roadmap beta',
       activityAt: '2026-03-10T11:00:00.000Z',
     }))
-    const searchSelectChain = createSelectChain([
-      newestMatch,
-      secondNewestMatch,
-    ])
+    const secondMatch = withDateFields(createHistoryChat({
+      id: 'chat-second',
+      title: 'Roadmap gamma',
+      activityAt: '2026-03-09T11:00:00.000Z',
+    }))
+    const pinnedSelectChain = createSelectChain()
+    const chatsSelectChain = createSelectChain()
     const contentSelectChain = createSelectChain()
     const db = {
       select: vi.fn()
-        .mockReturnValueOnce(searchSelectChain)
+        .mockReturnValueOnce(contentSelectChain)
+        .mockReturnValueOnce(chatsSelectChain)
+        .mockReturnValueOnce(pinnedSelectChain)
         .mockReturnValue(contentSelectChain),
-      batch: vi.fn(),
+      batch: vi.fn(async () => {
+        return [[pinnedMatch], [firstMatch]]
+      }),
     }
 
     vi.stubGlobal('useDb', () => db)
     vi.stubGlobal('useEvent', () => ({
-      query: { search: 'map', limit: '2' },
+      query: { search: 'map', limit: '1' },
     }))
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
     const response = await handler()
 
     expect(response.pinned.map((chat: { id: string }) => chat.id)).toEqual([
-      'chat-newest',
+      'chat-pinned',
     ])
     expect(response.chats.map((chat: { id: string }) => chat.id)).toEqual([
-      'chat-second',
+      'chat-first',
     ])
-    expect(response.nextCursor).toBeNull()
-    expect(searchSelectChain.limit).toHaveBeenCalledWith(2)
-    expect(db.batch).not.toHaveBeenCalled()
+    expect(response.nextCursor).toBe(createHistoryCursor(firstMatch))
+    expect(chatsSelectChain.limit).toHaveBeenCalledWith(1)
+    expect(db.batch).toHaveBeenCalledOnce()
+
+    db.select.mockReturnValueOnce(contentSelectChain)
+    db.select.mockReturnValueOnce(createSelectChain([secondMatch]))
+    vi.stubGlobal('useEvent', () => ({
+      query: {
+        search: 'map',
+        limit: '1',
+        cursor: createHistoryCursor(firstMatch),
+      },
+    }))
+
+    const nextPageResponse = await handler()
+
+    expect(nextPageResponse.pinned).toEqual([])
+    expect(nextPageResponse.chats).toEqual([secondMatch])
+    expect(nextPageResponse.nextCursor).toBe(createHistoryCursor(secondMatch))
+    expect(db.batch).toHaveBeenCalledOnce()
   })
 
   it('falls back to the default limit when the history limit is invalid', async () => {
@@ -211,8 +234,13 @@ describe('chat history API', () => {
     }))
     const searchSelectChain = createSelectChain([match])
     const db = {
-      select: vi.fn(() => searchSelectChain),
-      batch: vi.fn(),
+      select: vi.fn()
+        .mockReturnValueOnce(createSelectChain())
+        .mockReturnValueOnce(searchSelectChain)
+        .mockReturnValueOnce(searchSelectChain),
+      batch: vi.fn(async () => {
+        return [[], [match]]
+      }),
     }
 
     vi.stubGlobal('useDb', () => db)

@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -109,15 +108,10 @@ export default defineEventHandler(async (event) => {
   const { title: savedTitle } = await db.update(schema.chats)
     .set({
       title,
-      activityAt: new Date(),
     })
     .where(eq(schema.chats.id, chat.id))
     .returning({ title: schema.chats.title })
     .get()
-
-  if (chat.folderId) {
-    await refreshFolderActivityAt([chat.folderId], userId, db)
-  }
 
   return savedTitle
 })
