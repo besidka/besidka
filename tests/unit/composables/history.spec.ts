@@ -198,6 +198,22 @@ describe('useHistory', () => {
     expect(history.isSelectionMode.value).toBe(false)
   })
 
+  it('clears selection when the search key changes', async () => {
+    const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
+    const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
+
+    const history = useHistory()
+    history.prime(createHistoryResponse({ chats: [chatOne, chatTwo] }))
+    history.enterSelectionMode(chatOne.id, 0)
+    history.handleSelect(chatTwo.id, 1, false)
+
+    history.search.value = 'Reports'
+    await flushPromises()
+
+    expect(history.selectedCount.value).toBe(0)
+    expect(history.isSelectionMode.value).toBe(false)
+  })
+
   it('moves selected chats to a folder and clears selection', async () => {
     const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
     const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })

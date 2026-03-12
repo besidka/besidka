@@ -46,11 +46,16 @@ export default defineEventHandler(async (event) => {
       folderId: true,
     },
   })
-  const sourceFolderIds = chats
-    .map(chat => chat.folderId)
-    .filter((folderId) => {
-      return folderId !== null && folderId !== body.data.folderId
-    })
+  const chatsToMove = chats.filter((chat) => {
+    return chat.folderId !== body.data.folderId
+  })
+
+  if (chatsToMove.length === 0) {
+    return { success: true }
+  }
+
+  const movedChatIds = chatsToMove.map(chat => chat.id)
+  const sourceFolderIds = chatsToMove.map(chat => chat.folderId)
 
   if (body.data.folderId !== null) {
     const folder = await db.query.folders.findFirst({
@@ -77,7 +82,7 @@ export default defineEventHandler(async (event) => {
       .set({ folderId: folder.id, activityAt })
       .where(and(
         eq(schema.chats.userId, userId),
-        inArray(schema.chats.id, body.data.chatIds),
+        inArray(schema.chats.id, movedChatIds),
       ))
 
     await db.update(schema.folders)
@@ -95,7 +100,7 @@ export default defineEventHandler(async (event) => {
     .set({ folderId: sql`NULL`, activityAt })
     .where(and(
       eq(schema.chats.userId, userId),
-      inArray(schema.chats.id, body.data.chatIds),
+      inArray(schema.chats.id, movedChatIds),
     ))
 
   await refreshFolderActivityAt(sourceFolderIds, userId, db)

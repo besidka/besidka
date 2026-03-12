@@ -62,6 +62,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (body.data.folderId === chat.folderId) {
+    return { folderId: chat.folderId }
+  }
+
   if (body.data.folderId !== null) {
     const folder = await db.query.folders.findFirst({
       where(folders, { and, eq }) {

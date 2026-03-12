@@ -148,6 +148,34 @@ export function useFolders() {
     setEntry(activeKey.value, update(currentEntry))
   }
 
+  function matchesActiveFilters(folder: Folder) {
+    if (showArchived.value) {
+      return folder.archivedAt !== null
+    }
+
+    if (folder.archivedAt !== null) {
+      return false
+    }
+
+    const normalizedSearch = search.value.trim().toLowerCase()
+
+    if (normalizedSearch.length < 2) {
+      return true
+    }
+
+    return folder.name.toLowerCase().includes(normalizedSearch)
+  }
+
+  function sortFolders(items: Folder[]) {
+    return [...items].sort((firstFolder, secondFolder) => {
+      if (sortBy.value === 'name') {
+        return firstFolder.name.localeCompare(secondFolder.name)
+      }
+
+      return secondFolder.activityAt.localeCompare(firstFolder.activityAt)
+    })
+  }
+
   async function createFolder(name: string) {
     isCreating.value = true
 
@@ -158,9 +186,13 @@ export function useFolders() {
       })
 
       updateEntry((entry) => {
+        if (!matchesActiveFilters(folder)) {
+          return entry
+        }
+
         return {
           ...entry,
-          folders: [folder, ...entry.folders],
+          folders: sortFolders([folder, ...entry.folders]),
         }
       })
 

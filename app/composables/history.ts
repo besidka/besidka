@@ -535,6 +535,14 @@ export function useHistory() {
     hydrateAndRefresh()
   }, 180)
 
+  watch(activeKey, (newKey, oldKey) => {
+    if (newKey === oldKey) {
+      return
+    }
+
+    deselectAll()
+  })
+
   watch(search, () => {
     debouncedSearch()
   })

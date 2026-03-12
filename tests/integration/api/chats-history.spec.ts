@@ -279,7 +279,15 @@ describe('chat history API', () => {
     const db = {
       query: {
         chats: {
-          findFirst: vi.fn(async () => ({ id: 'chat-1' })),
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            folderId: 'folder-source',
+          })),
+          findMany: vi.fn(async () => ([
+            { folderId: 'folder-source' },
+            { folderId: null },
+            { folderId: 'folder-other' },
+          ])),
         },
       },
       delete: vi.fn(() => ({
@@ -299,6 +307,18 @@ describe('chat history API', () => {
     expect(singleResponse).toEqual({ success: true })
     expect(bulkResponse).toEqual({ success: true })
     expect(deleteWhere).toHaveBeenCalledTimes(2)
+    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+      1,
+      ['folder-source'],
+      1,
+      db,
+    )
+    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+      2,
+      ['folder-source', null, 'folder-other'],
+      1,
+      db,
+    )
   })
 
   it('pins chats and updates activity timestamps', async () => {
@@ -409,5 +429,53 @@ describe('chat history API', () => {
       1,
       db,
     )
+  })
+
+  it('skips no-op folder moves for single and bulk actions', async () => {
+    const singleHandler = await getFolderMoveHandler()
+    const bulkHandler = await getBulkFolderMoveHandler()
+    const updateWhere = vi.fn(async () => undefined)
+    const updateSet = vi.fn(() => ({
+      where: updateWhere,
+    }))
+    const db = {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            folderId: 'folder-1',
+          })),
+          findMany: vi.fn(async () => ([
+            { id: 'chat-1', folderId: 'folder-1' },
+            { id: 'chat-2', folderId: 'folder-1' },
+          ])),
+        },
+        folders: {
+          findFirst: vi.fn(async () => ({ id: 'folder-1' })),
+        },
+      },
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const singleResponse = await singleHandler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: { folderId: 'folder-1' },
+    } as any)
+    const bulkResponse = await bulkHandler({
+      body: {
+        chatIds: ['chat-1', 'chat-2'],
+        folderId: 'folder-1',
+      },
+    } as any)
+
+    expect(singleResponse).toEqual({ folderId: 'folder-1' })
+    expect(bulkResponse).toEqual({ success: true })
+    expect(db.query.folders.findFirst).not.toHaveBeenCalled()
+    expect(db.update).not.toHaveBeenCalled()
+    expect(mocks.refreshFolderActivityAt).not.toHaveBeenCalled()
   })
 })

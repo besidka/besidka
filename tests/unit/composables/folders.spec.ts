@@ -112,6 +112,33 @@ describe('useFolders', () => {
     expect(folders.folders.value.map(folder => folder.id)).toEqual([])
   })
 
+  it('does not insert a created folder into a filtered view when it does not match', async () => {
+    vi.useFakeTimers()
+
+    const visibleFolder = createFolder({ id: 'folder-1', name: 'Alpha' })
+    const createdFolder = createFolder({ id: 'folder-2', name: 'Projects' })
+    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+      method?: string
+    }) => {
+      if (url === '/api/v1/folders' && options?.method === 'PUT') {
+        return Promise.resolve(createdFolder)
+      }
+
+      return Promise.resolve(createFoldersResponse({
+        folders: [visibleFolder],
+      }))
+    }))
+
+    const folders = useFolders()
+    folders.search.value = 'Alpha'
+    folders.prime(createFoldersResponse({ folders: [visibleFolder] }))
+
+    const result = await folders.createFolder('Projects')
+
+    expect(result).toEqual(createdFolder)
+    expect(folders.folders.value).toEqual([visibleFolder])
+  })
+
   it('debounces search and includes sort and archive filters in requests', async () => {
     vi.useFakeTimers()
 
