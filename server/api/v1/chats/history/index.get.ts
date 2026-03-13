@@ -119,6 +119,7 @@ export default defineEventHandler(async () => {
           searchFilter,
         ))
         .orderBy(desc(schema.chats.pinnedAt))
+        .limit(PINNED_LIMIT)
 
       const [pinned, chats] = await db.batch([pinnedQuery, chatsQuery])
       const lastChat = chats[chats.length - 1]

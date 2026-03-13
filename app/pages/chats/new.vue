@@ -59,9 +59,18 @@ const reasoning = useLocalStorage<ReasoningLevel>(
   'settings_reasoning_level',
   'off',
 )
-const folderId = shallowRef<string | null>(
-  (route.query.folderId as string) || null,
-)
+
+function parseRouteFolderId(folderId: unknown): string | null {
+  return typeof folderId === 'string' && folderId.length > 0
+    ? folderId
+    : null
+}
+
+const routeFolderId = computed<string | null>(() => {
+  return parseRouteFolderId(route.query.folderId)
+})
+
+const folderId = shallowRef<string | null>(routeFolderId.value)
 const folderContext = useState<{ id: string, name: string } | null>(
   'chats-new:folder-context',
   () => null,
@@ -125,6 +134,13 @@ async function syncFolderContext(
     return
   }
 
+  if (
+    folderContext.value?.id === nextFolderId
+    && folderContext.value.name !== 'Folder'
+  ) {
+    return
+  }
+
   if (canApply()) {
     folderContext.value = {
       id: nextFolderId,
@@ -161,6 +177,14 @@ if (import.meta.server && folderId.value) {
 }
 
 if (import.meta.client) {
+  watch(routeFolderId, (nextFolderId) => {
+    if (folderId.value === nextFolderId) {
+      return
+    }
+
+    folderId.value = nextFolderId
+  }, { immediate: true })
+
   watch(folderId, async (nextFolderId, _previousFolderId, onCleanup) => {
     let isStale = false
 

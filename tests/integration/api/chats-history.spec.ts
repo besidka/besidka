@@ -159,7 +159,7 @@ describe('chat history API', () => {
     }))
   })
 
-  it('returns all pinned search matches and paginates matching chats', async () => {
+  it('caps pinned search matches and paginates matching chats', async () => {
     const handler = await getHistoryHandler()
     const pinnedMatch = withDateFields(createHistoryChat({
       id: 'chat-pinned',
@@ -205,6 +205,7 @@ describe('chat history API', () => {
       'chat-first',
     ])
     expect(response.nextCursor).toBe(createHistoryCursor(firstMatch))
+    expect(pinnedSelectChain.limit).toHaveBeenCalledWith(50)
     expect(chatsSelectChain.limit).toHaveBeenCalledWith(1)
     expect(db.batch).toHaveBeenCalledOnce()
 

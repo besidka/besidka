@@ -227,6 +227,9 @@ describe('folders API', () => {
     const handler = await getDeleteFolderHandler()
     const chatsWhere = vi.fn(async () => undefined)
     const foldersWhere = vi.fn(async () => undefined)
+    const chatsSet = vi.fn(() => ({
+      where: chatsWhere,
+    }))
     const db = {
       query: {
         folders: {
@@ -234,9 +237,7 @@ describe('folders API', () => {
         },
       },
       update: vi.fn(() => ({
-        set: vi.fn(() => ({
-          where: chatsWhere,
-        })),
+        set: chatsSet,
       })),
       delete: vi.fn(() => ({
         where: foldersWhere,
@@ -250,6 +251,9 @@ describe('folders API', () => {
     } as any)
 
     expect(response).toEqual({ success: true })
+    expect(chatsSet).toHaveBeenCalledWith(expect.objectContaining({
+      activityAt: expect.any(Date),
+    }))
     expect(chatsWhere).toHaveBeenCalled()
     expect(foldersWhere).toHaveBeenCalled()
   })

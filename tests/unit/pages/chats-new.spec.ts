@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-import { defineComponent, nextTick } from 'vue'
+import { defineComponent, nextTick, reactive } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
@@ -25,9 +24,9 @@ function createDeferred<T>() {
 }
 
 describe('chats new page', () => {
-  const route = {
-    query: {},
-  }
+  const route = reactive({
+    query: reactive({} as Record<string, unknown>),
+  })
   const replace = vi.fn()
 
   beforeEach(() => {
@@ -39,6 +38,7 @@ describe('chats new page', () => {
     vi.stubGlobal('useRouter', () => ({
       replace,
     }))
+    vi.stubGlobal('navigateTo', vi.fn())
     vi.stubGlobal('useLocalStorage', <T>(_: string, value: T) => {
       return shallowRef<T>(value)
     })
@@ -47,7 +47,8 @@ describe('chats new page', () => {
   })
 
   afterEach(() => {
-    route.query = {}
+    route.query = reactive({} as Record<string, unknown>)
+
     replace.mockReset()
     resetMockNuxtState()
   })
@@ -112,7 +113,7 @@ describe('chats new page', () => {
     await nextTick()
 
     expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-a|Folder',
+      'folder-a|Folder A',
     )
 
     wrapper.findComponent({ name: 'ChatInputFolderPicker' }).vm.$emit(
@@ -125,7 +126,7 @@ describe('chats new page', () => {
     await nextTick()
 
     expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-b|Folder',
+      'folder-b|Folder B',
     )
 
     folderARequest.resolve({
@@ -137,7 +138,7 @@ describe('chats new page', () => {
     await nextTick()
 
     expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-b|Folder',
+      'folder-b|Folder B',
     )
 
     folderBRequest.resolve({
@@ -151,17 +152,5 @@ describe('chats new page', () => {
     expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
       'folder-b|Folder B',
     )
-  })
-
-  it('stores folder context in serialized Nuxt state', () => {
-    const source = readFileSync(
-      `${process.cwd()}/app/pages/chats/new.vue`,
-      'utf8',
-    )
-
-    expect(source).toContain(
-      'const folderContext = useState<{ id: string, name: string } | null>(',
-    )
-    expect(source).toContain('\'chats-new:folder-context\'')
   })
 })

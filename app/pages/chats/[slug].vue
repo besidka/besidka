@@ -82,6 +82,8 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    display-folder-picker
+    :folder-context="folderContext"
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
     :stop="stop"
@@ -89,10 +91,19 @@
     :display-regenerate="displayRegenerate"
     :display-stop="displayStop"
     :status="chatSdk.status"
+    @clear-folder-context="clearFolderContext"
+    @open-folder-picker="openFolderPicker"
     @submit="submit"
+  />
+
+  <LazyChatInputFolderPicker
+    ref="folderPickerRef"
+    @submit="onFolderPickerSubmit"
   />
 </template>
 <script setup lang="ts">
+import { parseError } from 'evlog'
+
 definePageMeta({
   layout: 'chat',
   auth: {
@@ -176,6 +187,16 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
+const folderId = shallowRef<string | null>(chat.value.folderId ?? null)
+const folderContext = shallowRef<{ id: string, name: string } | null>(
+  folderId.value
+    ? {
+      id: folderId.value,
+      name: 'Folder',
+    }
+    : null,
+)
+
 const {
   chatSdk,
   input,
@@ -204,6 +225,97 @@ const messagesEndRef = ref<HTMLDivElement | null>(null)
 const nuxtApp = useNuxtApp()
 const messagesDomRefs = useTemplateRef<HTMLDivElement[]>('messagesDomRefs')
 
+interface FolderPickerInstance {
+  open: (folderId: string | null) => void
+}
+
+const folderPickerRef = shallowRef<FolderPickerInstance | null>(null)
+
+async function fetchFolderContext(nextFolderId: string) {
+  return import.meta.server
+    ? await useRequestFetch()(`/api/v1/folders/${nextFolderId}`)
+    : await $fetch(`/api/v1/folders/${nextFolderId}`)
+}
+
+async function syncFolderContext(
+  nextFolderId: string | null,
+  canApply: () => boolean = () => true,
+) {
+  if (!nextFolderId) {
+    if (canApply()) {
+      folderContext.value = null
+    }
+
+    return
+  }
+
+  if (
+    folderContext.value?.id === nextFolderId
+    && folderContext.value.name !== 'Folder'
+  ) {
+    return
+  }
+
+  if (canApply()) {
+    folderContext.value = {
+      id: nextFolderId,
+      name: 'Folder',
+    }
+  }
+
+  try {
+    const folder = await fetchFolderContext(nextFolderId)
+
+    if (!canApply()) {
+      return
+    }
+
+    folderContext.value = {
+      id: folder.id,
+      name: folder.name,
+    }
+  } catch (exception) {
+    if (!canApply()) {
+      return
+    }
+
+    const parsedException = parseError(exception)
+
+    if (parsedException.status === 404) {
+      folderId.value = null
+      folderContext.value = null
+    }
+  }
+}
+
+if (import.meta.server && folderId.value) {
+  await syncFolderContext(folderId.value)
+}
+
+if (import.meta.client) {
+  watch(() => {
+    return chat.value?.folderId ?? null
+  }, (nextFolderId) => {
+    if (folderId.value === nextFolderId) {
+      return
+    }
+
+    folderId.value = nextFolderId
+  }, { immediate: true })
+
+  watch(folderId, async (nextFolderId, _previousFolderId, onCleanup) => {
+    let isStale = false
+
+    onCleanup(() => {
+      isStale = true
+    })
+
+    await syncFolderContext(nextFolderId, () => {
+      return !isStale && folderId.value === nextFolderId
+    })
+  }, { immediate: true })
+}
+
 onMounted(() => {
   hideMessages.value = false
 
@@ -216,6 +328,48 @@ const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
   messagesDomRefs,
   chatSdk,
 })
+
+function openFolderPicker() {
+  folderPickerRef.value?.open(folderId.value)
+}
+
+async function onFolderPickerSubmit(payload: {
+  folderId: string | null
+  folderName: string | null
+}) {
+  try {
+    await $fetch(`/api/v1/chats/${route.params.slug}/folder`, {
+      method: 'PATCH',
+      body: { folderId: payload.folderId },
+    })
+
+    folderId.value = payload.folderId
+    folderContext.value = payload.folderId
+      ? {
+        id: payload.folderId,
+        name: payload.folderName || 'Folder',
+      }
+      : null
+
+    useSuccessMessage(
+      payload.folderId ? 'Moved to folder' : 'Removed from folder',
+    )
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to move chat',
+      parsedException.why,
+    )
+  }
+}
+
+async function clearFolderContext() {
+  await onFolderPickerSubmit({
+    folderId: null,
+    folderName: null,
+  })
+}
 
 const branchPending = shallowRef(false)
 

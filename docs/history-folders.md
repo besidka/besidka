@@ -113,6 +113,37 @@ immediately.
 - Unlinks chats from the folder by setting `chat.folderId = null`
 - Does not delete chats
 
+### Touch dropdown behavior
+
+Folder actions use the same DaisyUI `details + summary` dropdown approach as
+the chat history menus.
+
+Important implementation note:
+
+- do not add `tabindex` to the trigger `summary`
+
+Why:
+
+- the shared history/folder dropdowns broke on touch when `summary` was given
+  an extra `tabindex`
+- desktop still opened correctly, which hid the regression during normal local
+  checks
+- the native disclosure behavior matched the rest of the app only after keeping
+  `summary` plain
+
+This affected:
+
+- `app/pages/chats/folders/index.vue`
+- `app/pages/chats/folders/[id].vue`
+- `app/components/History/FolderActionsDropdown.vue`
+
+Current rule for folder dropdowns:
+
+- keep native `details` / `summary`
+- let DaisyUI positioning handle layout
+- keep card click interception separate from dropdown opening
+- use browser-level mobile coverage for touch regressions
+
 ## Activity Semantics
 
 Folder `activityAt` changes when folder chat membership changes:
@@ -177,6 +208,7 @@ That means:
 
 - `tests/unit/composables/folders.spec.ts`
 - `tests/unit/composables/folder-chats.spec.ts`
+- `tests/unit/components/History/FolderActionsDropdown.spec.ts`
 
 Covered cases:
 
@@ -192,6 +224,7 @@ Covered cases:
 - folder detail ignores stale responses after folder navigation
 - folder detail rename/remove/move behavior
 - folder detail pinning and folder metadata updates
+- folder actions close after a selection
 
 Additional coverage:
 
@@ -219,10 +252,28 @@ Covered cases:
 - folder chats response shape and next cursor
 - folders and folder detail cache persistence across remount-style navigation
 
+### E2E coverage
+
+- `tests/e2e/history/dropdown-touch.spec.ts`
+
+Covered cases:
+
+- mobile touch opens the folder card dropdown on `/chats/folders`
+- mobile touch opens the folder detail toolbar dropdown on `/chats/folders/[id]`
+- mobile touch opens chat row actions inside `/chats/folders/[id]`
+
+Why this exists:
+
+- the original regression passed unit coverage but failed in real mobile
+  interaction
+- browser-level tests are needed for native `details` behavior inside history
+  cards and rows
+
 ### Useful commands
 
 ```bash
 pnpm vitest run tests/unit/composables/folders.spec.ts
 pnpm vitest run tests/unit/composables/folder-chats.spec.ts
 pnpm vitest run tests/integration/api/folders.spec.ts
+pnpm exec playwright test tests/e2e/history/dropdown-touch.spec.ts --project=chromium
 ```

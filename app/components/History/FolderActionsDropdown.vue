@@ -1,24 +1,21 @@
 <template>
-  <div
+  <details
     ref="dropdownRef"
-    class="dropdown dropdown-bottom dropdown-end relative z-20"
-    @click.stop
-    @keydown.stop
-    @mousedown.stop
+    class="js-folder-actions-dropdown dropdown dropdown-left sm:dropdown-end relative z-20"
   >
     <slot>
-      <button
-        type="button"
+      <summary
+        data-testid="history-folder-actions-trigger"
         class="btn btn-ghost btn-sm sm:btn-xs btn-circle"
         aria-label="Folder actions"
       >
         <Icon name="lucide:ellipsis-vertical" size="16" />
-      </button>
+      </summary>
     </slot>
-    <div class="dropdown-content pt-2">
+    <div class="dropdown-content z-50 w-52 pt-2">
       <ul
         tabindex="0"
-        class="menu menu-sm bg-base-100 rounded-box shadow-lg z-50 w-52 p-1"
+        class="menu menu-sm bg-base-100 rounded-box shadow-lg w-52 p-1"
       >
         <li>
           <button
@@ -67,7 +64,7 @@
         </li>
       </ul>
     </div>
-  </div>
+  </details>
 </template>
 
 <script setup lang="ts">
@@ -84,14 +81,22 @@ const emit = defineEmits<{
   delete: []
 }>()
 
-const dropdownRef = shallowRef<HTMLElement | null>(null)
+const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
 
 function closeDropdown() {
   if (dropdownRef.value) {
+    dropdownRef.value.open = false
     const activeEl = document.activeElement as HTMLElement | null
+
     activeEl?.blur()
   }
 }
+
+onClickOutside(dropdownRef, () => {
+  if (dropdownRef.value?.open) {
+    closeDropdown()
+  }
+})
 
 function onPin() {
   closeDropdown()

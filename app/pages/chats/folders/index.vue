@@ -108,11 +108,11 @@
           <div
             v-for="folder in pinned"
             :key="folder.id"
-            class="card bg-base-100 cursor-pointer transition-colors hover:bg-base-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20"
+            class="card overflow-visible bg-base-100 cursor-pointer transition-colors hover:bg-base-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20"
             role="link"
             tabindex="0"
             :aria-label="`Open folder ${folder.name}`"
-            @click="openFolder(folder.id)"
+            @click="onFolderCardClick($event, folder.id)"
             @keydown.enter.prevent="openFolder(folder.id)"
             @keydown.space.prevent="openFolder(folder.id)"
           >
@@ -158,11 +158,11 @@
           <div
             v-for="folder in folders"
             :key="folder.id"
-            class="card bg-base-100 cursor-pointer transition-colors hover:bg-base-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20"
+            class="card overflow-visible bg-base-100 cursor-pointer transition-colors hover:bg-base-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20"
             role="link"
             tabindex="0"
             :aria-label="`Open folder ${folder.name}`"
-            @click="openFolder(folder.id)"
+            @click="onFolderCardClick($event, folder.id)"
             @keydown.enter.prevent="openFolder(folder.id)"
             @keydown.space.prevent="openFolder(folder.id)"
           >
@@ -306,6 +306,16 @@ onBeforeUnmount(() => {
 
 function openFolder(folderId: string) {
   navigateTo(`/chats/folders/${folderId}`)
+}
+
+function onFolderCardClick(event: MouseEvent, folderId: string) {
+  const target = event.target as HTMLElement | null
+
+  if (target?.closest('.js-folder-actions-dropdown')) {
+    return
+  }
+
+  openFolder(folderId)
 }
 
 function openCreateModal() {

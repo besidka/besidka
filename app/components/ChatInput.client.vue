@@ -77,7 +77,7 @@
               </div>
               <div class="hidden md:flex items-center gap-2 my-2 px-1">
                 <div
-                  v-if="displayFolderPicker"
+                  v-if="shouldDisplayFolderPicker"
                   class="join"
                 >
                   <button
@@ -182,7 +182,7 @@
                   ? reasoningCapability.levels
                   : []
                 "
-                :display-folder-picker="displayFolderPicker"
+                :display-folder-picker="shouldDisplayFolderPicker"
                 :folder-context="folderContext"
                 :files-count="files.length"
                 @toggle-web-search="toggleWebSearch"
@@ -400,6 +400,10 @@ const canShowRegenerate = computed<boolean>(() => {
 
 const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
+})
+
+const shouldDisplayFolderPicker = computed<boolean>(() => {
+  return !!(props.displayFolderPicker || props.folderContext)
 })
 
 const isChatInputVisibleOnScroll = computed<boolean>(() => {

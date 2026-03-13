@@ -12,7 +12,7 @@
         [`
           flex-1 overflow-y-auto
           pt-[var(--sat)]
-          max-sm:pb-[calc(var(--spacing)_*_40_+_var(--sab))]
+          max-sm:pb-[calc(var(--spacing)_*_24_+_var(--sab))]
           [-webkit-overflow-scrolling:touch]
         `]: $route.name !== 'chats-slug',
       }"

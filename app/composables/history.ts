@@ -248,45 +248,121 @@ export function useHistory() {
     }
   }
 
+  function updatePinnedState(
+    entry: HistoryCacheEntry,
+    chatId: string,
+    pinnedAt: string | null,
+    activityAt: string,
+  ): HistoryCacheEntry {
+    const existingChat = entry.pinned.find((chat) => {
+      return chat.id === chatId
+    }) ?? entry.chats.find((chat) => {
+      return chat.id === chatId
+    })
+
+    if (!existingChat) {
+      return entry
+    }
+
+    const updatedChat = {
+      ...existingChat,
+      pinnedAt,
+      activityAt,
+    }
+
+    if (pinnedAt) {
+      return {
+        ...entry,
+        pinned: [
+          updatedChat,
+          ...entry.pinned.filter((chat) => {
+            return chat.id !== chatId
+          }),
+        ],
+        chats: entry.chats.filter((chat) => {
+          return chat.id !== chatId
+        }),
+      }
+    }
+
+    return {
+      ...entry,
+      pinned: entry.pinned.filter((chat) => {
+        return chat.id !== chatId
+      }),
+      chats: [
+        updatedChat,
+        ...entry.chats.filter((chat) => {
+          return chat.id !== chatId
+        }),
+      ],
+    }
+  }
+
+  function updateFolderState(
+    entry: HistoryCacheEntry,
+    chatIds: ReadonlySet<string>,
+    folderId: string | null,
+    folderName: string | null,
+    activityAt: string,
+  ): HistoryCacheEntry {
+    let hasPinnedUpdates = false
+
+    const updatedPinned = entry.pinned.map((chat) => {
+      if (!chatIds.has(chat.id)) {
+        return chat
+      }
+
+      hasPinnedUpdates = true
+
+      return {
+        ...chat,
+        folderId,
+        folderName,
+        activityAt,
+      }
+    })
+
+    const movedChats = entry.chats
+      .filter((chat) => {
+        return chatIds.has(chat.id)
+      })
+      .map((chat) => {
+        return {
+          ...chat,
+          folderId,
+          folderName,
+          activityAt,
+        }
+      })
+
+    if (!hasPinnedUpdates && movedChats.length === 0) {
+      return entry
+    }
+
+    return {
+      ...entry,
+      pinned: updatedPinned,
+      chats: [
+        ...movedChats,
+        ...entry.chats.filter((chat) => {
+          return !chatIds.has(chat.id)
+        }),
+      ],
+    }
+  }
+
   async function togglePin(chatId: string) {
     try {
       const result = await $fetch('/api/v1/chats/history/pin', {
         method: 'POST',
         body: { chatId },
       })
-
-      const allChats = [...chats.value, ...pinned.value]
-      const chat = allChats.find(candidate => candidate.id === chatId)
-
-      if (!chat) return
-
       const newPinnedAt = result.pinnedAt
-      const updatedChat = {
-        ...chat,
-        pinnedAt: newPinnedAt,
-        activityAt: new Date().toISOString(),
-      }
+      const activityAt = new Date().toISOString()
 
       updateEntries((entry) => {
-        if (newPinnedAt) {
-          return {
-            ...entry,
-            pinned: [
-              updatedChat,
-              ...entry.pinned.filter(candidate => candidate.id !== chatId),
-            ],
-            chats: entry.chats.filter(candidate => candidate.id !== chatId),
-          }
-        }
-
-        return {
-          ...entry,
-          pinned: entry.pinned.filter(candidate => candidate.id !== chatId),
-          chats: [
-            updatedChat,
-            ...entry.chats.filter(candidate => candidate.id !== chatId),
-          ],
-        }
+        return updatePinnedState(entry, chatId, newPinnedAt, activityAt)
       })
     } catch (exception) {
       const parsedException = parseError(exception)
@@ -510,21 +586,16 @@ export function useHistory() {
         method: 'PATCH',
         body: { folderId },
       })
+      const activityAt = new Date().toISOString()
 
       updateEntries((entry) => {
-        const update = (items: HistoryChat[]) => {
-          return items.map((chat) => {
-            return chat.id === chatId
-              ? { ...chat, folderId, folderName }
-              : chat
-          })
-        }
-
-        return {
-          ...entry,
-          chats: update(entry.chats),
-          pinned: update(entry.pinned),
-        }
+        return updateFolderState(
+          entry,
+          new Set([chatId]),
+          folderId,
+          folderName,
+          activityAt,
+        )
       })
 
       nuxtApp.runWithContext(() => {
@@ -563,21 +634,16 @@ export function useHistory() {
           body: { chatIds: chunk, folderId },
         })
       }
+      const activityAt = new Date().toISOString()
 
       updateEntries((entry) => {
-        const update = (items: HistoryChat[]) => {
-          return items.map((chat) => {
-            return selectedChatIds.has(chat.id)
-              ? { ...chat, folderId, folderName }
-              : chat
-          })
-        }
-
-        return {
-          ...entry,
-          chats: update(entry.chats),
-          pinned: update(entry.pinned),
-        }
+        return updateFolderState(
+          entry,
+          selectedChatIds,
+          folderId,
+          folderName,
+          activityAt,
+        )
       })
 
       clearCompletedSelection(chatIds)

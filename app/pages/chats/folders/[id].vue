@@ -36,13 +36,12 @@
           @archive="onToggleFolderArchive"
           @delete="onDeleteFolder"
         >
-          <button
-            type="button"
+          <summary
             class="btn btn-primary btn-sm btn-circle join-item"
             aria-label="Folder actions"
           >
             <Icon name="lucide:ellipsis" size="16" />
-          </button>
+          </summary>
         </HistoryFolderActionsDropdown>
       </div>
     </template>

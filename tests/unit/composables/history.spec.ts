@@ -174,6 +174,53 @@ describe('useHistory', () => {
     expect(history.chats.value).toHaveLength(0)
   })
 
+  it('keeps unrelated cached searches unchanged when pinning chats', async () => {
+    vi.useFakeTimers()
+
+    const defaultChat = createHistoryChat({
+      id: 'chat-default',
+      title: 'Default chat',
+    })
+    const searchChat = createHistoryChat({
+      id: 'chat-search',
+      title: 'Search chat',
+    })
+    const searchRefresh = createDeferred<
+      ReturnType<typeof createHistoryResponse>
+    >()
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/history/pin') {
+        return Promise.resolve({
+          pinnedAt: '2026-03-11T10:00:00.000Z',
+        })
+      }
+
+      return searchRefresh.promise
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const history = createHistoryComposable()
+    history.prime(createHistoryResponse({ chats: [defaultChat] }))
+
+    history.search.value = 'invoice'
+    history.prime(createHistoryResponse({ chats: [searchChat] }))
+
+    history.search.value = ''
+    await history.togglePin(defaultChat.id)
+
+    history.search.value = 'invoice'
+    await flushPromises()
+    vi.advanceTimersByTime(180)
+    await flushPromises()
+
+    expect(history.pinned.value).toEqual([])
+    expect(history.chats.value).toEqual([searchChat])
+
+    searchRefresh.resolve(createHistoryResponse({ chats: [searchChat] }))
+    await flushPromises()
+  })
+
   it('supports range selection and bulk delete chunking', async () => {
     const chats = Array.from({ length: 91 }, (_, index) => {
       return createHistoryChat({
@@ -270,31 +317,45 @@ describe('useHistory', () => {
   })
 
   it('moves selected chats to a folder and clears selection', async () => {
-    const chatOne = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
-    const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
+    const newestChat = createHistoryChat({
+      id: 'chat-2',
+      title: 'Newest chat',
+      activityAt: '2026-03-11T09:00:00.000Z',
+    })
+    const olderChat = createHistoryChat({
+      id: 'chat-1',
+      title: 'Older chat',
+      activityAt: '2026-03-10T09:00:00.000Z',
+    })
     const fetchMock = vi.fn(() => {
       return Promise.resolve({ success: true })
     })
     vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
-    history.prime(createHistoryResponse({ chats: [chatOne, chatTwo] }))
-    history.enterSelectionMode(chatOne.id, 0)
-    history.handleSelect(chatTwo.id, 1, false)
+    history.prime(createHistoryResponse({
+      chats: [newestChat, olderChat],
+    }))
+    history.enterSelectionMode(olderChat.id, 1)
 
     await history.moveSelectedToFolder('folder-9', 'Projects')
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/folder/bulk', {
       method: 'POST',
       body: {
-        chatIds: ['chat-1', 'chat-2'],
+        chatIds: ['chat-1'],
         folderId: 'folder-9',
       },
     })
-    expect(history.chats.value.map(chat => chat.folderName)).toEqual([
-      'Projects',
-      'Projects',
+    expect(history.chats.value.map(chat => chat.id)).toEqual([
+      'chat-1',
+      'chat-2',
     ])
+    expect(history.chats.value[0]).toMatchObject({
+      folderId: 'folder-9',
+      folderName: 'Projects',
+      activityAt: '2026-03-11T10:00:00.000Z',
+    })
     expect(history.selectedCount.value).toBe(0)
   })
 
@@ -380,14 +441,25 @@ describe('useHistory', () => {
   })
 
   it('moves a single chat into and out of a folder', async () => {
-    const chat = createHistoryChat({ id: 'chat-1', slug: 'chat-1' })
+    const newerChat = createHistoryChat({
+      id: 'chat-2',
+      slug: 'chat-2',
+      activityAt: '2026-03-11T09:00:00.000Z',
+    })
+    const olderChat = createHistoryChat({
+      id: 'chat-1',
+      slug: 'chat-1',
+      activityAt: '2026-03-10T09:00:00.000Z',
+    })
     const fetchMock = vi.fn(() => {
       return Promise.resolve({ folderId: 'folder-2' })
     })
     vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
-    history.prime(createHistoryResponse({ chats: [chat] }))
+    history.prime(createHistoryResponse({
+      chats: [newerChat, olderChat],
+    }))
 
     await history.moveChatToFolder('chat-1', 'chat-1', 'folder-2', 'Inbox')
 
@@ -395,9 +467,14 @@ describe('useHistory', () => {
       method: 'PATCH',
       body: { folderId: 'folder-2' },
     })
+    expect(history.chats.value.map(chat => chat.id)).toEqual([
+      'chat-1',
+      'chat-2',
+    ])
     expect(history.chats.value[0]).toMatchObject({
       folderId: 'folder-2',
       folderName: 'Inbox',
+      activityAt: '2026-03-11T10:00:00.000Z',
     })
 
     await history.moveChatToFolder('chat-1', 'chat-1', null, null)
@@ -457,8 +534,6 @@ describe('useHistory', () => {
 
     const hydratePromise = history.hydrateAndRefresh()
 
-    expect(history.chats.value[0]?.title).toBe('Renamed report')
-
     renameRefresh.resolve(createHistoryResponse({
       chats: [createHistoryChat({
         id: 'chat-1',
@@ -467,6 +542,8 @@ describe('useHistory', () => {
       })],
     }))
     await hydratePromise
+
+    expect(history.chats.value[0]?.title).toBe('Renamed report')
 
     await history.deleteChat('chat-1', 'chat-1')
 

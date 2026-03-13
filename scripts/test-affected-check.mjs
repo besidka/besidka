@@ -65,6 +65,8 @@ export function getAffectedTests(changedFiles) {
   ]
   const historyFoldersTests = [
     'tests/unit/components/HistoryPageShell.spec.ts',
+    'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/FolderActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/folders.spec.ts',
     'tests/unit/composables/folder-chats.spec.ts',
@@ -77,6 +79,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-new.spec.ts',
     'tests/integration/api/folders.spec.ts',
     'tests/integration/pages/history-cache.spec.ts',
+    'tests/e2e/history/dropdown-touch.spec.ts',
   ]
 
   const testMappings = [

@@ -93,6 +93,41 @@ Current limitation:
 - remove from folder
 - bulk move to folder
 
+### Touch dropdown behavior
+
+Chat row actions use DaisyUI dropdown method 1:
+
+- native `details`
+- native `summary`
+- positioned `.dropdown-content`
+
+Important implementation note:
+
+- do not add `tabindex` to the trigger `summary`
+
+Why:
+
+- the working mobile dropdowns in chat input rely on plain native `summary`
+- adding `tabindex="0"` changed touch behavior for the history row trigger
+- on desktop the menu still opened, but on touch devices the trigger could
+  become active without opening the disclosure
+
+This was reproduced on:
+
+- `app/pages/chats/history.vue`
+- `app/pages/chats/folders/[id].vue`
+
+Relevant shared component:
+
+- `app/components/History/ActionsDropdown.vue`
+
+Current rule for this dropdown family:
+
+- keep the trigger as a plain native `summary`
+- use `onClickOutside()` only for closing
+- do not replace this with custom popover positioning unless there is a
+  separate verified browser issue
+
 ### Activity semantics
 
 The current implementation refreshes `activityAt` for:
@@ -200,10 +235,25 @@ Covered cases:
 - new chat in folder updates folder activity
 - cache persistence across remount-style navigation
 
+### E2E coverage
+
+- `tests/e2e/history/dropdown-touch.spec.ts`
+
+Covered cases:
+
+- mobile touch opens the chat row dropdown on `/chats/history`
+- mobile touch opens the chat row dropdown on `/chats/folders/[id]`
+
+Why this exists:
+
+- unit tests do not model native `details` touch behavior well enough
+- the regression only showed up in a real browser-level mobile interaction path
+
 ### Useful commands
 
 ```bash
 pnpm vitest run tests/unit/composables/history.spec.ts
 pnpm vitest run tests/integration/api/chats-history.spec.ts
 pnpm vitest run tests/integration/pages/history-cache.spec.ts
+pnpm exec playwright test tests/e2e/history/dropdown-touch.spec.ts --project=chromium
 ```

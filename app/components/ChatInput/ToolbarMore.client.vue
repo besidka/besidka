@@ -42,7 +42,7 @@
               <span class="divider my-0"/>
             </label>
           </li>
-          <li v-if="displayFolderPicker">
+          <li v-if="displayFolderPicker || folderContext">
             <div class="flex items-center gap-2 w-full">
               <button
                 type="button"

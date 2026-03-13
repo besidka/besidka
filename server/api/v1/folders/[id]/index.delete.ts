@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+  const activityAt = new Date()
 
   logger.set({ userId, folderId: params.data.id })
 
@@ -46,7 +47,10 @@ export default defineEventHandler(async (event) => {
   }
 
   await db.update(schema.chats)
-    .set({ folderId: sql`NULL` })
+    .set({
+      folderId: sql`NULL`,
+      activityAt,
+    })
     .where(and(
       eq(schema.chats.folderId, folder.id),
       eq(schema.chats.userId, userId),
