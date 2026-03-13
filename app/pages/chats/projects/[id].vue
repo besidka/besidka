@@ -1,14 +1,12 @@
 <template>
   <HistoryPageShell active-tab="projects">
     <template #title>
-      <h1 class="text-4xl font-bold text-center">
-        {{ project?.name || 'Project' }}
-      </h1>
+      {{ project?.name || 'Project' }}
     </template>
     <template #subtitle>
       <div
         v-if="project?.pinnedAt || project?.archivedAt"
-        class="mt-2 flex justify-center gap-2"
+        class="flex justify-center gap-2"
       >
         <span v-if="project?.pinnedAt" class="badge badge-ghost badge-sm">
           Pinned
@@ -63,7 +61,9 @@
       :memory-model="projectMemoryModel"
       :memory-error="projectMemoryError"
       :is-refreshing="isRefreshingProjectMemory"
+      :is-toggling="isTogglingProjectMemory"
       @refresh="refreshProjectMemory"
+      @toggle="toggleProjectMemory"
     />
 
     <HistoryChatSections
@@ -203,15 +203,35 @@ const isProjectModalSubmitting = shallowRef<boolean>(false)
 const isLoadingProjectDetails = shallowRef<boolean>(false)
 const isSavingProjectInstructions = shallowRef<boolean>(false)
 const isRefreshingProjectMemory = shallowRef<boolean>(false)
-const projectInstructions = shallowRef<string | null>(null)
-const projectInstructionsDraft = shallowRef<string>('')
-const projectMemory = shallowRef<string | null>(null)
-const projectMemoryStatus = shallowRef<Project['memoryStatus']>('idle')
-const projectMemoryUpdatedAt = shallowRef<string | null>(null)
-const projectMemoryProvider = shallowRef<string | null>(null)
-const projectMemoryModel = shallowRef<string | null>(null)
-const projectMemoryError = shallowRef<string | null>(null)
-const syncedProjectDetailsId = shallowRef<string | null>(null)
+const initialProjectDetails = project.value
+const isTogglingProjectMemory = shallowRef<boolean>(false)
+const projectInstructions = shallowRef<string | null>(
+  initialProjectDetails?.instructions ?? null,
+)
+const projectInstructionsDraft = shallowRef<string>(
+  initialProjectDetails?.instructions ?? '',
+)
+const projectMemory = shallowRef<string | null>(
+  initialProjectDetails?.memory ?? null,
+)
+const projectMemoryStatus = shallowRef<Project['memoryStatus']>(
+  initialProjectDetails?.memoryStatus ?? 'idle',
+)
+const projectMemoryUpdatedAt = shallowRef<string | null>(
+  initialProjectDetails?.memoryUpdatedAt ?? null,
+)
+const projectMemoryProvider = shallowRef<string | null>(
+  initialProjectDetails?.memoryProvider ?? null,
+)
+const projectMemoryModel = shallowRef<string | null>(
+  initialProjectDetails?.memoryModel ?? null,
+)
+const projectMemoryError = shallowRef<string | null>(
+  initialProjectDetails?.memoryError ?? null,
+)
+const syncedProjectDetailsId = shallowRef<string | null>(
+  initialProjectDetails?.id ?? null,
+)
 let syncProjectDetailsRequestId = 0
 
 const hasProjectInstructions = computed(() => {
@@ -315,7 +335,11 @@ async function syncProjectDetails(nextProjectId: string | undefined) {
 }
 
 async function refreshProjectMemory() {
-  if (!project.value || isRefreshingProjectMemory.value) {
+  if (
+    !project.value
+    || isRefreshingProjectMemory.value
+    || projectMemoryStatus.value === 'disabled'
+  ) {
     return
   }
 
@@ -329,7 +353,11 @@ async function refreshProjectMemory() {
     await syncProjectDetails(project.value.id)
 
     nuxtApp.runWithContext(() => {
-      useSuccessMessage('Project memory refreshed')
+      useSuccessMessage(
+        projectMemory.value
+          ? 'Project memory refreshed'
+          : 'Project memory refreshed, but no reusable project memory was found',
+      )
     })
   } catch (exception) {
     const parsedException = parseError(exception)
@@ -342,6 +370,50 @@ async function refreshProjectMemory() {
     })
   } finally {
     isRefreshingProjectMemory.value = false
+  }
+}
+
+async function toggleProjectMemory() {
+  if (!project.value || isTogglingProjectMemory.value) {
+    return
+  }
+
+  isTogglingProjectMemory.value = true
+
+  try {
+    const enabled = projectMemoryStatus.value === 'disabled'
+    const response = await $fetch(`/api/v1/projects/${project.value.id}/memory`, {
+      method: 'PATCH',
+      body: { enabled },
+    })
+
+    projectMemory.value = response.memory ?? null
+    projectMemoryStatus.value = response.memoryStatus ?? 'idle'
+    projectMemoryUpdatedAt.value = response.memoryUpdatedAt ?? null
+    projectMemoryProvider.value = response.memoryProvider ?? null
+    projectMemoryModel.value = response.memoryModel ?? null
+    projectMemoryError.value = response.memoryError ?? null
+
+    nuxtApp.runWithContext(() => {
+      useSuccessMessage(
+        enabled
+          ? response.memory
+            ? 'Project memory enabled'
+            : 'Project memory enabled, but no reusable project memory was found'
+          : 'Project memory disabled',
+      )
+    })
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    nuxtApp.runWithContext(() => {
+      useErrorMessage(
+        parsedException.message || 'Failed to update project memory',
+        parsedException.why,
+      )
+    })
+  } finally {
+    isTogglingProjectMemory.value = false
   }
 }
 

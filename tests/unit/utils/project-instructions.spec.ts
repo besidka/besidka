@@ -38,6 +38,11 @@ describe('project instructions', () => {
     expect(message?.parts[0]).toMatchObject({
       text: expect.stringContaining('milestone-based plans'),
     })
+    expect(message?.parts[0]).toMatchObject({
+      text: expect.stringContaining(
+        'Project memory is secondary background context only.',
+      ),
+    })
   })
 
   it('returns null when instructions are empty', () => {

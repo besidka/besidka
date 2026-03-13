@@ -17,7 +17,15 @@ export const projects = sqliteTable(
     instructions: text(),
     memory: text(),
     memoryStatus: text({
-      enum: ['idle', 'stale', 'refreshing', 'ready', 'failed', 'unavailable'],
+      enum: [
+        'idle',
+        'stale',
+        'refreshing',
+        'ready',
+        'failed',
+        'unavailable',
+        'disabled',
+      ],
     })
       .notNull()
       .default('idle'),

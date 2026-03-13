@@ -1,17 +1,18 @@
 <template>
+  <div
+    v-if="isSelectionMode"
+    class="shrink-0 w-8 sm:w-6"
+    aria-hidden="true"
+  />
   <details
+    v-else
     ref="dropdownRef"
-    class="dropdown dropdown-left sm:dropdown-end relative z-20"
-    :class="{
-      [`
-        transition-opacity
-        sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100
-      `]:
-        !isSelectionMode
-    }"
+    class="
+      dropdown dropdown-left sm:dropdown-end relative z-20 transition-opacity
+      sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100
+    "
   >
     <summary
-      v-if="!isSelectionMode"
       data-testid="history-chat-actions-trigger"
       class="btn btn-ghost btn-sm sm:btn-xs btn-circle"
       aria-label="Chat actions"

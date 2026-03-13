@@ -29,6 +29,7 @@ export default {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
       },
+      forProjectMemory: true,
     },
     {
       id: 'gemini-3-pro-preview',
@@ -89,7 +90,6 @@ export default {
     {
       id: 'gemini-2.5-flash-lite',
       default: true,
-      forProjectMemory: true,
       name: 'Gemini 2.5 Flash-Lite',
       price: {
         tokens: 1_000_000,

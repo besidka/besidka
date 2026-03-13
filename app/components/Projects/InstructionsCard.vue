@@ -1,6 +1,6 @@
 <template>
   <UiBubble
-    class="mb-4 !block"
+    class="!block bg-base-100 dark:bg-base-100/10 shadow-none"
     :class="{
       'opacity-70 pointer-events-none': isLoading,
     }"
@@ -41,7 +41,7 @@ Keep replies concise and production-focused."
       <button
         type="button"
         data-testid="save-project-instructions"
-        class="btn btn-primary btn-sm"
+        class="btn btn-primary btn-sm max-sm:btn-block"
         :disabled="!isDirty || isSaving"
         @click="emit('save')"
       >

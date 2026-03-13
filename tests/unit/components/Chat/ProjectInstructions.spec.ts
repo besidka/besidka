@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest'
 import ProjectInstructions from '../../../../app/components/Chat/ProjectInstructions.vue'
 
 describe('Chat/ProjectInstructions', () => {
-  it('renders the project name and instructions', async () => {
+  it('renders compact collapsed rows and expands instructions with a project link', async () => {
     const wrapper = await mountSuspended(ProjectInstructions, {
       props: {
+        projectId: 'project-1',
         projectName: 'Project Alpha',
         instructions: 'Always answer with implementation details first.',
         memory: 'User prefers concise technical summaries.',
@@ -15,46 +16,38 @@ describe('Chat/ProjectInstructions', () => {
           UiBubble: {
             template: '<div><slot /></div>',
           },
-        },
-      },
-    })
-
-    expect(wrapper.text()).toContain('Project instructions')
-    expect(wrapper.text()).toContain('Project Alpha')
-    expect(wrapper.text()).toContain(
-      'Always answer with implementation details first.',
-    )
-    expect(wrapper.text()).toContain('Project memory')
-    expect(wrapper.text()).toContain(
-      'User prefers concise technical summaries.',
-    )
-  })
-
-  it('collapses long content until expanded', async () => {
-    const wrapper = await mountSuspended(ProjectInstructions, {
-      props: {
-        projectName: 'Project Alpha',
-        instructions: Array.from({ length: 8 }, (_, index) => {
-          return `Instruction line ${index + 1}`
-        }).join('\n'),
-      },
-      global: {
-        stubs: {
-          UiBubble: {
-            template: '<div><slot /></div>',
+          NuxtLink: {
+            props: ['to'],
+            template: '<a :href="to"><slot /></a>',
           },
         },
       },
     })
 
-    const button = wrapper.get('button')
+    const sections = wrapper.findAll('details')
 
-    expect(button.text()).toBe('Show more')
-    expect(wrapper.get('p').classes()).toContain('line-clamp-6')
+    expect(wrapper.text()).toContain('Project instructions')
+    expect(wrapper.text()).toContain('Project memory')
+    expect(wrapper.text()).not.toContain(
+      'Always answer with implementation details first.',
+    )
+    expect(wrapper.text()).not.toContain(
+      'User prefers concise technical summaries.',
+    )
+    expect(sections).toHaveLength(2)
 
-    await button.trigger('click')
+    await sections[0]!.get('summary').trigger('click')
 
-    expect(button.text()).toBe('Show less')
-    expect(wrapper.get('p').classes()).not.toContain('line-clamp-6')
+    expect(wrapper.text()).toContain(
+      'Always answer with implementation details first.',
+    )
+    expect(wrapper.text()).toContain('Open project')
+    expect(wrapper.html()).toContain('/chats/projects/project-1')
+
+    await sections[1]!.get('summary').trigger('click')
+
+    expect(wrapper.text()).toContain(
+      'User prefers concise technical summaries.',
+    )
   })
 })

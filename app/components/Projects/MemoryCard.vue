@@ -1,5 +1,5 @@
 <template>
-  <UiBubble class="mb-4 !block">
+  <UiBubble class="mb-4 !block bg-base-100 dark:bg-base-100/10 shadow-none">
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <h2 class="text-sm font-semibold">
@@ -11,6 +11,7 @@
         </p>
       </div>
       <div
+        v-if="displayStatusBadge"
         class="badge badge-ghost badge-sm shrink-0"
         :class="statusBadgeClass"
       >
@@ -20,7 +21,7 @@
 
     <div class="mt-4 rounded-box border border-base-200/80 px-4 py-3">
       <p
-        v-if="memory"
+        v-if="displayMemory"
         class="whitespace-pre-wrap text-sm leading-6"
       >
         {{ memory }}
@@ -35,31 +36,56 @@
 
     <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
       <div class="text-xs opacity-60">
-        <span v-if="providerLabel">
+        <p v-if="providerLabel">
           {{ providerLabel }}
-        </span>
-        <span v-if="updatedLabel">
-          {{ providerLabel ? ' • ' : '' }}{{ updatedLabel }}
-        </span>
-        <span v-if="error">
-          {{ (providerLabel || updatedLabel) ? ' • ' : '' }}{{ error }}
-        </span>
+        </p>
+        <p v-if="updatedLabel">
+          {{ updatedLabel }}
+        </p>
+        <p v-if="error">
+          {{ error }}
+        </p>
       </div>
-      <button
-        type="button"
-        data-testid="refresh-project-memory"
-        class="btn btn-secondary btn-sm"
-        :disabled="isRefreshing"
-        @click="emit('refresh')"
-      >
-        <span
-          v-if="isRefreshing"
-          class="loading loading-spinner loading-xs"
-        />
-        <span v-else>
-          Refresh memory
-        </span>
-      </button>
+      <div class="max-sm:grid max-sm:w-full sm:flex sm:flex-row-reverse sm:items-center gap-2">
+        <button
+          v-if="displayRefreshButton"
+          type="button"
+          data-testid="refresh-project-memory"
+          class="btn btn-primary btn-sm max-sm:btn-block max-sm:order-1"
+          :disabled="isRefreshing || isToggling"
+          @click="emit('refresh')"
+        >
+          <span
+            v-if="isRefreshing"
+            class="loading loading-spinner loading-xs"
+          />
+          <span v-else>
+            Refresh memory
+          </span>
+        </button>
+        <button
+          type="button"
+          data-testid="toggle-project-memory"
+          class="btn btn-sm max-sm:btn-block max-sm:order-2"
+          :class="props.memoryStatus === 'disabled'
+            ? 'btn-primary'
+            : 'btn-ghost'
+          "
+          :disabled="isRefreshing || isToggling"
+          @click="emit('toggle')"
+        >
+          <span
+            v-if="isToggling"
+            class="loading loading-spinner loading-xs"
+          />
+          <span v-else>
+            {{ props.memoryStatus === 'disabled'
+              ? 'Enable memory'
+              : 'Disable memory'
+            }}
+          </span>
+        </button>
+      </div>
     </div>
   </UiBubble>
 </template>
@@ -75,16 +101,16 @@ const props = defineProps<{
   memoryModel: string | null
   memoryError: string | null
   isRefreshing: boolean
+  isToggling: boolean
 }>()
 
 const emit = defineEmits<{
   refresh: []
+  toggle: []
 }>()
 
 const statusLabel = computed(() => {
   switch (props.memoryStatus) {
-    case 'ready':
-      return 'Ready'
     case 'refreshing':
       return 'Refreshing'
     case 'stale':
@@ -93,15 +119,15 @@ const statusLabel = computed(() => {
       return 'Failed'
     case 'unavailable':
       return 'Unavailable'
+    case 'disabled':
+      return 'Disabled'
     default:
-      return 'Idle'
+      return 'Empty'
   }
 })
 
 const statusBadgeClass = computed(() => {
   switch (props.memoryStatus) {
-    case 'ready':
-      return 'badge-success badge-outline'
     case 'refreshing':
       return 'badge-info badge-outline'
     case 'stale':
@@ -110,13 +136,27 @@ const statusBadgeClass = computed(() => {
       return 'badge-error badge-outline'
     case 'unavailable':
       return 'badge-ghost'
+    case 'disabled':
+      return 'badge-ghost'
     default:
       return ''
   }
 })
 
+const displayStatusBadge = computed(() => {
+  return props.memoryStatus !== 'ready'
+})
+
+const displayMemory = computed(() => {
+  return props.memoryStatus !== 'disabled' && !!props.memory
+})
+
+const displayRefreshButton = computed(() => {
+  return props.memoryStatus !== 'disabled'
+})
+
 const providerLabel = computed(() => {
-  if (!props.memoryProvider || !props.memoryModel) {
+  if (!props.memory || !props.memoryProvider || !props.memoryModel) {
     return null
   }
 
@@ -124,7 +164,7 @@ const providerLabel = computed(() => {
 })
 
 const updatedLabel = computed(() => {
-  if (!props.memoryUpdatedAt) {
+  if (!props.memory || !props.memoryUpdatedAt) {
     return null
   }
 
@@ -140,6 +180,10 @@ const emptyStateLabel = computed(() => {
     return 'Add a supported API key to generate project memory.'
   }
 
+  if (props.memoryStatus === 'disabled') {
+    return 'Project memory is disabled for this project.'
+  }
+
   if (props.memoryStatus === 'refreshing') {
     return 'Refreshing project memory.'
   }
@@ -152,6 +196,7 @@ const emptyStateLabel = computed(() => {
     return 'Project memory needs a refresh.'
   }
 
-  return 'No project memory yet.'
+  return 'No reusable project memory was found. For instruction-only '
+    + 'projects or unrelated chats, keeping memory disabled is often better.'
 })
 </script>

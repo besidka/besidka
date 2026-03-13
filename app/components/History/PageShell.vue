@@ -1,15 +1,14 @@
 <template>
   <div class="mb-6">
-    <slot name="title">
-      <h1 class="text-4xl font-bold text-center">
-        History
-      </h1>
-    </slot>
-    <slot name="subtitle">
-      <h2 class="mt-2 text-center">
-        View your chat history and revisit past conversations
-      </h2>
-    </slot>
+    <h1 class="text-4xl font-bold text-center">
+      <slot name="title" />
+    </h1>
+    <div
+      v-if="!!$slots.subtitle"
+      class="mt-2 text-center"
+    >
+      <slot name="subtitle" />
+    </div>
   </div>
 
   <UiBubble class="flex flex-col gap-4">

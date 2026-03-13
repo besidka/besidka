@@ -1,5 +1,12 @@
 <template>
   <HistoryPageShell active-tab="chats">
+    <template #title>
+      History
+    </template>
+    <template #subtitle>
+      View your chat history and revisit past conversations
+    </template>
+
     <template #toolbar>
       <div class="flex items-center gap-2 shrink-0">
         <UiSearchInput

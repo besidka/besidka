@@ -13,6 +13,7 @@
     <ChatContainer class="!gap-0">
       <ChatProjectInstructions
         v-if="projectInstructionsText || projectMemoryText"
+        :project-id="projectContext?.id || null"
         :project-name="projectContext?.name || 'Project'"
         :instructions="projectInstructionsText"
         :memory="projectMemoryText"
@@ -240,7 +241,7 @@ interface ProjectDetails {
   name: string
   instructions: string | null
   memory: string | null
-  memoryStatus: 'idle' | 'stale' | 'refreshing' | 'ready' | 'failed' | 'unavailable'
+  memoryStatus: 'idle' | 'stale' | 'refreshing' | 'ready' | 'failed' | 'unavailable' | 'disabled'
 }
 
 const projectPickerRef = shallowRef<ProjectPickerInstance | null>(null)

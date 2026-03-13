@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import googleProvider from '../../../providers/google'
+import openaiProvider from '../../../providers/openai'
+
 const mocks = vi.hoisted(() => ({
   generateText: vi.fn(),
 }))
@@ -6,6 +9,18 @@ const mocks = vi.hoisted(() => ({
 vi.mock('ai', () => ({
   generateText: mocks.generateText,
 }))
+
+const googleProjectMemoryModel = googleProvider.models.find((model) => {
+  return model.forProjectMemory
+})
+
+const openAIProjectMemoryModel = openaiProvider.models.find((model) => {
+  return model.forProjectMemory
+})
+
+if (!googleProjectMemoryModel || !openAIProjectMemoryModel) {
+  throw new Error('Project memory models must be configured in providers')
+}
 
 describe('project memory utils', () => {
   beforeEach(() => {
@@ -33,8 +48,8 @@ describe('project memory utils', () => {
 
     expect(selection).toEqual({
       providerId: 'google',
-      modelId: 'gemini-2.5-flash-lite',
-      modelName: 'Gemini 2.5 Flash-Lite',
+      modelId: googleProjectMemoryModel.id,
+      modelName: googleProjectMemoryModel.name,
     })
   })
 
@@ -54,8 +69,8 @@ describe('project memory utils', () => {
 
     expect(selection).toEqual({
       providerId: 'openai',
-      modelId: 'gpt-5-nano',
-      modelName: 'GPT-5 nano',
+      modelId: openAIProjectMemoryModel.id,
+      modelName: openAIProjectMemoryModel.name,
     })
   })
 
@@ -102,7 +117,7 @@ describe('project memory utils', () => {
               memoryUpdatedAt: new Date('2026-03-13T10:05:00.000Z'),
               memoryDirtyAt: null,
               memoryProvider: 'google',
-              memoryModel: 'gemini-2.5-flash-lite',
+              memoryModel: googleProjectMemoryModel.id,
               memoryError: null,
             }),
         },
@@ -154,7 +169,7 @@ describe('project memory utils', () => {
       memoryStatus: 'ready',
       memory: 'Keep roadmap updates milestone-based and concise.',
       memoryProvider: 'google',
-      memoryModel: 'gemini-2.5-flash-lite',
+      memoryModel: googleProjectMemoryModel.id,
     })
     expect(updateCalls).toContainEqual(expect.objectContaining({
       projectMemorySummary: 'User prefers milestone-based roadmap updates.',
@@ -164,7 +179,7 @@ describe('project memory utils', () => {
       memoryStatus: 'ready',
       memory: 'Keep roadmap updates milestone-based and concise.',
       memoryProvider: 'google',
-      memoryModel: 'gemini-2.5-flash-lite',
+      memoryModel: googleProjectMemoryModel.id,
       memoryUpdatedAt: expect.any(Date),
     }))
   })
@@ -208,7 +223,7 @@ describe('project memory utils', () => {
               memoryUpdatedAt: new Date('2026-03-13T10:05:00.000Z'),
               memoryDirtyAt: null,
               memoryProvider: 'google',
-              memoryModel: 'gemini-2.5-flash-lite',
+              memoryModel: googleProjectMemoryModel.id,
               memoryError: null,
             }),
         },
@@ -258,6 +273,79 @@ describe('project memory utils', () => {
     }))
   })
 
+  it('keeps memory idle when no durable memory can be synthesized', async () => {
+    vi.stubGlobal('useGoogle', vi.fn(async () => ({
+      instance: { id: 'google-memory-model' },
+    })))
+
+    const { refreshProjectMemory } = await import(
+      '../../../server/utils/projects/memory'
+    )
+    const updateCalls: unknown[] = []
+    const db = {
+      query: {
+        keys: {
+          findMany: vi.fn(async () => [{ provider: 'google' }]),
+        },
+        projects: {
+          findFirst: vi.fn()
+            .mockResolvedValueOnce({
+              id: 'project-1',
+              userId: 1,
+              name: 'Translator',
+              memory: null,
+              memoryStatus: 'stale',
+              memoryUpdatedAt: null,
+              memoryDirtyAt: new Date('2026-03-13T10:00:00.000Z'),
+              memoryProvider: null,
+              memoryModel: null,
+              memoryError: null,
+            })
+            .mockResolvedValueOnce({
+              id: 'project-1',
+              memory: null,
+              memoryStatus: 'idle',
+              memoryUpdatedAt: null,
+              memoryDirtyAt: null,
+              memoryProvider: 'google',
+              memoryModel: googleProjectMemoryModel.id,
+              memoryError: null,
+            }),
+        },
+        chats: {
+          findMany: vi.fn(async () => []),
+        },
+      },
+      update: vi.fn(() => ({
+        set: vi.fn(values => ({
+          where: vi.fn(async () => {
+            updateCalls.push(values)
+          }),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await refreshProjectMemory('project-1', 1, db as never)
+
+    expect(result).toMatchObject({
+      memory: null,
+      memoryStatus: 'idle',
+      memoryUpdatedAt: null,
+      memoryProvider: 'google',
+      memoryModel: googleProjectMemoryModel.id,
+    })
+    expect(updateCalls).toContainEqual(expect.objectContaining({
+      memory: null,
+      memoryStatus: 'idle',
+      memoryUpdatedAt: null,
+      memoryProvider: 'google',
+      memoryModel: googleProjectMemoryModel.id,
+      memoryError: null,
+    }))
+  })
+
   it('recomputes stale summaries when newer assistant messages exist', async () => {
     vi.stubGlobal('useGoogle', vi.fn(async () => ({
       instance: { id: 'google-memory-model' },
@@ -301,7 +389,7 @@ describe('project memory utils', () => {
               memoryUpdatedAt: new Date('2026-03-13T10:05:00.000Z'),
               memoryDirtyAt: null,
               memoryProvider: 'google',
-              memoryModel: 'gemini-2.5-flash-lite',
+              memoryModel: googleProjectMemoryModel.id,
               memoryError: null,
             }),
         },

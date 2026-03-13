@@ -1,6 +1,6 @@
 import type { LanguageModel, UIMessage } from 'ai'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { generateText } from 'ai'
 import { createError } from 'evlog'
 import { providers } from '~~/providers'
@@ -19,6 +19,7 @@ type ProjectMemoryTarget = Pick<
   'id'
   | 'userId'
   | 'name'
+  | 'instructions'
   | 'memory'
   | 'memoryStatus'
   | 'memoryUpdatedAt'
@@ -107,6 +108,7 @@ export async function markProjectsMemoryStale(
       .where(and(
         eq(schema.projects.id, projectId),
         eq(schema.projects.userId, userId),
+        ne(schema.projects.memoryStatus, 'disabled'),
       ))
   }
 }
@@ -127,6 +129,7 @@ export async function refreshProjectMemory(
       id: true,
       userId: true,
       name: true,
+      instructions: true,
       memory: true,
       memoryStatus: true,
       memoryUpdatedAt: true,
@@ -142,6 +145,10 @@ export async function refreshProjectMemory(
       message: 'Project not found',
       status: 404,
     })
+  }
+
+  if (project.memoryStatus === 'disabled') {
+    return await getProjectMemoryState(project.id, userId, db)
   }
 
   if (project.memoryStatus === 'refreshing') {
@@ -219,11 +226,11 @@ export async function refreshProjectMemory(
     const memory = summaries.length
       ? await synthesizeProjectMemory(project.name, summaries, model)
       : null
-    const memoryUpdatedAt = new Date()
+    const memoryUpdatedAt = memory ? new Date() : null
 
     await updateProjectMemoryState(project, {
       memory,
-      memoryStatus: 'ready',
+      memoryStatus: memory ? 'ready' : 'idle',
       memoryUpdatedAt,
       memoryDirtyAt: null,
       memoryProvider: selection.providerId,
@@ -304,9 +311,12 @@ async function refreshChatProjectMemorySummary(
         role: 'system',
         content: [
           'Summarize only durable project memory from this chat.',
-          'Include stable goals, preferences, constraints, decisions, and conventions.',
-          'Exclude temporary task status, one-off troubleshooting, and short-lived details.',
+          'Use a concise structured memo with these sections when relevant:',
+          'Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
+          'Include stable goals, preferences, constraints, decisions, conventions, and durable workflow context.',
+          'Treat tools and resources as high-level references only, not exhaustive logs.',
           'If nothing durable exists, respond with NONE.',
+          'Exclude temporary task status, one-off troubleshooting, short-lived details, and raw link dumps.',
           'Return plain text only and keep it concise.',
         ].join(' '),
       },
@@ -341,8 +351,10 @@ async function synthesizeProjectMemory(
         role: 'system',
         content: [
           `You are maintaining durable memory for the project "${projectName}".`,
-          'Merge the provided chat summaries into one concise project memory.',
-          'Keep only stable goals, preferences, constraints, decisions, and conventions.',
+          'Merge the provided chat summaries into one concise structured memo.',
+          'Use these sections when they have durable content: Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
+          'Keep only stable goals, preferences, constraints, decisions, conventions, and durable workflow context.',
+          'Tools and resources used must be high-level references only, not exhaustive logs or raw URL dumps.',
           'Deduplicate aggressively and remove stale or temporary details.',
           'If there is no durable memory, respond with NONE.',
           'Return plain text only.',
@@ -377,7 +389,69 @@ async function updateProjectMemoryState(
     ))
 }
 
-async function getProjectMemoryState(
+export async function toggleProjectMemory(
+  projectId: string,
+  userId: number,
+  enabled: boolean,
+  db: DbClient = useDb(),
+) {
+  const project = await db.query.projects.findFirst({
+    where(projects, { and, eq }) {
+      return and(
+        eq(projects.id, projectId),
+        eq(projects.userId, userId),
+      )
+    },
+    columns: {
+      id: true,
+      userId: true,
+      name: true,
+      instructions: true,
+      memory: true,
+      memoryStatus: true,
+      memoryUpdatedAt: true,
+      memoryDirtyAt: true,
+      memoryProvider: true,
+      memoryModel: true,
+      memoryError: true,
+    },
+  })
+
+  if (!project) {
+    throw createError({
+      message: 'Project not found',
+      status: 404,
+    })
+  }
+
+  if (!enabled) {
+    await updateProjectMemoryState(project, {
+      memory: null,
+      memoryStatus: 'disabled',
+      memoryUpdatedAt: null,
+      memoryDirtyAt: null,
+      memoryProvider: null,
+      memoryModel: null,
+      memoryError: null,
+    }, db)
+
+    return await getProjectMemoryState(project.id, userId, db)
+  }
+
+  if (project.memoryStatus !== 'disabled') {
+    return await getProjectMemoryState(project.id, userId, db)
+  }
+
+  await updateProjectMemoryState(project, {
+    memoryStatus: 'idle',
+    memoryDirtyAt: null,
+    memoryError: null,
+  }, db)
+
+  return await refreshProjectMemory(project.id, userId, db)
+}
+
+export async function getProjectMemoryState(
   projectId: string,
   userId: number,
   db: DbClient,

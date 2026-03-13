@@ -1,14 +1,10 @@
 <template>
   <HistoryPageShell active-tab="projects">
     <template #title>
-      <h1 class="text-4xl font-bold text-center">
-        Projects
-      </h1>
+      Projects
     </template>
     <template #subtitle>
-      <h2 class="mt-2 text-center">
-        Organize your chats and keep conversations easy to find
-      </h2>
+      Organize your chats and keep conversations easy to find
     </template>
 
     <template #toolbar>

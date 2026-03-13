@@ -42,9 +42,19 @@ export function useAuth() {
 
   const lastLoginMethod = useState<string | null>('auth:lastLoginMethod', () => null)
 
-  onMounted(() => {
-    lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
-  })
+  if (import.meta.client) {
+    const setLastLoginMethod = () => {
+      lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
+    }
+
+    if (getCurrentInstance()) {
+      onMounted(() => {
+        setLastLoginMethod()
+      })
+    } else {
+      setLastLoginMethod()
+    }
+  }
 
   async function fetchSession() {
     if (sessionFetching.value) {

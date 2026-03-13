@@ -95,7 +95,7 @@
                   >
                     <Icon
                       :name="projectContext
-                        ? 'lucide:check'
+                        ? 'lucide:folder-check'
                         : 'lucide:folder'"
                       size="14"
                     />

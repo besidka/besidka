@@ -1,89 +1,104 @@
 <template>
-  <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24 mb-3">
-    <UiBubble class="!block border border-base-300/70">
-      <div class="text-xs font-semibold uppercase tracking-wide opacity-60">
-        {{
-          instructions
-            ? 'Project instructions'
-            : 'Project context'
-        }}
-      </div>
-      <div class="mt-1 text-sm font-medium">
-        {{ projectName || 'Project' }}
-      </div>
-      <p
+  <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
+    <UiBubble class="!block shadow-none">
+      <details
         v-if="instructions"
-        class="mt-2 whitespace-pre-wrap text-sm leading-6"
-        :class="{
-          'line-clamp-6': shouldCollapseInstructions && !showFullInstructions,
-        }"
+        class="group collapse"
+        :open="isInstructionsExpanded"
       >
-        {{ instructions }}
-      </p>
-      <button
-        v-if="shouldCollapseInstructions"
-        type="button"
-        class="btn btn-ghost btn-xs mt-2"
-        @click="showFullInstructions = !showFullInstructions"
-      >
-        {{ showFullInstructions ? 'Show less' : 'Show more' }}
-      </button>
-      <div
-        v-if="memory"
-        class="mt-4 border-t border-base-300/70 pt-4"
-      >
-        <div class="text-xs font-semibold uppercase tracking-wide opacity-60">
-          Project memory
+        <summary
+          class="collapse-title flex items-center gap-1 p-0 text-xs"
+          @click.prevent="isInstructionsExpanded = !isInstructionsExpanded"
+        >
+          <Icon name="lucide:folder-cog" size="12" />
+          <span>Project instructions</span>
+          <Icon
+            name="lucide:chevron-right"
+            class="
+              size-4 text-base-content/60 transition-transform
+              group-open:rotate-90
+            "
+          />
+        </summary>
+        <div
+          v-if="isInstructionsExpanded"
+          class="collapse-content mt-3 px-0 pb-0"
+        >
+          <div class="mb-2 text-xs font-medium text-base-content/70">
+            {{ projectName || 'Project' }}
+          </div>
+          <p class="whitespace-pre-wrap text-sm leading-6">
+            {{ instructions }}
+          </p>
+          <div
+            v-if="projectId"
+            class="mt-3"
+          >
+            <NuxtLink
+              :to="`/chats/projects/${projectId}`"
+              class="btn btn-sm"
+            >
+              <Icon name="lucide:settings-2" />
+              Project settings
+            </NuxtLink>
+          </div>
         </div>
-        <p
-          class="mt-2 whitespace-pre-wrap text-sm leading-6"
-          :class="{
-            'line-clamp-6': shouldCollapseMemory && !showFullMemory,
-          }"
+      </details>
+
+      <span v-if="memory" class="divider my-1"/>
+
+      <details
+        v-if="memory"
+        class="group collapse !rounded-none"
+        :open="isMemoryExpanded"
+      >
+        <summary
+          class="collapse-title flex items-center gap-1 p-0 text-xs"
+          @click.prevent="isMemoryExpanded = !isMemoryExpanded"
         >
-          {{ memory }}
-        </p>
-        <button
-          v-if="shouldCollapseMemory"
-          type="button"
-          class="btn btn-ghost btn-xs mt-2"
-          @click="showFullMemory = !showFullMemory"
+          <Icon name="lucide:database-search" size="12" />
+          <span>Project memory</span>
+          <Icon
+            name="lucide:chevron-right"
+            class="
+              size-4 text-base-content/60 transition-transform
+              group-open:rotate-90
+            "
+          />
+        </summary>
+        <div
+          v-if="isMemoryExpanded"
+          class="collapse-content mt-3 px-0 pb-0"
         >
-          {{ showFullMemory ? 'Show less' : 'Show more' }}
-        </button>
-      </div>
+          <p class="whitespace-pre-wrap text-sm leading-6">
+            {{ memory }}
+          </p>
+          <div
+            v-if="projectId"
+            class="mt-3"
+          >
+            <NuxtLink
+              :to="`/chats/projects/${projectId}`"
+              class="btn btn-sm"
+            >
+              <Icon name="lucide:settings-2" />
+              Project settings
+            </NuxtLink>
+          </div>
+        </div>
+      </details>
     </UiBubble>
   </div>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
+defineProps<{
+  projectId?: string | null
   projectName: string | null
   instructions?: string | null
   memory?: string | null
 }>()
 
-const COLLAPSE_LENGTH = 280
-const COLLAPSE_LINES = 6
-
-const showFullInstructions = shallowRef<boolean>(false)
-const showFullMemory = shallowRef<boolean>(false)
-
-const shouldCollapseInstructions = computed(() => {
-  return shouldCollapseText(props.instructions)
-})
-
-const shouldCollapseMemory = computed(() => {
-  return shouldCollapseText(props.memory)
-})
-
-function shouldCollapseText(value?: string | null) {
-  if (!value) {
-    return false
-  }
-
-  const lineCount = value.split('\n').length
-
-  return value.length > COLLAPSE_LENGTH || lineCount > COLLAPSE_LINES
-}
+const isInstructionsExpanded = shallowRef<boolean>(false)
+const isMemoryExpanded = shallowRef<boolean>(false)
 </script>

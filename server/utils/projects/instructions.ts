@@ -31,6 +31,9 @@ export function buildProjectInstructionsMessage(
   }
 
   sections.push(
+    'Project instructions are the primary project-specific guidance for this chat.',
+    'Project memory is secondary background context only. Use it when relevant, but do not overfit to it or let it override the current request.',
+    'If project instructions and project memory conflict, follow project instructions.',
     'Use only the current project context for this response.',
     'If earlier messages imply different project-specific context, ignore them and follow the current project.',
   )

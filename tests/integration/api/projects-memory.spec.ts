@@ -1,4 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import googleProvider from '../../../providers/google'
+
+const googleProjectMemoryModel = googleProvider.models.find((model) => {
+  return model.forProjectMemory
+})
+
+if (!googleProjectMemoryModel) {
+  throw new Error('Project memory model must be configured in providers')
+}
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
@@ -22,13 +31,32 @@ vi.mock('~~/server/utils/projects/memory', () => ({
     memoryStatus: 'ready',
     memory: `Memory for ${projectId}`,
     memoryProvider: 'google',
-    memoryModel: 'gemini-2.5-flash-lite',
+    memoryModel: googleProjectMemoryModel.id,
   })),
+  toggleProjectMemory: vi.fn(
+    async (_projectId: string, _userId: number, enabled: boolean) => ({
+      memoryStatus: enabled ? 'ready' : 'disabled',
+      memory: enabled ? 'Rebuilt memory' : null,
+      memoryUpdatedAt: enabled ? '2026-03-13T09:00:00.000Z' : null,
+      memoryDirtyAt: null,
+      memoryProvider: enabled ? 'google' : null,
+      memoryModel: enabled ? googleProjectMemoryModel.id : null,
+      memoryError: null,
+    }),
+  ),
 }))
 
 async function getRefreshProjectMemoryHandler() {
   const module = await import(
     '../../../server/api/v1/projects/[id]/memory/refresh.post'
+  )
+
+  return module.default
+}
+
+async function getToggleProjectMemoryHandler() {
+  const module = await import(
+    '../../../server/api/v1/projects/[id]/memory.patch'
   )
 
   return module.default
@@ -75,6 +103,12 @@ describe('project memory API', () => {
     ) => {
       return parser(event.params)
     })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
@@ -91,7 +125,7 @@ describe('project memory API', () => {
       memoryStatus: 'ready',
       memory: 'Memory for project-1',
       memoryProvider: 'google',
-      memoryModel: 'gemini-2.5-flash-lite',
+      memoryModel: googleProjectMemoryModel.id,
     })
   })
 
@@ -143,7 +177,39 @@ describe('project memory API', () => {
       memoryStatus: 'ready',
       memory: 'Memory for project-2',
       memoryProvider: 'google',
-      memoryModel: 'gemini-2.5-flash-lite',
+      memoryModel: googleProjectMemoryModel.id,
+    })
+  })
+
+  it('toggles project memory enabled state', async () => {
+    const handler = await getToggleProjectMemoryHandler()
+
+    const disabledResponse = await handler({
+      params: { id: 'project-1' },
+      body: { enabled: false },
+    } as never)
+    const enabledResponse = await handler({
+      params: { id: 'project-1' },
+      body: { enabled: true },
+    } as never)
+
+    expect(disabledResponse).toEqual({
+      memoryStatus: 'disabled',
+      memory: null,
+      memoryUpdatedAt: null,
+      memoryDirtyAt: null,
+      memoryProvider: null,
+      memoryModel: null,
+      memoryError: null,
+    })
+    expect(enabledResponse).toEqual({
+      memoryStatus: 'ready',
+      memory: 'Rebuilt memory',
+      memoryUpdatedAt: '2026-03-13T09:00:00.000Z',
+      memoryDirtyAt: null,
+      memoryProvider: 'google',
+      memoryModel: googleProjectMemoryModel.id,
+      memoryError: null,
     })
   })
 })

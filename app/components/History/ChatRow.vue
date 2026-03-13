@@ -25,7 +25,7 @@
     <div class="list-col-grow flex-1 min-w-0">
       <NuxtLink
         :to="`/chats/${chat.slug}`"
-        class="block truncate py-1 font-medium"
+        class="link no-underline rounded-box block truncate py-1 font-medium"
         :class="{ 'pointer-events-none': isSelectionMode }"
         @click.prevent="isSelectionMode && onToggleSelect($event)"
       >
