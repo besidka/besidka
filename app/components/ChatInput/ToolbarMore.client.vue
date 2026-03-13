@@ -42,21 +42,23 @@
               <span class="divider my-0"/>
             </label>
           </li>
-          <li v-if="displayFolderPicker || folderContext">
+          <li v-if="displayProjectPicker || projectContext">
             <div class="flex items-center gap-2 w-full">
               <button
                 type="button"
                 class="flex items-center gap-2 grow"
                 :class="{
-                  'text-accent': folderContext
+                  'text-accent': projectContext
                 }"
-                @click="emit('open-folder-picker')"
+                @click="emit('open-project-picker')"
               >
                 <Icon
-                  :name="`lucide:folder${folderContext ? '-check' : ''}`"
+                  :name="projectContext
+                    ? 'lucide:check'
+                    : 'lucide:folder'"
                   size="16"
                 />
-                {{ folderContext ? folderContext.name : 'Folder' }}
+                {{ projectContext ? projectContext.name : 'Project' }}
               </button>
             </div>
           </li>
@@ -108,8 +110,8 @@ const props = defineProps<{
   reasoningMode?: 'none' | 'toggle' | 'levels'
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
-  displayFolderPicker?: boolean
-  folderContext?: {
+  displayProjectPicker?: boolean
+  projectContext?: {
     id: string
     name: string
   } | null
@@ -118,8 +120,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'toggle-web-search': []
-  'open-folder-picker': []
-  'clear-folder-context': []
+  'open-project-picker': []
+  'clear-project-context': []
   'open-files-select': []
   'open-files-upload': []
   'select-reasoning-level': [level: ReasoningLevel]
@@ -136,7 +138,7 @@ const isAnyFeatureActive = computed<boolean>(() => {
     props.isWebSearchEnabled
     || props.isReasoningActive
     || (props.filesCount ?? 0) > 0
-    || props.folderContext
+    || props.projectContext
   )
 })
 

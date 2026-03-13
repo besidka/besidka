@@ -13,22 +13,22 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
-    display-folder-picker
-    :folder-context="folderContext"
+    display-project-picker
+    :project-context="projectContext"
     :messages-container="null"
     :messages-length="0"
     visible-on-scroll
     :pending="pending"
     :stop="() => {}"
     :regenerate="() => {}"
-    @clear-folder-context="clearFolder"
-    @open-folder-picker="openFolderPicker"
+    @clear-project-context="clearProject"
+    @open-project-picker="openProjectPicker"
     @submit="onSubmit"
   />
 
-  <LazyChatInputFolderPicker
-    ref="folderPickerRef"
-    @submit="onFolderPickerSubmit"
+  <LazyChatInputProjectPicker
+    ref="projectPickerRef"
+    @submit="onProjectPickerSubmit"
   />
 </template>
 <script setup lang="ts">
@@ -60,42 +60,42 @@ const reasoning = useLocalStorage<ReasoningLevel>(
   'off',
 )
 
-function parseRouteFolderId(folderId: unknown): string | null {
-  return typeof folderId === 'string' && folderId.length > 0
-    ? folderId
+function parseRouteProjectId(projectId: unknown): string | null {
+  return typeof projectId === 'string' && projectId.length > 0
+    ? projectId
     : null
 }
 
-const routeFolderId = computed<string | null>(() => {
-  return parseRouteFolderId(route.query.folderId)
+const routeProjectId = computed<string | null>(() => {
+  return parseRouteProjectId(route.query.projectId)
 })
 
-const folderId = shallowRef<string | null>(routeFolderId.value)
-const folderContext = useState<{ id: string, name: string } | null>(
-  'chats-new:folder-context',
+const projectId = shallowRef<string | null>(routeProjectId.value)
+const projectContext = useState<{ id: string, name: string } | null>(
+  'chats-new:project-context',
   () => null,
 )
 
-if (!folderId.value) {
-  folderContext.value = null
-} else if (folderContext.value?.id !== folderId.value) {
-  folderContext.value = {
-    id: folderId.value,
-    name: 'Folder',
+if (!projectId.value) {
+  projectContext.value = null
+} else if (projectContext.value?.id !== projectId.value) {
+  projectContext.value = {
+    id: projectId.value,
+    name: 'Project',
   }
 }
 
 reasoning.value = normalizeReasoningLevel(reasoning.value)
 
-interface FolderPickerInstance {
-  open: (folderId: string | null) => void
+interface ProjectPickerInstance {
+  open: (projectId: string | null) => void
   close: () => void
 }
 
-const folderPickerRef = shallowRef<FolderPickerInstance | null>(null)
+const projectPickerRef = shallowRef<ProjectPickerInstance | null>(null)
 
-function updateFolderQuery(
-  nextFolderId: string | null,
+function updateProjectQuery(
+  nextProjectId: string | null,
 ) {
   if (import.meta.server) {
     return
@@ -104,60 +104,60 @@ function updateFolderQuery(
   router.replace({
     query: {
       ...route.query,
-      folderId: nextFolderId || undefined,
+      projectId: nextProjectId || undefined,
     },
   })
 }
 
-function clearFolder() {
-  folderId.value = null
-  folderContext.value = null
+function clearProject() {
+  projectId.value = null
+  projectContext.value = null
 
-  updateFolderQuery(null)
+  updateProjectQuery(null)
 }
 
-async function fetchFolderContext(nextFolderId: string) {
+async function fetchProjectContext(nextProjectId: string) {
   return import.meta.server
-    ? await useRequestFetch()(`/api/v1/folders/${nextFolderId}`)
-    : await $fetch(`/api/v1/folders/${nextFolderId}`)
+    ? await useRequestFetch()(`/api/v1/projects/${nextProjectId}`)
+    : await $fetch(`/api/v1/projects/${nextProjectId}`)
 }
 
-async function syncFolderContext(
-  nextFolderId: string | null,
+async function syncProjectContext(
+  nextProjectId: string | null,
   canApply: () => boolean = () => true,
 ) {
-  if (!nextFolderId) {
+  if (!nextProjectId) {
     if (canApply()) {
-      folderContext.value = null
+      projectContext.value = null
     }
 
     return
   }
 
   if (
-    folderContext.value?.id === nextFolderId
-    && folderContext.value.name !== 'Folder'
+    projectContext.value?.id === nextProjectId
+    && projectContext.value.name !== 'Project'
   ) {
     return
   }
 
   if (canApply()) {
-    folderContext.value = {
-      id: nextFolderId,
-      name: 'Folder',
+    projectContext.value = {
+      id: nextProjectId,
+      name: 'Project',
     }
   }
 
   try {
-    const folder = await fetchFolderContext(nextFolderId)
+    const project = await fetchProjectContext(nextProjectId)
 
     if (!canApply()) {
       return
     }
 
-    folderContext.value = {
-      id: folder.id,
-      name: folder.name,
+    projectContext.value = {
+      id: project.id,
+      name: project.name,
     }
   } catch (exception) {
     if (!canApply()) {
@@ -167,54 +167,54 @@ async function syncFolderContext(
     const parsedException = parseError(exception)
 
     if (parsedException.status === 404) {
-      clearFolder()
+      clearProject()
     }
   }
 }
 
-if (import.meta.server && folderId.value) {
-  await syncFolderContext(folderId.value)
+if (import.meta.server && projectId.value) {
+  await syncProjectContext(projectId.value)
 }
 
 if (import.meta.client) {
-  watch(routeFolderId, (nextFolderId) => {
-    if (folderId.value === nextFolderId) {
+  watch(routeProjectId, (nextProjectId) => {
+    if (projectId.value === nextProjectId) {
       return
     }
 
-    folderId.value = nextFolderId
+    projectId.value = nextProjectId
   }, { immediate: true })
 
-  watch(folderId, async (nextFolderId, _previousFolderId, onCleanup) => {
+  watch(projectId, async (nextProjectId, _previousProjectId, onCleanup) => {
     let isStale = false
 
     onCleanup(() => {
       isStale = true
     })
 
-    await syncFolderContext(nextFolderId, () => {
-      return !isStale && folderId.value === nextFolderId
+    await syncProjectContext(nextProjectId, () => {
+      return !isStale && projectId.value === nextProjectId
     })
   }, { immediate: true })
 }
 
-function openFolderPicker() {
-  folderPickerRef.value?.open(folderId.value)
+function openProjectPicker() {
+  projectPickerRef.value?.open(projectId.value)
 }
 
-function onFolderPickerSubmit(payload: {
-  folderId: string | null
-  folderName: string | null
+function onProjectPickerSubmit(payload: {
+  projectId: string | null
+  projectName: string | null
 }) {
-  folderId.value = payload.folderId
-  folderContext.value = payload.folderId
+  projectId.value = payload.projectId
+  projectContext.value = payload.projectId
     ? {
-      id: payload.folderId,
-      name: payload.folderName || 'Folder',
+      id: payload.projectId,
+      name: payload.projectName || 'Project',
     }
     : null
 
-  updateFolderQuery(payload.folderId)
+  updateProjectQuery(payload.projectId)
 }
 
 async function onSubmit() {
@@ -241,7 +241,7 @@ async function onSubmit() {
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         reasoning: reasoning.value,
-        ...(folderId.value ? { folderId: folderId.value } : {}),
+        ...(projectId.value ? { projectId: projectId.value } : {}),
       },
       cache: 'no-cache',
     })

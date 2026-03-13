@@ -6,7 +6,7 @@ This document describes the current chat history implementation:
 
 - chat search by title and message content
 - single and bulk actions
-- folder assignment from history
+- project assignment from history
 - cursor-based infinite loading
 - local cache persistence while navigating without a full reload
 - current test coverage for the scope
@@ -89,9 +89,9 @@ Current limitation:
 - pin / unpin
 - enter selection mode
 - bulk delete
-- add to folder
-- remove from folder
-- bulk move to folder
+- add to project
+- remove from project
+- bulk move to project
 
 ### Touch dropdown behavior
 
@@ -115,7 +115,7 @@ Why:
 This was reproduced on:
 
 - `app/pages/chats/history.vue`
-- `app/pages/chats/folders/[id].vue`
+- `app/pages/chats/projects/[id].vue`
 
 Relevant shared component:
 
@@ -134,20 +134,20 @@ The current implementation refreshes `activityAt` for:
 
 - rename
 - pin / unpin
-- creating a new chat inside a folder
-- add to folder
-- remove from folder
-- bulk folder moves
+- creating a new chat inside a project
+- add to project
+- remove from project
+- bulk project moves
 
-For folder assignment changes, chat `activityAt` is refreshed and the affected
-folder `activityAt` values are kept in sync as well:
+For project assignment changes, chat `activityAt` is refreshed and the affected
+project `activityAt` values are kept in sync as well:
 
-- destination folders are bumped immediately on move
-- source folders are recomputed from their latest remaining chat when chats are
+- destination projects are bumped immediately on move
+- source projects are recomputed from their latest remaining chat when chats are
   moved out
 
 This affects ordering and date-group placement for chats and activity sorting
-for folders.
+for projects.
 
 ## Date Grouping
 
@@ -179,13 +179,13 @@ Pinned chats are rendered in a separate `Pinned` section above date groups.
 
 - `PATCH /api/v1/chats/[slug]/rename`
 - `DELETE /api/v1/chats/[slug]`
-- `PATCH /api/v1/chats/[slug]/folder`
+- `PATCH /api/v1/chats/[slug]/project`
 
 ### Bulk history actions
 
 - `POST /api/v1/chats/history/pin`
 - `POST /api/v1/chats/history/delete/bulk`
-- `POST /api/v1/chats/history/folder/bulk`
+- `POST /api/v1/chats/history/project/bulk`
 
 ## Cache Notes
 
@@ -213,9 +213,9 @@ Covered cases:
 - pinning
 - selection mode
 - bulk delete chunking
-- bulk move to folder
+- bulk move to project
 - rename and delete
-- single folder assignment and removal
+- single project assignment and removal
 - current date-group labels
 
 ### Integration coverage
@@ -230,9 +230,9 @@ Covered cases:
 - next cursor calculation
 - rename endpoint
 - delete endpoints
-- folder move endpoints, including source-folder activity refresh
+- project move endpoints, including source-project activity refresh
 - pin endpoint
-- new chat in folder updates folder activity
+- new chat in project updates project activity
 - cache persistence across remount-style navigation
 
 ### E2E coverage
@@ -242,7 +242,7 @@ Covered cases:
 Covered cases:
 
 - mobile touch opens the chat row dropdown on `/chats/history`
-- mobile touch opens the chat row dropdown on `/chats/folders/[id]`
+- mobile touch opens the chat row dropdown on `/chats/projects/[id]`
 
 Why this exists:
 

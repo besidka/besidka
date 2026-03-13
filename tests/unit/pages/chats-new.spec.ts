@@ -53,9 +53,9 @@ describe('chats new page', () => {
     resetMockNuxtState()
   })
 
-  it('ignores stale folder lookups after the user selects another folder', async () => {
-    const folderPickerStub = defineComponent({
-      name: 'ChatInputFolderPicker',
+  it('ignores stale project lookups after the user selects another project', async () => {
+    const projectPickerStub = defineComponent({
+      name: 'ChatInputProjectPicker',
       emits: ['submit'],
       methods: {
         open() {},
@@ -63,15 +63,15 @@ describe('chats new page', () => {
       },
       template: '<div />',
     })
-    const folderARequest = createDeferred<{ id: string, name: string }>()
-    const folderBRequest = createDeferred<{ id: string, name: string }>()
+    const projectARequest = createDeferred<{ id: string, name: string }>()
+    const projectBRequest = createDeferred<{ id: string, name: string }>()
     const fetchMock = vi.fn((url: string) => {
-      if (url === '/api/v1/folders/folder-a') {
-        return folderARequest.promise
+      if (url === '/api/v1/projects/project-a') {
+        return projectARequest.promise
       }
 
-      if (url === '/api/v1/folders/folder-b') {
-        return folderBRequest.promise
+      if (url === '/api/v1/projects/project-b') {
+        return projectBRequest.promise
       }
 
       throw new Error(`Unexpected request: ${url}`)
@@ -90,67 +90,67 @@ describe('chats new page', () => {
           },
           LazyBackgroundLogo: true,
           ChatInput: {
-            props: ['folderContext'],
+            props: ['projectContext'],
             template: `
-              <div data-testid="folder-context">
-                {{ folderContext?.id }}|{{ folderContext?.name }}
+              <div data-testid="project-context">
+                {{ projectContext?.id }}|{{ projectContext?.name }}
               </div>
             `,
           },
-          ChatInputFolderPicker: folderPickerStub,
-          LazyChatInputFolderPicker: folderPickerStub,
+          ChatInputProjectPicker: projectPickerStub,
+          LazyChatInputProjectPicker: projectPickerStub,
         },
       },
     })
 
-    wrapper.findComponent({ name: 'ChatInputFolderPicker' }).vm.$emit(
+    wrapper.findComponent({ name: 'ChatInputProjectPicker' }).vm.$emit(
       'submit',
       {
-        folderId: 'folder-a',
-        folderName: 'Folder A',
+        projectId: 'project-a',
+        projectName: 'Project A',
       },
     )
     await nextTick()
 
-    expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-a|Folder A',
+    expect(wrapper.get('[data-testid="project-context"]').text()).toBe(
+      'project-a|Project A',
     )
 
-    wrapper.findComponent({ name: 'ChatInputFolderPicker' }).vm.$emit(
+    wrapper.findComponent({ name: 'ChatInputProjectPicker' }).vm.$emit(
       'submit',
       {
-        folderId: 'folder-b',
-        folderName: 'Folder B',
+        projectId: 'project-b',
+        projectName: 'Project B',
       },
     )
     await nextTick()
 
-    expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-b|Folder B',
+    expect(wrapper.get('[data-testid="project-context"]').text()).toBe(
+      'project-b|Project B',
     )
 
-    folderARequest.resolve({
-      id: 'folder-a',
-      name: 'Folder A',
+    projectARequest.resolve({
+      id: 'project-a',
+      name: 'Project A',
     })
     await nextTick()
     await Promise.resolve()
     await nextTick()
 
-    expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-b|Folder B',
+    expect(wrapper.get('[data-testid="project-context"]').text()).toBe(
+      'project-b|Project B',
     )
 
-    folderBRequest.resolve({
-      id: 'folder-b',
-      name: 'Folder B',
+    projectBRequest.resolve({
+      id: 'project-b',
+      name: 'Project B',
     })
     await nextTick()
     await Promise.resolve()
     await nextTick()
 
-    expect(wrapper.get('[data-testid="folder-context"]').text()).toBe(
-      'folder-b|Folder B',
+    expect(wrapper.get('[data-testid="project-context"]').text()).toBe(
+      'project-b|Project B',
     )
   })
 })

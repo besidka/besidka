@@ -18,7 +18,7 @@
       :is-deleting="isDeletingSelected"
       @deselect="deselectAll"
       @delete="onBulkDelete"
-      @move-to-folder="onBulkMoveToFolder"
+      @move-to-project="onBulkMoveToProject"
     />
 
     <HistoryChatSections
@@ -36,8 +36,8 @@
       @delete="onDeleteChat"
       @select="onToggleSelect"
       @enter-select="onEnterSelect"
-      @add-to-folder="openFolderPicker"
-      @remove-from-folder="onRemoveFromFolder"
+      @add-to-project="openProjectPicker"
+      @remove-from-project="onRemoveFromProject"
     />
 
     <div
@@ -57,9 +57,9 @@
     @submit="onRenameSubmit"
   />
 
-  <LazyHistoryFolderPicker
-    ref="folderPickerRef"
-    @submit="onFolderPickerSubmit"
+  <LazyHistoryProjectPicker
+    ref="projectPickerRef"
+    @submit="onProjectPickerSubmit"
   />
 </template>
 
@@ -100,8 +100,8 @@ const {
   deleteSelected,
   renameChat,
   deleteChat,
-  moveChatToFolder,
-  moveSelectedToFolder,
+  moveChatToProject,
+  moveSelectedToProject,
 } = useHistory()
 
 const groupedAt = useState<string>('history:grouped-at', () => {
@@ -126,7 +126,7 @@ interface RenameModalInstance {
   close: () => void
 }
 
-interface FolderPickerInstance {
+interface ProjectPickerInstance {
   open: (chat: HistoryChat) => void
   close: () => void
 }
@@ -136,7 +136,7 @@ interface SearchInputInstance {
 }
 
 const renameModalRef = shallowRef<RenameModalInstance | null>(null)
-const folderPickerRef = shallowRef<FolderPickerInstance | null>(null)
+const projectPickerRef = shallowRef<ProjectPickerInstance | null>(null)
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 const infiniteScrollRef = shallowRef<HTMLElement | null>(null)
 
@@ -217,30 +217,30 @@ function openRenameModal(chat: HistoryChat) {
   renameModalRef.value?.open(chat)
 }
 
-function openFolderPicker(chat: HistoryChat) {
-  folderPickerRef.value?.open(chat)
+function openProjectPicker(chat: HistoryChat) {
+  projectPickerRef.value?.open(chat)
 }
 
-async function onFolderPickerSubmit(payload: {
+async function onProjectPickerSubmit(payload: {
   chatId: string
   slug: string
-  folderId: string | null
-  folderName: string | null
+  projectId: string | null
+  projectName: string | null
 }) {
   if (isSelectionMode.value && selectedIds.value.has(payload.chatId)) {
-    await moveSelectedToFolder(payload.folderId, payload.folderName)
+    await moveSelectedToProject(payload.projectId, payload.projectName)
   } else {
-    await moveChatToFolder(
+    await moveChatToProject(
       payload.chatId,
       payload.slug,
-      payload.folderId,
-      payload.folderName,
+      payload.projectId,
+      payload.projectName,
     )
   }
 }
 
-async function onRemoveFromFolder(chatId: string, slug: string) {
-  await moveChatToFolder(chatId, slug, null, null)
+async function onRemoveFromProject(chatId: string, slug: string) {
+  await moveChatToProject(chatId, slug, null, null)
 }
 
 async function onRenameSubmit(chatId: string, slug: string, title: string) {
@@ -279,7 +279,7 @@ async function onBulkDelete() {
   }
 }
 
-function onBulkMoveToFolder() {
+function onBulkMoveToProject() {
   const firstSelected = [...selectedIds.value][0]
 
   if (!firstSelected) return
@@ -289,6 +289,6 @@ function onBulkMoveToFolder() {
 
   if (!chat) return
 
-  folderPickerRef.value?.open(chat)
+  projectPickerRef.value?.open(chat)
 }
 </script>

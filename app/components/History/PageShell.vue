@@ -31,17 +31,17 @@
         Chats
       </NuxtLink>
       <NuxtLink
-        to="/chats/folders"
+        to="/chats/projects"
         class="tab grow"
-        :class="{ 'tab-active': activeTab === 'folders' }"
-        :aria-current="activeTab === 'folders' ? 'page' : undefined"
+        :class="{ 'tab-active': activeTab === 'projects' }"
+        :aria-current="activeTab === 'projects' ? 'page' : undefined"
       >
         <Icon
-          name="lucide:folders"
+          name="lucide:folder"
           size="14"
           class="mr-2"
         />
-        Folders
+        Projects
       </NuxtLink>
     </nav>
 
@@ -53,6 +53,6 @@
 
 <script setup lang="ts">
 defineProps<{
-  activeTab: 'chats' | 'folders'
+  activeTab: 'chats' | 'projects'
 }>()
 </script>

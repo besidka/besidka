@@ -1,4 +1,6 @@
 import * as schema from '~~/server/db/schema'
+import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 const rules = z.object({
   chatSlug: z.string().ulid(),
@@ -35,6 +37,7 @@ export default defineEventHandler(async (event) => {
     columns: {
       id: true,
       title: true,
+      projectId: true,
     },
     with: {
       messages: {
@@ -75,7 +78,11 @@ export default defineEventHandler(async (event) => {
 
   const newChat = await db
     .insert(schema.chats)
-    .values({ userId, title })
+    .values({
+      userId,
+      title,
+      ...(chat.projectId ? { projectId: chat.projectId } : {}),
+    })
     .returning({
       id: schema.chats.id,
       slug: schema.chats.slug,
@@ -101,6 +108,9 @@ export default defineEventHandler(async (event) => {
         })),
       )
   }
+
+  await refreshProjectActivityAt([chat.projectId], userId, db)
+  await markProjectsMemoryStale([chat.projectId], userId, db)
 
   return {
     slug: newChat.slug,

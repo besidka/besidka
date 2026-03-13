@@ -4,6 +4,7 @@ export interface Model {
   id: string
   name: string
   default?: boolean
+  forProjectMemory?: boolean
   description: string
   contextLength: number
   maxOutputTokens: number

@@ -10,8 +10,8 @@ type HistoryChatRow = Pick<
   | 'activityAt'
   | 'pinnedAt'
 > & {
-  folderId: typeof schema.chats.$inferSelect['folderId'] | null
-  folderName: typeof schema.folders.$inferSelect['name'] | null
+  projectId: typeof schema.chats.$inferSelect['projectId'] | null
+  projectName: typeof schema.projects.$inferSelect['name'] | null
 }
 
 export type HistoryChat = Serialize<HistoryChatRow>

@@ -110,6 +110,7 @@ export default {
     },
     {
       id: 'gpt-5-nano',
+      forProjectMemory: true,
       name: 'GPT-5 nano',
       description: 'Fastest, most cost-efficient version of GPT-5',
       contextLength: 1_047_576,

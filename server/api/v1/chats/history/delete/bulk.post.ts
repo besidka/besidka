@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
+import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
@@ -31,7 +32,7 @@ export default defineEventHandler(async (event) => {
       )
     },
     columns: {
-      folderId: true,
+      projectId: true,
     },
   })
 
@@ -41,8 +42,13 @@ export default defineEventHandler(async (event) => {
       inArray(schema.chats.id, body.data.chatIds),
     ))
 
-  await refreshFolderActivityAt(
-    chats.map(chat => chat.folderId),
+  await refreshProjectActivityAt(
+    chats.map(chat => chat.projectId),
+    userId,
+    db,
+  )
+  await markProjectsMemoryStale(
+    chats.map(chat => chat.projectId),
     userId,
     db,
   )

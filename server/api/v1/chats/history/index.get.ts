@@ -49,8 +49,8 @@ export default defineEventHandler(async () => {
     createdAt: schema.chats.createdAt,
     activityAt: schema.chats.activityAt,
     pinnedAt: schema.chats.pinnedAt,
-    folderId: schema.chats.folderId,
-    folderName: schema.folders.name,
+    projectId: schema.chats.projectId,
+    projectName: schema.projects.name,
   }
 
   const searchPattern = hasSearch ? `%${search}%` : null
@@ -83,8 +83,8 @@ export default defineEventHandler(async () => {
     const chatsQuery = db.select(columns)
       .from(schema.chats)
       .leftJoin(
-        schema.folders,
-        eq(schema.folders.id, schema.chats.folderId),
+        schema.projects,
+        eq(schema.projects.id, schema.chats.projectId),
       )
       .where(and(
         eq(schema.chats.userId, userId),
@@ -110,8 +110,8 @@ export default defineEventHandler(async () => {
       const pinnedQuery = db.select(columns)
         .from(schema.chats)
         .leftJoin(
-          schema.folders,
-          eq(schema.folders.id, schema.chats.folderId),
+          schema.projects,
+          eq(schema.projects.id, schema.chats.projectId),
         )
         .where(and(
           eq(schema.chats.userId, userId),
@@ -138,8 +138,8 @@ export default defineEventHandler(async () => {
   const pinnedQuery = db.select(columns)
     .from(schema.chats)
     .leftJoin(
-      schema.folders,
-      eq(schema.folders.id, schema.chats.folderId),
+      schema.projects,
+      eq(schema.projects.id, schema.chats.projectId),
     )
     .where(and(
       eq(schema.chats.userId, userId),
@@ -151,8 +151,8 @@ export default defineEventHandler(async () => {
   const chatsQuery = db.select(columns)
     .from(schema.chats)
     .leftJoin(
-      schema.folders,
-      eq(schema.folders.id, schema.chats.folderId),
+      schema.projects,
+      eq(schema.projects.id, schema.chats.projectId),
     )
     .where(and(
       eq(schema.chats.userId, userId),

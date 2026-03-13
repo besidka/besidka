@@ -2,6 +2,7 @@ import type { TextUIPart, FileUIPart } from 'ai'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 const textPart = z.object({
   type: z.literal('text'),
@@ -22,7 +23,7 @@ const rules = z.object({
   }),
   tools: z.array(z.enum(['web_search'])),
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
-  folderId: z.string().nonempty().optional(),
+  projectId: z.string().nonempty().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -52,21 +53,21 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const activityAt = new Date()
 
-  let folderId: string | undefined
+  let projectId: string | undefined
 
-  if (body.data.folderId) {
-    const folder = await db.query.folders.findFirst({
-      where(folders, { and, eq }) {
+  if (body.data.projectId) {
+    const project = await db.query.projects.findFirst({
+      where(projects, { and, eq }) {
         return and(
-          eq(folders.id, body.data.folderId!),
-          eq(folders.userId, userId),
+          eq(projects.id, body.data.projectId!),
+          eq(projects.userId, userId),
         )
       },
       columns: { id: true },
     })
 
-    if (folder) {
-      folderId = folder.id
+    if (project) {
+      projectId = project.id
     }
   }
 
@@ -75,7 +76,7 @@ export default defineEventHandler(async (event) => {
     .values({
       userId,
       activityAt,
-      ...(folderId ? { folderId } : {}),
+      ...(projectId ? { projectId } : {}),
     })
     .returning({
       id: schema.chats.id,
@@ -93,13 +94,15 @@ export default defineEventHandler(async (event) => {
       reasoning: body.data.reasoning,
     })
 
-  if (folderId) {
-    await db.update(schema.folders)
+  if (projectId) {
+    await db.update(schema.projects)
       .set({ activityAt })
       .where(and(
-        eq(schema.folders.id, folderId),
-        eq(schema.folders.userId, userId),
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.userId, userId),
       ))
+
+    await markProjectsMemoryStale([projectId], userId, db)
   }
 
   return {

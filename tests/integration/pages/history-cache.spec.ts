@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { useFolderChats } from '../../../app/composables/folder-chats'
-import { useFolders } from '../../../app/composables/folders'
+import { useProjectChats } from '../../../app/composables/project-chats'
+import { useProjects } from '../../../app/composables/projects'
 import { useHistory } from '../../../app/composables/history'
 import {
-  createFolder,
-  createFolderChatsResponse,
-  createFoldersResponse,
+  createProject,
+  createProjectChatsResponse,
+  createProjectsResponse,
   createHistoryChat,
   createHistoryResponse,
 } from '../../setup/helpers/history-fixtures'
@@ -39,12 +39,12 @@ describe('history navigation cache', () => {
         }))
       }
 
-      if (url === '/api/v1/folders') {
+      if (url === '/api/v1/projects') {
         if (options?.query?.archived === 'true') {
-          return Promise.resolve(createFoldersResponse({
-            folders: [
-              createFolder({
-                id: 'folder-archived',
+          return Promise.resolve(createProjectsResponse({
+            projects: [
+              createProject({
+                id: 'project-archived',
                 name: 'Archived',
                 archivedAt: '2026-03-01T10:00:00.000Z',
               }),
@@ -52,14 +52,14 @@ describe('history navigation cache', () => {
           }))
         }
 
-        return Promise.resolve(createFoldersResponse({
-          folders: [createFolder({ id: 'folder-active', name: 'Active' })],
+        return Promise.resolve(createProjectsResponse({
+          projects: [createProject({ id: 'project-active', name: 'Active' })],
         }))
       }
 
-      return Promise.resolve(createFolderChatsResponse({
-        folder: createFolder({ id: 'folder-active', name: 'Active' }),
-        chats: [createHistoryChat({ id: 'chat-1', folderId: 'folder-active' })],
+      return Promise.resolve(createProjectChatsResponse({
+        project: createProject({ id: 'project-active', name: 'Active' }),
+        chats: [createHistoryChat({ id: 'chat-1', projectId: 'project-active' })],
       }))
     }))
   })
@@ -86,40 +86,40 @@ describe('history navigation cache', () => {
     expect(secondHistory.chats.value).toEqual([defaultChat])
   })
 
-  it('preserves folders and folder detail caches across remounts', async () => {
-    const activeFolder = createFolder({ id: 'folder-active', name: 'Active' })
-    const archivedFolder = createFolder({
-      id: 'folder-archived',
+  it('preserves projects and project detail caches across remounts', async () => {
+    const activeProject = createProject({ id: 'project-active', name: 'Active' })
+    const archivedProject = createProject({
+      id: 'project-archived',
       name: 'Archived',
       archivedAt: '2026-03-01T10:00:00.000Z',
     })
-    const folderChat = createHistoryChat({ id: 'chat-1', folderId: 'folder-active' })
-    const folderId = ref('folder-active')
+    const projectChat = createHistoryChat({ id: 'chat-1', projectId: 'project-active' })
+    const projectId = ref('project-active')
 
-    const firstFolders = useFolders()
-    firstFolders.prime(createFoldersResponse({ folders: [activeFolder] }))
-    firstFolders.showArchived.value = true
-    firstFolders.prime(createFoldersResponse({ folders: [archivedFolder] }))
+    const firstProjects = useProjects()
+    firstProjects.prime(createProjectsResponse({ projects: [activeProject] }))
+    firstProjects.showArchived.value = true
+    firstProjects.prime(createProjectsResponse({ projects: [archivedProject] }))
 
-    const firstFolderChats = useFolderChats(folderId)
-    firstFolderChats.prime(createFolderChatsResponse({
-      folder: activeFolder,
-      chats: [folderChat],
+    const firstProjectChats = useProjectChats(projectId)
+    firstProjectChats.prime(createProjectChatsResponse({
+      project: activeProject,
+      chats: [projectChat],
     }))
 
-    const secondFolders = useFolders()
-    secondFolders.showArchived.value = true
-    await secondFolders.hydrateAndRefresh()
-    expect(secondFolders.hasCachedData.value).toBe(true)
-    expect(secondFolders.folders.value).toEqual([archivedFolder])
+    const secondProjects = useProjects()
+    secondProjects.showArchived.value = true
+    await secondProjects.hydrateAndRefresh()
+    expect(secondProjects.hasCachedData.value).toBe(true)
+    expect(secondProjects.projects.value).toEqual([archivedProject])
 
-    secondFolders.showArchived.value = false
-    await secondFolders.hydrateAndRefresh()
-    expect(secondFolders.folders.value).toEqual([activeFolder])
+    secondProjects.showArchived.value = false
+    await secondProjects.hydrateAndRefresh()
+    expect(secondProjects.projects.value).toEqual([activeProject])
 
-    const secondFolderChats = useFolderChats(folderId)
-    expect(secondFolderChats.hasCachedData.value).toBe(true)
-    expect(secondFolderChats.folder.value).toEqual(activeFolder)
-    expect(secondFolderChats.chats.value).toEqual([folderChat])
+    const secondProjectChats = useProjectChats(projectId)
+    expect(secondProjectChats.hasCachedData.value).toBe(true)
+    expect(secondProjectChats.project.value).toEqual(activeProject)
+    expect(secondProjectChats.chats.value).toEqual([projectChat])
   })
 })

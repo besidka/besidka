@@ -8,7 +8,7 @@ import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 import { publicId } from '../../utils/custom-db-types'
 import { chatShares } from './chat-shares'
-import { folders } from './folders'
+import { projects } from './projects'
 
 export const chats = sqliteTable(
   'chats',
@@ -21,7 +21,9 @@ export const chats = sqliteTable(
     title: text().default(''),
     shared: integer({ mode: 'boolean' }),
     pinnedAt: integer({ mode: 'timestamp' }),
-    folderId: publicId().references(() => folders.id, { onDelete: 'set null' }),
+    projectId: publicId().references(() => projects.id, { onDelete: 'set null' }),
+    projectMemorySummary: text(),
+    projectMemorySummaryUpdatedAt: integer({ mode: 'timestamp' }),
     activityAt: integer({ mode: 'timestamp' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -64,9 +66,9 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
   }),
   messages: many(messages),
   shares: many(chatShares),
-  folder: one(folders, {
-    fields: [chats.folderId],
-    references: [folders.id],
+  project: one(projects, {
+    fields: [chats.projectId],
+    references: [projects.id],
   }),
 }))
 

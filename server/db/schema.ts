@@ -1,6 +1,6 @@
 export * from './schemas/auth'
 export * from './schemas/user-settings'
-export * from './schemas/folders'
+export * from './schemas/projects'
 export * from './schemas/chats'
 export * from './schemas/keys'
 export * from './schemas/files'

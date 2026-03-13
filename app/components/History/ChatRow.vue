@@ -36,11 +36,11 @@
           {{ activityAge }}
         </span>
         <span
-          v-if="chat.folderName"
+          v-if="chat.projectName"
           class="badge badge-ghost badge-sm gap-1"
         >
           <Icon name="lucide:folder" size="10" />
-          {{ chat.folderName }}
+          {{ chat.projectName }}
         </span>
       </div>
     </div>
@@ -52,8 +52,8 @@
       @rename="onRename"
       @delete="onDelete"
       @select="onEnterSelect"
-      @add-to-folder="onAddToFolder"
-      @remove-from-folder="onRemoveFromFolder"
+      @add-to-project="onAddToProject"
+      @remove-from-project="onRemoveFromProject"
     />
   </li>
 </template>
@@ -75,8 +75,8 @@ const emit = defineEmits<{
   delete: [chatId: string, slug: string]
   select: [chatId: string, index: number, shiftKey: boolean]
   enterSelect: [chatId: string, index: number]
-  addToFolder: [chat: HistoryChat]
-  removeFromFolder: [chatId: string, slug: string]
+  addToProject: [chat: HistoryChat]
+  removeFromProject: [chatId: string, slug: string]
 }>()
 
 const activityAge = computed(() => {
@@ -103,11 +103,11 @@ function onDelete() {
   emit('delete', props.chat.id, props.chat.slug)
 }
 
-function onAddToFolder() {
-  emit('addToFolder', props.chat)
+function onAddToProject() {
+  emit('addToProject', props.chat)
 }
 
-function onRemoveFromFolder() {
-  emit('removeFromFolder', props.chat.id, props.chat.slug)
+function onRemoveFromProject() {
+  emit('removeFromProject', props.chat.id, props.chat.slug)
 }
 </script>

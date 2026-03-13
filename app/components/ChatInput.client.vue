@@ -77,7 +77,7 @@
               </div>
               <div class="hidden md:flex items-center gap-2 my-2 px-1">
                 <div
-                  v-if="shouldDisplayFolderPicker"
+                  v-if="shouldDisplayProjectPicker"
                   class="join"
                 >
                   <button
@@ -85,26 +85,28 @@
                     class="btn btn-xs btn-accent join-item"
                     :class="{
                       'btn-ghost btn-ghost-legacy !px-1.5 rounded-full':
-                        !folderContext,
-                      'rounded-l-full': folderContext
+                        !projectContext,
+                      'rounded-l-full': projectContext
                     }"
-                    :aria-label="folderContext
-                      ? `Current folder: ${folderContext.name}`
-                      : 'Select folder'"
-                    @click="emit('open-folder-picker')"
+                    :aria-label="projectContext
+                      ? `Current project: ${projectContext.name}`
+                      : 'Select project'"
+                    @click="emit('open-project-picker')"
                   >
                     <Icon
-                      :name="`lucide:folder${folderContext ? '-check' : ''}`"
+                      :name="projectContext
+                        ? 'lucide:check'
+                        : 'lucide:folder'"
                       size="14"
                     />
-                    {{ folderContext ? folderContext.name : '' }}
+                    {{ projectContext ? projectContext.name : '' }}
                   </button>
                   <button
-                    v-if="folderContext"
+                    v-if="projectContext"
                     type="button"
                     class="btn btn-accent btn-xs join-item rounded-r-full"
-                    aria-label="Remove folder"
-                    @click="emit('clear-folder-context')"
+                    aria-label="Remove project"
+                    @click="emit('clear-project-context')"
                   >
                     <Icon name="lucide:x" size="12" />
                   </button>
@@ -182,12 +184,12 @@
                   ? reasoningCapability.levels
                   : []
                 "
-                :display-folder-picker="shouldDisplayFolderPicker"
-                :folder-context="folderContext"
+                :display-project-picker="shouldDisplayProjectPicker"
+                :project-context="projectContext"
                 :files-count="files.length"
                 @toggle-web-search="toggleWebSearch"
-                @open-folder-picker="emit('open-folder-picker')"
-                @clear-folder-context="emit('clear-folder-context')"
+                @open-project-picker="emit('open-project-picker')"
+                @clear-project-context="emit('clear-project-context')"
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
                 @select-reasoning-level="reasoning = $event"
@@ -261,17 +263,17 @@ const props = defineProps<{
   displayRegenerate?: boolean
   displayStop?: boolean
   status?: ChatStatus
-  folderContext?: {
+  projectContext?: {
     id: string
     name: string
   } | null
-  displayFolderPicker?: boolean
+  displayProjectPicker?: boolean
 }>()
 
 const emit = defineEmits<{
   'submit': []
-  'clear-folder-context': []
-  'open-folder-picker': []
+  'clear-project-context': []
+  'open-project-picker': []
 }>()
 
 const route = useRoute()
@@ -402,8 +404,8 @@ const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
 })
 
-const shouldDisplayFolderPicker = computed<boolean>(() => {
-  return !!(props.displayFolderPicker || props.folderContext)
+const shouldDisplayProjectPicker = computed<boolean>(() => {
+  return !!(props.displayProjectPicker || props.projectContext)
 })
 
 const isChatInputVisibleOnScroll = computed<boolean>(() => {

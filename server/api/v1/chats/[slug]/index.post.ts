@@ -16,6 +16,8 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
+import { buildProjectInstructionsMessage } from '~~/server/utils/projects/instructions'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -80,9 +82,18 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
-      folderId: true,
+      projectId: true,
     },
     with: {
+      project: {
+        columns: {
+          id: true,
+          name: true,
+          instructions: true,
+          memory: true,
+          memoryStatus: true,
+        },
+      },
       messages: {
         columns: {
           id: true,
@@ -124,6 +135,19 @@ export default defineEventHandler(async (event) => {
 
   const allMessages = [...previousMessages, newMessage]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
+  const projectInstructionsMessage = buildProjectInstructionsMessage(
+    chat.project
+      ? {
+        name: chat.project.name,
+        instructions: chat.project.instructions,
+        memory: chat.project.memory,
+        memoryStatus: chat.project.memoryStatus,
+      }
+      : null,
+  )
+  const contextMessages = projectInstructionsMessage
+    ? [projectInstructionsMessage, ...modelContextMessages]
+    : modelContextMessages
 
   if (!newMessage.parts || newMessage.parts.length === 0) {
     throw createError({
@@ -140,7 +164,7 @@ export default defineEventHandler(async (event) => {
   const {
     messages: messagesForAI,
     missingFiles,
-  } = await convertFilesForAI(modelContextMessages)
+  } = await convertFilesForAI(contextMessages)
 
   const lastPersistedMessage = previousMessages[previousMessages.length - 1]
   const isDuplicateUserMessage = (
@@ -171,10 +195,12 @@ export default defineEventHandler(async (event) => {
       .set({ activityAt })
       .where(eq(schema.chats.id, chat.id))
 
-    if (chat.folderId) {
-      await db.update(schema.folders)
+    if (chat.projectId) {
+      await db.update(schema.projects)
         .set({ activityAt })
-        .where(eq(schema.folders.id, chat.folderId))
+        .where(eq(schema.projects.id, chat.projectId))
+
+      await markProjectsMemoryStale([chat.projectId], userId, db)
     }
   }
 

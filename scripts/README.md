@@ -195,13 +195,13 @@ pnpm exec wrangler d1 execute DB --remote ...
 - `6` messages per chat
   - `3` user
   - `3` assistant
-- `20` folders
-- `34` chats assigned to folders
+- `20` projects
+- `34` chats assigned to projects
 - a small showcase mix of:
   - pinned chats
-  - pinned folders
-  - archived folders
-Re-running the script for the same user first clears all chats and folders for
+  - pinned projects
+  - archived projects
+Re-running the script for the same user first clears all chats and projects for
 that user, then inserts the demo dataset again.
 
 ### Requirements
@@ -232,12 +232,12 @@ that user, then inserts the demo dataset again.
 ### How it works
 
 1. Resolves the target user by email from D1 in the selected mode
-2. Reads the current max integer ids for `folders`, `chats`, and `messages`
+2. Reads the current max integer ids for `projects`, `chats`, and `messages`
 3. Generates deterministic SQL in a temporary file
 4. Executes that SQL through Wrangler using either `--local` or `--remote`
 
 If `--cleanup` is provided, the script skips data generation and removes all
-chats and folders for that user.
+chats and projects for that user.
 
 ### Notes
 
@@ -245,7 +245,7 @@ chats and folders for that user.
 - ids are inserted explicitly because these tables use integer driver ids behind
   the app-level public id mapping
 - timestamps are written explicitly so the seeded data renders well in history
-  and folder views
+  and project views
 - `--env` is only valid together with `--remote`
-- cleanup is intentionally broad and deletes all chats and folders for the
+- cleanup is intentionally broad and deletes all chats and projects for the
   selected user

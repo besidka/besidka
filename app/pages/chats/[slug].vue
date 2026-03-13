@@ -11,6 +11,12 @@
     "
   >
     <ChatContainer class="!gap-0">
+      <ChatProjectInstructions
+        v-if="projectInstructionsText || projectMemoryText"
+        :project-name="projectContext?.name || 'Project'"
+        :instructions="projectInstructionsText"
+        :memory="projectMemoryText"
+      />
       <ClientOnly>
         <template #fallback>
           <ChatSkeleton :messages-length="chatSdk.messages.length" />
@@ -82,8 +88,8 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
-    display-folder-picker
-    :folder-context="folderContext"
+    display-project-picker
+    :project-context="projectContext"
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
     :stop="stop"
@@ -91,14 +97,14 @@
     :display-regenerate="displayRegenerate"
     :display-stop="displayStop"
     :status="chatSdk.status"
-    @clear-folder-context="clearFolderContext"
-    @open-folder-picker="openFolderPicker"
+    @clear-project-context="clearProjectContext"
+    @open-project-picker="openProjectPicker"
     @submit="submit"
   />
 
-  <LazyChatInputFolderPicker
-    ref="folderPickerRef"
-    @submit="onFolderPickerSubmit"
+  <LazyChatInputProjectPicker
+    ref="projectPickerRef"
+    @submit="onProjectPickerSubmit"
   />
 </template>
 <script setup lang="ts">
@@ -187,12 +193,12 @@ useSeoMeta({
   title: chat.value.title || 'Untitled Chat',
 })
 
-const folderId = shallowRef<string | null>(chat.value.folderId ?? null)
-const folderContext = shallowRef<{ id: string, name: string } | null>(
-  folderId.value
+const projectId = shallowRef<string | null>(chat.value.projectId ?? null)
+const projectContext = shallowRef<{ id: string, name: string } | null>(
+  projectId.value
     ? {
-      id: folderId.value,
-      name: 'Folder',
+      id: projectId.value,
+      name: 'Project',
     }
     : null,
 )
@@ -225,55 +231,93 @@ const messagesEndRef = ref<HTMLDivElement | null>(null)
 const nuxtApp = useNuxtApp()
 const messagesDomRefs = useTemplateRef<HTMLDivElement[]>('messagesDomRefs')
 
-interface FolderPickerInstance {
-  open: (folderId: string | null) => void
+interface ProjectPickerInstance {
+  open: (projectId: string | null) => void
 }
 
-const folderPickerRef = shallowRef<FolderPickerInstance | null>(null)
+interface ProjectDetails {
+  id: string
+  name: string
+  instructions: string | null
+  memory: string | null
+  memoryStatus: 'idle' | 'stale' | 'refreshing' | 'ready' | 'failed' | 'unavailable'
+}
 
-async function fetchFolderContext(nextFolderId: string) {
+const projectPickerRef = shallowRef<ProjectPickerInstance | null>(null)
+const projectInstructions = shallowRef<string | null | undefined>(undefined)
+const projectMemory = shallowRef<string | null>(null)
+const projectMemoryStatus = shallowRef<ProjectDetails['memoryStatus']>('idle')
+
+const projectInstructionsText = computed(() => {
+  const instructions = projectInstructions.value?.trim()
+
+  return instructions || null
+})
+
+const projectMemoryText = computed(() => {
+  if (projectMemoryStatus.value !== 'ready') {
+    return null
+  }
+
+  const memory = projectMemory.value?.trim()
+
+  return memory || null
+})
+
+async function fetchProjectContext(nextProjectId: string) {
   return import.meta.server
-    ? await useRequestFetch()(`/api/v1/folders/${nextFolderId}`)
-    : await $fetch(`/api/v1/folders/${nextFolderId}`)
+    ? await useRequestFetch()(`/api/v1/projects/${nextProjectId}`)
+    : await $fetch(`/api/v1/projects/${nextProjectId}`)
 }
 
-async function syncFolderContext(
-  nextFolderId: string | null,
+async function syncProjectContext(
+  nextProjectId: string | null,
   canApply: () => boolean = () => true,
+  forceRefresh = false,
 ) {
-  if (!nextFolderId) {
+  if (!nextProjectId) {
     if (canApply()) {
-      folderContext.value = null
+      projectContext.value = null
+      projectInstructions.value = null
+      projectMemory.value = null
+      projectMemoryStatus.value = 'idle'
     }
 
     return
   }
 
   if (
-    folderContext.value?.id === nextFolderId
-    && folderContext.value.name !== 'Folder'
+    !forceRefresh
+    && projectContext.value?.id === nextProjectId
+    && projectContext.value.name !== 'Project'
+    && projectInstructions.value !== undefined
   ) {
     return
   }
 
   if (canApply()) {
-    folderContext.value = {
-      id: nextFolderId,
-      name: 'Folder',
+    projectContext.value = {
+      id: nextProjectId,
+      name: 'Project',
     }
   }
 
   try {
-    const folder = await fetchFolderContext(nextFolderId)
+    const project = await fetchProjectContext(nextProjectId)
 
     if (!canApply()) {
       return
     }
 
-    folderContext.value = {
-      id: folder.id,
-      name: folder.name,
+    projectContext.value = {
+      id: project.id,
+      name: project.name,
     }
+    projectInstructions.value = (project as ProjectDetails).instructions ?? null
+    projectMemory.value = (project as ProjectDetails).memory ?? null
+    projectMemoryStatus.value = (
+      project as ProjectDetails
+    ).memoryStatus ?? 'idle'
   } catch (exception) {
     if (!canApply()) {
       return
@@ -282,36 +326,39 @@ async function syncFolderContext(
     const parsedException = parseError(exception)
 
     if (parsedException.status === 404) {
-      folderId.value = null
-      folderContext.value = null
+      projectId.value = null
+      projectContext.value = null
+      projectInstructions.value = null
+      projectMemory.value = null
+      projectMemoryStatus.value = 'idle'
     }
   }
 }
 
-if (import.meta.server && folderId.value) {
-  await syncFolderContext(folderId.value)
+if (import.meta.server && projectId.value) {
+  await syncProjectContext(projectId.value)
 }
 
 if (import.meta.client) {
   watch(() => {
-    return chat.value?.folderId ?? null
-  }, (nextFolderId) => {
-    if (folderId.value === nextFolderId) {
+    return chat.value?.projectId ?? null
+  }, (nextProjectId) => {
+    if (projectId.value === nextProjectId) {
       return
     }
 
-    folderId.value = nextFolderId
+    projectId.value = nextProjectId
   }, { immediate: true })
 
-  watch(folderId, async (nextFolderId, _previousFolderId, onCleanup) => {
+  watch(projectId, async (nextProjectId, _previousProjectId, onCleanup) => {
     let isStale = false
 
     onCleanup(() => {
       isStale = true
     })
 
-    await syncFolderContext(nextFolderId, () => {
-      return !isStale && folderId.value === nextFolderId
+    await syncProjectContext(nextProjectId, () => {
+      return !isStale && projectId.value === nextProjectId
     })
   }, { immediate: true })
 }
@@ -322,6 +369,28 @@ onMounted(() => {
   nuxtApp.callHook('chat:rendered', scrollContainerRef)
 })
 
+if (import.meta.client) {
+  watch(() => chatSdk.status, async (nextStatus, previousStatus) => {
+    if (
+      !projectId.value
+      || nextStatus !== 'ready'
+      || !['submitted', 'streaming'].includes(previousStatus)
+    ) {
+      return
+    }
+
+    try {
+      await $fetch(`/api/v1/chats/${route.params.slug}/project-context/refresh`, {
+        method: 'POST',
+      })
+
+      await syncProjectContext(projectId.value, () => true, true)
+    } catch (exception) {
+      void exception
+    }
+  })
+}
+
 const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
@@ -329,30 +398,41 @@ const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
   chatSdk,
 })
 
-function openFolderPicker() {
-  folderPickerRef.value?.open(folderId.value)
+function openProjectPicker() {
+  projectPickerRef.value?.open(projectId.value)
 }
 
-async function onFolderPickerSubmit(payload: {
-  folderId: string | null
-  folderName: string | null
+async function onProjectPickerSubmit(payload: {
+  projectId: string | null
+  projectName: string | null
 }) {
+  if (payload.projectId === projectId.value) {
+    return
+  }
+
   try {
-    await $fetch(`/api/v1/chats/${route.params.slug}/folder`, {
+    await $fetch(`/api/v1/chats/${route.params.slug}/project`, {
       method: 'PATCH',
-      body: { folderId: payload.folderId },
+      body: { projectId: payload.projectId },
     })
 
-    folderId.value = payload.folderId
-    folderContext.value = payload.folderId
+    projectId.value = payload.projectId
+    projectContext.value = payload.projectId
       ? {
-        id: payload.folderId,
-        name: payload.folderName || 'Folder',
+        id: payload.projectId,
+        name: payload.projectName || 'Project',
       }
       : null
+    projectInstructions.value = payload.projectId
+      ? undefined
+      : null
+    projectMemory.value = null
+    projectMemoryStatus.value = payload.projectId ? 'stale' : 'idle'
 
     useSuccessMessage(
-      payload.folderId ? 'Moved to folder' : 'Removed from folder',
+      payload.projectId
+        ? 'Moved to project. Future messages will use this project context.'
+        : 'Removed from project. Future messages will not use project context.',
     )
   } catch (exception) {
     const parsedException = parseError(exception)
@@ -364,10 +444,10 @@ async function onFolderPickerSubmit(payload: {
   }
 }
 
-async function clearFolderContext() {
-  await onFolderPickerSubmit({
-    folderId: null,
-    folderName: null,
+async function clearProjectContext() {
+  await onProjectPickerSubmit({
+    projectId: null,
+    projectName: null,
   })
 }
 

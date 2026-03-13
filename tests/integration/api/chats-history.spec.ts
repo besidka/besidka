@@ -6,7 +6,8 @@ import { createHistoryCursor } from '../../../server/utils/chats/history/cursor'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
-  refreshFolderActivityAt: vi.fn(async () => undefined),
+  refreshProjectActivityAt: vi.fn(async () => undefined),
+  markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
 vi.mock('evlog', () => ({
@@ -30,8 +31,12 @@ vi.mock('evlog', () => ({
   },
 }))
 
-vi.mock('~~/server/utils/folders/activity', () => ({
-  refreshFolderActivityAt: mocks.refreshFolderActivityAt,
+vi.mock('~~/server/utils/projects/activity', () => ({
+  refreshProjectActivityAt: mocks.refreshProjectActivityAt,
+}))
+
+vi.mock('~~/server/utils/projects/memory', () => ({
+  markProjectsMemoryStale: mocks.markProjectsMemoryStale,
 }))
 
 async function getHistoryHandler() {
@@ -70,17 +75,17 @@ async function getBulkDeleteHandler() {
   return module.default
 }
 
-async function getFolderMoveHandler() {
+async function getProjectMoveHandler() {
   const module = await import(
-    '../../../server/api/v1/chats/[slug]/folder.patch'
+    '../../../server/api/v1/chats/[slug]/project.patch'
   )
 
   return module.default
 }
 
-async function getBulkFolderMoveHandler() {
+async function getBulkProjectMoveHandler() {
   const module = await import(
-    '../../../server/api/v1/chats/history/folder/bulk.post'
+    '../../../server/api/v1/chats/history/project/bulk.post'
   )
 
   return module.default
@@ -122,7 +127,7 @@ describe('chat history API', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    mocks.refreshFolderActivityAt.mockResolvedValue(undefined)
+    mocks.refreshProjectActivityAt.mockResolvedValue(undefined)
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -301,7 +306,7 @@ describe('chat history API', () => {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
-            folderId: 'folder-1',
+            projectId: 'project-1',
           })),
         },
       },
@@ -323,8 +328,8 @@ describe('chat history API', () => {
       activityAt: expect.any(Date),
     }))
     expect(updateWhere).toHaveBeenCalled()
-    expect(mocks.refreshFolderActivityAt).toHaveBeenCalledWith(
-      ['folder-1'],
+    expect(mocks.refreshProjectActivityAt).toHaveBeenCalledWith(
+      ['project-1'],
       1,
       db,
     )
@@ -339,12 +344,12 @@ describe('chat history API', () => {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
-            folderId: 'folder-source',
+            projectId: 'project-source',
           })),
           findMany: vi.fn(async () => ([
-            { folderId: 'folder-source' },
-            { folderId: null },
-            { folderId: 'folder-other' },
+            { projectId: 'project-source' },
+            { projectId: null },
+            { projectId: 'project-other' },
           ])),
         },
       },
@@ -365,21 +370,33 @@ describe('chat history API', () => {
     expect(singleResponse).toEqual({ success: true })
     expect(bulkResponse).toEqual({ success: true })
     expect(deleteWhere).toHaveBeenCalledTimes(2)
-    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+    expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       1,
-      ['folder-source'],
+      ['project-source'],
       1,
       db,
     )
-    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+    expect(mocks.markProjectsMemoryStale).toHaveBeenNthCalledWith(
+      1,
+      ['project-source'],
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       2,
-      ['folder-source', null, 'folder-other'],
+      ['project-source', null, 'project-other'],
+      1,
+      db,
+    )
+    expect(mocks.markProjectsMemoryStale).toHaveBeenNthCalledWith(
+      2,
+      ['project-source', null, 'project-other'],
       1,
       db,
     )
   })
 
-  it('pins chats, updates activity timestamps, and refreshes folder activity', async () => {
+  it('pins chats, updates activity timestamps, and refreshes project activity', async () => {
     const handler = await getPinHandler()
     const updateWhere = vi.fn(async () => undefined)
     const updateSet = vi.fn(() => ({
@@ -390,7 +407,7 @@ describe('chat history API', () => {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
-            folderId: 'folder-1',
+            projectId: 'project-1',
             pinnedAt: null,
           })),
         },
@@ -411,45 +428,45 @@ describe('chat history API', () => {
       pinnedAt: expect.any(Date),
       activityAt: expect.any(Date),
     }))
-    expect(mocks.refreshFolderActivityAt).toHaveBeenCalledWith(
-      ['folder-1'],
+    expect(mocks.refreshProjectActivityAt).toHaveBeenCalledWith(
+      ['project-1'],
       1,
       db,
     )
   })
 
-  it('moves chats into folders and refreshes source folder activity for single and bulk actions', async () => {
-    const singleHandler = await getFolderMoveHandler()
-    const bulkHandler = await getBulkFolderMoveHandler()
+  it('moves chats into projects and refreshes source project activity for single and bulk actions', async () => {
+    const singleHandler = await getProjectMoveHandler()
+    const bulkHandler = await getBulkProjectMoveHandler()
     const schema = await import('../../../server/db/schema')
     const updateWhere = vi.fn(async () => undefined)
-    const folderActivityWhere = vi.fn(async () => undefined)
+    const projectActivityWhere = vi.fn(async () => undefined)
     const updateSet = vi.fn(() => ({
       where: updateWhere,
     }))
-    const folderSet = vi.fn(() => ({
-      where: folderActivityWhere,
+    const projectSet = vi.fn(() => ({
+      where: projectActivityWhere,
     }))
     const db = {
       query: {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
-            folderId: 'folder-source',
+            projectId: 'project-source',
           })),
           findMany: vi.fn(async () => ([
-            { id: 'chat-1', folderId: 'folder-source' },
-            { id: 'chat-2', folderId: 'folder-other' },
+            { id: 'chat-1', projectId: 'project-source' },
+            { id: 'chat-2', projectId: 'project-other' },
           ])),
         },
-        folders: {
-          findFirst: vi.fn(async () => ({ id: 'folder-1' })),
+        projects: {
+          findFirst: vi.fn(async () => ({ id: 'project-1' })),
         },
       },
       update: vi.fn((table: unknown) => {
-        if (table === schema.folders) {
+        if (table === schema.projects) {
           return {
-            set: folderSet,
+            set: projectSet,
           }
         }
 
@@ -463,41 +480,41 @@ describe('chat history API', () => {
 
     const singleResponse = await singleHandler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-      body: { folderId: 'folder-1' },
+      body: { projectId: 'project-1' },
     } as any)
     const bulkResponse = await bulkHandler({
       body: {
         chatIds: ['chat-1', 'chat-2'],
-        folderId: 'folder-1',
+        projectId: 'project-1',
       },
     } as any)
 
-    expect(singleResponse).toEqual({ folderId: 'folder-1' })
+    expect(singleResponse).toEqual({ projectId: 'project-1' })
     expect(bulkResponse).toEqual({ success: true })
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
-      folderId: 'folder-1',
+      projectId: 'project-1',
       activityAt: expect.any(Date),
     }))
-    expect(folderSet).toHaveBeenCalledWith(expect.objectContaining({
+    expect(projectSet).toHaveBeenCalledWith(expect.objectContaining({
       activityAt: expect.any(Date),
     }))
-    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+    expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       1,
-      ['folder-source'],
+      ['project-source'],
       1,
       db,
     )
-    expect(mocks.refreshFolderActivityAt).toHaveBeenNthCalledWith(
+    expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       2,
-      ['folder-source', 'folder-other'],
+      ['project-source', 'project-other'],
       1,
       db,
     )
   })
 
-  it('skips no-op folder moves for single and bulk actions', async () => {
-    const singleHandler = await getFolderMoveHandler()
-    const bulkHandler = await getBulkFolderMoveHandler()
+  it('skips no-op project moves for single and bulk actions', async () => {
+    const singleHandler = await getProjectMoveHandler()
+    const bulkHandler = await getBulkProjectMoveHandler()
     const updateWhere = vi.fn(async () => undefined)
     const updateSet = vi.fn(() => ({
       where: updateWhere,
@@ -507,15 +524,15 @@ describe('chat history API', () => {
         chats: {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
-            folderId: 'folder-1',
+            projectId: 'project-1',
           })),
           findMany: vi.fn(async () => ([
-            { id: 'chat-1', folderId: 'folder-1' },
-            { id: 'chat-2', folderId: 'folder-1' },
+            { id: 'chat-1', projectId: 'project-1' },
+            { id: 'chat-2', projectId: 'project-1' },
           ])),
         },
-        folders: {
-          findFirst: vi.fn(async () => ({ id: 'folder-1' })),
+        projects: {
+          findFirst: vi.fn(async () => ({ id: 'project-1' })),
         },
       },
       update: vi.fn(() => ({
@@ -527,19 +544,19 @@ describe('chat history API', () => {
 
     const singleResponse = await singleHandler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-      body: { folderId: 'folder-1' },
+      body: { projectId: 'project-1' },
     } as any)
     const bulkResponse = await bulkHandler({
       body: {
         chatIds: ['chat-1', 'chat-2'],
-        folderId: 'folder-1',
+        projectId: 'project-1',
       },
     } as any)
 
-    expect(singleResponse).toEqual({ folderId: 'folder-1' })
+    expect(singleResponse).toEqual({ projectId: 'project-1' })
     expect(bulkResponse).toEqual({ success: true })
-    expect(db.query.folders.findFirst).not.toHaveBeenCalled()
+    expect(db.query.projects.findFirst).not.toHaveBeenCalled()
     expect(db.update).not.toHaveBeenCalled()
-    expect(mocks.refreshFolderActivityAt).not.toHaveBeenCalled()
+    expect(mocks.refreshProjectActivityAt).not.toHaveBeenCalled()
   })
 })

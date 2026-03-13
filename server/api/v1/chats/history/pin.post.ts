@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
+import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
-      folderId: true,
+      projectId: true,
       pinnedAt: true,
     },
   })
@@ -51,8 +51,8 @@ export default defineEventHandler(async (event) => {
     .set({ pinnedAt: newPinnedAt, activityAt: new Date() })
     .where(eq(schema.chats.id, chat.id))
 
-  if (chat.folderId) {
-    await refreshFolderActivityAt([chat.folderId], userId, db)
+  if (chat.projectId) {
+    await refreshProjectActivityAt([chat.projectId], userId, db)
   }
 
   return { pinnedAt: newPinnedAt }

@@ -299,11 +299,11 @@ export function useHistory() {
     }
   }
 
-  function updateFolderState(
+  function updateProjectState(
     entry: HistoryCacheEntry,
     chatIds: ReadonlySet<string>,
-    folderId: string | null,
-    folderName: string | null,
+    projectId: string | null,
+    projectName: string | null,
     activityAt: string,
   ): HistoryCacheEntry {
     let hasPinnedUpdates = false
@@ -317,8 +317,8 @@ export function useHistory() {
 
       return {
         ...chat,
-        folderId,
-        folderName,
+        projectId,
+        projectName,
         activityAt,
       }
     })
@@ -330,8 +330,8 @@ export function useHistory() {
       .map((chat) => {
         return {
           ...chat,
-          folderId,
-          folderName,
+          projectId,
+          projectName,
           activityAt,
         }
       })
@@ -575,31 +575,31 @@ export function useHistory() {
     }
   }
 
-  async function moveChatToFolder(
+  async function moveChatToProject(
     chatId: string,
     slug: string,
-    folderId: string | null,
-    folderName: string | null = null,
+    projectId: string | null,
+    projectName: string | null = null,
   ) {
     try {
-      await $fetch(`/api/v1/chats/${slug}/folder`, {
+      await $fetch(`/api/v1/chats/${slug}/project`, {
         method: 'PATCH',
-        body: { folderId },
+        body: { projectId },
       })
       const activityAt = new Date().toISOString()
 
       updateEntries((entry) => {
-        return updateFolderState(
+        return updateProjectState(
           entry,
           new Set([chatId]),
-          folderId,
-          folderName,
+          projectId,
+          projectName,
           activityAt,
         )
       })
 
       nuxtApp.runWithContext(() => {
-        useSuccessMessage(folderId ? 'Moved to folder' : 'Removed from folder')
+        useSuccessMessage(projectId ? 'Moved to project' : 'Removed from project')
       })
     } catch (exception) {
       const parsedException = parseError(exception)
@@ -613,9 +613,9 @@ export function useHistory() {
     }
   }
 
-  async function moveSelectedToFolder(
-    folderId: string | null,
-    folderName: string | null = null,
+  async function moveSelectedToProject(
+    projectId: string | null,
+    projectName: string | null = null,
   ) {
     if (selectedIds.value.size === 0) return
 
@@ -629,19 +629,19 @@ export function useHistory() {
 
     try {
       for (const chunk of chunks) {
-        await $fetch('/api/v1/chats/history/folder/bulk', {
+        await $fetch('/api/v1/chats/history/project/bulk', {
           method: 'POST',
-          body: { chatIds: chunk, folderId },
+          body: { chatIds: chunk, projectId },
         })
       }
       const activityAt = new Date().toISOString()
 
       updateEntries((entry) => {
-        return updateFolderState(
+        return updateProjectState(
           entry,
           selectedChatIds,
-          folderId,
-          folderName,
+          projectId,
+          projectName,
           activityAt,
         )
       })
@@ -650,9 +650,9 @@ export function useHistory() {
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(
-          folderId
-            ? `${chatIds.length} chat${chatIds.length === 1 ? '' : 's'} moved to folder`
-            : `${chatIds.length} chat${chatIds.length === 1 ? '' : 's'} removed from folder`,
+          projectId
+            ? `${chatIds.length} chat${chatIds.length === 1 ? '' : 's'} moved to project`
+            : `${chatIds.length} chat${chatIds.length === 1 ? '' : 's'} removed from project`,
         )
       })
     } catch (exception) {
@@ -709,7 +709,7 @@ export function useHistory() {
     deleteSelected,
     renameChat,
     deleteChat,
-    moveChatToFolder,
-    moveSelectedToFolder,
+    moveChatToProject,
+    moveSelectedToProject,
   }
 }

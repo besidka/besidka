@@ -120,7 +120,7 @@ run_query_to_file() {
 
 USER_JSON_FILE="$(mktemp)"
 CHAT_ID_JSON_FILE="$(mktemp)"
-FOLDER_ID_JSON_FILE="$(mktemp)"
+PROJECT_ID_JSON_FILE="$(mktemp)"
 MESSAGE_ID_JSON_FILE="$(mktemp)"
 SQL_FILE="$(mktemp "${TMPDIR:-/tmp}/seed-chats.XXXXXX.sql")"
 
@@ -128,7 +128,7 @@ cleanup() {
   rm -f \
     "${USER_JSON_FILE}" \
     "${CHAT_ID_JSON_FILE}" \
-    "${FOLDER_ID_JSON_FILE}" \
+    "${PROJECT_ID_JSON_FILE}" \
     "${MESSAGE_ID_JSON_FILE}" \
     "${SQL_FILE}"
 }
@@ -179,8 +179,8 @@ else
     "SELECT COALESCE(MAX(id), 0) AS max_id FROM chats;" \
     "${CHAT_ID_JSON_FILE}"
   run_query_to_file \
-    "SELECT COALESCE(MAX(id), 0) AS max_id FROM folders;" \
-    "${FOLDER_ID_JSON_FILE}"
+    "SELECT COALESCE(MAX(id), 0) AS max_id FROM projects;" \
+    "${PROJECT_ID_JSON_FILE}"
   run_query_to_file \
     "SELECT COALESCE(MAX(id), 0) AS max_id FROM messages;" \
     "${MESSAGE_ID_JSON_FILE}"
@@ -190,10 +190,10 @@ else
       read-max-id \
       --input "${CHAT_ID_JSON_FILE}"
   )"
-  MAX_FOLDER_ID="$(
+  MAX_PROJECT_ID="$(
     node "${SCRIPT_DIR}/seed-chats.mjs" \
       read-max-id \
-      --input "${FOLDER_ID_JSON_FILE}"
+      --input "${PROJECT_ID_JSON_FILE}"
   )"
   MAX_MESSAGE_ID="$(
     node "${SCRIPT_DIR}/seed-chats.mjs" \
@@ -202,7 +202,7 @@ else
   )"
 
   CHAT_START_ID=$((MAX_CHAT_ID + 1))
-  FOLDER_START_ID=$((MAX_FOLDER_ID + 1))
+  PROJECT_START_ID=$((MAX_PROJECT_ID + 1))
   MESSAGE_START_ID=$((MAX_MESSAGE_ID + 1))
 
   node "${SCRIPT_DIR}/seed-chats.mjs" \
@@ -210,7 +210,7 @@ else
     --email "${EMAIL}" \
     --user-id "${USER_ID}" \
     --chat-start-id "${CHAT_START_ID}" \
-    --folder-start-id "${FOLDER_START_ID}" \
+    --project-start-id "${PROJECT_START_ID}" \
     --message-start-id "${MESSAGE_START_ID}" \
     > "${SQL_FILE}"
 
@@ -236,6 +236,6 @@ else
 fi
 if [[ "${CLEANUP_ONLY}" != "true" ]]; then
   echo "Chats: 100"
-  echo "Folders: 20"
-  echo "Folder-linked chats: 34"
+  echo "Projects: 20"
+  echo "Project-linked chats: 34"
 fi

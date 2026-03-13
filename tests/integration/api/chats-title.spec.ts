@@ -78,7 +78,7 @@ describe('chat title API', () => {
           findFirst: vi.fn(async () => ({
             id: 'chat-1',
             title: null,
-            folderId: 'folder-1',
+            projectId: 'project-1',
             messages: [
               {
                 parts: [{ text: 'Create a roadmap for Q2' }],

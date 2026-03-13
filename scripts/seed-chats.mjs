@@ -5,53 +5,53 @@ import { readFile } from 'node:fs/promises'
 import { ulid } from 'ulid'
 
 const CHAT_COUNT = 100
-const FOLDER_COUNT = 20
+const PROJECT_COUNT = 20
 const MESSAGES_PER_CHAT = 6
-const FOLDERED_CHAT_COUNT = 34
+const PROJECT_LINKED_CHAT_COUNT = 34
 const PINNED_CHAT_COUNT = 10
-const PINNED_FOLDER_COUNT = 4
-const ARCHIVED_FOLDER_COUNT = 3
+const PINNED_PROJECT_COUNT = 4
+const ARCHIVED_PROJECT_COUNT = 3
 
 const topicDefinitions = [
   {
     title: 'Product roadmap workshop',
-    folder: 'Product planning',
+    project: 'Product planning',
   },
   {
     title: 'Billing support follow-up',
-    folder: 'Customer support',
+    project: 'Customer support',
   },
   {
     title: 'Release retro notes',
-    folder: 'Engineering ops',
+    project: 'Engineering ops',
   },
   {
     title: 'Marketing launch outline',
-    folder: 'Marketing',
+    project: 'Marketing',
   },
   {
     title: 'Analytics instrumentation plan',
-    folder: 'Analytics',
+    project: 'Analytics',
   },
   {
     title: 'Onboarding feedback review',
-    folder: 'Customer research',
+    project: 'Customer research',
   },
   {
     title: 'Incident response checklist',
-    folder: 'Operations',
+    project: 'Operations',
   },
   {
     title: 'Design critique summary',
-    folder: 'Design review',
+    project: 'Design review',
   },
   {
     title: 'Sales demo preparation',
-    folder: 'Sales enablement',
+    project: 'Sales enablement',
   },
   {
     title: 'Internal knowledge base draft',
-    folder: 'Documentation',
+    project: 'Documentation',
   },
 ]
 
@@ -133,7 +133,7 @@ function printUsage() {
   node scripts/seed-chats.mjs resolve-user --input <json> --email <email>
   node scripts/seed-chats.mjs read-max-id --input <json>
   node scripts/seed-chats.mjs generate-cleanup-statements --user-id <id>
-  node scripts/seed-chats.mjs generate-sql --email <email> --user-id <id> --chat-start-id <id> --folder-start-id <id> --message-start-id <id>`)
+  node scripts/seed-chats.mjs generate-sql --email <email> --user-id <id> --chat-start-id <id> --project-start-id <id> --message-start-id <id>`)
 }
 
 function escapeSql(value) {
@@ -185,13 +185,13 @@ function buildUserMessage(topic, chatIndex, stepIndex) {
     return `${paragraphOne} ${paragraphTwo} Please help me refine the middle of the discussion so it sounds like an active back-and-forth rather than a one-shot prompt.`
   }
 
-  return `${paragraphOne} ${paragraphTwo} Finish with recommendations that would make sense to revisit from history or inside a folder later.`
+  return `${paragraphOne} ${paragraphTwo} Finish with recommendations that would make sense to revisit from history or inside a project later.`
 }
 
 function buildAssistantMessage(topic, chatIndex, stepIndex) {
   const paragraphOne = `Here is a fuller response for ${topic.title.toLowerCase()} that reads like an actual assistant answer instead of a synthetic test stub. I will keep the tone practical, explain the tradeoffs in complete sentences, and include enough detail that the resulting message is useful in a demo conversation.`
   const paragraphTwo = `For chat ${chatIndex + 1}, this section expands on step ${stepIndex + 1} by spelling out why a recommendation exists, what risks it avoids, and what a sensible next action would be. That makes the seeded thread feel more believable when someone opens it from history.`
-  const paragraphThree = `If you revisit this conversation later, the main idea should still be clear: define the objective, reduce unnecessary scope, capture the decision in plain language, and leave a short path for follow-up. That pattern gives the seeded data enough structure to support search, pinning, and folder-based demos.`
+  const paragraphThree = `If you revisit this conversation later, the main idea should still be clear: define the objective, reduce unnecessary scope, capture the decision in plain language, and leave a short path for follow-up. That pattern gives the seeded data enough structure to support search, pinning, and project-based demos.`
 
   return `${paragraphOne} ${paragraphTwo} ${paragraphThree}`
 }
@@ -237,8 +237,8 @@ function toEpoch(date) {
   return Math.floor(date.getTime() / 1000)
 }
 
-function createFolderDistribution() {
-  return Array.from({ length: FOLDER_COUNT }, (_, index) => {
+function createProjectDistribution() {
+  return Array.from({ length: PROJECT_COUNT }, (_, index) => {
     return index < 14 ? 2 : 1
   })
 }
@@ -260,31 +260,31 @@ function buildSeedData(options) {
     email,
     userId,
     chatStartId,
-    folderStartId,
+    projectStartId,
     messageStartId,
   } = options
   const activityDates = buildActivityTimestamps()
-  const folderDistribution = createFolderDistribution()
+  const projectDistribution = createProjectDistribution()
   const pinnedChatIndices = createPinnedIndices(PINNED_CHAT_COUNT, CHAT_COUNT)
-  const folders = []
+  const projects = []
   const chats = []
   const messages = []
   let nextMessageId = messageStartId
 
-  for (let index = 0; index < FOLDER_COUNT; index += 1) {
+  for (let index = 0; index < PROJECT_COUNT; index += 1) {
     const topic = topicDefinitions[index % topicDefinitions.length]
-    const folderName = `${topic.folder} ${index + 1}`
+    const projectName = `${topic.project} ${index + 1}`
 
-    folders.push({
-      id: folderStartId + index,
+    projects.push({
+      id: projectStartId + index,
       userId,
-      name: folderName,
+      name: projectName,
       createdAt: 0,
       updatedAt: 0,
       activityAt: 0,
-      pinnedAt: index < PINNED_FOLDER_COUNT ? 0 : null,
-      archivedAt: index >= PINNED_FOLDER_COUNT
-        && index < PINNED_FOLDER_COUNT + ARCHIVED_FOLDER_COUNT
+      pinnedAt: index < PINNED_PROJECT_COUNT ? 0 : null,
+      archivedAt: index >= PINNED_PROJECT_COUNT
+        && index < PINNED_PROJECT_COUNT + ARCHIVED_PROJECT_COUNT
         ? 0
         : null,
       assignedChatIndices: [],
@@ -296,18 +296,18 @@ function buildSeedData(options) {
     const activityDate = activityDates[index]
     const createdAt = new Date(activityDate.getTime() - (4 * 60 * 60 * 1000))
     const updatedAt = activityDate
-    let folderId = null
+    let projectId = null
 
-    if (index < FOLDERED_CHAT_COUNT) {
-      const folderIndex = folders.findIndex((folder, folderIndex) => {
-        return folder.assignedChatIndices.length
-          < folderDistribution[folderIndex]
+    if (index < PROJECT_LINKED_CHAT_COUNT) {
+      const projectIndex = projects.findIndex((project, distributionIndex) => {
+        return project.assignedChatIndices.length
+          < projectDistribution[distributionIndex]
       })
-      const safeFolderIndex = folderIndex === -1 ? 0 : folderIndex
-      const targetFolder = folders[safeFolderIndex]
+      const safeProjectIndex = projectIndex === -1 ? 0 : projectIndex
+      const targetProject = projects[safeProjectIndex]
 
-      folderId = targetFolder.id
-      targetFolder.assignedChatIndices.push(index)
+      projectId = targetProject.id
+      targetProject.assignedChatIndices.push(index)
     }
 
     const chat = {
@@ -321,7 +321,7 @@ function buildSeedData(options) {
       pinnedAt: pinnedChatIndices.has(index)
         ? new Date(updatedAt.getTime() - (30 * 60 * 1000))
         : null,
-      folderId,
+      projectId,
     }
 
     chats.push(chat)
@@ -358,9 +358,9 @@ function buildSeedData(options) {
     }
   }
 
-  for (const folder of folders) {
+  for (const project of projects) {
     const assignedChats = chats.filter((chat) => {
-      return chat.folderId === folder.id
+      return chat.projectId === project.id
     })
     const latestActivity = assignedChats
       .map(chat => chat.activityAt)
@@ -370,27 +370,27 @@ function buildSeedData(options) {
       .sort((left, right) => left.getTime() - right.getTime())[0]
       || new Date()
 
-    folder.createdAt = toEpoch(createdAt)
-    folder.updatedAt = latestActivity
+    project.createdAt = toEpoch(createdAt)
+    project.updatedAt = latestActivity
       ? toEpoch(latestActivity)
       : toEpoch(createdAt)
-    folder.activityAt = latestActivity
+    project.activityAt = latestActivity
       ? toEpoch(latestActivity)
       : toEpoch(createdAt)
 
-    if (folder.pinnedAt !== null) {
-      folder.pinnedAt = folder.updatedAt - 900
+    if (project.pinnedAt !== null) {
+      project.pinnedAt = project.updatedAt - 900
     }
 
-    if (folder.archivedAt !== null) {
-      folder.archivedAt = folder.updatedAt - 1800
+    if (project.archivedAt !== null) {
+      project.archivedAt = project.updatedAt - 1800
     }
   }
 
   return {
     email,
     userId,
-    folders,
+    projects,
     chats,
     messages,
   }
@@ -401,15 +401,15 @@ function buildSql(seedData) {
     ...buildCleanupStatements(seedData.userId),
   ]
 
-  for (const folder of seedData.folders) {
+  for (const project of seedData.projects) {
     statements.push(
-      `INSERT INTO folders (id, created_at, updated_at, user_id, name, pinned_at, archived_at, activity_at) VALUES (${folder.id}, ${toSqlTimestamp(folder.createdAt)}, ${toSqlTimestamp(folder.updatedAt)}, ${folder.userId}, ${toSqlString(folder.name)}, ${toSqlNullableTimestamp(folder.pinnedAt)}, ${toSqlNullableTimestamp(folder.archivedAt)}, ${toSqlTimestamp(folder.activityAt)});`,
+      `INSERT INTO projects (id, created_at, updated_at, user_id, name, instructions, memory, memory_status, memory_updated_at, memory_dirty_at, memory_provider, memory_model, memory_error, pinned_at, archived_at, activity_at) VALUES (${project.id}, ${toSqlTimestamp(project.createdAt)}, ${toSqlTimestamp(project.updatedAt)}, ${project.userId}, ${toSqlString(project.name)}, NULL, NULL, 'idle', NULL, NULL, NULL, NULL, NULL, ${toSqlNullableTimestamp(project.pinnedAt)}, ${toSqlNullableTimestamp(project.archivedAt)}, ${toSqlTimestamp(project.activityAt)});`,
     )
   }
 
   for (const chat of seedData.chats) {
     statements.push(
-      `INSERT INTO chats (id, created_at, updated_at, slug, user_id, title, shared, pinned_at, folder_id, activity_at) VALUES (${chat.id}, ${toSqlTimestamp(toEpoch(chat.createdAt))}, ${toSqlTimestamp(toEpoch(chat.updatedAt))}, ${toSqlString(chat.slug)}, ${chat.userId}, ${toSqlString(chat.title)}, NULL, ${toSqlNullableTimestamp(chat.pinnedAt ? toEpoch(chat.pinnedAt) : null)}, ${toSqlNullableInteger(chat.folderId)}, ${toSqlTimestamp(toEpoch(chat.activityAt))});`,
+      `INSERT INTO chats (id, created_at, updated_at, slug, user_id, title, shared, pinned_at, project_id, project_memory_summary, project_memory_summary_updated_at, activity_at) VALUES (${chat.id}, ${toSqlTimestamp(toEpoch(chat.createdAt))}, ${toSqlTimestamp(toEpoch(chat.updatedAt))}, ${toSqlString(chat.slug)}, ${chat.userId}, ${toSqlString(chat.title)}, NULL, ${toSqlNullableTimestamp(chat.pinnedAt ? toEpoch(chat.pinnedAt) : null)}, ${toSqlNullableInteger(chat.projectId)}, NULL, NULL, ${toSqlTimestamp(toEpoch(chat.activityAt))});`,
     )
   }
 
@@ -425,7 +425,7 @@ function buildSql(seedData) {
 function buildCleanupStatements(userId) {
   return [
     `DELETE FROM chats WHERE user_id = ${userId};`,
-    `DELETE FROM folders WHERE user_id = ${userId};`,
+    `DELETE FROM projects WHERE user_id = ${userId};`,
   ]
 }
 
@@ -470,7 +470,7 @@ function generateSql(args) {
     email: args.email,
     userId: Number(args['user-id']),
     chatStartId: Number(args['chat-start-id']),
-    folderStartId: Number(args['folder-start-id']),
+    projectStartId: Number(args['project-start-id']),
     messageStartId: Number(args['message-start-id']),
   })
   const sql = buildSql(seedData)
@@ -504,7 +504,7 @@ async function main() {
         !args.email
         || !args['user-id']
         || !args['chat-start-id']
-        || !args['folder-start-id']
+        || !args['project-start-id']
         || !args['message-start-id']
       ) {
         printUsage()

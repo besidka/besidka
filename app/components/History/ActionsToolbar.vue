@@ -26,10 +26,10 @@
         <button
           type="button"
           class="btn btn-sm btn-ghost max-sm:btn-block"
-          @click="onMoveToFolder"
+          @click="onMoveToProject"
         >
           <Icon name="lucide:folder" size="14" />
-          Move to folder
+          Move to project
         </button>
         <button
           type="button"
@@ -60,7 +60,7 @@ defineProps<{
 const emit = defineEmits<{
   deselect: []
   delete: []
-  moveToFolder: []
+  moveToProject: []
 }>()
 
 function onDeselect() {
@@ -71,7 +71,7 @@ function onDelete() {
   emit('delete')
 }
 
-function onMoveToFolder() {
-  emit('moveToFolder')
+function onMoveToProject() {
+  emit('moveToProject')
 }
 </script>

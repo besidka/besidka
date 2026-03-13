@@ -6,7 +6,7 @@ describe('HistoryPageShell', () => {
   it('renders history navigation as page links styled like tabs', async () => {
     const wrapper = await mountSuspended(HistoryPageShell, {
       props: {
-        activeTab: 'folders',
+        activeTab: 'projects',
       },
       slots: {
         default: '<div>Content</div>',
@@ -37,7 +37,7 @@ describe('HistoryPageShell', () => {
     expect(links).toHaveLength(2)
     expect(links[0]?.attributes('href')).toBe('/chats/history')
     expect(links[0]?.attributes('aria-current')).toBeUndefined()
-    expect(links[1]?.attributes('href')).toBe('/chats/folders')
+    expect(links[1]?.attributes('href')).toBe('/chats/projects')
     expect(links[1]?.attributes('aria-current')).toBe('page')
   })
 })

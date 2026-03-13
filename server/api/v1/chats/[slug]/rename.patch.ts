@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { refreshFolderActivityAt } from '~~/server/utils/folders/activity'
+import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
-      folderId: true,
+      projectId: true,
     },
   })
 
@@ -68,8 +68,8 @@ export default defineEventHandler(async (event) => {
       eq(schema.chats.userId, userId),
     ))
 
-  if (chat.folderId) {
-    await refreshFolderActivityAt([chat.folderId], userId, db)
+  if (chat.projectId) {
+    await refreshProjectActivityAt([chat.projectId], userId, db)
   }
 
   return { title: body.data.title }

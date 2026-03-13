@@ -49,7 +49,7 @@ describe('new chat API', () => {
     }))
   })
 
-  it('bumps folder activity when creating a new chat inside a folder', async () => {
+  it('bumps project activity when creating a new chat inside a project', async () => {
     const handler = await getNewChatHandler()
     const chatsInsertValues = vi.fn(() => ({
       returning: vi.fn(() => ({
@@ -60,14 +60,14 @@ describe('new chat API', () => {
       })),
     }))
     const messagesInsertValues = vi.fn(async () => undefined)
-    const folderUpdateWhere = vi.fn(async () => undefined)
-    const folderUpdateSet = vi.fn(() => ({
-      where: folderUpdateWhere,
+    const projectUpdateWhere = vi.fn(async () => undefined)
+    const projectUpdateSet = vi.fn(() => ({
+      where: projectUpdateWhere,
     }))
     const db = {
       query: {
-        folders: {
-          findFirst: vi.fn(async () => ({ id: 'folder-1' })),
+        projects: {
+          findFirst: vi.fn(async () => ({ id: 'project-1' })),
         },
       },
       insert: vi.fn()
@@ -78,7 +78,7 @@ describe('new chat API', () => {
           values: messagesInsertValues,
         }),
       update: vi.fn(() => ({
-        set: folderUpdateSet,
+        set: projectUpdateSet,
       })),
     }
 
@@ -89,7 +89,7 @@ describe('new chat API', () => {
         parts: [{ type: 'text', text: 'Hello' }],
         tools: [],
         reasoning: 'off',
-        folderId: 'folder-1',
+        projectId: 'project-1',
       },
     } as any)
 
@@ -100,12 +100,12 @@ describe('new chat API', () => {
     )
     expect(chatsInsertValues).toHaveBeenCalledWith(expect.objectContaining({
       userId: 1,
-      folderId: 'folder-1',
+      projectId: 'project-1',
       activityAt: expect.any(Date),
     }))
-    expect(folderUpdateSet).toHaveBeenCalledWith({
+    expect(projectUpdateSet).toHaveBeenCalledWith({
       activityAt: expect.any(Date),
     })
-    expect(folderUpdateWhere).toHaveBeenCalledTimes(1)
+    expect(projectUpdateWhere).toHaveBeenCalledTimes(1)
   })
 })

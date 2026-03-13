@@ -38,8 +38,8 @@
           @delete="onDelete"
           @select="onSelect"
           @enter-select="onEnterSelect"
-          @add-to-folder="onAddToFolder"
-          @remove-from-folder="onRemoveFromFolder"
+          @add-to-project="onAddToProject"
+          @remove-from-project="onRemoveFromProject"
         />
       </ul>
     </template>
@@ -68,8 +68,8 @@
             @delete="onDelete"
             @select="onSelect"
             @enter-select="onEnterSelect"
-            @add-to-folder="onAddToFolder"
-            @remove-from-folder="onRemoveFromFolder"
+            @add-to-project="onAddToProject"
+            @remove-from-project="onRemoveFromProject"
           />
         </ul>
       </template>
@@ -86,15 +86,15 @@
           Try a different title or message keyword.
         </p>
       </template>
-      <template v-else-if="emptyStateMode === 'folder'">
+      <template v-else-if="emptyStateMode === 'project'">
         <Icon
-          name="lucide:folder-open"
+          name="lucide:folder"
           size="40"
           class="mx-auto mb-3 opacity-60"
         />
-        <p class="font-medium">No chats in this folder yet</p>
+        <p class="font-medium">No chats in this project yet</p>
         <p class="mt-2 mb-4 text-sm opacity-60">
-          Start a conversation here to keep it grouped with this folder.
+          Start a conversation here to keep it grouped with this project.
         </p>
         <NuxtLink
           v-if="emptyActionTo"
@@ -138,7 +138,7 @@ const props = withDefaults(
     isLoadingInitial: boolean
     isSelectionMode: boolean
     selectedIds?: Set<string>
-    emptyStateMode: 'history' | 'folder' | 'search'
+    emptyStateMode: 'history' | 'project' | 'search'
     emptyActionTo?: string
     emptyActionLabel?: string
   }>(),
@@ -156,8 +156,8 @@ const emit = defineEmits<{
   'delete': [chatId: string, slug: string]
   'select': [chatId: string, index: number, shiftKey: boolean]
   'enter-select': [chatId: string, index: number]
-  'add-to-folder': [chat: HistoryChat]
-  'remove-from-folder': [chatId: string, slug: string]
+  'add-to-project': [chat: HistoryChat]
+  'remove-from-project': [chatId: string, slug: string]
 }>()
 
 const groups = computed(() => groupByDate(props.chats, props.groupedAt))
@@ -194,11 +194,11 @@ function onEnterSelect(chatId: string, index: number) {
   emit('enter-select', chatId, index)
 }
 
-function onAddToFolder(chat: HistoryChat) {
-  emit('add-to-folder', chat)
+function onAddToProject(chat: HistoryChat) {
+  emit('add-to-project', chat)
 }
 
-function onRemoveFromFolder(chatId: string, slug: string) {
-  emit('remove-from-folder', chatId, slug)
+function onRemoveFromProject(chatId: string, slug: string) {
+  emit('remove-from-project', chatId, slug)
 }
 </script>

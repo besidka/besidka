@@ -316,7 +316,7 @@ describe('useHistory', () => {
     expect(history.isSelectionMode.value).toBe(false)
   })
 
-  it('moves selected chats to a folder and clears selection', async () => {
+  it('moves selected chats to a project and clears selection', async () => {
     const newestChat = createHistoryChat({
       id: 'chat-2',
       title: 'Newest chat',
@@ -338,13 +338,13 @@ describe('useHistory', () => {
     }))
     history.enterSelectionMode(olderChat.id, 1)
 
-    await history.moveSelectedToFolder('folder-9', 'Projects')
+    await history.moveSelectedToProject('project-9', 'Projects')
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/folder/bulk', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/project/bulk', {
       method: 'POST',
       body: {
         chatIds: ['chat-1'],
-        folderId: 'folder-9',
+        projectId: 'project-9',
       },
     })
     expect(history.chats.value.map(chat => chat.id)).toEqual([
@@ -352,8 +352,8 @@ describe('useHistory', () => {
       'chat-2',
     ])
     expect(history.chats.value[0]).toMatchObject({
-      folderId: 'folder-9',
-      folderName: 'Projects',
+      projectId: 'project-9',
+      projectName: 'Projects',
       activityAt: '2026-03-11T10:00:00.000Z',
     })
     expect(history.selectedCount.value).toBe(0)
@@ -374,7 +374,7 @@ describe('useHistory', () => {
     history.enterSelectionMode(chatOne.id, 0)
     history.handleSelect(chatTwo.id, 1, false)
 
-    const movePromise = history.moveSelectedToFolder('folder-9', 'Projects')
+    const movePromise = history.moveSelectedToProject('project-9', 'Projects')
     await flushPromises()
 
     history.deselectAll()
@@ -383,17 +383,17 @@ describe('useHistory', () => {
     deferred.resolve({ success: true })
     await movePromise
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/folder/bulk', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history/project/bulk', {
       method: 'POST',
       body: {
         chatIds: ['chat-1', 'chat-2'],
-        folderId: 'folder-9',
+        projectId: 'project-9',
       },
     })
     expect(history.chats.value).toMatchObject([
-      { id: 'chat-1', folderId: 'folder-9', folderName: 'Projects' },
-      { id: 'chat-2', folderId: 'folder-9', folderName: 'Projects' },
-      { id: 'chat-3', folderId: null, folderName: null },
+      { id: 'chat-1', projectId: 'project-9', projectName: 'Projects' },
+      { id: 'chat-2', projectId: 'project-9', projectName: 'Projects' },
+      { id: 'chat-3', projectId: null, projectName: null },
     ])
     expect(Array.from(history.selectedIds.value)).toEqual(['chat-3'])
     expect(history.isSelectionMode.value).toBe(true)
@@ -440,7 +440,7 @@ describe('useHistory', () => {
     expect(history.isSelectionMode.value).toBe(false)
   })
 
-  it('moves a single chat into and out of a folder', async () => {
+  it('moves a single chat into and out of a project', async () => {
     const newerChat = createHistoryChat({
       id: 'chat-2',
       slug: 'chat-2',
@@ -452,7 +452,7 @@ describe('useHistory', () => {
       activityAt: '2026-03-10T09:00:00.000Z',
     })
     const fetchMock = vi.fn(() => {
-      return Promise.resolve({ folderId: 'folder-2' })
+      return Promise.resolve({ projectId: 'project-2' })
     })
     vi.stubGlobal('$fetch', fetchMock)
 
@@ -461,27 +461,27 @@ describe('useHistory', () => {
       chats: [newerChat, olderChat],
     }))
 
-    await history.moveChatToFolder('chat-1', 'chat-1', 'folder-2', 'Inbox')
+    await history.moveChatToProject('chat-1', 'chat-1', 'project-2', 'Inbox')
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/folder', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/project', {
       method: 'PATCH',
-      body: { folderId: 'folder-2' },
+      body: { projectId: 'project-2' },
     })
     expect(history.chats.value.map(chat => chat.id)).toEqual([
       'chat-1',
       'chat-2',
     ])
     expect(history.chats.value[0]).toMatchObject({
-      folderId: 'folder-2',
-      folderName: 'Inbox',
+      projectId: 'project-2',
+      projectName: 'Inbox',
       activityAt: '2026-03-11T10:00:00.000Z',
     })
 
-    await history.moveChatToFolder('chat-1', 'chat-1', null, null)
+    await history.moveChatToProject('chat-1', 'chat-1', null, null)
 
     expect(history.chats.value[0]).toMatchObject({
-      folderId: null,
-      folderName: null,
+      projectId: null,
+      projectName: null,
     })
   })
 

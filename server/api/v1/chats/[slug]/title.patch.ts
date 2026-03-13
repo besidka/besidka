@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
     columns: {
       id: true,
       title: true,
-      folderId: true,
+      projectId: true,
     },
     with: {
       messages: {

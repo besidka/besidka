@@ -47,19 +47,19 @@
         <li>
           <button
             type="button"
-            @click="onAddToFolder"
+            @click="onAddToProject"
           >
             <Icon name="lucide:folder" size="14" />
-            {{ chat.folderId ? 'Change folder' : 'Add to folder' }}
+            {{ chat.projectId ? 'Change project' : 'Add to project' }}
           </button>
         </li>
-        <li v-if="chat.folderId">
+        <li v-if="chat.projectId">
           <button
             type="button"
-            @click="onRemoveFromFolder"
+            @click="onRemoveFromProject"
           >
-            <Icon name="lucide:folder-minus" size="14" />
-            Remove from folder
+            <Icon name="lucide:minus" size="14" />
+            Remove from project
           </button>
         </li>
         <li>
@@ -99,8 +99,8 @@ const emit = defineEmits<{
   rename: []
   delete: []
   select: []
-  addToFolder: []
-  removeFromFolder: []
+  addToProject: []
+  removeFromProject: []
 }>()
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
@@ -130,14 +130,14 @@ function onPin() {
   emit('pin')
 }
 
-function onAddToFolder() {
+function onAddToProject() {
   closeDropdown()
-  emit('addToFolder')
+  emit('addToProject')
 }
 
-function onRemoveFromFolder() {
+function onRemoveFromProject() {
   closeDropdown()
-  emit('removeFromFolder')
+  emit('removeFromProject')
 }
 
 function onRename() {
