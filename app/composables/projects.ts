@@ -26,6 +26,7 @@ export function useProjects() {
   const isSearching = shallowRef<boolean>(false)
   const isRefreshing = shallowRef<boolean>(false)
   const isCreating = shallowRef<boolean>(false)
+  const queuedRefreshKey = shallowRef<string | null>(null)
 
   const activeKey = computed(() => {
     return [
@@ -78,6 +79,14 @@ export function useProjects() {
     background?: boolean
   }) {
     const { background = false } = options || {}
+    const requestKey = activeKey.value
+    let retryBackground: boolean | null = null
+
+    if (isLoading.value) {
+      queuedRefreshKey.value = requestKey
+
+      return
+    }
 
     isLoading.value = true
 
@@ -88,7 +97,6 @@ export function useProjects() {
     }
 
     try {
-      const requestKey = activeKey.value
       const requestSearch = search.value
       const requestSortBy = sortBy.value
       const requestShowArchived = showArchived.value
@@ -119,8 +127,25 @@ export function useProjects() {
     } finally {
       isLoading.value = false
       isLoadingInitial.value = false
-      isSearching.value = false
       isRefreshing.value = false
+
+      const retryKey = queuedRefreshKey.value
+      const shouldRetryQueuedRefresh = retryKey !== null
+        && retryKey !== requestKey
+        && retryKey === activeKey.value
+
+      if (shouldRetryQueuedRefresh) {
+        retryBackground = !!cache.value[retryKey]?.hasLoaded
+        queuedRefreshKey.value = null
+        isSearching.value = search.value.length >= 2
+      } else {
+        queuedRefreshKey.value = null
+        isSearching.value = false
+      }
+    }
+
+    if (retryBackground !== null) {
+      await fetchProjects({ background: retryBackground })
     }
   }
 
@@ -324,26 +349,11 @@ export function useProjects() {
         method: 'POST',
       })
 
-      const newArchivedAt = (result as { archivedAt: Date | null }).archivedAt
+      const newArchivedAt = result.archivedAt
 
       updateEntry((entry) => {
         const removeProject = (items: Project[]) => {
           return items.filter(project => project.id !== projectId)
-        }
-
-        if (showArchived.value) {
-          const targetProject = [
-            ...entry.projects,
-            ...entry.pinned,
-          ].find(project => project.id === projectId)
-
-          if (!newArchivedAt || !targetProject) {
-            return {
-              ...entry,
-              projects: removeProject(entry.projects),
-              pinned: removeProject(entry.pinned),
-            }
-          }
         }
 
         return {

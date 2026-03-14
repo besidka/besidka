@@ -137,6 +137,8 @@ export function useHistory() {
     } catch (exception) {
       const parsedException = parseError(exception)
 
+      void hydrateAndRefresh()
+
       nuxtApp.runWithContext(() => {
         useErrorMessage(
           parsedException.message || 'Failed to load history',

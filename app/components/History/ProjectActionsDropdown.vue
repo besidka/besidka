@@ -1,7 +1,10 @@
 <template>
   <details
     ref="dropdownRef"
-    class="js-project-actions-dropdown dropdown dropdown-left sm:dropdown-end relative z-20"
+    class="
+      js-project-actions-dropdown dropdown dropdown-bottom dropdown-end
+      relative z-20 open:z-40
+    "
   >
     <slot>
       <summary

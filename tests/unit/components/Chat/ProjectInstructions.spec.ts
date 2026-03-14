@@ -16,6 +16,10 @@ describe('Chat/ProjectInstructions', () => {
           UiBubble: {
             template: '<div><slot /></div>',
           },
+          MDCCached: {
+            props: ['value'],
+            template: '<div><slot />{{ value }}</div>',
+          },
           NuxtLink: {
             props: ['to'],
             template: '<a :href="to"><slot /></a>',
@@ -41,7 +45,7 @@ describe('Chat/ProjectInstructions', () => {
     expect(wrapper.text()).toContain(
       'Always answer with implementation details first.',
     )
-    expect(wrapper.text()).toContain('Open project')
+    expect(wrapper.text()).toContain('Project settings')
     expect(wrapper.html()).toContain('/chats/projects/project-1')
 
     await sections[1]!.get('summary').trigger('click')

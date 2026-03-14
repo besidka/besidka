@@ -104,7 +104,12 @@
           <div
             v-for="project in pinned"
             :key="project.id"
-            class="card overflow-visible bg-base-100 cursor-pointer transition-colors hover:bg-base-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20"
+            class="
+              card overflow-visible bg-base-100 cursor-pointer transition-colors
+              hover:bg-base-100/70 focus:outline-none focus-visible:ring-2
+              focus-visible:ring-base-content/20 relative
+              [&:has(details[open])]:z-30
+            "
             role="link"
             tabindex="0"
             :aria-label="`Open project ${project.name}`"
@@ -154,7 +159,12 @@
           <div
             v-for="project in projects"
             :key="project.id"
-            class="card overflow-visible bg-base-100 cursor-pointer transition-colors hover:bg-base-100/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20"
+            class="
+              card overflow-visible bg-base-100 cursor-pointer transition-colors
+              hover:bg-base-100/70 focus:outline-none focus-visible:ring-2
+              focus-visible:ring-base-content/20 relative
+              [&:has(details[open])]:z-30
+            "
             role="link"
             tabindex="0"
             :aria-label="`Open project ${project.name}`"

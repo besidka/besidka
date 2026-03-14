@@ -20,6 +20,10 @@ describe('Projects/MemoryCard', () => {
           UiBubble: {
             template: '<div><slot /></div>',
           },
+          MDCCached: {
+            props: ['value'],
+            template: '<div>{{ value }}</div>',
+          },
         },
       },
     })
@@ -50,6 +54,10 @@ describe('Projects/MemoryCard', () => {
         stubs: {
           UiBubble: {
             template: '<div><slot /></div>',
+          },
+          MDCCached: {
+            props: ['value'],
+            template: '<div>{{ value }}</div>',
           },
         },
       },
@@ -83,6 +91,10 @@ describe('Projects/MemoryCard', () => {
         stubs: {
           UiBubble: {
             template: '<div><slot /></div>',
+          },
+          MDCCached: {
+            props: ['value'],
+            template: '<div>{{ value }}</div>',
           },
         },
       },

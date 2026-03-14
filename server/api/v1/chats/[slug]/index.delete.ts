@@ -1,18 +1,20 @@
+import { useLogger, createError } from 'evlog'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const params = await getValidatedRouterParams(event, z.object({
     slug: z.ulid(),
   }).safeParse)
 
   if (params.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error,
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -24,6 +26,8 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  logger.set({ userId, chatSlug: params.data.slug })
 
   const chat = await db.query.chats.findFirst({
     where(chats, { and, eq }) {
@@ -40,8 +44,8 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found',
+      status: 404,
     })
   }
 

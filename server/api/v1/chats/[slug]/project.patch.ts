@@ -2,7 +2,10 @@ import { and, eq, sql } from 'drizzle-orm'
 import { useLogger, createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import {
+  markProjectsMemoryStale,
+  refreshProjectMemory,
+} from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -104,6 +107,15 @@ export default defineEventHandler(async (event) => {
     }
 
     await markProjectsMemoryStale([chat.projectId, project.id], userId, db)
+
+    try {
+      await refreshProjectMemory(project.id, userId, db)
+    } catch (exception) {
+      logger.set({
+        projectMemoryRefreshError:
+          exception instanceof Error ? exception.message : String(exception),
+      })
+    }
 
     return { projectId: project.id }
   }

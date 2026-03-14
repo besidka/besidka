@@ -5,30 +5,32 @@ import {
   exists,
   isNotNull,
   isNull,
-  like,
   lt,
   or,
 } from 'drizzle-orm'
+import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   createHistoryCursor,
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
+import { containsLikeEscaped } from '~~/server/utils/db/like'
 import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
-const PINNED_LIMIT = 50
+const MAX_PINNED = 50
 const MIN_SEARCH_LENGTH = 2
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const session = await useUserSession()
 
   if (!session) {
     return useUnauthorizedError()
   }
 
-  const query = getQuery(useEvent())
+  const query = getQuery(event)
   const cursor = query.cursor as string | undefined
   const limit = parsePaginationLimit(
     query.limit as string | undefined,
@@ -42,6 +44,13 @@ export default defineEventHandler(async () => {
   const userId = parseInt(session.user.id)
   const parsedCursor = parseHistoryCursor(cursor)
 
+  logger.set({
+    userId,
+    hasSearch,
+    hasCursor: !!parsedCursor,
+    limit,
+  })
+
   const columns = {
     id: schema.chats.id,
     slug: schema.chats.slug,
@@ -52,8 +61,6 @@ export default defineEventHandler(async () => {
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
   }
-
-  const searchPattern = hasSearch ? `%${search}%` : null
 
   const cursorFilter = parsedCursor
     ? or(
@@ -67,13 +74,13 @@ export default defineEventHandler(async () => {
 
   const searchFilter = hasSearch
     ? or(
-      like(schema.chats.title, searchPattern!),
+      containsLikeEscaped(schema.chats.title, search),
       exists(
         db.select({ id: schema.messages.id })
           .from(schema.messages)
           .where(and(
             eq(schema.messages.chatId, schema.chats.id),
-            like(schema.messages.parts, searchPattern!),
+            containsLikeEscaped(schema.messages.parts, search),
           )),
       ),
     )
@@ -106,32 +113,32 @@ export default defineEventHandler(async () => {
         chats,
         nextCursor,
       }
-    } else {
-      const pinnedQuery = db.select(columns)
-        .from(schema.chats)
-        .leftJoin(
-          schema.projects,
-          eq(schema.projects.id, schema.chats.projectId),
-        )
-        .where(and(
-          eq(schema.chats.userId, userId),
-          isNotNull(schema.chats.pinnedAt),
-          searchFilter,
-        ))
-        .orderBy(desc(schema.chats.pinnedAt))
-        .limit(PINNED_LIMIT)
+    }
 
-      const [pinned, chats] = await db.batch([pinnedQuery, chatsQuery])
-      const lastChat = chats[chats.length - 1]
-      const nextCursor = chats.length === limit && lastChat
-        ? createHistoryCursor(lastChat)
-        : null
+    const pinnedQuery = db.select(columns)
+      .from(schema.chats)
+      .leftJoin(
+        schema.projects,
+        eq(schema.projects.id, schema.chats.projectId),
+      )
+      .where(and(
+        eq(schema.chats.userId, userId),
+        isNotNull(schema.chats.pinnedAt),
+        searchFilter,
+      ))
+      .orderBy(desc(schema.chats.pinnedAt))
+      .limit(MAX_PINNED)
 
-      return {
-        pinned,
-        chats,
-        nextCursor,
-      }
+    const [pinned, chats] = await db.batch([pinnedQuery, chatsQuery])
+    const lastChat = chats[chats.length - 1]
+    const nextCursor = chats.length === limit && lastChat
+      ? createHistoryCursor(lastChat)
+      : null
+
+    return {
+      pinned,
+      chats,
+      nextCursor,
     }
   }
 
@@ -146,7 +153,7 @@ export default defineEventHandler(async () => {
       isNotNull(schema.chats.pinnedAt),
     ))
     .orderBy(desc(schema.chats.pinnedAt))
-    .limit(PINNED_LIMIT)
+    .limit(MAX_PINNED)
 
   const chatsQuery = db.select(columns)
     .from(schema.chats)

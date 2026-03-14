@@ -1,6 +1,7 @@
-import { and, desc, asc, eq, isNotNull, isNull, like } from 'drizzle-orm'
+import { and, desc, asc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { containsLikeEscaped } from '~~/server/utils/db/like'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
   logger.set({ userId, sortBy, archived, hasSearch: search.length >= 2 })
 
   const searchFilter = search.length >= 2
-    ? like(schema.projects.name, `%${search}%`)
+    ? containsLikeEscaped(schema.projects.name, search)
     : undefined
 
   const archiveFilter = archived

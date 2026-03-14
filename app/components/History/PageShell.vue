@@ -48,6 +48,10 @@
     <slot name="secondary-tabs" />
     <slot />
   </UiBubble>
+  <div
+    class="max-sm:h-[calc(var(--spacing)_*_24_+_var(--sab))] shrink-0"
+    aria-hidden="true"
+  />
 </template>
 
 <script setup lang="ts">

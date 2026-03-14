@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   refreshProjectActivityAt: vi.fn(async () => undefined),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  refreshProjectMemory: vi.fn(async () => ({
+    memoryStatus: 'ready',
+    memory: 'Rebuilt memory',
+  })),
 }))
 
 vi.mock('evlog', () => ({
@@ -37,6 +41,7 @@ vi.mock('~~/server/utils/projects/activity', () => ({
 
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
+  refreshProjectMemory: mocks.refreshProjectMemory,
 }))
 
 async function getHistoryHandler() {
@@ -128,6 +133,10 @@ describe('chat history API', () => {
     vi.resetModules()
     vi.clearAllMocks()
     mocks.refreshProjectActivityAt.mockResolvedValue(undefined)
+    mocks.refreshProjectMemory.mockResolvedValue({
+      memoryStatus: 'ready',
+      memory: 'Rebuilt memory',
+    })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -196,12 +205,11 @@ describe('chat history API', () => {
     }
 
     vi.stubGlobal('useDb', () => db)
-    vi.stubGlobal('useEvent', () => ({
-      query: { search: 'map', limit: '1' },
-    }))
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
-    const response = await handler()
+    const response = await handler({
+      query: { search: 'map', limit: '1' },
+    } as never)
 
     expect(response.pinned.map((chat: { id: string }) => chat.id)).toEqual([
       'chat-pinned',
@@ -216,15 +224,13 @@ describe('chat history API', () => {
 
     db.select.mockReturnValueOnce(contentSelectChain)
     db.select.mockReturnValueOnce(createSelectChain([secondMatch]))
-    vi.stubGlobal('useEvent', () => ({
+    const nextPageResponse = await handler({
       query: {
         search: 'map',
         limit: '1',
         cursor: createHistoryCursor(firstMatch),
       },
-    }))
-
-    const nextPageResponse = await handler()
+    } as never)
 
     expect(nextPageResponse.pinned).toEqual([])
     expect(nextPageResponse.chats).toEqual([secondMatch])
@@ -250,12 +256,11 @@ describe('chat history API', () => {
     }
 
     vi.stubGlobal('useDb', () => db)
-    vi.stubGlobal('useEvent', () => ({
-      query: { search: 'map', limit: 'foo' },
-    }))
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
-    const response = await handler()
+    const response = await handler({
+      query: { search: 'map', limit: 'foo' },
+    } as never)
 
     expect(response.chats).toEqual([match])
     expect(searchSelectChain.limit).toHaveBeenCalledWith(30)
@@ -283,12 +288,11 @@ describe('chat history API', () => {
     }
 
     vi.stubGlobal('useDb', () => db)
-    vi.stubGlobal('useEvent', () => ({
-      query: { limit: '2', cursor: '2026-03-09T00:00:00.000Z' },
-    }))
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
-    const response = await handler()
+    const response = await handler({
+      query: { limit: '2', cursor: '2026-03-09T00:00:00.000Z' },
+    } as never)
 
     expect(response.pinned).toEqual([pinnedChat])
     expect(response.chats).toEqual([firstChat, secondChat])
@@ -504,9 +508,21 @@ describe('chat history API', () => {
       1,
       db,
     )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      1,
+      'project-1',
+      1,
+      db,
+    )
     expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
       2,
       ['project-source', 'project-other'],
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      2,
+      'project-1',
       1,
       db,
     )

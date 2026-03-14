@@ -8,7 +8,8 @@
     v-else
     ref="dropdownRef"
     class="
-      dropdown dropdown-left sm:dropdown-end relative z-20 transition-opacity
+      dropdown dropdown-bottom dropdown-end relative z-20 open:z-40
+      transition-opacity
       sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100
     "
   >

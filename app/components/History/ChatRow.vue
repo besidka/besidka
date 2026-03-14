@@ -1,6 +1,9 @@
 <template>
   <li
-    class="list-row items-center gap-3 group py-3 sm:py-2"
+    class="
+      list-row items-center gap-3 group py-3 sm:py-2 relative
+      [&:has(details[open])]:z-30
+    "
     :class="{ 'bg-base-200': isSelected }"
   >
     <Transition

@@ -1,3 +1,4 @@
+import { useLogger, createError } from 'evlog'
 import type { TextUIPart, FileUIPart } from 'ai'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -27,13 +28,14 @@ const rules = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const body = await readValidatedBody(event, rules.safeParse)
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -44,6 +46,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+
+  logger.set({
+    userId,
+    partsCount: body.data.parts.length,
+    toolsCount: body.data.tools.length,
+    reasoning: body.data.reasoning,
+    requestedProjectId: body.data.projectId ?? null,
+  })
 
   await validateMessageFilePolicy(
     userId,

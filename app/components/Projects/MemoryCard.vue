@@ -20,12 +20,15 @@
     </div>
 
     <div class="mt-4 rounded-box border border-base-200/80 px-4 py-3">
-      <p
+      <MDCCached
         v-if="displayMemory"
-        class="whitespace-pre-wrap text-sm leading-6"
-      >
-        {{ memory }}
-      </p>
+        :value="memory!"
+        :cache-key="memoryCacheKey"
+        :components="components"
+        :parser-options="{ highlight: false }"
+        class="chat-markdown text-sm"
+        unwrap="p"
+      />
       <p
         v-else
         class="text-sm opacity-60"
@@ -108,6 +111,16 @@ const emit = defineEmits<{
   refresh: []
   toggle: []
 }>()
+
+const { components } = useChatFormat()
+const memoryCacheKey = computed(() => {
+  return [
+    'project-memory-card',
+    props.memoryStatus,
+    props.memoryUpdatedAt ?? 'none',
+    props.memory?.length ?? 0,
+  ].join(':')
+})
 
 const statusLabel = computed(() => {
   switch (props.memoryStatus) {

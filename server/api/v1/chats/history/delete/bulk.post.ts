@@ -1,18 +1,20 @@
+import { useLogger, createError } from 'evlog'
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const body = await readValidatedBody(event, z.object({
     chatIds: z.array(z.string().nonempty()).min(1).max(90),
   }).safeParse)
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -24,6 +26,11 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  logger.set({
+    userId,
+    chatIdsCount: body.data.chatIds.length,
+  })
   const chats = await db.query.chats.findMany({
     where(chats, { and, eq, inArray }) {
       return and(

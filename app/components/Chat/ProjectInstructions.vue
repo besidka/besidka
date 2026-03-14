@@ -70,9 +70,14 @@
           v-if="isMemoryExpanded"
           class="collapse-content mt-3 px-0 pb-0"
         >
-          <p class="whitespace-pre-wrap text-sm leading-6">
-            {{ memory }}
-          </p>
+          <MDCCached
+            :value="memory!"
+            :cache-key="memoryCacheKey"
+            :components="components"
+            :parser-options="{ highlight: false }"
+            class="chat-markdown text-sm"
+            unwrap="p"
+          />
           <div
             v-if="projectId"
             class="mt-3"
@@ -92,13 +97,21 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   projectId?: string | null
   projectName: string | null
   instructions?: string | null
   memory?: string | null
 }>()
 
+const { components } = useChatFormat()
+const memoryCacheKey = computed(() => {
+  return [
+    'project-memory-banner',
+    props.projectId ?? 'none',
+    props.memory?.length ?? 0,
+  ].join(':')
+})
 const isInstructionsExpanded = shallowRef<boolean>(false)
 const isMemoryExpanded = shallowRef<boolean>(false)
 </script>
