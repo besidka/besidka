@@ -456,6 +456,32 @@ If CDN caching is needed in the future:
 - Share grants + signed tokens:
   future-safe model without unsafe `isPublic` shortcuts.
 
+## Known Issues and Fixes
+
+### `data:` URL scheme rejection in AI SDK ≥ 6.0.x / provider-utils ≥ 4.0.15
+
+**Production impact**: file attachments (images, PDFs) silently fail with
+`"URL scheme must be http or https, got data:"` when sending a chat message.
+
+**Root cause**: `convertFilesForAI()` encodes R2 file bytes as
+`data:<mime>;base64,<content>` strings and places them in `FileUIPart.url`.
+`convertToModelMessages()` maps `url` → `FilePart.data`. Then `streamText()`
+calls `downloadAssets()`, which tries `new URL(data)` on any string data field.
+`data:` strings are valid `URL` objects (protocol `data:`), so they enter the
+download path, where `validateDownloadUrl()` rejects non-http/https schemes.
+
+In AI SDK v5 (`@ai-sdk/provider-utils` 3.x) this path did not exist —
+`data:` URL strings were passed directly to providers. The `downloadAssets()`
+download pipeline was introduced in v6, and the strict http/https SSRF guard
+was added/tightened in `provider-utils` 4.0.15 (landed via manual dep update
+on 2026-03-10).
+
+**Fix**: `server/utils/files/resolve-data-urls.ts` — `resolveDataUrlsInModelMessages()`
+post-processes the output of `convertToModelMessages()`, converting any
+`data:` URL strings in user message file parts to `Uint8Array`. A `Uint8Array`
+is not parsed as a URL, so `downloadAssets()` skips it; the SDK's internal
+`convertToLanguageModelV3DataContent()` then handles it correctly.
+
 ## Troubleshooting
 
 - Upload hangs/errors with many files:

@@ -277,7 +277,9 @@ export default defineEventHandler(async (event) => {
 
       const result = streamText({
         model: instance,
-        messages: await convertToModelMessages(messagesForAI),
+        messages: resolveDataUrlsInModelMessages(
+          await convertToModelMessages(messagesForAI),
+        ),
         experimental_transform: smoothStream(),
         ...parsedTools,
         providerOptions,
