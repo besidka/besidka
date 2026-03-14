@@ -73,14 +73,16 @@
           v-if="isMemoryExpanded"
           class="collapse-content mt-3 px-0 pb-0"
         >
-          <MDCCached
-            :value="memory!"
-            :cache-key="memoryCacheKey"
-            :components="components"
-            :parser-options="{ highlight: false }"
-            class="chat-markdown text-sm"
-            unwrap="p"
-          />
+          <div class="max-h-[min(300px,33dvh)] overflow-y-auto">
+            <MDCCached
+              :value="memory!"
+              :cache-key="memoryCacheKey"
+              :components="components"
+              :parser-options="{ highlight: false }"
+              class="chat-markdown text-sm"
+              unwrap="p"
+            />
+          </div>
           <div
             v-if="projectId"
             class="mt-3"

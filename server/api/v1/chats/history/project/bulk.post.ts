@@ -9,6 +9,28 @@ import {
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
+  async function tryRefreshProjectMemory(projectIds: Array<string | null>) {
+    const uniqueProjectIds = [...new Set(projectIds)].filter(
+      (projectId): projectId is string => {
+        return !!projectId
+      },
+    )
+
+    for (const projectId of uniqueProjectIds) {
+      try {
+        await refreshProjectMemory(projectId, userId, db)
+      } catch (exception) {
+        logger.set({
+          projectMemoryRefreshError: {
+            projectId,
+            message: exception instanceof Error
+              ? exception.message
+              : String(exception),
+          },
+        })
+      }
+    }
+  }
 
   const body = await readValidatedBody(event, z.object({
     chatIds: z.array(z.string().nonempty()).min(1).max(100),
@@ -100,14 +122,7 @@ export default defineEventHandler(async (event) => {
       db,
     )
 
-    try {
-      await refreshProjectMemory(project.id, userId, db)
-    } catch (exception) {
-      logger.set({
-        projectMemoryRefreshError:
-          exception instanceof Error ? exception.message : String(exception),
-      })
-    }
+    await tryRefreshProjectMemory([...sourceProjectIds, project.id])
 
     return { success: true }
   }
@@ -123,6 +138,7 @@ export default defineEventHandler(async (event) => {
 
   await refreshProjectActivityAt(sourceProjectIds, userId, db)
   await markProjectsMemoryStale(sourceProjectIds, userId, db)
+  await tryRefreshProjectMemory(sourceProjectIds)
 
   return { success: true }
 })

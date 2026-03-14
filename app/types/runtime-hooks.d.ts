@@ -13,6 +13,9 @@ declare module '#app' {
     'device-keyboard:state-changed': (isOpen: boolean) => void
     'files:uploaded': () => void
     'files:deleted': (fileIds: string[]) => void
+    'projects:context-updated': (payload: {
+      projectIds: string[]
+    }) => void
   }
 }
 

@@ -250,6 +250,21 @@ export function useHistory() {
     }
   }
 
+  function getKnownProjectIds(chatIds: string[]) {
+    const requestedIds = new Set(chatIds)
+    const projectIds = new Set<string>()
+
+    for (const chat of [...pinned.value, ...chats.value]) {
+      if (!requestedIds.has(chat.id) || !chat.projectId) {
+        continue
+      }
+
+      projectIds.add(chat.projectId)
+    }
+
+    return [...projectIds]
+  }
+
   function updatePinnedState(
     entry: HistoryCacheEntry,
     chatId: string,
@@ -446,6 +461,7 @@ export function useHistory() {
 
     const chatIds = Array.from(selectedIds.value)
     const selectedChatIds = new Set(chatIds)
+    const affectedProjectIds = getKnownProjectIds(chatIds)
     const chunks = []
 
     for (let index = 0; index < chatIds.length; index += 90) {
@@ -473,6 +489,9 @@ export function useHistory() {
       })
 
       clearCompletedSelection(chatIds)
+      await nuxtApp.callHook('projects:context-updated', {
+        projectIds: affectedProjectIds,
+      })
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(
@@ -547,6 +566,8 @@ export function useHistory() {
   }
 
   async function deleteChat(chatId: string, slug: string) {
+    const affectedProjectIds = getKnownProjectIds([chatId])
+
     try {
       await $fetch(`/api/v1/chats/${slug}`, {
         method: 'DELETE',
@@ -561,6 +582,9 @@ export function useHistory() {
       })
 
       clearCompletedSelection([chatId])
+      await nuxtApp.callHook('projects:context-updated', {
+        projectIds: affectedProjectIds,
+      })
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage('Chat deleted')
@@ -583,6 +607,13 @@ export function useHistory() {
     projectId: string | null,
     projectName: string | null = null,
   ) {
+    const affectedProjectIds = [
+      ...new Set([
+        ...getKnownProjectIds([chatId]),
+        ...(projectId ? [projectId] : []),
+      ]),
+    ]
+
     try {
       await $fetch(`/api/v1/chats/${slug}/project`, {
         method: 'PATCH',
@@ -598,6 +629,9 @@ export function useHistory() {
           projectName,
           activityAt,
         )
+      })
+      await nuxtApp.callHook('projects:context-updated', {
+        projectIds: affectedProjectIds,
       })
 
       nuxtApp.runWithContext(() => {
@@ -623,6 +657,12 @@ export function useHistory() {
 
     const chatIds = Array.from(selectedIds.value)
     const selectedChatIds = new Set(chatIds)
+    const affectedProjectIds = [
+      ...new Set([
+        ...getKnownProjectIds(chatIds),
+        ...(projectId ? [projectId] : []),
+      ]),
+    ]
     const chunks = []
 
     for (let index = 0; index < chatIds.length; index += 90) {
@@ -649,6 +689,9 @@ export function useHistory() {
       })
 
       clearCompletedSelection(chatIds)
+      await nuxtApp.callHook('projects:context-updated', {
+        projectIds: affectedProjectIds,
+      })
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(

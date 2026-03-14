@@ -465,6 +465,14 @@ onMounted(() => {
   syncProjectDetails(projectId.value)
 })
 
+nuxtApp.hook('projects:context-updated', ({ projectIds }) => {
+  if (!projectId.value || !projectIds.includes(projectId.value)) {
+    return
+  }
+
+  syncProjectDetails(projectId.value)
+})
+
 watch(projectMemoryStatus, (nextStatus, previousStatus) => {
   if (
     !project.value
@@ -476,6 +484,24 @@ watch(projectMemoryStatus, (nextStatus, previousStatus) => {
   }
 
   refreshProjectMemory()
+})
+
+watch(projectMemoryStatus, (nextStatus, _previousStatus, onCleanup) => {
+  if (!import.meta.client || nextStatus !== 'refreshing' || !project.value) {
+    return
+  }
+
+  const intervalId = window.setInterval(() => {
+    if (isLoadingProjectDetails.value) {
+      return
+    }
+
+    syncProjectDetails(projectId.value)
+  }, 1500)
+
+  onCleanup(() => {
+    window.clearInterval(intervalId)
+  })
 })
 
 watch(projectId, () => {
@@ -550,6 +576,7 @@ async function onDeleteChat(chatId: string, slug: string) {
     })
 
     removeChat(chatId)
+    await syncProjectDetails(projectId.value)
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage('Chat deleted')
@@ -579,6 +606,7 @@ async function onProjectPickerSubmit(payload: {
     })
 
     moveChat(payload.chatId, payload.projectId)
+    await syncProjectDetails(projectId.value)
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage(
@@ -607,6 +635,7 @@ async function onRemoveFromProject(chatId: string, slug: string) {
     })
 
     removeChat(chatId)
+    await syncProjectDetails(projectId.value)
 
     nuxtApp.runWithContext(() => {
       useSuccessMessage(

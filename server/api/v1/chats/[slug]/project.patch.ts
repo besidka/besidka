@@ -9,6 +9,24 @@ import {
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
+  async function tryRefreshProjectMemory(projectId: string | null) {
+    if (!projectId) {
+      return
+    }
+
+    try {
+      await refreshProjectMemory(projectId, userId, db)
+    } catch (exception) {
+      logger.set({
+        projectMemoryRefreshError: {
+          projectId,
+          message: exception instanceof Error
+            ? exception.message
+            : String(exception),
+        },
+      })
+    }
+  }
 
   const params = await getValidatedRouterParams(event, z.object({
     slug: z.ulid(),
@@ -108,14 +126,8 @@ export default defineEventHandler(async (event) => {
 
     await markProjectsMemoryStale([chat.projectId, project.id], userId, db)
 
-    try {
-      await refreshProjectMemory(project.id, userId, db)
-    } catch (exception) {
-      logger.set({
-        projectMemoryRefreshError:
-          exception instanceof Error ? exception.message : String(exception),
-      })
-    }
+    await tryRefreshProjectMemory(chat.projectId)
+    await tryRefreshProjectMemory(project.id)
 
     return { projectId: project.id }
   }
@@ -134,6 +146,7 @@ export default defineEventHandler(async (event) => {
   }
 
   await markProjectsMemoryStale([chat.projectId], userId, db)
+  await tryRefreshProjectMemory(chat.projectId)
 
   return { projectId: null }
 })

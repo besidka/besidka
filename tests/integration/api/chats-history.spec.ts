@@ -439,7 +439,7 @@ describe('chat history API', () => {
     )
   })
 
-  it('moves chats into projects and refreshes source project activity for single and bulk actions', async () => {
+  it('moves chats into projects and refreshes affected project memory', async () => {
     const singleHandler = await getProjectMoveHandler()
     const bulkHandler = await getBulkProjectMoveHandler()
     const schema = await import('../../../server/db/schema')
@@ -510,6 +510,12 @@ describe('chat history API', () => {
     )
     expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
       1,
+      'project-source',
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      2,
       'project-1',
       1,
       db,
@@ -521,8 +527,96 @@ describe('chat history API', () => {
       db,
     )
     expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
-      2,
+      3,
+      'project-source',
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      4,
+      'project-other',
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      5,
       'project-1',
+      1,
+      db,
+    )
+  })
+
+  it('removes chats from projects and refreshes source project memory', async () => {
+    const singleHandler = await getProjectMoveHandler()
+    const bulkHandler = await getBulkProjectMoveHandler()
+    const updateWhere = vi.fn(async () => undefined)
+    const updateSet = vi.fn(() => ({
+      where: updateWhere,
+    }))
+    const db = {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            projectId: 'project-source',
+          })),
+          findMany: vi.fn(async () => ([
+            { id: 'chat-1', projectId: 'project-source' },
+            { id: 'chat-2', projectId: 'project-other' },
+          ])),
+        },
+      },
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const singleResponse = await singleHandler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: { projectId: null },
+    } as any)
+    const bulkResponse = await bulkHandler({
+      body: {
+        chatIds: ['chat-1', 'chat-2'],
+        projectId: null,
+      },
+    } as any)
+
+    expect(singleResponse).toEqual({ projectId: null })
+    expect(bulkResponse).toEqual({ success: true })
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: expect.anything(),
+      activityAt: expect.any(Date),
+    }))
+    expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
+      1,
+      ['project-source'],
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      1,
+      'project-source',
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectActivityAt).toHaveBeenNthCalledWith(
+      2,
+      ['project-source', 'project-other'],
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      2,
+      'project-source',
+      1,
+      db,
+    )
+    expect(mocks.refreshProjectMemory).toHaveBeenNthCalledWith(
+      3,
+      'project-other',
       1,
       db,
     )

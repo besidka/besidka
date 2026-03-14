@@ -20,15 +20,19 @@
     </div>
 
     <div class="mt-4 rounded-box border border-base-200/80 px-4 py-3">
-      <MDCCached
+      <div
         v-if="displayMemory"
-        :value="memory!"
-        :cache-key="memoryCacheKey"
-        :components="components"
-        :parser-options="{ highlight: false }"
-        class="chat-markdown text-sm"
-        unwrap="p"
-      />
+        class="max-h-[min(300px,33dvh)] overflow-y-auto"
+      >
+        <MDCCached
+          :value="memory!"
+          :cache-key="memoryCacheKey"
+          :components="components"
+          :parser-options="{ highlight: false }"
+          class="chat-markdown text-sm"
+          unwrap="p"
+        />
+      </div>
       <p
         v-else
         class="text-sm opacity-60"
