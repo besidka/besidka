@@ -45,7 +45,10 @@
         </div>
       </details>
 
-      <span v-if="memory" class="divider my-1"/>
+      <span
+        v-if="instructions && memory"
+        class="divider my-1"
+      />
 
       <details
         v-if="memory"
