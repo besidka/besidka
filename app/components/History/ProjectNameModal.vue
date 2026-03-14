@@ -4,7 +4,9 @@
       ref="modalRef"
       class="modal modal-bottom sm:modal-middle"
     >
-      <div class="modal-box">
+      <div
+        class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
+      >
         <h3 class="font-bold text-lg mb-2">
           {{ mode === 'create' ? 'Create project' : 'Rename project' }}
         </h3>
@@ -80,25 +82,18 @@ async function openCreate() {
   mode.value = 'create'
   projectId.value = undefined
   nameValue.value = ''
-  modalRef.value?.showModal()
 
-  await nextTick()
-
-  inputRef.value?.focus()
+  await openDialogWithFocus(modalRef.value, inputRef.value)
 }
 
 async function openRename(project: Project) {
   mode.value = 'rename'
   projectId.value = project.id
   nameValue.value = project.name
-  modalRef.value?.showModal()
 
-  await nextTick()
-
-  if (inputRef.value) {
-    inputRef.value.focus()
-    inputRef.value.select()
-  }
+  await openDialogWithFocus(modalRef.value, inputRef.value, {
+    selectText: true,
+  })
 }
 
 function close() {

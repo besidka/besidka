@@ -4,7 +4,9 @@
       ref="renameModalRef"
       class="modal modal-bottom sm:modal-middle"
     >
-      <div class="modal-box">
+      <div
+        class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
+      >
         <h3 class="font-bold text-lg mb-4">Rename file</h3>
         <input
           ref="renameInputRef"
@@ -55,15 +57,10 @@ const isRenaming = shallowRef<boolean>(false)
 async function open(file: FileManagerFile) {
   renameFileId.value = file.id
   renameValue.value = file.name
-  renameModalRef.value?.showModal()
 
-  await nextTick()
-
-  const input = renameInputRef.value
-  if (input) {
-    input.focus()
-    input.select()
-  }
+  await openDialogWithFocus(renameModalRef.value, renameInputRef.value, {
+    selectText: true,
+  })
 }
 
 function close() {

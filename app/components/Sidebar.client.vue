@@ -1,6 +1,7 @@
 <template>
   <div
     class="fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 max-sm:left-0 z-50 transition-transform duration-500 ease-in-out"
+    :style="sidebarStyle"
     :class="{
       'sm:translate-x-0': visible,
       'sm:translate-x-[calc(100%_+_(var(--spacing)_*_10))]': !visible,
@@ -55,21 +56,31 @@ const route = useRoute()
 const { loggedIn } = useAuth()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
+const {
+  isKeyboardOpen,
+  keyboardHeight,
+} = useDeviceKeyboard()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 
 const visibleOnScroll = shallowRef<boolean>(true)
+const isKeyboardVisible = computed<boolean>(() => {
+  return isKeyboardOpen.value
+})
+const sidebarStyle = computed(() => {
+  if (!isKeyboardVisible.value || keyboardHeight.value <= 0) {
+    return undefined
+  }
+
+  return {
+    bottom: `${keyboardHeight.value}px`,
+  }
+})
 
 const nuxtApp = useNuxtApp()
 
 nuxtApp.hook('chat-input:visibility-changed', (visible) => {
   visibleOnScroll.value = visible
-})
-
-const isKeyboardVisible = shallowRef<boolean>(false)
-
-nuxtApp.hook('device-keyboard:state-changed', (isOpen) => {
-  isKeyboardVisible.value = isOpen
 })
 
 onBeforeUnmount(() => {

@@ -2,6 +2,7 @@
   <div
     ref="chatInputRef"
     class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-1/2 sm:-translate-x-1/2 sm:w-3xl sm:max-w-full transition-transform duration-500 ease-in-out"
+    :style="chatInputStyle"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
@@ -64,7 +65,6 @@
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"
             @focus="onKeyboardFocus"
-            @blur="onKeyboardBlur"
           />
           <div class="flex items-center justify-between gap-2 p-2">
             <div class="flex items-center gap-2 max-md:grow">
@@ -285,6 +285,10 @@ const {
   reasoningMode,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
+const {
+  isKeyboardOpen,
+  keyboardHeight,
+} = useDeviceKeyboard()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
 
@@ -308,38 +312,16 @@ const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
 })
 
-const isKeyboardVisible = shallowRef<boolean>(false)
+const isKeyboardVisible = computed<boolean>(() => {
+  return isKeyboardOpen.value
+})
 
-const blurTimeout = ref<NodeJS.Timeout | null>(null)
+async function onKeyboardFocus() {
+  await waitForDeviceKeyboardViewportSettle()
 
-function onKeyboardFocus() {
-  if (blurTimeout.value) {
-    clearTimeout(blurTimeout.value)
+  if (!isChatInputVisibleOnScroll.value) {
+    nuxtApp.callHook('chat:scroll-to-bottom')
   }
-
-  isKeyboardVisible.value = true
-
-  nuxtApp.callHook('device-keyboard:state-changed', true)
-
-  nextTick(() => {
-    if (!isChatInputVisibleOnScroll.value) {
-      nuxtApp.callHook('chat:scroll-to-bottom')
-    }
-  })
-}
-
-function onKeyboardBlur() {
-  if (blurTimeout.value) {
-    clearTimeout(blurTimeout.value)
-  }
-
-  blurTimeout.value = setTimeout(() => {
-    isKeyboardVisible.value = false
-
-    nuxtApp.callHook('device-keyboard:state-changed', false)
-
-    blurTimeout.value = null
-  }, 150)
 }
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
 const messagesContainerRef = ref<HTMLDivElement | null>(null)
@@ -516,6 +498,16 @@ const filesModalRef = useTemplateRef<
   InstanceType<typeof LazyChatInputFilesModal>
 >('filesModalRef')
 
+const chatInputStyle = computed(() => {
+  if (isDesktop || !isKeyboardVisible.value || keyboardHeight.value <= 0) {
+    return undefined
+  }
+
+  return {
+    bottom: `${keyboardHeight.value}px`,
+  }
+})
+
 const attachedIds = computed<Set<FileMetadata['id']>>(() => {
   return new Set(files.value.map(file => file.id))
 })
@@ -528,12 +520,26 @@ const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
 const isSentHeightOnMounted = shallowRef<boolean>(false)
 
-watch(chatInputHeight, (newHeight) => {
+function emitChatInputMetrics(newHeight: number) {
+  const peekHeight = Math.min(newHeight, 80)
+
+  nuxtApp.callHook('chat-input:height', newHeight)
+  nuxtApp.callHook('chat-input:metrics-changed', {
+    fullHeight: newHeight,
+    visibleHeight: isChatInputVisibleOnScroll.value
+      ? newHeight
+      : peekHeight,
+    peekHeight,
+    isPeekMode: !isChatInputVisibleOnScroll.value,
+  })
+}
+
+watch([chatInputHeight, isChatInputVisibleOnScroll], ([newHeight]) => {
   if (input.value) {
     if (!isSentHeightOnMounted.value) {
       isSentHeightOnMounted.value = true
 
-      nuxtApp.callHook('chat-input:height', newHeight)
+      emitChatInputMetrics(newHeight)
       nuxtApp.callHook('chat:scroll-to-bottom')
     }
 
@@ -542,14 +548,8 @@ watch(chatInputHeight, (newHeight) => {
 
   isSentHeightOnMounted.value = true
 
-  nuxtApp.callHook('chat-input:height', newHeight)
+  emitChatInputMetrics(newHeight)
 }, { flush: 'post' })
-
-onUnmounted(() => {
-  if (blurTimeout.value) {
-    clearTimeout(blurTimeout.value)
-  }
-})
 
 onStartTyping(() => {
   nuxtApp.callHook('chat:scroll-to-bottom')

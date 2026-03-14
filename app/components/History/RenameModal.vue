@@ -4,7 +4,9 @@
       ref="modalRef"
       class="modal modal-bottom sm:modal-middle"
     >
-      <div class="modal-box">
+      <div
+        class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
+      >
         <h3 class="font-bold text-lg mb-4">Rename chat</h3>
         <input
           ref="inputRef"
@@ -58,16 +60,10 @@ async function open(chat: HistoryChat) {
   chatId.value = chat.id
   chatSlug.value = chat.slug
   titleValue.value = chat.title || ''
-  modalRef.value?.showModal()
 
-  await nextTick()
-
-  const input = inputRef.value
-
-  if (input) {
-    input.focus()
-    input.select()
-  }
+  await openDialogWithFocus(modalRef.value, inputRef.value, {
+    selectText: true,
+  })
 }
 
 function close() {
