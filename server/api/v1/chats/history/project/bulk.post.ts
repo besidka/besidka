@@ -9,28 +9,6 @@ import {
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
-  async function tryRefreshProjectMemory(projectIds: Array<string | null>) {
-    const uniqueProjectIds = [...new Set(projectIds)].filter(
-      (projectId): projectId is string => {
-        return !!projectId
-      },
-    )
-
-    for (const projectId of uniqueProjectIds) {
-      try {
-        await refreshProjectMemory(projectId, userId, db)
-      } catch (exception) {
-        logger.set({
-          projectMemoryRefreshError: {
-            projectId,
-            message: exception instanceof Error
-              ? exception.message
-              : String(exception),
-          },
-        })
-      }
-    }
-  }
 
   const body = await readValidatedBody(event, z.object({
     chatIds: z.array(z.string().nonempty()).min(1).max(100),
@@ -53,6 +31,29 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const userId = parseInt(session.user.id)
+
+  async function tryRefreshProjectMemory(projectIds: Array<string | null>) {
+    const uniqueProjectIds = [...new Set(projectIds)].filter(
+      (projectId): projectId is string => {
+        return !!projectId
+      },
+    )
+
+    for (const projectId of uniqueProjectIds) {
+      try {
+        await refreshProjectMemory(projectId, userId, db)
+      } catch (exception) {
+        logger.set({
+          projectMemoryRefreshError: {
+            projectId,
+            message: exception instanceof Error
+              ? exception.message
+              : String(exception),
+          },
+        })
+      }
+    }
+  }
 
   logger.set({
     userId,

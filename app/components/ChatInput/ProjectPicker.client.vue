@@ -186,7 +186,7 @@ const dialogRef = shallowRef<HTMLDialogElement | null>(null)
 const projectNameModalRef = shallowRef<ProjectNameModalInstance | null>(null)
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 const search = shallowRef<string>('')
-const allProjects = ref<Project[]>([])
+const allProjects = shallowRef<Project[]>([])
 const isLoadingProjects = shallowRef<boolean>(false)
 const selectedProjectId = shallowRef<string | null>(null)
 const isProjectModalSubmitting = shallowRef<boolean>(false)
@@ -278,11 +278,9 @@ async function onProjectModalSubmit(payload: {
       body: { name: payload.name },
     })
 
-    const project = result as Project
-
-    allProjects.value = [project, ...allProjects.value]
+    allProjects.value = [result, ...allProjects.value]
     projectNameModalRef.value?.close()
-    onSelect(project.id, project.name)
+    onSelect(result.id, result.name)
   } catch (exception) {
     const parsedException = parseError(exception)
 

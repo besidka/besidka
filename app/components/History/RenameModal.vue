@@ -90,9 +90,6 @@ function onSubmit() {
 
   isRenaming.value = true
   emit('submit', id, slug, title)
-  queueMicrotask(() => {
-    isRenaming.value = false
-  })
 }
 
 defineExpose({

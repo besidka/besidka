@@ -310,4 +310,70 @@ describe('useProjects', () => {
     })
     expect(projects.projects.value).toEqual([archivedProject])
   })
+
+  it('loads more projects when loadMore is called with a cursor', async () => {
+    const firstProject = createProject({ id: 'project-1', name: 'First' })
+    const secondProject = createProject({ id: 'project-2', name: 'Second' })
+    const fetchMock = vi.fn((url: string, options?: {
+      query?: { cursor?: string }
+    }) => {
+      if (options?.query?.cursor === 'cursor-page-2') {
+        return Promise.resolve(createProjectsResponse({
+          projects: [secondProject],
+          nextCursor: null,
+        }))
+      }
+
+      return Promise.resolve(createProjectsResponse({
+        projects: [firstProject],
+        nextCursor: 'cursor-page-2',
+      }))
+    })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const projects = createProjectsComposable()
+    projects.search.value = ''
+    projects.sortBy.value = 'activity'
+    projects.showArchived.value = false
+
+    await projects.hydrateAndRefresh()
+
+    expect(projects.projects.value).toEqual([firstProject])
+    expect(projects.hasMore.value).toBe(true)
+
+    await projects.loadMore()
+
+    expect(projects.projects.value).toEqual([firstProject, secondProject])
+    expect(projects.hasMore.value).toBe(false)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/projects', {
+      query: { sortBy: 'activity', cursor: 'cursor-page-2' },
+    })
+  })
+
+  it('resets cursor when filters change', async () => {
+    const project = createProject({ id: 'project-1', name: 'First' })
+    const fetchMock = vi.fn(() => {
+      return Promise.resolve(createProjectsResponse({
+        projects: [project],
+        nextCursor: 'cursor-page-2',
+      }))
+    })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const projects = createProjectsComposable()
+    projects.search.value = ''
+    projects.sortBy.value = 'activity'
+    projects.showArchived.value = false
+
+    await projects.hydrateAndRefresh()
+
+    expect(projects.hasMore.value).toBe(true)
+
+    projects.sortBy.value = 'name'
+    await projects.hydrateAndRefresh()
+
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/projects', {
+      query: { sortBy: 'name' },
+    })
+  })
 })

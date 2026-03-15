@@ -192,13 +192,10 @@ describe('chat history API', () => {
     }))
     const pinnedSelectChain = createSelectChain()
     const chatsSelectChain = createSelectChain()
-    const contentSelectChain = createSelectChain()
     const db = {
       select: vi.fn()
-        .mockReturnValueOnce(contentSelectChain)
         .mockReturnValueOnce(chatsSelectChain)
-        .mockReturnValueOnce(pinnedSelectChain)
-        .mockReturnValue(contentSelectChain),
+        .mockReturnValueOnce(pinnedSelectChain),
       batch: vi.fn(async () => {
         return [[pinnedMatch], [firstMatch]]
       }),
@@ -222,7 +219,6 @@ describe('chat history API', () => {
     expect(chatsSelectChain.limit).toHaveBeenCalledWith(1)
     expect(db.batch).toHaveBeenCalledOnce()
 
-    db.select.mockReturnValueOnce(contentSelectChain)
     db.select.mockReturnValueOnce(createSelectChain([secondMatch]))
     const nextPageResponse = await handler({
       query: {
@@ -247,9 +243,8 @@ describe('chat history API', () => {
     const searchSelectChain = createSelectChain([match])
     const db = {
       select: vi.fn()
-        .mockReturnValueOnce(createSelectChain())
         .mockReturnValueOnce(searchSelectChain)
-        .mockReturnValueOnce(searchSelectChain),
+        .mockReturnValueOnce(createSelectChain()),
       batch: vi.fn(async () => {
         return [[], [match]]
       }),

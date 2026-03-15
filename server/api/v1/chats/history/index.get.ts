@@ -2,7 +2,6 @@ import {
   and,
   desc,
   eq,
-  exists,
   isNotNull,
   isNull,
   lt,
@@ -73,17 +72,7 @@ export default defineEventHandler(async (event) => {
     : undefined
 
   const searchFilter = hasSearch
-    ? or(
-      containsLikeEscaped(schema.chats.title, search),
-      exists(
-        db.select({ id: schema.messages.id })
-          .from(schema.messages)
-          .where(and(
-            eq(schema.messages.chatId, schema.chats.id),
-            containsLikeEscaped(schema.messages.parts, search),
-          )),
-      ),
-    )
+    ? containsLikeEscaped(schema.chats.title, search)
     : undefined
 
   if (hasSearch) {

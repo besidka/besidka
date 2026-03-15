@@ -4,6 +4,7 @@ import type { Project, ProjectsResponse } from '#shared/types/projects.d'
 interface ProjectsCacheEntry {
   projects: Project[]
   pinned: Project[]
+  nextCursor: string | null
   hasLoaded: boolean
   lastFetchedAt: number | null
 }
@@ -27,6 +28,9 @@ export function useProjects() {
   const isRefreshing = shallowRef<boolean>(false)
   const isCreating = shallowRef<boolean>(false)
   const queuedRefreshKey = shallowRef<string | null>(null)
+  const nextCursor = shallowRef<string | null>(null)
+
+  const hasMore = computed(() => nextCursor.value !== null)
 
   const activeKey = computed(() => {
     return [
@@ -50,6 +54,7 @@ export function useProjects() {
     if (cacheKey === activeKey.value) {
       projects.value = entry.projects
       pinned.value = entry.pinned
+      nextCursor.value = entry.nextCursor
     }
   }
 
@@ -57,6 +62,7 @@ export function useProjects() {
     setEntry(activeKey.value, {
       projects: response.projects,
       pinned: response.pinned,
+      nextCursor: response.nextCursor,
       hasLoaded: true,
       lastFetchedAt: Date.now(),
     })
@@ -71,6 +77,7 @@ export function useProjects() {
 
     projects.value = entry.projects
     pinned.value = entry.pinned
+    nextCursor.value = entry.nextCursor
 
     return true
   }
@@ -112,6 +119,7 @@ export function useProjects() {
       setEntry(requestKey, {
         projects: response.projects,
         pinned: response.pinned,
+        nextCursor: response.nextCursor,
         hasLoaded: true,
         lastFetchedAt: Date.now(),
       })
@@ -160,12 +168,60 @@ export function useProjects() {
     await fetchProjects({ background: hasCache })
   }
 
+  async function loadMore() {
+    const cursor = nextCursor.value
+
+    if (!cursor || isLoading.value) {
+      return
+    }
+
+    const requestKey = activeKey.value
+    const requestSearch = search.value
+    const requestSortBy = sortBy.value
+    const requestShowArchived = showArchived.value
+
+    isLoading.value = true
+
+    try {
+      const response = await $fetch('/api/v1/projects', {
+        query: {
+          ...(requestSearch.length >= 2 ? { search: requestSearch } : {}),
+          sortBy: requestSortBy,
+          ...(requestShowArchived ? { archived: 'true' } : {}),
+          cursor,
+        },
+      })
+
+      const currentEntry = cache.value[requestKey]
+
+      setEntry(requestKey, {
+        projects: [...(currentEntry?.projects ?? []), ...response.projects],
+        pinned: currentEntry?.pinned ?? [],
+        nextCursor: response.nextCursor,
+        hasLoaded: true,
+        lastFetchedAt: Date.now(),
+      })
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to load more projects',
+          parsedException.why,
+        )
+      })
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   function updateEntry(
     update: (entry: ProjectsCacheEntry) => ProjectsCacheEntry,
   ) {
     const currentEntry = cache.value[activeKey.value] || {
       projects: projects.value,
       pinned: pinned.value,
+      nextCursor: nextCursor.value,
       hasLoaded: true,
       lastFetchedAt: Date.now(),
     }
@@ -432,8 +488,10 @@ export function useProjects() {
     isRefreshing,
     isCreating,
     hasCachedData,
+    hasMore,
     prime,
     hydrateAndRefresh,
+    loadMore,
     createProject,
     renameProject,
     togglePin,

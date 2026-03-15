@@ -29,6 +29,7 @@ export type Project = Serialize<ProjectRow>
 export interface ProjectsResponse {
   projects: Project[]
   pinned: Project[]
+  nextCursor: string | null
 }
 
 export interface ProjectChatsResponse {

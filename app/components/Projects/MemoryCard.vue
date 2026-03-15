@@ -128,6 +128,8 @@ const memoryCacheKey = computed(() => {
 
 const statusLabel = computed(() => {
   switch (props.memoryStatus) {
+    case 'idle':
+      return 'Empty'
     case 'refreshing':
       return 'Refreshing'
     case 'stale':
@@ -145,6 +147,8 @@ const statusLabel = computed(() => {
 
 const statusBadgeClass = computed(() => {
   switch (props.memoryStatus) {
+    case 'idle':
+      return ''
     case 'refreshing':
       return 'badge-info badge-outline'
     case 'stale':

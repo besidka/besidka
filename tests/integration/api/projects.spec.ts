@@ -187,6 +187,7 @@ describe('projects API', () => {
     expect(response).toEqual({
       pinned: [pinnedProject],
       projects: [activeProject],
+      nextCursor: null,
     })
   })
 

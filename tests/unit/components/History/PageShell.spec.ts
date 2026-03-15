@@ -1,6 +1,6 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
-import HistoryPageShell from '../../../app/components/History/PageShell.vue'
+import HistoryPageShell from '../../../../app/components/History/PageShell.vue'
 
 describe('HistoryPageShell', () => {
   it('renders history navigation as page links styled like tabs', async () => {

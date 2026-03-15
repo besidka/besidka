@@ -54,6 +54,7 @@ export function createProjectsResponse(
   return {
     pinned: overrides.pinned ?? [],
     projects: overrides.projects ?? [],
+    nextCursor: overrides.nextCursor ?? null,
   }
 }
 

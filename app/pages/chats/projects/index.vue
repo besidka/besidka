@@ -201,6 +201,17 @@
       </template>
 
       <div
+        v-if="hasMore"
+        ref="infiniteScrollRef"
+        class="flex justify-center py-4"
+      >
+        <span
+          v-if="isLoading"
+          class="loading loading-spinner loading-sm"
+        />
+      </div>
+
+      <div
         v-if="projects.length === 0 && pinned.length === 0 && !isLoadingInitial"
         class="rounded-box border border-dashed border-base-300 px-6 py-12 text-center"
       >
@@ -267,12 +278,15 @@ const {
   search,
   sortBy,
   showArchived,
+  isLoading,
   isLoadingInitial,
   isSearching,
   isCreating,
   hasCachedData,
+  hasMore,
   prime,
   hydrateAndRefresh,
+  loadMore,
   createProject,
   renameProject,
   togglePin,
@@ -299,7 +313,18 @@ interface SearchInputInstance {
 
 const projectNameModalRef = shallowRef<ProjectNameModalInstance | null>(null)
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
+const infiniteScrollRef = shallowRef<HTMLElement | null>(null)
 const isProjectModalSubmitting = shallowRef<boolean>(false)
+
+useIntersectionObserver(
+  infiniteScrollRef,
+  ([entry]) => {
+    if (entry?.isIntersecting && hasMore.value && !isLoading.value) {
+      loadMore()
+    }
+  },
+  { threshold: 0.1 },
+)
 
 onMounted(() => {
   hydrateAndRefresh()

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import HistoryChatSections from '../../../app/components/History/ChatSections.vue'
+import HistoryChatSections from '../../../../app/components/History/ChatSections.vue'
 import {
   createHistoryChat,
-} from '../../setup/helpers/history-fixtures'
+} from '../../../setup/helpers/history-fixtures'
 
 describe('HistoryChatSections', () => {
   it('renders pinned chats separately from grouped chats', async () => {
@@ -71,6 +71,6 @@ describe('HistoryChatSections', () => {
     })
 
     expect(wrapper.text()).toContain('No chats match your search')
-    expect(wrapper.text()).toContain('Try a different title or message keyword.')
+    expect(wrapper.text()).toContain('Try a different title.')
   })
 })

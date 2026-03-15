@@ -4,7 +4,7 @@
 
 This document describes the current chat history implementation:
 
-- chat search by title and message content
+- chat search by title
 - single and bulk actions
 - project assignment from history
 - cursor-based infinite loading
@@ -63,22 +63,25 @@ Stored state:
 ### Query rules
 
 - Search is active for `2+` characters
-- History search checks:
-  - chat title
-  - message content stored in `messages.parts`
+- History search matches chat title only
 
 ### Search result semantics
 
-- Title and message matches are merged
-- Duplicate chats are removed
 - Results are sorted by `activityAt`
-- The response currently returns chat-level matches only
+- The response returns chat-level matches only
 
-Current limitation:
+### Why message content search was removed
 
-- if a chat appears because of a message-content match, the result does not yet
-  include which message matched
-- opening the chat therefore does not scroll to the matched message
+Message content is stored as rich `UIMessage['parts']` JSON (tool calls,
+reasoning, file refs, plain text) in a single `messages.parts` blob column.
+A `LIKE '%query%'` scan on this column:
+
+- has no index and triggers a full table scan on `messages`
+- matches JSON structure keys and non-text fields, producing false positives
+- is semantically unsound — users expect to search message text, not raw JSON
+
+Full-text search via SQLite FTS5 is the correct long-term approach and is
+tracked as a separate improvement. Title-only search is the current behavior.
 
 ## Chat Actions
 

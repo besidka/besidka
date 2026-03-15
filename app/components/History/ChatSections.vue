@@ -83,7 +83,7 @@
         <Icon name="lucide:search-x" size="40" class="mx-auto mb-3 opacity-60" />
         <p class="font-medium">No chats match your search</p>
         <p class="mt-2 text-sm opacity-60">
-          Try a different title or message keyword.
+          Try a different title.
         </p>
       </template>
       <template v-else-if="emptyStateMode === 'project'">

@@ -206,7 +206,7 @@ const projectNameModalRef = shallowRef<ProjectNameModalInstance | null>(null)
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 const currentChat = shallowRef<HistoryChat | null>(null)
 const search = shallowRef<string>('')
-const allProjects = ref<Project[]>([])
+const allProjects = shallowRef<Project[]>([])
 const isLoadingProjects = shallowRef<boolean>(false)
 const isProjectModalSubmitting = shallowRef<boolean>(false)
 
