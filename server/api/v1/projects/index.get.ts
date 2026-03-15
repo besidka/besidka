@@ -18,7 +18,7 @@ import {
   parseProjectsCursor,
 } from '~~/server/utils/projects/cursor'
 
-const DEFAULT_LIMIT = 30
+const DEFAULT_LIMIT = 10
 const MAX_LIMIT = 100
 const MAX_PINNED = 50
 

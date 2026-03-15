@@ -5,12 +5,12 @@ import { readFile } from 'node:fs/promises'
 import { ulid } from 'ulid'
 
 const CHAT_COUNT = 100
-const PROJECT_COUNT = 20
+const PROJECT_COUNT = 100
 const MESSAGES_PER_CHAT = 6
 const PROJECT_LINKED_CHAT_COUNT = 34
 const PINNED_CHAT_COUNT = 10
-const PINNED_PROJECT_COUNT = 4
-const ARCHIVED_PROJECT_COUNT = 3
+const PINNED_PROJECT_COUNT = 5
+const ARCHIVED_PROJECT_COUNT = 8
 
 const topicDefinitions = [
   {
@@ -239,7 +239,7 @@ function toEpoch(date) {
 
 function createProjectDistribution() {
   return Array.from({ length: PROJECT_COUNT }, (_, index) => {
-    return index < 14 ? 2 : 1
+    return index < 17 ? 2 : 0
   })
 }
 

@@ -236,6 +236,6 @@ else
 fi
 if [[ "${CLEANUP_ONLY}" != "true" ]]; then
   echo "Chats: 100"
-  echo "Projects: 20"
+  echo "Projects: 100"
   echo "Project-linked chats: 34"
 fi
