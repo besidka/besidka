@@ -17,7 +17,7 @@ This reflects the shipped implementation, not the original planning language.
 
 ### Main page
 
-- `app/pages/chats/history.vue`
+- `app/pages/chats/history/index.vue`
 - Uses `useHistory()`
 - Server-primes the initial payload when there is no cache
 - On mount, hydrates from cache first and then refreshes in background

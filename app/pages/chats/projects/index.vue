@@ -128,7 +128,7 @@
                   <span class="font-medium truncate">{{ project.name }}</span>
                 </div>
                 <div class="shrink-0">
-                  <HistoryProjectActionsDropdown
+                  <ProjectsActionsDropdown
                     :project="project"
                     @pin="togglePin(project.id)"
                     @rename="openRenameModal(project)"
@@ -183,7 +183,7 @@
                   <span class="font-medium truncate">{{ project.name }}</span>
                 </div>
                 <div class="shrink-0">
-                  <HistoryProjectActionsDropdown
+                  <ProjectsActionsDropdown
                     :project="project"
                     @pin="togglePin(project.id)"
                     @rename="openRenameModal(project)"
@@ -240,7 +240,7 @@
     </template>
   </HistoryPageShell>
 
-  <HistoryProjectNameModal
+  <ProjectsNameModal
     ref="projectNameModalRef"
     :is-submitting="isProjectModalSubmitting"
     @submit="onProjectModalSubmit"

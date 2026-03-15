@@ -154,7 +154,7 @@
     </dialog>
   </Teleport>
 
-  <HistoryProjectNameModal
+  <ProjectsNameModal
     ref="projectNameModalRef"
     :is-submitting="isProjectModalSubmitting"
     @submit="onProjectModalSubmit"

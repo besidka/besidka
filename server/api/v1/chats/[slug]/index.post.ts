@@ -16,6 +16,7 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
+import { resolveDataUrlsInModelMessages } from '~~/server/utils/files/resolve-data-urls'
 import { buildProjectInstructionsMessage } from '~~/server/utils/projects/instructions'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 

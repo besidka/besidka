@@ -43,8 +43,12 @@ export function useAuth() {
   const lastLoginMethod = useState<string | null>('auth:lastLoginMethod', () => null)
 
   if (import.meta.client) {
+    const getLastUsedLoginMethod = typeof client.getLastUsedLoginMethod === 'function'
+      ? client.getLastUsedLoginMethod.bind(client)
+      : null
+
     const setLastLoginMethod = () => {
-      lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
+      lastLoginMethod.value = getLastUsedLoginMethod?.() ?? null
     }
 
     if (getCurrentInstance()) {

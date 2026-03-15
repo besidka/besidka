@@ -43,7 +43,7 @@ describe('projects index page', () => {
 
   it('uses radio tabs for active and archived project views', async () => {
     const projectNameModalStub = defineComponent({
-      name: 'HistoryProjectNameModal',
+      name: 'ProjectsNameModal',
       methods: {
         openCreate() {},
         openRename() {},
@@ -63,11 +63,11 @@ describe('projects index page', () => {
               </div>
             `,
           },
-          HistoryProjectNameModal: projectNameModalStub,
+          ProjectsNameModal: projectNameModalStub,
           UiSearchInput: {
             template: '<input />',
           },
-          HistoryProjectActionsDropdown: true,
+          ProjectsActionsDropdown: true,
           Icon: true,
         },
       },

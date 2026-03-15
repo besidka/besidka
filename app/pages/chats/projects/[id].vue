@@ -26,7 +26,7 @@
           <Icon name="lucide:plus" size="14" />
           New chat in project
         </NuxtLink>
-        <HistoryProjectActionsDropdown
+        <ProjectsActionsDropdown
           v-if="project"
           :project="project"
           @pin="onToggleProjectPin"
@@ -40,7 +40,7 @@
           >
             <Icon name="lucide:ellipsis" size="16" />
           </summary>
-        </HistoryProjectActionsDropdown>
+        </ProjectsActionsDropdown>
       </div>
     </template>
 
@@ -99,13 +99,13 @@
     @submit="onRenameChatSubmit"
   />
 
-  <HistoryProjectNameModal
+  <ProjectsNameModal
     ref="projectNameModalRef"
     :is-submitting="isProjectModalSubmitting"
     @submit="onProjectModalSubmit"
   />
 
-  <LazyHistoryProjectPicker
+  <LazyProjectsProjectPicker
     ref="projectPickerRef"
     @submit="onProjectPickerSubmit"
   />

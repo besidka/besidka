@@ -1,12 +1,12 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
-import HistoryProjectActionsDropdown
-  from '../../../../app/components/History/ProjectActionsDropdown.vue'
+import ProjectsActionsDropdown
+  from '../../../../app/components/Projects/ActionsDropdown.vue'
 import { createProject } from '../../../setup/helpers/history-fixtures'
 
-describe('HistoryProjectActionsDropdown', () => {
+describe('ProjectsActionsDropdown', () => {
   it('opens on trigger click and closes after selecting an action', async () => {
-    const wrapper = await mountSuspended(HistoryProjectActionsDropdown, {
+    const wrapper = await mountSuspended(ProjectsActionsDropdown, {
       props: {
         project: createProject(),
       },

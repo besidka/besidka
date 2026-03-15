@@ -1,7 +1,14 @@
 import { devices, expect, test } from '@playwright/test'
 
+const iPhone12 = devices['iPhone 12']
+
 test.use({
-  ...devices['iPhone 12'],
+  viewport: iPhone12.viewport,
+  screen: iPhone12.screen,
+  deviceScaleFactor: iPhone12.deviceScaleFactor,
+  isMobile: iPhone12.isMobile,
+  hasTouch: iPhone12.hasTouch,
+  userAgent: iPhone12.userAgent,
 })
 
 const historyResponse = {

@@ -2,7 +2,8 @@
 
 ## Overview
 
-This document describes the current projects implementation used by history:
+This document describes the current projects implementation linked with chat
+history:
 
 - projects list page
 - project detail page
@@ -30,7 +31,7 @@ This document describes the current projects implementation used by history:
 
 ### Project picker modal
 
-- `app/components/History/ProjectPicker.client.vue`
+- `app/components/Projects/ProjectPicker.client.vue`
 - Used from history actions to move chats
 - Can also create a new project inline before selecting it
 
@@ -203,7 +204,7 @@ reset back to the `0015` schema baseline before applying the final `0016`.
 
 - `tests/unit/composables/projects.spec.ts`
 - `tests/unit/composables/project-chats.spec.ts`
-- `tests/unit/components/History/ProjectActionsDropdown.spec.ts`
+- `tests/unit/components/Projects/ActionsDropdown.spec.ts`
 - `tests/unit/components/Projects/InstructionsCard.spec.ts`
 - `tests/unit/components/Projects/MemoryCard.spec.ts`
 - `tests/unit/components/Chat/ProjectInstructions.spec.ts`

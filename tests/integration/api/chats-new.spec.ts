@@ -2,10 +2,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   validateMessageFilePolicy: vi.fn(async () => undefined),
+  loggerSet: vi.fn(),
+  markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
 vi.mock('~~/server/utils/files/file-governance', () => ({
   validateMessageFilePolicy: mocks.validateMessageFilePolicy,
+}))
+
+vi.mock('~~/server/utils/projects/memory', () => ({
+  markProjectsMemoryStale: mocks.markProjectsMemoryStale,
+}))
+
+vi.mock('evlog', () => ({
+  useLogger: () => ({
+    set: mocks.loggerSet,
+  }),
+  createError: (input: {
+    message?: string
+    status?: number
+    why?: string
+  }) => {
+    const exception = new Error(input.message || 'Error')
+
+    Object.assign(exception, {
+      statusCode: input.status,
+      why: input.why,
+    })
+
+    return exception
+  },
 }))
 
 async function getNewChatHandler() {
@@ -19,6 +45,8 @@ describe('new chat API', () => {
     vi.resetModules()
     vi.clearAllMocks()
     mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
+    mocks.loggerSet.mockReset()
+    mocks.markProjectsMemoryStale.mockResolvedValue(undefined)
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -107,5 +135,10 @@ describe('new chat API', () => {
       activityAt: expect.any(Date),
     })
     expect(projectUpdateWhere).toHaveBeenCalledTimes(1)
+    expect(mocks.markProjectsMemoryStale).toHaveBeenCalledWith(
+      ['project-1'],
+      1,
+      db,
+    )
   })
 })

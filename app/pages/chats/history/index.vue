@@ -64,7 +64,7 @@
     @submit="onRenameSubmit"
   />
 
-  <LazyHistoryProjectPicker
+  <LazyProjectsProjectPicker
     ref="projectPickerRef"
     @submit="onProjectPickerSubmit"
   />
