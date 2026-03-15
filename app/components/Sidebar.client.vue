@@ -4,15 +4,13 @@
     :class="{
       'sm:translate-x-0': visible,
       'sm:translate-x-[calc(100%_+_(var(--spacing)_*_10))]': !visible,
-      'max-sm:translate-y-[calc(100%_+_(var(--spacing)_*_10))]':
-        !visible || hasOpenDialog,
+      'max-sm:translate-y-[calc(100%_+_(var(--spacing)_*_10))]': !visible,
       'max-sm:!translate-y-[calc(100%+var(--spacing)_*_2)]': !visibleOnScroll,
       'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]':
-        visible && isKeyboardVisible && hasSafeAreaBottom && !hasOpenDialog,
-      'max-sm:translate-y-0':
-        visible && !hasSafeAreaBottom && !hasOpenDialog,
+        visible && isKeyboardVisible && hasSafeAreaBottom,
+      'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
       'max-sm:translate-y-[var(--sab)]':
-        visible && !isKeyboardVisible && hasSafeAreaBottom && !hasOpenDialog,
+        visible && !isKeyboardVisible && hasSafeAreaBottom,
     }"
   >
     <UiBubble
@@ -57,22 +55,21 @@ const route = useRoute()
 const { loggedIn } = useAuth()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
-const {
-  isKeyboardOpen,
-} = useDeviceKeyboard()
-const { hasOpenDialog } = useOpenDialog()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 
 const visibleOnScroll = shallowRef<boolean>(true)
-const isKeyboardVisible = computed<boolean>(() => {
-  return isKeyboardOpen.value
-})
 
 const nuxtApp = useNuxtApp()
 
 nuxtApp.hook('chat-input:visibility-changed', (visible) => {
   visibleOnScroll.value = visible
+})
+
+const isKeyboardVisible = shallowRef<boolean>(false)
+
+nuxtApp.hook('device-keyboard:state-changed', (isOpen) => {
+  isKeyboardVisible.value = isOpen
 })
 
 onBeforeUnmount(() => {

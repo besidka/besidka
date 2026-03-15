@@ -26,8 +26,6 @@
     </div>
   </div>
   <ClientOnly>
-    <DeviceKeyboardObserver />
-    <DeviceKeyboardDebug />
     <UiConfirmation />
     <UiMessages />
     <Sidebar />

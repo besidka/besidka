@@ -27,6 +27,16 @@ Observed behavior:
 - chat input on `app/pages/chats/new.vue` still gets overlapped by the keyboard
   even after modal improvements
 
+## Current unblocker decision
+
+For the unblocker branch:
+
+- restore the pre-investigation runtime layout behavior
+- remove keyboard-specific experimental code and debug tooling
+- make keyboard-triggering input modals centered on mobile instead of
+  bottom-sheet on mobile
+- keep the investigation notes as reference for future layout work
+
 ## Affected areas
 
 - `app/components/ChatInput.client.vue`
@@ -302,12 +312,13 @@ Each scenario should be repeated 10 times because the bug is intermittent.
 | Stage | Change | Device / Mode | Result | Notes |
 | --- | --- | --- | --- | --- |
 | 0 | Investigation doc created | Pending | Pending | Initial hypothesis and sources recorded |
-| 1 | `visualViewport` observer + debug overlay | Real device | Partial success | Instrumentation useful for diagnosis |
-| 2 | Keyboard-aware dialog flow for small edit modals | Real device | Partial success | Initial delayed focus was wrong on iOS and had to be reverted |
+| 1 | `visualViewport` observer + debug overlay | Investigated | Rolled back in unblocker branch | Useful for diagnosis, not kept in shipping path |
+| 2 | Keyboard-aware dialog flow for small edit modals | Investigated | Rolled back in unblocker branch | Replaced by centered mobile input modals for speed |
 | 3 | Chat composer and sidebar use shared keyboard metrics | Real device | Failed | Caused composer jump and sidebar-over-modal bug |
-| 3b | Sidebar suppression + dialog inset | Real device | Partial success | Fixed prior regressions, but revealed bottom-sheet gap and modal jump on scroll |
+| 3b | Sidebar suppression + dialog inset | Real device | Partial success | Helped temporarily but not selected for unblocker branch |
 | 3c | Frozen modal inset + sheet filler geometry | Real device | Failed | Regressed sheet width and keyboard overlap; wrapper-based approach reverted |
-| 4 | Root shell refactor if needed | Likely next for chat input | Pending | `/chats/new` still failing points toward shell/layout path |
+| 3d | Visual-only modal surface extension | Real device | No meaningful improvement | Not selected for unblocker branch |
+| 4 | Root shell refactor if needed | Deferred | Deferred | Next serious attempt should target shared chat layout |
 | 5 | Viewport meta experiments if needed | Pending | Pending | |
 
 ## Updated direction
@@ -335,16 +346,9 @@ But the current overlay implementation direction was wrong:
 
 ## Next implementation step
 
-1. modal track:
-   stabilize bottom-sheet geometry with a dedicated filler zone or negative
-   bottom offset plus compensating filler, together with frozen post-settle
-   inset
-2. modal track:
-   do not recompute modal container geometry on every `visualViewport.scroll`
-3. chat track:
-   investigate the shared chat-page layout for both `app/pages/chats/new.vue`
-   and `app/pages/chats/[slug].vue`
-4. chat track:
-   prioritize the root-shell or overlay-layer refactor if either chat page
-   still overlaps after the current overlay fixes
-5. re-test both tracks independently on real device
+1. ship the unblocker branch with centered mobile input modals
+2. keep chat input/sidebar issue as a separate future task
+3. when resuming, investigate the shared chat-page layout for both
+   `app/pages/chats/new.vue` and `app/pages/chats/[slug].vue`
+4. prioritize root-shell or overlay-layer refactor there instead of more modal
+   experiments

@@ -66,7 +66,6 @@ vi.mock('better-auth/vue', () => ({
     requestPasswordReset: vi.fn(),
     resetPassword: vi.fn(),
     getSession: vi.fn(() => Promise.resolve({ data: null })),
-    getLastUsedLoginMethod: vi.fn(() => null),
     $store: {
       listen: vi.fn(),
     },
@@ -142,24 +141,3 @@ console.warn = (...args: unknown[]) => {
 
   originalWarn(...args)
 }
-
-const nativeFetch = global.fetch.bind(global)
-
-vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = typeof input === 'string'
-    ? input
-    : input instanceof URL
-      ? input.toString()
-      : input.url
-
-  if (url.includes('/_nuxt/builds/meta/test.json')) {
-    return new Response('{}', {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-  }
-
-  return nativeFetch(input, init)
-}))

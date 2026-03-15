@@ -2,12 +2,9 @@
   <Teleport to="body">
     <dialog
       ref="modalRef"
-      class="modal modal-bottom sm:modal-middle"
-      :style="dialogStyle"
+      class="modal modal-middle"
     >
-      <div
-        class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
-      >
+      <div class="modal-box">
         <h3 class="font-bold text-lg mb-4">Rename chat</h3>
         <input
           ref="inputRef"
@@ -56,26 +53,21 @@ const chatId = shallowRef<string | null>(null)
 const chatSlug = shallowRef<string | null>(null)
 const titleValue = shallowRef<string>('')
 const isRenaming = shallowRef<boolean>(false)
-const { isKeyboardOpen, keyboardHeight } = useDeviceKeyboard()
-
-const dialogStyle = computed(() => {
-  if (!isKeyboardOpen.value || keyboardHeight.value <= 0) {
-    return undefined
-  }
-
-  return {
-    paddingBottom: `${keyboardHeight.value}px`,
-  }
-})
 
 async function open(chat: HistoryChat) {
   chatId.value = chat.id
   chatSlug.value = chat.slug
   titleValue.value = chat.title || ''
+  modalRef.value?.showModal()
 
-  await openDialogWithFocus(modalRef.value, inputRef.value, {
-    selectText: true,
-  })
+  await nextTick()
+
+  const input = inputRef.value
+
+  if (input) {
+    input.focus()
+    input.select()
+  }
 }
 
 function close() {

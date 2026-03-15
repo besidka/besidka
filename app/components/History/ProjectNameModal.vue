@@ -2,12 +2,9 @@
   <Teleport to="body">
     <dialog
       ref="modalRef"
-      class="modal modal-bottom sm:modal-middle"
-      :style="dialogStyle"
+      class="modal modal-middle"
     >
-      <div
-        class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
-      >
+      <div class="modal-box">
         <h3 class="font-bold text-lg mb-2">
           {{ mode === 'create' ? 'Create project' : 'Rename project' }}
         </h3>
@@ -75,37 +72,33 @@ const mode = shallowRef<'create' | 'rename'>('create')
 const projectId = shallowRef<string | undefined>(undefined)
 const nameValue = shallowRef<string>('')
 const isSubmitPending = shallowRef<boolean>(false)
-const { isKeyboardOpen, keyboardHeight } = useDeviceKeyboard()
 const isSubmitLocked = computed(() => {
   return isSubmitPending.value || props.isSubmitting
-})
-
-const dialogStyle = computed(() => {
-  if (!isKeyboardOpen.value || keyboardHeight.value <= 0) {
-    return undefined
-  }
-
-  return {
-    paddingBottom: `${keyboardHeight.value}px`,
-  }
 })
 
 async function openCreate() {
   mode.value = 'create'
   projectId.value = undefined
   nameValue.value = ''
+  modalRef.value?.showModal()
 
-  await openDialogWithFocus(modalRef.value, inputRef.value)
+  await nextTick()
+
+  inputRef.value?.focus()
 }
 
 async function openRename(project: Project) {
   mode.value = 'rename'
   projectId.value = project.id
   nameValue.value = project.name
+  modalRef.value?.showModal()
 
-  await openDialogWithFocus(modalRef.value, inputRef.value, {
-    selectText: true,
-  })
+  await nextTick()
+
+  if (inputRef.value) {
+    inputRef.value.focus()
+    inputRef.value.select()
+  }
 }
 
 function close() {

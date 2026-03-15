@@ -64,6 +64,7 @@
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"
             @focus="onKeyboardFocus"
+            @blur="onKeyboardBlur"
           />
           <div class="flex items-center justify-between gap-2 p-2">
             <div class="flex items-center gap-2 max-md:grow">
@@ -284,9 +285,6 @@ const {
   reasoningMode,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
-const {
-  isKeyboardOpen,
-} = useDeviceKeyboard()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
 
@@ -310,16 +308,38 @@ const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
 })
 
-const isKeyboardVisible = computed<boolean>(() => {
-  return isKeyboardOpen.value
-})
+const isKeyboardVisible = shallowRef<boolean>(false)
 
-async function onKeyboardFocus() {
-  await waitForDeviceKeyboardViewportSettle()
+const blurTimeout = ref<NodeJS.Timeout | null>(null)
 
-  if (!isChatInputVisibleOnScroll.value) {
-    nuxtApp.callHook('chat:scroll-to-bottom')
+function onKeyboardFocus() {
+  if (blurTimeout.value) {
+    clearTimeout(blurTimeout.value)
   }
+
+  isKeyboardVisible.value = true
+
+  nuxtApp.callHook('device-keyboard:state-changed', true)
+
+  nextTick(() => {
+    if (!isChatInputVisibleOnScroll.value) {
+      nuxtApp.callHook('chat:scroll-to-bottom')
+    }
+  })
+}
+
+function onKeyboardBlur() {
+  if (blurTimeout.value) {
+    clearTimeout(blurTimeout.value)
+  }
+
+  blurTimeout.value = setTimeout(() => {
+    isKeyboardVisible.value = false
+
+    nuxtApp.callHook('device-keyboard:state-changed', false)
+
+    blurTimeout.value = null
+  }, 150)
 }
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
 const messagesContainerRef = ref<HTMLDivElement | null>(null)
@@ -508,26 +528,12 @@ const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
 const isSentHeightOnMounted = shallowRef<boolean>(false)
 
-function emitChatInputMetrics(newHeight: number) {
-  const peekHeight = Math.min(newHeight, 80)
-
-  nuxtApp.callHook('chat-input:height', newHeight)
-  nuxtApp.callHook('chat-input:metrics-changed', {
-    fullHeight: newHeight,
-    visibleHeight: isChatInputVisibleOnScroll.value
-      ? newHeight
-      : peekHeight,
-    peekHeight,
-    isPeekMode: !isChatInputVisibleOnScroll.value,
-  })
-}
-
-watch([chatInputHeight, isChatInputVisibleOnScroll], ([newHeight]) => {
+watch(chatInputHeight, (newHeight) => {
   if (input.value) {
     if (!isSentHeightOnMounted.value) {
       isSentHeightOnMounted.value = true
 
-      emitChatInputMetrics(newHeight)
+      nuxtApp.callHook('chat-input:height', newHeight)
       nuxtApp.callHook('chat:scroll-to-bottom')
     }
 
@@ -536,8 +542,14 @@ watch([chatInputHeight, isChatInputVisibleOnScroll], ([newHeight]) => {
 
   isSentHeightOnMounted.value = true
 
-  emitChatInputMetrics(newHeight)
+  nuxtApp.callHook('chat-input:height', newHeight)
 }, { flush: 'post' })
+
+onUnmounted(() => {
+  if (blurTimeout.value) {
+    clearTimeout(blurTimeout.value)
+  }
+})
 
 onStartTyping(() => {
   nuxtApp.callHook('chat:scroll-to-bottom')

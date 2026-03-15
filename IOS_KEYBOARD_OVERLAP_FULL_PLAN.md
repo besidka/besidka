@@ -2,12 +2,13 @@
 
 ## Summary
 
-The likely first fixes are instrumentation, dialog handling, and
-keyboard-aware overlay offsets. If those fail and the root document lock is
-the cause, the fallback is not to remove the overlay model. The fallback is to
-move from a document-locked or fixed-root architecture to a viewport-sized
-shell with internal overlay layers, so chat input translucency, peek state,
-sidebar hiding, and chat spacer behavior all remain intact.
+The current unblocker branch intentionally does less:
+
+- runtime keyboard experiments are rolled back
+- mobile input modals are centered
+- deeper chat-layout work is deferred
+
+The rest of this document remains as research for the next serious attempt.
 
 ## Current evidence
 
@@ -50,6 +51,9 @@ sidebar hiding, and chat spacer behavior all remain intact.
   - `--keyboard-height`
 - Add internal hook `device-keyboard:viewport-changed`
 - Debug overlay is enabled by `?keyboard-debug=1`
+- Note:
+  - this instrumentation was useful for investigation
+  - it is not kept in the current unblocker branch
 
 ## Stage 2: Fix edit dialogs first
 
@@ -58,8 +62,10 @@ sidebar hiding, and chat spacer behavior all remain intact.
   - `app/components/History/RenameModal.vue`
   - `app/components/History/ProjectNameModal.vue`
   - `app/components/ChatInput/Files/Modal/Select/RenameModal.vue`
-- Small edit dialogs should keep their existing bottom-sheet UX on mobile if
-  the helper is sufficient
+- Original plan assumption:
+  - small edit dialogs might keep their bottom-sheet UX on mobile
+- Current unblocker decision:
+  - keyboard-triggering input modals are centered on mobile instead
 - `modal-box` should use `--visual-viewport-height` as a mobile max-height and
   remain scrollable
 - if the keyboard opens under a bottom sheet, the sheet must visually cover the
@@ -114,6 +120,9 @@ sidebar hiding, and chat spacer behavior all remain intact.
       sizing and reintroduced overlap
     - future geometry work must preserve the native `<dialog>` / `.modal-box`
       structure
+  - current narrow follow-up:
+    - extend only the visual surface of `.modal-box`
+    - do not change modal sizing structure while testing this
 - Chat-shell track:
   - treat `app/pages/chats/new.vue` and `app/pages/chats/[slug].vue` as one
     shared layout problem with two page variants
@@ -126,6 +135,8 @@ sidebar hiding, and chat spacer behavior all remain intact.
     `/chats/new` still fails
   - this suggests the chat page problem is more fundamental than the modal
     problem
+  - because time is limited, the unblocker branch does not continue this track
+    right now
 
 ## Stage 4: If the root shell is the cause, refactor the layout without losing the overlay UX
 
@@ -139,6 +150,10 @@ sidebar hiding, and chat spacer behavior all remain intact.
 - Remove `html { position: fixed }` from `app/assets/css/main.css`
 - Remove `body` height locking that depends on `h-screen` as the root sizing
   mechanism
+- current quick experiment branch:
+  - document-level fixed locking removed first
+  - app root no longer forces `h-svh overflow-hidden` as the top-level shell
+  - this is being tested before deeper chat-shell restructuring
 - Change the app root in `app/app.vue` to a shell with:
   - `position: relative`
   - `display: flex`
