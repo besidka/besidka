@@ -1,17 +1,18 @@
 <template>
   <div
     class="fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 max-sm:left-0 z-50 transition-transform duration-500 ease-in-out"
-    :style="sidebarStyle"
     :class="{
       'sm:translate-x-0': visible,
       'sm:translate-x-[calc(100%_+_(var(--spacing)_*_10))]': !visible,
-      'max-sm:translate-y-[calc(100%_+_(var(--spacing)_*_10))]': !visible,
+      'max-sm:translate-y-[calc(100%_+_(var(--spacing)_*_10))]':
+        !visible || hasOpenDialog,
       'max-sm:!translate-y-[calc(100%+var(--spacing)_*_2)]': !visibleOnScroll,
       'max-sm:translate-y-[calc(var(--spacing)_*_4_+_var(--sab))]':
-        visible && isKeyboardVisible && hasSafeAreaBottom,
-      'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
+        visible && isKeyboardVisible && hasSafeAreaBottom && !hasOpenDialog,
+      'max-sm:translate-y-0':
+        visible && !hasSafeAreaBottom && !hasOpenDialog,
       'max-sm:translate-y-[var(--sab)]':
-        visible && !isKeyboardVisible && hasSafeAreaBottom,
+        visible && !isKeyboardVisible && hasSafeAreaBottom && !hasOpenDialog,
     }"
   >
     <UiBubble
@@ -58,23 +59,14 @@ const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const {
   isKeyboardOpen,
-  keyboardHeight,
 } = useDeviceKeyboard()
+const { hasOpenDialog } = useOpenDialog()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 
 const visibleOnScroll = shallowRef<boolean>(true)
 const isKeyboardVisible = computed<boolean>(() => {
   return isKeyboardOpen.value
-})
-const sidebarStyle = computed(() => {
-  if (!isKeyboardVisible.value || keyboardHeight.value <= 0) {
-    return undefined
-  }
-
-  return {
-    bottom: `${keyboardHeight.value}px`,
-  }
 })
 
 const nuxtApp = useNuxtApp()

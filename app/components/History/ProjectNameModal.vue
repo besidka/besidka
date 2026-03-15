@@ -3,6 +3,7 @@
     <dialog
       ref="modalRef"
       class="modal modal-bottom sm:modal-middle"
+      :style="dialogStyle"
     >
       <div
         class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
@@ -74,8 +75,19 @@ const mode = shallowRef<'create' | 'rename'>('create')
 const projectId = shallowRef<string | undefined>(undefined)
 const nameValue = shallowRef<string>('')
 const isSubmitPending = shallowRef<boolean>(false)
+const { isKeyboardOpen, keyboardHeight } = useDeviceKeyboard()
 const isSubmitLocked = computed(() => {
   return isSubmitPending.value || props.isSubmitting
+})
+
+const dialogStyle = computed(() => {
+  if (!isKeyboardOpen.value || keyboardHeight.value <= 0) {
+    return undefined
+  }
+
+  return {
+    paddingBottom: `${keyboardHeight.value}px`,
+  }
 })
 
 async function openCreate() {

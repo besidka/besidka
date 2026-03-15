@@ -2,7 +2,6 @@
   <div
     ref="chatInputRef"
     class="fixed z-50 bottom-0 max-sm:right-0 max-sm:left-0 sm:left-1/2 sm:-translate-x-1/2 sm:w-3xl sm:max-w-full transition-transform duration-500 ease-in-out"
-    :style="chatInputStyle"
     :class="{
       'translate-y-[calc(100%_+_var(--spacing)_*_4_+_var(--sab))]':
         !visible,
@@ -287,7 +286,6 @@ const {
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const {
   isKeyboardOpen,
-  keyboardHeight,
 } = useDeviceKeyboard()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
@@ -497,16 +495,6 @@ function sendMessage() {
 const filesModalRef = useTemplateRef<
   InstanceType<typeof LazyChatInputFilesModal>
 >('filesModalRef')
-
-const chatInputStyle = computed(() => {
-  if (isDesktop || !isKeyboardVisible.value || keyboardHeight.value <= 0) {
-    return undefined
-  }
-
-  return {
-    bottom: `${keyboardHeight.value}px`,
-  }
-})
 
 const attachedIds = computed<Set<FileMetadata['id']>>(() => {
   return new Set(files.value.map(file => file.id))

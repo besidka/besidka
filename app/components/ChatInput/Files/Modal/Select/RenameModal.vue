@@ -3,6 +3,7 @@
     <dialog
       ref="renameModalRef"
       class="modal modal-bottom sm:modal-middle"
+      :style="dialogStyle"
     >
       <div
         class="modal-box max-sm:max-h-[calc(var(--visual-viewport-height,100svh)-var(--spacing)_*_4)] overflow-y-auto"
@@ -53,6 +54,17 @@ const renameInputRef = shallowRef<HTMLInputElement | null>(null)
 const renameFileId = shallowRef<string | null>(null)
 const renameValue = shallowRef<string>('')
 const isRenaming = shallowRef<boolean>(false)
+const { isKeyboardOpen, keyboardHeight } = useDeviceKeyboard()
+
+const dialogStyle = computed(() => {
+  if (!isKeyboardOpen.value || keyboardHeight.value <= 0) {
+    return undefined
+  }
+
+  return {
+    paddingBottom: `${keyboardHeight.value}px`,
+  }
+})
 
 async function open(file: FileManagerFile) {
   renameFileId.value = file.id

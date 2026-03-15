@@ -58,7 +58,6 @@ export async function openDialogWithFocus(
   dialog.showModal()
 
   await nextTick()
-  await waitForDeviceKeyboardViewportSettle()
 
   element.focus()
 

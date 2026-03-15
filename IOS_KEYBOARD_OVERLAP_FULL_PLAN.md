@@ -14,6 +14,11 @@ sidebar hiding, and chat spacer behavior all remain intact.
 - root document is hard-locked:
   - `app/assets/css/main.css`
   - `app/app.vue`
+- `/chats/new` still reproduces chat-input overlap after modal improvements,
+  which points more strongly to shell/layout constraints
+- the next chat-layout pass must explicitly cover both `app/pages/chats/new.vue`
+  and `app/pages/chats/[slug].vue`, because they are two variants of the same
+  chat overlay system
 - chat page already uses an internal scroll container with overlays outside it:
   - `app/pages/chats/[slug].vue`
 - chat spacer depends on input height and scroll-container geometry:
@@ -57,22 +62,70 @@ sidebar hiding, and chat spacer behavior all remain intact.
   the helper is sufficient
 - `modal-box` should use `--visual-viewport-height` as a mobile max-height and
   remain scrollable
-- Focus should happen only after:
+- if the keyboard opens under a bottom sheet, the sheet must visually cover the
+  keyboard-adjacent area with modal background instead of exposing page content
+- do not treat iOS transparent toolbar glass itself as the bug; the goal is to
+  avoid exposing real page content in the bottom-most visible region
+- implementation candidates for this sheet coverage include:
+  - negative bottom offset on the sheet container
+  - compensating internal bottom padding or dedicated filler zone
+  - shared modal surface color extending into the keyboard-adjacent area
+- Initial focus must happen immediately after:
   - `showModal()`
   - `nextTick()`
-  - viewport settle
+- Do not wait for viewport settle before the first `focus()` on iOS
+- Viewport settle should be used only for post-focus correction
 - After focus, ensure the editable control is visible inside the visual
   viewport
+- After viewport settle, capture a stable modal inset snapshot and avoid
+  feeding live `visualViewport.scroll` updates into dialog container geometry
+- sequencing matters:
+  - freeze inset first
+  - then apply bottom-sheet geometry or filler strategy
+  - do not ship geometry changes that still consume live scroll-driven inset
 
 ## Stage 3: Fix fixed bottom overlays without changing the root shell
 
 - Migrate `app/components/ChatInput.client.vue` and
   `app/components/Sidebar.client.vue` to the shared keyboard metrics
-- Replace boolean keyboard assumptions with real bottom avoidance based on
-  `keyboardHeight`
+- Do not apply raw `keyboardHeight` directly to `bottom` on overlays that
+  already use transform-based motion
+- Use one positioning system per overlay
+- Prefer stabilized transform-based correction over mixed `bottom` plus
+  `translate-y`
 - Move chat auto-scroll to happen after viewport settle, not immediate focus
 - If instrumentation shows clipping inside the large file manager modal, apply
   the same helper there too
+- Sidebar must not react to keyboard while any `dialog[open]` exists
+- Modal workflows have priority over global bottom navigation
+- Modal geometry should not be recalculated on every manual scroll while a
+  dialog is open
+
+## Stage 3.5: Split the work into modal track and chat-shell track
+
+- Treat modal stabilization and chat-input overlap as separate verification
+  tracks
+- Modal track:
+  - freeze modal inset after settle
+  - add dedicated bottom-sheet filler geometry
+  - ignore `visualViewport.scroll` for modal container positioning
+  - note from failed experiment:
+    - wrapper-based extension around `.modal-box` broke native bottom-sheet
+      sizing and reintroduced overlap
+    - future geometry work must preserve the native `<dialog>` / `.modal-box`
+      structure
+- Chat-shell track:
+  - treat `app/pages/chats/new.vue` and `app/pages/chats/[slug].vue` as one
+    shared layout problem with two page variants
+  - use `/chats/new` as the clearest current failing case, but validate and
+    design fixes against both pages together
+  - if keyboard still overlaps on either page after narrow overlay fixes, move
+    directly to the shell or overlay-layer refactor path
+- Reason:
+  - real-device testing shows modal behavior improved, but chat composer on
+    `/chats/new` still fails
+  - this suggests the chat page problem is more fundamental than the modal
+    problem
 
 ## Stage 4: If the root shell is the cause, refactor the layout without losing the overlay UX
 
@@ -121,6 +174,8 @@ sidebar hiding, and chat spacer behavior all remain intact.
   - chat input inside overlay layer with `pointer-events-auto`
 - `app/pages/chats/new.vue` and `app/pages/chats/[slug].vue` should render
   through this shell
+- migration and verification must be planned for both pages together, even if
+  one page is used as the first implementation target
 
 ### Stage 4D: Preserve translucent overlap by using explicit clearance, not normal-flow stacking
 
@@ -205,6 +260,8 @@ sidebar hiding, and chat spacer behavior all remain intact.
   - peek mode still works
   - sidebar still hides and shows with the composer as today
   - spacer behavior still keeps the last readable content visible
+  - `/chats/new` is explicitly validated
+  - `/chats/[slug]` is explicitly validated under the same chat-shell changes
   - every stage result is recorded in `IOS_KEYBOARD_OVERLAP_INVESTIGATION.md`
 
 ## Assumptions and defaults
@@ -214,3 +271,12 @@ sidebar hiding, and chat spacer behavior all remain intact.
 - Chat spacer will be adapted, not removed
 - The composer’s translucent overlap and 1/3 peek behavior are product
   requirements and must survive the refactor
+- Real-device findings already show that the wrong implementation layer is
+  “raw keyboard height directly drives fixed overlays”; avoid repeating that
+  approach in later stages
+- Real-device findings also show that bottom-sheet modals need dedicated
+  keyboard-zone coverage and frozen post-settle geometry
+- Real-device findings now also show that `/chats/new` likely needs shell-level
+  attention even if modal fixes succeed
+- shell-level work must be reasoned about for both chat pages together, not as
+  isolated fixes
