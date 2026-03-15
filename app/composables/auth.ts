@@ -43,6 +43,7 @@ export function useAuth() {
   const lastLoginMethod = useState<string | null>('auth:lastLoginMethod', () => null)
 
   if (import.meta.client) {
+    const nuxtApp = useNuxtApp()
     const getLastUsedLoginMethod = typeof client.getLastUsedLoginMethod === 'function'
       ? client.getLastUsedLoginMethod.bind(client)
       : null
@@ -51,8 +52,8 @@ export function useAuth() {
       lastLoginMethod.value = getLastUsedLoginMethod?.() ?? null
     }
 
-    if (getCurrentInstance()) {
-      onMounted(() => {
+    if (nuxtApp.isHydrating) {
+      onNuxtReady(() => {
         setLastLoginMethod()
       })
     } else {

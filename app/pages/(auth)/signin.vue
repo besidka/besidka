@@ -194,6 +194,7 @@ const data = shallowReactive<Data>({
 const { signIn, errorCodes: _errorCodes, lastLoginMethod } = useAuth()
 
 const pending = shallowRef<boolean>(false)
+
 const isSocialOAuthDisabled = computed<boolean>(() => {
   if (!import.meta.client) {
     return false
