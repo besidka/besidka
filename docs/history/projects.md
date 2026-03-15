@@ -5,7 +5,7 @@
 This document describes the current projects implementation linked with chat
 history:
 
-- projects list page
+- projects list page with cursor-based infinite loading
 - project detail page
 - creating, renaming, pinning, archiving, and deleting projects
 - moving chats into and out of projects
@@ -21,6 +21,7 @@ history:
 - `app/pages/chats/projects/index.vue`
 - Uses `useProjects()`
 - Supports search, sort, archive toggle, and create flow
+- Infinite scroll via intersection observer when `hasMore` is true
 
 ### Project detail page
 
@@ -55,6 +56,38 @@ history:
 ### Pinning
 
 - Pinned projects render separately above regular projects
+- Pinned projects are only returned on the first page (no cursor)
+- Current server-side pinned limit is `50`
+
+## Loading Model
+
+### Infinite scroll
+
+- Unpinned projects are loaded with cursor pagination
+- Default page size is `30`
+- Max page size is `100`
+- Cursor is polymorphic: keyset varies by sort mode
+  - `activity` sort: compound `(activityAt DESC, id DESC)`
+  - `name` sort: compound `(name ASC, id ASC)`
+- Search mode and archive toggle reset the cursor on each fetch
+- `nextCursor` is `null` when all projects have been loaded
+
+### Response shape
+
+```typescript
+interface ProjectsResponse {
+  pinned: Project[]
+  projects: Project[]
+  nextCursor: string | null
+}
+```
+
+### Cursor implementation
+
+- `server/utils/projects/cursor.ts`
+- `createProjectsCursor(row, sortBy)` — serializes keyset position
+- `parseProjectsCursor(cursor, sortBy)` — deserializes and validates; returns
+  `null` on any mismatch or parse failure
 
 ## Project Detail Behavior
 
@@ -74,11 +107,11 @@ Project instructions are request-time context only.
 
 - They are never persisted as `messages` rows
 - They are injected as a synthetic system message on every generation request
-- The effective instructions always come from the chat’s current `projectId`
+- The effective instructions always come from the chat's current `projectId`
 
 Move semantics:
 
-- moving a chat into a project applies that project’s instructions on the next turn
+- moving a chat into a project applies that project's instructions on the next turn
 - moving a chat between projects switches future turns to the new project only
 - removing a chat from a project removes project instructions from future turns
 - in-flight generations keep the request snapshot they started with
@@ -158,7 +191,7 @@ Rename, pin, and archive update project metadata but do not change
 
 ## APIs
 
-- `GET /api/v1/projects`
+- `GET /api/v1/projects` — query: `cursor`, `limit`, `search`, `sortBy`, `archived`
 - `PUT /api/v1/projects`
 - `GET /api/v1/projects/[id]`
 - `PATCH /api/v1/projects/[id]/name`
@@ -211,6 +244,16 @@ reset back to the `0015` schema baseline before applying the final `0016`.
 - `tests/unit/utils/project-instructions.spec.ts`
 - `tests/unit/utils/project-memory.spec.ts`
 
+Covered cases (composable):
+
+- cache hydration and background refresh
+- create, rename, pin, archive, delete
+- re-sort on pin/unpin by sort mode
+- filtered view does not insert non-matching created project
+- debounced search with sort and archive filters
+- cursor-based load more
+- cursor reset when filters change
+
 ### Integration coverage
 
 - `tests/integration/api/projects.spec.ts`
@@ -230,4 +273,5 @@ pnpm vitest run tests/integration/api/projects-memory.spec.ts
 pnpm vitest run tests/integration/api/chats-project-instructions.spec.ts
 pnpm vitest run tests/unit/utils/project-memory.spec.ts
 pnpm vitest run tests/unit/utils/project-instructions.spec.ts
+pnpm vitest run tests/unit/composables/projects.spec.ts
 ```

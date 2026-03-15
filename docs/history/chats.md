@@ -81,7 +81,8 @@ A `LIKE '%query%'` scan on this column:
 - is semantically unsound — users expect to search message text, not raw JSON
 
 Full-text search via SQLite FTS5 is the correct long-term approach and is
-tracked as a separate improvement. Title-only search is the current behavior.
+tracked as a separate improvement in `docs/history/content-search.md`.
+Title-only search is the current behavior.
 
 ## Chat Actions
 
@@ -206,7 +207,7 @@ That means:
 
 - `tests/unit/composables/history.spec.ts`
 - `tests/unit/utils/date-groups.spec.ts`
-- `tests/unit/components/HistoryChatSections.spec.ts`
+- `tests/unit/components/History/ChatSections.spec.ts`
 
 Covered cases:
 
@@ -228,7 +229,7 @@ Covered cases:
 
 Covered cases:
 
-- title + message search merge and dedupe
+- title search
 - pinned vs unpinned response shape
 - next cursor calculation
 - rename endpoint
