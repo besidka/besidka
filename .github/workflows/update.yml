@@ -115,7 +115,9 @@ jobs:
             done
           fi
 
-          echo "labels=$labels_to_add" >> $GITHUB_OUTPUT
+          echo "labels<<EOF" >> $GITHUB_OUTPUT
+          echo "$labels_to_add" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Add labels
         uses: actions-ecosystem/action-add-labels@v1
