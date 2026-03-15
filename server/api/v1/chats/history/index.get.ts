@@ -169,6 +169,20 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(schema.chats.activityAt), desc(schema.chats.id))
     .limit(limit)
 
+  if (parsedCursor) {
+    const chats = await chatsQuery
+    const lastChat = chats[chats.length - 1]
+    const nextCursor = chats.length === limit && lastChat
+      ? createHistoryCursor(lastChat)
+      : null
+
+    return {
+      pinned: [],
+      chats,
+      nextCursor,
+    }
+  }
+
   const [pinned, chats] = await db.batch([pinnedQuery, chatsQuery])
 
   const lastChat = chats[chats.length - 1]

@@ -266,7 +266,7 @@ describe('chat history API', () => {
     expect(searchSelectChain.limit).toHaveBeenCalledWith(30)
   })
 
-  it('returns pinned chats separately and computes the next cursor', async () => {
+  it('skips pinned chats on cursor-based history pages', async () => {
     const handler = await getHistoryHandler()
     const pinnedChat = withDateFields(createHistoryChat({
       id: 'chat-pinned',
@@ -280,8 +280,11 @@ describe('chat history API', () => {
       id: 'chat-2',
       activityAt: '2026-03-10T10:00:00.000Z',
     }))
+    const paginatedChatsSelectChain = createSelectChain([firstChat, secondChat])
     const db = {
-      select: vi.fn(() => createSelectChain()),
+      select: vi.fn()
+        .mockReturnValueOnce(createSelectChain())
+        .mockReturnValueOnce(paginatedChatsSelectChain),
       batch: vi.fn(async () => {
         return [[pinnedChat], [firstChat, secondChat]]
       }),
@@ -291,12 +294,20 @@ describe('chat history API', () => {
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
     const response = await handler({
-      query: { limit: '2', cursor: '2026-03-09T00:00:00.000Z' },
+      query: {
+        limit: '2',
+        cursor: createHistoryCursor({
+          activityAt: new Date('2026-03-09T00:00:00.000Z'),
+          id: 'chat-cursor',
+        }),
+      },
     } as never)
 
-    expect(response.pinned).toEqual([pinnedChat])
+    expect(response.pinned).toEqual([])
     expect(response.chats).toEqual([firstChat, secondChat])
     expect(response.nextCursor).toBe(createHistoryCursor(secondChat))
+    expect(db.batch).not.toHaveBeenCalled()
+    expect(paginatedChatsSelectChain.limit).toHaveBeenCalledWith(2)
   })
 
   it('renames chats and refreshes activity timestamps', async () => {
