@@ -75,7 +75,7 @@ jobs:
 
             if [[ "$should_add_label" == "true" ]]; then
               if [[ -n "$labels_to_add" ]]; then
-                labels_to_add="${labels_to_add},${label}"
+                labels_to_add="${labels_to_add}"$'\n'"${label}"
               else
                 labels_to_add="$label"
               fi
@@ -86,12 +86,12 @@ jobs:
             add_label() {
               local label="$1"
 
-              if [[ ",$labels_to_add," == *",${label},"* ]]; then
+              if [[ $'\n'"$labels_to_add"$'\n' == *$'\n'"${label}"$'\n'* ]]; then
                 return
               fi
 
               if [[ -n "$labels_to_add" ]]; then
-                labels_to_add="${labels_to_add},${label}"
+                labels_to_add="${labels_to_add}"$'\n'"${label}"
               else
                 labels_to_add="$label"
               fi
