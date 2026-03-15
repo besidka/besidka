@@ -70,185 +70,192 @@
       </div>
     </template>
 
-    <div
-      v-if="isLoadingInitial && !hasCachedData"
-      class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-    >
+    <div class="contents">
       <div
-        v-for="index in 3"
-        :key="index"
-        class="rounded-box border border-base-200/70 p-4"
+        v-if="isLoadingInitial && !hasCachedData"
+        class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
       >
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex items-center gap-3 min-w-0 flex-1">
-            <div class="skeleton skeleton--default size-10 rounded-2xl shrink-0" />
-            <div class="flex-1 space-y-2">
-              <div class="skeleton skeleton--default h-4 w-2/3 rounded-full" />
-              <div class="skeleton skeleton--default h-3 w-1/3 rounded-full" />
-            </div>
-          </div>
-          <div class="skeleton skeleton--default h-9 w-9 rounded-full shrink-0" />
-        </div>
-      </div>
-    </div>
-
-    <template v-else>
-      <template v-if="pinned.length > 0">
-        <div class="flex items-center gap-2">
-          <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
-            Pinned
-          </span>
-          <div class="flex-1 h-px bg-base-300" />
-        </div>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="project in pinned"
-            :key="project.id"
-            class="
-              card overflow-visible bg-base-100 cursor-pointer transition-colors
-              hover:bg-base-100/70 focus:outline-none focus-visible:ring-2
-              focus-visible:ring-base-content/20 relative
-              [&:has(details[open])]:z-30
-            "
-            role="link"
-            tabindex="0"
-            :aria-label="`Open project ${project.name}`"
-            @click="onProjectCardClick($event, project.id)"
-            @keydown.enter.prevent="openProject(project.id)"
-            @keydown.space.prevent="openProject(project.id)"
-          >
-            <div class="card-body p-4">
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex flex-1 items-center gap-2 min-w-0">
-                  <Icon
-                    name="lucide:folder"
-                    size="18"
-                    class="shrink-0"
-                  />
-                  <span class="font-medium truncate">{{ project.name }}</span>
-                </div>
-                <div class="shrink-0">
-                  <ProjectsActionsDropdown
-                    :project="project"
-                    @pin="togglePin(project.id)"
-                    @rename="openRenameModal(project)"
-                    @archive="toggleArchive(project.id)"
-                    @delete="onDeleteProject(project.id)"
-                  />
-                </div>
-              </div>
-              <div class="text-xs opacity-50">
-                {{ formatActivityAge(new Date(project.activityAt)) }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-
-      <template v-if="projects.length > 0">
         <div
-          v-if="pinned.length > 0"
-          class="flex items-center gap-2"
+          v-for="index in 3"
+          :key="index"
+          class="rounded-box border border-base-200/70 p-4"
         >
-          <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
-            All projects
-          </span>
-          <div class="flex-1 h-px bg-base-300" />
-        </div>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="project in projects"
-            :key="project.id"
-            class="
-              card overflow-visible bg-base-100 cursor-pointer transition-colors
-              hover:bg-base-100/70 focus:outline-none focus-visible:ring-2
-              focus-visible:ring-base-content/20 relative
-              [&:has(details[open])]:z-30
-            "
-            role="link"
-            tabindex="0"
-            :aria-label="`Open project ${project.name}`"
-            @click="onProjectCardClick($event, project.id)"
-            @keydown.enter.prevent="openProject(project.id)"
-            @keydown.space.prevent="openProject(project.id)"
-          >
-            <div class="card-body p-4">
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex flex-1 items-center gap-2 min-w-0">
-                  <Icon
-                    name="lucide:folder"
-                    size="18"
-                    class="shrink-0"
-                  />
-                  <span class="font-medium truncate">{{ project.name }}</span>
-                </div>
-                <div class="shrink-0">
-                  <ProjectsActionsDropdown
-                    :project="project"
-                    @pin="togglePin(project.id)"
-                    @rename="openRenameModal(project)"
-                    @archive="toggleArchive(project.id)"
-                    @delete="onDeleteProject(project.id)"
-                  />
-                </div>
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0 flex-1">
+              <div class="skeleton skeleton--default size-10 rounded-2xl shrink-0" />
+              <div class="flex-1 space-y-2">
+                <div class="skeleton skeleton--default h-4 w-2/3 rounded-full" />
+                <div class="skeleton skeleton--default h-3 w-1/3 rounded-full" />
               </div>
-              <div class="text-xs opacity-50">
-                {{ formatActivityAge(new Date(project.activityAt)) }}
+            </div>
+            <div class="skeleton skeleton--default h-9 w-9 rounded-full shrink-0" />
+          </div>
+        </div>
+      </div>
+      <template v-else>
+        <template v-if="pinned.length > 0">
+          <div class="flex items-center gap-2">
+            <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
+              Pinned
+            </span>
+            <div class="flex-1 h-px bg-base-300" />
+          </div>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="project in pinned"
+              :key="project.id"
+              class="
+                card overflow-visible bg-base-100 cursor-pointer
+                transition-colors
+                hover:bg-base-100/70 focus:outline-none focus-visible:ring-2
+                focus-visible:ring-base-content/20 relative
+                [&:has(details[open])]:z-30
+              "
+              role="link"
+              tabindex="0"
+              :aria-label="`Open project ${project.name}`"
+              @click="onProjectCardClick($event, project.id)"
+              @keydown.enter.prevent="openProject(project.id)"
+              @keydown.space.prevent="openProject(project.id)"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex flex-1 items-center gap-2 min-w-0">
+                    <Icon
+                      name="lucide:folder"
+                      size="18"
+                      class="shrink-0"
+                    />
+                    <span class="font-medium truncate">{{ project.name }}</span>
+                  </div>
+                  <div class="shrink-0">
+                    <ProjectsActionsDropdown
+                      :project="project"
+                      @pin="togglePin(project.id)"
+                      @rename="openRenameModal(project)"
+                      @archive="toggleArchive(project.id)"
+                      @delete="onDeleteProject(project.id)"
+                    />
+                  </div>
+                </div>
+                <div class="text-xs opacity-50">
+                  {{ formatActivityAge(new Date(project.activityAt)) }}
+                </div>
               </div>
             </div>
           </div>
+        </template>
+
+        <template v-if="projects.length > 0">
+          <div
+            v-if="pinned.length > 0"
+            class="flex items-center gap-2"
+          >
+            <span class="text-xs opacity-60 uppercase tracking-wide font-semibold">
+              All projects
+            </span>
+            <div class="flex-1 h-px bg-base-300" />
+          </div>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="project in projects"
+              :key="project.id"
+              class="
+                card overflow-visible bg-base-100 cursor-pointer
+                transition-colors
+                hover:bg-base-100/70 focus:outline-none focus-visible:ring-2
+                focus-visible:ring-base-content/20 relative
+                [&:has(details[open])]:z-30
+              "
+              role="link"
+              tabindex="0"
+              :aria-label="`Open project ${project.name}`"
+              @click="onProjectCardClick($event, project.id)"
+              @keydown.enter.prevent="openProject(project.id)"
+              @keydown.space.prevent="openProject(project.id)"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex flex-1 items-center gap-2 min-w-0">
+                    <Icon
+                      name="lucide:folder"
+                      size="18"
+                      class="shrink-0"
+                    />
+                    <span class="font-medium truncate">{{ project.name }}</span>
+                  </div>
+                  <div class="shrink-0">
+                    <ProjectsActionsDropdown
+                      :project="project"
+                      @pin="togglePin(project.id)"
+                      @rename="openRenameModal(project)"
+                      @archive="toggleArchive(project.id)"
+                      @delete="onDeleteProject(project.id)"
+                    />
+                  </div>
+                </div>
+                <div class="text-xs opacity-50">
+                  {{ formatActivityAge(new Date(project.activityAt)) }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div
+          v-if="hasMore"
+          ref="infiniteScrollRef"
+          class="flex justify-center py-4"
+        >
+          <span
+            v-if="isLoading"
+            class="loading loading-spinner loading-sm"
+          />
+        </div>
+
+        <div
+          v-if="
+            projects.length === 0
+            && pinned.length === 0
+            && !isLoadingInitial
+          "
+          class="rounded-box border border-dashed border-base-300 px-6 py-12 text-center"
+        >
+          <template v-if="search.length >= 2">
+            <Icon name="lucide:search-x" size="40" class="mx-auto mb-3 opacity-60" />
+            <p class="font-medium">No projects match your search</p>
+            <p class="mt-2 text-sm opacity-60">
+              Try a different project name.
+            </p>
+          </template>
+          <template v-else-if="showArchived">
+            <Icon name="lucide:archive" size="40" class="mx-auto mb-3 opacity-60" />
+            <p class="font-medium">No archived projects</p>
+            <p class="mt-2 text-sm opacity-60">
+              Archived projects will show up here.
+            </p>
+          </template>
+          <template v-else>
+            <Icon
+              name="lucide:folder"
+              size="40"
+              class="mx-auto mb-3 opacity-60"
+            />
+            <p class="font-medium">Create your first project to organize chats</p>
+            <p class="mt-2 mb-4 text-sm opacity-60">
+              Keep related conversations together and easier to revisit.
+            </p>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              @click="openCreateModal"
+            >
+              Create project
+            </button>
+          </template>
         </div>
       </template>
-
-      <div
-        v-if="hasMore"
-        ref="infiniteScrollRef"
-        class="flex justify-center py-4"
-      >
-        <span
-          v-if="isLoading"
-          class="loading loading-spinner loading-sm"
-        />
-      </div>
-
-      <div
-        v-if="projects.length === 0 && pinned.length === 0 && !isLoadingInitial"
-        class="rounded-box border border-dashed border-base-300 px-6 py-12 text-center"
-      >
-        <template v-if="search.length >= 2">
-          <Icon name="lucide:search-x" size="40" class="mx-auto mb-3 opacity-60" />
-          <p class="font-medium">No projects match your search</p>
-          <p class="mt-2 text-sm opacity-60">
-            Try a different project name.
-          </p>
-        </template>
-        <template v-else-if="showArchived">
-          <Icon name="lucide:archive" size="40" class="mx-auto mb-3 opacity-60" />
-          <p class="font-medium">No archived projects</p>
-          <p class="mt-2 text-sm opacity-60">
-            Archived projects will show up here.
-          </p>
-        </template>
-        <template v-else>
-          <Icon
-            name="lucide:folder"
-            size="40"
-            class="mx-auto mb-3 opacity-60"
-          />
-          <p class="font-medium">Create your first project to organize chats</p>
-          <p class="mt-2 mb-4 text-sm opacity-60">
-            Keep related conversations together and easier to revisit.
-          </p>
-          <button
-            type="button"
-            class="btn btn-primary btn-sm"
-            @click="openCreateModal"
-          >
-            Create project
-          </button>
-        </template>
-      </div>
-    </template>
+    </div>
   </HistoryPageShell>
 
   <ProjectsNameModal

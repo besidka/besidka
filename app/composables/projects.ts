@@ -28,7 +28,7 @@ export function useProjects() {
   const isRefreshing = shallowRef<boolean>(false)
   const isCreating = shallowRef<boolean>(false)
   const queuedRefreshKey = shallowRef<string | null>(null)
-  const nextCursor = shallowRef<string | null>(null)
+  const nextCursor = useState<string | null>('projects:cursor', () => null)
 
   const hasMore = computed(() => nextCursor.value !== null)
 
