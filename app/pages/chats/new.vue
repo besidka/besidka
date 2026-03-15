@@ -15,10 +15,7 @@
     v-model:reasoning="reasoning"
     display-project-picker
     :project-context="projectContext"
-    :messages-container="null"
     :messages-length="0"
-    visible-on-scroll
-    :pending="pending"
     :stop="() => {}"
     :regenerate="() => {}"
     @clear-project-context="clearProject"
