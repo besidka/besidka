@@ -63,6 +63,31 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
   ]
+  const historyProjectsTests = [
+    'tests/unit/components/HistoryPageShell.spec.ts',
+    'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/ProjectActionsDropdown.spec.ts',
+    'tests/unit/composables/history.spec.ts',
+    'tests/unit/composables/projects.spec.ts',
+    'tests/unit/composables/project-chats.spec.ts',
+    'tests/unit/components/HistoryChatSections.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/pages/projects-index.spec.ts',
+    'tests/unit/utils/date-groups.spec.ts',
+    'tests/unit/utils/project-activity.spec.ts',
+    'tests/unit/utils/project-instructions.spec.ts',
+    'tests/unit/utils/project-memory.spec.ts',
+    'tests/unit/components/Projects/InstructionsCard.spec.ts',
+    'tests/unit/components/Projects/MemoryCard.spec.ts',
+    'tests/unit/components/Chat/ProjectInstructions.spec.ts',
+    'tests/integration/api/chats-history.spec.ts',
+    'tests/integration/api/chats-new.spec.ts',
+    'tests/integration/api/projects.spec.ts',
+    'tests/integration/api/projects-memory.spec.ts',
+    'tests/integration/api/chats-project-instructions.spec.ts',
+    'tests/integration/pages/history-cache.spec.ts',
+    'tests/e2e/history/dropdown-touch.spec.ts',
+  ]
 
   const testMappings = [
     {
@@ -80,6 +105,10 @@ export function getAffectedTests(changedFiles) {
         'tests/e2e/settings/theme.spec.ts',
         'tests/e2e/chat/scroll-spacer.spec.ts',
       ],
+    },
+    {
+      pattern: /^app\/composables\/chat-scroll-spacer\.ts$/,
+      tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
     },
     {
       pattern: /^app\/components\/ChatInput\/Files\/.*\.vue$/,
@@ -102,12 +131,36 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
+      tests: historyProjectsTests,
+    },
+    {
       pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/components\/History\/.*\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^app\/pages\/chats\/(history|new)\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^app\/pages\/chats\/projects\/.*\.vue$/,
+      tests: historyProjectsTests,
+    },
+    {
       pattern: /^server\/api\/v1\/files\/.*\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/.*\.ts$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/projects\/.*\.ts$/,
+      tests: historyProjectsTests,
     },
     {
       pattern: /^server\/routes\/files\/.*\.ts$/,
@@ -122,6 +175,18 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^server\/utils\/projects\/.*\.ts$/,
+      tests: historyProjectsTests,
+    },
+    {
+      pattern: /^shared\/(types\/(history|projects)\.d\.ts|utils\/date-groups\.ts)$/,
+      tests: historyProjectsTests,
+    },
+    {
       pattern: /^shared\/types\/files\.d\.ts$/,
       tests: filesModuleTests,
     },
@@ -130,9 +195,14 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^server\/db\/schemas\/(chats|projects|messages)\.ts$/,
+      tests: historyProjectsTests,
+    },
+    {
       pattern: /^server\/db\/schema\.ts$/,
       tests: [
         ...filesModuleTests,
+        ...historyProjectsTests,
         ...profileSettingsTests,
       ],
     },

@@ -42,9 +42,24 @@ export function useAuth() {
 
   const lastLoginMethod = useState<string | null>('auth:lastLoginMethod', () => null)
 
-  onMounted(() => {
-    lastLoginMethod.value = client.getLastUsedLoginMethod() ?? null
-  })
+  if (import.meta.client) {
+    const nuxtApp = useNuxtApp()
+    const getLastUsedLoginMethod = typeof client.getLastUsedLoginMethod === 'function'
+      ? client.getLastUsedLoginMethod.bind(client)
+      : null
+
+    const setLastLoginMethod = () => {
+      lastLoginMethod.value = getLastUsedLoginMethod?.() ?? null
+    }
+
+    if (nuxtApp.isHydrating) {
+      onNuxtReady(() => {
+        setLastLoginMethod()
+      })
+    } else {
+      setLastLoginMethod()
+    }
+  }
 
   async function fetchSession() {
     if (sessionFetching.value) {

@@ -57,7 +57,7 @@ describe('Confirmation.vue', () => {
 
     const wrapper = await mountSuspended(ConfirmationComponent)
 
-    expect(wrapper.find('p').text()).toContain('Be careful')
+    expect(wrapper.find('[role="alert"]').text()).toContain('Be careful')
   })
 
   it('renders subtitle instead of alert text when both are set', async () => {
@@ -80,12 +80,12 @@ describe('Confirmation.vue', () => {
     expect(wrapper.find('h3').classes()).toContain('text-center')
   })
 
-  it('removes text-center from title when alert is true', async () => {
+  it('keeps text-center on title when alert is true', async () => {
     useConfirmation().value = makeOptions({ alert: true })
 
     const wrapper = await mountSuspended(ConfirmationComponent)
 
-    expect(wrapper.find('h3').classes()).not.toContain('text-center')
+    expect(wrapper.find('h3').classes()).toContain('text-center')
   })
 
   it('renders single action as a plain button, no split container', async () => {

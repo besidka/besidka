@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       slug: true,
       title: true,
+      projectId: true,
     },
     with: {
       messages: {

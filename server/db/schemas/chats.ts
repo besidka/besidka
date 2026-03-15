@@ -1,13 +1,14 @@
 import type { UIMessage } from 'ai'
 import { relations, sql } from 'drizzle-orm'
 import {
-  sqliteTable, text, integer, uniqueIndex,
+  sqliteTable, text, integer, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 import { publicId } from '../../utils/custom-db-types'
 import { chatShares } from './chat-shares'
+import { projects } from './projects'
 
 export const chats = sqliteTable(
   'chats',
@@ -20,10 +21,17 @@ export const chats = sqliteTable(
     title: text().default(''),
     shared: integer({ mode: 'boolean' }),
     pinnedAt: integer({ mode: 'timestamp' }),
+    projectId: publicId().references(() => projects.id, { onDelete: 'set null' }),
+    projectMemorySummary: text(),
+    projectMemorySummaryUpdatedAt: integer({ mode: 'timestamp' }),
+    activityAt: integer({ mode: 'timestamp' })
+      .notNull()
+      .$defaultFn(() => new Date()),
   },
   table => [
     uniqueIndex('uq_chat_user').on(table.id, table.userId),
     uniqueIndex('uq_chat_slug').on(table.id, table.slug),
+    index('idx_chats_activity_at').on(table.activityAt),
   ],
 )
 
@@ -58,6 +66,10 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
   }),
   messages: many(messages),
   shares: many(chatShares),
+  project: one(projects, {
+    fields: [chats.projectId],
+    references: [projects.id],
+  }),
 }))
 
 export const messagesRelations = relations(messages, ({ one }) => ({

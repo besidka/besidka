@@ -451,6 +451,19 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
   include both selectors on the element (`js-*` class + `data-testid`) and keep
   usage separated:
   runtime code uses `js-*`, tests use `data-testid`.
+- Test file naming must mirror the source file path and filename casing for
+  unit tests covering `app/components`, `app/composables`, and `app/pages`.
+  Examples:
+  - `app/components/History/ActionsDropdown.vue` ->
+    `tests/unit/components/History/ActionsDropdown.spec.ts`
+  - `app/composables/history.ts` ->
+    `tests/unit/composables/history.spec.ts`
+  - `app/pages/chats/new.vue` ->
+    `tests/unit/pages/chats/new.spec.ts`
+- Do not convert PascalCase component filenames to dash-case in unit test
+  filenames. Keep the original component name to preserve grep/discoverability.
+- For integration and e2e tests, existing suite conventions may be kept unless
+  the task explicitly requires renaming them.
 - When editing large components (100+ lines), check for existing composable declarations before adding new ones (e.g., `useNuxtApp()`, `useRoute()`, `useRouter()`). Search the entire `<script setup>` block to avoid duplicate declarations that cause "Cannot redeclare block-scoped variable" errors
 
 ### Watchers

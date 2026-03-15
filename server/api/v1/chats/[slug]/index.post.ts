@@ -2,6 +2,7 @@ import type { LanguageModel, UIMessage } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger } from 'evlog'
+import { eq } from 'drizzle-orm'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -15,6 +16,9 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
+import { resolveDataUrlsInModelMessages } from '~~/server/utils/files/resolve-data-urls'
+import { buildProjectInstructionsMessage } from '~~/server/utils/projects/instructions'
+import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -79,8 +83,18 @@ export default defineEventHandler(async (event) => {
     },
     columns: {
       id: true,
+      projectId: true,
     },
     with: {
+      project: {
+        columns: {
+          id: true,
+          name: true,
+          instructions: true,
+          memory: true,
+          memoryStatus: true,
+        },
+      },
       messages: {
         columns: {
           id: true,
@@ -122,6 +136,19 @@ export default defineEventHandler(async (event) => {
 
   const allMessages = [...previousMessages, newMessage]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
+  const projectInstructionsMessage = buildProjectInstructionsMessage(
+    chat.project
+      ? {
+        name: chat.project.name,
+        instructions: chat.project.instructions,
+        memory: chat.project.memory,
+        memoryStatus: chat.project.memoryStatus,
+      }
+      : null,
+  )
+  const contextMessages = projectInstructionsMessage
+    ? [projectInstructionsMessage, ...modelContextMessages]
+    : modelContextMessages
 
   if (!newMessage.parts || newMessage.parts.length === 0) {
     throw createError({
@@ -138,7 +165,7 @@ export default defineEventHandler(async (event) => {
   const {
     messages: messagesForAI,
     missingFiles,
-  } = await convertFilesForAI(modelContextMessages)
+  } = await convertFilesForAI(contextMessages)
 
   const lastPersistedMessage = previousMessages[previousMessages.length - 1]
   const isDuplicateUserMessage = (
@@ -153,6 +180,8 @@ export default defineEventHandler(async (event) => {
   )
 
   if (newMessage.role === 'user' && !isDuplicateUserMessage) {
+    const activityAt = new Date()
+
     await db
       .insert(schema.messages)
       .values({
@@ -162,6 +191,18 @@ export default defineEventHandler(async (event) => {
         tools: body.data.tools,
         reasoning: body.data.reasoning,
       })
+
+    await db.update(schema.chats)
+      .set({ activityAt })
+      .where(eq(schema.chats.id, chat.id))
+
+    if (chat.projectId) {
+      await db.update(schema.projects)
+        .set({ activityAt })
+        .where(eq(schema.projects.id, chat.projectId))
+
+      await markProjectsMemoryStale([chat.projectId], userId, db)
+    }
   }
 
   const { provider, model } = useChatProvider(userModel)
@@ -237,7 +278,9 @@ export default defineEventHandler(async (event) => {
 
       const result = streamText({
         model: instance,
-        messages: await convertToModelMessages(messagesForAI),
+        messages: resolveDataUrlsInModelMessages(
+          await convertToModelMessages(messagesForAI),
+        ),
         experimental_transform: smoothStream(),
         ...parsedTools,
         providerOptions,

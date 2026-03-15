@@ -1,7 +1,7 @@
 # Chat scroll and spacer behavior
 
 Last updated: February 22, 2026
-Scope: `app/composables/chat-scroll.ts` and
+Scope: `app/composables/chat-scroll-spacer.ts` and
 `app/components/ChatInput.client.vue`
 
 ## Why this exists
@@ -18,7 +18,7 @@ reasons behind the safeguards that were added.
 
 ## Main files and ownership
 
-- `app/composables/chat-scroll.ts`
+- `app/composables/chat-scroll-spacer.ts`
   - Owns spacer height state (`spacerHeight`)
   - Measures message geometry
   - Computes scroll targets and spacer size
@@ -71,14 +71,14 @@ Relevant events:
 Core interaction loop:
 
 1. `ChatInput.client.vue` emits `chat-input:height`
-2. `chat-scroll.ts` updates internal `inputHeight`, may schedule spacer logic
-3. `chat-scroll.ts` emits `chat-spacer:changed`
+2. `chat-scroll-spacer.ts` updates internal `inputHeight`, may schedule spacer logic
+3. `chat-scroll-spacer.ts` emits `chat-spacer:changed`
 4. `ChatInput.client.vue` listens `chat-spacer:changed` and calls `measure()`
    from `useScroll`
 5. `arrivedState.bottom` updates, potentially toggling input transform classes
 6. Input transform/size changes can trigger additional `useElementSize` updates
 
-## Key state and constants in `chat-scroll.ts`
+## Key state and constants in `chat-scroll-spacer.ts`
 
 - `spacerHeight` (starts at `INITIAL_SPACER_HEIGHT = 500`)
 - `inputHeight` (chat input height minus safe-area bottom)
@@ -215,7 +215,7 @@ Visible result:
 
 ## Scroll-to-bottom behavior split (short pair vs tall pair)
 
-Hook in `chat-scroll.ts`:
+Hook in `chat-scroll-spacer.ts`:
 
 - `chat:scroll-to-bottom` previously always called `resetSpacer()`
 - This broke short-pair scenario because reducing spacer when not needed

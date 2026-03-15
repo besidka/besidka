@@ -2,7 +2,7 @@
   <Teleport to="body">
     <dialog
       ref="renameModalRef"
-      class="modal modal-bottom sm:modal-middle"
+      class="modal modal-middle"
     >
       <div class="modal-box">
         <h3 class="font-bold text-lg mb-4">Rename file</h3>

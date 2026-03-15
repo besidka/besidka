@@ -107,6 +107,7 @@ export default {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
       },
+      forProjectMemory: true,
     },
     {
       id: 'gpt-5-nano',

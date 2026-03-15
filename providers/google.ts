@@ -29,6 +29,7 @@ export default {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
       },
+      forProjectMemory: true,
     },
     {
       id: 'gemini-3-pro-preview',

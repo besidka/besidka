@@ -5,7 +5,7 @@
   >
     <summary
       aria-label="Select model"
-      class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200"
+      class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200 max-xxs:max-w-40"
       :class="{ 'btn-active': isDropdownHovered }"
     >
       <SvgoGeminiShort
@@ -16,14 +16,7 @@
         v-if="getModel(toValue(userModel)).provider?.id === 'openai'"
         class="w-4 fill-base-content/40"
       />
-      <span
-        class="block truncate text-left"
-        :class="{
-          'max-xs:w-20 max-xxs:w-auto':
-            !(isWebSearchEnabled && isReasoningEnabled)
-              && (isWebSearchEnabled || isReasoningEnabled),
-        }"
-      >
+      <span class="block truncate text-left min-w-0">
         {{ getModelName(toValue(userModel)) }}
       </span>
       <Icon
