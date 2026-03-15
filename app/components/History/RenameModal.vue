@@ -10,6 +10,7 @@
           ref="inputRef"
           v-model="titleValue"
           type="text"
+          autocomplete="off"
           class="input input-bordered w-full"
           placeholder="Enter new title"
           maxlength="200"

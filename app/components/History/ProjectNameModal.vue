@@ -17,6 +17,7 @@
           ref="inputRef"
           v-model="nameValue"
           type="text"
+          autocomplete="off"
           class="input input-bordered w-full"
           placeholder="Enter project name"
           maxlength="100"
