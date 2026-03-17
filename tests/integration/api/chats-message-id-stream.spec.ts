@@ -1,0 +1,267 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({
+  failConvertToModelMessages: false,
+  toUIMessageStreamOptions: [] as Array<Record<string, any>>,
+}))
+
+vi.mock('ai', () => ({
+  createUIMessageStream: ({ execute }: { execute: Function }) => {
+    const writer = {
+      write: vi.fn(),
+      merge: vi.fn(),
+    }
+
+    const ready = execute({ writer })
+
+    return {
+      writer,
+      ready,
+    }
+  },
+  createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
+  streamText: vi.fn(() => ({
+    consumeStream: vi.fn(),
+    toUIMessageStream: vi.fn((options) => {
+      mocks.toUIMessageStreamOptions.push(options)
+
+      return {}
+    }),
+  })),
+  smoothStream: vi.fn(() => undefined),
+  convertToModelMessages: vi.fn(async (messages) => {
+    if (mocks.failConvertToModelMessages) {
+      throw new Error('Failed to prepare model messages')
+    }
+
+    return messages
+  }),
+}))
+
+vi.mock('evlog', () => ({
+  useLogger: () => ({
+    set: vi.fn(),
+  }),
+}))
+
+vi.mock('~~/server/utils/files/assistant-files', () => ({
+  sanitizeMessagesForModelContext: vi.fn(messages => messages),
+  normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
+    return input.parts
+  }),
+}))
+
+async function getHandler() {
+  const module = await import('../../../server/api/v1/chats/[slug]/index.post')
+
+  return module.default
+}
+
+function createMessage(text: string) {
+  return {
+    id: 'message-1',
+    role: 'user',
+    parts: [
+      {
+        type: 'text',
+        text,
+      },
+    ],
+  }
+}
+
+function createDb() {
+  const insertValues = vi.fn(async () => undefined)
+  const chatUpdateWhere = vi.fn(async () => undefined)
+  const chatUpdateSet = vi.fn(() => ({
+    where: chatUpdateWhere,
+  }))
+  const deleteWhere = vi.fn(async () => undefined)
+  const deleteCall = vi.fn(() => ({
+    where: deleteWhere,
+  }))
+
+  return {
+    db: {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            projectId: null,
+            project: null,
+            messages: [],
+          })),
+        },
+      },
+      insert: vi.fn(() => ({
+        values: insertValues,
+      })),
+      update: vi.fn(() => ({
+        set: chatUpdateSet,
+      })),
+      delete: deleteCall,
+    },
+    insertValues,
+    deleteCall,
+    deleteWhere,
+  }
+}
+
+const ULID_PATTERN = /^[0-9A-Z]{26}$/
+
+describe('chat stream message ids', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    mocks.failConvertToModelMessages = false
+    mocks.toUIMessageStreamOptions.length = 0
+
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('createError', (input: {
+      statusCode?: number
+      statusMessage?: string
+      data?: unknown
+    }) => {
+      const exception = new Error(input.statusMessage || 'Error')
+
+      Object.assign(exception, input)
+
+      return exception
+    })
+    vi.stubGlobal('getValidatedRouterParams', async (
+      event: { params: unknown },
+      parser: (params: unknown) => unknown,
+    ) => {
+      return parser(event.params)
+    })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: '1' },
+    }))
+    vi.stubGlobal('validateMessageFilePolicy', vi.fn(async () => undefined))
+    vi.stubGlobal('convertFilesForAI', vi.fn(async messages => ({
+      messages,
+      missingFiles: [],
+    })))
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: { id: 'gpt-5-mini' },
+      modelName: 'GPT-5 mini',
+    })))
+    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    })))
+  })
+
+  it('uses a pre-generated ULID as the streamed assistant message id', async () => {
+    const handler = await getHandler()
+    const { db, insertValues, deleteCall } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const streamOptions = mocks.toUIMessageStreamOptions[0]
+    const generatedId = streamOptions.generateMessageId()
+
+    expect(generatedId).toMatch(ULID_PATTERN)
+
+    await streamOptions.onFinish({
+      isAborted: false,
+      responseMessage: {
+        id: generatedId,
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Hi' }],
+      },
+    })
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      publicId: generatedId,
+      parts: [{ type: 'text', text: 'Hi' }],
+      tools: [],
+      reasoning: 'off',
+    }))
+    expect(deleteCall).not.toHaveBeenCalled()
+  })
+
+  it('does not insert assistant row when the stream is aborted', async () => {
+    const handler = await getHandler()
+    const { db, insertValues, deleteCall } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const streamOptions = mocks.toUIMessageStreamOptions[0]
+
+    await streamOptions.onFinish({
+      isAborted: true,
+      responseMessage: { role: 'assistant', parts: [] },
+    })
+
+    const assistantInserts = insertValues.mock.calls.filter(
+      ([payload]) => payload.role === 'assistant',
+    )
+
+    expect(assistantInserts).toHaveLength(0)
+    expect(deleteCall).not.toHaveBeenCalled()
+  })
+
+  it('does not insert or delete when stream setup fails', async () => {
+    const handler = await getHandler()
+    const { db, insertValues, deleteCall } = createDb()
+
+    mocks.failConvertToModelMessages = true
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await expect(response.ready).rejects.toThrow(
+      'Failed to prepare model messages',
+    )
+
+    const assistantInserts = insertValues.mock.calls.filter(
+      ([payload]) => payload.role === 'assistant',
+    )
+
+    expect(assistantInserts).toHaveLength(0)
+    expect(deleteCall).not.toHaveBeenCalled()
+  })
+})

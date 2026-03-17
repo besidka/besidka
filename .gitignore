@@ -46,12 +46,7 @@ database.sqlite
 stats.html
 
 # Agent symlinks
-CLAUDE.md
-.claude/skills
-.cursor/rules
-.windsurf/rules
-.github/copilot-instructions.md
-.plans
+.claude/plans
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md

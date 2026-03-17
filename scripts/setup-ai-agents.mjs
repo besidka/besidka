@@ -9,17 +9,27 @@ const links = [
   {
     kind: 'dir',
     link: '.claude/skills',
-    target: '.ai/skills',
+    target: '.agents/skills',
   },
   {
     kind: 'dir',
     link: '.cursor/rules',
-    target: '.ai/rules',
+    target: '.agents/rules',
+  },
+  {
+    kind: 'dir',
+    link: '.agent/skills',
+    target: '.agents/skills',
   },
   {
     kind: 'dir',
     link: '.windsurf/rules',
-    target: '.ai/rules',
+    target: '.agents/rules',
+  },
+  {
+    kind: 'dir',
+    link: '.windsurf/skills',
+    target: '.agents/skills',
   },
   {
     kind: 'file',
@@ -115,7 +125,7 @@ async function ensureLink({ kind, link, target }) {
 }
 
 async function main() {
-  await ensureDir(resolvePath('.ai/rules'))
+  await ensureDir(resolvePath('.agents/rules'))
 
   for (const link of links) {
     await ensureLink(link)

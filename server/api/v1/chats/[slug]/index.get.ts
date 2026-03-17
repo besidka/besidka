@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
       messages: {
         columns: {
           id: true,
+          publicId: true,
           role: true,
           parts: true,
           tools: true,
@@ -50,5 +51,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return chat
+  return {
+    ...chat,
+    messages: chat.messages.map(message => ({
+      ...message,
+      id: message.publicId ?? message.id,
+    })),
+  }
 })

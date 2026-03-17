@@ -28,13 +28,14 @@
       'sm:translate-y-0': visible && isChatInputVisibleOnScroll,
       'sm:translate-y-[calc(100%-var(--spacing)_*_14)]':
         visible && !isChatInputVisibleOnScroll,
+      '!translate-y-full': anyMessagesSelected
     }"
   >
     <LazyChatInputFilesDropZone
       v-if="$device.isDesktop"
       @files-dropped="uploadFiles"
     />
-    <LazyChatScroll v-show="!isChatInputVisibleOnScroll" />
+    <LazyChatScroll v-show="isChatScrollButtonVisible" />
     <div class="flex justify-center w-full px-2">
       <UiBubble
         class="grow !p-0 !rounded-b-none !border-8 !border-b-0 !border-accent/40"
@@ -268,6 +269,7 @@ const props = defineProps<{
     name: string
   } | null
   displayProjectPicker?: boolean
+  anyMessagesSelected?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -409,6 +411,10 @@ const shouldDisplayProjectPicker = computed<boolean>(() => {
 })
 
 const isChatInputVisibleOnScroll = computed<boolean>(() => {
+  if (props.anyMessagesSelected) {
+    return false
+  }
+
   if (
     route.path === '/chats/new'
     || props.status !== 'ready'
@@ -419,6 +425,19 @@ const isChatInputVisibleOnScroll = computed<boolean>(() => {
   }
 
   return arrivedState.bottom
+})
+
+const isChatScrollButtonVisible = computed<boolean>(() => {
+  if (isChatInputVisibleOnScroll.value) {
+    return false
+  } else if (
+    !isChatInputVisibleOnScroll.value
+    && props.anyMessagesSelected
+  ) {
+    return false
+  }
+
+  return !isChatInputVisibleOnScroll.value
 })
 
 watchPostEffect(() => {

@@ -1,7 +1,15 @@
 <template>
   <div
     ref="element"
-    class="group w-screen sm:w-4xl sm:max-w-screen mx-auto"
+    class="group w-screen sm:w-4xl sm:max-w-screen mx-auto transition-opacity"
+    :class="{
+      'opacity-90 blur-md': anySelected && !isSelected,
+    }"
+    @contextmenu.capture.prevent="onContextMenu"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="cancelLongPress"
+    @pointercancel="cancelLongPress"
   >
     <div
       class="px-4 sm:px-24"
@@ -22,7 +30,7 @@
                 && role === 'assistant',
           }"
         >
-          <div class="bubble w-9 rounded-full bg-base-100 dark:bg-base-content/50 text-text dark:text-base-100">
+          <div class="bubble w-9 rounded-full bg-base-100 dark:bg-base-content/50 text-text dark:text-base-100 shadow-none">
             <Logo
               v-if="role === 'assistant'"
               short
@@ -38,21 +46,8 @@
             </template>
           </div>
         </div>
-        <div class="bubble chat-bubble shadow-none w-full">
+        <div class="js-chat-bubble bubble chat-bubble w-full shadow-none">
           <slot />
-        </div>
-        <div
-          v-if="messageId && role === 'assistant'"
-          class="fab absolute bottom-0 left-auto right-0"
-        >
-          <button
-            type="button"
-            data-tip="Branch from this message"
-            class="tooltip tooltip-left btn btn-sm btn-ghost btn-circle"
-            @click="emit('branch', messageId)"
-          >
-            <Icon name="lucide:git-branch" size="12" />
-          </button>
         </div>
       </div>
     </div>
@@ -62,22 +57,66 @@
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   role: UIMessage['role']
   hideAssistantAvatarOnMobile?: boolean
   messageId?: string
+  isSelected?: boolean
+  anySelected?: boolean
 }>(), {
   hideAssistantAvatarOnMobile: true,
   messageId: undefined,
+  isSelected: false,
+  anySelected: false,
 })
 
 const emit = defineEmits<{
-  branch: [messageId: string]
+  select: [messageId: string]
 }>()
 
 const { user } = useAuth()
-
 const element = useTemplateRef<HTMLDivElement>('element')
+
+let longPressTimer: ReturnType<typeof setTimeout> | undefined
+let pointerStartX = 0
+let pointerStartY = 0
+
+function onContextMenu() {
+  if (!props.messageId) return
+
+  emit('select', props.messageId)
+}
+
+function onPointerDown(event: PointerEvent) {
+  if (event.pointerType === 'mouse' || !props.messageId) return
+
+  const messageId = props.messageId
+
+  pointerStartX = event.clientX
+  pointerStartY = event.clientY
+  longPressTimer = setTimeout(() => {
+    emit('select', messageId)
+  }, 500)
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (event.pointerType === 'mouse') return
+
+  const dx = Math.abs(event.clientX - pointerStartX)
+  const dy = Math.abs(event.clientY - pointerStartY)
+
+  if (dx > 8 || dy > 8) {
+    cancelLongPress()
+  }
+}
+
+function cancelLongPress() {
+  clearTimeout(longPressTimer)
+}
+
+onUnmounted(() => {
+  clearTimeout(longPressTimer)
+})
 
 defineExpose({
   element,

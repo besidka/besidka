@@ -1,0 +1,96 @@
+.container {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 4px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  --bg-max: var(--body);
+  --left-mask-width: 1rem;
+  --right-mask-width: 1rem;
+
+  margin: 0 -0.5rem;
+
+  &::before {
+    left: 0;
+    width: var(--left-mask-width, 0);
+    background: linear-gradient(
+      to right,
+      var(--bg-max) 0%,
+      color-mix(in srgb, var(--bg-max) 98%, transparent) 8%,
+      color-mix(in srgb, var(--bg-max) 94%, transparent) 16%,
+      color-mix(in srgb, var(--bg-max) 85%, transparent) 26%,
+      color-mix(in srgb, var(--bg-max) 70%, transparent) 38%,
+      color-mix(in srgb, var(--bg-max) 50%, transparent) 50%,
+      color-mix(in srgb, var(--bg-max) 30%, transparent) 62%,
+      color-mix(in srgb, var(--bg-max) 15%, transparent) 74%,
+      color-mix(in srgb, var(--bg-max) 6%, transparent) 84%,
+      color-mix(in srgb, var(--bg-max) 2%, transparent) 92%,
+      transparent 100%
+    );
+  }
+
+  &::after {
+    right: 0;
+    width: var(--right-mask-width, 0);
+    background: linear-gradient(
+      to left,
+      var(--bg-max) 0%,
+      color-mix(in srgb, var(--bg-max) 98%, transparent) 8%,
+      color-mix(in srgb, var(--bg-max) 94%, transparent) 16%,
+      color-mix(in srgb, var(--bg-max) 85%, transparent) 26%,
+      color-mix(in srgb, var(--bg-max) 70%, transparent) 38%,
+      color-mix(in srgb, var(--bg-max) 50%, transparent) 50%,
+      color-mix(in srgb, var(--bg-max) 30%, transparent) 62%,
+      color-mix(in srgb, var(--bg-max) 15%, transparent) 74%,
+      color-mix(in srgb, var(--bg-max) 6%, transparent) 84%,
+      color-mix(in srgb, var(--bg-max) 2%, transparent) 92%,
+      transparent 100%
+    );
+  }
+}
+.scrollarea {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0.5rem;
+  &:after {
+    content: "";
+    width: 1rem;
+  }
+
+  @media (hover: none) {
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+  }
+
+  --size: 0px;
+  --thumb: rgb(224, 224, 224);
+  --track: whiteSmoke;
+
+  &::-webkit-scrollbar {
+    width: var(--size);
+    height: var(--size);
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+    background: var(--track);
+  }
+  &::-webkit-scrollbar-thumb {
+    border-radius: 100px;
+    background: var(--thumb);
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background: var(--thumb);
+  }
+  &::-webkit-scrollbar-thumb:hover {
+  }
+}

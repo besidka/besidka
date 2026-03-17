@@ -63,5 +63,10 @@ export const configNuxt = [stylisticResultConfig, generalConfig]
 export default withNuxt(configNuxt).append({
   ignores: [
     'auth-schema.ts',
+    '.agents/**',
+    '.agent/**',
+    '.claude/**',
+    '.cursor/**',
+    '.windsurf/**',
   ],
 })

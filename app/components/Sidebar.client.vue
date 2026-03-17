@@ -66,6 +66,10 @@ nuxtApp.hook('chat-input:visibility-changed', (visible) => {
   visibleOnScroll.value = visible
 })
 
+nuxtApp.hook('chat:message-selected', (messageSelected) => {
+  visible.value = !messageSelected
+})
+
 const isKeyboardVisible = shallowRef<boolean>(false)
 
 nuxtApp.hook('device-keyboard:state-changed', (isOpen) => {

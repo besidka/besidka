@@ -42,7 +42,9 @@
         <ChatMessage
           :role="m.role"
           :message-id="m.id"
-          @branch="branchFromMessage"
+          :is-selected="selectedMessageId === m.id"
+          :any-selected="selectedMessageId !== null"
+          @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
           <ChatReasoning
@@ -98,6 +100,7 @@
     :display-regenerate="displayRegenerate"
     :display-stop="displayStop"
     :status="chatSdk.status"
+    :any-messages-selected="selectedMessageId !== null"
     @clear-project-context="clearProjectContext"
     @open-project-picker="openProjectPicker"
     @submit="submit"
@@ -107,9 +110,20 @@
     ref="projectPickerRef"
     @submit="onProjectPickerSubmit"
   />
+
+  <ClientOnly>
+    <LazyChatContextMenu
+      v-if="selectedMessageId"
+      :message-id="selectedMessageId"
+      :anchor-el="selectedAnchorEl"
+      @branch="branchFromMessage"
+      @close="clearMessageSelection"
+    />
+  </ClientOnly>
 </template>
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { useHaptics } from '~/composables/haptics'
 
 definePageMeta({
   layout: 'chat',
@@ -450,6 +464,29 @@ async function clearProjectContext() {
     projectId: null,
     projectName: null,
   })
+}
+
+const { hapticSoft, hapticRigid } = useHaptics()
+const selectedMessageId = shallowRef<string | null>(null)
+const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
+
+function onMessageSelect(messageId: string) {
+  hapticRigid()
+  selectedMessageId.value = messageId
+
+  nuxtApp.callHook('chat:message-selected', messageId)
+
+  const messageIndex = chatSdk.messages.findIndex(m => m.id === messageId)
+
+  selectedAnchorEl.value = messagesDomRefs.value?.[messageIndex] ?? null
+}
+
+function clearMessageSelection() {
+  hapticSoft()
+  selectedMessageId.value = null
+  selectedAnchorEl.value = null
+
+  nuxtApp.callHook('chat:message-selected', null)
 }
 
 const branchPending = shallowRef(false)

@@ -1,0 +1,21 @@
+code,
+pre {
+  font-family: var(--font-code);
+}
+
+code {
+  position: relative;
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 1rem;
+  user-select: all;
+  &:before {
+    pointer-events: none;
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 0.75rem;
+    background: rgba(17, 17, 17, 0.06);
+  }
+}

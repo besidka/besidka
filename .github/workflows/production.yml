@@ -5,8 +5,11 @@ on:
     branches: ['main']
     paths-ignore:
       - '**/*.md'
-      - '.ai/**'
+      - '.agents/**'
+      - '.agent/**'
       - '.claude/**'
+      - '.cursor/**'
+      - '.windsurf/**'
       - '.github/**'
       - '.husky/**'
       - '.vscode/**'

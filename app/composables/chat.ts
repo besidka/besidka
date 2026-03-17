@@ -9,6 +9,7 @@ import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
+import { ulid } from 'ulid'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -161,7 +162,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }
 
     chatSdk.messages.push({
-      id: crypto.randomUUID(),
+      id: ulid(),
       role: 'user',
       parts,
       createdAt: new Date(),

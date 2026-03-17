@@ -13,7 +13,7 @@ export default {
       tools: ['web_search'],
       reasoning: {
         mode: 'levels',
-        levels: ['low', 'high'],
+        levels: ['low', 'medium', 'high'],
       },
     },
     {
@@ -42,7 +42,7 @@ export default {
       tools: ['web_search'],
       reasoning: {
         mode: 'levels',
-        levels: ['low', 'high'],
+        levels: ['low', 'medium', 'high'],
       },
     },
     {
