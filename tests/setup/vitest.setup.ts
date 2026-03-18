@@ -78,6 +78,13 @@ vi.mock('better-auth/vue', () => ({
 }))
 
 /**
+ * Expose window.history as a global for vue-router web history compatibility.
+ * In the nuxt test environment, window.history exists but is not mapped to the
+ * bare `history` global that vue-router accesses in finalizeNavigation.
+ */
+;(globalThis as any).history = window.history
+
+/**
  * Mock IntersectionObserver
  */
 global.IntersectionObserver = class IntersectionObserver {

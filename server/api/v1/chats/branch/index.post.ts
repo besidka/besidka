@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
       messages: {
         columns: {
           id: true,
+          publicId: true,
           role: true,
           parts: true,
           tools: true,
@@ -60,7 +61,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const branchIndex = chat.messages.findIndex((message) => {
-    return message.id === body.data.messageId
+    return message.publicId === body.data.messageId
+      || message.id === body.data.messageId
   })
 
   if (branchIndex === -1) {
@@ -73,7 +75,7 @@ export default defineEventHandler(async (event) => {
   const messagesToCopy = chat.messages.slice(0, branchIndex + 1)
 
   const title = chat.title
-    ? `Branch: ${chat.title}`
+    ? `Branch: ${chat.title.replace(/Branch: /g, '')}`
     : 'Branch'
 
   const newChat = await db

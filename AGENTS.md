@@ -501,7 +501,7 @@ watchEffect((onCleanup) => {
 
 **IMPORTANT: Never use `console.log()` or `console.error()` in server code.** Use evlog for structured logging and error handling.
 
-This project uses [evlog](https://evlog.dev) for structured logging with wide events. See `.ai/skills/evlog/` for detailed patterns and examples.
+This project uses [evlog](https://evlog.dev) for structured logging with wide events. See `.agents/skills/evlog/` for detailed patterns and examples.
 
 ### Server-Side Logging
 
@@ -548,8 +548,8 @@ export default defineEventHandler(async (event) => {
   parameter list so primary inputs come first.
 
 **Reference files:**
-- Wide events patterns: `.ai/skills/evlog/references/wide-events.md`
-- Structured errors: `.ai/skills/evlog/references/structured-errors.md`
+- Wide events patterns: `.agents/skills/evlog/references/wide-events.md`
+- Structured errors: `.agents/skills/evlog/references/structured-errors.md`
 
 ### Frontend Error Handling
 
@@ -650,9 +650,9 @@ Both refer to the same automatically-generated token, but `github.token` is GitH
 ### Nuxt
 
 Before using Nuxt MCP docs, check local Nuxt best-practice guidance in the
-skills directory: `.ai/skills/nuxt/SKILL.md`.
+skills directory: `.agents/skills/nuxt/SKILL.md`.
 
-When implementing complex features, making architectural decisions, or answering questions about Nuxt best practices, use all the nested MD files in `.ai/skills/nuxt/references/`
+When implementing complex features, making architectural decisions, or answering questions about Nuxt best practices, use all the nested MD files in `.agents/skills/nuxt/references/`
 
 **IMPORTANT: Token-efficient usage**
 

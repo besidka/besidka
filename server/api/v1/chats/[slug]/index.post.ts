@@ -3,6 +3,7 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger } from 'evlog'
 import { eq } from 'drizzle-orm'
+import { ulid } from 'ulid'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -98,6 +99,7 @@ export default defineEventHandler(async (event) => {
       messages: {
         columns: {
           id: true,
+          publicId: true,
           role: true,
           parts: true,
           tools: true,
@@ -126,7 +128,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const previousMessages = chat.messages.map(message => ({
-    id: message.id,
+    id: message.publicId ?? message.id,
     role: message.role,
     parts: message.parts,
     createdAt: message.createdAt,
@@ -179,29 +181,40 @@ export default defineEventHandler(async (event) => {
     && lastPersistedMessage.reasoning === body.data.reasoning
   )
 
-  if (newMessage.role === 'user' && !isDuplicateUserMessage) {
-    const activityAt = new Date()
+  if (newMessage.role === 'user') {
+    if (!isDuplicateUserMessage) {
+      const activityAt = new Date()
 
-    await db
-      .insert(schema.messages)
-      .values({
-        chatId: chat.id,
-        role: 'user',
-        parts: newMessage.parts,
-        tools: body.data.tools,
-        reasoning: body.data.reasoning,
-      })
+      await db
+        .insert(schema.messages)
+        .values({
+          chatId: chat.id,
+          role: 'user',
+          publicId: newMessage.id,
+          parts: newMessage.parts,
+          tools: body.data.tools,
+          reasoning: body.data.reasoning,
+        })
 
-    await db.update(schema.chats)
-      .set({ activityAt })
-      .where(eq(schema.chats.id, chat.id))
-
-    if (chat.projectId) {
-      await db.update(schema.projects)
+      await db.update(schema.chats)
         .set({ activityAt })
-        .where(eq(schema.projects.id, chat.projectId))
+        .where(eq(schema.chats.id, chat.id))
 
-      await markProjectsMemoryStale([chat.projectId], userId, db)
+      if (chat.projectId) {
+        await db.update(schema.projects)
+          .set({ activityAt })
+          .where(eq(schema.projects.id, chat.projectId))
+
+        await markProjectsMemoryStale([chat.projectId], userId, db)
+      }
+    } else {
+      const lastMessage = chat.messages[chat.messages.length - 1]
+
+      if (lastMessage) {
+        await db.update(schema.messages)
+          .set({ publicId: newMessage.id })
+          .where(eq(schema.messages.id, lastMessage.id))
+      }
     }
   }
 
@@ -264,6 +277,8 @@ export default defineEventHandler(async (event) => {
 
   const stream = createUIMessageStream({
     async execute({ writer }) {
+      const messagePublicId = ulid()
+
       if (missingFiles.length > 0) {
         writer.write({
           type: 'data-missing-files',
@@ -290,17 +305,13 @@ export default defineEventHandler(async (event) => {
 
       writer.merge(result.toUIMessageStream({
         originalMessages: messagesForAI,
+        generateMessageId: () => messagePublicId,
         sendSources: true,
         sendReasoning: body.data.reasoning !== 'off',
         onError: errorHandler,
         async onFinish({ isAborted, responseMessage }) {
           if (isAborted) {
             return
-          }
-
-          if ('id' in responseMessage) {
-            // @ts-expect-error
-            delete responseMessage.id
           }
 
           const normalizationInput = {
@@ -316,8 +327,10 @@ export default defineEventHandler(async (event) => {
 
           await db.insert(schema.messages).values({
             chatId: chat.id,
-            ...responseMessage,
+            role: 'assistant',
+            publicId: messagePublicId,
             parts: normalizedParts,
+            tools: [],
             reasoning: body.data.reasoning,
           })
         },

@@ -5,8 +5,11 @@ on:
     types: [opened, synchronize, reopened]
     paths-ignore:
       - '**/*.md'
-      - '.ai/**'
+      - '.agents/**'
+      - '.agent/**'
       - '.claude/**'
+      - '.cursor/**'
+      - '.windsurf/**'
       - '.github/**'
       - '.husky/**'
       - '.vscode/**'

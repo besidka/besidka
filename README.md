@@ -29,17 +29,19 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 
 ## Features
 
-- [x] **PINK**. _Dark and light themes_
-- [x] Multiple LLMs. _OpenAI and Google AI Studio support_
-- [x] Authentication. _Email/password, Google, and GitHub sign-in_
-- [x] Browser-friendly. _Try it without installation_
-- [x] Syntax highlighting. _Readable, formatted code blocks_
-- [x] Resumable streams. _Continue responses after refresh_
-- [x] Bring your own key. _Use your own API keys_
-- [x] Web search. _Get real-time web context_
-- [x] Thinking mode. _Step-by-step reasoning for better answers_
-- [x] File attachments. _Send images or PDFs to models_
-- [x] File manager. _Reuse temporary files across chats_
+- **PINK** — Dark and light themes, both unapologetically pink
+- **BYOK — Bring Your Own API Key** — Use your OpenAI or Google AI Studio keys and only pay for what you use. No subscriptions, no markup
+- **Multiple AI Models** — Switch between GPT-4o, Gemini and other LLMs in one place
+- **Web Search** — Ground AI answers with real-time web context
+- **Reasoning Mode** — Step-by-step thinking for complex questions
+- **File Attachments & File Manager** — Send images and PDFs, reuse files across chats
+- **Chat Branching** — Fork a conversation mid-thread to explore a different direction
+- **Projects** — Organize chats with shared instructions and memory
+- **Resumable Streams** — Refresh the page and pick up right where you left off
+- **Chat History** — Search, pin and rename past conversations
+- **Syntax Highlighting** — Clean, readable code blocks out of the box
+- **No Install Required** — Works in any browser, sign in and go
+- **Flexible Auth** — Email/password, Google or GitHub sign-in
 
 ## OAuth troubleshooting
 

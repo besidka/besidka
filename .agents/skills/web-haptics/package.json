@@ -1,0 +1,23 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "pnpm -r install",
+    "watch": "pnpm --filter=web-haptics dev",
+    "dev": "pnpm run watch --onSuccess \"pnpm -w run site:dev\"",
+    "build": "pnpm --filter=web-haptics build",
+    "site:dev": "pnpm --filter=site dev",
+    "site:build": "pnpm run build && pnpm --filter=site build",
+    "lint": "pnpm --filter=web-haptics lint",
+    "lint:fix": "pnpm --filter=web-haptics lint:fix",
+    "pre-commit": "pnpm run --filter=web-haptics pre-commit",
+    "version": "changeset version && git add --all",
+    "release": "pnpm build && changeset publish && git push --follow-tags"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.26.2",
+    "@commitlint/cli": "^17.8.0",
+    "@commitlint/config-conventional": "^17.8.0",
+    "lint-staged": "^15.0.2"
+  }
+}

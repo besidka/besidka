@@ -1,0 +1,66 @@
+@use "sass:color";
+@use "sass:list";
+@use "sass:math";
+
+@function hexToP3($color) {
+  @if color.alpha($color) != 1 {
+    @return "color(display-p3 " +
+      calc(color.channel($color, "red", $space: rgb) / 255) + " " +
+      calc(color.channel($color, "green", $space: rgb) / 255) + " " +
+      calc(color.channel($color, "blue", $space: rgb) / 255) + " / " +
+      calc(color.alpha($color)) + ")";
+  }
+  @return "color(display-p3 " +
+    calc(color.channel($color, "red", $space: rgb) / 255) + " " +
+    calc(color.channel($color, "green", $space: rgb) / 255) + " " +
+    calc(color.channel($color, "blue", $space: rgb) / 255) + ")";
+}
+
+@mixin createColors($colors, $suffix: "") {
+  @each $name, $code in $colors {
+    --#{$name}#{$suffix}: #{$code};
+  }
+  @supports (color: color(display-p3 1 1 1)) {
+    @each $name, $code in $colors {
+      --#{$name}#{$suffix}: #{hexToP3($code)};
+    }
+  }
+}
+
+$colors: (
+  "body": #ffffff,
+  "body-light": #f6f7f9,
+  "color": #171717,
+  "color-muted": rgba(23, 23, 23, 0.5),
+  "color-light": rgba(23, 23, 23, 0.15),
+  "border": #e6e5e5,
+  "blue": #1a88f8,
+  "teal": #6ac4dc,
+  "indigo": #5e5ce6,
+  "green": #34c759,
+  "orange": #ff9f0a,
+  "yellow": #ffd60a,
+  "red": #ff453a,
+  "purple": #bf5af2,
+  "pink": #ff375f,
+);
+
+:root {
+  @include createColors($colors);
+}
+
+:root {
+  --hr-color: rgba(255, 255, 255, 0.1);
+  --focus-color: rgba(0, 122, 255, 0.5);
+
+  --selection-color: #fff;
+  --selection-bg: var(--blue);
+
+  --font-primary:
+    "Open Runde", "SF Pro Rounded", ui-rounded, "Nunito", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial,
+    sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-code:
+    "SF Mono", "SFMono-Regular", "Consolas", "Liberation Mono", Menlo, Courier,
+    monospace;
+}

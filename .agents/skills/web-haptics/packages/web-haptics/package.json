@@ -1,0 +1,113 @@
+{
+  "name": "web-haptics",
+  "version": "0.0.6",
+  "description": "Haptic feedback for the mobile web.",
+  "homepage": "https://haptics.lochie.me",
+  "sideEffects": false,
+  "author": "Lochie Axon",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lochie/web-haptics.git",
+    "directory": "packages/web-haptics"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.mjs",
+      "require": "./dist/react/index.js"
+    },
+    "./vue": {
+      "types": "./dist/vue/index.d.ts",
+      "import": "./dist/vue/index.mjs",
+      "require": "./dist/vue/index.js"
+    },
+    "./svelte": {
+      "types": "./dist/svelte/index.d.ts",
+      "import": "./dist/svelte/index.mjs",
+      "require": "./dist/svelte/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint -c .eslintrc.cjs ./src/**/*.{ts,tsx}",
+    "lint:fix": "eslint --fix -c .eslintrc.cjs ./src/**/*.{ts,tsx}",
+    "pre-commit": "lint-staged",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "haptics",
+    "vibration",
+    "feedback",
+    "web",
+    "mobile",
+    "react",
+    "vue",
+    "svelte",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/lochie/web-haptics/issues"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.mjs",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.mts",
+    "LICENSE",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "vue": ">=3",
+    "svelte": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.15",
+    "@typescript-eslint/eslint-plugin": "^6.8.0",
+    "@typescript-eslint/parser": "^6.8.0",
+    "eslint": "^9.36.0",
+    "eslint-config-airbnb": "^19.0.4",
+    "eslint-config-airbnb-typescript": "^17.1.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.28.1",
+    "eslint-plugin-jsx-a11y": "^6.7.1",
+    "eslint-plugin-prettier": "^5.0.1",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "svelte": "^4.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vue": "^3.3.0"
+  }
+}

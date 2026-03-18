@@ -54,6 +54,7 @@ export const messages = sqliteTable(
     reasoning: text({ enum: ['off', 'low', 'medium', 'high'] })
       .notNull()
       .default('off'),
+    publicId: text('public_id').unique().$defaultFn(() => ulid()),
   }, table => [
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),
   ],

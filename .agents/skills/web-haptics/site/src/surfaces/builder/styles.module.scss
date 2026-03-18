@@ -1,0 +1,403 @@
+.builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.presets {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  padding: 0.5rem 1rem 0.5rem 0;
+  p {
+    opacity: 0.6;
+  }
+
+  button {
+    display: block;
+    position: relative;
+    font-family: var(--font-primary);
+    font-weight: 600;
+    text-align: center;
+    color: var(--color);
+    padding: 0.25rem 0.5rem;
+    opacity: 0.5;
+    transition: all 100ms ease;
+
+    &:hover {
+      opacity: 1;
+    }
+
+    &:active {
+      &:before {
+        transform: scale(0.96);
+        transition-duration: 400ms;
+      }
+    }
+
+    &:before {
+      content: "";
+      pointer-events: none;
+      display: block;
+      position: absolute;
+      inset: 0;
+      background: var(--color);
+      opacity: 0.2;
+      border-radius: 1rem;
+      /* prettier-ignore */
+      transition: transform 1000ms linear(0 0%, 0.06015 1%, 0.216816 2%, 0.432019 3%, 0.668801 4%, 0.8953 5%, 1.08739 6%, 1.229888 7%, 1.316477 8%, 1.348613 9%, 1.333761 10%, 1.283298 11%, 1.210385 12%, 1.128081 13%, 1.047851 14%, 0.978562 15%, 0.925993 16%, 0.892799 17%, 0.878843 18%, 0.88179 19%, 0.897825 20%, 0.922402 21%, 0.950918 22%, 0.979261 23%, 1.004183 24%, 1.0235 25%, 1.036125 26%, 1.041972 27%, 1.041755 28%, 1.036745 29%, 1.028509 30%, 1.018662 31%, 1.008676 32%, 0.999737 33%, 0.992665 34%, 0.987896 35%, 0.985509 36%, 0.985291 37%, 0.986822 38%, 0.989565 39%, 0.992953 40%, 0.996461 41%, 0.999659 42%, 1.002239 43%, 1.004029 44%, 1.004985 45%, 1.005167 46%, 1.004713 47%, 1.003807 48%, 1.002645 49%, 1.001416 50%, 1.000275 51%, 0.999337 52%, 0.998669 53%, 0.998292 54%, 0.99819 55%, 0.998319 56%, 0.998616 57%, 0.999012 58%, 0.999442 59%, 0.999848 60%, 1.000188 61%, 1.000436 62%, 1.000583 63%, 1.000632 64%, 1.000598 65%, 1.000502 66%, 1.000367 67%, 1.000217 68%, 1.000073 69%),
+          opacity 0ms ease;
+    }
+
+    &[data-active="true"] {
+      opacity: 1;
+    }
+
+    &[data-pattern="success"] {
+      --color: var(--green);
+    }
+    &[data-pattern="warning"] {
+      --color: var(--orange);
+    }
+    &[data-pattern="error"] {
+      --color: var(--red);
+    }
+    &[data-pattern="light"] {
+      --color: #7d7d7d;
+    }
+    &[data-pattern="medium"] {
+      --color: #3e3e3e;
+    }
+    &[data-pattern="heavy"] {
+      --color: #000000;
+    }
+    &[data-pattern="soft"] {
+      --color: var(--purple);
+    }
+    &[data-pattern="rigid"] {
+      --color: var(--indigo);
+    }
+    &[data-pattern="selection"] {
+      --color: var(--teal);
+    }
+    &[data-pattern="nudge"] {
+      --color: var(--blue);
+    }
+    &[data-pattern="buzz"] {
+      --color: var(--orange);
+
+      &:before {
+        opacity: 0.15;
+      }
+    }
+  }
+}
+
+// --- Timeline ---
+
+.timelineContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 0 0.5rem;
+}
+
+.timeline {
+  position: relative;
+  height: 4rem;
+  border-radius: 0.5rem;
+  background: var(--body-light);
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+  overflow: visible;
+
+  @media (hover: none) {
+    height: 5rem;
+  }
+
+  &:before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        var(--border) 0%,
+        var(--border) 50%,
+        transparent 50%,
+        transparent 100%
+      )
+      0% 0% / 6px 1px;
+  }
+}
+
+.gridline {
+  position: absolute;
+  height: 0.75rem;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+  pointer-events: none;
+  background: var(--border);
+
+  &[data-minor="true"] {
+    height: 0.5rem;
+  }
+  @media (hover: none) {
+    display: none;
+  }
+}
+
+.timelineLabels {
+  display: flex;
+  justify-content: space-between;
+
+  @media (hover: none) {
+    display: none;
+  }
+
+  span {
+    font-family: var(--font-code);
+    font-size: 0.5625rem;
+    color: var(--color-light);
+    min-width: 1.5rem;
+    text-align: center;
+
+    &:first-child {
+      text-align: left;
+    }
+    &:last-child {
+      text-align: right;
+    }
+  }
+}
+
+.tapRegion {
+  position: absolute;
+  min-width: 8px;
+  min-height: 8px;
+  cursor: grab;
+  touch-action: none;
+
+  &[data-selected="true"]:after {
+    background: rgba(26, 136, 248, 0.3);
+  }
+
+  &[data-playing="true"]:after {
+    inset: 0px -1px;
+    transition-duration: 400ms;
+  }
+
+  &:after {
+    content: "";
+    position: absolute;
+    inset: 3px 1px;
+    background: rgba(26, 136, 248, 0.2);
+    border-radius: 0.5rem;
+
+    /* prettier-ignore */
+    --ease: linear(0 0%, 0.06015 1%, 0.216816 2%, 0.432019 3%, 0.668801 4%, 0.8953 5%, 1.08739 6%, 1.229888 7%, 1.316477 8%, 1.348613 9%, 1.333761 10%, 1.283298 11%, 1.210385 12%, 1.128081 13%, 1.047851 14%, 0.978562 15%, 0.925993 16%, 0.892799 17%, 0.878843 18%, 0.88179 19%, 0.897825 20%, 0.922402 21%, 0.950918 22%, 0.979261 23%, 1.004183 24%, 1.0235 25%, 1.036125 26%, 1.041972 27%, 1.041755 28%, 1.036745 29%, 1.028509 30%, 1.018662 31%, 1.008676 32%, 0.999737 33%, 0.992665 34%, 0.987896 35%, 0.985509 36%, 0.985291 37%, 0.986822 38%, 0.989565 39%, 0.992953 40%, 0.996461 41%, 0.999659 42%, 1.002239 43%, 1.004029 44%, 1.004985 45%, 1.005167 46%, 1.004713 47%, 1.003807 48%, 1.002645 49%, 1.001416 50%, 1.000275 51%, 0.999337 52%, 0.998669 53%, 0.998292 54%, 0.99819 55%, 0.998319 56%, 0.998616 57%, 0.999012 58%, 0.999442 59%, 0.999848 60%, 1.000188 61%, 1.000436 62%, 1.000583 63%, 1.000632 64%, 1.000598 65%, 1.000502 66%, 1.000367 67%, 1.000217 68%, 1.000073 69%);
+
+    transition:
+      background 100ms ease,
+      inset 1400ms var(--ease);
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+%resizeHandleBase {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 16px;
+  cursor: ew-resize;
+  z-index: 3;
+  pointer-events: auto;
+
+  &:after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 1rem;
+    border-radius: 1.5px;
+    background: var(--blue);
+    opacity: 0.4;
+    transition: opacity 100ms ease;
+  }
+
+  &:hover:after {
+    opacity: 0.7;
+  }
+}
+
+.resizeHandle {
+  @extend %resizeHandleBase;
+  right: -4px;
+
+  &:after {
+    right: 8px;
+  }
+}
+
+.resizeHandleLeft {
+  @extend %resizeHandleBase;
+  left: -4px;
+
+  &:after {
+    left: 8px;
+  }
+}
+
+%intensityHandleBase {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  cursor: ns-resize;
+  z-index: 3;
+  pointer-events: auto;
+
+  &:after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 2px;
+    width: 0.5rem;
+    border-radius: 1px;
+    background: var(--blue);
+    opacity: 0;
+    transition: opacity 100ms ease;
+  }
+
+  &:hover:after {
+    opacity: 0.5;
+  }
+}
+
+.intensityHandleTop {
+  @extend %intensityHandleBase;
+  top: -4px;
+
+  &:after {
+    top: 8px;
+  }
+}
+
+.intensityHandleBottom {
+  @extend %intensityHandleBase;
+  bottom: -4px;
+
+  &:after {
+    bottom: 8px;
+  }
+}
+
+@keyframes wobble {
+  0%,
+  100% {
+    rotate: 0.5deg;
+  }
+  50% {
+    rotate: -0.5deg;
+  }
+}
+
+.wobble {
+  animation: wobble 200ms ease-in-out infinite;
+}
+
+// --- Playhead ---
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.emptyState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  color: var(--color-light);
+  pointer-events: none;
+
+  span {
+    padding: 0.25rem;
+    background-color: var(--body-light);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: -0.5rem 0 0;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  .totalDuration {
+    width: 3rem;
+    font-family: var(--font-code);
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    margin-left: auto;
+    text-align: right;
+  }
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 5rem;
+    color: var(--color);
+    background-color: var(--body-light);
+
+    transition: transform 100ms ease;
+
+    svg {
+      display: block;
+      height: auto;
+      transform: translateX(1px);
+    }
+    &:hover {
+      transform: scale(1.1);
+    }
+    &:active {
+      transform: scale(1);
+    }
+  }
+}
+
+// --- Play ---
+
+.playRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}

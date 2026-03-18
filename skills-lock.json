@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "skills": {
+    "analyze-logs": {
+      "source": "hugorcd/evlog",
+      "sourceType": "github",
+      "computedHash": "28bd8254997b767ebba1f7f2cf4567ddb6c51b1fcdca9baf9b9cd7ee3ca51d7c"
+    },
+    "better-auth-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "computedHash": "a4c830509e85557b59339d8d93a4e243e9e59c686e7678854d39230e12c2a6dc"
+    },
+    "better-auth-security-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "computedHash": "5717187bba9c22030c7174c74012f01c359f21e2ce87e0eb80e24244d8b8c915"
+    },
+    "cloudflare": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "computedHash": "02ef72b4906d295d03da15d52357babdef06a762f0374b85c89c73c9b22a7bad"
+    },
+    "create-auth-skill": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "computedHash": "31c027d02dbf1faa37f58191f574b9443143042fb2b684fe32df53ab0270487c"
+    },
+    "create-evlog-adapter": {
+      "source": "hugorcd/evlog",
+      "sourceType": "github",
+      "computedHash": "06a0680134a0ef0490ebdb5d3523479fabef3d9c8a7128792ae461695c9a3807"
+    },
+    "create-evlog-enricher": {
+      "source": "hugorcd/evlog",
+      "sourceType": "github",
+      "computedHash": "a37e7984f6b5c66473743c601c606f5c9965251ce9e18baf05450441c943b0c7"
+    },
+    "create-evlog-framework-integration": {
+      "source": "hugorcd/evlog",
+      "sourceType": "github",
+      "computedHash": "633329f0feb0369be4e1102e51975fe9e12f51ceb75e4d186c2426044f4710fe"
+    },
+    "email-and-password-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "computedHash": "747d7f73bd9e2ec5317b8ef88dc70f97df716d00e3d02de4051feebaa48b062d"
+    },
+    "nuxt": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "571d9ea31a6f18b94168894814f20df361773e16de4a6dc675b526aaf6d55a45"
+    },
+    "nuxt-better-auth": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "38670ad6846049050b531ee65cb1dc653098bccc0caf7e9ebcef6ef0f3d6980b"
+    },
+    "nuxt-content": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "2e6bbe566a1d907db8ff1d8a69637319a272cf7bebcdd51dd8c94a55cf70014f"
+    },
+    "nuxt-modules": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "628065a8cf5cab196853ff5ef5538d3a7ff553293dde146380ec1b57f33def48"
+    },
+    "nuxt-seo": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "bffc66809f3a21055d2fd39d0bfa32eefdc681d2e93f4613fc3360addb3d3677"
+    },
+    "pnpm": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "0e72c2b2563556bc027cd025d0b3e11bf7147f362f4815ac9ad083ccbac55750"
+    },
+    "review-logging-patterns": {
+      "source": "hugorcd/evlog",
+      "sourceType": "github",
+      "computedHash": "851c4f603ee36725fbddd6ba3f86c7b953da33dc437de256bf64484105de054b"
+    },
+    "ts-library": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "4c33b682fad3e3323e4e8c71ee019f380699802030d147469f4564afe04fb867"
+    },
+    "tsdown": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "667c8404c4919c84f2db78726bcdc54c43854baf9dd85d3717b79883e66fbe41"
+    },
+    "two-factor-authentication-best-practices": {
+      "source": "better-auth/skills",
+      "sourceType": "github",
+      "computedHash": "7e297aaf887e11fdc03e52bdbf44974e161e8f7c393170ced7dc66cace4f6d46"
+    },
+    "vite": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "f6b076920b1a2d8300dd2a2a66962e40c35102231b74af7d336cf47b999ba4a3"
+    },
+    "vitest": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "04ed1b09da8ac778d693ad12fab49b1c48aadfe1758fe13eb4d6de3fdcbb22f4"
+    },
+    "vue": {
+      "source": "onmax/nuxt-skills",
+      "sourceType": "github",
+      "computedHash": "cb120821c275a351b6e3c154d82cf62a9277b6260c2c30b3101f688928a3428b"
+    },
+    "vueuse-functions": {
+      "source": "vueuse/skills",
+      "sourceType": "github",
+      "computedHash": "51467c2364e36ee5f40d1e83c94a6f53be3c12431bd8dcc81a650b8e195ae591"
+    },
+    "web-haptics": {
+      "source": "lochie/web-haptics",
+      "sourceType": "github",
+      "computedHash": "a6dce0fce9dc37f4dac87cd9ed2dc0e32e1ec3a5d8c860e1af07fee670295b7b"
+    },
+    "web-perf": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "computedHash": "520d36ee93779146266dcdeec31d5e42341c3a40cc35007c1b5e02d6824ff86b"
+    },
+    "workers-best-practices": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "computedHash": "420e1ad3eaeb8ed2016e6b34fff3757de6aa39899ec2bd6e9784a29c38e70f9a"
+    },
+    "wrangler": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "computedHash": "cd0ac8f97a2f54d19166acfd380fca8236db5e9f37d3b2066f713967e2673d36"
+    }
+  }
+}
