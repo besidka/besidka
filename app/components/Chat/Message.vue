@@ -5,7 +5,7 @@
     :class="{
       'opacity-90 blur-md': anySelected && !isSelected,
     }"
-    @contextmenu.capture.prevent="onContextMenu"
+    @contextmenu="onContextMenu"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="cancelLongPress"
@@ -81,9 +81,18 @@ let longPressTimer: ReturnType<typeof setTimeout> | undefined
 let pointerStartX = 0
 let pointerStartY = 0
 
-function onContextMenu() {
+function onContextMenu(event: MouseEvent) {
   if (!props.messageId) return
 
+  const target = event.target as HTMLElement
+
+  if (target.closest('a, img')) return
+
+  const selection = window.getSelection()
+
+  if (selection && selection.toString().length > 0) return
+
+  event.preventDefault()
   emit('select', props.messageId)
 }
 

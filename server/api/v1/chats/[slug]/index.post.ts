@@ -181,30 +181,40 @@ export default defineEventHandler(async (event) => {
     && lastPersistedMessage.reasoning === body.data.reasoning
   )
 
-  if (newMessage.role === 'user' && !isDuplicateUserMessage) {
-    const activityAt = new Date()
+  if (newMessage.role === 'user') {
+    if (!isDuplicateUserMessage) {
+      const activityAt = new Date()
 
-    await db
-      .insert(schema.messages)
-      .values({
-        chatId: chat.id,
-        role: 'user',
-        publicId: newMessage.id,
-        parts: newMessage.parts,
-        tools: body.data.tools,
-        reasoning: body.data.reasoning,
-      })
+      await db
+        .insert(schema.messages)
+        .values({
+          chatId: chat.id,
+          role: 'user',
+          publicId: newMessage.id,
+          parts: newMessage.parts,
+          tools: body.data.tools,
+          reasoning: body.data.reasoning,
+        })
 
-    await db.update(schema.chats)
-      .set({ activityAt })
-      .where(eq(schema.chats.id, chat.id))
-
-    if (chat.projectId) {
-      await db.update(schema.projects)
+      await db.update(schema.chats)
         .set({ activityAt })
-        .where(eq(schema.projects.id, chat.projectId))
+        .where(eq(schema.chats.id, chat.id))
 
-      await markProjectsMemoryStale([chat.projectId], userId, db)
+      if (chat.projectId) {
+        await db.update(schema.projects)
+          .set({ activityAt })
+          .where(eq(schema.projects.id, chat.projectId))
+
+        await markProjectsMemoryStale([chat.projectId], userId, db)
+      }
+    } else {
+      const lastMessage = chat.messages[chat.messages.length - 1]
+
+      if (lastMessage) {
+        await db.update(schema.messages)
+          .set({ publicId: newMessage.id })
+          .where(eq(schema.messages.id, lastMessage.id))
+      }
     }
   }
 
