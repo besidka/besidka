@@ -41,7 +41,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - **Chat History** — Search, pin and rename past conversations
 - **Syntax Highlighting** — Clean, readable code blocks out of the box
 - **No Install Required** — Works in any browser, sign in and go
-- **Flexible Auth** — Email/password, Google or GitHub sign-in
+- **Better Auth** — Email/password, Google or GitHub sign-in
 
 ## OAuth troubleshooting
 
