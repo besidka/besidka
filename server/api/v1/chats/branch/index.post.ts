@@ -1,3 +1,4 @@
+import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
@@ -91,25 +92,19 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
-  // D1/SQLite limits bound parameters per statement (~100).
-  // Each message row binds 7 params, so cap batches at 10 rows (70 params).
-  const CHUNK_SIZE = 10
-
-  for (let i = 0; i < messagesToCopy.length; i += CHUNK_SIZE) {
-    const chunk = messagesToCopy.slice(i, i + CHUNK_SIZE)
-
-    await db
+  const messageInserts = messagesToCopy.map((message) => {
+    return db
       .insert(schema.messages)
-      .values(
-        chunk.map(message => ({
-          chatId: newChat.id,
-          role: message.role,
-          parts: message.parts,
-          tools: message.tools,
-          reasoning: message.reasoning,
-        })),
-      )
-  }
+      .values({
+        chatId: newChat.id,
+        role: message.role,
+        parts: message.parts,
+        tools: message.tools,
+        reasoning: message.reasoning,
+      })
+  }) as unknown as [BatchItem<'sqlite'>]
+
+  await db.batch(messageInserts)
 
   await refreshProjectActivityAt([chat.projectId], userId, db)
   await markProjectsMemoryStale([chat.projectId], userId, db)

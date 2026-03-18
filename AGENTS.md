@@ -152,6 +152,26 @@ await Promise.allSettled(
 through utility function signatures. Pass or capture explicit references only
 in risky async fan-out contexts (parallel callbacks, timers, detached jobs).
 
+**D1/SQLite bound parameter limit**: D1 limits ~100 bound parameters per SQL statement. Multi-row `INSERT ... VALUES` (Drizzle `.values([...])` with array) binds all rows in one statement. Use `db.batch()` to send individual INSERTs in a single HTTP round-trip instead:
+
+```typescript
+// Wrong - array insert may exceed ~100 param limit with many rows
+// Also breaks Drizzle custom types (publicId) by including id=null
+await db.insert(schema.messages).values(
+  messages.map(message => ({ chatId, ...message })),
+)
+
+// Correct - db.batch() sends separate statements in one call
+await db.batch(
+  messages.map((message) => {
+    return db.insert(schema.messages).values({
+      chatId,
+      ...message,
+    })
+  }),
+)
+```
+
 **DELETE requests with body**: Per RFC 9110, DELETE request bodies have "no generally defined semantics" and Cloudflare's edge network may strip them. Use POST for bulk operations requiring a body:
 ```typescript
 // Wrong - body may be stripped by edge network
@@ -609,6 +629,8 @@ try {
   request-agnostic modules.
 
 **Stop hooks**: These still run after each response as a safety net, but should not be relied upon as the primary validation mechanism.
+
+**Affected test mappings**: When writing new test files, you MUST update `scripts/test-affected-check.mjs` to register them. This script maps source file patterns to test files for CI — unregistered tests won't run on pull requests when their source files change. Add new test files to existing test groups or create a new group as appropriate.
 
 ## Commit Messages
 

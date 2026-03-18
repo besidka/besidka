@@ -63,6 +63,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
   ]
+  const chatStreamBranchTests = [
+    'tests/integration/api/chats-branch.spec.ts',
+    'tests/integration/api/chats-duplicate-message.spec.ts',
+    'tests/integration/api/chats-message-id-stream.spec.ts',
+  ]
   const historyProjectsTests = [
     'tests/unit/components/HistoryPageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
@@ -131,6 +136,10 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^app\/composables\/chat\.ts$/,
+      tests: chatStreamBranchTests,
+    },
+    {
       pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
       tests: historyProjectsTests,
     },
@@ -156,7 +165,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/api\/v1\/chats\/.*\.ts$/,
-      tests: historyProjectsTests,
+      tests: [
+        ...historyProjectsTests,
+        ...chatStreamBranchTests,
+      ],
     },
     {
       pattern: /^server\/api\/v1\/projects\/.*\.ts$/,
@@ -196,13 +208,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/db\/schemas\/(chats|projects|messages)\.ts$/,
-      tests: historyProjectsTests,
+      tests: [
+        ...historyProjectsTests,
+        ...chatStreamBranchTests,
+      ],
     },
     {
       pattern: /^server\/db\/schema\.ts$/,
       tests: [
         ...filesModuleTests,
         ...historyProjectsTests,
+        ...chatStreamBranchTests,
         ...profileSettingsTests,
       ],
     },

@@ -173,12 +173,21 @@ export default defineEventHandler(async (event) => {
   const isDuplicateUserMessage = (
     newMessage.role === 'user'
     && lastPersistedMessage?.role === 'user'
-    && hasSameParts(
-      lastPersistedMessage.parts as UIMessage['parts'],
-      newMessage.parts as UIMessage['parts'],
+    && (
+      newMessage.id === lastPersistedMessage.id
+      || (
+        hasSameParts(
+          lastPersistedMessage.parts as UIMessage['parts'],
+          newMessage.parts as UIMessage['parts'],
+        )
+        && hasSameTools(
+          lastPersistedMessage.tools,
+          body.data.tools,
+        )
+        && lastPersistedMessage.reasoning
+        === body.data.reasoning
+      )
     )
-    && hasSameTools(lastPersistedMessage.tools, body.data.tools)
-    && lastPersistedMessage.reasoning === body.data.reasoning
   )
 
   if (newMessage.role === 'user') {
