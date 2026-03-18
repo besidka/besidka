@@ -19,6 +19,7 @@ on:
       - '.gitignore'
       - 'commitlint.config.ts'
       - '.*rc'
+      - '*.md'
 
 concurrency:
   group: preview-build-${{ github.event.pull_request.number }}
