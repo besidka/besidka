@@ -122,9 +122,28 @@ test.describe('history touch dropdowns', () => {
         body: JSON.stringify(projectChatsResponse),
       })
     })
+    await page.route('**/api/v1/projects/project-1', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'project-1',
+          name: 'Project 1',
+          instructions: null,
+          memory: null,
+          memoryStatus: 'idle',
+          memoryUpdatedAt: null,
+          memoryDirtyAt: null,
+          memoryProvider: null,
+          memoryModel: null,
+          memoryError: null,
+        }),
+      })
+    })
 
     await page.goto('/chats/projects')
     await page.getByRole('link', { name: 'Open project Project 1' }).click()
+    await page.waitForURL('**/chats/projects/project-1')
 
     await page.getByTestId('history-chat-actions-trigger').first().click()
 
