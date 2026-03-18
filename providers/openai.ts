@@ -2,28 +2,70 @@ export default {
   id: 'openai',
   name: 'OpenAI',
   models: [
-    // {
-    //   id: 'gpt-5-pro',
-    //   name: 'GPT-5 Pro',
-    //   description:
-    //    'Version of GPT-5 that produces smarter and more precise responses',
-    //   contextLength: 400_000,
-    //   maxOutputTokens: 272_000,
-    //   price: {
-    //     tokens: 1_000_000,
-    //     input: '$15.00',
-    //     output: '$120.00',
-    //   },
-    //   modalities: {
-    //     input: ['text', 'image'],
-    //     output: ['text'],
-    //   },
-    //   tools: ['web_search'],
-    //   reasoning: {
-    //     mode: 'levels',
-    //     levels: ['low', 'medium', 'high'],
-    //   },
-    // },
+    {
+      id: 'gpt-5.4',
+      name: 'GPT-5.4',
+      description: 'Best intelligence at scale for agentic, coding, and professional workflows',
+      contextLength: 1_050_000,
+      maxOutputTokens: 128_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$2.50',
+        output: '$15.00',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gpt-5.4-mini',
+      name: 'GPT-5.4 mini',
+      description: 'Strongest mini model yet for coding, computer use, and subagents',
+      contextLength: 400_000,
+      maxOutputTokens: 128_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$0.75',
+        output: '$4.50',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gpt-5.4-nano',
+      name: 'GPT-5.4 nano',
+      description: 'Cheapest GPT-5.4-class model for simple high-volume tasks',
+      contextLength: 400_000,
+      maxOutputTokens: 128_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$0.2',
+        output: '$1.25',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+      forProjectMemory: true,
+    },
     {
       id: 'gpt-5.2',
       name: 'GPT-5.2',
@@ -107,7 +149,6 @@ export default {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
       },
-      forProjectMemory: true,
     },
     {
       id: 'gpt-5-nano',
