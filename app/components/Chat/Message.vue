@@ -4,6 +4,7 @@
     class="group w-screen sm:w-4xl sm:max-w-screen mx-auto transition-opacity"
     :class="{
       'opacity-90 blur-md': anySelected && !isSelected,
+      '[@media(pointer:coarse)]:select-none': !isSelected,
     }"
     @contextmenu="onContextMenu"
     @pointerdown="onPointerDown"
@@ -84,6 +85,15 @@ let pointerStartY = 0
 function onContextMenu(event: MouseEvent) {
   if (!props.messageId) return
 
+  if (props.isSelected) return
+
+  if (props.anySelected) {
+    event.preventDefault()
+    emit('select', props.messageId)
+
+    return
+  }
+
   const target = event.target as HTMLElement
 
   if (target.closest('a, img')) return
@@ -98,6 +108,7 @@ function onContextMenu(event: MouseEvent) {
 
 function onPointerDown(event: PointerEvent) {
   if (event.pointerType === 'mouse' || !props.messageId) return
+  if (props.isSelected) return
 
   const messageId = props.messageId
 

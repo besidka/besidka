@@ -142,6 +142,9 @@ export default defineNuxtConfig({
     serverBundle: {
       remote: 'jsdelivr',
     },
+    clientBundle: {
+      icons: ['lucide:git-branch-plus'],
+    },
   },
   future: {
     compatibilityVersion: 5,
