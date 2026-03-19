@@ -23,7 +23,6 @@
       <div
         v-for="file in files"
         :key="file.storageKey"
-        :data-attached-storage-key="file.storageKey"
         :data-file-name="file.name"
         :aria-label="`File ${file.name}`"
         class="carousel-item flex items-center gap-1 relative"
@@ -330,18 +329,17 @@ const currentUploadingId = computed<string | undefined>(() => {
   })?.id
 })
 
-type CarouselDatasetKey = 'attachedStorageKey' | 'uploadingId'
-
-async function revealCarouselItem(
-  datasetKey: CarouselDatasetKey,
-  value: string,
-) {
+async function waitForFrame() {
   await nextTick()
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
       resolve()
     })
   })
+}
+
+async function revealCarouselItem(uploadingId: string) {
+  await waitForFrame()
 
   const carousel = carouselRef.value
 
@@ -349,17 +347,18 @@ async function revealCarouselItem(
 
   const item = Array.from(carousel.children).find((child) => {
     return child instanceof HTMLElement
-      && child.dataset[datasetKey] === value
+      && child.dataset.uploadingId === uploadingId
   })
 
   if (!(item instanceof HTMLElement)) return
 
   const carouselRect = carousel.getBoundingClientRect()
   const removeAllItem = detachAllItemRef.value
-  const removeAllWidth = removeAllItem?.getBoundingClientRect().width || 0
-  const effectiveRight = removeAllItem
-    ? carouselRect.right - removeAllWidth
-    : carouselRect.right
+  const hasOverflow = carousel.scrollWidth > carousel.clientWidth
+  const removeAllWidth = removeAllItem && hasOverflow
+    ? removeAllItem.getBoundingClientRect().width
+    : 0
+  const effectiveRight = carouselRect.right - removeAllWidth
   const itemRect = item.getBoundingClientRect()
   const hiddenRight = itemRect.right - effectiveRight
 
@@ -388,12 +387,7 @@ async function revealCarouselItem(
 }
 
 async function revealCarouselEnd() {
-  await nextTick()
-  await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      resolve()
-    })
-  })
+  await waitForFrame()
 
   const carousel = carouselRef.value
 
@@ -401,7 +395,7 @@ async function revealCarouselEnd() {
 
   const removeAllItem = detachAllItemRef.value
 
-  if (!(removeAllItem instanceof HTMLElement)) return
+  if (!removeAllItem) return
 
   const carouselRect = carousel.getBoundingClientRect()
   const removeAllRect = removeAllItem.getBoundingClientRect()
@@ -439,7 +433,7 @@ async function removeAllFiles() {
 
 watch(currentUploadingId, (newId, oldId) => {
   if (newId) {
-    revealCarouselItem('uploadingId', newId)
+    revealCarouselItem(newId)
   } else if (oldId) {
     revealCarouselEnd()
   }
@@ -447,15 +441,4 @@ watch(currentUploadingId, (newId, oldId) => {
   flush: 'post',
 })
 
-watch(() => props.files.length, (newLength, oldLength) => {
-  if (newLength <= oldLength) return
-
-  const newestFile = props.files[newLength - 1]
-
-  if (!newestFile) return
-
-  revealCarouselItem('attachedStorageKey', newestFile.storageKey)
-}, {
-  flush: 'post',
-})
 </script>

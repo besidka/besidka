@@ -2,6 +2,12 @@ import type { Page } from '@playwright/test'
 import { devices, expect, test } from '@playwright/test'
 import { waitForHydration } from '../helpers/auth'
 
+declare global {
+  interface Window {
+    __carouselScrollCalls: number
+  }
+}
+
 const DEFAULT_MAX_STORAGE_BYTES = 20 * 1024 * 1024
 const DEFAULT_MAX_FILES_PER_MESSAGE = 20
 const DEFAULT_MAX_MESSAGE_FILES_BYTES = 1000 * 1024 * 1024
@@ -166,7 +172,7 @@ async function getCarouselMetrics(page: Page): Promise<CarouselMetrics> {
       '[data-uploading-id]',
     ) as HTMLElement | null
     const attachedItems = Array.from(
-      carousel.querySelectorAll('[data-attached-storage-key]'),
+      carousel.querySelectorAll('[data-testid="carousel-item"]'),
     ).filter((item): item is HTMLElement => {
       return item instanceof HTMLElement
     })
