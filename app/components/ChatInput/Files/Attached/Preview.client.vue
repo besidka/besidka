@@ -446,4 +446,16 @@ watch(currentUploadingId, (newId, oldId) => {
 }, {
   flush: 'post',
 })
+
+watch(() => props.files.length, (newLength, oldLength) => {
+  if (newLength <= oldLength) return
+
+  const newestFile = props.files[newLength - 1]
+
+  if (!newestFile) return
+
+  revealCarouselItem('attachedStorageKey', newestFile.storageKey)
+}, {
+  flush: 'post',
+})
 </script>

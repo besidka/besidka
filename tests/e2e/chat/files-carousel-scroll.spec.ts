@@ -174,9 +174,7 @@ async function getCarouselMetrics(page: Page): Promise<CarouselMetrics> {
     const removeAllButton = carousel.querySelector(
       '[data-testid="files-preview-detach-all"]',
     ) as HTMLElement | null
-    const removeAllItem = removeAllButton?.closest(
-      '[data-testid="carousel-item"]',
-    ) as HTMLElement | null
+    const removeAllItem = removeAllButton?.parentElement as HTMLElement | null
     const removeAllWidth = removeAllItem?.getBoundingClientRect().width || 0
     const effectiveRight = removeAllItem
       ? carouselRect.right - removeAllWidth
