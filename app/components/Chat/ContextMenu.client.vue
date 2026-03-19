@@ -1,13 +1,8 @@
 <template>
   <Teleport to="body">
-    <div
-      v-if="messageId"
-      class="fixed inset-0 z-[9998]"
-      @pointerdown="dismiss"
-      @contextmenu.prevent
-    />
     <ul
       v-if="messageId && menuPosition"
+      ref="menu"
       class="fixed z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-44 p-1"
       :style="menuPosition"
       @pointerdown.stop
@@ -36,6 +31,9 @@ const emit = defineEmits<{
   branch: [messageId: string]
   close: []
 }>()
+
+const menu = useTemplateRef<HTMLUListElement>('menu')
+let pointerDownTime = 0
 
 const menuPosition = computed(() => {
   if (!props.anchorEl || !import.meta.client) return null
@@ -74,11 +72,41 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
+function onDocumentPointerDown() {
+  pointerDownTime = Date.now()
+}
+
+function onDocumentPointerUp(event: PointerEvent) {
+  const elapsed = Date.now() - pointerDownTime
+
+  if (elapsed > 300) return
+
+  const target = event.target as HTMLElement
+
+  if (menu.value?.contains(target)) return
+
+  dismiss()
+}
+
+function onDocumentContextMenu(event: Event) {
+  const target = event.target as HTMLElement
+
+  if (props.anchorEl?.contains(target)) return
+
+  event.preventDefault()
+}
+
 onMounted(() => {
   document.addEventListener('keydown', onKeyDown)
+  document.addEventListener('pointerdown', onDocumentPointerDown)
+  document.addEventListener('pointerup', onDocumentPointerUp)
+  document.addEventListener('contextmenu', onDocumentContextMenu)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown)
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+  document.removeEventListener('pointerup', onDocumentPointerUp)
+  document.removeEventListener('contextmenu', onDocumentContextMenu)
 })
 </script>

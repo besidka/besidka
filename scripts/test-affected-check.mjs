@@ -94,7 +94,16 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/history/dropdown-touch.spec.ts',
   ]
 
+  const contextMenuTests = [
+    'tests/unit/components/Chat/Message.spec.ts',
+    'tests/e2e/chat/context-menu.spec.ts',
+  ]
+
   const testMappings = [
+    {
+      pattern: /^app\/components\/Chat\/(Message|ContextMenu\.client)\.vue$/,
+      tests: contextMenuTests,
+    },
     {
       pattern:
         /^app\/components\/Sidebar\/ThemeSwitcher\.vue$/,
