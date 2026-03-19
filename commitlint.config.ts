@@ -23,6 +23,7 @@ const Configuration: UserConfig = {
         'security',
         'legal',
         'kludge',
+        'ai',
       ],
     ],
     'subject-case': [
