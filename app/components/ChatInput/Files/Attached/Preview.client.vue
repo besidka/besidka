@@ -23,8 +23,10 @@
       <div
         v-for="file in files"
         :key="file.storageKey"
+        :data-file-name="file.name"
         :aria-label="`File ${file.name}`"
         class="carousel-item flex items-center gap-1 relative"
+        data-testid="carousel-item"
       >
         <div
           v-if="isImageFile(file.type)"
@@ -76,6 +78,8 @@
       <div
         v-for="uploadingFile in uploadingFilesArray"
         :key="uploadingFile.id"
+        :data-uploading-id="uploadingFile.id"
+        :data-file-name="uploadingFile.file.name"
         :aria-label="
           `File ${uploadingFile.file.name}, ${uploadingFile.progress}% uploaded`
         "
@@ -237,21 +241,24 @@
       <!-- Remove all button -->
       <div
         v-if="showRemoveAll"
-        class="carousel-item flex items-center"
+        ref="detachAllItemRef"
+        class="group sticky right-0 carousel-item flex items-center"
       >
         <button
-          class="indicator indicator-middle btn btn-error btn-soft size-16"
+          class="btn btn-error btn-soft size-16 flex flex-col gap-1 shadow-sm"
           aria-label="Detach all files"
           title="Detach all files"
           data-testid="files-preview-detach-all"
           @click="removeAllFiles"
         >
           <Icon
-            name="lucide:file-x-corner"
+            name="lucide:file-x"
             size="20"
           />
-          <span class="sr-only">Detach all files</span>
-          <span class="indicator-item badge badge-error badge-xs">
+          <span class="sr-only">
+            Detach all {{ totalFilesCount }} files
+          </span>
+          <span class="badge badge-error badge-xs group-hover:badge-soft transition-colors">
             {{ totalFilesCount }}
           </span>
         </button>
@@ -277,7 +284,8 @@ const emit = defineEmits<{
   retry: [fileId: string]
 }>()
 
-const carouselRef = useTemplateRef<HTMLDivElement>('carousel')
+const carouselRef = useTemplateRef<HTMLDivElement>('carouselRef')
+const detachAllItemRef = useTemplateRef<HTMLDivElement>('detachAllItemRef')
 
 const uploadingFilesArray = computed<UploadingFile[]>(() => {
   if (!props.uploadingFiles) {
@@ -315,11 +323,88 @@ const uploadStatusAnnouncement = computed<string>(() => {
   return ''
 })
 
-async function scrollToEnd() {
-  await nextTick()
+const currentUploadingId = computed<string | undefined>(() => {
+  return uploadingFilesArray.value.find((file) => {
+    return file.status === 'uploading'
+  })?.id
+})
 
-  carouselRef.value?.scrollTo({
-    left: Number.MAX_SAFE_INTEGER,
+async function waitForFrame() {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      resolve()
+    })
+  })
+}
+
+async function revealCarouselItem(uploadingId: string) {
+  await waitForFrame()
+
+  const carousel = carouselRef.value
+
+  if (!carousel) return
+
+  const item = Array.from(carousel.children).find((child) => {
+    return child instanceof HTMLElement
+      && child.dataset.uploadingId === uploadingId
+  })
+
+  if (!(item instanceof HTMLElement)) return
+
+  const carouselRect = carousel.getBoundingClientRect()
+  const removeAllItem = detachAllItemRef.value
+  const hasOverflow = carousel.scrollWidth > carousel.clientWidth
+  const removeAllWidth = removeAllItem && hasOverflow
+    ? removeAllItem.getBoundingClientRect().width
+    : 0
+  const effectiveRight = carouselRect.right - removeAllWidth
+  const itemRect = item.getBoundingClientRect()
+  const hiddenRight = itemRect.right - effectiveRight
+
+  if (hiddenRight <= 0) return
+
+  const carouselItems = Array.from(carousel.children).filter((child) => {
+    return child instanceof HTMLElement
+      && child !== removeAllItem
+  })
+  const firstVisibleIndex = carouselItems.findIndex((carouselItem) => {
+    const carouselItemRect = carouselItem.getBoundingClientRect()
+
+    return carouselItemRect.right > carouselRect.left
+  })
+  const stepItem = firstVisibleIndex >= 0
+    ? carouselItems[firstVisibleIndex + 1]
+    : undefined
+  const targetItem = stepItem instanceof HTMLElement
+    ? stepItem
+    : item
+
+  carousel.scrollTo({
+    left: Math.min(targetItem.offsetLeft, item.offsetLeft),
+    behavior: 'smooth',
+  })
+}
+
+async function revealCarouselEnd() {
+  await waitForFrame()
+
+  const carousel = carouselRef.value
+
+  if (!carousel) return
+
+  const removeAllItem = detachAllItemRef.value
+
+  if (!removeAllItem) return
+
+  const carouselRect = carousel.getBoundingClientRect()
+  const removeAllRect = removeAllItem.getBoundingClientRect()
+  const hiddenRight = removeAllRect.right - carouselRect.right
+
+  if (hiddenRight <= 0) return
+
+  carousel.scrollTo({
+    left: carousel.scrollWidth - carousel.clientWidth,
     behavior: 'smooth',
   })
 }
@@ -346,19 +431,14 @@ async function removeAllFiles() {
   emit('removeAll')
 }
 
-watch(() => uploadingFilesArray.value.length, (newCount, oldCount) => {
-  if (newCount > oldCount) {
-    scrollToEnd()
+watch(currentUploadingId, (newId, oldId) => {
+  if (newId) {
+    revealCarouselItem(newId)
+  } else if (oldId) {
+    revealCarouselEnd()
   }
 }, {
   flush: 'post',
 })
 
-watch(() => props.files.length, (newCount, oldCount) => {
-  if (newCount > oldCount) {
-    scrollToEnd()
-  }
-}, {
-  flush: 'post',
-})
 </script>

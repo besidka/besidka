@@ -382,6 +382,7 @@ Files are stored in Cloudflare R2 with metadata in D1. Key components:
     return null
   }
   ```
+- Do not use `void` before calling functions. Call the function directly.
 - Use early exit (guard clauses) to avoid deep nesting:
   ```typescript
   // Correct
