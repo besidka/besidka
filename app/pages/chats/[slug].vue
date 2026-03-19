@@ -31,6 +31,7 @@
         :data-message-id="m.id"
         :data-hide-content="shouldDisplayMessage(m.id) ? undefined : true"
         class="
+          relative
           [&[data-hide-content=true]_>_div]:hidden
           [&[data-hide-content=true]_+_div]:-top-3
           mt-3 first:mt-0
@@ -123,7 +124,6 @@
 </template>
 <script setup lang="ts">
 import { parseError } from 'evlog'
-import { useHaptics } from '~/composables/haptics'
 
 definePageMeta({
   layout: 'chat',
@@ -466,12 +466,10 @@ async function clearProjectContext() {
   })
 }
 
-const { hapticSoft, hapticRigid } = useHaptics()
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 
 function onMessageSelect(messageId: string) {
-  hapticRigid()
   selectedMessageId.value = messageId
 
   nuxtApp.callHook('chat:message-selected', messageId)
@@ -482,7 +480,6 @@ function onMessageSelect(messageId: string) {
 }
 
 function clearMessageSelection() {
-  hapticSoft()
   selectedMessageId.value = null
   selectedAnchorEl.value = null
 

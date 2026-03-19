@@ -89,6 +89,7 @@ function onContextMenu(event: MouseEvent) {
 
   if (props.anySelected) {
     event.preventDefault()
+    emit('select', props.messageId)
 
     return
   }
@@ -107,7 +108,7 @@ function onContextMenu(event: MouseEvent) {
 
 function onPointerDown(event: PointerEvent) {
   if (event.pointerType === 'mouse' || !props.messageId) return
-  if (props.anySelected) return
+  if (props.isSelected) return
 
   const messageId = props.messageId
 

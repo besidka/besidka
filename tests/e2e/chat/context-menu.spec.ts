@@ -64,20 +64,45 @@ async function longPress(locator: Locator): Promise<void> {
     throw new Error('Element has no bounding box')
   }
 
+  const page = locator.page()
   const x = box.x + box.width / 2
   const y = box.y + box.height / 2
 
-  await locator.dispatchEvent('pointerdown', {
-    pointerType: 'touch',
-    clientX: x,
-    clientY: y,
-  })
-  await locator.page().waitForTimeout(600)
-  await locator.dispatchEvent('pointerup', {
-    pointerType: 'touch',
-    clientX: x,
-    clientY: y,
-  })
+  await page.evaluate(
+    ({ x, y }) => {
+      const target = document.elementFromPoint(x, y)
+
+      if (!target) return
+
+      target.dispatchEvent(new PointerEvent('pointerdown', {
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        composed: true,
+      }))
+    },
+    { x, y },
+  )
+
+  await page.waitForTimeout(600)
+
+  await page.evaluate(
+    ({ x, y }) => {
+      const target = document.elementFromPoint(x, y)
+
+      if (!target) return
+
+      target.dispatchEvent(new PointerEvent('pointerup', {
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        composed: true,
+      }))
+    },
+    { x, y },
+  )
 }
 
 async function quickTap(locator: Locator): Promise<void> {
@@ -87,31 +112,54 @@ async function quickTap(locator: Locator): Promise<void> {
     throw new Error('Element has no bounding box')
   }
 
+  const page = locator.page()
   const x = box.x + box.width / 2
   const y = box.y + box.height / 2
 
-  await locator.dispatchEvent('pointerdown', {
-    pointerType: 'touch',
-    clientX: x,
-    clientY: y,
-  })
-  await locator.dispatchEvent('pointerup', {
-    pointerType: 'touch',
-    clientX: x,
-    clientY: y,
-  })
+  await page.evaluate(
+    ({ x, y }) => {
+      const target = document.elementFromPoint(x, y)
+
+      if (!target) return
+
+      target.dispatchEvent(new PointerEvent('pointerdown', {
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        composed: true,
+      }))
+      target.dispatchEvent(new PointerEvent('pointerup', {
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        composed: true,
+      }))
+    },
+    { x, y },
+  )
 }
 
 test.describe('chat context menu (touch)', () => {
   test.beforeEach(async ({ page }) => {
     await setupChatMocks(page)
-    await page.goto(`/chats/${chatSlug}`)
+    await page.goto('/chats/new')
 
     await page.waitForFunction(() => {
       const root = document.querySelector('#__nuxt') as any
 
       return Boolean(root?.__vue_app__)
     })
+
+    await page.evaluate((slug) => {
+      const root = document.querySelector('#__nuxt') as any
+      const router = root.__vue_app__.config.globalProperties.$router
+
+      return router.push(`/chats/${slug}`)
+    }, chatSlug)
+
+    await page.waitForSelector('[data-role="assistant"]')
   })
 
   test('long-press opens context menu', async ({ page }) => {
@@ -148,6 +196,26 @@ test.describe('chat context menu (touch)', () => {
     await expect(
       page.getByRole('button', { name: 'New chat from here' }),
     ).toBeHidden()
+  })
+
+  test('quick tap on selected message does not dismiss context menu', async ({ page }) => {
+    const assistantMessage = page
+      .locator('[data-role="assistant"]')
+      .first()
+
+    await expect(assistantMessage).toBeVisible()
+
+    await longPress(assistantMessage)
+
+    await expect(
+      page.getByRole('button', { name: 'New chat from here' }),
+    ).toBeVisible()
+
+    await quickTap(assistantMessage)
+
+    await expect(
+      page.getByRole('button', { name: 'New chat from here' }),
+    ).toBeVisible()
   })
 
   test('long-press on selected message does not reopen context menu', async ({ page }) => {

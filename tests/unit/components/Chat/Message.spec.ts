@@ -35,7 +35,7 @@ describe('Chat/Message', () => {
       expect(wrapper.emitted('select')).toEqual([['msg-1']])
     })
 
-    it('does not emit select when anySelected is true', async () => {
+    it('emits select after long-press when anySelected is true but isSelected is false', async () => {
       const wrapper = await mountSuspended(Message, {
         props: {
           role: 'assistant',
@@ -53,7 +53,7 @@ describe('Chat/Message', () => {
 
       vi.advanceTimersByTime(600)
 
-      expect(wrapper.emitted('select')).toBeUndefined()
+      expect(wrapper.emitted('select')).toEqual([['msg-1']])
     })
 
     it('does not emit select for mouse pointer type', async () => {
@@ -156,7 +156,7 @@ describe('Chat/Message', () => {
       wrapper.element.dispatchEvent(event)
 
       expect(preventDefaultSpy).toHaveBeenCalled()
-      expect(wrapper.emitted('select')).toBeUndefined()
+      expect(wrapper.emitted('select')).toEqual([['msg-1']])
     })
 
     it('does not emit select when clicking on an anchor element', async () => {
