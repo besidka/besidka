@@ -346,12 +346,12 @@ describe('useFileManager', () => {
           },
         )
 
-        expect(loadMoreCall?.[1]?.query?.offset).toBe(37)
+        expect(loadMoreCall?.[1]?.query?.offset).toBe(40)
       },
     )
 
     it(
-      'hasMore is false when files array is empty',
+      'hasMore is true when files array is empty but total is positive',
       async () => {
         const manager = useFileManager()
         await manager.fetchFiles(true)
@@ -359,7 +359,7 @@ describe('useFileManager', () => {
         manager.files.value = []
         manager.pagination.total = 100
 
-        expect(manager.hasMore.value).toBe(false)
+        expect(manager.hasMore.value).toBe(true)
       },
     )
 

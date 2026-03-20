@@ -23,10 +23,14 @@ export function useFileManager() {
     limit: 20,
     total: 0,
   })
+  const serverOffset = shallowRef<number>(0)
 
   const hasMore = computed(() => {
-    return files.value.length > 0
-      && files.value.length < pagination.total
+    if (files.value.length > 0) {
+      return serverOffset.value < pagination.total
+    }
+
+    return pagination.total > 0
   })
 
   const selectedCount = computed(() => selectedIds.value.size)
@@ -55,6 +59,7 @@ export function useFileManager() {
 
     if (reset) {
       pagination.offset = 0
+      serverOffset.value = 0
       files.value = []
       selectedIds.value.clear()
     }
@@ -79,8 +84,10 @@ export function useFileManager() {
 
       if (reset) {
         files.value = response.files
+        serverOffset.value = response.files.length
       } else {
         files.value.push(...response.files)
+        serverOffset.value += response.files.length
       }
 
       pagination.total = response.total
@@ -103,7 +110,7 @@ export function useFileManager() {
   async function loadMore() {
     if (!hasMore.value || isLoading.value) return
 
-    pagination.offset = files.value.length
+    pagination.offset = serverOffset.value
     await fetchFiles(false)
   }
 
@@ -141,6 +148,7 @@ export function useFileManager() {
 
     files.value = syncedFiles
     pagination.total = syncedTotal
+    serverOffset.value = syncedFiles.length
 
     if (files.value.length === 0) {
       pagination.offset = 0
@@ -344,6 +352,7 @@ export function useFileManager() {
     search.value = ''
     pagination.offset = 0
     pagination.total = 0
+    serverOffset.value = 0
   }
 
   const debouncedSearch = useDebounceFn(() => {
