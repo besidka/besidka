@@ -25,7 +25,8 @@ export function useFileManager() {
   })
 
   const hasMore = computed(() => {
-    return files.value.length < pagination.total
+    return files.value.length > 0
+      && files.value.length < pagination.total
   })
 
   const selectedCount = computed(() => selectedIds.value.size)
@@ -102,14 +103,8 @@ export function useFileManager() {
   async function loadMore() {
     if (!hasMore.value || isLoading.value) return
 
-    const previousOffset = pagination.offset
-
-    pagination.offset += pagination.limit
-    const isSuccess = await fetchFiles(false)
-
-    if (!isSuccess) {
-      pagination.offset = previousOffset
-    }
+    pagination.offset = files.value.length
+    await fetchFiles(false)
   }
 
   async function syncLoadedFiles() {
@@ -264,6 +259,10 @@ export function useFileManager() {
       }
 
       selectedIds.value.delete(id)
+
+      if (files.value.length === 0 && pagination.total > 0) {
+        await fetchFiles(true)
+      }
       selectedIds.value = new Set(selectedIds.value)
 
       useSuccessMessage('File deleted successfully')
@@ -300,6 +299,10 @@ export function useFileManager() {
       selectedIds.value = new Set()
 
       useSuccessMessage(`${ids.length} file(s) deleted successfully`)
+
+      if (files.value.length === 0 && pagination.total > 0) {
+        await fetchFiles(true)
+      }
 
       return true
     } catch (exception) {
