@@ -93,7 +93,7 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260316.1",
+		"@cloudflare/workers-types": "^4.20260317.1",
 		"@commitlint/cli": "^20.5.0",
 		"@commitlint/config-conventional": "^20.5.0",
 		"@commitlint/format": "^20.5.0",
@@ -111,15 +111,15 @@
 		"happy-dom": "^20.8.4",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",
-		"msw": "^2.12.11",
+		"msw": "^2.12.14",
 		"playwright-core": "^1.58.2",
 		"typescript": "^5.9.3",
-		"vite-plugin-eslint2": "^5.0.5",
+		"vite-plugin-eslint2": "^5.1.0",
 		"vitest": "^4.1.0",
 		"vitest-environment-nuxt": "^1.0.1",
-		"vue-tsc": "^3.2.5",
+		"vue-tsc": "^3.2.6",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.73.0"
+		"wrangler": "^4.76.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
