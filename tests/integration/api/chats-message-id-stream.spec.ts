@@ -6,38 +6,43 @@ const mocks = vi.hoisted(() => ({
   persistAssistantError: null as Record<string, any> | null,
 }))
 
-vi.mock('ai', () => ({
-  createUIMessageStream: ({ execute }: { execute: Function }) => {
-    const writer = {
-      write: vi.fn(),
-      merge: vi.fn(),
-    }
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
 
-    const ready = execute({ writer })
+  return {
+    ...actual,
+    createUIMessageStream: ({ execute }: { execute: Function }) => {
+      const writer = {
+        write: vi.fn(),
+        merge: vi.fn(),
+      }
 
-    return {
-      writer,
-      ready,
-    }
-  },
-  createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
-  streamText: vi.fn(() => ({
-    consumeStream: vi.fn(),
-    toUIMessageStream: vi.fn((options) => {
-      mocks.toUIMessageStreamOptions.push(options)
+      const ready = execute({ writer })
 
-      return {}
+      return {
+        writer,
+        ready,
+      }
+    },
+    createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
+    streamText: vi.fn(() => ({
+      consumeStream: vi.fn(),
+      toUIMessageStream: vi.fn((options) => {
+        mocks.toUIMessageStreamOptions.push(options)
+
+        return {}
+      }),
+    })),
+    smoothStream: vi.fn(() => undefined),
+    convertToModelMessages: vi.fn(async (messages) => {
+      if (mocks.failConvertToModelMessages) {
+        throw new Error('Failed to prepare model messages')
+      }
+
+      return messages
     }),
-  })),
-  smoothStream: vi.fn(() => undefined),
-  convertToModelMessages: vi.fn(async (messages) => {
-    if (mocks.failConvertToModelMessages) {
-      throw new Error('Failed to prepare model messages')
-    }
-
-    return messages
-  }),
-}))
+  }
+})
 
 vi.mock('evlog', () => ({
   useLogger: () => ({

@@ -2,6 +2,7 @@ import type { LanguageModel, UIMessage } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError } from 'evlog'
+import { createAILogger } from 'evlog/ai'
 import { eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -262,6 +263,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const { provider, model } = useChatProvider(userModel)
+  const ai = createAILogger(logger)
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools
@@ -367,7 +369,7 @@ export default defineEventHandler(async (event) => {
 
       try {
         result = streamText({
-          model: instance,
+          model: ai.wrap(instance),
           messages: resolveDataUrlsInModelMessages(
             await convertToModelMessages(messagesForAI),
           ),
