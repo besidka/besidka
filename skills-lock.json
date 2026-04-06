@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "ai-sdk": {
+      "source": "vercel/ai",
+      "sourceType": "github",
+      "computedHash": "27827bb6ca05cb6757953e507f46dc1c2bf44e48c1928eb3e49f2b675a168492"
+    },
     "analyze-logs": {
       "source": "hugorcd/evlog",
       "sourceType": "github",
