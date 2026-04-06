@@ -339,8 +339,11 @@ export default defineEventHandler(async (event) => {
       errorMessage: chatError.why,
     })
 
-    throw createError({
-      ...chatError,
+    return new Response(JSON.stringify(chatError), {
+      status: chatError.status || 500,
+      headers: {
+        'content-type': 'application/json',
+      },
     })
   }
 

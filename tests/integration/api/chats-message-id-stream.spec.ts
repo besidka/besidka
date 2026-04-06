@@ -359,4 +359,36 @@ describe('chat stream message ids', () => {
       status: 429,
     }))
   })
+
+  it('returns structured metadata for pre-stream provider errors', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useOpenAI', vi.fn(async () => {
+      throw Object.assign(new Error('Invalid OpenAI API key'), {
+        status: 401,
+        requestId: 'req_prestream_123',
+      })
+    }))
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    expect(response).toBeInstanceOf(Response)
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: 'provider-auth',
+      message: 'Invalid OpenAI API key',
+      providerRequestId: 'req_prestream_123',
+      status: 401,
+    }))
+  })
 })
