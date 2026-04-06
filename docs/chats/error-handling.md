@@ -111,6 +111,139 @@ The inline error text includes:
 
 In production on Cloudflare, `requestId` usually comes from `cf-ray`.
 
+## Cloudflare observability
+
+### What is logged
+
+Each request-wide `evlog` event now includes:
+- `requestId`
+- `requestMeta.cfRay`
+
+Chat requests that call the AI SDK also include an `ai` block with fields such as:
+- `ai.provider`
+- `ai.model`
+- `ai.inputTokens`
+- `ai.outputTokens`
+- `ai.totalTokens`
+- `ai.reasoningTokens`
+- `ai.finishReason`
+- `ai.responseId`
+- `ai.msToFirstChunk`
+- `ai.msToFinish`
+- `ai.tokensPerSecond`
+- `ai.toolCalls`
+
+### How to search by request ID
+
+In Cloudflare dashboard:
+
+1. Open `Workers & Pages`.
+2. Select the production Worker.
+3. Open `Observability`.
+4. Set the time range first.
+5. Use the search bar or Query Builder.
+
+Primary query:
+
+```txt
+requestId = "9e826a92fa133452"
+```
+
+Fallback query:
+
+```txt
+requestMeta.cfRay = "9e826a92fa133452"
+```
+
+### Useful chat failure queries
+
+Find one failed request:
+
+```txt
+requestId = "9e826a92fa133452" AND status >= 400
+```
+
+Find assistant persistence failures:
+
+```txt
+errorCode = "message-persist-failed"
+```
+
+Find assistant persistence failures for one request:
+
+```txt
+requestId = "9e826a92fa133452" AND errorCode = "message-persist-failed"
+```
+
+Find a specific chat stage:
+
+```txt
+requestId = "9e826a92fa133452" AND stage = "persist-assistant-message"
+```
+
+Find provider-side failures:
+
+```txt
+providerStatus >= 400
+```
+
+Find rate limit failures:
+
+```txt
+errorCode = "provider-rate-limit"
+```
+
+### Useful AI queries
+
+Find all requests that called Google:
+
+```txt
+ai.provider = "google"
+```
+
+Find all requests for one model:
+
+```txt
+ai.model = "gemini-3-flash"
+```
+
+Find slow model responses:
+
+```txt
+ai.msToFinish >= 10000
+```
+
+Find slow first token / first chunk:
+
+```txt
+ai.msToFirstChunk >= 2000
+```
+
+Find expensive requests by total tokens:
+
+```txt
+ai.totalTokens >= 20000
+```
+
+Find requests with tool calls:
+
+```txt
+ai.toolCalls:*
+```
+
+Find one request and inspect the AI details:
+
+```txt
+requestId = "9e826a92fa133452" AND ai.calls >= 1
+```
+
+### Operational notes
+
+- `requestId` search only works for requests after the request observability plugin was deployed.
+- Production logs are sampled at `1`, so request lookup should be reliable.
+- Production traces are sampled at `0.1`, so a request may exist in logs without having a trace.
+- Bot traffic such as `/admin` or `/wp-admin` will also appear in logs if it reaches the Worker.
+
 ## `/chats/test` support
 
 The `/chats/test` harness now supports an extra query parameter:
