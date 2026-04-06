@@ -390,7 +390,7 @@ export default defineEventHandler(async (event) => {
           errorMessage: chatError.why,
         })
 
-        throw new Error(JSON.stringify(chatError))
+        throw chatError
       }
 
       result.consumeStream()
@@ -462,7 +462,7 @@ export default defineEventHandler(async (event) => {
               errorMessage: chatError.why,
             })
 
-            throw new Error(JSON.stringify(chatError))
+            throw chatError
           }
         },
       }))

@@ -16,6 +16,22 @@ interface NormalizeChatErrorInput {
 export function normalizeChatError(
   input: NormalizeChatErrorInput,
 ): ChatErrorPayload {
+  const structuredError = getStructuredChatError(input.error)
+
+  if (structuredError) {
+    return {
+      code: input.code || structuredError.code,
+      message: input.message || structuredError.message,
+      why: input.why || structuredError.why,
+      fix: input.fix || structuredError.fix,
+      status: input.status ?? structuredError.status ?? 500,
+      requestId: structuredError.requestId
+        || (input.event ? getRequestId(input.event) : undefined),
+      providerId: input.providerId || structuredError.providerId,
+      providerRequestId: structuredError.providerRequestId,
+    }
+  }
+
   const providerStatus = getErrorStatus(input.error)
   const providerRequestId = getProviderRequestId(input.error)
   const requestId = input.event
@@ -199,10 +215,15 @@ function getProviderRequestId(error: unknown): string | undefined {
   const headers = asRecord(record?.responseHeaders || record?.headers)
   const nestedError = asRecord(record?.cause || record?.error)
 
+  if (isChatErrorPayload(record)) {
+    return record.providerRequestId
+  }
+
   return getHeaderValue(headers, 'x-request-id')
     || getHeaderValue(headers, 'request-id')
     || getHeaderValue(headers, 'openai-request-id')
     || getStringValue(nestedError?.requestId)
+    || getStringValue(record?.providerRequestId)
     || getStringValue(record?.requestId)
     || extractProviderRequestIdFromText(getErrorMessage(error))
 }
@@ -285,4 +306,67 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   }
 
   return value as Record<string, unknown>
+}
+
+function getStructuredChatError(
+  error: unknown,
+): ChatErrorPayload | undefined {
+  if (isChatErrorPayload(error)) {
+    return error
+  }
+
+  if (typeof error === 'string') {
+    return parseStructuredChatError(error)
+  }
+
+  if (error instanceof Error) {
+    return parseStructuredChatError(error.message)
+  }
+
+  const record = asRecord(error)
+
+  if (!record) {
+    return undefined
+  }
+
+  const nestedError = record.error
+
+  if (isChatErrorPayload(nestedError)) {
+    return nestedError
+  }
+
+  return parseStructuredChatError(getStringValue(record.message))
+}
+
+function parseStructuredChatError(
+  value: string | undefined,
+): ChatErrorPayload | undefined {
+  if (!value?.trim().startsWith('{')) {
+    return undefined
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    if (!isChatErrorPayload(parsed)) {
+      return undefined
+    }
+
+    return parsed
+  } catch (exception) {
+    void exception
+
+    return undefined
+  }
+}
+
+function isChatErrorPayload(value: unknown): value is ChatErrorPayload {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false
+  }
+
+  const record = value as Record<string, unknown>
+
+  return typeof record.code === 'string'
+    && typeof record.message === 'string'
 }

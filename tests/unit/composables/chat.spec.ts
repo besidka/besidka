@@ -182,4 +182,34 @@ describe('chat error helpers', () => {
       requestId: 'cf-ray-123',
     }))
   })
+
+  it('preserves structured chat payloads without downgrading their fields', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: {
+        code: 'message-persist-failed',
+        message: 'The response could not be saved.',
+        why: 'The response could not be stored in the database.',
+        fix: 'Retry the message. If it keeps failing, contact support.',
+        status: 500,
+        requestId: 'cf-ray-123',
+        providerId: 'openai',
+        providerRequestId: 'req_123',
+      },
+    })
+
+    expect(result).toEqual({
+      code: 'message-persist-failed',
+      message: 'The response could not be saved.',
+      why: 'The response could not be stored in the database.',
+      fix: 'Retry the message. If it keeps failing, contact support.',
+      status: 500,
+      requestId: 'cf-ray-123',
+      providerId: 'openai',
+      providerRequestId: 'req_123',
+    })
+  })
 })

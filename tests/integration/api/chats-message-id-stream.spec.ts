@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   failConvertToModelMessages: false,
   toUIMessageStreamOptions: [] as Array<Record<string, any>>,
+  persistAssistantError: null as Record<string, any> | null,
 }))
 
 vi.mock('ai', () => ({
@@ -61,6 +62,10 @@ vi.mock('evlog', () => ({
 vi.mock('~~/server/utils/files/assistant-files', () => ({
   sanitizeMessagesForModelContext: vi.fn(messages => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
+    if (mocks.persistAssistantError) {
+      throw mocks.persistAssistantError
+    }
+
     return input.parts
   }),
 }))
@@ -148,6 +153,7 @@ describe('chat stream message ids', () => {
     vi.clearAllMocks()
     mocks.failConvertToModelMessages = false
     mocks.toUIMessageStreamOptions.length = 0
+    mocks.persistAssistantError = null
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -390,5 +396,62 @@ describe('chat stream message ids', () => {
       providerRequestId: 'req_prestream_123',
       status: 401,
     }))
+  })
+
+  it('preserves structured metadata when assistant persistence fails', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    mocks.persistAssistantError = {
+      code: 'message-persist-failed',
+      message: 'The response could not be saved.',
+      why: 'The response could not be stored in the database.',
+      fix: 'Retry the message. If it keeps failing, contact support with the request ID.',
+      status: 500,
+      requestId: 'cf-ray-123',
+      providerId: 'openai',
+      providerRequestId: 'req_persist_123',
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const streamOptions = mocks.toUIMessageStreamOptions[0]
+
+    await expect(streamOptions.onFinish({
+      isAborted: false,
+      responseMessage: {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Hi' }],
+      },
+    })).rejects.toEqual(expect.objectContaining({
+      code: 'message-persist-failed',
+      requestId: 'cf-ray-123',
+      providerRequestId: 'req_persist_123',
+    }))
+
+    expect(JSON.parse(streamOptions.onError(mocks.persistAssistantError)))
+      .toEqual({
+        code: 'message-persist-failed',
+        message: 'The response could not be saved.',
+        why: 'The response could not be stored in the database.',
+        fix: 'Retry the message. If it keeps failing, contact support with the request ID.',
+        status: 500,
+        requestId: 'cf-ray-123',
+        providerId: 'openai',
+        providerRequestId: 'req_persist_123',
+      })
   })
 })
