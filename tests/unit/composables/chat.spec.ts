@@ -95,4 +95,42 @@ describe('chat error helpers', () => {
       }],
     }))
   })
+
+  it('preserves streamed source parts when adding an error', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{
+          type: 'source-url',
+          sourceId: 'source-1',
+          url: 'https://example.com',
+          title: 'Example',
+        }],
+      } as UIMessage,
+    ]
+
+    const nextMessages = applyChatErrorToMessages(messages, {
+      code: 'provider-unavailable',
+      message: 'The provider failed to process this request.',
+    })
+
+    expect(nextMessages).toHaveLength(3)
+    expect(nextMessages[1]).toEqual(messages[1])
+    expect(nextMessages[2]).toEqual(expect.objectContaining({
+      role: 'assistant',
+      parts: [{
+        type: 'text',
+        text: buildChatErrorMessage({
+          code: 'provider-unavailable',
+          message: 'The provider failed to process this request.',
+        }),
+      }],
+    }))
+  })
 })

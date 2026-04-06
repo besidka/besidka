@@ -476,25 +476,27 @@ async function insertMessageWithPublicId(input: {
   values: Omit<typeof schema.messages.$inferInsert, 'publicId'>
   publicId: string
 }) {
-  const insertedMessage = await input.db
-    .insert(schema.messages)
-    .values(input.values)
-    .returning({
-      id: schema.messages.id,
-      publicId: schema.messages.publicId,
-    })
-    .get()
+  return await input.db.transaction(async (tx) => {
+    const insertedMessage = await tx
+      .insert(schema.messages)
+      .values(input.values)
+      .returning({
+        id: schema.messages.id,
+        publicId: schema.messages.publicId,
+      })
+      .get()
 
-  if (insertedMessage.publicId !== input.publicId) {
-    await input.db.update(schema.messages)
-      .set({ publicId: input.publicId })
-      .where(eq(schema.messages.id, insertedMessage.id))
-  }
+    if (insertedMessage.publicId !== input.publicId) {
+      await tx.update(schema.messages)
+        .set({ publicId: input.publicId })
+        .where(eq(schema.messages.id, insertedMessage.id))
+    }
 
-  return {
-    ...insertedMessage,
-    publicId: input.publicId,
-  }
+    return {
+      ...insertedMessage,
+      publicId: input.publicId,
+    }
+  })
 }
 
 function hasSameParts(

@@ -97,6 +97,14 @@ function createDb() {
   const insertCall = vi.fn(() => ({
     values: insertValues,
   }))
+  const transaction = vi.fn(async (callback) => {
+    return await callback({
+      insert: insertCall,
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    })
+  })
 
   insertValues.mockImplementation(() => ({
     returning: () => ({
@@ -117,6 +125,7 @@ function createDb() {
         },
       },
       insert: insertCall,
+      transaction,
       update: vi.fn(() => {
         return {
           set: updateSet,
@@ -125,6 +134,7 @@ function createDb() {
     },
     insertValues,
     insertGet,
+    transaction,
     updateSet,
     updateWhere,
   }
@@ -185,7 +195,7 @@ describe('chat stream message ids', () => {
 
   it('uses a pre-generated ULID as the streamed assistant message id', async () => {
     const handler = await getHandler()
-    const { db, insertValues, updateSet, updateWhere } = createDb()
+    const { db, insertValues, transaction, updateSet, updateWhere } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
@@ -221,6 +231,7 @@ describe('chat stream message ids', () => {
       tools: [],
       reasoning: 'off',
     }))
+    expect(transaction).toHaveBeenCalled()
     expect(updateSet).toHaveBeenCalledWith({ publicId: generatedId })
     expect(updateWhere).toHaveBeenCalled()
   })
@@ -288,7 +299,7 @@ describe('chat stream message ids', () => {
 
   it('does not send publicId during the initial user message insert', async () => {
     const handler = await getHandler()
-    const { db, insertValues, updateSet } = createDb()
+    const { db, insertValues, transaction, updateSet } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
@@ -308,6 +319,7 @@ describe('chat stream message ids', () => {
       role: 'user',
       parts: [{ type: 'text', text: 'Hello' }],
     }))
+    expect(transaction).toHaveBeenCalled()
     expect(insertValues).not.toHaveBeenCalledWith(expect.objectContaining({
       publicId: 'message-1',
     }))

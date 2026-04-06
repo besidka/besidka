@@ -81,6 +81,27 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }) || false
 }
 
+export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
+  if (!message || message.role !== 'assistant') {
+    return false
+  }
+
+  if (!message.parts?.length) {
+    return false
+  }
+
+  return message.parts.some((part) => {
+    if (
+      part.type === 'text'
+      || part.type === 'reasoning'
+    ) {
+      return Boolean(part.text?.trim().length)
+    }
+
+    return true
+  })
+}
+
 export function applyChatErrorToMessages(
   messages: UIMessage[],
   error: ChatErrorPayload,
@@ -100,7 +121,7 @@ export function applyChatErrorToMessages(
     createdAt: new Date(),
   } as UIMessage
 
-  if (!hasVisibleAssistantContent(lastMessage)) {
+  if (!hasMeaningfulAssistantParts(lastMessage)) {
     if (lastMessage?.role === 'assistant') {
       nextMessages[nextMessages.length - 1] = {
         ...lastMessage,
