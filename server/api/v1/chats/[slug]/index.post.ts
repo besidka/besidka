@@ -476,30 +476,20 @@ export default defineEventHandler(async (event) => {
 
 async function insertMessageWithPublicId(input: {
   db: ReturnType<typeof useDb>
-  values: Omit<typeof schema.messages.$inferInsert, 'publicId'>
+  values: typeof schema.messages.$inferInsert
   publicId: string
 }) {
-  return await input.db.transaction(async (tx) => {
-    const insertedMessage = await tx
-      .insert(schema.messages)
-      .values(input.values)
-      .returning({
-        id: schema.messages.id,
-        publicId: schema.messages.publicId,
-      })
-      .get()
-
-    if (insertedMessage.publicId !== input.publicId) {
-      await tx.update(schema.messages)
-        .set({ publicId: input.publicId })
-        .where(eq(schema.messages.id, insertedMessage.id))
-    }
-
-    return {
-      ...insertedMessage,
+  return await input.db
+    .insert(schema.messages)
+    .values({
+      ...input.values,
       publicId: input.publicId,
-    }
-  })
+    })
+    .returning({
+      id: schema.messages.id,
+      publicId: schema.messages.publicId,
+    })
+    .get()
 }
 
 function hasSameParts(
