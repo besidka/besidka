@@ -32,6 +32,11 @@ describe('chats new page', () => {
   beforeEach(() => {
     resetMockNuxtState()
     installMockNuxtState()
+    vi.stubGlobal('history', {
+      state: null,
+      pushState: vi.fn(),
+      replaceState: vi.fn(),
+    })
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     vi.stubGlobal('useRoute', () => route)
@@ -51,6 +56,7 @@ describe('chats new page', () => {
 
     replace.mockReset()
     resetMockNuxtState()
+    vi.unstubAllGlobals()
   })
 
   it('ignores stale project lookups after the user selects another project', async () => {
