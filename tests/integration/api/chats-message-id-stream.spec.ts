@@ -201,7 +201,7 @@ describe('chat stream message ids', () => {
 
   it('uses a pre-generated ULID as the streamed assistant message id', async () => {
     const handler = await getHandler()
-    const { db, insertValues, transaction, updateSet, updateWhere } = createDb()
+    const { db, insertValues } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
@@ -236,10 +236,8 @@ describe('chat stream message ids', () => {
       parts: [{ type: 'text', text: 'Hi' }],
       tools: [],
       reasoning: 'off',
+      publicId: generatedId,
     }))
-    expect(transaction).toHaveBeenCalled()
-    expect(updateSet).toHaveBeenCalledWith({ publicId: generatedId })
-    expect(updateWhere).toHaveBeenCalled()
   })
 
   it('does not insert assistant row when the stream is aborted', async () => {
@@ -303,9 +301,9 @@ describe('chat stream message ids', () => {
     expect(assistantInserts).toHaveLength(0)
   })
 
-  it('does not send publicId during the initial user message insert', async () => {
+  it('sends publicId during the initial user message insert', async () => {
     const handler = await getHandler()
-    const { db, insertValues, transaction, updateSet } = createDb()
+    const { db, insertValues } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
@@ -324,12 +322,8 @@ describe('chat stream message ids', () => {
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
       role: 'user',
       parts: [{ type: 'text', text: 'Hello' }],
-    }))
-    expect(transaction).toHaveBeenCalled()
-    expect(insertValues).not.toHaveBeenCalledWith(expect.objectContaining({
       publicId: 'message-1',
     }))
-    expect(updateSet).toHaveBeenCalledWith({ publicId: 'message-1' })
   })
 
   it('serializes provider errors for the UI stream', async () => {

@@ -301,9 +301,10 @@ describe('chat duplicate message detection', () => {
       expect.objectContaining({
         role: 'user',
         parts: [{ type: 'text', text: 'Different' }],
+        publicId: 'new-message-id',
       }),
     )
-    expect(updateSet).toHaveBeenCalledWith({
+    expect(updateSet).not.toHaveBeenCalledWith({
       publicId: 'new-message-id',
     })
   })

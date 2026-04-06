@@ -62,8 +62,21 @@
                 && waitingForDimensions,
             }"
           >
+            <div
+              v-if="isChatErrorTextPart(part)"
+              class="chat-markdown"
+            >
+              <div class="alert alert-error alert-soft flex flex-col items-start gap-0 mt-2">
+                <p
+                  v-for="(line, lineIndex) in buildChatErrorLines(part.error)"
+                  :key="`chat-error-${m.id}-part-${index}-line-${lineIndex}`"
+                >
+                  {{ line }}
+                </p>
+              </div>
+            </div>
             <MDCCached
-              v-if="part.type === 'text'"
+              v-else-if="part.type === 'text'"
               :key="`mdc-${m.id}-part-${index}`"
               :value="m.role === 'user'
                 ? $sanitizeHtml(part.text)

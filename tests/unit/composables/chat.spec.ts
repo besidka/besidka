@@ -2,7 +2,9 @@ import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 import {
   applyChatErrorToMessages,
+  buildChatErrorLines,
   buildChatErrorMessage,
+  isChatErrorTextPart,
   normalizeChatClientError,
 } from '../../../app/composables/chat'
 
@@ -57,6 +59,12 @@ describe('chat error helpers', () => {
           why: 'The upstream model provider returned an internal error.',
           requestId: 'cf-ray-123',
         }),
+        error: {
+          code: 'provider-unavailable',
+          message: 'The provider failed to process this request.',
+          why: 'The upstream model provider returned an internal error.',
+          requestId: 'cf-ray-123',
+        },
       }],
     }))
   })
@@ -93,6 +101,11 @@ describe('chat error helpers', () => {
             message: 'The provider is rate limiting requests right now.',
             fix: 'Wait a moment and retry the message.',
           }),
+          error: {
+            code: 'provider-rate-limit',
+            message: 'The provider is rate limiting requests right now.',
+            fix: 'Wait a moment and retry the message.',
+          },
         },
       ],
     }))
@@ -138,9 +151,44 @@ describe('chat error helpers', () => {
             code: 'provider-unavailable',
             message: 'The provider failed to process this request.',
           }),
+          error: {
+            code: 'provider-unavailable',
+            message: 'The provider failed to process this request.',
+          },
         },
       ],
     }))
+  })
+
+  it('builds chat error lines in the rendered order', () => {
+    expect(buildChatErrorLines({
+      code: 'message-persist-failed',
+      message: 'The response could not be saved.',
+      why: 'The response could not be stored in the database.',
+      fix: 'Retry the message. If it keeps failing, contact support with the request ID.',
+      requestId: 'cf-ray-123',
+    })).toEqual([
+      'The response could not be saved.',
+      'The response could not be stored in the database.',
+      'Retry the message. If it keeps failing, contact support with the request ID.',
+      'Request ID: cf-ray-123',
+    ])
+  })
+
+  it('identifies text parts that carry chat error metadata', () => {
+    expect(isChatErrorTextPart({
+      type: 'text',
+      text: 'The response could not be saved.',
+      error: {
+        code: 'message-persist-failed',
+        message: 'The response could not be saved.',
+      },
+    } as UIMessage['parts'][number])).toBe(true)
+
+    expect(isChatErrorTextPart({
+      type: 'text',
+      text: 'Plain text',
+    } as UIMessage['parts'][number])).toBe(false)
   })
 
   it('preserves explicit setup errors instead of replacing them with generic text', async () => {

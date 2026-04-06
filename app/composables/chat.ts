@@ -20,6 +20,10 @@ export interface ProcessedMessage {
   sourceUrlParts: SourceUrlUIPart[]
 }
 
+export interface ChatErrorTextPart extends TextUIPart {
+  error: ChatErrorPayload
+}
+
 export function normalizeChatClientError(error: unknown): ChatErrorPayload {
   if (error instanceof Error && error.message.trim().startsWith('{')) {
     try {
@@ -44,7 +48,7 @@ export function normalizeChatClientError(error: unknown): ChatErrorPayload {
   }
 }
 
-export function buildChatErrorMessage(error: ChatErrorPayload): string {
+export function buildChatErrorLines(error: ChatErrorPayload): string[] {
   const lines = [error.message]
 
   if (error.why) {
@@ -61,7 +65,27 @@ export function buildChatErrorMessage(error: ChatErrorPayload): string {
     lines.push(`Request ID: ${error.requestId}`)
   }
 
-  return lines.join('\n\n')
+  return lines
+}
+
+export function buildChatErrorMessage(error: ChatErrorPayload): string {
+  return buildChatErrorLines(error).join('\n\n')
+}
+
+export function isChatErrorTextPart(
+  part: UIMessage['parts'][number] | undefined,
+): part is ChatErrorTextPart {
+  if (!part || part.type !== 'text') {
+    return false
+  }
+
+  const record = part as Record<string, unknown>
+
+  return Boolean(
+    record.error
+    && typeof record.error === 'object'
+    && typeof (record.error as ChatErrorPayload).message === 'string',
+  )
 }
 
 export function hasVisibleAssistantContent(message: UIMessage | undefined) {
@@ -109,15 +133,15 @@ export function applyChatErrorToMessages(
   const nextMessages = [...messages]
   const errorText = buildChatErrorMessage(error)
   const lastMessage = nextMessages[nextMessages.length - 1]
+  const errorPart = {
+    type: 'text',
+    text: errorText,
+    error,
+  } as unknown as TextUIPart
   const errorMessage: UIMessage = {
     id: ulid(),
     role: 'assistant',
-    parts: [
-      {
-        type: 'text',
-        text: errorText,
-      },
-    ],
+    parts: [errorPart],
     createdAt: new Date(),
   } as UIMessage
 
