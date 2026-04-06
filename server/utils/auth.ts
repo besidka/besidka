@@ -20,6 +20,7 @@ function createAuth() {
   const db = useDb()
   const kv = useKV()
   const dataKey = 'auth'
+  const rateLimitTtl = 60
 
   const allowedHosts = getAllowedHosts(config.public.baseUrl)
 
@@ -48,6 +49,32 @@ function createAuth() {
       cookieCache: {
         enabled: true,
         maxAge: 60 * 5, // 5 minutes cache
+      },
+    },
+    rateLimit: {
+      customStorage: {
+        async get(key) {
+          const value = await kv.get(`${dataKey}:rate-limit:${key}`)
+
+          if (!value) {
+            return null
+          }
+
+          try {
+            return JSON.parse(value)
+          } catch {
+            return null
+          }
+        },
+        async set(key, value) {
+          await kv.put(
+            `${dataKey}:rate-limit:${key}`,
+            JSON.stringify(value),
+            {
+              expirationTtl: rateLimitTtl,
+            },
+          )
+        },
       },
     },
     advanced: {
