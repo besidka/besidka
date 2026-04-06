@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "ai-sdk": {
+      "source": "vercel/ai",
+      "sourceType": "github",
+      "computedHash": "27827bb6ca05cb6757953e507f46dc1c2bf44e48c1928eb3e49f2b675a168492"
+    },
     "analyze-logs": {
       "source": "hugorcd/evlog",
       "sourceType": "github",
@@ -19,7 +24,7 @@
     "cloudflare": {
       "source": "cloudflare/skills",
       "sourceType": "github",
-      "computedHash": "02ef72b4906d295d03da15d52357babdef06a762f0374b85c89c73c9b22a7bad"
+      "computedHash": "571ac30959723f3d2fc38fddf751a53dc99408723cf5220f02c7c206c67fb65b"
     },
     "create-auth-skill": {
       "source": "better-auth/skills",
@@ -134,7 +139,7 @@
     "wrangler": {
       "source": "cloudflare/skills",
       "sourceType": "github",
-      "computedHash": "cd0ac8f97a2f54d19166acfd380fca8236db5e9f37d3b2066f713967e2673d36"
+      "computedHash": "32d0a62081ce8743cf51b2a5bae364a56fae09b99af86986b3e7de068ecd4d8f"
     }
   }
 }
