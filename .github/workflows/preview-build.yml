@@ -20,6 +20,7 @@ on:
       - 'commitlint.config.ts'
       - '.*rc'
       - '*.md'
+      - 'skills-lock.json'
 
 concurrency:
   group: preview-build-${{ github.event.pull_request.number }}
