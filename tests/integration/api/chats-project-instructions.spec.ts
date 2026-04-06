@@ -34,6 +34,20 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: vi.fn(),
   }),
+  createError: (input: {
+    status?: number
+    message?: string
+    why?: string
+    fix?: string
+    code?: string
+    providerRequestId?: string
+  }) => {
+    const exception = new Error(input.message || 'Error')
+
+    Object.assign(exception, input)
+
+    return exception
+  },
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
@@ -63,6 +77,64 @@ function createMessage(text: string) {
         text,
       },
     ],
+  }
+}
+
+function createDb(chat: {
+  id: string
+  projectId: string | null
+  project: {
+    id: string
+    name: string
+    instructions: string | null
+    memory: string | null
+    memoryStatus: string
+  } | null
+  messages: unknown[]
+}) {
+  const insertValues = vi.fn()
+  const insertGet = vi.fn(async () => ({
+    id: 'message-db-id',
+    publicId: 'db-generated-public-id',
+  }))
+  const updateWhere = vi.fn(async () => undefined)
+  const updateSet = vi.fn(() => ({
+    where: updateWhere,
+  }))
+  const insertCall = vi.fn(() => ({
+    values: insertValues,
+  }))
+  const transaction = vi.fn(async (callback) => {
+    return await callback({
+      insert: insertCall,
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    })
+  })
+
+  insertValues.mockImplementation(() => ({
+    returning: () => ({
+      get: insertGet,
+    }),
+  }))
+
+  return {
+    db: {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => chat),
+        },
+      },
+      insert: insertCall,
+      transaction,
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    },
+    insertValues,
+    transaction,
+    updateSet,
   }
 }
 
@@ -123,35 +195,18 @@ describe('chat project instructions', () => {
 
   it('prepends project instructions to model context without persisting them', async () => {
     const handler = await getHandler()
-    const insertValues = vi.fn(async () => undefined)
-    const updateWhere = vi.fn(async () => undefined)
-    const updateSet = vi.fn(() => ({
-      where: updateWhere,
-    }))
-    const db = {
-      query: {
-        chats: {
-          findFirst: vi.fn(async () => ({
-            id: 'chat-1',
-            projectId: 'project-1',
-            project: {
-              id: 'project-1',
-              name: 'Roadmap',
-              instructions: 'Stay focused on milestone decisions',
-              memory: null,
-              memoryStatus: 'idle',
-            },
-            messages: [],
-          })),
-        },
+    const { db, insertValues } = createDb({
+      id: 'chat-1',
+      projectId: 'project-1',
+      project: {
+        id: 'project-1',
+        name: 'Roadmap',
+        instructions: 'Stay focused on milestone decisions',
+        memory: null,
+        memoryStatus: 'idle',
       },
-      insert: vi.fn(() => ({
-        values: insertValues,
-      })),
-      update: vi.fn(() => ({
-        set: updateSet,
-      })),
-    }
+      messages: [],
+    })
 
     vi.stubGlobal('useDb', () => db)
 
@@ -193,32 +248,18 @@ describe('chat project instructions', () => {
 
   it('does not prepend a system message when the project has no instructions', async () => {
     const handler = await getHandler()
-    const db = {
-      query: {
-        chats: {
-          findFirst: vi.fn(async () => ({
-            id: 'chat-1',
-            projectId: 'project-1',
-            project: {
-              id: 'project-1',
-              name: 'Roadmap',
-              instructions: null,
-              memory: null,
-              memoryStatus: 'idle',
-            },
-            messages: [],
-          })),
-        },
+    const { db } = createDb({
+      id: 'chat-1',
+      projectId: 'project-1',
+      project: {
+        id: 'project-1',
+        name: 'Roadmap',
+        instructions: null,
+        memory: null,
+        memoryStatus: 'idle',
       },
-      insert: vi.fn(() => ({
-        values: vi.fn(async () => undefined),
-      })),
-      update: vi.fn(() => ({
-        set: vi.fn(() => ({
-          where: vi.fn(async () => undefined),
-        })),
-      })),
-    }
+      messages: [],
+    })
 
     vi.stubGlobal('useDb', () => db)
 
@@ -242,32 +283,18 @@ describe('chat project instructions', () => {
 
   it('prepends ready project memory to model context', async () => {
     const handler = await getHandler()
-    const db = {
-      query: {
-        chats: {
-          findFirst: vi.fn(async () => ({
-            id: 'chat-1',
-            projectId: 'project-1',
-            project: {
-              id: 'project-1',
-              name: 'Roadmap',
-              instructions: null,
-              memory: 'User prefers milestone-based updates.',
-              memoryStatus: 'ready',
-            },
-            messages: [],
-          })),
-        },
+    const { db } = createDb({
+      id: 'chat-1',
+      projectId: 'project-1',
+      project: {
+        id: 'project-1',
+        name: 'Roadmap',
+        instructions: null,
+        memory: 'User prefers milestone-based updates.',
+        memoryStatus: 'ready',
       },
-      insert: vi.fn(() => ({
-        values: vi.fn(async () => undefined),
-      })),
-      update: vi.fn(() => ({
-        set: vi.fn(() => ({
-          where: vi.fn(async () => undefined),
-        })),
-      })),
-    }
+      messages: [],
+    })
 
     vi.stubGlobal('useDb', () => db)
 
