@@ -1,24 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('ai', () => ({
-  createUIMessageStream: ({ execute }: { execute: Function }) => {
-    const writer = { write: vi.fn(), merge: vi.fn() }
-    const ready = execute({ writer })
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
 
-    return { writer, ready }
-  },
-  createUIMessageStreamResponse: (
-    { stream }: { stream: unknown },
-  ) => stream,
-  streamText: vi.fn(() => ({
-    consumeStream: vi.fn(),
-    toUIMessageStream: vi.fn(() => ({})),
-  })),
-  smoothStream: vi.fn(() => undefined),
-  convertToModelMessages: vi.fn(
-    async (messages: unknown) => messages,
-  ),
-}))
+  return {
+    ...actual,
+    createUIMessageStream: ({ execute }: { execute: Function }) => {
+      const writer = { write: vi.fn(), merge: vi.fn() }
+      const ready = execute({ writer })
+
+      return { writer, ready }
+    },
+    createUIMessageStreamResponse: (
+      { stream }: { stream: unknown },
+    ) => stream,
+    streamText: vi.fn(() => ({
+      consumeStream: vi.fn(),
+      toUIMessageStream: vi.fn(() => ({})),
+    })),
+    smoothStream: vi.fn(() => undefined),
+    convertToModelMessages: vi.fn(
+      async (messages: unknown) => messages,
+    ),
+  }
+})
 
 vi.mock('evlog', () => ({
   useLogger: () => ({ set: vi.fn() }),

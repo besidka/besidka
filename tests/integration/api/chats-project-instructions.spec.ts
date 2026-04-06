@@ -6,29 +6,34 @@ const mocks = vi.hoisted(() => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
 }))
 
-vi.mock('ai', () => ({
-  createUIMessageStream: ({ execute }: { execute: Function }) => {
-    execute({
-      writer: {
-        write: vi.fn(),
-        merge: vi.fn(),
-      },
-    })
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>()
 
-    return { stream: true }
-  },
-  createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
-  streamText: vi.fn((input) => {
-    mocks.streamTextCalls.push(input)
+  return {
+    ...actual,
+    createUIMessageStream: ({ execute }: { execute: Function }) => {
+      execute({
+        writer: {
+          write: vi.fn(),
+          merge: vi.fn(),
+        },
+      })
 
-    return {
-      consumeStream: vi.fn(),
-      toUIMessageStream: vi.fn(() => ({})),
-    }
-  }),
-  smoothStream: vi.fn(() => undefined),
-  convertToModelMessages: vi.fn(async messages => messages),
-}))
+      return { stream: true }
+    },
+    createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
+    streamText: vi.fn((input) => {
+      mocks.streamTextCalls.push(input)
+
+      return {
+        consumeStream: vi.fn(),
+        toUIMessageStream: vi.fn(() => ({})),
+      }
+    }),
+    smoothStream: vi.fn(() => undefined),
+    convertToModelMessages: vi.fn(async messages => messages),
+  }
+})
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
