@@ -202,4 +202,68 @@ describe('test chat endpoints', () => {
       statusMessage: 'Invalid request query',
     })
   })
+
+  it('returns a structured pre-stream error response when error=provider-auth', async () => {
+    const handler = await getPostHandler()
+    const response = await handler({
+      query: {
+        scenario: 'short',
+        messages: '1',
+        effort: 'off',
+        error: 'provider-auth',
+      },
+      node: {
+        req: {
+          headers: {
+            'cf-ray': 'cf-ray-test-123',
+          },
+        },
+      },
+    } as any)
+
+    expect(response).toBeInstanceOf(Response)
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: 'provider-auth',
+      requestId: 'cf-ray-test-123',
+    }))
+  })
+
+  it('streams a structured error chunk when error=provider-unavailable', async () => {
+    const handler = await getPostHandler()
+
+    await handler({
+      query: {
+        scenario: 'short',
+        messages: '1',
+        effort: 'off',
+        error: 'provider-unavailable',
+      },
+      node: {
+        req: {
+          headers: {
+            'cf-ray': 'cf-ray-test-456',
+          },
+        },
+      },
+    } as any)
+
+    await mocks.capturedChunks.at(-1)?.ready
+
+    const lastCapture = mocks.capturedChunks.at(-1)!
+    const sourceChunk = lastCapture.chunks.find((chunk: any) => {
+      return chunk.type === 'source-url'
+    })
+    const errorChunk = lastCapture.chunks.find((chunk: any) => {
+      return chunk.type === 'error'
+    })
+
+    expect(sourceChunk).toEqual(expect.objectContaining({
+      sourceId: 'test-source-1',
+    }))
+    expect(JSON.parse(errorChunk.errorText)).toEqual(expect.objectContaining({
+      code: 'provider-unavailable',
+      requestId: 'cf-ray-test-456',
+    }))
+  })
 })

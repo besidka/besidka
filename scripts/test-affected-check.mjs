@@ -65,9 +65,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
   ]
   const chatStreamBranchTests = [
+    'tests/unit/composables/chat.spec.ts',
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
+  ]
+  const chatTestEndpointTests = [
+    'tests/integration/api/chats-test-endpoint.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/HistoryPageShell.spec.ts',
@@ -96,6 +100,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const contextMenuTests = [
+    'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
   ]
@@ -150,6 +155,14 @@ export function getAffectedTests(changedFiles) {
       tests: chatStreamBranchTests,
     },
     {
+      pattern: /^app\/composables\/chat-test\.ts$/,
+      tests: chatTestEndpointTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/errors\.ts$/,
+      tests: chatStreamBranchTests,
+    },
+    {
       pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
       tests: historyProjectsTests,
     },
@@ -178,6 +191,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...historyProjectsTests,
         ...chatStreamBranchTests,
+        ...chatTestEndpointTests,
       ],
     },
     {
@@ -211,6 +225,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^shared\/types\/files\.d\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^shared\/types\/chat-errors\.d\.ts$/,
+      tests: chatStreamBranchTests,
+    },
+    {
+      pattern: /^shared\/utils\/chat-test-errors\.ts$/,
+      tests: chatTestEndpointTests,
     },
     {
       pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly|chat-shares)\.ts$/,

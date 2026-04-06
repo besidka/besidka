@@ -15,7 +15,11 @@
 	],
 	"observability": {
 		"enabled": true,
-		"head_sampling_rate": 1
+		"head_sampling_rate": 1,
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 1
+		}
 	},
 	"placement": {
 		"mode": "smart"
@@ -72,6 +76,14 @@
 				"crons": [
 					"0 * * * *"
 				]
+			},
+			"observability": {
+				"enabled": true,
+				"head_sampling_rate": 0.1,
+				"traces": {
+					"enabled": true,
+					"head_sampling_rate": 0.1
+				}
 			},
 			"d1_databases": [
 				{

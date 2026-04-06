@@ -1,10 +1,16 @@
 import type { UIMessageChunk } from 'ai'
-
+import type { H3Event } from 'h3'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
 } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import {
+  chatTestErrorIds,
+  chatTestErrors,
+  toChatTestErrorPayload,
+} from '#shared/utils/chat-test-errors'
+import { getRequestHeader } from 'h3'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 
 type Scenario = 'short' | 'long' | 'reasoning'
@@ -164,6 +170,25 @@ function getChunksForScenario(
   }
 }
 
+function getErrorChunks(errorText: string): UIMessageChunk[] {
+  return [
+    {
+      type: 'source-url',
+      sourceId: 'test-source-1',
+      url: 'https://example.com/test-source',
+      title: 'Test source',
+    },
+    ...buildTextChunks(
+      'This is partial assistant output before the simulated failure.',
+      'test-text-error',
+    ),
+    {
+      type: 'error',
+      errorText,
+    },
+  ]
+}
+
 export default defineEventHandler(async (event) => {
   const isCiEnvironment: boolean = process.env.CI === 'true'
   const isTestChatEndpointEnabled: boolean = import.meta.dev || isCiEnvironment
@@ -181,6 +206,7 @@ export default defineEventHandler(async (event) => {
       .default('short'),
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
+    error: z.enum(chatTestErrorIds).optional(),
   }).safeParse)
 
   if (query.error) {
@@ -191,10 +217,30 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const chunks = getChunksForScenario(
-    query.data.scenario,
-    query.data.effort,
-  )
+  const requestId = getRequestId(event)
+  const errorId = query.data.error
+
+  if (errorId && chatTestErrors[errorId].phase === 'prestream') {
+    return new Response(JSON.stringify(toChatTestErrorPayload(
+      errorId,
+      requestId,
+    )), {
+      status: chatTestErrors[errorId].status,
+      headers: {
+        'content-type': 'application/json',
+      },
+    })
+  }
+
+  const chunks = errorId
+    ? getErrorChunks(JSON.stringify(toChatTestErrorPayload(
+      errorId,
+      requestId,
+    )))
+    : getChunksForScenario(
+      query.data.scenario,
+      query.data.effort,
+    )
 
   const stream = createUIMessageStream({
     execute({ writer }) {
@@ -237,4 +283,16 @@ export default defineEventHandler(async (event) => {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function getRequestId(event: H3Event): string {
+  try {
+    return getRequestHeader(event as any, 'cf-ray')
+      || getRequestHeader(event as any, 'x-request-id')
+      || 'test-request-id'
+  } catch (exception) {
+    void exception
+
+    return 'test-request-id'
+  }
 }

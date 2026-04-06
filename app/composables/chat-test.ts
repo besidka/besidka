@@ -1,5 +1,6 @@
 import type { Chat } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
 import type { Ref } from 'vue'
 
 export function useChatTest(
@@ -19,11 +20,18 @@ export function useChatTest(
         scenario: undefined,
         messages: undefined,
         effort: undefined,
+        error: undefined,
       }
     }
 
     let scenario = route.query.scenario as string
     let effort = route.query.effort as string
+    const error = (
+      typeof route.query.error === 'string'
+      && isChatTestErrorId(route.query.error)
+    )
+      ? route.query.error
+      : undefined
 
     if (!['short', 'long', 'reasoning'].includes(scenario)) {
       scenario = 'short'
@@ -37,6 +45,7 @@ export function useChatTest(
       scenario,
       messages: route.query.messages as string || '1',
       effort,
+      error,
     }
   })
 
@@ -52,6 +61,10 @@ export function useChatTest(
 
     if (query.value.scenario === 'reasoning') {
       searchParams.set('effort', query.value.effort ?? 'medium')
+    }
+
+    if (query.value.error) {
+      searchParams.set('error', query.value.error)
     }
 
     const paramsString = searchParams.toString()

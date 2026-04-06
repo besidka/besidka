@@ -22,6 +22,20 @@ vi.mock('ai', () => ({
 
 vi.mock('evlog', () => ({
   useLogger: () => ({ set: vi.fn() }),
+  createError: (input: {
+    status?: number
+    message?: string
+    why?: string
+    fix?: string
+    code?: string
+    providerRequestId?: string
+  }) => {
+    const exception = new Error(input.message || 'Error')
+
+    Object.assign(exception, input)
+
+    return exception
+  },
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
@@ -56,9 +70,28 @@ function createDb(overrides: {
     createdAt: Date
   }>
 } = {}) {
-  const insertValues = vi.fn(async () => undefined)
+  const insertValues = vi.fn()
+  const insertGet = vi.fn(async () => ({
+    id: 'message-db-id',
+    publicId: 'db-generated-public-id',
+  }))
   const updateWhere = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: updateWhere }))
+  const insertCall = vi.fn(() => ({ values: insertValues }))
+  const transaction = vi.fn(async (callback) => {
+    return await callback({
+      insert: insertCall,
+      update: vi.fn(() => ({
+        set: updateSet,
+      })),
+    })
+  })
+
+  insertValues.mockImplementation(() => ({
+    returning: () => ({
+      get: insertGet,
+    }),
+  }))
 
   return {
     db: {
@@ -72,13 +105,16 @@ function createDb(overrides: {
           })),
         },
       },
-      insert: vi.fn(() => ({ values: insertValues })),
+      insert: insertCall,
+      transaction,
       update: vi.fn(() => ({ set: updateSet })),
       delete: vi.fn(() => ({
         where: vi.fn(async () => undefined),
       })),
     },
     insertValues,
+    insertGet,
+    transaction,
     updateSet,
     updateWhere,
   }
@@ -236,7 +272,7 @@ describe('chat duplicate message detection', () => {
       reasoning: 'off',
       createdAt: new Date(),
     }
-    const { db, insertValues } = createDb({
+    const { db, insertValues, updateSet } = createDb({
       messages: [existingMessage],
     })
 
@@ -264,8 +300,11 @@ describe('chat duplicate message detection', () => {
     expect(userInserts[0][0]).toEqual(
       expect.objectContaining({
         role: 'user',
-        publicId: 'new-message-id',
+        parts: [{ type: 'text', text: 'Different' }],
       }),
     )
+    expect(updateSet).toHaveBeenCalledWith({
+      publicId: 'new-message-id',
+    })
   })
 })

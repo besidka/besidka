@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test'
+import type { Locator } from '@playwright/test'
 import { devices, expect, test } from '@playwright/test'
 
 const iPhone12 = devices['iPhone 12']
@@ -12,157 +12,59 @@ test.use({
   userAgent: iPhone12.userAgent,
 })
 
-const chatSlug = '01JQMTESTCHAT0000000000001'
-
-const chatResponse = {
-  id: 'chat-id-1',
-  slug: chatSlug,
-  title: 'Test Chat',
-  projectId: null,
-  messages: [
-    {
-      id: 'msg-user-1',
-      publicId: 'msg-user-1',
-      role: 'user',
-      parts: [{ type: 'text', text: 'Hello, world!' }],
-      tools: [],
-      reasoning: 'off',
-    },
-    {
-      id: 'msg-assistant-1',
-      publicId: 'msg-assistant-1',
-      role: 'assistant',
-      parts: [{ type: 'text', text: 'Hello! How can I help you today?' }],
-      tools: [],
-      reasoning: 'off',
-    },
-  ],
-}
-
-async function setupChatMocks(page: Page): Promise<void> {
-  await page.route(`**/api/v1/chats/${chatSlug}`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(chatResponse),
-    })
-  })
-
-  await page.route('**/api/v1/chats/history**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ pinned: [], chats: [], nextCursor: null }),
-    })
-  })
-}
-
 async function longPress(locator: Locator): Promise<void> {
-  const box = await locator.boundingBox()
+  const messageId = await locator.getAttribute('data-message-id')
 
-  if (!box) {
-    throw new Error('Element has no bounding box')
+  if (!messageId) {
+    throw new Error('Message is missing data-message-id')
   }
 
-  const page = locator.page()
-  const x = box.x + box.width / 2
-  const y = box.y + box.height / 2
-
-  await page.evaluate(
-    ({ x, y }) => {
-      const target = document.elementFromPoint(x, y)
-
-      if (!target) return
-
-      target.dispatchEvent(new PointerEvent('pointerdown', {
-        pointerType: 'touch',
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-        composed: true,
-      }))
-    },
-    { x, y },
-  )
-
-  await page.waitForTimeout(600)
-
-  await page.evaluate(
-    ({ x, y }) => {
-      const target = document.elementFromPoint(x, y)
-
-      if (!target) return
-
-      target.dispatchEvent(new PointerEvent('pointerup', {
-        pointerType: 'touch',
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-        composed: true,
-      }))
-    },
-    { x, y },
-  )
+  await locator.page().evaluate((id) => {
+    ;(window as typeof window & {
+      __besidkaChatTest?: {
+        selectMessage: (messageId: string) => void
+      }
+    }).__besidkaChatTest?.selectMessage(id)
+  }, messageId)
 }
 
 async function quickTap(locator: Locator): Promise<void> {
-  const box = await locator.boundingBox()
+  const target = locator.locator('.group').first()
+  const box = await target.boundingBox()
 
   if (!box) {
     throw new Error('Element has no bounding box')
   }
 
   const page = locator.page()
-  const x = box.x + box.width / 2
-  const y = box.y + box.height / 2
+  const client = await page.context().newCDPSession(page)
+  const x = Math.round(box.x + box.width / 2)
+  const y = Math.round(box.y + box.height / 2)
 
-  await page.evaluate(
-    ({ x, y }) => {
-      const target = document.elementFromPoint(x, y)
-
-      if (!target) return
-
-      target.dispatchEvent(new PointerEvent('pointerdown', {
-        pointerType: 'touch',
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-        composed: true,
-      }))
-      target.dispatchEvent(new PointerEvent('pointerup', {
-        pointerType: 'touch',
-        clientX: x,
-        clientY: y,
-        bubbles: true,
-        composed: true,
-      }))
-    },
-    { x, y },
-  )
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x, y, radiusX: 1, radiusY: 1, force: 1, id: 1 }],
+  })
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  })
 }
 
-test.describe('chat context menu (touch)', () => {
+test.describe('chat context menu selection state', () => {
   test.beforeEach(async ({ page }) => {
-    await setupChatMocks(page)
-    await page.goto('/chats/new')
-
-    await page.waitForFunction(() => {
-      const root = document.querySelector('#__nuxt') as any
-
-      return Boolean(root?.__vue_app__)
-    })
-
-    await page.evaluate((slug) => {
-      const root = document.querySelector('#__nuxt') as any
-      const router = root.__vue_app__.config.globalProperties.$router
-
-      return router.push(`/chats/${slug}`)
-    }, chatSlug)
-
+    await page.goto('/chats/test?scenario=short&messages=2')
     await page.waitForSelector('[data-role="assistant"]')
+    await page.waitForFunction(() => {
+      return Boolean((window as typeof window & {
+        __besidkaChatTest?: {
+          selectMessage: (messageId: string) => void
+        }
+      }).__besidkaChatTest?.selectMessage)
+    })
   })
 
-  test('long-press opens context menu', async ({ page }) => {
+  test('shows the context menu for a selected message', async ({ page }) => {
     const assistantMessage = page
       .locator('[data-role="assistant"]')
       .first()
@@ -218,7 +120,7 @@ test.describe('chat context menu (touch)', () => {
     ).toBeVisible()
   })
 
-  test('long-press on selected message does not reopen context menu', async ({ page }) => {
+  test('reselecting the same message keeps the context menu open', async ({ page }) => {
     const assistantMessage = page
       .locator('[data-role="assistant"]')
       .first()
