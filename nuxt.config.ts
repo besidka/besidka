@@ -92,6 +92,14 @@ export default defineNuxtConfig({
     '@vite-pwa/nuxt',
     'evlog/nuxt',
   ],
+  evlog: {
+    sampling: {
+      keep: [
+        { status: 400 },
+        { duration: 1000 },
+      ],
+    },
+  },
   eslint: {
     checker: process.env.CI !== 'true',
   },
