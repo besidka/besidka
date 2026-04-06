@@ -61,7 +61,7 @@ describe('chat error helpers', () => {
     }))
   })
 
-  it('appends a separate assistant error when content already exists', () => {
+  it('merges the error into the last assistant message when content exists', () => {
     const messages: UIMessage[] = [
       {
         id: 'user-1',
@@ -81,18 +81,20 @@ describe('chat error helpers', () => {
       fix: 'Wait a moment and retry the message.',
     })
 
-    expect(nextMessages).toHaveLength(3)
-    expect(nextMessages[1]).toEqual(messages[1])
-    expect(nextMessages[2]).toEqual(expect.objectContaining({
-      role: 'assistant',
-      parts: [{
-        type: 'text',
-        text: buildChatErrorMessage({
-          code: 'provider-rate-limit',
-          message: 'The provider is rate limiting requests right now.',
-          fix: 'Wait a moment and retry the message.',
-        }),
-      }],
+    expect(nextMessages).toHaveLength(2)
+    expect(nextMessages[1]).toEqual(expect.objectContaining({
+      id: 'assistant-1',
+      parts: [
+        { type: 'text', text: 'Partial answer' },
+        {
+          type: 'text',
+          text: buildChatErrorMessage({
+            code: 'provider-rate-limit',
+            message: 'The provider is rate limiting requests right now.',
+            fix: 'Wait a moment and retry the message.',
+          }),
+        },
+      ],
     }))
   })
 
@@ -120,17 +122,41 @@ describe('chat error helpers', () => {
       message: 'The provider failed to process this request.',
     })
 
-    expect(nextMessages).toHaveLength(3)
-    expect(nextMessages[1]).toEqual(messages[1])
-    expect(nextMessages[2]).toEqual(expect.objectContaining({
-      role: 'assistant',
-      parts: [{
-        type: 'text',
-        text: buildChatErrorMessage({
-          code: 'provider-unavailable',
-          message: 'The provider failed to process this request.',
-        }),
-      }],
+    expect(nextMessages).toHaveLength(2)
+    expect(nextMessages[1]).toEqual(expect.objectContaining({
+      id: 'assistant-1',
+      parts: [
+        {
+          type: 'source-url',
+          sourceId: 'source-1',
+          url: 'https://example.com',
+          title: 'Example',
+        },
+        {
+          type: 'text',
+          text: buildChatErrorMessage({
+            code: 'provider-unavailable',
+            message: 'The provider failed to process this request.',
+          }),
+        },
+      ],
+    }))
+  })
+
+  it('preserves explicit setup errors instead of replacing them with generic text', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error('Please select a model to continue.'),
+      status: 400,
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'unknown',
+      message: 'Please select a model to continue.',
+      status: 400,
     }))
   })
 })

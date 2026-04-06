@@ -121,15 +121,15 @@ export function applyChatErrorToMessages(
     createdAt: new Date(),
   } as UIMessage
 
-  if (!hasMeaningfulAssistantParts(lastMessage)) {
-    if (lastMessage?.role === 'assistant') {
-      nextMessages[nextMessages.length - 1] = {
-        ...lastMessage,
-        parts: errorMessage.parts,
-      } as UIMessage
+  if (lastMessage?.role === 'assistant') {
+    nextMessages[nextMessages.length - 1] = {
+      ...lastMessage,
+      parts: hasMeaningfulAssistantParts(lastMessage)
+        ? [...lastMessage.parts, ...errorMessage.parts]
+        : errorMessage.parts,
+    } as UIMessage
 
-      return nextMessages
-    }
+    return nextMessages
   }
 
   nextMessages.push(errorMessage)

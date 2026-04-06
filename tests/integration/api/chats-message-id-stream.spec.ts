@@ -287,7 +287,7 @@ describe('chat stream message ids', () => {
     } as any)
 
     await expect(response.ready).rejects.toThrow(
-      'The chat request failed.',
+      'Failed to prepare model messages',
     )
 
     const assistantInserts = insertValues.mock.calls.filter(

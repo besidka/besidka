@@ -30,7 +30,13 @@ export function normalizeChatError(
 
   return {
     code,
-    message: input.message || getDefaultChatMessage(code),
+    message: input.message
+      || getPreferredChatMessage({
+        code,
+        errorMessage,
+        status,
+      })
+      || getDefaultChatMessage(code),
     why: input.why || getDefaultChatWhy(code, errorMessage),
     fix: input.fix || getDefaultChatFix(code),
     status,
@@ -38,6 +44,34 @@ export function normalizeChatError(
     providerId: input.providerId,
     providerRequestId,
   }
+}
+
+function getPreferredChatMessage(input: {
+  code: ChatErrorCode
+  errorMessage: string | undefined
+  status: number
+}): string | undefined {
+  if (!input.errorMessage) {
+    return undefined
+  }
+
+  if (
+    input.code === 'chat-request-invalid'
+    || input.code === 'provider-auth'
+    || input.code === 'unknown'
+  ) {
+    return input.errorMessage
+  }
+
+  if (
+    input.status >= 400
+    && input.status < 500
+    && input.status !== 429
+  ) {
+    return input.errorMessage
+  }
+
+  return undefined
 }
 
 export function serializeChatError(
