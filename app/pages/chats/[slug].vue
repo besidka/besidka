@@ -124,6 +124,7 @@
 </template>
 <script setup lang="ts">
 import { parseError } from 'evlog'
+import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
 
 definePageMeta({
   layout: 'chat',
@@ -148,7 +149,7 @@ const key = computed<string>(() => {
     return `chat-${route.params.slug}`
   }
 
-  return `test-chat-${route.query.scenario}-${route.query.messages || 1}-${route.query.effort || 'medium'}`
+  return `test-chat-${route.query.scenario}-${route.query.messages || 1}-${route.query.effort || 'medium'}-${route.query.error || 'none'}`
 })
 
 const query = computed(() => {
@@ -157,11 +158,18 @@ const query = computed(() => {
       scenario: undefined,
       messages: undefined,
       effort: undefined,
+      error: undefined,
     }
   }
 
   let scenario = route.query.scenario as string
   let effort = route.query.effort as string
+  const error = (
+    typeof route.query.error === 'string'
+    && isChatTestErrorId(route.query.error)
+  )
+    ? route.query.error
+    : undefined
 
   if (!['short', 'long', 'reasoning'].includes(scenario)) {
     scenario = 'short'
@@ -175,6 +183,7 @@ const query = computed(() => {
     scenario,
     messages: route.query.messages as string || '1',
     effort,
+    error,
   }
 })
 

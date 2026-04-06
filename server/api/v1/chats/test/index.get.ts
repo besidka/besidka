@@ -1,5 +1,6 @@
 import type { ReasoningUIPart, TextUIPart } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { chatTestErrorIds } from '#shared/utils/chat-test-errors'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 
 const shortMessage = 'Test message'
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
       .default('short'),
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
+    error: z.enum(chatTestErrorIds).optional(),
   }).safeParse)
 
   if (query.error) {
@@ -36,7 +38,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { scenario, messages, effort } = query.data
+  const { scenario, messages, effort, error } = query.data
   const effectiveScenario = scenario === 'reasoning' && effort === 'off'
     ? 'short'
     : scenario
@@ -50,11 +52,14 @@ export default defineEventHandler(async (event) => {
   const scenarioKey = effectiveScenario === 'reasoning'
     ? `${effectiveScenario}-${effort}`
     : effectiveScenario
+  const testKey = error
+    ? `${scenarioKey}-error-${error}`
+    : scenarioKey
 
   return {
-    id: `test-chat-${scenarioKey}`,
-    slug: `test-chat-${scenarioKey}`,
-    title: `Test Chat - ${scenarioKey}`,
+    id: `test-chat-${testKey}`,
+    slug: `test-chat-${testKey}`,
+    title: `Test Chat - ${testKey}`,
     messages: Array.from({ length: messages }, (_, index) => {
       const role = index % 2 === 0 ? 'user' : 'assistant'
 
