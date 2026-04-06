@@ -42,6 +42,20 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: vi.fn(),
   }),
+  createError: (input: {
+    status?: number
+    message?: string
+    why?: string
+    fix?: string
+    code?: string
+    providerRequestId?: string
+  }) => {
+    const exception = new Error(input.message || 'Error')
+
+    Object.assign(exception, input)
+
+    return exception
+  },
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
@@ -71,14 +85,23 @@ function createMessage(text: string) {
 }
 
 function createDb() {
-  const insertValues = vi.fn(async () => undefined)
-  const chatUpdateWhere = vi.fn(async () => undefined)
-  const chatUpdateSet = vi.fn(() => ({
-    where: chatUpdateWhere,
+  const insertValues = vi.fn()
+  const insertGet = vi.fn(async () => ({
+    id: 'message-db-id',
+    publicId: 'db-generated-public-id',
   }))
-  const deleteWhere = vi.fn(async () => undefined)
-  const deleteCall = vi.fn(() => ({
-    where: deleteWhere,
+  const updateWhere = vi.fn(async () => undefined)
+  const updateSet = vi.fn(() => ({
+    where: updateWhere,
+  }))
+  const insertCall = vi.fn(() => ({
+    values: insertValues,
+  }))
+
+  insertValues.mockImplementation(() => ({
+    returning: () => ({
+      get: insertGet,
+    }),
   }))
 
   return {
@@ -93,17 +116,17 @@ function createDb() {
           })),
         },
       },
-      insert: vi.fn(() => ({
-        values: insertValues,
-      })),
-      update: vi.fn(() => ({
-        set: chatUpdateSet,
-      })),
-      delete: deleteCall,
+      insert: insertCall,
+      update: vi.fn(() => {
+        return {
+          set: updateSet,
+        }
+      }),
     },
     insertValues,
-    deleteCall,
-    deleteWhere,
+    insertGet,
+    updateSet,
+    updateWhere,
   }
 }
 
@@ -162,7 +185,7 @@ describe('chat stream message ids', () => {
 
   it('uses a pre-generated ULID as the streamed assistant message id', async () => {
     const handler = await getHandler()
-    const { db, insertValues, deleteCall } = createDb()
+    const { db, insertValues, updateSet, updateWhere } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
@@ -194,17 +217,17 @@ describe('chat stream message ids', () => {
 
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
       role: 'assistant',
-      publicId: generatedId,
       parts: [{ type: 'text', text: 'Hi' }],
       tools: [],
       reasoning: 'off',
     }))
-    expect(deleteCall).not.toHaveBeenCalled()
+    expect(updateSet).toHaveBeenCalledWith({ publicId: generatedId })
+    expect(updateWhere).toHaveBeenCalled()
   })
 
   it('does not insert assistant row when the stream is aborted', async () => {
     const handler = await getHandler()
-    const { db, insertValues, deleteCall } = createDb()
+    const { db, insertValues } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
@@ -232,12 +255,11 @@ describe('chat stream message ids', () => {
     )
 
     expect(assistantInserts).toHaveLength(0)
-    expect(deleteCall).not.toHaveBeenCalled()
   })
 
   it('does not insert or delete when stream setup fails', async () => {
     const handler = await getHandler()
-    const { db, insertValues, deleteCall } = createDb()
+    const { db, insertValues } = createDb()
 
     mocks.failConvertToModelMessages = true
 
@@ -254,7 +276,7 @@ describe('chat stream message ids', () => {
     } as any)
 
     await expect(response.ready).rejects.toThrow(
-      'Failed to prepare model messages',
+      'The chat request failed.',
     )
 
     const assistantInserts = insertValues.mock.calls.filter(
@@ -262,6 +284,67 @@ describe('chat stream message ids', () => {
     )
 
     expect(assistantInserts).toHaveLength(0)
-    expect(deleteCall).not.toHaveBeenCalled()
+  })
+
+  it('does not send publicId during the initial user message insert', async () => {
+    const handler = await getHandler()
+    const { db, insertValues, updateSet } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    }))
+    expect(insertValues).not.toHaveBeenCalledWith(expect.objectContaining({
+      publicId: 'message-1',
+    }))
+    expect(updateSet).toHaveBeenCalledWith({ publicId: 'message-1' })
+  })
+
+  it('serializes provider errors for the UI stream', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const streamOptions = mocks.toUIMessageStreamOptions[0]
+    const serializedError = streamOptions.onError({
+      message: 'Rate limit exceeded',
+      statusCode: 429,
+      responseHeaders: {
+        'x-request-id': 'req_123',
+      },
+    })
+
+    expect(JSON.parse(serializedError)).toEqual(expect.objectContaining({
+      code: 'provider-rate-limit',
+      providerRequestId: 'req_123',
+      status: 429,
+    }))
   })
 })

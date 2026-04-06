@@ -1,7 +1,7 @@
 import type { LanguageModel, UIMessage } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { FormattedTools } from '~~/server/types/tools.d'
-import { useLogger } from 'evlog'
+import { useLogger, createError } from 'evlog'
 import { eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -12,6 +12,7 @@ import {
   convertToModelMessages,
 } from 'ai'
 import * as schema from '~~/server/db/schema'
+import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
@@ -29,9 +30,9 @@ export default defineEventHandler(async (event) => {
 
   if (params.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error,
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -60,9 +61,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -112,18 +113,26 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found.',
+      status: 404,
     })
   }
+
+  logger.set({
+    userId,
+    chatId: chat.id,
+    projectId: chat.projectId,
+    reasoning: body.data.reasoning,
+    tools: body.data.tools,
+  })
 
   const { messages: newMessages, model: userModel } = body.data
   const newMessage = newMessages[0]
 
   if (!newMessage) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'No message provided',
+      message: 'No message provided',
+      status: 400,
     })
   }
 
@@ -154,8 +163,8 @@ export default defineEventHandler(async (event) => {
 
   if (!newMessage.parts || newMessage.parts.length === 0) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Message must include at least one part (text or file)',
+      message: 'Message must include at least one part (text or file)',
+      status: 400,
     })
   }
 
@@ -168,6 +177,11 @@ export default defineEventHandler(async (event) => {
     messages: messagesForAI,
     missingFiles,
   } = await convertFilesForAI(contextMessages)
+
+  logger.set({
+    filesCount: newMessage.parts.filter(part => part.type === 'file').length,
+    missingFilesCount: missingFiles.length,
+  })
 
   const lastPersistedMessage = previousMessages[previousMessages.length - 1]
   const isDuplicateUserMessage = (
@@ -194,27 +208,47 @@ export default defineEventHandler(async (event) => {
     if (!isDuplicateUserMessage) {
       const activityAt = new Date()
 
-      await db
-        .insert(schema.messages)
-        .values({
-          chatId: chat.id,
-          role: 'user',
+      try {
+        await insertMessageWithPublicId({
+          db,
+          values: {
+            chatId: chat.id,
+            role: 'user',
+            parts: newMessage.parts,
+            tools: body.data.tools,
+            reasoning: body.data.reasoning,
+          },
           publicId: newMessage.id,
-          parts: newMessage.parts,
-          tools: body.data.tools,
-          reasoning: body.data.reasoning,
         })
 
-      await db.update(schema.chats)
-        .set({ activityAt })
-        .where(eq(schema.chats.id, chat.id))
-
-      if (chat.projectId) {
-        await db.update(schema.projects)
+        await db.update(schema.chats)
           .set({ activityAt })
-          .where(eq(schema.projects.id, chat.projectId))
+          .where(eq(schema.chats.id, chat.id))
 
-        await markProjectsMemoryStale([chat.projectId], userId, db)
+        if (chat.projectId) {
+          await db.update(schema.projects)
+            .set({ activityAt })
+            .where(eq(schema.projects.id, chat.projectId))
+
+          await markProjectsMemoryStale([chat.projectId], userId, db)
+        }
+      } catch (exception) {
+        logger.set({
+          stage: 'persist-user-message',
+          errorCode: 'message-persist-failed',
+          errorMessage: exception instanceof Error
+            ? exception.message
+            : String(exception),
+        })
+
+        throw createError({
+          ...normalizeChatError({
+            error: exception,
+            event,
+            code: 'message-persist-failed',
+            message: 'The message could not be saved.',
+          }),
+        })
       }
     } else {
       const lastMessage = chat.messages[chat.messages.length - 1]
@@ -231,57 +265,83 @@ export default defineEventHandler(async (event) => {
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools
+  const providerId = toSupportedProviderId(provider.id)
+
+  logger.set({
+    providerId: provider.id,
+    modelId: model.id,
+  })
 
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
   const providerOptions: SharedV2ProviderOptions = {}
 
-  switch (provider.id) {
-    case 'openai': {
-      const {
-        instance: openAiInstance,
-        tools: openAiTools,
-        providerOptions: openAiProviderOptions,
-      } = await useOpenAI(
-        session.user.id,
-        model.id,
-        requestedTools,
-        body.data.reasoning,
-      )
+  try {
+    switch (provider.id) {
+      case 'openai': {
+        const {
+          instance: openAiInstance,
+          tools: openAiTools,
+          providerOptions: openAiProviderOptions,
+        } = await useOpenAI(
+          session.user.id,
+          model.id,
+          requestedTools,
+          body.data.reasoning,
+        )
 
-      instance = openAiInstance
-      parsedTools = openAiTools
-      Object.assign(providerOptions, {
-        openai: openAiProviderOptions,
-      })
+        instance = openAiInstance
+        parsedTools = openAiTools
+        Object.assign(providerOptions, {
+          openai: openAiProviderOptions,
+        })
 
-      break
+        break
+      }
+      case 'google': {
+        const {
+          instance: googleInstance,
+          tools: googleTools,
+          providerOptions: googleProviderOptions,
+        } = await useGoogle(
+          session.user.id,
+          model.id,
+          requestedTools,
+          body.data.reasoning,
+        )
+
+        instance = googleInstance
+        parsedTools = googleTools
+        Object.assign(providerOptions, {
+          google: googleProviderOptions,
+        })
+
+        break
+      }
+      default:
+        throw createError({
+          message: 'Unsupported provider',
+          status: 400,
+        })
     }
-    case 'google': {
-      const {
-        instance: googleInstance,
-        tools: googleTools,
-        providerOptions: googleProviderOptions,
-      } = await useGoogle(
-        session.user.id,
-        model.id,
-        requestedTools,
-        body.data.reasoning,
-      )
+  } catch (exception) {
+    const chatError = normalizeChatError({
+      error: exception,
+      event,
+      providerId,
+    })
 
-      instance = googleInstance
-      parsedTools = googleTools
-      Object.assign(providerOptions, {
-        google: googleProviderOptions,
-      })
+    logger.set({
+      stage: 'prepare-provider',
+      errorCode: chatError.code,
+      providerStatus: chatError.status,
+      providerRequestId: chatError.providerRequestId,
+      errorMessage: chatError.why,
+    })
 
-      break
-    }
-    default:
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Unsupported provider',
-      })
+    throw createError({
+      ...chatError,
+    })
   }
 
   const stream = createUIMessageStream({
@@ -300,15 +360,35 @@ export default defineEventHandler(async (event) => {
         })
       }
 
-      const result = streamText({
-        model: instance,
-        messages: resolveDataUrlsInModelMessages(
-          await convertToModelMessages(messagesForAI),
-        ),
-        experimental_transform: smoothStream(),
-        ...parsedTools,
-        providerOptions,
-      })
+      let result: ReturnType<typeof streamText>
+
+      try {
+        result = streamText({
+          model: instance,
+          messages: resolveDataUrlsInModelMessages(
+            await convertToModelMessages(messagesForAI),
+          ),
+          experimental_transform: smoothStream(),
+          ...parsedTools,
+          providerOptions,
+        })
+      } catch (exception) {
+        const chatError = normalizeChatError({
+          error: exception,
+          event,
+          providerId,
+        })
+
+        logger.set({
+          stage: 'start-stream',
+          errorCode: chatError.code,
+          providerStatus: chatError.status,
+          providerRequestId: chatError.providerRequestId,
+          errorMessage: chatError.why,
+        })
+
+        throw new Error(JSON.stringify(chatError))
+      }
 
       result.consumeStream()
 
@@ -317,31 +397,70 @@ export default defineEventHandler(async (event) => {
         generateMessageId: () => messagePublicId,
         sendSources: true,
         sendReasoning: body.data.reasoning !== 'off',
-        onError: errorHandler,
+        onError(error) {
+          const chatError = normalizeChatError({
+            error,
+            event,
+            providerId,
+          })
+
+          logger.set({
+            stage: 'stream',
+            errorCode: chatError.code,
+            providerStatus: chatError.status,
+            providerRequestId: chatError.providerRequestId,
+            errorMessage: chatError.why,
+          })
+
+          return JSON.stringify(chatError)
+        },
         async onFinish({ isAborted, responseMessage }) {
           if (isAborted) {
             return
           }
 
-          const normalizationInput = {
-            parts: responseMessage.parts as UIMessage['parts'],
-            providerId: provider.id,
-            chatId: chat.id,
-            userId,
-            logger,
-          }
-          const normalizedParts = await normalizeAssistantParts(
-            normalizationInput,
-          )
+          try {
+            const normalizationInput = {
+              parts: responseMessage.parts as UIMessage['parts'],
+              providerId: provider.id,
+              chatId: chat.id,
+              userId,
+              logger,
+            }
+            const normalizedParts = await normalizeAssistantParts(
+              normalizationInput,
+            )
 
-          await db.insert(schema.messages).values({
-            chatId: chat.id,
-            role: 'assistant',
-            publicId: messagePublicId,
-            parts: normalizedParts,
-            tools: [],
-            reasoning: body.data.reasoning,
-          })
+            await insertMessageWithPublicId({
+              db,
+              values: {
+                chatId: chat.id,
+                role: 'assistant',
+                parts: normalizedParts,
+                tools: [],
+                reasoning: body.data.reasoning,
+              },
+              publicId: messagePublicId,
+            })
+          } catch (exception) {
+            const chatError = normalizeChatError({
+              error: exception,
+              event,
+              providerId,
+              code: 'message-persist-failed',
+              message: 'The response could not be saved.',
+            })
+
+            logger.set({
+              stage: 'persist-assistant-message',
+              errorCode: chatError.code,
+              providerStatus: chatError.status,
+              providerRequestId: chatError.providerRequestId,
+              errorMessage: chatError.why,
+            })
+
+            throw new Error(JSON.stringify(chatError))
+          }
         },
       }))
     },
@@ -352,20 +471,30 @@ export default defineEventHandler(async (event) => {
   })
 })
 
-function errorHandler(error: unknown) {
-  if (error == null) {
-    return 'An error occurred while processing the chat.'
+async function insertMessageWithPublicId(input: {
+  db: ReturnType<typeof useDb>
+  values: Omit<typeof schema.messages.$inferInsert, 'publicId'>
+  publicId: string
+}) {
+  const insertedMessage = await input.db
+    .insert(schema.messages)
+    .values(input.values)
+    .returning({
+      id: schema.messages.id,
+      publicId: schema.messages.publicId,
+    })
+    .get()
+
+  if (insertedMessage.publicId !== input.publicId) {
+    await input.db.update(schema.messages)
+      .set({ publicId: input.publicId })
+      .where(eq(schema.messages.id, insertedMessage.id))
   }
 
-  if (typeof error === 'string') {
-    return error
+  return {
+    ...insertedMessage,
+    publicId: input.publicId,
   }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return JSON.stringify(error)
 }
 
 function hasSameParts(
@@ -380,4 +509,17 @@ function hasSameTools(
   rightTools: Array<'web_search'>,
 ): boolean {
   return JSON.stringify(leftTools || []) === JSON.stringify(rightTools || [])
+}
+
+function toSupportedProviderId(
+  providerId: string,
+): 'openai' | 'google' | undefined {
+  if (
+    providerId !== 'openai'
+    && providerId !== 'google'
+  ) {
+    return undefined
+  }
+
+  return providerId
 }

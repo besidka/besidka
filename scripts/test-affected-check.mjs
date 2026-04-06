@@ -65,6 +65,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
   ]
   const chatStreamBranchTests = [
+    'tests/unit/composables/chat.spec.ts',
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -150,6 +151,10 @@ export function getAffectedTests(changedFiles) {
       tests: chatStreamBranchTests,
     },
     {
+      pattern: /^server\/utils\/chats\/errors\.ts$/,
+      tests: chatStreamBranchTests,
+    },
+    {
       pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
       tests: historyProjectsTests,
     },
@@ -211,6 +216,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^shared\/types\/files\.d\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^shared\/types\/chat-errors\.d\.ts$/,
+      tests: chatStreamBranchTests,
     },
     {
       pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly|chat-shares)\.ts$/,

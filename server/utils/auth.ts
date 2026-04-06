@@ -54,6 +54,9 @@ function createAuth() {
       database: {
         generateId: 'serial',
       },
+      ipAddress: {
+        ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+      },
     },
     emailAndPassword: {
       enabled: true,

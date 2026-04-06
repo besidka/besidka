@@ -4,9 +4,11 @@ import type {
   SourceUrlUIPart,
   ReasoningUIPart,
 } from 'ai'
+import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { Chat as ChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
@@ -16,6 +18,102 @@ export interface ProcessedMessage {
   reasoningParts: ReasoningUIPart[]
   textParts: TextUIPart[]
   sourceUrlParts: SourceUrlUIPart[]
+}
+
+export function normalizeChatClientError(error: unknown): ChatErrorPayload {
+  if (error instanceof Error && error.message.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(error.message) as ChatErrorPayload
+
+      if (parsed?.message) {
+        return parsed
+      }
+    } catch (exception) {
+      void exception
+    }
+  }
+
+  const parsedException = parseError(error)
+
+  return {
+    code: 'unknown',
+    message: parsedException.message || 'The chat request failed.',
+    why: parsedException.why,
+    fix: parsedException.fix,
+    status: parsedException.status,
+  }
+}
+
+export function buildChatErrorMessage(error: ChatErrorPayload): string {
+  const lines = [error.message]
+
+  if (error.why) {
+    lines.push(error.why)
+  }
+
+  if (error.fix) {
+    lines.push(error.fix)
+  }
+
+  if (error.providerRequestId) {
+    lines.push(`Provider request ID: ${error.providerRequestId}`)
+  } else if (error.requestId) {
+    lines.push(`Request ID: ${error.requestId}`)
+  }
+
+  return lines.join('\n\n')
+}
+
+export function hasVisibleAssistantContent(message: UIMessage | undefined) {
+  if (!message || message.role !== 'assistant') {
+    return false
+  }
+
+  return message.parts?.some((part) => {
+    if (
+      part.type !== 'text'
+      && part.type !== 'reasoning'
+    ) {
+      return false
+    }
+
+    return Boolean(part.text?.trim().length)
+  }) || false
+}
+
+export function applyChatErrorToMessages(
+  messages: UIMessage[],
+  error: ChatErrorPayload,
+): UIMessage[] {
+  const nextMessages = [...messages]
+  const errorText = buildChatErrorMessage(error)
+  const lastMessage = nextMessages[nextMessages.length - 1]
+  const errorMessage: UIMessage = {
+    id: ulid(),
+    role: 'assistant',
+    parts: [
+      {
+        type: 'text',
+        text: errorText,
+      },
+    ],
+    createdAt: new Date(),
+  } as UIMessage
+
+  if (!hasVisibleAssistantContent(lastMessage)) {
+    if (lastMessage?.role === 'assistant') {
+      nextMessages[nextMessages.length - 1] = {
+        ...lastMessage,
+        parts: errorMessage.parts,
+      } as UIMessage
+
+      return nextMessages
+    }
+  }
+
+  nextMessages.push(errorMessage)
+
+  return nextMessages
 }
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
@@ -62,12 +160,20 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
     },
     onError(error: any) {
-      const { message } = typeof error.message === 'string'
-        && error.message[0] === '{'
-        ? JSON.parse(error.message)
-        : error
+      const parsedError = normalizeChatClientError(error)
 
-      useErrorMessage(message)
+      chatSdk.messages = applyChatErrorToMessages(
+        chatSdk.messages,
+        parsedError,
+      ) as typeof chatSdk.messages
+
+      useErrorMessage(
+        parsedError.message,
+        parsedError.why
+        || parsedError.fix
+        || parsedError.providerRequestId
+        || parsedError.requestId,
+      )
     },
     onData(dataPart) {
       if (dataPart.type !== 'data-missing-files') {
