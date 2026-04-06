@@ -159,4 +159,27 @@ describe('chat error helpers', () => {
       status: 400,
     }))
   })
+
+  it('reads cf-ray from the H3 event when available', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error('Persistence failed'),
+      event: {
+        node: {
+          req: {
+            headers: {
+              'cf-ray': 'cf-ray-123',
+            },
+          },
+        },
+      } as any,
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      requestId: 'cf-ray-123',
+    }))
+  })
 })

@@ -183,13 +183,15 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
 }
 
 function getRequestId(event: H3Event): string | undefined {
-  if (!('req' in event) || !event.req) {
+  try {
+    return getRequestHeader(event, 'cf-ray')
+      || getRequestHeader(event, 'x-request-id')
+      || undefined
+  } catch (exception) {
+    void exception
+
     return undefined
   }
-
-  return getRequestHeader(event, 'cf-ray')
-    || getRequestHeader(event, 'x-request-id')
-    || undefined
 }
 
 function getProviderRequestId(error: unknown): string | undefined {
