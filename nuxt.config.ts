@@ -153,6 +153,18 @@ export default defineNuxtConfig({
     typeCheck: process.env.CI !== 'true',
   },
   vite: {
+    optimizeDeps: {
+      include: [
+        'better-auth/vue',
+        'better-auth/client/plugins',
+        'ai',
+        '@ai-sdk/vue',
+        'ulid',
+        'shiki-stream/vue',
+        'shiki/bundle/web',
+        'shiki/engine/javascript',
+      ],
+    },
     plugins: [
       tailwindcss(),
     ],

@@ -100,6 +100,7 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const contextMenuTests = [
+    'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
   ]

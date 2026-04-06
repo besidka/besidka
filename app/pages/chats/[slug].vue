@@ -495,6 +495,38 @@ function clearMessageSelection() {
   nuxtApp.callHook('chat:message-selected', null)
 }
 
+if (import.meta.client) {
+  onMounted(() => {
+    if (!import.meta.dev) {
+      return
+    }
+
+    const testWindow = window as typeof window & {
+      __besidkaChatTest?: {
+        selectMessage: (messageId: string) => void
+      }
+    }
+
+    testWindow.__besidkaChatTest = {
+      selectMessage: onMessageSelect,
+    }
+  })
+
+  onUnmounted(() => {
+    if (!import.meta.dev) {
+      return
+    }
+
+    const testWindow = window as typeof window & {
+      __besidkaChatTest?: {
+        selectMessage: (messageId: string) => void
+      }
+    }
+
+    delete testWindow.__besidkaChatTest
+  })
+}
+
 const branchPending = shallowRef(false)
 
 async function branchFromMessage(messageId: string) {
