@@ -116,7 +116,7 @@
 		"typescript": "^5.9.3",
 		"vite-plugin-eslint2": "^5.1.0",
 		"vitest": "^4.1.2",
-		"vitest-environment-nuxt": "^1.0.1",
+		"vitest-environment-nuxt": "^2.0.0",
 		"vue-tsc": "^3.2.6",
 		"whatwg-fetch": "^3.6.20",
 		"wrangler": "^4.80.0"
