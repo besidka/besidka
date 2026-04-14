@@ -2,6 +2,16 @@ import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.
 import type { H3Event } from 'h3'
 import { getRequestHeader } from 'h3'
 
+const chatErrorCodes: ChatErrorCode[] = [
+  'provider-rate-limit',
+  'provider-quota-exceeded',
+  'provider-unavailable',
+  'provider-auth',
+  'message-persist-failed',
+  'chat-request-invalid',
+  'unknown',
+]
+
 interface NormalizeChatErrorInput {
   error: unknown
   event?: H3Event
@@ -367,6 +377,11 @@ function isChatErrorPayload(value: unknown): value is ChatErrorPayload {
 
   const record = value as Record<string, unknown>
 
-  return typeof record.code === 'string'
+  return isChatErrorCode(record.code)
     && typeof record.message === 'string'
+}
+
+function isChatErrorCode(value: unknown): value is ChatErrorCode {
+  return typeof value === 'string'
+    && chatErrorCodes.includes(value as ChatErrorCode)
 }

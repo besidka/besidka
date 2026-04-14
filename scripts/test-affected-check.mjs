@@ -66,6 +66,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
+    'tests/unit/utils/filter-ui-message-stream.spec.ts',
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -160,6 +161,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/errors\.ts$/,
+      tests: chatStreamBranchTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/filter-ui-message-stream\.ts$/,
       tests: chatStreamBranchTests,
     },
     {

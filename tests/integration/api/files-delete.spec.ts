@@ -10,6 +10,12 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: mocks.loggerSet,
   }),
+  log: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
 }))
 
 vi.mock('~~/server/api/v1/storage/index.get', () => ({

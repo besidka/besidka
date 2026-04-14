@@ -39,6 +39,12 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: vi.fn(),
   }),
+  log: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
   createError: (input: {
     status?: number
     message?: string

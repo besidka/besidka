@@ -14,6 +14,12 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: mocks.loggerSet,
   }),
+  log: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
 }))
 
 vi.mock('~~/server/utils/files/file-governance', () => ({

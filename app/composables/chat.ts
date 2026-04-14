@@ -24,7 +24,49 @@ export interface ChatErrorTextPart extends TextUIPart {
   error: ChatErrorPayload
 }
 
-export function normalizeChatClientError(error: unknown): ChatErrorPayload {
+interface NormalizeChatClientErrorOptions {
+  requestId?: string
+}
+
+interface ChatClientErrorReport {
+  message: string
+  code: ChatErrorPayload['code']
+  requestId: string
+  chatId: string
+  modelId: string
+  providerId?: string
+  reason?: string
+  status?: number
+  transportRequestId?: string
+}
+
+function isTransportLoadErrorMessage(message: string | undefined): boolean {
+  const normalizedMessage = message?.trim().toLowerCase() || ''
+
+  if (!normalizedMessage) {
+    return false
+  }
+
+  return normalizedMessage.includes('load error')
+    || normalizedMessage.includes('failed to fetch')
+    || normalizedMessage.includes('networkerror')
+    || normalizedMessage.includes('network request failed')
+    || normalizedMessage.includes('the response body is empty')
+    || normalizedMessage.includes('load failed')
+    || normalizedMessage.includes('fetch failed')
+    || normalizedMessage.includes('terminated')
+}
+
+function isTransportLoadError(error: ChatErrorPayload): boolean {
+  return error.message === 'The chat response failed to load.'
+    || isTransportLoadErrorMessage(error.why)
+    || isTransportLoadErrorMessage(error.message)
+}
+
+export function normalizeChatClientError(
+  error: unknown,
+  options: NormalizeChatClientErrorOptions = {},
+): ChatErrorPayload {
   if (error instanceof Error && error.message.trim().startsWith('{')) {
     try {
       const parsed = JSON.parse(error.message) as ChatErrorPayload
@@ -38,6 +80,18 @@ export function normalizeChatClientError(error: unknown): ChatErrorPayload {
   }
 
   const parsedException = parseError(error)
+  const requestId = options.requestId || ulid().toLowerCase()
+
+  if (isTransportLoadErrorMessage(parsedException.message)) {
+    return {
+      code: 'unknown',
+      message: 'The chat response failed to load.',
+      why: 'The connection was interrupted before the response finished streaming.',
+      fix: 'Retry the message. If it keeps failing, contact support with the request ID.',
+      status: parsedException.status,
+      requestId,
+    }
+  }
 
   return {
     code: 'unknown',
@@ -45,6 +99,7 @@ export function normalizeChatClientError(error: unknown): ChatErrorPayload {
     why: parsedException.why,
     fix: parsedException.fix,
     status: parsedException.status,
+    requestId: options.requestId,
   }
 }
 
@@ -70,6 +125,19 @@ export function buildChatErrorLines(error: ChatErrorPayload): string[] {
 
 export function buildChatErrorMessage(error: ChatErrorPayload): string {
   return buildChatErrorLines(error).join('\n\n')
+}
+
+function isRateLimitError(error: ChatErrorPayload): boolean {
+  if (error.code === 'provider-rate-limit') {
+    return true
+  }
+
+  const text = `${error.message || ''}\n${error.why || ''}`.toLowerCase()
+
+  return text.includes('rate limit')
+    || text.includes('tokens per min')
+    || text.includes('too many requests')
+    || text.includes('try again in')
 }
 
 export function isChatErrorTextPart(
@@ -161,11 +229,78 @@ export function applyChatErrorToMessages(
   return nextMessages
 }
 
+export function shouldSurfaceChatError(
+  messages: UIMessage[],
+  error: ChatErrorPayload,
+): boolean {
+  const lastMessage = messages[messages.length - 1]
+
+  if (
+    isRateLimitError(error)
+    && hasVisibleAssistantContent(lastMessage)
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function showChatError(
+  messages: UIMessage[],
+  error: ChatErrorPayload,
+): UIMessage[] {
+  useErrorMessage(
+    error.message,
+    error.why
+    || error.fix
+    || error.providerRequestId
+    || error.requestId,
+  )
+
+  return applyChatErrorToMessages(messages, error)
+}
+
+function reportChatClientError(payload: ChatClientErrorReport) {
+  if (!import.meta.client) {
+    return
+  }
+
+  const body = JSON.stringify(payload)
+
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], {
+        type: 'application/json',
+      })
+
+      navigator.sendBeacon('/api/v1/chats/client-errors', blob)
+
+      return
+    }
+  } catch (exception) {
+    void exception
+  }
+
+  globalThis.fetch('/api/v1/chats/client-errors', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body,
+    keepalive: true,
+  }).catch((exception) => {
+    void exception
+  })
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
   const input = useLocalStorage<string>('chat_input', '')
   const files = ref<FileMetadata[]>([])
+  const pendingError = shallowRef<ChatErrorPayload | null>(null)
+  const transportRequestId = shallowRef<string>()
+  const reportedClientErrorIds = new Set<string>()
 
   chat = toValue(chat)
 
@@ -186,6 +321,17 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     messages: chat.messages,
     transport: new DefaultChatTransport({
       api: api.value,
+      async fetch(input, init) {
+        transportRequestId.value = undefined
+
+        const response = await globalThis.fetch(input, init)
+
+        transportRequestId.value = response.headers.get('cf-ray')
+          || response.headers.get('x-request-id')
+          || undefined
+
+        return response
+      },
       prepareSendMessagesRequest({ messages }) {
         const lastMessage = messages[messages.length - 1]
 
@@ -199,26 +345,64 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         }
       },
     }),
-    onFinish({ isAbort, isDisconnect, isError }) {
-      if (isAbort || isDisconnect || isError) {
+    onFinish({ isAbort, isDisconnect, isError, messages }) {
+      const parsedError = pendingError.value
+
+      pendingError.value = null
+      transportRequestId.value = undefined
+
+      if (parsedError) {
+        if (shouldSurfaceChatError(messages, parsedError)) {
+          chatSdk.messages = showChatError(
+            messages,
+            parsedError,
+          ) as typeof chatSdk.messages
+        } else {
+          chatSdk.clearError()
+        }
+      }
+
+      if (isAbort || isDisconnect) {
         isStopped.value = true
+        return
+      }
+
+      if (isError) {
+        isStopped.value = parsedError
+          ? shouldSurfaceChatError(messages, parsedError)
+          : true
       }
     },
     onError(error: any) {
-      const parsedError = normalizeChatClientError(error)
+      const parsedError = normalizeChatClientError(error, {
+        requestId: transportRequestId.value,
+      })
 
-      chatSdk.messages = applyChatErrorToMessages(
-        chatSdk.messages,
-        parsedError,
-      ) as typeof chatSdk.messages
+      pendingError.value = parsedError
 
-      useErrorMessage(
-        parsedError.message,
-        parsedError.why
-        || parsedError.fix
-        || parsedError.providerRequestId
-        || parsedError.requestId,
-      )
+      if (
+        parsedError.requestId
+        && !reportedClientErrorIds.has(parsedError.requestId)
+        && isTransportLoadError(parsedError)
+      ) {
+        reportedClientErrorIds.add(parsedError.requestId)
+
+        const { provider } = getModel(userModel.value)
+
+        reportChatClientError({
+          code: parsedError.code,
+          message: error instanceof Error
+            ? error.message
+            : parsedError.message,
+          reason: parsedError.why,
+          requestId: parsedError.requestId,
+          transportRequestId: transportRequestId.value,
+          chatId: chat.id,
+          modelId: userModel.value,
+          providerId: provider?.id,
+          status: parsedError.status,
+        })
+      }
     },
     onData(dataPart) {
       if (dataPart.type !== 'data-missing-files') {

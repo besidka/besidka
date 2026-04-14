@@ -6,6 +6,7 @@ import {
   buildChatErrorMessage,
   isChatErrorTextPart,
   normalizeChatClientError,
+  shouldSurfaceChatError,
 } from '../../../app/composables/chat'
 
 describe('chat error helpers', () => {
@@ -25,6 +26,57 @@ describe('chat error helpers', () => {
       providerRequestId: 'req_123',
       status: 429,
     })
+  })
+
+  it('normalizes load errors into a user-friendly transport failure', () => {
+    const result = normalizeChatClientError(
+      new Error('Load Error'),
+      { requestId: 'transport-123' },
+    )
+
+    expect(result).toEqual({
+      code: 'unknown',
+      message: 'The chat response failed to load.',
+      why: 'The connection was interrupted before the response finished streaming.',
+      fix: 'Retry the message. If it keeps failing, contact support with the request ID.',
+      status: 500,
+      requestId: 'transport-123',
+    })
+  })
+
+  it('assigns a local correlation id for load errors without a server request id', () => {
+    const result = normalizeChatClientError(new Error('Failed to fetch'))
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'unknown',
+      message: 'The chat response failed to load.',
+      requestId: expect.any(String),
+    }))
+    expect(result.requestId).toHaveLength(26)
+  })
+
+  it('does not treat raw provider error objects as normalized chat payloads', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: {
+        type: 'error',
+        error: {
+          type: 'tokens',
+          code: 'rate_limit_exceeded',
+          message: 'Rate limit reached for gpt-5.4 on tokens per min (TPM). Please try again in 3.984s.',
+        },
+      },
+      providerId: 'openai',
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'provider-rate-limit',
+      providerId: 'openai',
+      why: 'The upstream model provider is temporarily throttling requests.',
+    }))
   })
 
   it('replaces an empty assistant placeholder with an inline error message', () => {
@@ -189,6 +241,66 @@ describe('chat error helpers', () => {
       type: 'text',
       text: 'Plain text',
     } as UIMessage['parts'][number])).toBe(false)
+  })
+
+  it('does not surface rate-limit errors when assistant text is already visible', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldSurfaceChatError(messages, {
+      code: 'provider-rate-limit',
+      message: 'The provider is rate limiting requests right now.',
+    })).toBe(false)
+  })
+
+  it('still surfaces rate-limit errors when no assistant text was produced', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ]
+
+    expect(shouldSurfaceChatError(messages, {
+      code: 'provider-rate-limit',
+      message: 'The provider is rate limiting requests right now.',
+    })).toBe(true)
+  })
+
+  it('does not surface raw rate-limit errors when assistant text is already visible', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldSurfaceChatError(messages, {
+      code: 'unknown',
+      message: 'Rate limit reached for gpt-5.4-mini on tokens per min (TPM). Please try again in 3.5s.',
+    })).toBe(false)
   })
 
   it('preserves explicit setup errors instead of replacing them with generic text', async () => {

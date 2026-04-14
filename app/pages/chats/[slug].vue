@@ -32,8 +32,7 @@
         :data-hide-content="shouldDisplayMessage(m.id) ? undefined : true"
         class="
           relative
-          [&[data-hide-content=true]_>_div]:hidden
-          [&[data-hide-content=true]_+_div]:-top-3
+          [&[data-hide-content=true]]:hidden
           mt-3 first:mt-0
         "
         :class="{

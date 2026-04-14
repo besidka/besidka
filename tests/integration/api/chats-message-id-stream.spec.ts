@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   failConvertToModelMessages: false,
   toUIMessageStreamOptions: [] as Array<Record<string, any>>,
+  generatedMessageIds: [] as string[],
+  uiMessageStreamChunks: null as Array<Record<string, any>> | null,
   persistAssistantError: null as Record<string, any> | null,
 }))
 
@@ -29,8 +31,42 @@ vi.mock('ai', async (importOriginal) => {
       consumeStream: vi.fn(),
       toUIMessageStream: vi.fn((options) => {
         mocks.toUIMessageStreamOptions.push(options)
+        const generatedMessageId = options.generateMessageId()
 
-        return {}
+        mocks.generatedMessageIds.push(generatedMessageId)
+
+        return new ReadableStream({
+          start(controller) {
+            const chunks = mocks.uiMessageStreamChunks ?? [
+              {
+                type: 'start',
+                messageId: generatedMessageId,
+              },
+              {
+                type: 'text-start',
+                id: 'text-1',
+              },
+              {
+                type: 'text-delta',
+                id: 'text-1',
+                delta: 'Hi',
+              },
+              {
+                type: 'text-end',
+                id: 'text-1',
+              },
+              {
+                type: 'finish',
+              },
+            ]
+
+            for (const chunk of chunks) {
+              controller.enqueue(chunk)
+            }
+
+            controller.close()
+          },
+        })
       }),
     })),
     smoothStream: vi.fn(() => undefined),
@@ -48,6 +84,12 @@ vi.mock('evlog', () => ({
   useLogger: () => ({
     set: vi.fn(),
   }),
+  log: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
   createError: (input: {
     status?: number
     message?: string
@@ -158,6 +200,8 @@ describe('chat stream message ids', () => {
     vi.clearAllMocks()
     mocks.failConvertToModelMessages = false
     mocks.toUIMessageStreamOptions.length = 0
+    mocks.generatedMessageIds.length = 0
+    mocks.uiMessageStreamChunks = null
     mocks.persistAssistantError = null
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -222,23 +266,17 @@ describe('chat stream message ids', () => {
 
     await response.ready
 
-    const streamOptions = mocks.toUIMessageStreamOptions[0]
-    const generatedId = streamOptions.generateMessageId()
+    const generatedId = mocks.generatedMessageIds[0]
 
     expect(generatedId).toMatch(ULID_PATTERN)
-
-    await streamOptions.onFinish({
-      isAborted: false,
-      responseMessage: {
-        id: generatedId,
-        role: 'assistant',
-        parts: [{ type: 'text', text: 'Hi' }],
-      },
-    })
-
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+    expect(insertValues.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       role: 'assistant',
-      parts: [{ type: 'text', text: 'Hi' }],
+      parts: [
+        expect.objectContaining({
+          type: 'text',
+          text: 'Hi',
+        }),
+      ],
       tools: [],
       reasoning: 'off',
       publicId: generatedId,
@@ -248,6 +286,10 @@ describe('chat stream message ids', () => {
   it('does not insert assistant row when the stream is aborted', async () => {
     const handler = await getHandler()
     const { db, insertValues } = createDb()
+
+    mocks.uiMessageStreamChunks = [{
+      type: 'abort',
+    }]
 
     vi.stubGlobal('useDb', () => db)
 
@@ -262,13 +304,6 @@ describe('chat stream message ids', () => {
     } as any)
 
     await response.ready
-
-    const streamOptions = mocks.toUIMessageStreamOptions[0]
-
-    await streamOptions.onFinish({
-      isAborted: true,
-      responseMessage: { role: 'assistant', parts: [] },
-    })
 
     const assistantInserts = insertValues.mock.calls.filter(
       ([payload]) => payload.role === 'assistant',
@@ -424,22 +459,13 @@ describe('chat stream message ids', () => {
       },
     } as any)
 
-    await response.ready
-
-    const streamOptions = mocks.toUIMessageStreamOptions[0]
-
-    await expect(streamOptions.onFinish({
-      isAborted: false,
-      responseMessage: {
-        id: 'assistant-1',
-        role: 'assistant',
-        parts: [{ type: 'text', text: 'Hi' }],
-      },
-    })).rejects.toEqual(expect.objectContaining({
+    await expect(response.ready).rejects.toEqual(expect.objectContaining({
       code: 'message-persist-failed',
       requestId: 'cf-ray-123',
       providerRequestId: 'req_persist_123',
     }))
+
+    const streamOptions = mocks.toUIMessageStreamOptions[0]
 
     expect(JSON.parse(streamOptions.onError(mocks.persistAssistantError)))
       .toEqual({
