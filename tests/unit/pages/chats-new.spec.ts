@@ -32,11 +32,6 @@ describe('chats new page', () => {
   beforeEach(() => {
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('history', {
-      state: null,
-      pushState: vi.fn(),
-      replaceState: vi.fn(),
-    })
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     vi.stubGlobal('useRoute', () => route)

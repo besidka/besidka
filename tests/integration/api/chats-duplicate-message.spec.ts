@@ -1,22 +1,95 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+function createMockUIMessageStream(messageId: string) {
+  return new ReadableStream({
+    start(controller) {
+      const chunks = [
+        {
+          type: 'start',
+          messageId,
+        },
+        {
+          type: 'text-start',
+          id: 'text-1',
+        },
+        {
+          type: 'text-delta',
+          id: 'text-1',
+          delta: 'Hi',
+        },
+        {
+          type: 'text-end',
+          id: 'text-1',
+        },
+        {
+          type: 'finish',
+        },
+      ]
+
+      for (const chunk of chunks) {
+        controller.enqueue(chunk)
+      }
+
+      controller.close()
+    },
+  })
+}
+
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>()
 
   return {
     ...actual,
     createUIMessageStream: ({ execute }: { execute: Function }) => {
-      const writer = { write: vi.fn(), merge: vi.fn() }
-      const ready = execute({ writer })
+      return new ReadableStream({
+        start(controller) {
+          const pendingMerges: Array<Promise<void>> = []
+          const writer = {
+            write: vi.fn((chunk: unknown) => {
+              controller.enqueue(chunk)
+            }),
+            merge: vi.fn((stream: ReadableStream<unknown>) => {
+              const pendingMerge = (async () => {
+                const reader = stream.getReader()
 
-      return { writer, ready }
+                try {
+                  while (true) {
+                    const { done, value } = await reader.read()
+
+                    if (done) {
+                      break
+                    }
+
+                    controller.enqueue(value)
+                  }
+                } finally {
+                  reader.releaseLock()
+                }
+              })()
+
+              pendingMerges.push(pendingMerge)
+            }),
+          }
+
+          Promise.resolve(execute({ writer }))
+            .then(async () => {
+              await Promise.all(pendingMerges)
+              controller.close()
+            })
+            .catch((exception) => {
+              controller.error(exception)
+            })
+        },
+      })
     },
     createUIMessageStreamResponse: (
       { stream }: { stream: unknown },
     ) => stream,
     streamText: vi.fn(() => ({
       consumeStream: vi.fn(),
-      toUIMessageStream: vi.fn(() => ({})),
+      toUIMessageStream: vi.fn((options) => {
+        return createMockUIMessageStream(options.generateMessageId())
+      }),
     })),
     smoothStream: vi.fn(() => undefined),
     convertToModelMessages: vi.fn(
