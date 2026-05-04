@@ -144,7 +144,7 @@ export default defineNuxtConfig({
         'latin',
       ],
     },
-    provider: 'google',
+    provider: process.env.CI === 'true' ? 'none' : 'google',
   },
   icon: {
     serverBundle: {
