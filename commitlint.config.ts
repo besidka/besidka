@@ -31,6 +31,11 @@ const Configuration: UserConfig = {
       'never',
       ['upper-case'],
     ],
+    'body-max-line-length': [
+      RuleConfigSeverity.Error,
+      'always',
+      Number.POSITIVE_INFINITY,
+    ],
   },
 }
 
