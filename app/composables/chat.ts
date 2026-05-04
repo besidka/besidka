@@ -63,6 +63,61 @@ function isTransportLoadError(error: ChatErrorPayload): boolean {
     || isTransportLoadErrorMessage(error.message)
 }
 
+function isChatErrorPayload(value: unknown): value is ChatErrorPayload {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const payload = value as Partial<ChatErrorPayload>
+
+  return typeof payload.code === 'string'
+    && typeof payload.message === 'string'
+}
+
+function normalizeGenericJsonErrorPayload(
+  value: unknown,
+  requestId: string | undefined,
+): ChatErrorPayload | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const payload = value as {
+    message?: unknown
+    status?: unknown
+    statusCode?: unknown
+    statusMessage?: unknown
+    why?: unknown
+    fix?: unknown
+  }
+  const message = typeof payload.message === 'string'
+    ? payload.message
+    : typeof payload.statusMessage === 'string'
+      ? payload.statusMessage
+      : null
+
+  if (!message) {
+    return null
+  }
+
+  return {
+    code: 'unknown',
+    message,
+    why: typeof payload.why === 'string'
+      ? payload.why
+      : undefined,
+    fix: typeof payload.fix === 'string'
+      ? payload.fix
+      : undefined,
+    status: typeof payload.status === 'number'
+      ? payload.status
+      : typeof payload.statusCode === 'number'
+        ? payload.statusCode
+        : undefined,
+    requestId,
+  }
+}
+
 export function normalizeChatClientError(
   error: unknown,
   options: NormalizeChatClientErrorOptions = {},
@@ -71,8 +126,17 @@ export function normalizeChatClientError(
     try {
       const parsed = JSON.parse(error.message) as ChatErrorPayload
 
-      if (parsed?.message) {
+      if (isChatErrorPayload(parsed)) {
         return parsed
+      }
+
+      const genericPayload = normalizeGenericJsonErrorPayload(
+        parsed,
+        options.requestId,
+      )
+
+      if (genericPayload) {
+        return genericPayload
       }
     } catch (exception) {
       void exception
@@ -101,6 +165,26 @@ export function normalizeChatClientError(
     status: parsedException.status,
     requestId: options.requestId,
   }
+}
+
+export function shouldSurfaceEmptyAssistantResponse(
+  messages: UIMessage[],
+): boolean {
+  const lastMessage = messages[messages.length - 1]
+
+  if (!lastMessage) {
+    return true
+  }
+
+  if (lastMessage.role === 'user') {
+    return true
+  }
+
+  if (lastMessage.role !== 'assistant') {
+    return false
+  }
+
+  return !hasMeaningfulAssistantParts(lastMessage)
 }
 
 export function buildChatErrorLines(error: ChatErrorPayload): string[] {
@@ -346,7 +430,27 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       },
     }),
     onFinish({ isAbort, isDisconnect, isError, messages }) {
-      const parsedError = pendingError.value
+      const requestId = transportRequestId.value
+      let parsedError = pendingError.value
+
+      if (!parsedError && isError) {
+        parsedError = normalizeChatClientError(
+          (chatSdk as { error?: unknown }).error || new Error('Load Error'),
+          { requestId },
+        )
+      }
+
+      if (
+        !parsedError
+        && !isAbort
+        && !isDisconnect
+        && shouldSurfaceEmptyAssistantResponse(messages)
+      ) {
+        parsedError = normalizeChatClientError(
+          new Error('Load Error'),
+          { requestId },
+        )
+      }
 
       pendingError.value = null
       transportRequestId.value = undefined

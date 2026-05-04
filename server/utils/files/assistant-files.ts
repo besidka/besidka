@@ -9,32 +9,101 @@ export interface NormalizeAssistantMessagePartsInput {
   logger: LoggerLike
 }
 
+const omittedFilePrefix = 'Previously attached file omitted from model context'
+
 export function sanitizeMessagesForModelContext(
   messages: UIMessage[],
 ): UIMessage[] {
   const sanitizedMessages: UIMessage[] = []
+  const latestUserMessage = findLatestUserMessage(messages)
 
   for (const message of messages) {
-    if (!Array.isArray(message.parts) || message.role !== 'assistant') {
+    if (!Array.isArray(message.parts)) {
       sanitizedMessages.push(message)
       continue
     }
 
-    const sanitizedParts = message.parts.filter((part) => {
-      return part.type !== 'file'
-    })
+    const sanitizedParts = sanitizeMessageParts(
+      message,
+      message === latestUserMessage,
+    )
 
     if (sanitizedParts.length === 0) {
       continue
     }
 
     sanitizedMessages.push({
-      ...message,
+      id: message.id,
+      role: message.role,
       parts: sanitizedParts,
     })
   }
 
   return sanitizedMessages
+}
+
+function findLatestUserMessage(messages: UIMessage[]): UIMessage | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+
+    if (message?.role === 'user') {
+      return message
+    }
+  }
+
+  return null
+}
+
+function sanitizeMessageParts(
+  message: UIMessage,
+  isLatestUserMessage: boolean,
+): UIMessage['parts'] {
+  const sanitizedParts: UIMessage['parts'] = []
+
+  for (const part of message.parts) {
+    if (part.type === 'text') {
+      sanitizedParts.push({
+        type: 'text',
+        text: part.text,
+      })
+      continue
+    }
+
+    if (part.type !== 'file' || message.role !== 'user') {
+      continue
+    }
+
+    if (isLatestUserMessage) {
+      sanitizedParts.push({
+        type: 'file',
+        mediaType: part.mediaType,
+        filename: part.filename,
+        url: part.url,
+      })
+      continue
+    }
+
+    sanitizedParts.push({
+      type: 'text',
+      text: getOmittedFileText(part),
+    })
+  }
+
+  return sanitizedParts
+}
+
+function getOmittedFileText(part: UIMessage['parts'][number]): string {
+  if (part.type !== 'file') {
+    return omittedFilePrefix
+  }
+
+  const filename = part.filename?.trim()
+
+  if (!filename) {
+    return `${omittedFilePrefix}.`
+  }
+
+  return `${omittedFilePrefix}: ${filename}.`
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   isChatErrorTextPart,
   normalizeChatClientError,
   shouldSurfaceChatError,
+  shouldSurfaceEmptyAssistantResponse,
 } from '../../../app/composables/chat'
 
 describe('chat error helpers', () => {
@@ -26,6 +27,17 @@ describe('chat error helpers', () => {
       providerRequestId: 'req_123',
       status: 429,
     })
+  })
+
+  it('does not accept generic JSON errors as structured chat payloads', () => {
+    const result = normalizeChatClientError(new Error(JSON.stringify({
+      message: 'Worker exceeded memory limit.',
+    })))
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'unknown',
+      message: 'Worker exceeded memory limit.',
+    }))
   })
 
   it('normalizes load errors into a user-friendly transport failure', () => {
@@ -281,6 +293,44 @@ describe('chat error helpers', () => {
       code: 'provider-rate-limit',
       message: 'The provider is rate limiting requests right now.',
     })).toBe(true)
+  })
+
+  it('detects empty assistant responses after a stream closes cleanly', () => {
+    expect(shouldSurfaceEmptyAssistantResponse([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+    ])).toBe(true)
+
+    expect(shouldSurfaceEmptyAssistantResponse([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('does not flag assistant responses with visible content as empty', () => {
+    expect(shouldSurfaceEmptyAssistantResponse([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ])).toBe(false)
   })
 
   it('does not surface raw rate-limit errors when assistant text is already visible', () => {
