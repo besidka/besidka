@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 import { config } from '@vue/test-utils'
 import { $fetch } from 'ofetch'
 
@@ -77,12 +77,33 @@ vi.mock('better-auth/vue', () => ({
   })),
 }))
 
+const windowHistory = window.history
+
+function ensureHistoryGlobal() {
+  Object.defineProperty(globalThis, 'history', {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: windowHistory,
+  })
+}
+
 /**
  * Expose window.history as a global for vue-router web history compatibility.
  * In the nuxt test environment, window.history exists but is not mapped to the
  * bare `history` global that vue-router accesses in finalizeNavigation.
+ * Re-apply it around each test because some specs call `vi.unstubAllGlobals()`
+ * during teardown and CI appears to schedule router work later than local runs.
  */
-;(globalThis as any).history = window.history
+ensureHistoryGlobal()
+
+beforeEach(() => {
+  ensureHistoryGlobal()
+})
+
+afterEach(() => {
+  ensureHistoryGlobal()
+})
 
 /**
  * Mock IntersectionObserver
