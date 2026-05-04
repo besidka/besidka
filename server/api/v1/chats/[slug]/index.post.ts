@@ -430,8 +430,6 @@ export default defineEventHandler(async (event) => {
         throw chatError
       }
 
-      result.consumeStream()
-
       const uiMessageStream = result.toUIMessageStream({
         originalMessages: messagesForAI,
         generateMessageId: () => messagePublicId,

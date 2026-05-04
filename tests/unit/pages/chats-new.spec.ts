@@ -7,6 +7,11 @@ import {
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
 
+async function flushPromises() {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
@@ -28,6 +33,7 @@ describe('chats new page', () => {
     query: reactive({} as Record<string, unknown>),
   })
   const replace = vi.fn()
+  let wrapper: Awaited<ReturnType<typeof mountSuspended>> | null = null
 
   beforeEach(() => {
     resetMockNuxtState()
@@ -46,7 +52,13 @@ describe('chats new page', () => {
     vi.stubGlobal('getFileUrl', vi.fn())
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    wrapper?.unmount()
+    wrapper = null
+
+    await nextTick()
+    await flushPromises()
+
     route.query = reactive({} as Record<string, unknown>)
 
     replace.mockReset()
@@ -80,7 +92,7 @@ describe('chats new page', () => {
 
     vi.stubGlobal('$fetch', fetchMock)
 
-    const wrapper = await mountSuspended(ChatsNewPage, {
+    wrapper = await mountSuspended(ChatsNewPage, {
       global: {
         stubs: {
           ChatContainer: {

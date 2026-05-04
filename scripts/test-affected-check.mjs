@@ -56,6 +56,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/files-upload.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
+    'tests/integration/server/assistant-files.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
@@ -213,7 +214,7 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
-      pattern: /^server\/utils\/(file-governance|convert-files-for-ai|file-share-access)\.ts$/,
+      pattern: /^server\/utils\/files\/.*\.ts$/,
       tests: filesModuleTests,
     },
     {
