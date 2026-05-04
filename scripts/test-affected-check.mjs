@@ -55,6 +55,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',

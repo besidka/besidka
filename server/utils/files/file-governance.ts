@@ -426,13 +426,6 @@ export async function validateMessageFilePolicy(
     },
   })
 
-  if (files.length !== uniqueStorageKeys.length) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'One or more attached files are unavailable',
-    })
-  }
-
   const sizeMap = new Map<string, number>()
 
   for (const file of files) {
