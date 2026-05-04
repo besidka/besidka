@@ -78,6 +78,7 @@ vi.mock('better-auth/vue', () => ({
 }))
 
 const windowHistory = window.history
+const unstubAllGlobals = vi.unstubAllGlobals.bind(vi)
 
 function ensureHistoryGlobal() {
   Object.defineProperty(globalThis, 'history', {
@@ -96,6 +97,12 @@ function ensureHistoryGlobal() {
  * during teardown and CI appears to schedule router work later than local runs.
  */
 ensureHistoryGlobal()
+
+;(vi as typeof vi & { unstubAllGlobals: typeof vi.unstubAllGlobals })
+  .unstubAllGlobals = () => {
+    unstubAllGlobals()
+    ensureHistoryGlobal()
+  }
 
 beforeEach(() => {
   ensureHistoryGlobal()
