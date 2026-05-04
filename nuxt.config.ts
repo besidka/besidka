@@ -1,6 +1,25 @@
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers'
 
+const enableFonts = process.env.CI !== 'true'
+
+const modules = [
+  '@nuxt/eslint',
+  '@nuxt/icon',
+  '@nuxt/image',
+  '@nuxtjs/color-mode',
+  '@nuxtjs/device',
+  '@nuxtjs/mdc',
+  'nuxt-svgo',
+  '@vueuse/nuxt',
+  '@vite-pwa/nuxt',
+  'evlog/nuxt',
+]
+
+if (enableFonts) {
+  modules.splice(1, 0, '@nuxt/fonts')
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
   devtools: { enabled: true },
@@ -79,19 +98,7 @@ export default defineNuxtConfig({
   colorMode: {
     dataValue: 'theme',
   },
-  modules: [
-    '@nuxt/eslint',
-    '@nuxt/fonts',
-    '@nuxt/icon',
-    '@nuxt/image',
-    '@nuxtjs/color-mode',
-    '@nuxtjs/device',
-    '@nuxtjs/mdc',
-    'nuxt-svgo',
-    '@vueuse/nuxt',
-    '@vite-pwa/nuxt',
-    'evlog/nuxt',
-  ],
+  modules,
   evlog: {
     sampling: {
       keep: [
@@ -133,19 +140,23 @@ export default defineNuxtConfig({
       ],
     },
   },
-  fonts: {
-    defaults: {
-      weights: [400, 700],
-      styles: ['normal'],
-      subsets: [
-        'cyrillic-ext',
-        'cyrillic',
-        'latin-ext',
-        'latin',
-      ],
-    },
-    provider: process.env.CI === 'true' ? 'none' : 'google',
-  },
+  ...(enableFonts
+    ? {
+      fonts: {
+        defaults: {
+          weights: [400, 700],
+          styles: ['normal'],
+          subsets: [
+            'cyrillic-ext',
+            'cyrillic',
+            'latin-ext',
+            'latin',
+          ],
+        },
+        provider: 'google',
+      },
+    }
+    : {}),
   icon: {
     serverBundle: {
       remote: 'jsdelivr',
