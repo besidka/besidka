@@ -214,8 +214,7 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
-      pattern:
-        /^server\/utils\/(assistant-files|file-governance|convert-files-for-ai|file-share-access)\.ts$/,
+      pattern: /^server\/utils\/files\/.*\.ts$/,
       tests: filesModuleTests,
     },
     {
