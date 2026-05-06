@@ -108,7 +108,11 @@ export default defineNuxtConfig({
     },
   },
   eslint: {
-    checker: process.env.CI !== 'true',
+    checker: process.env.CI !== 'true'
+      ? {
+        eslintPath: 'eslint',
+      }
+      : false,
   },
   svgo: {
     autoImportPath: '~/assets/icons',
