@@ -1,52 +1,34 @@
 import { describe, expect, it } from 'vitest'
-import { buildProjectInstructionsMessage } from '../../../server/utils/projects/instructions'
+import { buildProjectSystemPrompt } from '../../../server/utils/projects/instructions'
 
 describe('project instructions', () => {
-  it('builds a system message when instructions exist', () => {
-    const message = buildProjectInstructionsMessage({
+  it('builds a system prompt when instructions exist', () => {
+    const prompt = buildProjectSystemPrompt({
       name: 'Roadmap',
       instructions: 'Stay focused on milestones',
     })
 
-    expect(message).toMatchObject({
-      role: 'system',
-      parts: [
-        {
-          type: 'text',
-        },
-      ],
-    })
-    expect(message?.parts[0]).toMatchObject({
-      text: expect.stringContaining('Current project: Roadmap'),
-    })
-    expect(message?.parts[0]).toMatchObject({
-      text: expect.stringContaining('Stay focused on milestones'),
-    })
+    expect(prompt).toContain('Current project: Roadmap')
+    expect(prompt).toContain('Stay focused on milestones')
   })
 
-  it('includes ready project memory in the system message', () => {
-    const message = buildProjectInstructionsMessage({
+  it('includes ready project memory in the system prompt', () => {
+    const prompt = buildProjectSystemPrompt({
       name: 'Roadmap',
       instructions: null,
       memory: 'User prefers milestone-based plans and concise tradeoff notes.',
       memoryStatus: 'ready',
     })
 
-    expect(message?.parts[0]).toMatchObject({
-      text: expect.stringContaining('Project memory:'),
-    })
-    expect(message?.parts[0]).toMatchObject({
-      text: expect.stringContaining('milestone-based plans'),
-    })
-    expect(message?.parts[0]).toMatchObject({
-      text: expect.stringContaining(
-        'Project memory is secondary background context only.',
-      ),
-    })
+    expect(prompt).toContain('Project memory:')
+    expect(prompt).toContain('milestone-based plans')
+    expect(prompt).toContain(
+      'Project memory is secondary background context only.',
+    )
   })
 
   it('returns null when instructions are empty', () => {
-    expect(buildProjectInstructionsMessage({
+    expect(buildProjectSystemPrompt({
       name: 'Roadmap',
       instructions: '   ',
     })).toBeNull()

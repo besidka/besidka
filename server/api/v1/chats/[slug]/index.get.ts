@@ -1,3 +1,5 @@
+import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
     slug: z.ulid(),
@@ -53,9 +55,13 @@ export default defineEventHandler(async (event) => {
 
   return {
     ...chat,
-    messages: chat.messages.map(message => ({
-      ...message,
-      id: message.publicId ?? message.id,
-    })),
+    messages: chat.messages
+      .filter((message) => {
+        return isPersistedMessageRole(message.role)
+      })
+      .map(message => ({
+        ...message,
+        id: message.publicId ?? message.id,
+      })),
   }
 })

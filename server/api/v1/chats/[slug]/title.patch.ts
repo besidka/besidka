@@ -1,3 +1,4 @@
+import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
@@ -48,11 +49,11 @@ export default defineEventHandler(async (event) => {
     },
     with: {
       messages: {
-        limit: 1,
         orderBy(messages, { asc }) {
           return asc(messages.createdAt)
         },
         columns: {
+          role: true,
           parts: true,
         },
       },
@@ -72,12 +73,17 @@ export default defineEventHandler(async (event) => {
 
   const { provider, model } = useChatProvider(body.data.model)
 
-  if (!chat.messages.length) {
+  const initialMessage = chat.messages.find((message) => {
+    return isPersistedMessageRole(message.role)
+      && message.role === 'user'
+  })
+
+  if (!initialMessage) {
     return null
   }
 
   // @ts-expect-error
-  const initialMessages = chat.messages[0]!.parts?.[0]?.text as string
+  const initialMessages = initialMessage.parts?.[0]?.text as string
   let title = ''
 
   switch (provider.id) {

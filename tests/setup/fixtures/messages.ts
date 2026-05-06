@@ -4,7 +4,7 @@
 
 export interface TestMessage {
   id: string
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant'
   content: string
   createdAt: Date
 }
@@ -31,11 +31,6 @@ export const testMessages = {
     id: 'msg-assistant-1',
     role: 'assistant',
     content: 'I can help you with various tasks. What do you need?',
-  }),
-  systemMessage: createMockMessage({
-    id: 'msg-system-1',
-    role: 'system',
-    content: 'You are a helpful assistant.',
   }),
 }
 

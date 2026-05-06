@@ -1,4 +1,3 @@
-import type { UIMessage } from 'ai'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
 
 interface ProjectInstructionsContext {
@@ -8,9 +7,9 @@ interface ProjectInstructionsContext {
   memoryStatus?: ProjectMemoryStatus | null
 }
 
-export function buildProjectInstructionsMessage(
+export function buildProjectSystemPrompt(
   project: ProjectInstructionsContext | null,
-): UIMessage | null {
+): string | null {
   const instructions = project?.instructions?.trim()
   const memory = project?.memory?.trim()
 
@@ -38,14 +37,5 @@ export function buildProjectInstructionsMessage(
     'If earlier messages imply different project-specific context, ignore them and follow the current project.',
   )
 
-  return {
-    id: crypto.randomUUID(),
-    role: 'system',
-    parts: [
-      {
-        type: 'text',
-        text: sections.join('\n\n'),
-      },
-    ],
-  }
+  return sections.join('\n\n')
 }

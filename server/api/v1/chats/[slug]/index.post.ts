@@ -2,6 +2,7 @@ import type { LanguageModel, UIMessage } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
+import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, log } from 'evlog'
 import { createAILogger } from 'evlog/ai'
@@ -24,7 +25,7 @@ import {
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { resolveDataUrlsInModelMessages } from '~~/server/utils/files/resolve-data-urls'
-import { buildProjectInstructionsMessage } from '~~/server/utils/projects/instructions'
+import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
@@ -48,7 +49,7 @@ export default defineEventHandler(async (event) => {
     messages: z.array(
       z.object({
         id: z.string().nonempty(),
-        role: z.enum(['system', 'user', 'assistant']),
+        role: z.enum(['user', 'assistant']),
         createdAt: z.coerce.date().optional(),
         annotations: z.array(z.string()).optional(),
         parts: z.array(z.any()),
@@ -141,30 +142,29 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const previousMessages = chat.messages.map(message => ({
-    id: message.publicId ?? message.id,
-    role: message.role,
-    parts: message.parts,
-    createdAt: message.createdAt,
-    tools: message.tools,
-    reasoning: message.reasoning,
-  }))
+  const previousMessages = chat.messages
+    .filter((message) => {
+      return isPersistedMessageRole(message.role)
+    })
+    .map(message => ({
+      id: message.publicId ?? message.id,
+      role: message.role,
+      parts: message.parts,
+      createdAt: message.createdAt,
+      tools: message.tools,
+      reasoning: message.reasoning,
+    }))
 
   const allMessages = [...previousMessages, newMessage]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
-  const projectInstructionsMessage = buildProjectInstructionsMessage(
-    chat.project
-      ? {
-        name: chat.project.name,
-        instructions: chat.project.instructions,
-        memory: chat.project.memory,
-        memoryStatus: chat.project.memoryStatus,
-      }
-      : null,
-  )
-  const contextMessages = projectInstructionsMessage
-    ? [projectInstructionsMessage, ...modelContextMessages]
-    : modelContextMessages
+  const projectSystemPrompt = buildProjectSystemPrompt(chat.project
+    ? {
+      name: chat.project.name,
+      instructions: chat.project.instructions,
+      memory: chat.project.memory,
+      memoryStatus: chat.project.memoryStatus,
+    }
+    : null)
 
   if (!newMessage.parts || newMessage.parts.length === 0) {
     throw createError({
@@ -181,7 +181,7 @@ export default defineEventHandler(async (event) => {
   const {
     messages: messagesForAI,
     missingFiles,
-  } = await convertFilesForAI(contextMessages)
+  } = await convertFilesForAI(modelContextMessages)
 
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
@@ -393,6 +393,8 @@ export default defineEventHandler(async (event) => {
       try {
         result = streamText({
           model: ai.wrap(instance),
+          system: projectSystemPrompt || undefined,
+          allowSystemInMessages: false,
           messages: resolveDataUrlsInModelMessages(
             await convertToModelMessages(messagesForAI),
           ),

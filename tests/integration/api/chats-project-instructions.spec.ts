@@ -273,7 +273,7 @@ describe('chat project instructions', () => {
     })))
   })
 
-  it('prepends project instructions to model context without persisting them', async () => {
+  it('passes project instructions via system prompt without persisting them', async () => {
     const handler = await getHandler()
     const { db, insertValues } = createDb({
       id: 'chat-1',
@@ -303,16 +303,13 @@ describe('chat project instructions', () => {
     const convertMessages = mocks.convertFilesForAICalls[0] as Array<any>
 
     expect(convertMessages[0]).toMatchObject({
-      role: 'system',
-      parts: [
-        {
-          type: 'text',
-        },
-      ],
+      role: 'user',
     })
-    expect(convertMessages[0]?.parts[0]?.text).toContain(
-      'Stay focused on milestone decisions',
-    )
+    expect(mocks.streamTextCalls[0]).toMatchObject({
+      system: expect.stringContaining(
+        'Stay focused on milestone decisions',
+      ),
+    })
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
       role: 'user',
     }))
@@ -326,7 +323,7 @@ describe('chat project instructions', () => {
     )
   })
 
-  it('does not prepend a system message when the project has no instructions', async () => {
+  it('does not set a system prompt when the project has no instructions', async () => {
     const handler = await getHandler()
     const { db } = createDb({
       id: 'chat-1',
@@ -361,7 +358,7 @@ describe('chat project instructions', () => {
     })
   })
 
-  it('prepends ready project memory to model context', async () => {
+  it('passes ready project memory via system prompt', async () => {
     const handler = await getHandler()
     const { db } = createDb({
       id: 'chat-1',
@@ -390,9 +387,14 @@ describe('chat project instructions', () => {
 
     const convertMessages = mocks.convertFilesForAICalls[0] as Array<any>
 
-    expect(convertMessages[0]?.parts[0]?.text).toContain('Project memory:')
-    expect(convertMessages[0]?.parts[0]?.text).toContain(
-      'milestone-based updates',
-    )
+    expect(convertMessages[0]).toMatchObject({
+      role: 'user',
+    })
+    expect(mocks.streamTextCalls[0]).toMatchObject({
+      system: expect.stringContaining('Project memory:'),
+    })
+    expect(mocks.streamTextCalls[0]).toMatchObject({
+      system: expect.stringContaining('milestone-based updates'),
+    })
   })
 })

@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { persistedMessageRoles } from '#shared/utils/chat-message-role'
 import { relations, sql } from 'drizzle-orm'
 import {
   sqliteTable, text, integer, uniqueIndex, index,
@@ -42,7 +43,7 @@ export const messages = sqliteTable(
     chatId: publicId()
       .notNull()
       .references(() => chats.id, { onDelete: 'cascade' }),
-    role: text({ enum: ['system', 'user', 'assistant'] }).notNull(),
+    role: text({ enum: persistedMessageRoles }).notNull(),
     parts: text({ mode: 'json' })
       .notNull()
       .$type<UIMessage['parts']>()
