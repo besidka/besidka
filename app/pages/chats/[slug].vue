@@ -20,7 +20,13 @@
       />
       <ClientOnly>
         <template #fallback>
-          <ChatSkeleton :messages-length="chatSdk.messages.length" />
+          <div
+            :class="{
+              'mt-3': projectInstructionsText || projectMemoryText,
+            }"
+          >
+            <ChatSkeleton :messages-length="chatSdk.messages.length" />
+          </div>
         </template>
       </ClientOnly>
       <div

@@ -1,5 +1,12 @@
 <template>
   <ChatContainer>
+    <ChatProjectInstructions
+      v-if="projectInstructionsText || projectMemoryText"
+      :project-id="projectContext?.id || null"
+      :project-name="projectContext?.name || 'Project'"
+      :instructions="projectInstructionsText"
+      :memory="projectMemoryText"
+    />
     <ChatMessage
       role="assistant"
       :hide-assistant-avatar-on-mobile="false"
@@ -67,19 +74,68 @@ const routeProjectId = computed<string | null>(() => {
   return parseRouteProjectId(route.query.projectId)
 })
 
+interface ProjectDetails {
+  id: string
+  name: string
+  instructions: string | null
+  memory: string | null
+  memoryStatus:
+    | 'idle'
+    | 'stale'
+    | 'refreshing'
+    | 'ready'
+    | 'failed'
+    | 'unavailable'
+    | 'disabled'
+}
+
 const projectId = shallowRef<string | null>(routeProjectId.value)
 const projectContext = useState<{ id: string, name: string } | null>(
   'chats-new:project-context',
   () => null,
 )
+const projectInstructions = useState<string | null | undefined>(
+  'chats-new:project-instructions',
+  () => undefined,
+)
+const projectMemory = useState<string | null>(
+  'chats-new:project-memory',
+  () => null,
+)
+const projectMemoryStatus = useState<ProjectDetails['memoryStatus']>(
+  'chats-new:project-memory-status',
+  () => 'idle',
+)
+
+const projectInstructionsText = computed(() => {
+  const instructions = projectInstructions.value?.trim()
+
+  return instructions || null
+})
+
+const projectMemoryText = computed(() => {
+  if (projectMemoryStatus.value !== 'ready') {
+    return null
+  }
+
+  const memory = projectMemory.value?.trim()
+
+  return memory || null
+})
 
 if (!projectId.value) {
   projectContext.value = null
+  projectInstructions.value = null
+  projectMemory.value = null
+  projectMemoryStatus.value = 'idle'
 } else if (projectContext.value?.id !== projectId.value) {
   projectContext.value = {
     id: projectId.value,
     name: 'Project',
   }
+  projectInstructions.value = undefined
+  projectMemory.value = null
+  projectMemoryStatus.value = 'stale'
 }
 
 reasoning.value = normalizeReasoningLevel(reasoning.value)
@@ -109,6 +165,9 @@ function updateProjectQuery(
 function clearProject() {
   projectId.value = null
   projectContext.value = null
+  projectInstructions.value = null
+  projectMemory.value = null
+  projectMemoryStatus.value = 'idle'
 
   updateProjectQuery(null)
 }
@@ -126,6 +185,9 @@ async function syncProjectContext(
   if (!nextProjectId) {
     if (canApply()) {
       projectContext.value = null
+      projectInstructions.value = null
+      projectMemory.value = null
+      projectMemoryStatus.value = 'idle'
     }
 
     return
@@ -134,6 +196,7 @@ async function syncProjectContext(
   if (
     projectContext.value?.id === nextProjectId
     && projectContext.value.name !== 'Project'
+    && projectInstructions.value !== undefined
   ) {
     return
   }
@@ -141,8 +204,13 @@ async function syncProjectContext(
   if (canApply()) {
     projectContext.value = {
       id: nextProjectId,
-      name: 'Project',
+      name: projectContext.value?.id === nextProjectId
+        ? projectContext.value.name
+        : 'Project',
     }
+    projectInstructions.value = undefined
+    projectMemory.value = null
+    projectMemoryStatus.value = 'stale'
   }
 
   try {
@@ -156,6 +224,11 @@ async function syncProjectContext(
       id: project.id,
       name: project.name,
     }
+    projectInstructions.value = (project as ProjectDetails).instructions ?? null
+    projectMemory.value = (project as ProjectDetails).memory ?? null
+    projectMemoryStatus.value = (
+      project as ProjectDetails
+    ).memoryStatus ?? 'idle'
   } catch (exception) {
     if (!canApply()) {
       return
@@ -210,6 +283,11 @@ function onProjectPickerSubmit(payload: {
       name: payload.projectName || 'Project',
     }
     : null
+  projectInstructions.value = payload.projectId
+    ? undefined
+    : null
+  projectMemory.value = null
+  projectMemoryStatus.value = payload.projectId ? 'stale' : 'idle'
 
   updateProjectQuery(payload.projectId)
 }

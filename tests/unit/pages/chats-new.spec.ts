@@ -98,6 +98,14 @@ describe('chats new page', () => {
           ChatContainer: {
             template: '<div><slot /></div>',
           },
+          ChatProjectInstructions: {
+            props: ['instructions', 'memory'],
+            template: `
+              <div data-testid="project-instructions">
+                {{ instructions || '' }}|{{ memory || '' }}
+              </div>
+            `,
+          },
           ChatMessage: {
             template: '<div><slot /></div>',
           },
@@ -164,6 +172,80 @@ describe('chats new page', () => {
 
     expect(wrapper.get('[data-testid="project-context"]').text()).toBe(
       'project-b|Project B',
+    )
+  })
+
+  it('shows project instructions and memory after selecting a project', async () => {
+    const projectPickerStub = defineComponent({
+      name: 'ChatInputProjectPicker',
+      emits: ['submit'],
+      methods: {
+        open() {},
+        close() {},
+      },
+      template: '<div />',
+    })
+
+    vi.stubGlobal('$fetch', vi.fn(async () => ({
+      id: 'project-a',
+      name: 'Project A',
+      instructions: 'Stay focused on milestones',
+      memory: 'User prefers concise updates.',
+      memoryStatus: 'ready',
+    })))
+
+    wrapper = await mountSuspended(ChatsNewPage, {
+      global: {
+        stubs: {
+          ChatContainer: {
+            template: '<div><slot /></div>',
+          },
+          ChatProjectInstructions: {
+            props: ['instructions', 'memory'],
+            template: `
+              <div data-testid="project-instructions">
+                {{ instructions || '' }}|{{ memory || '' }}
+              </div>
+            `,
+          },
+          ChatMessage: {
+            template: '<div><slot /></div>',
+          },
+          LazyBackgroundLogo: true,
+          ChatInput: {
+            props: ['projectContext'],
+            template: `
+              <div data-testid="project-context">
+                {{ projectContext?.id }}|{{ projectContext?.name }}
+              </div>
+            `,
+          },
+          ChatInputProjectPicker: projectPickerStub,
+          LazyChatInputProjectPicker: projectPickerStub,
+        },
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="project-instructions"]').exists(),
+    ).toBe(false)
+
+    wrapper.findComponent({ name: 'ChatInputProjectPicker' }).vm.$emit(
+      'submit',
+      {
+        projectId: 'project-a',
+        projectName: 'Project A',
+      },
+    )
+    await nextTick()
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="project-context"]').text()).toBe(
+      'project-a|Project A',
+    )
+    expect(wrapper.get('[data-testid="project-instructions"]').text()).toBe(
+      'Stay focused on milestones|User prefers concise updates.',
     )
   })
 })

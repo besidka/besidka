@@ -1,3 +1,4 @@
+import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
@@ -61,7 +62,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const branchIndex = chat.messages.findIndex((message) => {
+  const persistedMessages = chat.messages.filter((message) => {
+    return isPersistedMessageRole(message.role)
+  })
+  const branchIndex = persistedMessages.findIndex((message) => {
     return message.publicId === body.data.messageId
       || message.id === body.data.messageId
   })
@@ -73,7 +77,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const messagesToCopy = chat.messages.slice(0, branchIndex + 1)
+  const messagesToCopy = persistedMessages.slice(0, branchIndex + 1)
 
   const title = chat.title
     ? `Branch: ${chat.title.replace(/Branch: /g, '')}`

@@ -49,6 +49,9 @@ export default defineEventHandler(async (event) => {
     with: {
       messages: {
         limit: 1,
+        where(messages, { eq }) {
+          return eq(messages.role, 'user')
+        },
         orderBy(messages, { asc }) {
           return asc(messages.createdAt)
         },
@@ -72,12 +75,14 @@ export default defineEventHandler(async (event) => {
 
   const { provider, model } = useChatProvider(body.data.model)
 
-  if (!chat.messages.length) {
+  const initialMessage = chat.messages[0]
+
+  if (!initialMessage) {
     return null
   }
 
   // @ts-expect-error
-  const initialMessages = chat.messages[0]!.parts?.[0]?.text as string
+  const initialMessages = initialMessage.parts?.[0]?.text as string
   let title = ''
 
   switch (provider.id) {

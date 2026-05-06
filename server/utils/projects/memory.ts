@@ -1,5 +1,6 @@
 import type { LanguageModel, UIMessage } from 'ai'
 import type { ProjectMemoryStatus } from '#shared/types/projects.d'
+import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { and, eq, ne } from 'drizzle-orm'
 import { generateText } from 'ai'
 import { createError } from 'evlog'
@@ -306,20 +307,18 @@ async function refreshChatProjectMemorySummary(
 
   const { text } = await generateText({
     model,
+    system: [
+      'Summarize only durable project memory from this chat.',
+      'Use a concise structured memo with these sections when relevant:',
+      'Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
+      'Include stable goals, preferences, constraints, decisions, conventions, and durable workflow context.',
+      'Treat tools and resources as high-level references only, not exhaustive logs.',
+      'If nothing durable exists, respond with NONE.',
+      'Exclude temporary task status, one-off troubleshooting, short-lived details, and raw link dumps.',
+      'Return plain text only and keep it concise.',
+    ].join(' '),
+    allowSystemInMessages: false,
     messages: [
-      {
-        role: 'system',
-        content: [
-          'Summarize only durable project memory from this chat.',
-          'Use a concise structured memo with these sections when relevant:',
-          'Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
-          'Include stable goals, preferences, constraints, decisions, conventions, and durable workflow context.',
-          'Treat tools and resources as high-level references only, not exhaustive logs.',
-          'If nothing durable exists, respond with NONE.',
-          'Exclude temporary task status, one-off troubleshooting, short-lived details, and raw link dumps.',
-          'Return plain text only and keep it concise.',
-        ].join(' '),
-      },
       {
         role: 'user',
         content: transcript,
@@ -346,20 +345,18 @@ async function synthesizeProjectMemory(
 ) {
   const { text } = await generateText({
     model,
+    system: [
+      `You are maintaining durable memory for the project "${projectName}".`,
+      'Merge the provided chat summaries into one concise structured memo.',
+      'Use these sections when they have durable content: Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
+      'Keep only stable goals, preferences, constraints, decisions, conventions, and durable workflow context.',
+      'Tools and resources used must be high-level references only, not exhaustive logs or raw URL dumps.',
+      'Deduplicate aggressively and remove stale or temporary details.',
+      'If there is no durable memory, respond with NONE.',
+      'Return plain text only.',
+    ].join(' '),
+    allowSystemInMessages: false,
     messages: [
-      {
-        role: 'system',
-        content: [
-          `You are maintaining durable memory for the project "${projectName}".`,
-          'Merge the provided chat summaries into one concise structured memo.',
-          'Use these sections when they have durable content: Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
-          'Keep only stable goals, preferences, constraints, decisions, conventions, and durable workflow context.',
-          'Tools and resources used must be high-level references only, not exhaustive logs or raw URL dumps.',
-          'Deduplicate aggressively and remove stale or temporary details.',
-          'If there is no durable memory, respond with NONE.',
-          'Return plain text only.',
-        ].join(' '),
-      },
       {
         role: 'user',
         content: summaries
@@ -482,6 +479,10 @@ function toChatTranscript(
   const lines: string[] = []
 
   for (const message of messages) {
+    if (!isPersistedMessageRole(message.role)) {
+      continue
+    }
+
     const text = toMessageText(message.parts)
 
     if (!text) {
@@ -500,6 +501,10 @@ function getLatestMessageCreatedAt(
   let latestMessageCreatedAt: Date | null = null
 
   for (const message of messages) {
+    if (!isPersistedMessageRole(message.role)) {
+      continue
+    }
+
     if (!message.createdAt) {
       continue
     }
