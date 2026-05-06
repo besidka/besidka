@@ -126,7 +126,6 @@ export default defineNuxtConfig({
                 onlyMatchedOnce: false,
               },
               removeDoctype: false,
-              removeViewBox: false,
               removeUnknownsAndDefaults: {
                 keepDataAttrs: true,
                 keepAriaAttrs: true,
@@ -182,6 +181,7 @@ export default defineNuxtConfig({
         'shiki-stream/vue',
         'shiki/bundle/web',
         'shiki/engine/javascript',
+        'sanitize-html',
       ],
     },
     plugins: [
