@@ -111,7 +111,7 @@
 		"better-sqlite3": "^12.9.0",
 		"happy-dom": "^20.9.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^16.4.0",
+		"lint-staged": "^17.0.4",
 		"msw": "^2.14.3",
 		"playwright-core": "^1.59.1",
 		"typescript": "^6.0.3",
