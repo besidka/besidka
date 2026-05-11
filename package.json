@@ -94,7 +94,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260504.1",
+		"@cloudflare/workers-types": "^4.20260511.1",
 		"@commitlint/cli": "^20.5.3",
 		"@commitlint/config-conventional": "^20.5.3",
 		"@commitlint/format": "^20.5.0",
@@ -103,7 +103,7 @@
 		"@playwright/test": "^1.59.1",
 		"@stylistic/eslint-plugin": "^5.10.0",
 		"@types/better-sqlite3": "^7.6.13",
-		"@types/node": "24.12.2",
+		"@types/node": "24.12.3",
 		"@types/sanitize-html": "^2.16.1",
 		"@vitest/coverage-v8": "^4.1.5",
 		"@vitest/ui": "^4.1.5",
@@ -112,7 +112,7 @@
 		"happy-dom": "^20.9.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",
-		"msw": "^2.14.3",
+		"msw": "^2.14.6",
 		"playwright-core": "^1.59.1",
 		"typescript": "^6.0.3",
 		"vite-plugin-eslint2": "^5.1.0",
@@ -120,7 +120,7 @@
 		"vitest-environment-nuxt": "^2.0.0",
 		"vue-tsc": "^3.2.8",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.87.0"
+		"wrangler": "^4.90.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
