@@ -1,9 +1,9 @@
 {
 	"name": "besidka",
 	"type": "module",
-	"packageManager": "pnpm@10.33.3",
+	"packageManager": "pnpm@11.1.2",
 	"engines": {
-		"node": ">=20"
+		"node": ">=24"
 	},
 	"scripts": {
 		"preinstall": "node scripts/verify-node-types.mjs",
@@ -130,16 +130,6 @@
 			"optional": true
 		}
 	},
-	"onlyBuiltDependencies": [
-		"rolldown",
-		"@parcel/watcher",
-		"@tailwindcss/oxide",
-		"better-sqlite3",
-		"esbuild",
-		"sharp",
-		"unrs-resolver",
-		"workerd"
-	],
 	"overrides": {
 		"vite": "npm:rolldown-vite@latest"
 	},
