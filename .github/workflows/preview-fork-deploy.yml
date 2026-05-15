@@ -61,10 +61,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Checkout base branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           run-id: ${{ steps.find-run.outputs.run-id }}
           name: preview-build
@@ -72,7 +72,7 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           run_install: false
 
@@ -82,7 +82,7 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         id: deploy
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -109,7 +109,7 @@ jobs:
           echo "alias-url=${ALIAS_URL}" >> $GITHUB_OUTPUT
 
       - name: Comment preview URL on PR
-        uses: mshick/add-pr-comment@v2
+        uses: mshick/add-pr-comment@v3
         with:
           issue: ${{ steps.pr.outputs.number }}
           allow-repeats: true

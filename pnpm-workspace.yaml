@@ -1,10 +1,10 @@
-ignoredBuiltDependencies:
-  - '@parcel/watcher'
-  - '@prisma/engines'
-  - better-sqlite3
-  - esbuild
-  - msw
-  - prisma
-  - sharp
-  - unrs-resolver
-  - workerd
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/engines': false
+  better-sqlite3: true
+  esbuild: true
+  msw: false
+  prisma: false
+  sharp: true
+  unrs-resolver: true
+  workerd: true

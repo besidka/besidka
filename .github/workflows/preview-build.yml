@@ -52,7 +52,7 @@ jobs:
       should-skip: ${{ steps.paths.outputs.should-skip }}
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
           ref: ${{ github.event.pull_request.head.sha }}
@@ -116,12 +116,12 @@ jobs:
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Checkout PR code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           run_install: false
 
@@ -295,7 +295,7 @@ jobs:
 
       - name: Comment build results on PR
         if: success()
-        uses: mshick/add-pr-comment@v2
+        uses: mshick/add-pr-comment@v3
         with:
           issue: ${{ github.event.pull_request.number }}
           allow-repeats: true
