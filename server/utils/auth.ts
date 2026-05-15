@@ -37,7 +37,7 @@ function createAuth() {
         return kv.put(
           `${dataKey}:${key}`,
           value,
-          ttl ? { expirationTtl: ttl } : undefined,
+          ttl ? { expirationTtl: Math.max(ttl, 60) } : undefined,
         )
       },
       delete: key => kv.delete(`${dataKey}:${key}`),

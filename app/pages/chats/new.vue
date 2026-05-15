@@ -344,11 +344,11 @@ async function onSubmit() {
       }
     }
 
-    throw createError({
-      statusCode: parsedException.status || 500,
-      statusMessage: parsedException.message
-        || 'An error occurred while sending the message.',
-    })
+    useErrorMessage(
+      parsedException.message
+      || 'An error occurred while sending the message.',
+      parsedException.why,
+    )
   } finally {
     pending.value = false
   }

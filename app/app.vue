@@ -34,6 +34,8 @@
 </template>
 
 <script setup lang="ts">
+import { parseError } from 'evlog'
+
 const { siteName } = useAppConfig()
 
 useHead({
@@ -55,8 +57,10 @@ useSeoMeta({
   twitterCard: 'summary_large_image',
 })
 
-async function onException(exception: any) {
-  if (exception?.statusCode === 401) {
+async function onException(exception: unknown) {
+  const parsedException = parseError(exception)
+
+  if (parsedException.status === 401) {
     const { fetchSession, session } = useAuth()
 
     await fetchSession()
@@ -68,6 +72,9 @@ async function onException(exception: any) {
     }
   }
 
-  useErrorMessage(exception.statusMessage ?? 'An unexpected error occurred.')
+  useErrorMessage(
+    parsedException.message || 'An unexpected error occurred.',
+    parsedException.why,
+  )
 }
 </script>
