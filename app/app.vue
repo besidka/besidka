@@ -55,9 +55,19 @@ useSeoMeta({
   twitterCard: 'summary_large_image',
 })
 
-function onException(exception: any) {
-  useErrorMessage(exception.statusMessage ?? 'An unexpected error occurred.')
+async function onException(exception: any) {
+  if (exception?.statusCode === 401) {
+    const { fetchSession, session } = useAuth()
 
-  throw exception
+    await fetchSession()
+
+    if (!session.value) {
+      await navigateTo('/signin')
+
+      return
+    }
+  }
+
+  useErrorMessage(exception.statusMessage ?? 'An unexpected error occurred.')
 }
 </script>

@@ -1,18 +1,17 @@
 import { betterAuth } from 'better-auth'
-import Database from 'better-sqlite3'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { lastLoginMethod } from 'better-auth/plugins'
+import { lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
+import * as schema from '../server/db/schema'
 
 export const auth = betterAuth({
-  database: drizzleAdapter(new Database('database.sqlite'), {
+  database: drizzleAdapter({} as any, {
     provider: 'sqlite',
+    schema,
     usePlural: true,
   }),
   advanced: {
     database: {
-      useNumberId: true,
-      generateId: false,
-      usePlural: true,
+      generateId: 'serial',
     },
   },
   emailAndPassword: {
@@ -42,6 +41,7 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    oAuthProxy({ productionURL: '' }),
     lastLoginMethod({ storeInDatabase: true }),
   ],
 })

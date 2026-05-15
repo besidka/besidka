@@ -34,9 +34,11 @@ function createAuth() {
     secondaryStorage: {
       get: key => kv.get(`${dataKey}:${key}`),
       set: (key, value, ttl) => {
-        return kv.put(`${dataKey}:${key}`, value, {
-          expirationTtl: ttl,
-        })
+        return kv.put(
+          `${dataKey}:${key}`,
+          value,
+          ttl ? { expirationTtl: ttl } : undefined,
+        )
       },
       delete: key => kv.delete(`${dataKey}:${key}`),
     },
@@ -46,6 +48,11 @@ function createAuth() {
       fallback: config.public.baseUrl || undefined,
     },
     session: {
+      // Persist sessions to DB in addition to secondaryStorage (KV).
+      // Without this, sessions live only in KV; once a KV entry expires or
+      // becomes unavailable, Better Auth has no fallback and getSession()
+      // returns null, forcing users to sign out and back in.
+      storeSessionInDatabase: true,
       cookieCache: {
         enabled: true,
         maxAge: 60 * 5, // 5 minutes cache
