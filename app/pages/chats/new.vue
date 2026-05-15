@@ -329,11 +329,26 @@ async function onSubmit() {
     }
 
     navigateTo(`/chats/${response.slug}`)
-  } catch (exception: any) {
-    throw createError({
-      statusCode: exception.status || 500,
-      statusMessage: exception.statusMessage || 'An error occurred while sending the message.',
-    })
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    if (parsedException.status === 401) {
+      const { fetchSession, session } = useAuth()
+
+      await fetchSession()
+
+      if (!session.value) {
+        await navigateTo('/signin')
+
+        return
+      }
+    }
+
+    useErrorMessage(
+      parsedException.message
+      || 'An error occurred while sending the message.',
+      parsedException.why,
+    )
   } finally {
     pending.value = false
   }
