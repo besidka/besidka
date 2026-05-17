@@ -107,6 +107,12 @@ vi.mock('ai', async (importOriginal) => {
 vi.mock('evlog', () => ({
   useLogger: () => ({
     set: vi.fn(),
+    getContext: () => ({ requestId: 'test-request-id' }),
+  }),
+  createRequestLogger: () => ({
+    set: vi.fn(),
+    emit: vi.fn(() => null),
+    getContext: () => ({}),
   }),
   log: {
     error: vi.fn(),
@@ -271,6 +277,9 @@ describe('chat project instructions', () => {
       tools: {},
       providerOptions: {},
     })))
+    vi.stubGlobal('attachCloudflareMeta', vi.fn())
+    vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
+    vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
   })
 
   it('passes project instructions via system prompt without persisting them', async () => {

@@ -317,7 +317,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const cfCtx = (event.context as WaitUntilCtx).cloudflare?.context
+  const cfCtx = (event.context as WaitUntilCtx | undefined)?.cloudflare?.context
   const aiLogger = createRequestLogger({
     method: 'POST',
     path: event.path,
