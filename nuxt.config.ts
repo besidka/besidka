@@ -77,6 +77,10 @@ export default defineNuxtConfig({
     filesRetentionCleanupBatchSize: 100,
     filesRetentionCleanupMaxRuntimeMs: 20000,
     filesMaintenanceToken: '',
+    axiomDataset: '',
+    axiomToken: '',
+    axiomAuditDataset: '',
+    axiomAuditToken: '',
     public: {
       baseUrl: '',
       defaultModel,
@@ -100,11 +104,16 @@ export default defineNuxtConfig({
   },
   modules,
   evlog: {
+    redact: true,
     sampling: {
       keep: [
         { status: 400 },
         { duration: 1000 },
       ],
+    },
+    transport: {
+      enabled: true,
+      endpoint: '/api/_evlog/ingest',
     },
   },
   eslint: {

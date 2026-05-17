@@ -4,8 +4,8 @@ import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
-import { useLogger, createError, log } from 'evlog'
-import { createAILogger } from 'evlog/ai'
+import { useLogger, createError, createRequestLogger, log } from 'evlog'
+import { createAILogger, createEvlogIntegration } from 'evlog/ai'
 import { eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -267,7 +267,85 @@ export default defineEventHandler(async (event) => {
   }
 
   const { provider, model } = useChatProvider(userModel)
-  const ai = createAILogger(logger)
+
+  // @TODO Replace `aiLogger` + this manual emit with
+  //   `logger.fork('ai-stream', async () => { ... })`
+  //   once evlog ships `fork()` support for the Nuxt/Nitro integration.
+  //
+  // Why we use a dedicated request logger here:
+  //   Nuxt/Nitro emits the parent request wide event when the handler returns
+  //   the streaming Response — which happens BEFORE the AI stream finishes.
+  //   `createAILogger`'s middleware then writes `ai.{tokens, cost, ...}` onto
+  //   the parent logger, which is already sealed, so evlog drops the keys
+  //   and prints:
+  //     "[evlog] log.set() called after the wide event was emitted —
+  //      Keys dropped: ai. ... use log.fork('label', fn) when your
+  //      integration supports it"
+  //   `log.fork()` is currently attached only by Next.js, SvelteKit, Hono,
+  //   Express, Fastify, NestJS, Elysia integrations — see the integration
+  //   whitelist in evlog/dist/integration-*.mjs. The Nitro adapter does not
+  //   call `attachForkToLogger`, so `logger.fork` is `undefined` here.
+  //
+  // What this workaround does:
+  //   Creates a separate `aiLogger` via `createRequestLogger`, feeds it to
+  //   `createAILogger`, and `emit()`s it in `onFinish`. The middleware writes
+  //   to this independent logger (never sealed prematurely), so no warning
+  //   fires and the resulting wide event carries the full `ai.*` block.
+  //   `_parentRequestId` links it back to the parent request event.
+  //
+  // When to migrate to fork():
+  //   - When evlog adds `attachForkToLogger` to its Nitro integration
+  //     (track upstream: https://github.com/evlogdev/evlog).
+  //   - Verify by checking `typeof logger.fork === 'function'`. The d.ts
+  //     already declares `fork?` on `RequestLogger`.
+  //   - Migration: replace `aiLogger` with the implicit child logger
+  //     `logger.fork('ai-stream', async () => { /* await stream */ })`,
+  //     remove `createRequestLogger` import + `aiLogger.emit(...)` calls.
+  //     The child event will inherit `requestId` automatically as
+  //     `_parentRequestId`.
+  const parentRequestId = logger.getContext().requestId as string | undefined
+  // Required on Cloudflare Workers — without this, the Axiom drain `fetch()`
+  // initiated by `aiLogger.emit()` (running after the Response body finishes)
+  // gets cancelled when the Worker deallocates. waitUntil() asks the runtime
+  // to keep the Worker alive until the drain HTTP request resolves. This is
+  // the same path evlog's own Nitro plugin uses for the request logger.
+  type WaitUntilCtx = {
+    cloudflare?: {
+      context?: {
+        waitUntil?: (promise: Promise<unknown>) => void
+      }
+    }
+  }
+
+  const cfCtx = (event.context as WaitUntilCtx).cloudflare?.context
+  const aiLogger = createRequestLogger({
+    method: 'POST',
+    path: event.path,
+    waitUntil: cfCtx?.waitUntil?.bind(cfCtx),
+  })
+
+  aiLogger.set({
+    operation: 'ai-stream',
+    service: 'app',
+    _parentRequestId: parentRequestId,
+    chatId: chat.id,
+    userId,
+    modelId: model.id,
+    providerId: provider.id,
+    reasoning: body.data.reasoning,
+    tools: body.data.tools,
+  })
+
+  // Mirror Cloudflare edge metadata (colo, country, ASN, etc.) onto the
+  // ai-stream event so geo-grouped queries work for AI cost too. The parent
+  // request logger gets this via the evlog-request-observability plugin;
+  // standalone child loggers don't inherit so we attach explicitly.
+  attachCloudflareMeta(aiLogger, event)
+
+  const ai = createAILogger(aiLogger, {
+    cost: getModelCostMap(),
+    toolInputs: { maxLength: 500 },
+  })
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools
@@ -399,6 +477,10 @@ export default defineEventHandler(async (event) => {
             await convertToModelMessages(messagesForAI),
           ),
           experimental_transform: smoothStream(),
+          experimental_telemetry: {
+            isEnabled: true,
+            integrations: [createEvlogIntegration(ai)],
+          },
           ...parsedTools,
           providerOptions,
         })
@@ -486,6 +568,30 @@ export default defineEventHandler(async (event) => {
         publicId: messagePublicId,
         logger,
       })
+
+      // Emit the dedicated AI wide event AFTER the persistence stream is
+      // fully consumed. By this point streamText.onFinish has fired, the
+      // middleware's `wrapStream` transform has flushed its final state to
+      // `aiLogger`, and `createEvlogIntegration`'s `onFinish` has run.
+      // Emitting earlier (e.g. in streamText.onFinish) races with these
+      // flushes and triggers evlog's "set called after emit" warning.
+      //
+      // Standalone `createRequestLogger().emit()` does NOT dispatch through
+      // the Nitro hook system that our `evlog-drain.ts` plugin registers —
+      // it goes through evlog's `globalDrain` / `globalPluginRunner`, which
+      // the Nitro adapter doesn't populate. So `emit()` builds the event +
+      // console.log's it (visible in CF Observability) but never ships it
+      // to Axiom on its own. We manually push the built wide event to the
+      // same Axiom drains used by the Nitro hook, registered via waitUntil
+      // so the Worker stays alive until the fetch resolves.
+      const aiWideEvent = aiLogger.emit({
+        message: 'AI stream completed',
+        status: 200,
+      })
+
+      if (aiWideEvent && cfCtx?.waitUntil) {
+        cfCtx.waitUntil(shipWideEventToAxiom(aiWideEvent))
+      }
     },
   })
 
