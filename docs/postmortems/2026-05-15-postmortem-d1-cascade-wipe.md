@@ -3,7 +3,7 @@
 **Date:** 2026-05-15
 **Severity:** SEV-1 (production data loss)
 **Stack:** Nuxt 4 + Cloudflare D1 + Drizzle ORM + Better Auth
-**Affected:** `chat` (production), `chat-preview` (preview)
+**Affected:** `besidka` (production), `besidka-preview` (preview)
 **Status:** Resolved — both databases restored via D1 Time Travel
 
 ## Timeline
@@ -201,3 +201,19 @@ Time Travel is **only available via wrangler CLI** (or the underlying Cloudflare
 - `server/db/schemas/auth.ts` — `.default(false)` removed from `users.emailVerified` (the change that forced the rebuild). Kept the safe additions from the same iteration: `sessions.ipAddress` column, `sessions.userId` / `accounts.userId` / `verifications.identifier` indexes.
 - `.drizzle/migrations/0018_woozy_hemingway.sql` — destructive migration deleted along with its journal entry and snapshot.
 - `.drizzle/migrations/0018_motionless_prowler.sql` — replacement, safe-only migration. Contains only `ALTER TABLE ADD COLUMN` and `CREATE INDEX`. No `DROP TABLE`. No risk.
+
+## Playground repository
+
+I decided to create a [playground repository](https://github.com/serhii-chernenko/drizzle-schema-alter-column-test) to compare behavior between SQLite (without Cloudflare-specific abstractions), Cloudflare D1 (based on SQLite), MySQL, and PostreSQL.
+
+## Background reading
+
+The original incident and recovery: [`docs/postmortems/2026-05-15-postmortem-d1-cascade-wipe.md`](docs/postmortems/2026-05-15-postmortem-d1-cascade-wipe.md).
+
+External references:
+
+- [Playground repository](https://github.com/serhii-chernenko/drizzle-schema-alter-column-test)
+- [Cloudflare D1 — defer foreign-key constraints](https://developers.cloudflare.com/d1/sql-api/foreign-keys/#defer-foreign-key-constraints) — the official advice that turns out not to help in this case (it defers FK *validation*, not cascade *actions*).
+- [NuxtHub — foreign key constraints in migrations](https://hub.nuxt.com/docs/database/migrations#foreign-key-constraints) — references the Cloudflare doc; same caveat applies.
+- [drizzle-team/drizzle-orm#1813](https://github.com/drizzle-team/drizzle-orm/issues/1813) — the open issue tracking this exact class of problem in drizzle-kit's generator. Still unresolved.
+- [SQLite docs — foreign keys](https://www.sqlite.org/foreignkeys.html) — for the underlying semantics, especially the distinction between deferred validation and immediate cascade actions.
