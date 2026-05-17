@@ -83,6 +83,81 @@ describe('convertFilesForAI', () => {
     expect(storageGet).toHaveBeenCalledWith('file-1.png')
   })
 
+  it('inlines text files as a markdown text part', async () => {
+    const fileContent = '# Heading\n\nSome `inline` code and a fence:\n```\nx\n```\n'
+    const storageGet = vi.fn().mockResolvedValue({
+      arrayBuffer: async () => new TextEncoder().encode(fileContent).buffer,
+      text: async () => fileContent,
+    })
+
+    vi.stubGlobal('useFileStorage', () => ({
+      get: storageGet,
+    }))
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      ['notes-1.md', {
+        id: 'file-1',
+        storageKey: 'notes-1.md',
+        size: fileContent.length,
+      }],
+    ]))
+
+    const messages: UIMessage[] = [{
+      id: 'm1',
+      role: 'user',
+      parts: [{
+        type: 'file',
+        url: '/files/notes-1.md',
+        mediaType: 'text/plain',
+        filename: 'notes.md',
+      }],
+    } as any]
+
+    const result = await convertFilesForAI(messages)
+    const convertedPart = (result.messages[0] as any)?.parts?.[0]
+
+    expect(convertedPart?.type).toBe('text')
+    expect(convertedPart?.text).toContain('**notes.md**')
+    expect(convertedPart?.text).toContain('````md\n')
+    expect(convertedPart?.text).toContain(fileContent)
+    expect(convertedPart?.text.endsWith('````')).toBe(true)
+    expect(result.missingFiles).toHaveLength(0)
+    expect(storageGet).toHaveBeenCalledWith('notes-1.md')
+  })
+
+  it('reports text files missing from storage', async () => {
+    const storageGet = vi.fn().mockResolvedValue(null)
+
+    vi.stubGlobal('useFileStorage', () => ({
+      get: storageGet,
+    }))
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      ['notes-2.txt', {
+        id: 'file-2',
+        storageKey: 'notes-2.txt',
+        size: 0,
+      }],
+    ]))
+
+    const messages: UIMessage[] = [{
+      id: 'm1',
+      role: 'user',
+      parts: [{
+        type: 'file',
+        url: '/files/notes-2.txt',
+        mediaType: 'text/plain',
+        filename: 'notes.txt',
+      }],
+    } as any]
+
+    const result = await convertFilesForAI(messages)
+
+    expect(result.missingFiles).toEqual([{
+      storageKey: 'notes-2.txt',
+      filename: 'notes.txt',
+    }])
+    expect((result.messages[0] as any)?.parts).toHaveLength(0)
+  })
+
   it('treats foreign storage keys as missing without reading R2', async () => {
     const storageGet = vi.fn()
 
