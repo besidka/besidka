@@ -30,10 +30,105 @@ pnpm run db:migrate       # Apply migrations
 pnpm run db:studio        # Open Drizzle Studio
 pnpm run db:reset         # Reset local D1 database and regenerate
 
+# D1 Time Travel (point-in-time recovery, up to 30 days)
+npx wrangler d1 time-travel info <db-name>
+npx wrangler d1 time-travel info <db-name> --timestamp=<ISO8601>
+npx wrangler d1 time-travel restore <db-name> --bookmark=<bookmark>
+# Production DB: chat   |   Preview DB: chat-preview
+
 # Cloudflare
 pnpm run cf-typegen       # Generate Cloudflare env types
 pnpm run deploy           # Build and deploy to Cloudflare Workers
 ```
+
+## 🚨 SUPER IMPORTANT — HIGH RISK: D1 Migration Safety 🚨
+
+**READ THIS BEFORE GENERATING OR APPLYING ANY DRIZZLE MIGRATION.**
+
+### The disaster pattern
+
+Drizzle on SQLite/D1 **rebuilds the entire table** (CREATE NEW → INSERT SELECT → DROP OLD → RENAME) whenever you change anything that SQLite cannot `ALTER` in place:
+
+- Adding/removing/changing a column `DEFAULT`
+- Changing a column type, nullability, or constraint
+- Removing a column
+- Renaming a column
+- Changing a primary key
+- Changing or removing a foreign key
+
+The generated SQL looks like this:
+
+```sql
+PRAGMA foreign_keys=OFF;
+CREATE TABLE `__new_users` (...);
+INSERT INTO `__new_users` SELECT ... FROM `users`;
+DROP TABLE `users`;           -- ⚠️ DESTRUCTIVE on D1
+ALTER TABLE `__new_users` RENAME TO `users`;
+PRAGMA foreign_keys=ON;
+```
+
+**On Cloudflare D1, `PRAGMA foreign_keys=OFF` does NOT reliably prevent `ON DELETE CASCADE` from firing on DROP TABLE.** Vanilla SQLite respects it; D1 does not. This means every child table with `references(..., { onDelete: 'cascade' })` to the rebuilt table will be **wiped**.
+
+### Tables with cascade dependencies on `users`
+
+These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
+
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`
+
+Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped).
+
+### MANDATORY pre-apply checklist
+
+Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remote`:
+
+1. **Open the generated `.sql` file in `.drizzle/migrations/`**
+2. **Search it for `DROP TABLE`**
+3. If `DROP TABLE` is present:
+   - **STOP. Do not apply.**
+   - Identify what schema change caused it (usually: default change, type change, column rename).
+   - Ask: can the schema change be avoided? (e.g., set the default in application code instead of SQL).
+   - If the change is truly necessary, hand-write a migration that:
+     - Temporarily nulls out FK references in cascade-children, OR
+     - Drops the FK constraints first, performs the rebuild, then re-adds them, OR
+     - Uses a backup-and-replay strategy for affected child tables.
+4. Even for "safe-looking" additive migrations: **verify the SQL contains only `ALTER TABLE ADD COLUMN`, `CREATE INDEX`, `CREATE TABLE` (new tables only), `DROP INDEX`.** Anything else needs scrutiny.
+
+### Required when applying to production
+
+- Always take a Time Travel bookmark **before** applying, save it somewhere retrievable:
+  ```bash
+  npx wrangler d1 time-travel info chat
+  npx wrangler d1 time-travel info chat-preview
+  ```
+- Apply to `chat-preview` first, verify data integrity, then `chat`.
+- Verify row counts before/after on cascade-children:
+  ```bash
+  npx wrangler d1 execute chat --remote --command="SELECT
+    (SELECT COUNT(*) FROM chats) AS chats,
+    (SELECT COUNT(*) FROM messages) AS messages,
+    (SELECT COUNT(*) FROM projects) AS projects,
+    (SELECT COUNT(*) FROM accounts) AS accounts;"
+  ```
+
+### Recovery if it goes wrong
+
+D1 Time Travel keeps point-in-time bookmarks for **30 days** (Workers Paid) / **7 days** (Free):
+
+```bash
+# Find a pre-disaster bookmark by walking back timestamps
+npx wrangler d1 time-travel info chat --timestamp=2026-05-15T16:00:00Z
+
+# Restore (overwrites current state — irreversible without the undo bookmark it prints)
+npx wrangler d1 time-travel restore chat --bookmark=<bookmark>
+```
+
+The first bookmark whose timestamp predates the migration is **not necessarily safe** — the migration may have been applied minutes before it became the "active" bookmark for that timestamp window. **Always verify row counts after each restore and walk further back if cascade-children are still empty.**
+
+### Style consequence — bias schema decisions toward NON-rebuild changes
+
+- Prefer setting defaults in application code over SQL `DEFAULT` constraints (avoids table rebuild later).
+- When removing a column, consider leaving it in place and stopping writes — only physically drop in a coordinated migration with confirmed clean backup.
+- When adding cascade FKs, think twice: every cascade is a future blast-radius multiplier on a rebuild.
 
 ## Architecture
 

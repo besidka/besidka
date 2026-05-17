@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import { useLogger } from 'evlog'
+import { normalizeMediaType } from '#shared/utils/files'
 import {
   extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
@@ -105,6 +106,49 @@ export async function convertFilesForAI(
           filename: part.filename,
         })
         continue
+      }
+
+      if (isTextMediaType(part.mediaType)) {
+        try {
+          const textContent = await readStorageFileAsText(
+            storage,
+            storageKey,
+            logger,
+          )
+
+          if (textContent === null) {
+            missingFiles.push({
+              storageKey,
+              filename: part.filename,
+            })
+            continue
+          }
+
+          convertedParts.push({
+            type: 'text',
+            text: formatTextFilePart({
+              filename: part.filename,
+              mediaType: part.mediaType,
+              content: textContent,
+            }),
+          })
+          continue
+        } catch (exception) {
+          logger.set({
+            fileConversion: {
+              operation: 'inline-text',
+              storageKey,
+              error: exception instanceof Error
+                ? exception.message
+                : String(exception),
+            },
+          })
+          missingFiles.push({
+            storageKey,
+            filename: part.filename,
+          })
+          continue
+        }
       }
 
       try {
@@ -218,6 +262,90 @@ async function cacheFileDataUrl(
       },
     })
   }
+}
+
+function isTextMediaType(mediaType: string): boolean {
+  return normalizeMediaType(mediaType).startsWith('text/')
+}
+
+async function readStorageFileAsText(
+  storage: ReturnType<typeof useFileStorage>,
+  storageKey: string,
+  logger: LoggerLike,
+): Promise<string | null> {
+  try {
+    const file = await storage.get(storageKey)
+
+    if (!file) {
+      return null
+    }
+
+    return await file.text()
+  } catch (exception) {
+    logger.set({
+      fileStorage: {
+        operation: 'read-text',
+        storageKey,
+        error: exception instanceof Error
+          ? exception.message
+          : String(exception),
+      },
+    })
+
+    return null
+  }
+}
+
+function formatTextFilePart(input: {
+  filename?: string
+  mediaType: string
+  content: string
+}): string {
+  const language = pickCodeFenceLanguage(input.filename, input.mediaType)
+  const fence = '`'.repeat(computeFenceLength(input.content))
+  const header = input.filename ? `**${input.filename}**\n\n` : ''
+
+  return `${header}${fence}${language}\n${input.content}\n${fence}`
+}
+
+function pickCodeFenceLanguage(
+  filename: string | undefined,
+  mediaType: string,
+): string {
+  if (filename) {
+    const lastDot = filename.lastIndexOf('.')
+
+    if (lastDot >= 0 && lastDot < filename.length - 1) {
+      const extension = filename.slice(lastDot + 1).toLowerCase()
+
+      if (extension === 'markdown') {
+        return 'md'
+      }
+
+      if (/^[a-z0-9]+$/.test(extension)) {
+        return extension
+      }
+    }
+  }
+
+  const subtype = normalizeMediaType(mediaType).split('/')[1] || ''
+
+  if (!subtype) {
+    return 'txt'
+  }
+
+  if (subtype === 'plain') {
+    return 'txt'
+  }
+
+  return subtype.replace(/^x-/, '')
+}
+
+function computeFenceLength(content: string): number {
+  const runs = content.match(/`+/g) || []
+  const longest = runs.reduce((max, run) => Math.max(max, run.length), 0)
+
+  return Math.max(3, longest + 1)
 }
 
 async function convertStorageFileToDataUrl(

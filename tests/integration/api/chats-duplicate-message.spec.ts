@@ -99,7 +99,15 @@ vi.mock('ai', async (importOriginal) => {
 })
 
 vi.mock('evlog', () => ({
-  useLogger: () => ({ set: vi.fn() }),
+  useLogger: () => ({
+    set: vi.fn(),
+    getContext: () => ({ requestId: 'test-request-id' }),
+  }),
+  createRequestLogger: () => ({
+    set: vi.fn(),
+    emit: vi.fn(() => null),
+    getContext: () => ({}),
+  }),
   log: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -261,6 +269,9 @@ describe('chat duplicate message detection', () => {
       tools: {},
       providerOptions: {},
     })))
+    vi.stubGlobal('attachCloudflareMeta', vi.fn())
+    vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
+    vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
   })
 
   it('detects duplicate by message ID even when reasoning differs', async () => {
