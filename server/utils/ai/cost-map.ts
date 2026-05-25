@@ -32,11 +32,35 @@ function parsePrice(value: string): number {
 
 let cached: Record<string, ModelCost> | undefined
 
+function findLongestPrefixMatch(
+  modelId: string,
+  target: Record<string, ModelCost>,
+): ModelCost | undefined {
+  let bestKey = ''
+  let bestValue: ModelCost | undefined
+
+  for (const key of Object.keys(target)) {
+    if (
+      modelId.startsWith(key + '-')
+      && key.length > bestKey.length
+    ) {
+      bestKey = key
+      bestValue = target[key]
+    }
+  }
+
+  return bestValue
+}
+
 /**
  * Build the cost map consumed by evlog's `createAILogger({ cost })`.
  * Keys are model IDs; values are dollars per 1,000,000 tokens.
  *
- * The map is computed once per worker instance.
+ * The map is computed once per worker instance. It is wrapped in a Proxy
+ * that falls back to a longest-prefix match when no exact key exists, so
+ * provider-versioned model IDs (e.g. "gpt-5.4-nano-2026-03-17",
+ * "gemini-3-flash-preview-09-2025") resolve to the correct base entry
+ * without fragile per-provider regex patterns.
  */
 export function getModelCostMap(): Record<string, ModelCost> {
   if (cached) {
@@ -62,7 +86,19 @@ export function getModelCostMap(): Record<string, ModelCost> {
     }
   }
 
-  cached = result
+  cached = new Proxy(result, {
+    get(target, prop) {
+      if (typeof prop !== 'string') {
+        return Reflect.get(target, prop)
+      }
 
-  return result
+      if (prop in target) {
+        return target[prop]
+      }
+
+      return findLongestPrefixMatch(prop, target)
+    },
+  })
+
+  return cached
 }

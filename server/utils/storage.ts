@@ -1,8 +1,7 @@
-import type { R2Bucket } from '@cloudflare/workers-types'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 
-export function useFileStorage(): R2Bucket {
+export function useFileStorage() {
   const storage = env.R2_BUCKET
 
   if (!storage) {
