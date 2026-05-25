@@ -120,8 +120,7 @@ export default defineEventHandler(async (event) => {
       try {
         const transformedImage = (
           await useImageTransform()
-            // @ts-expect-error
-            .input(view)
+            .input(view as unknown as ReadableStream<Uint8Array>)
             .transform({
               width: 800,
               fit: 'scale-down',

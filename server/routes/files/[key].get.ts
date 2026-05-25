@@ -1,4 +1,3 @@
-import type { R2ObjectBody } from '@cloudflare/workers-types'
 import { hasShareTokenFileAccess } from '~~/server/utils/files/file-share-access'
 
 export default defineEventHandler(async (event) => {
@@ -73,5 +72,5 @@ export default defineEventHandler(async (event) => {
     'Vary': 'Cookie, x-file-access-token',
   })
 
-  return (storageObject as R2ObjectBody).body
+  return storageObject.body
 })

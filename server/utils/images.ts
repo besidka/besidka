@@ -1,8 +1,7 @@
-import type { ImagesBinding } from '@cloudflare/workers-types'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 
-export function useImageTransform(): ImagesBinding {
+export function useImageTransform() {
   const image = env.IMAGES
 
   if (!image) {
