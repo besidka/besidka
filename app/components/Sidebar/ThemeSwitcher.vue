@@ -1,12 +1,13 @@
 <template>
   <ClientOnly>
     <template #fallback>
-      <SidebarSkeleton />
+      <SidebarSkeleton :size="size" />
     </template>
     <UiButton
       data-testid="theme-switcher"
       ghost
       circle
+      :size="size"
       :tooltip-position="tipsPosition"
       :title="label"
       :icon-only="true"
@@ -58,9 +59,13 @@ import type { FaviconTheme, ThemePreference } from '~/types/favicon.d'
 interface Props {
   tips?: boolean
   tipsPosition?: 'right' | 'left' | 'top' | 'bottom'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
 }
 
-defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  size: 'md',
+  tipsPosition: 'bottom',
+})
 
 const { setFavicon } = useThemeFavicon()
 const colorMode = useColorMode()

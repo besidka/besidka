@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Besidka chat preview — dark theme">
+  <defs>
+    <linearGradient id="bg-d" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f1623"/>
+      <stop offset="100%" stop-color="#2a1a2f"/>
+    </linearGradient>
+    <filter id="shadow-d"><feDropShadow dx="0" dy="2" stdDeviation="8" flood-opacity="0.4"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg-d)"/>
+  <g transform="translate(40,40)">
+    <rect width="1200" height="640" rx="20" fill="#251a2b" filter="url(#shadow-d)"/>
+    <g transform="translate(24,24)" font-family="ui-sans-serif, system-ui, sans-serif">
+      <rect width="180" height="592" rx="14" fill="#1d141f"/>
+      <g transform="translate(16,18)">
+        <rect width="148" height="32" rx="8" fill="#e34d8a"/>
+        <text x="14" y="21" font-size="13" font-weight="600" fill="#ffffff">+ New chat</text>
+        <text x="0" y="62" font-size="11" font-weight="700" fill="#a07a8c" letter-spacing="0.1em">RECENT</text>
+        <rect y="76" width="148" height="28" rx="6" fill="#2d1f2e"/>
+        <text x="8" y="94" font-size="12" fill="#fde4f1">Files: PDF analyser</text>
+        <rect y="112" width="148" height="28" rx="6" fill="#2d1f2e" opacity="0.5"/>
+        <text x="8" y="130" font-size="12" fill="#fde4f1">Drafting release notes</text>
+        <rect y="148" width="148" height="28" rx="6" fill="#2d1f2e" opacity="0.5"/>
+        <text x="8" y="166" font-size="12" fill="#fde4f1">Reviewing a PR diff</text>
+        <text x="0" y="216" font-size="11" font-weight="700" fill="#a07a8c" letter-spacing="0.1em">PROJECTS</text>
+        <rect y="230" width="148" height="28" rx="6" fill="#2d1f2e" opacity="0.5"/>
+        <text x="8" y="248" font-size="12" fill="#fde4f1">Besidka core</text>
+      </g>
+    </g>
+    <g transform="translate(228,24)" font-family="ui-sans-serif, system-ui, sans-serif">
+      <rect x="0" y="0" width="948" height="44" rx="10" fill="#1d141f"/>
+      <text x="16" y="28" font-size="13" font-weight="600" fill="#fde4f1">Gemini 2.5 Pro</text>
+      <circle cx="124" cy="22" r="3" fill="#fde4f1" opacity="0.3"/>
+      <text x="138" y="27" font-size="12" fill="#a07a8c">Files attached: 2</text>
+      <text x="920" y="28" font-size="12" text-anchor="end" fill="#a07a8c">$0.04 / 1.2k tokens</text>
+
+      <g transform="translate(60,80)">
+        <rect width="600" height="84" rx="14" fill="#1d141f"/>
+        <text x="20" y="26" font-size="13" font-weight="600" fill="#fde4f1">You</text>
+        <text x="20" y="46" font-size="13" fill="#fde4f1">Summarise the attached PDFs and pull out the key</text>
+        <text x="20" y="64" font-size="13" fill="#fde4f1">decisions per quarter.</text>
+        <g transform="translate(20,72)">
+          <rect width="120" height="22" rx="6" fill="#3a2a3e"/>
+          <text x="32" y="15" font-size="11" fill="#fde4f1">📎 q3-report.pdf</text>
+          <rect x="128" width="120" height="22" rx="6" fill="#3a2a3e"/>
+          <text x="160" y="15" font-size="11" fill="#fde4f1">📎 q4-report.pdf</text>
+        </g>
+      </g>
+
+      <g transform="translate(60,192)">
+        <rect width="840" height="216" rx="14" fill="#1d141f" stroke="#3a2a3e"/>
+        <text x="20" y="26" font-size="13" font-weight="600" fill="#fde4f1">Besidka · Gemini 2.5 Pro</text>
+        <text x="20" y="50" font-size="12" fill="#a07a8c">Thinking — analyzing 2 documents…</text>
+        <text x="20" y="80" font-size="12" fill="#fde4f1" font-weight="600">Q3 — key decisions</text>
+        <text x="20" y="100" font-size="12" fill="#fde4f1">• Shipped BYOK keys workflow with encrypted storage</text>
+        <text x="20" y="118" font-size="12" fill="#fde4f1">• Migrated to Cloudflare Workers as primary runtime</text>
+        <text x="20" y="140" font-size="12" fill="#fde4f1" font-weight="600">Q4 — key decisions</text>
+        <text x="20" y="160" font-size="12" fill="#fde4f1">• Added project memory and shared instructions</text>
+        <text x="20" y="178" font-size="12" fill="#fde4f1">• Opened the repo as MIT, started accepting contributions</text>
+        <text x="20" y="200" font-size="11" fill="#a07a8c">Sources cited: 2 PDFs · GitHub release notes</text>
+      </g>
+
+      <g transform="translate(60,432)">
+        <rect width="840" height="60" rx="14" fill="#1d141f" stroke="#3a2a3e"/>
+        <text x="20" y="28" font-size="12" fill="#a07a8c">Reply to Besidka…</text>
+        <rect x="780" y="14" width="44" height="32" rx="8" fill="#e34d8a"/>
+        <path d="M796,28 L808,28 M800,22 L808,30 L800,36" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+    </g>
+  </g>
+</svg>

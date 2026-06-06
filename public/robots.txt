@@ -1,2 +1,8 @@
-User-Agent: *
-Disallow:
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /chats/
+Disallow: /profile/
+Disallow: /projects/
+
+Sitemap: https://www.besidka.com/sitemap.xml
