@@ -36,6 +36,15 @@
 			"database_name": "besidka-consent-preview",
 			"database_id": "d110f034-1e7a-4512-b4c0-bc1e881b6d02",
 			"migrations_dir": ".drizzle/migrations-consent"
+		},
+		// Nuxt Content v3 uses a dedicated D1 database, separate from the
+		// main app DB, to avoid Drizzle migration blast-radius on chat/user
+		// data. See README.md § "Content (Nuxt Content + Studio)" for the
+		// wrangler d1 create commands to get the real database_id.
+		{
+			"binding": "CONTENT_DB",
+			"database_name": "besidka-content",
+			"database_id": "TO_BE_CREATED"
 		}
 	],
 	"kv_namespaces": [
@@ -99,11 +108,18 @@
 					"migrations_dir": ".drizzle/migrations"
 				},
 				{
-				"binding": "CONSENT_DB",
-				"database_name": "besidka-consent",
-				"database_id": "d79f8088-c9ce-4d55-a07c-e3bd564354fb",
-				"migrations_dir": ".drizzle/migrations-consent"
-			}
+					"binding": "CONSENT_DB",
+					"database_name": "besidka-consent",
+					"database_id": "d79f8088-c9ce-4d55-a07c-e3bd564354fb",
+					"migrations_dir": ".drizzle/migrations-consent"
+				},
+				// Nuxt Content v3 dedicated D1 (production). See README.md
+				// § "Content (Nuxt Content + Studio)" for setup.
+				{
+					"binding": "CONTENT_DB",
+					"database_name": "besidka-content",
+					"database_id": "TO_BE_CREATED"
+				}
 			],
 			"kv_namespaces": [
 				{

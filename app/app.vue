@@ -10,7 +10,7 @@
       :class="{
         'contents': $route.name === 'chats-slug',
         [`
-          flex-1 overflow-y-auto
+          flex-1 overflow-y-auto scroll-smooth
           pt-[var(--sat)]
           max-sm:pb-[calc(var(--spacing)_*_24_+_var(--sab))]
           [-webkit-overflow-scrolling:touch]
@@ -28,7 +28,7 @@
   <ClientOnly>
     <UiConfirmation />
     <UiMessages />
-    <Sidebar />
+    <Sidebar v-if="$route.path !== '/'" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />
   </ClientOnly>

@@ -128,6 +128,52 @@ pnpm run preview
 3. Put your own API keys here: [http://localhost:3000/profile/keys](http://localhost:3000/profile/keys)
 4. You are welcome to start a new chat: [http://localhost:3000/chats/new](http://localhost:3000/chats/new)
 
+## Content (Nuxt Content + Studio)
+
+The landing page is powered by [Nuxt Content v3](https://content.nuxt.com) with a dedicated Cloudflare D1 database (`CONTENT_DB`) that is fully isolated from the main application database (`DB`). [Nuxt Studio](https://nuxt.studio) provides an optional in-app visual editor that commits changes directly to the GitHub repository.
+
+### Creating the D1 databases
+
+Run these commands once after cloning. They print a `database_id` UUID — copy it into the matching `"TO_BE_CREATED"` placeholder in `wrangler.jsonc`.
+
+```bash
+# Preview environment (default env in wrangler.jsonc)
+pnpm exec wrangler d1 create besidka-content
+
+# Production environment
+pnpm exec wrangler d1 create besidka-content --env production
+```
+
+Replace both `"TO_BE_CREATED"` values in `wrangler.jsonc` under the `CONTENT_DB` binding with the returned UUIDs.
+
+Nuxt Content manages its own schema inside `CONTENT_DB` at runtime — no Drizzle migrations are needed for this database.
+
+### Studio OAuth setup
+
+Studio is optional. The landing page renders and all content is editable via Git without it. Studio adds a `/_studio` route to the deployed site so editors can make changes through a browser UI.
+
+1. Go to GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
+2. Set **Homepage URL** to `https://besidka.com`.
+3. Set **Authorization callback URL** to `https://besidka.com/_studio` (production) or `http://localhost:3000/_studio` (development).
+4. Copy the Client ID and generate a Client Secret.
+5. Add them to `.dev.vars` for local development:
+   ```
+   STUDIO_GITHUB_CLIENT_ID=<your_client_id>
+   STUDIO_GITHUB_CLIENT_SECRET=<your_client_secret>
+   ```
+6. Add them as Wrangler secrets for the deployed Worker:
+   ```bash
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET
+   # For production:
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID --env production
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET --env production
+   ```
+
+### Landing page without Studio
+
+The landing page works without Studio configured. Content lives in `content/landing/` as Markdown files and is committed to the repository like any other source file. Studio is purely an authoring convenience — it does not affect how the landing page is built or served.
+
 ## Security
 
 ### Snyk code checking repository

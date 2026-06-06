@@ -435,6 +435,29 @@ body {
   @apply background-gradient;
 }
 
+/**
+ * Nuxt Studio editing sidebar.
+ *
+ * studio-sidebar.client.ts intercepts the `left` Studio writes onto our
+ * position:fixed <html> via adjustFixedElements() and mirrors it into
+ * `--studio-sidebar-width`. A non-zero <html> left is the reference frame
+ * floating-ui uses inside Studio's shadow-DOM popovers, causing section
+ * property popovers to compute an off-screen-left position and get clipped.
+ * Clearing it fixes popover placement. We offset the app beside the panel
+ * via body `margin-left` + `width` and inset the `::before` gradient, all
+ * driven by the variable so layout tracks sidebar resizing automatically.
+ * The `html` prefix raises specificity to (0,2,2) to beat Studio's own
+ * late-injected `body[data-studio-active][data-expand-sidebar]` rule (0,2,1).
+ */
+html body[data-studio-active][data-expand-sidebar] {
+  margin-left: var(--studio-sidebar-width, 440px);
+  width: calc(100% - var(--studio-sidebar-width, 440px));
+}
+
+html body[data-studio-active][data-expand-sidebar]::before {
+  left: var(--studio-sidebar-width, 440px);
+}
+
 .icon {
   @apply size-6;
 }

@@ -5,6 +5,8 @@ import { providers, defaultModel } from './providers'
 const enableFonts = process.env.CI !== 'true'
 
 const modules = [
+  '@nuxt/content',
+  'nuxt-studio',
   '@nuxt/eslint',
   '@nuxt/icon',
   '@nuxt/image',
@@ -160,7 +162,7 @@ export default defineNuxtConfig({
     ? {
       fonts: {
         defaults: {
-          weights: [400, 700],
+          weights: [400, 700, 900],
           styles: ['normal'],
           subsets: [
             'cyrillic-ext',
@@ -351,11 +353,55 @@ export default defineNuxtConfig({
       shikiEngine: 'javascript',
     },
   },
+  content: {
+    // Nuxt Content forces D1 on the cloudflare_module preset (even in dev,
+    // where wrangler provides a local D1 emulation), so we always point it at
+    // the dedicated CONTENT_DB binding — never the app's `DB` binding. The
+    // public landing is prerendered (see nitro.prerender), so production
+    // serves it as static HTML and never issues a runtime CONTENT_DB query.
+    database: {
+      type: 'd1',
+      bindingName: 'CONTENT_DB',
+    },
+  },
+  studio: {
+    repository: {
+      provider: 'github',
+      owner: 'besidka',
+      repo: 'besidka',
+      branch: 'main',
+    },
+  },
+  hooks: {
+    // @nuxt/content marks /__nuxt_content/**/sql_dump.txt routes as
+    // prerender:true so the SQL dumps are embedded in the static output.
+    // The Cloudflare Workers preset (cloudflare_module) cannot prerender
+    // server-side routes that import cloudflare: bindings. Remove those
+    // prerender rules after all modules have set them so the build succeeds.
+    'nitro:config': (nitroConfig) => {
+      if (!nitroConfig.routeRules) {
+        return
+      }
+
+      for (const route of Object.keys(nitroConfig.routeRules)) {
+        if (
+          route.startsWith('/__nuxt_content/')
+          || route === '/__preview.json'
+        ) {
+          nitroConfig.routeRules[route] = {
+            ...nitroConfig.routeRules[route],
+            prerender: false,
+          }
+        }
+      }
+    },
+  },
   // https://stackblitz.com/edit/vite-pwa-nuxt-42xnmfqg?file=playground%2Fnuxt.config.ts
   pwa: {
     registerWebManifestInRouteRules: true,
     workbox: {
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+      globIgnores: ['_studio-app/**'],
       navigateFallback: null,
     },
     client: {
