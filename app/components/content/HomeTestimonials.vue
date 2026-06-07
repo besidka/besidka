@@ -1,53 +1,66 @@
 <template>
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
     <div
-      v-for="(item, index) in resolvedItems"
-      :key="index"
-      class="bg-base-100/50 dark:bg-base-content/5 rounded-2xl p-4
-        flex flex-col gap-3"
+      v-if="resolvedItems?.length"
+      class="grid grid-cols-1 lg:grid-cols-3 gap-3"
     >
-      <Icon
-        name="lucide:quote"
-        class="w-5 h-5 text-primary/60"
-        aria-hidden="true"
-      />
-      <blockquote
-        class="text-sm text-base-content leading-relaxed not-italic"
+      <div
+        v-for="(item, index) in resolvedItems"
+        :key="index"
+        class="bg-base-100/50 dark:bg-base-content/5 rounded-2xl p-4
+          flex flex-col gap-3"
       >
-        {{ item.quote }}
-      </blockquote>
-      <p
-        class="mt-auto text-xs text-base-content/60 border-t
-          border-base-content/20 pt-3"
-      >
-        — {{ item.author
-        }}<template v-if="item.role">, {{ item.role }}</template>
-      </p>
+        <div
+          class="w-9 h-9 rounded-xl bg-base-200 grid place-items-center
+            text-accent"
+        >
+          <Icon
+            :name="item.icon"
+            class="w-5 h-5"
+            aria-hidden="true"
+          />
+        </div>
+        <p class="font-semibold text-sm text-base-content">
+          {{ item.persona }}
+        </p>
+        <p class="text-sm text-base-content/80 leading-relaxed flex-1">
+          {{ item.scenario }}
+        </p>
+        <p
+          class="text-xs text-accent font-medium border-t
+            border-base-content/20 pt-3"
+        >
+          {{ item.payoff }}
+        </p>
+      </div>
     </div>
-  </div>
 </template>
 
 <script setup lang="ts">
 import type { MaybeRefOrGetter } from 'vue'
 
-type Testimonial = { quote: string, author: string, role?: string }
+type UseCase = {
+  icon: string
+  persona: string
+  scenario: string
+  payoff: string
+}
 
 const props = withDefaults(defineProps<{
-  items?: Testimonial[]
+  items?: UseCase[]
 }>(), {
   items: () => [],
 })
 
-const data = inject<MaybeRefOrGetter<{ testimonials?: Testimonial[] }>>(
+const data = inject<MaybeRefOrGetter<{ useCases?: UseCase[] }>>(
   'home:data',
   {},
 )
 
-const resolvedItems = computed<Testimonial[]>(() => {
+const resolvedItems = computed<UseCase[]>(() => {
   if (props.items.length) {
     return props.items
   }
 
-  return toValue(data)?.testimonials ?? []
+  return toValue(data)?.useCases ?? []
 })
 </script>

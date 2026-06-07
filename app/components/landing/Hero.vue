@@ -38,9 +38,15 @@
         <NuxtLink
           :to="primaryCta.href"
           class="btn btn-primary btn-sm"
+          @click="track('cta_click', { target: primaryCta.href })"
         >
           {{ primaryCta.label }}
-          <Icon name="lucide:arrow-right" class="w-4 h-4" />
+          <Icon
+            v-if="primaryCta.icon"
+            :name="primaryCta.icon"
+            class="w-4 h-4"
+            aria-hidden="true"
+          />
         </NuxtLink>
         <NuxtLink
           v-if="secondaryCta"
@@ -48,10 +54,40 @@
           class="btn btn-ghost btn-sm"
           target="_blank"
           rel="noopener noreferrer"
+          @click="track('github_click', { target: secondaryCta.href })"
         >
-          <Icon name="lucide:github" class="w-4 h-4" />
+          <Icon
+            v-if="secondaryCta.icon"
+            :name="secondaryCta.icon"
+            size="20"
+            aria-hidden="true"
+          />
           {{ secondaryCta.label }}
+          <span class="sr-only">(opens in new tab)</span>
         </NuxtLink>
+      </div>
+
+      <div
+        class="flex flex-wrap items-center justify-center gap-2 mt-1"
+        aria-label="Project highlights"
+      >
+        <span
+          class="inline-flex items-center gap-1 rounded-full
+            border border-base-content/20 bg-base-content/5
+            px-2.5 py-0.5 text-[11px] text-base-content/70"
+        >
+          <Icon
+            name="lucide:scale"
+            class="size-3"
+            aria-hidden="true"
+          />
+          MIT licensed
+        </span>
+        <LandingGithubStarsBadge
+          v-if="showStarsBadge"
+          :show-label="false"
+          class="text-[11px]"
+        />
       </div>
     </div>
   </header>
@@ -62,11 +98,27 @@ withDefaults(defineProps<{
   headline: string
   subheadline?: string
   eyebrow?: string
-  primaryCta: { label: string, href: string }
-  secondaryCta?: { label: string, href: string }
+  primaryCta: { label: string, href: string, icon?: string }
+  secondaryCta?: { label: string, href: string, icon?: string }
 }>(), {
   subheadline: undefined,
   eyebrow: undefined,
   secondaryCta: undefined,
+})
+
+const { track } = useLandingAnalytics()
+
+const { data: starsData, pending: starsPending } = await useLazyFetch(
+  '/api/v1/github/stars',
+)
+
+const showStarsBadge = computed<boolean>(() => {
+  if (starsPending.value || !starsData.value) {
+    return false
+  }
+
+  const value = (starsData.value as Record<string, unknown>).stars
+
+  return typeof value === 'number' && value > 0
 })
 </script>

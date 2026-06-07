@@ -227,8 +227,8 @@
 </template>
 <script setup lang="ts">
 import type { ValidationRule } from '~/types/validation.d'
-import type { EstimateCrack } from '~/types/password.d'
-import { TimeUnits } from '~/types/password.d'
+import type { EstimateCrack } from '~/types/password'
+import { TimeUnits } from '~/types/password'
 import UiForm from '~/components/ui/Form.vue'
 
 interface Data {

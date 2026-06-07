@@ -657,3 +657,9 @@ html body[data-studio-active][data-expand-sidebar]::before {
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  :where(a.link) {
+    @apply rounded-field;
+  }
+}

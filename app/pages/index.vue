@@ -9,6 +9,8 @@
       :secondary-cta="hero.secondaryCta"
     />
 
+    <div id="content" class="h-24 -mt-24"/>
+
     <ContentRenderer
       v-if="page"
       :value="page"
@@ -26,6 +28,8 @@ import {
   buildSoftwareApplicationLd,
 } from '~/utils/landing-jsonld'
 
+const { themeColor } = useAppConfig()
+
 type FaqItem = { question: string, answer: string }
 type HomeData = Record<string, unknown>
 
@@ -36,24 +40,33 @@ definePageMeta({
 const { baseUrl } = useRuntimeConfig().public
 
 // Provided synchronously (before the await below) so MDC-rendered widgets
-// can inject their data: carousel, steps, features, testimonials, and faqs.
-// All structured data lives in frontmatter (page settings in Studio) and is
-// forwarded here to the inject('home:data') reactive ref. Populated once
-// the document loads.
+// can inject their data. All structured data lives in frontmatter (page
+// settings in Studio) and is forwarded here to inject('home:data').
+// Keys: carousel, steps, features, useCases, faqs, benefits, comparison,
+// video.
 const homeData = shallowRef<HomeData>({})
 
 provide('home:data', homeData)
 
-const { data: page } = await useAsyncData('landing-page', () => {
-  return queryCollection('landing').path('/').first()
-})
+const { data: page } = await useAsyncData(
+  'landing-page',
+  () => queryCollection('landing').path('/').first(),
+  {
+    getCachedData: (key, nuxtApp) => {
+      return nuxtApp.payload.data[key] ?? nuxtApp.static.data[key]
+    },
+  },
+)
 
 homeData.value = {
   carousel: page.value?.carousel ?? [],
   steps: page.value?.steps ?? [],
   features: page.value?.features ?? [],
-  testimonials: page.value?.testimonials ?? [],
+  useCases: page.value?.useCases ?? [],
   faqs: page.value?.faqs ?? [],
+  benefits: page.value?.benefits ?? [],
+  comparison: page.value?.comparison ?? null,
+  video: page.value?.video ?? null,
 }
 
 const faqs = computed<FaqItem[]>(() => {
@@ -63,10 +76,14 @@ const faqs = computed<FaqItem[]>(() => {
 const hero = computed(() => page.value?.hero)
 const description = computed<string>(() => page.value?.description ?? '')
 
+const fullTitle = computed(() => {
+  const chunk = page.value?.title
+  return chunk ? `${chunk} | Besidka` : 'Besidka'
+})
+
 useSeoMeta({
-  title: () => page.value?.title || 'Besidka — Open-source AI chat with BYOK',
-  ogTitle: () =>
-    page.value?.title || 'Besidka — Open-source AI chat with BYOK',
+  title: () => page.value?.title || null,
+  ogTitle: () => fullTitle.value,
   description: () => description.value,
   ogDescription: () => description.value,
   ogUrl: baseUrl as string,
@@ -74,23 +91,30 @@ useSeoMeta({
   ogImage: `${baseUrl}/og-image.png`,
   ogImageWidth: 1200,
   ogImageHeight: 630,
+  ogSiteName: 'Besidka',
+  ogLocale: 'en_US',
   twitterCard: 'summary_large_image',
-  twitterTitle: () =>
-    page.value?.title || 'Besidka — Open-source AI chat with BYOK',
+  twitterTitle: () => fullTitle.value,
   twitterDescription: () => description.value,
   twitterImage: `${baseUrl}/og-image.png`,
+  twitterSite: '@besidka_ai',
   robots: 'index, follow',
-  themeColor: '#fde4f1',
 })
 
 useHead({
   link: [
     { rel: 'canonical', href: baseUrl as string },
   ],
+  meta: [
+    {
+      name: 'theme-color',
+      content: themeColor.light,
+    },
+  ],
   script: [
     {
       type: 'application/ld+json',
-      innerHTML: JSON.stringify(buildSoftwareApplicationLd({
+      innerHTML: () => JSON.stringify(buildSoftwareApplicationLd({
         baseUrl: baseUrl as string,
         siteName: 'Besidka',
         description: description.value,
@@ -98,14 +122,14 @@ useHead({
     },
     {
       type: 'application/ld+json',
-      innerHTML: JSON.stringify(buildOrganizationLd({
+      innerHTML: () => JSON.stringify(buildOrganizationLd({
         baseUrl: baseUrl as string,
         siteName: 'Besidka',
       })).replace(/</g, '\\u003c'),
     },
     {
       type: 'application/ld+json',
-      innerHTML: JSON.stringify(
+      innerHTML: () => JSON.stringify(
         buildFaqPageLd(faqs.value),
       ).replace(/</g, '\\u003c'),
     },

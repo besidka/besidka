@@ -11,7 +11,7 @@ import { z } from 'zod'
  *   - carousel   – product screenshots
  *   - steps      – how-it-works steps
  *   - features   – feature grid items
- *   - testimonials – community quotes
+ *   - useCases   – who Besidka is for (replaces the old testimonials key)
  *   - faqs       – FAQ entries (also emitted as FAQPage JSON-LD)
  *
  * The markdown body is the chat-style conversation built from custom MDC
@@ -31,6 +31,10 @@ import { z } from 'zod'
 const cta = z.object({
   label: z.string().describe('Button text'),
   href: z.string().describe('Link target — an in-app path (/signup) or a URL'),
+  icon: z
+    .string()
+    .optional()
+    .describe('Optional icon name, e.g. lucide:arrow-right or streamline-logos:github-logo-2-solid'),
 })
 
 export default defineContentConfig({
@@ -100,19 +104,25 @@ export default defineContentConfig({
           )
           .default([])
           .describe('Feature grid items'),
-        testimonials: z
+        useCases: z
           .array(
             z.object({
-              quote: z.string().describe('Testimonial quote'),
-              author: z.string().describe('Author name or handle'),
-              role: z
+              icon: z
                 .string()
-                .optional()
-                .describe('Author role or source, e.g. GitHub'),
+                .describe('Lucide icon name, e.g. lucide:code-2'),
+              persona: z
+                .string()
+                .describe('Short label for the user type, e.g. Developer'),
+              scenario: z
+                .string()
+                .describe('What this person does with Besidka'),
+              payoff: z
+                .string()
+                .describe('The concrete benefit they get'),
             }),
           )
           .default([])
-          .describe('Community testimonials'),
+          .describe('Use-case cards describing who Besidka is for'),
         faqs: z
           .array(
             z.object({
@@ -124,6 +134,79 @@ export default defineContentConfig({
           .describe(
             'FAQ entries — also emitted as FAQPage structured data',
           ),
+        benefits: z
+          .array(
+            z.object({
+              icon: z.string().describe('Lucide icon name'),
+              title: z.string().describe('Benefit title'),
+              body: z
+                .string()
+                .describe('Customer-outcome description — what\'s in it for me'),
+            }),
+          )
+          .default([])
+          .describe(
+            'Customer-outcome benefits — distinct from capability features',
+          ),
+        comparison: z
+          .object({
+            caption: z
+              .string()
+              .optional()
+              .describe('Accessible table caption (shown visually below table)'),
+            columns: z
+              .array(z.string())
+              .default([])
+              .describe('Column headers: first is Besidka, then competitors'),
+            rows: z
+              .array(
+                z.object({
+                  label: z
+                    .string()
+                    .describe('Row label describing the criterion'),
+                  values: z
+                    .array(z.string())
+                    .default([])
+                    .describe(
+                      'Cell values matching column order; use ✓ yes / ✗ no'
+                      + ' + sr-only text via the component',
+                    ),
+                }),
+              )
+              .default([])
+              .describe('Table rows'),
+            note: z
+              .string()
+              .optional()
+              .describe('Worked cost example shown below the table'),
+            priceDate: z
+              .string()
+              .optional()
+              .describe(
+                'As-of date for competitor prices, e.g. "June 2026"',
+              ),
+          })
+          .optional()
+          .describe('Competitor comparison table data'),
+        video: z
+          .object({
+            src: z
+              .string()
+              .optional()
+              .describe(
+                'Video URL, e.g. /videos/demo.mp4 served from R2_LANDING',
+              ),
+            poster: z
+              .string()
+              .optional()
+              .describe('Poster image URL shown before the video plays'),
+            caption: z
+              .string()
+              .optional()
+              .describe('Short caption displayed below the video player'),
+          })
+          .optional()
+          .describe('Demo video shown in the how-it-works section'),
       }),
     }),
   },

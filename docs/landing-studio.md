@@ -65,13 +65,14 @@ the `::home-*` components appear as editable blocks.
 
 ## 3. The editing model: data in frontmatter, prose in the body
 
-Structured data (hero, carousel, steps, features, testimonials, faqs) lives in
-the **frontmatter** so Studio edits it as clean **Page Settings forms**. The
-markdown **body** holds the editable conversation prose and **data-less widget
-placeholders** that pull from that frontmatter. This split exists on purpose:
-Studio's inline property popover clips off-screen for complex array/object
-props, but frontmatter forms render full-width — so the structured lists are
-edited as forms, and the body stays a clean, reorderable conversation.
+Structured data (hero, carousel, steps, features, useCases, benefits,
+comparison, video, faqs) lives in the **frontmatter** so Studio edits it as
+clean **Page Settings forms**. The markdown **body** holds the editable
+conversation prose and **data-less widget placeholders** that pull from that
+frontmatter. This split exists on purpose: Studio's inline property popover
+clips off-screen for complex array/object props, but frontmatter forms render
+full-width — so the structured lists are edited as forms, and the body stays a
+clean, reorderable conversation.
 
 - **Edit a stat label, a feature, an FAQ answer, a carousel image** → Page
   Settings (frontmatter forms).
@@ -106,16 +107,35 @@ more colons, indented two spaces:
 
 ### Widget placeholders (body) — they read data from the frontmatter
 
-| Placeholder           | Reads frontmatter           | Notes                                  |
-| --------------------- | --------------------------- | -------------------------------------- |
-| `::home-carousel`     | `carousel`                  | click-to-zoom lightbox                 |
-| `::home-stats`        | — (live from `/api/v1/stats`) | numbers always live, KV-cached 24h   |
-| `::home-features{set="steps"}` | `steps`            | the "How it works" grid                |
-| `::home-features{set="features"}` | `features`      | the full feature grid                  |
-| `::home-testimonials` | `testimonials`              |                                        |
-| `::home-faq`          | `faqs`                      | also emitted as FAQPage structured data |
-| `::home-stars`        | — (live from `/api/v1/github/stars`) | live GitHub star count        |
-| `::home-cta`          | inline `primary`/`secondary`/`align` | small CTA, edited in place    |
+| Placeholder                          | Reads frontmatter                      | Notes                                            |
+| ------------------------------------ | -------------------------------------- | ------------------------------------------------ |
+| `:home-carousel`                     | `carousel`                             | click-to-zoom lightbox                           |
+| `:home-stats`                        | — (live from `/api/v1/stats`)          | numbers always live, KV-cached 24 h              |
+| `:home-features{set="steps"}`        | `steps`                                | the "How it works" grid                          |
+| `:home-features{set="features"}`     | `features`                             | the full feature grid                            |
+| `:home-features{set="benefits"}`     | `benefits`                             | customer-outcome benefits grid (3 items)         |
+| `:home-testimonials`                 | `useCases`                             | use-case cards (renamed from `testimonials`)     |
+| `:home-comparison`                   | `comparison`                           | competitor comparison table with cost footnote   |
+| `:home-video`                        | `video`                                | demo video streamed from R2_LANDING              |
+| `:home-faq`                          | `faqs`                                 | also emitted as FAQPage structured data          |
+| `:home-stars`                        | — (live from `/api/v1/github/stars`)   | live GitHub star count                           |
+| `:::home-cta`                        | inline `primary`/`secondary`/`align`   | small CTA block, edited in place; each CTA accepts optional `icon` |
+
+### Frontmatter keys — Studio editability
+
+| Key          | Studio form type     | Notes                                                      |
+| ------------ | -------------------- | ---------------------------------------------------------- |
+| `title`      | text                 | Page `<title>` tag                                         |
+| `description`| textarea             | SEO meta description and OG description                    |
+| `hero`       | object               | headline, subheadline, eyebrow, CTAs (each CTA: `label`, `href`, optional `icon`) |
+| `carousel`   | array of objects     | `src`, `alt`, `caption` per slide                          |
+| `steps`      | array of objects     | `icon`, `title`, `body` per step                           |
+| `features`   | array of objects     | `icon`, `title`, `body` per feature                        |
+| `benefits`   | array of objects     | `icon`, `title`, `body` — customer-outcome wording         |
+| `useCases`   | array of objects     | `icon`, `persona`, `scenario`, `payoff`                    |
+| `comparison` | object               | `caption`, `columns[]`, `rows[]{label, values[]}`          |
+| `video`      | object               | `src` (R2 path), `poster` (optional), `caption` (optional) |
+| `faqs`       | array of objects     | `question`, `answer` — also powers FAQPage JSON-LD         |
 
 So to change the carousel images you edit the **`carousel`** list in Page
 Settings; the `::home-carousel` placeholder in the body just marks where it

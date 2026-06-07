@@ -1,41 +1,49 @@
 <template>
   <LandingMessageBubble
-    role="user"
-    :avatar-src="avatarSrc"
-    :sr-label="`Testimonial from ${author}`"
+    role="assistant"
+    :sr-label="`Use case: ${persona}`"
   >
-    <blockquote class="not-italic">
-      <slot />
-      <footer class="mt-3 pt-3 border-t border-base-content/20">
-        <cite class="not-italic text-sm text-base-content/60">
-          <component
-            :is="link ? 'a' : 'span'"
-            v-if="link"
-            :href="link"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hover:text-accent transition-colors"
-          >
-            — {{ author }}<span v-if="role">, {{ role }}</span>
-          </component>
-          <span v-else>
-            — {{ author }}<span v-if="role">, {{ role }}</span>
-          </span>
-        </cite>
-      </footer>
-    </blockquote>
+    <div class="flex flex-col gap-2">
+      <div class="flex items-center gap-2">
+        <Icon
+          :name="icon"
+          class="w-5 h-5 text-accent shrink-0"
+          aria-hidden="true"
+        />
+        <p class="font-semibold text-sm text-base-content">{{ persona }}</p>
+      </div>
+      <p class="text-sm text-base-content/80 leading-relaxed">{{ scenario }}</p>
+      <p
+        class="text-xs text-accent font-medium border-t
+          border-base-content/20 pt-3 mt-1"
+      >
+        {{ payoff }}
+      </p>
+      <div
+        v-if="link"
+        class="text-xs text-base-content/60 pt-1"
+      >
+        <a
+          :href="link"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="hover:text-accent transition-colors"
+        >
+          Learn more<span class="sr-only"> (opens in new tab)</span>
+        </a>
+      </div>
+    </div>
   </LandingMessageBubble>
 </template>
 
 <script setup lang="ts">
 withDefaults(defineProps<{
-  author: string
-  role?: string
-  avatarSrc?: string
+  icon: string
+  persona: string
+  scenario: string
+  payoff: string
   link?: string
 }>(), {
-  role: undefined,
-  avatarSrc: undefined,
   link: undefined,
 })
 </script>

@@ -31,7 +31,10 @@ export default defineConfig({
   // if you accidentally left test.only in the source code.
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // CI uses 1 worker; local dev uses 2 workers to keep Vite HMR from
+  // propagating across too many concurrent browser tabs and resetting
+  // reactive component state mid-test.
+  workers: process.env.CI ? 1 : 2,
   // Reporter to use.
   // See https://playwright.dev/docs/test-reporters
   reporter: process.env.CI

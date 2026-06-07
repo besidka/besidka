@@ -60,3 +60,17 @@ export async function fetchGithubStars(
     updatedAt: new Date().toISOString(),
   }
 }
+
+export const cachedGithubStars = defineCachedFunction(
+  async (repo: string = 'besidka/besidka') => {
+    return fetchGithubStars(repo)
+  },
+  {
+    name: 'landing-github-stars',
+    maxAge: 60 * 60,
+    swr: true,
+    staleMaxAge: 24 * 60 * 60,
+    getKey: (repo = 'besidka/besidka') => repo,
+    group: 'landing',
+  },
+)

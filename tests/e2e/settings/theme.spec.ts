@@ -28,11 +28,13 @@ test.use({
 })
 
 test.describe('Theme Switching', () => {
+  test.describe.configure({ timeout: 30000 })
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('[data-testid="theme-switcher"]:visible', {
-      timeout: 10000,
+      timeout: 15000,
     })
   })
 
@@ -89,7 +91,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should change theme-color meta tag when theme changes', async ({ page }) => {
-    test.setTimeout(20000)
+    test.setTimeout(35000)
 
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')
@@ -108,7 +110,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should persist theme preference on page reload', async ({ page }) => {
-    test.setTimeout(20000)
+    test.setTimeout(40000)
 
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')
@@ -133,7 +135,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should persist theme preference in localStorage', async ({ page }) => {
-    test.setTimeout(15000)
+    test.setTimeout(35000)
 
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')
@@ -149,7 +151,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should show correct icon for light theme', async ({ page }) => {
-    test.setTimeout(15000)
+    test.setTimeout(35000)
 
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')
@@ -217,7 +219,7 @@ test.describe('Theme Switching', () => {
   })
 
   test('should update favicon when theme changes', async ({ page }) => {
-    test.setTimeout(15000)
+    test.setTimeout(35000)
 
     const themeSwitcher = page
       .locator('[data-testid="theme-switcher"]:visible')

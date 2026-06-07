@@ -57,6 +57,16 @@
 		{
 			"bucket_name": "besidka-preview",
 			"binding": "R2_BUCKET"
+		},
+		{
+			"bucket_name": "besidka-landing-preview",
+			"binding": "R2_LANDING"
+		}
+	],
+	"analytics_engine_datasets": [
+		{
+			"binding": "ANALYTICS",
+			"dataset": "landing_events_preview"
 		}
 	],
 	"images": {
@@ -131,6 +141,16 @@
 				{
 					"bucket_name": "besidka",
 					"binding": "R2_BUCKET"
+				},
+				{
+					"bucket_name": "besidka-landing",
+					"binding": "R2_LANDING"
+				}
+			],
+			"analytics_engine_datasets": [
+				{
+					"binding": "ANALYTICS",
+					"dataset": "landing_events"
 				}
 			],
 			"images": {

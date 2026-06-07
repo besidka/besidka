@@ -16,6 +16,7 @@ import type { AsyncData } from 'nuxt/app'
 
 export type InjectedStats = {
   data: AsyncData<unknown, unknown>['data']
+  pending: AsyncData<unknown, unknown>['pending']
 }
 
 type StatMetric = 'users' | 'chats' | 'messages' | 'files'
@@ -29,7 +30,7 @@ withDefaults(defineProps<{
   }[]
 }>(), {})
 
-const { data } = await useLazyFetch('/api/v1/stats')
+const { data, pending } = await useLazyFetch('/api/v1/stats')
 
-provide<InjectedStats>('stat-grid-data', { data })
+provide<InjectedStats>('stat-grid-data', { data, pending })
 </script>

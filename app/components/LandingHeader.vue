@@ -7,48 +7,69 @@
     >
       <NuxtLink
         to="/"
-        class="flex items-center gap-2 text-base-content
-          hover:opacity-80 transition-opacity"
+        class="btn btn-sm btn-ghost -translate-x-4 rounded-full"
         aria-label="Besidka home"
       >
         <Logo class="h-7 w-auto" />
       </NuxtLink>
 
-      <div
+      <ul
         class="hidden md:flex items-center gap-6 text-sm
-          text-base-content/70"
-        role="list"
+          list-none m-0 p-0"
       >
-        <a
-          href="#features"
-          class="hover:text-accent transition-colors"
-          role="listitem"
-        >
-          Features
-        </a>
-        <a
-          href="#how-it-works"
-          class="hover:text-accent transition-colors"
-          role="listitem"
-        >
-          How it works
-        </a>
-        <a
-          href="#faq"
-          class="hover:text-accent transition-colors"
-          role="listitem"
-        >
-          FAQ
-        </a>
-      </div>
+        <li>
+          <a
+            href="#features"
+            class="link link-hover text-sm"
+          >
+            Features
+          </a>
+        </li>
+        <li>
+          <a
+            href="#how-it-works"
+            class="link link-hover text-sm"
+          >
+            How it works
+          </a>
+        </li>
+        <li>
+          <a
+            href="#faq"
+            class="link link-hover text-sm"
+          >
+            FAQ
+          </a>
+        </li>
+      </ul>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 translate-x-3">
         <SidebarThemeSwitcher tips tips-position="bottom" size="sm" />
         <NuxtLink
-          :to="loggedIn ? '/chats/new' : '/signin'"
-          class="btn btn-primary btn-sm min-h-9"
+          v-if="loggedIn"
+          to="/chats/new"
+          class="btn btn-accent btn-sm rounded-full"
+          @click="track('header_cta_click', { target: '/chats/new' })"
         >
-          {{ loggedIn ? 'Open chats' : 'Sign in' }}
+          New chat
+          <Icon
+            name="lucide:message-circle-plus"
+            size="16"
+            aria-hidden="true"
+          />
+        </NuxtLink>
+        <NuxtLink
+          v-else
+          to="/signup"
+          class="btn btn-accent btn-sm rounded-full"
+          @click="track('header_cta_click', { target: '/signup' })"
+        >
+          Get started
+          <Icon
+            name="lucide:user-plus"
+            size="16"
+            aria-hidden="true"
+          />
         </NuxtLink>
       </div>
     </nav>
@@ -57,4 +78,5 @@
 
 <script setup lang="ts">
 const { loggedIn } = useAuth()
+const { track } = useLandingAnalytics()
 </script>

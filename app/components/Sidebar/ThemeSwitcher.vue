@@ -107,6 +107,16 @@ onBeforeUnmount(() => {
 const appConfig = useAppConfig()
 
 function setThemeColorMeta(theme: FaviconTheme) {
+  const existing = document.querySelectorAll('meta[name="theme-color"]')
+
+  existing.forEach((element, index) => {
+    if (index === 0) {
+      element.removeAttribute('media')
+    } else {
+      element.remove()
+    }
+  })
+
   let themeColorMeta = document.querySelector('meta[name="theme-color"]')
 
   if (!themeColorMeta) {

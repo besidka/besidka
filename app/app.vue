@@ -10,12 +10,15 @@
       :class="{
         'contents': $route.name === 'chats-slug',
         [`
-          flex-1 overflow-y-auto scroll-smooth
+          flex-1 overflow-y-auto motion-safe:scroll-smooth
           pt-[var(--sat)]
           max-sm:pb-[calc(var(--spacing)_*_24_+_var(--sab))]
           [-webkit-overflow-scrolling:touch]
         `]: $route.name !== 'chats-slug',
       }"
+      :tabindex="$route.name !== 'chats-slug' ? 0 : undefined"
+      :role="$route.name !== 'chats-slug' ? 'region' : undefined"
+      :aria-label="$route.name !== 'chats-slug' ? 'Page content' : undefined"
     >
       <NuxtErrorBoundary @error="onException">
         <template #error>
@@ -37,7 +40,7 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 
-const { siteName } = useAppConfig()
+const { siteName, description } = useAppConfig()
 
 useHead({
   titleTemplate(titleChunk) {
@@ -45,7 +48,7 @@ useHead({
   },
 })
 
-const { baseUrl, description } = useRuntimeConfig().public
+const { baseUrl } = useRuntimeConfig().public
 
 useSeoMeta({
   ogUrl: baseUrl as string,
