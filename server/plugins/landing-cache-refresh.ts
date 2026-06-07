@@ -1,7 +1,6 @@
 import { createRequestLogger } from 'evlog'
-import { readStatsFromDb } from '~~/server/utils/landing/stats'
-import { fetchGithubStars } from '~~/server/utils/landing/github-stars'
-import { CACHE_TTL_DAY } from '~~/server/utils/cache-or-fetch'
+import { cachedStats } from '~~/server/utils/landing/stats'
+import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
 
 const REFRESH_UTC_HOUR = 3
 
@@ -51,38 +50,38 @@ export async function runLandingCacheRefreshJob(
     },
   })
 
+  // Invalidate cached entries so the next call fetches fresh data rather than
+  // serving the stale SWR value from the previous warm cycle.
+  // Key format: {group}:{name}:{getKey()}.json — accessed via the 'cache' mount
+  const cache = useStorage('cache')
+
+  await Promise.allSettled([
+    cache.removeItem('landing:landing-stats:global.json'),
+    cache.removeItem(
+      'landing:landing-github-stars:besidka/besidka.json',
+    ),
+  ])
+
   const [statsResult, githubStarsResult] = await Promise.allSettled([
-    cacheOrFetch({
-      key: 'landing:stats:v1',
-      ttlSeconds: CACHE_TTL_DAY,
-      fetcher: readStatsFromDb,
-      force: true,
-    }),
-    cacheOrFetch({
-      key: 'landing:github-stars:v1',
-      ttlSeconds: CACHE_TTL_DAY,
-      fetcher: () => fetchGithubStars('besidka/besidka'),
-      force: true,
-    }),
+    cachedStats(),
+    cachedGithubStars('besidka/besidka'),
   ])
 
   logger.set({
     stats: statsResult.status === 'fulfilled'
-      ? {
-        source: statsResult.value.source,
-        updatedAt: statsResult.value.updatedAt,
-      }
-      : { error: statsResult.reason instanceof Error
-        ? statsResult.reason.message
-        : String(statsResult.reason) },
+      ? { updatedAt: statsResult.value.updatedAt }
+      : {
+        error: statsResult.reason instanceof Error
+          ? statsResult.reason.message
+          : String(statsResult.reason),
+      },
     githubStars: githubStarsResult.status === 'fulfilled'
-      ? {
-        source: githubStarsResult.value.source,
-        updatedAt: githubStarsResult.value.updatedAt,
-      }
-      : { error: githubStarsResult.reason instanceof Error
-        ? githubStarsResult.reason.message
-        : String(githubStarsResult.reason) },
+      ? { updatedAt: githubStarsResult.value.updatedAt }
+      : {
+        error: githubStarsResult.reason instanceof Error
+          ? githubStarsResult.reason.message
+          : String(githubStarsResult.reason),
+      },
   })
 
   const status = statsResult.status === 'fulfilled'

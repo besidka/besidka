@@ -1,11 +1,11 @@
 import { useLogger } from 'evlog'
-import { readStatsFromDb } from '~~/server/utils/landing/stats'
-import { CACHE_TTL_DAY } from '~~/server/utils/cache-or-fetch'
+import { cachedStats } from '~~/server/utils/landing/stats'
 
 /**
  * GET /api/v1/stats
  *
- * Returns aggregate platform statistics, served from KV cache with a 24h TTL.
+ * Returns aggregate platform statistics, served from the Nitro cache (KV in
+ * production) with a 24h TTL and SWR up to 24h.
  *
  * Response shape:
  * {
@@ -28,14 +28,18 @@ export default defineEventHandler(async (event) => {
     messages: 0,
     files: 0,
     updatedAt: new Date(0).toISOString(),
+    source: 'fallback' as const,
   }
 
-  const result = await cacheOrFetch({
-    key: 'landing:stats:v1',
-    ttlSeconds: CACHE_TTL_DAY,
-    fetcher: readStatsFromDb,
-    fallback: STATS_FALLBACK,
-  })
+  let result: Awaited<ReturnType<typeof cachedStats>> & { source: string }
+
+  try {
+    const data = await cachedStats()
+
+    result = { ...data, source: 'cache' }
+  } catch {
+    result = STATS_FALLBACK
+  }
 
   logger.set({
     stats: {
@@ -48,9 +52,5 @@ export default defineEventHandler(async (event) => {
     'cache-control': 'public, max-age=300, stale-while-revalidate=86400',
   })
 
-  return {
-    ...result.value,
-    source: result.source,
-    updatedAt: result.updatedAt,
-  }
+  return result
 })

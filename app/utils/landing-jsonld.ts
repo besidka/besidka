@@ -16,8 +16,9 @@ export function buildSoftwareApplicationLd(input: {
       'price': '0',
       'priceCurrency': 'USD',
     },
+    'screenshot': `${input.baseUrl}/og-image.png`,
     'codeRepository': 'https://github.com/besidka/besidka',
-    'softwareVersion': 'latest',
+    'publisher': { '@id': `${input.baseUrl}#organization` },
   }
 }
 
@@ -28,6 +29,7 @@ export function buildOrganizationLd(input: {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
+    '@id': `${input.baseUrl}#organization`,
     'name': 'Besidka',
     'url': input.baseUrl,
     'logo': `${input.baseUrl}/web-app-manifest-512x512.png`,

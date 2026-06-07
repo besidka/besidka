@@ -40,3 +40,17 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     updatedAt: new Date().toISOString(),
   }
 }
+
+export const cachedStats = defineCachedFunction(
+  async () => {
+    return readStatsFromDb()
+  },
+  {
+    name: 'landing-stats',
+    maxAge: 24 * 60 * 60,
+    swr: true,
+    staleMaxAge: 24 * 60 * 60,
+    getKey: () => 'global',
+    group: 'landing',
+  },
+)

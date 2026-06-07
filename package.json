@@ -54,7 +54,8 @@
 		"db:consents:migrate:prod": "pnpm exec wrangler d1 migrations apply CONSENT_DB --env production --remote",
 		"prepare": "husky",
 		"postinstall": "node scripts/setup-ai-agents.mjs && pnpm --filter @besidka/nuxt-cookie-consent dev:prepare && nuxt prepare",
-		"test:cookie-consent": "pnpm --filter @besidka/nuxt-cookie-consent test:run"
+		"test:cookie-consent": "pnpm --filter @besidka/nuxt-cookie-consent test:run",
+		"landing:video": "node scripts/landing-demo-video.mjs"
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^3.0.80",
@@ -122,6 +123,7 @@
 		"happy-dom": "^20.9.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.0.5",
+		"mediabunny": "^1.46.0",
 		"msw": "^2.14.6",
 		"playwright-core": "^1.60.0",
 		"typescript": "^6.0.3",

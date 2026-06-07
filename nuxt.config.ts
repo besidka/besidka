@@ -38,6 +38,18 @@ export default defineNuxtConfig({
     cloudflare: {
       deployConfig: false,
     },
+    storage: {
+      cache: {
+        driver: 'cloudflare-kv-binding',
+        binding: 'KV',
+      },
+    },
+    devStorage: {
+      cache: {
+        driver: 'fs',
+        base: '.nitro/cache',
+      },
+    },
   },
   $development: {
     routeRules: {
@@ -60,6 +72,16 @@ export default defineNuxtConfig({
         navigateFallback: '/',
         type: 'module',
       },
+    },
+  },
+  $production: {
+    routeRules: {
+      // The landing page is runtime SSR on the cloudflare_module preset: each
+      // request queries CONTENT_DB via Nuxt Content. SWR caches the rendered
+      // response in the Workers Cache API for 1 hour, then revalidates in the
+      // background — so CONTENT_DB is queried at most once per hour per edge
+      // datacenter rather than on every hit.
+      '/': { swr: 3600 },
     },
   },
   runtimeConfig: {
@@ -355,10 +377,19 @@ export default defineNuxtConfig({
   },
   content: {
     // Nuxt Content forces D1 on the cloudflare_module preset (even in dev,
-    // where wrangler provides a local D1 emulation), so we always point it at
-    // the dedicated CONTENT_DB binding — never the app's `DB` binding. The
-    // public landing is prerendered (see nitro.prerender), so production
-    // serves it as static HTML and never issues a runtime CONTENT_DB query.
+    // where wrangler provides a local D1 emulation), so we always point it
+    // at the dedicated CONTENT_DB binding — never the app's `DB` binding.
+    // Do NOT override this to sqlite for dev: the module's cloudflare
+    // preset silently switches sqlite back to D1 with the default `DB`
+    // binding, mixing content tables into the app database.
+    //
+    // The client-side dump endpoint
+    // (/__nuxt_content/<collection>/sql_dump.txt) is broken in dev by the
+    // wrangler ASSETS proxy binding — fixed by
+    // server/plugins/content-assets-dev.ts (see its comment).
+    //
+    // The landing page is runtime SSR: CONTENT_DB is queried at runtime on
+    // each cache miss (see routeRules '/' swr above). It is NOT prerendered.
     database: {
       type: 'd1',
       bindingName: 'CONTENT_DB',

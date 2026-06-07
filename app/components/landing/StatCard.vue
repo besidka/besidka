@@ -3,12 +3,17 @@
     class="rounded-2xl p-4 flex flex-col items-start gap-1
       bg-base-100/50 dark:bg-base-content/5"
   >
-    <Icon
+    <div
       v-if="icon"
-      :name="icon"
-      class="w-4 h-4 text-accent mb-1"
-      aria-hidden="true"
-    />
+      class="w-9 h-9 rounded-xl bg-base-200 grid place-items-center
+        text-accent mb-1"
+    >
+      <Icon
+        :name="icon"
+        class="w-5 h-5"
+        aria-hidden="true"
+      />
+    </div>
     <div
       v-if="isLoading"
       class="skeleton skeleton--default h-7 w-16 rounded-md"
@@ -18,9 +23,11 @@
       v-else
       class="text-2xl sm:text-3xl font-bold text-base-content
         tabular-nums leading-none"
-      :aria-label="`${formattedValue} ${label}`"
+      :aria-label="displayValue !== '—'
+        ? `${displayValue} ${label}`
+        : `${label} unavailable`"
     >
-      {{ formattedValue }}
+      {{ displayValue }}
     </span>
     <p class="text-xs sm:text-sm text-base-content/60 leading-snug">
       {{ label }}
@@ -32,13 +39,6 @@
 import type { InjectedStats } from './StatGrid.vue'
 
 type StatMetric = 'users' | 'chats' | 'messages' | 'files'
-
-const FALLBACK: Record<StatMetric, number> = {
-  users: 100,
-  chats: 1000,
-  messages: 5000,
-  files: 100,
-}
 
 const props = withDefaults(defineProps<{
   metric: StatMetric
@@ -60,41 +60,35 @@ const { data: ownData, pending: ownPending } = await useLazyFetch(
 const isLoading = computed<boolean>(() => {
   if (injectedStats) {
     return injectedStats.data.value === null
+      && injectedStats.pending.value
   }
 
   return ownPending.value
 })
 
-function isAllZeros(value: unknown) {
-  if (!value || typeof value !== 'object') return true
-
-  const record = value as Record<string, unknown>
-  const keys: StatMetric[] = ['users', 'chats', 'messages', 'files']
-
-  return keys.every((key) => {
-    return typeof record[key] !== 'number' || record[key] === 0
-  })
-}
-
-const rawValue = computed<number>(() => {
+const rawValue = computed<number | null>(() => {
   const source = injectedStats
     ? injectedStats.data.value
     : ownData.value
 
-  if (!source || isAllZeros(source)) {
-    return FALLBACK[props.metric]
+  if (!source || typeof source !== 'object') {
+    return null
   }
 
   const value = (source as Record<string, unknown>)[props.metric]
 
-  if (typeof value !== 'number' || value === 0) {
-    return FALLBACK[props.metric]
+  if (typeof value !== 'number') {
+    return null
   }
 
   return value
 })
 
-const formattedValue = computed<string>(() => {
+const displayValue = computed<string>(() => {
+  if (rawValue.value === null) {
+    return '—'
+  }
+
   const value = rawValue.value
 
   if (props.format === 'compact') {

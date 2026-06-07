@@ -4,11 +4,17 @@
     aria-roledescription="carousel"
     :aria-label="ariaLabel"
   >
+    <span
+      aria-live="polite"
+      aria-atomic="true"
+      class="sr-only"
+    >
+      {{ liveAnnouncement }}
+    </span>
+
     <div
       ref="slidesRegion"
       class="overflow-hidden w-full"
-      aria-live="polite"
-      aria-atomic="true"
     >
       <div
         class="flex transition-transform duration-300 motion-reduce:transition-none"
@@ -21,7 +27,7 @@
           role="group"
           aria-roledescription="slide"
           :aria-label="`Slide ${index + 1} of ${items.length}`"
-          :aria-hidden="index !== activeIndex"
+          :inert="index !== activeIndex"
         >
           <button
             type="button"
@@ -41,7 +47,7 @@
               "
               aria-hidden="true"
             >
-              <Icon name="lucide:zoom-in" class="size-4" />
+              <Icon name="lucide:zoom-in" class="size-4" aria-hidden="true" />
             </span>
             <div
               class="aspect-video w-full flex items-center justify-center"
@@ -79,26 +85,21 @@
         @keydown.left="previous"
         @keydown.right="next"
       >
-        <Icon name="lucide:chevron-left" class="size-4" />
+        <Icon name="lucide:chevron-left" class="size-4" aria-hidden="true" />
       </button>
 
-      <div
-        class="flex gap-1.5"
-        role="tablist"
-        :aria-label="`${ariaLabel} slide indicators`"
-      >
+      <div class="flex gap-1.5" role="group" aria-label="Slide indicators">
         <button
           v-for="(_, index) in items"
           :key="index"
           type="button"
-          role="tab"
           class="size-2 rounded-full transition-colors"
           :class="{
             'bg-primary': index === activeIndex,
             'bg-base-content/30': index !== activeIndex,
           }"
           :aria-label="`Go to slide ${index + 1}`"
-          :aria-selected="index === activeIndex"
+          :aria-current="index === activeIndex ? 'true' : undefined"
           @click="goTo(index)"
         />
       </div>
@@ -112,7 +113,7 @@
         @keydown.left="previous"
         @keydown.right="next"
       >
-        <Icon name="lucide:chevron-right" class="size-4" />
+        <Icon name="lucide:chevron-right" class="size-4" aria-hidden="true" />
       </button>
 
       <button
@@ -125,6 +126,7 @@
         <Icon
           :name="isPlaying ? 'lucide:pause' : 'lucide:play'"
           class="size-4"
+          aria-hidden="true"
         />
       </button>
     </div>
@@ -143,7 +145,7 @@
                   top-2 z-10"
                 aria-label="Close lightbox"
               >
-                <Icon name="lucide:x" size="16" />
+                <Icon name="lucide:x" size="16" aria-hidden="true" />
               </button>
             </form>
 
@@ -179,7 +181,11 @@
                 aria-label="Previous image"
                 @click="lightboxPrev"
               >
-                <Icon name="lucide:chevron-left" size="16" />
+                <Icon
+                  name="lucide:chevron-left"
+                  size="16"
+                  aria-hidden="true"
+                />
               </button>
               <span class="text-sm text-base-content/60 tabular-nums">
                 {{ (lightboxIndex ?? 0) + 1 }} / {{ items.length }}
@@ -190,7 +196,11 @@
                 aria-label="Next image"
                 @click="lightboxNext"
               >
-                <Icon name="lucide:chevron-right" size="16" />
+                <Icon
+                  name="lucide:chevron-right"
+                  size="16"
+                  aria-hidden="true"
+                />
               </button>
             </div>
           </div>
@@ -218,29 +228,33 @@ const props = withDefaults(defineProps<{
 })
 
 const reducedMotion = usePreferredReducedMotion()
-const { isDesktop } = useDevice()
 const activeIndex = shallowRef<number>(0)
 const isPlaying = shallowRef<boolean>(false)
+const wasPlayingBeforeLightbox = shallowRef<boolean>(false)
 const isLightboxOpen = shallowRef<boolean>(false)
 const lightboxIndex = shallowRef<number | null>(null)
+const liveAnnouncement = shallowRef<string>('')
 
 const slidesRegion = useTemplateRef<HTMLDivElement>('slidesRegion')
-const lightboxDialog = useTemplateRef<HTMLDialogElement>(
-  'lightboxDialog',
-)
+const lightboxDialog = useTemplateRef<HTMLDialogElement>('lightboxDialog')
 
 let intervalHandle: ReturnType<typeof setInterval> | undefined
 
-function goTo(index: number) {
-  // Blur focused element in the current slide before hiding it with aria-hidden
-  const currentSlide = slidesRegion.value?.querySelector(
-    `[aria-label="Slide ${activeIndex.value + 1} of ${props.items.length}"]`,
-  )
-  if (currentSlide?.contains(document.activeElement)) {
-    ;(document.activeElement as HTMLElement)?.blur()
+function announce(index: number) {
+  const item = props.items[index]
+
+  if (!item) {
+    return
   }
 
+  const caption = item.caption ? `: ${item.caption}` : ''
+
+  liveAnnouncement.value = `Slide ${index + 1} of ${props.items.length}${caption}`
+}
+
+function goTo(index: number) {
   activeIndex.value = (index + props.items.length) % props.items.length
+  announce(activeIndex.value)
 }
 
 function previous() {
@@ -251,8 +265,13 @@ function next() {
   goTo(activeIndex.value + 1)
 }
 
+function shouldAutoplay() {
+  return reducedMotion.value !== 'reduce'
+    && !document.hidden
+}
+
 function startAutoplay() {
-  if (reducedMotion.value === 'reduce') {
+  if (!shouldAutoplay()) {
     return
   }
 
@@ -280,6 +299,7 @@ function togglePlayback() {
 async function openLightbox(index: number) {
   lightboxIndex.value = index
   isLightboxOpen.value = true
+  wasPlayingBeforeLightbox.value = isPlaying.value
   stopAutoplay()
 
   await nextTick()
@@ -289,7 +309,7 @@ async function openLightbox(index: number) {
 function onLightboxClose() {
   isLightboxOpen.value = false
 
-  if (props.autoplay && reducedMotion.value !== 'reduce') {
+  if (props.autoplay && wasPlayingBeforeLightbox.value) {
     startAutoplay()
   }
 }
@@ -312,14 +332,22 @@ function lightboxNext() {
 }
 
 function handleLightboxKeydown(event: KeyboardEvent) {
-  if (!isDesktop) {
-    return
-  }
-
   if (event.key === 'ArrowLeft') {
     lightboxPrev()
   } else if (event.key === 'ArrowRight') {
     lightboxNext()
+  }
+}
+
+function handleVisibilityChange() {
+  if (!props.autoplay) {
+    return
+  }
+
+  if (document.hidden) {
+    stopAutoplay()
+  } else if (!isLightboxOpen.value) {
+    startAutoplay()
   }
 }
 
@@ -332,14 +360,17 @@ watch(isLightboxOpen, (isOpen) => {
 })
 
 onMounted(() => {
-  if (props.autoplay && reducedMotion.value !== 'reduce') {
+  if (props.autoplay && shouldAutoplay()) {
     startAutoplay()
   }
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   stopAutoplay()
   window.removeEventListener('keydown', handleLightboxKeydown)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onBeforeUnmount(() => {

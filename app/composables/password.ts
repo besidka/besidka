@@ -1,5 +1,5 @@
-import type { CharacterCounts, EstimateCrack } from '~/types/password.d'
-import { TimeUnits } from '~/types/password.d'
+import type { CharacterCounts, EstimateCrack } from '~/types/password'
+import { TimeUnits } from '~/types/password'
 
 const chars: CharacterCounts = {
   lowercase: 26,

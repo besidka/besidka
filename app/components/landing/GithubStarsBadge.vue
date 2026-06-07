@@ -1,14 +1,15 @@
 <template>
   <a
-    :href="`https://github.com/${repoName}`"
+    :href="`https://github.com/${props.repo}`"
     target="_blank"
     rel="noopener noreferrer"
-    class="badge badge-soft gap-1.5 no-underline"
-    :aria-label="`${formattedStars} stars on GitHub for ${repoName}`"
+    class="btn btn-ghost btn-xs rounded-full"
+    :aria-label="`${formattedStars} stars on GitHub for ${props.repo}`"
+    @click="track('github_click', { target: 'stars-badge' })"
   >
     <Icon
       name="lucide:star"
-      class="size-4 text-accent"
+      size="16"
       aria-hidden="true"
     />
     <span
@@ -16,13 +17,12 @@
       class="skeleton skeleton--default h-4 w-8 rounded"
     />
     <span v-else class="tabular-nums font-medium">{{ formattedStars }}</span>
-    <span v-if="showLabel" class="text-base-content/70">stars on GitHub</span>
+    <span v-if="showLabel">stars on GitHub</span>
+    <span class="sr-only">(opens in new tab)</span>
   </a>
 </template>
 
 <script setup lang="ts">
-const FALLBACK_STARS = 0
-
 const props = withDefaults(defineProps<{
   repo?: string
   showLabel?: boolean
@@ -31,18 +31,18 @@ const props = withDefaults(defineProps<{
   showLabel: true,
 })
 
-const repoName = computed<string>(() => props.repo ?? 'besidka/besidka')
+const { track } = useLandingAnalytics()
 
 const { data, pending } = await useLazyFetch('/api/v1/github/stars')
 
 const starsCount = computed<number>(() => {
   if (!data.value) {
-    return FALLBACK_STARS
+    return 0
   }
 
   const value = (data.value as Record<string, unknown>).stars
 
-  return typeof value === 'number' ? value : FALLBACK_STARS
+  return typeof value === 'number' ? value : 0
 })
 
 const formattedStars = computed<string>(() => {

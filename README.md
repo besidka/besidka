@@ -31,7 +31,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 
 - **PINK** — Dark and light themes, both unapologetically pink
 - **BYOK — Bring Your Own API Key** — Use your OpenAI or Google AI Studio keys and only pay for what you use. No subscriptions, no markup
-- **Multiple AI Models** — Switch between GPT-4o, Gemini and other LLMs in one place
+- **Multiple AI Models** — Switch between the latest GPT and Gemini models in one place
 - **Web Search** — Ground AI answers with real-time web context
 - **Reasoning Mode** — Step-by-step thinking for complex questions
 - **File Attachments & File Manager** — Send images and PDFs, reuse files across chats

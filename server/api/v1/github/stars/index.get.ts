@@ -1,12 +1,12 @@
 import { useLogger } from 'evlog'
-import { fetchGithubStars } from '~~/server/utils/landing/github-stars'
-import { CACHE_TTL_DAY } from '~~/server/utils/cache-or-fetch'
+import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
 
 /**
  * GET /api/v1/github/stars
  *
- * Returns GitHub repository stats for besidka/besidka, served from KV cache
- * with a 24h TTL. Unauthenticated; falls back to zeroed values on failure.
+ * Returns GitHub repository stats for besidka/besidka, served from the Nitro
+ * cache (KV in production) with a 1h TTL and SWR up to 24h.
+ * Unauthenticated; falls back to zeroed values on failure.
  *
  * Response shape:
  * {
@@ -31,14 +31,20 @@ export default defineEventHandler(async (event) => {
     watchers: 0,
     htmlUrl: 'https://github.com/besidka/besidka',
     updatedAt: new Date(0).toISOString(),
+    source: 'fallback' as const,
   }
 
-  const result = await cacheOrFetch({
-    key: 'landing:github-stars:v1',
-    ttlSeconds: CACHE_TTL_DAY,
-    fetcher: () => fetchGithubStars('besidka/besidka'),
-    fallback: GITHUB_STARS_FALLBACK,
-  })
+  let result: Awaited<ReturnType<typeof cachedGithubStars>> & {
+    source: string
+  }
+
+  try {
+    const data = await cachedGithubStars('besidka/besidka')
+
+    result = { ...data, source: 'cache' }
+  } catch {
+    result = GITHUB_STARS_FALLBACK
+  }
 
   logger.set({
     githubStars: {
@@ -51,9 +57,5 @@ export default defineEventHandler(async (event) => {
     'cache-control': 'public, max-age=300, stale-while-revalidate=86400',
   })
 
-  return {
-    ...result.value,
-    source: result.source,
-    updatedAt: result.updatedAt,
-  }
+  return result
 })

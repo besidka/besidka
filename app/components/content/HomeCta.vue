@@ -8,8 +8,8 @@
 
 <script setup lang="ts">
 withDefaults(defineProps<{
-  primary: { label: string, href: string }
-  secondary?: { label: string, href: string }
+  primary: { label: string, href: string, icon?: string }
+  secondary?: { label: string, href: string, icon?: string }
   align?: 'left' | 'center' | 'right'
 }>(), {
   secondary: undefined,
