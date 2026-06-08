@@ -37,21 +37,22 @@
       >
         <NuxtLink
           :to="primaryCta.href"
-          class="btn btn-primary btn-sm"
+          class="group/cta btn btn-primary btn-sm"
           @click="track('cta_click', { target: primaryCta.href })"
         >
           {{ primaryCta.label }}
           <Icon
             v-if="primaryCta.icon"
             :name="primaryCta.icon"
-            class="w-4 h-4"
+            size="12"
+            class="cta-icon"
             aria-hidden="true"
           />
         </NuxtLink>
         <NuxtLink
           v-if="secondaryCta"
           :to="secondaryCta.href"
-          class="btn btn-ghost btn-sm"
+          class="group/cta btn btn-ghost btn-sm"
           target="_blank"
           rel="noopener noreferrer"
           @click="track('github_click', { target: secondaryCta.href })"
@@ -60,6 +61,7 @@
             v-if="secondaryCta.icon"
             :name="secondaryCta.icon"
             size="20"
+            class="cta-icon-left"
             aria-hidden="true"
           />
           {{ secondaryCta.label }}
@@ -86,7 +88,6 @@
         <LandingGithubStarsBadge
           v-if="showStarsBadge"
           :show-label="false"
-          class="text-[11px]"
         />
       </div>
     </div>

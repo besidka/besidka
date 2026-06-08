@@ -6,6 +6,7 @@ allowBuilds:
   '@parcel/watcher': true
   '@prisma/engines': false
   better-sqlite3: true
+  core-js: false
   esbuild: true
   msw: false
   prisma: false

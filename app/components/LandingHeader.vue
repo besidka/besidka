@@ -48,13 +48,14 @@
         <NuxtLink
           v-if="loggedIn"
           to="/chats/new"
-          class="btn btn-accent btn-sm rounded-full"
+          class="group/cta btn btn-accent btn-sm rounded-full"
           @click="track('header_cta_click', { target: '/chats/new' })"
         >
           New chat
           <Icon
             name="lucide:message-circle-plus"
             size="16"
+            class="cta-icon"
             aria-hidden="true"
           />
         </NuxtLink>
@@ -68,6 +69,7 @@
           <Icon
             name="lucide:user-plus"
             size="16"
+            class="cta-icon"
             aria-hidden="true"
           />
         </NuxtLink>

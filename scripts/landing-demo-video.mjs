@@ -5,15 +5,25 @@
  * Landing page demo video prep script.
  *
  * Downloads the Big Buck Bunny placeholder video (CC-BY, Blender Foundation
- * https://www.blender.org/about/projects/), validates it as H.264/AAC MP4
- * using mediabunny core (no FFmpeg, no @mediabunny/server), and seeds the
- * local R2_LANDING bucket for development.
+ * https://www.blender.org/about/projects/) at three resolutions, validates
+ * each as H.264/AAC MP4 using mediabunny core (no FFmpeg, no @mediabunny/
+ * server), writes a fake English caption track, and seeds the local
+ * R2_LANDING bucket for development.
+ *
+ * Assets produced (served from R2_LANDING via /videos/<name>):
+ *   - demo.mp4        720p — default quality
+ *   - demo-360.mp4    360p
+ *   - demo-1080.mp4   1080p
+ *   - demo.en.vtt     fake English captions
+ *
+ * Hover-preview thumbnails are NOT generated here; the player builds them on
+ * the client at runtime via mediabunny's CanvasSink.
  *
  * ATTRIBUTION: "Big Buck Bunny" © Blender Foundation |
  * www.bigbuckbunny.org (CC BY 3.0)
  *
  * Usage:
- *   pnpm exec node scripts/landing-demo-video.mjs
+ *   pnpm run landing:video
  *
  * Remote upload (after the owner creates the remote bucket):
  *   npx wrangler r2 object put besidka-landing-preview/demo.mp4 \
@@ -23,7 +33,7 @@
  */
 
 import { createWriteStream, existsSync } from 'node:fs'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pipeline } from 'node:stream/promises'
@@ -38,12 +48,54 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
 const VIDEO_DIR = join(ROOT, '.videos')
-const VIDEO_PATH = join(VIDEO_DIR, 'demo.mp4')
 
-const VIDEO_URL
-  = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_5MB.mp4'
+const BASE_URL = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264'
 
 const LOCAL_BUCKET = 'besidka-landing-preview'
+
+/**
+ * Resolution variants. All three are 10s clips of the same content so quality
+ * switching swaps resolution without changing the footage.
+ */
+const VIDEO_SOURCES = [
+  {
+    file: 'demo.mp4',
+    url: `${BASE_URL}/720/Big_Buck_Bunny_720_10s_5MB.mp4`,
+    size: 720,
+    contentType: 'video/mp4',
+  },
+  {
+    file: 'demo-360.mp4',
+    url: `${BASE_URL}/360/Big_Buck_Bunny_360_10s_1MB.mp4`,
+    size: 360,
+    contentType: 'video/mp4',
+  },
+  {
+    file: 'demo-1080.mp4',
+    url: `${BASE_URL}/1080/Big_Buck_Bunny_1080_10s_5MB.mp4`,
+    size: 1080,
+    contentType: 'video/mp4',
+  },
+]
+
+const CAPTIONS_FILE = 'demo.en.vtt'
+const CAPTIONS_CONTENT = `WEBVTT
+
+00:00.000 --> 00:02.000
+Welcome to Besidka — open-source AI chat.
+
+00:02.000 --> 00:04.000
+Switch freely between the latest GPT and Gemini models.
+
+00:04.000 --> 00:06.000
+Attach files stored in your own R2 bucket.
+
+00:06.000 --> 00:08.000
+Group related chats into Projects.
+
+00:08.000 --> 00:10.000
+Your keys, your costs, your data.
+`
 
 async function downloadVideo(url, destination) {
   console.log(`\nDownloading ${url}`)
@@ -135,8 +187,17 @@ async function validateVideo(filePath) {
   input.dispose()
 }
 
-async function seedLocalR2(filePath) {
-  console.log(`\nSeeding local R2 bucket "${LOCAL_BUCKET}"...`)
+async function writeCaptions(filePath) {
+  console.log('\nWriting fake English captions...')
+
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, CAPTIONS_CONTENT, 'utf8')
+
+  console.log(`  ✓ Wrote ${filePath}`)
+}
+
+function seedLocalR2(key, filePath, contentType) {
+  console.log(`\nSeeding local R2 "${LOCAL_BUCKET}/${key}"...`)
 
   // wrangler appends /v3 to --persist-to internally, so we pass
   // .wrangler/state (not .wrangler/state/v3) to land in the right place.
@@ -144,20 +205,19 @@ async function seedLocalR2(filePath) {
 
   const command = [
     'npx wrangler r2 object put',
-    `${LOCAL_BUCKET}/demo.mp4`,
+    `${LOCAL_BUCKET}/${key}`,
     `--file="${filePath}"`,
+    `--content-type="${contentType}"`,
     '--local',
     `--persist-to="${persistDir}"`,
   ].join(' ')
 
-  console.log(`  Running: ${command}`)
-
   try {
     execSync(command, { cwd: ROOT, stdio: 'inherit' })
-    console.log('  ✓ Local R2 seeded successfully')
+    console.log(`  ✓ Seeded ${key}`)
   } catch (exception) {
     console.error(
-      '  ✗ Local R2 seed failed:',
+      `  ✗ Local R2 seed failed for ${key}:`,
       exception instanceof Error ? exception.message : String(exception),
     )
     console.log('\n  You can retry manually:')
@@ -170,13 +230,14 @@ function printRemoteInstructions() {
   console.log('REMOTE UPLOAD (run once the remote bucket exists)')
   console.log('─────────────────────────────────────────────────')
   console.log()
-  console.log('Preview environment:')
-  console.log('  npx wrangler r2 object put besidka-landing-preview/demo.mp4 \\')
-  console.log('    --file=.videos/demo.mp4')
+  console.log('For each asset (demo.mp4, demo-360.mp4, demo-1080.mp4,')
+  console.log('demo.en.vtt), upload to both environments:')
   console.log()
-  console.log('Production environment:')
-  console.log('  npx wrangler r2 object put besidka-landing/demo.mp4 \\')
-  console.log('    --file=.videos/demo.mp4 --env production')
+  console.log('  npx wrangler r2 object put besidka-landing-preview/<name> \\')
+  console.log('    --file=.videos/<name>')
+  console.log()
+  console.log('  npx wrangler r2 object put besidka-landing/<name> \\')
+  console.log('    --file=.videos/<name> --env production')
   console.log()
   console.log('Attribution: Big Buck Bunny © Blender Foundation (CC BY 3.0)')
   console.log('  https://www.bigbuckbunny.org')
@@ -186,16 +247,24 @@ async function main() {
   console.log('Landing demo video setup')
   console.log('========================')
 
-  const skipDownload = existsSync(VIDEO_PATH)
+  for (const source of VIDEO_SOURCES) {
+    const destination = join(VIDEO_DIR, source.file)
 
-  if (skipDownload) {
-    console.log(`\nUsing cached video at ${VIDEO_PATH}`)
-  } else {
-    await downloadVideo(VIDEO_URL, VIDEO_PATH)
+    if (existsSync(destination)) {
+      console.log(`\nUsing cached ${source.file}`)
+    } else {
+      await downloadVideo(source.url, destination)
+    }
+
+    await validateVideo(destination)
+    seedLocalR2(source.file, destination, source.contentType)
   }
 
-  await validateVideo(VIDEO_PATH)
-  await seedLocalR2(VIDEO_PATH)
+  const captionsPath = join(VIDEO_DIR, CAPTIONS_FILE)
+
+  await writeCaptions(captionsPath)
+  seedLocalR2(CAPTIONS_FILE, captionsPath, 'text/vtt; charset=utf-8')
+
   printRemoteInstructions()
 
   console.log('\n✓ Done. pnpm run dev should now serve /videos/demo.mp4')

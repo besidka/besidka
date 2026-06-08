@@ -260,6 +260,10 @@ export default defineNuxtConfig({
         'shiki/engine/javascript',
         'sanitize-html',
       ],
+      // mediabunny spawns a Web Worker for UrlSource range reads; Vite's dep
+      // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
+      // resolution, so it must be served unbundled.
+      exclude: ['mediabunny'],
     },
     plugins: [
       tailwindcss(),
