@@ -21,6 +21,8 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 ## Tech stack
 
 - [Nuxt (Vue + Nitro + Cloudflare workers)](https://nuxt.com/)
+- [Nuxt Content](https://content.nuxt.com/) (landing page CMS, isolated D1)
+- [Nuxt Studio](https://nuxt.studio/) (visual content editor)
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Better Auth](https://www.better-auth.com/)
 - [Resend](https://resend.com/)
@@ -153,8 +155,8 @@ Nuxt Content manages its own schema inside `CONTENT_DB` at runtime — no Drizzl
 Studio is optional. The landing page renders and all content is editable via Git without it. Studio adds a `/_studio` route to the deployed site so editors can make changes through a browser UI.
 
 1. Go to GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
-2. Set **Homepage URL** to `https://besidka.com`.
-3. Set **Authorization callback URL** to `https://besidka.com/_studio` (production) or `http://localhost:3000/_studio` (development).
+2. Set **Homepage URL** to `https://www.besidka.com` (the canonical `www` host — a Cloudflare redirect sends the apex `besidka.com` to `www.besidka.com`).
+3. Set **Authorization callback URL** to `https://www.besidka.com/_studio` (production) or `http://localhost:3000/_studio` (development).
 4. Copy the Client ID and generate a Client Secret.
 5. Add them to `.dev.vars` for local development:
    ```

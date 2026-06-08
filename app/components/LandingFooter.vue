@@ -19,17 +19,15 @@
 
         <div class="flex items-center justify-center md:justify-end sm:max-md:col-span-3 gap-3">
           <a
-            href="https://www.linkedin.com/company/besidka"
+            href="https://github.com/besidka/besidka"
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-ghost btn-circle"
-            aria-label="Besidka on LinkedIn"
-            @click="track('footer_link_click', {
-              target: 'linkedin',
-            })"
+            aria-label="Besidka on GitHub"
+            @click="track('footer_link_click', { target: 'github' })"
           >
             <Icon
-              name="streamline-logos:linkedin-logo-block"
+              name="streamline-logos:github-logo-2-solid"
               size="24"
               aria-hidden="true"
             />
@@ -51,15 +49,17 @@
             <span class="sr-only">(opens in new tab)</span>
           </a>
           <a
-            href="https://github.com/besidka/besidka"
+            href="https://www.linkedin.com/company/besidka"
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-ghost btn-circle"
-            aria-label="Besidka on GitHub"
-            @click="track('footer_link_click', { target: 'github' })"
+            aria-label="Besidka on LinkedIn"
+            @click="track('footer_link_click', {
+              target: 'linkedin',
+            })"
           >
             <Icon
-              name="streamline-logos:github-logo-2-solid"
+              name="streamline-logos:linkedin-logo-block"
               size="24"
               aria-hidden="true"
             />

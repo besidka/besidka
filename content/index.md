@@ -86,6 +86,14 @@ faqs:
     answer: Chat history is stored in your own Cloudflare D1 database, scoped to your account. If you self-host, no third party has access. On the hosted version at besidka.com, only you can read your conversations.
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at their per-token rates. There is no monthly fee, no seat charge, and no markup. You only pay when you actually send a message.
+  - question: What does "Besidka" mean?
+    answer: The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. The word derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
+  - question: How to pronounce Besidka?
+    answer:
+      Besidka is pronounced “beh-SEED-kah”.
+      - “Be-” (Rhymes with “beh” as in “meh”). A short, soft sound. Do not pronounce it like the English word “be” (bee). It should be a short 'e' sound.
+      - “-SID-” (Rhymes with “deed”). This is the stressed syllable. You should say this part a little louder and longer than the others.
+      - “-ka” (Rhymes with “ah”). A crisp 'k' followed by a short 'a' (like the 'a' in “father”).
 features:
   - icon: lucide:layers
     title: Multiple AI models
@@ -223,6 +231,10 @@ sr-label: Key customer benefits of using Besidka
 :home-features{columns="3" set="benefits"}
 ::
 
+::home-bubble{role="user" sr-label="User asking for a starting guide"}
+How do I get started?
+::
+
 ::home-bubble
 ---
 wide: true
@@ -294,18 +306,34 @@ sr-label: Pricing comparison between Besidka and subscription alternatives
 :home-comparison
 ::
 
+::home-bubble{role="user" sr-label="User asking for a self-hosting option"}
+Can I run this myself?
+::
+
 ::home-bubble
 ---
 role: assistant
 sr-label: Self-hosting and community information
 ---
-Besidka is built on Cloudflare Workers and ships with everything you need to run your own instance. The name comes from the Ukrainian word for a garden gazebo — a place to sit, talk, and think. Configure your Cloudflare account per the README, then deploy with pnpm run deploy. The license is MIT — use it, fork it, contribute back.
+Besidka is built on Cloudflare Workers and ships with everything you need to run your own instance. Configure your Cloudflare account per the README, then deploy with pnpm run deploy. The license is MIT — use it, fork it, contribute back.
 
 :home-stars
 ::
 
+::home-bubble{role="user" sr-label="User asking about what Besidka means"}
+What does “Besidka” mean?
+::
+
+::home-bubble
+---
+role: assistant
+sr-label: Explanation of the name "Besidka"
+---
+The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. Similar words exist across Slavic languages: “besídka” in Czech and “besiedka” in Slovak. All these words derive from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
+::
+
 ::home-bubble{role="user" sr-label="User asking FAQ questions"}
-I have questions.
+I have more questions.
 ::
 
 ::home-bubble
