@@ -25,24 +25,28 @@ comparison:
   columns:
     - Besidka
     - ChatGPT Plus
+    - Google AI Pro
     - Claude Pro
     - T3 Chat
   rows:
     - label: Monthly fee
       values:
         - Free
-        - $20/mo
-        - $20/mo
-        - $8/mo
+        - from $20/mo
+        - from $20/mo
+        - from $20/mo
+        - from $8/mo
     - label: Pay only for what you use
       values:
         - yes
         - no
         - no
         - no
+        - Only for the most expensive models like Gpt 5.5 Pro ($30/$180)
     - label: Open source
       values:
         - yes
+        - no
         - no
         - no
         - no
@@ -52,9 +56,11 @@ comparison:
         - no
         - no
         - no
+        - no
     - label: Multi-provider models
       values:
         - yes
+        - no
         - no
         - no
         - yes
@@ -62,14 +68,16 @@ comparison:
       values:
         - None
         - Usage limits apply
-        - ~45 per 5 h
-        - 1,500/mo (100 Claude)
+        - Usage limits apply
+        - Usage limits apply
+        - Usage limits apply
     - label: Bring your own keys
       values:
         - Required
         - no
         - no
-        - Optional
+        - no
+        - Only for the most expensive models like Gpt 5.5 Pro ($30/$180)
   note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup.
   priceDate: June 2026
 description: Your digital besidka for all AI chats. Bring your own API keys, pay only for what you use, and keep full control. No subscriptions, no markup, no lock-in.
@@ -89,8 +97,9 @@ faqs:
   - question: What does "Besidka" mean?
     answer: The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. The word derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
   - question: How to pronounce Besidka?
-    answer:
+    answer: |-
       Besidka is pronounced “beh-SEED-kah”.
+
       - “Be-” (Rhymes with “beh” as in “meh”). A short, soft sound. Do not pronounce it like the English word “be” (bee). It should be a short 'e' sound.
       - “-SID-” (Rhymes with “deed”). This is the stressed syllable. You should say this part a little louder and longer than the others.
       - “-ka” (Rhymes with “ah”). A crisp 'k' followed by a short 'a' (like the 'a' in “father”).

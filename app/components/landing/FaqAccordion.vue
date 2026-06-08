@@ -22,12 +22,16 @@
           aria-hidden="true"
         />
       </summary>
-      <p
-        class="px-4 pb-4 pt-1 text-sm text-base-content/70
-          leading-relaxed whitespace-pre-line"
-      >
-        {{ item.answer }}
-      </p>
+      <div class="px-4 pb-4 pt-1">
+        <MDCCached
+          :value="item.answer"
+          :cache-key="`faq-${index}`"
+          :components="components"
+          :parser-options="{ highlight: false }"
+          class="chat-markdown text-sm text-base-content/70 leading-relaxed"
+          unwrap="p"
+        />
+      </div>
     </details>
   </div>
 </template>
@@ -39,4 +43,6 @@ withDefaults(defineProps<{
 }>(), {
   groupName: 'faq',
 })
+
+const { components } = useChatFormat()
 </script>
