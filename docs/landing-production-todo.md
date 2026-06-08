@@ -46,11 +46,13 @@ The preview environment is the **top-level** block in `wrangler.jsonc`.
   ```bash
   pnpm exec wrangler r2 bucket create besidka-landing-preview
   ```
-- [ ] Upload the demo video to the preview bucket:
+- [ ] Upload the demo video assets to the preview bucket. The player needs
+  four objects: `demo.mp4` (720p), `demo-360.mp4`, `demo-1080.mp4` (quality
+  ladder) and `demo.en.vtt` (captions):
   ```bash
   pnpm run landing:video
   ```
-  Then run the printed `wrangler r2 object put` commands.
+  Then run the printed `wrangler r2 object put` commands (one per asset).
 - [ ] _(Optional)_ Enable Studio editing on the preview Worker:
   ```bash
   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID
@@ -73,8 +75,9 @@ The production environment is **`env.production`** in `wrangler.jsonc`.
   ```bash
   pnpm exec wrangler r2 bucket create besidka-landing
   ```
-- [ ] Upload the demo video to the production bucket (same `pnpm run
-  landing:video` flow, targeting `besidka-landing`).
+- [ ] Upload all four demo video assets (`demo.mp4`, `demo-360.mp4`,
+  `demo-1080.mp4`, `demo.en.vtt`) to the production bucket (same `pnpm run
+  landing:video` flow, targeting `besidka-landing` with `--env production`).
 - [ ] Set the Studio production OAuth secrets:
   ```bash
   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID --env production

@@ -46,7 +46,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-error: var(--color-red-600);
   --color-error-content: var(--color-white);
   --radius-selector: 1rem;
-  --radius-field: .5rem;
+  --radius-field: 2rem;
   --radius-box: .5rem;
   --size-selector: .3rem;
   --size-field: .3rem;
@@ -90,7 +90,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-error: var(--color-red-200);
   --color-error-content: var(--color-red-950);
   --radius-selector: 1rem;
-  --radius-field: .5rem;
+  --radius-field: 2rem;
   --radius-box: .5rem;
   --size-selector: .3rem;
   --size-field: .3rem;
@@ -407,6 +407,14 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 	&::before {
 		@apply content-[''] absolute top-1/2 left-1/2 w-full min-w-12 h-12 -translate-x-1/2 -translate-y-1/2;
 	}
+}
+
+@utility cta-icon {
+  @apply size-4 shrink-0 transition-transform lg:group-hover/cta:motion-safe:translate-x-0.5 group-focus-visible/cta:motion-safe:translate-x-0.5;
+}
+
+@utility cta-icon-left {
+  @apply size-4 shrink-0 transition-transform lg:group-hover/cta:motion-safe:-translate-x-0.5 group-focus-visible/cta:motion-safe:-translate-x-0.5;
 }
 
 :root {

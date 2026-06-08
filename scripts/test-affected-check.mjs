@@ -124,8 +124,9 @@ export function getAffectedTests(changedFiles) {
 
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
+    'tests/unit/utils/video.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
-    'tests/unit/components/landing/DemoVideo.spec.ts',
+    'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
   ]
 
@@ -148,6 +149,22 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/routes\/videos\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^shared\/utils\/video\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^shared\/types\/video\.d\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^app\/composables\/landing-video-thumbnails\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^app\/assets\/css\/plyr-theme\.css$/,
       tests: landingTests,
     },
     {

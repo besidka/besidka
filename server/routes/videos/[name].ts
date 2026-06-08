@@ -4,12 +4,25 @@ import { parseRangeHeader } from '~~/server/utils/landing/video'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 
-const ALLOWED_VIDEOS = new Set(['demo.mp4'])
+const ALLOWED_FILES = new Set([
+  'demo.mp4',
+  'demo-360.mp4',
+  'demo-1080.mp4',
+  'demo.en.vtt',
+])
+
+function resolveContentType(name: string): string {
+  if (name.endsWith('.vtt')) {
+    return 'text/vtt; charset=utf-8'
+  }
+
+  return 'video/mp4'
+}
 
 export default defineEventHandler(async (event) => {
   const { name } = getRouterParams(event) as { name: string }
 
-  if (!ALLOWED_VIDEOS.has(name)) {
+  if (!ALLOWED_FILES.has(name)) {
     throw createError({
       status: 404,
       message: 'Video not found',
@@ -62,7 +75,7 @@ export default defineEventHandler(async (event) => {
   const isRangeRequest = rangeResult !== null
 
   const commonHeaders: Record<string, string> = {
-    'Content-Type': 'video/mp4',
+    'Content-Type': resolveContentType(name),
     'ETag': etag,
     'Cache-Control': 'public, max-age=86400',
     'Accept-Ranges': 'bytes',

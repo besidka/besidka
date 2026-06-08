@@ -9,7 +9,7 @@
   >
     <NuxtLink
       :to="primary.href"
-      class="btn btn-primary btn-sm"
+      class="group/cta btn btn-primary btn-sm"
       :target="isExternal(primary.href) ? '_blank' : undefined"
       :rel="isExternal(primary.href) ? 'noopener noreferrer' : undefined"
       @click="track('cta_click', { target: primary.href })"
@@ -18,7 +18,8 @@
       <Icon
         v-if="primary.icon"
         :name="primary.icon"
-        class="w-4 h-4"
+        size="12"
+        class="cta-icon"
         aria-hidden="true"
       />
       <span v-if="isExternal(primary.href)" class="sr-only">
@@ -28,7 +29,7 @@
     <NuxtLink
       v-if="secondary"
       :to="secondary.href"
-      class="btn btn-ghost btn-sm"
+      class="group/cta btn btn-ghost btn-sm"
       :target="isExternal(secondary.href) ? '_blank' : undefined"
       :rel="isExternal(secondary.href) ? 'noopener noreferrer' : undefined"
       @click="track('cta_click', { target: secondary.href })"
@@ -37,6 +38,7 @@
         v-if="secondary.icon"
         :name="secondary.icon"
         size="20"
+        class="cta-icon-left"
         aria-hidden="true"
       />
       {{ secondary.label }}

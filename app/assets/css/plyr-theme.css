@@ -1,0 +1,163 @@
+/**
+ * Plyr theme — maps Plyr's CSS variables onto Besidka's DaisyUI tokens so the
+ * demo player matches the chat UI: pink accent, glass control bar (mirroring
+ * the .bubble aesthetic), theme-aware icons, and rounded corners.
+ *
+ * Scoped to `.landing-player` so it never restyles other Plyr instances.
+ * Uses only runtime CSS custom properties (no @apply) so it can be imported
+ * from the player component without a Tailwind context. DaisyUI swaps the
+ * --color-* values per theme, so light/dark are handled automatically.
+ */
+
+.plyr {
+  --plyr-color-main: var(--color-accent);
+  --plyr-video-background: var(--color-base-300);
+  --plyr-font-family: inherit;
+  --plyr-font-size-base: 0.875rem;
+  --plyr-font-size-small: 0.75rem;
+  --plyr-font-size-time: 0.8125rem;
+
+  --plyr-control-radius: var(--radius-field, 0.5rem);
+  --plyr-control-spacing: 12px;
+
+  /* Icons are theme-aware so they read on the translucent glass bar. */
+  --plyr-video-control-color: var(--color-base-content);
+  --plyr-video-control-color-hover: var(--color-accent-content);
+  --plyr-video-control-background-hover: var(--color-accent);
+
+  /* Progress + volume ranges. */
+  --plyr-range-fill-background: var(--color-accent);
+  --plyr-range-track-height: 5px;
+  --plyr-range-thumb-height: 14px;
+  --plyr-range-thumb-background: var(--color-base-100);
+  --plyr-range-thumb-shadow:
+    0 1px 3px rgb(0 0 0 / 0.4),
+    0 0 0 2px color-mix(in oklab, var(--color-accent) 70%, transparent);
+  --plyr-video-progress-buffered-background:
+    color-mix(in oklab, var(--color-base-content) 28%, transparent);
+
+  /* Settings / quality / speed / captions menus. */
+  --plyr-menu-background:
+    color-mix(in oklab, var(--color-base-100) 82%, transparent);
+  --plyr-menu-color: var(--color-base-content);
+  --plyr-menu-radius: var(--radius-box, 0.75rem);
+  --plyr-menu-arrow-size: 4px;
+  --plyr-menu-back-border-color:
+    color-mix(in oklab, var(--color-base-content) 12%, transparent);
+
+  /* Tooltips: chapter labels + seek time. */
+  --plyr-tooltip-background:
+    color-mix(in oklab, var(--color-base-100) 88%, transparent);
+  --plyr-tooltip-color: var(--color-base-content);
+  --plyr-tooltip-radius: var(--radius-field, 0.5rem);
+
+  /* Captions. */
+  --plyr-captions-background: rgb(0 0 0 / 0.55);
+  --plyr-captions-text-color: #fff;
+
+  height: 100%;
+  border-radius: 1rem;
+}
+
+.plyr video {
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Floating glass control bar — mirrors the chat .bubble header/footer. */
+.plyr--video .plyr__controls {
+  margin: 0 0.625rem 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 2rem;
+  border: 1px solid
+    color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  background:
+    color-mix(in oklab, var(--color-base-100) 45%, transparent);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow:
+    0 8px 32px -4px rgb(0 0 0 / 0.25),
+    inset 0 1px 0 color-mix(in oklab, #fff 25%, transparent);
+}
+
+/* Large centre play button: accent-tinted glass. */
+.plyr__control--overlaid {
+  padding: calc(var(--plyr-control-spacing) * 1.5);
+  color: var(--color-accent-content);
+  background: color-mix(in oklab, var(--color-accent) 88%, transparent);
+  border: 1px solid color-mix(in oklab, #fff 35%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px -6px color-mix(
+    in oklab,
+    var(--color-accent) 60%,
+    transparent
+  );
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.plyr__control--overlaid:hover,
+.plyr__control--overlaid:focus-visible {
+  background: var(--color-accent);
+}
+
+/* Range track sits on the glass bar, so lift its contrast. */
+.plyr__progress input[type='range'],
+.plyr__volume input[type='range'] {
+  --plyr-range-track-background:
+    color-mix(in oklab, var(--color-base-content) 22%, transparent);
+}
+
+.plyr__caption {
+  border-radius: var(--radius-field, 0.5rem);
+  font-size: 1rem;
+}
+
+/* Chapter markers: rounded accent pins with a halo for contrast. */
+.plyr__progress__marker {
+  width: 2px;
+  height: var(--plyr-range-track-height, 5px);
+  background: var(--color-base-100);
+}
+
+/* Hover preview thumbnails: framed with a soft accent edge. */
+.plyr__preview-thumb {
+  --plyr-tooltip-background:
+    color-mix(in oklab, var(--color-base-100) 90%, transparent);
+
+  border-radius: var(--radius-box, 0.75rem);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.plyr__preview-thumb__image-container {
+  width: 50%;
+  border-radius: var(--radius-box, 0.75rem);
+  border: 1px solid
+    color-mix(in oklab, var(--color-accent) 45%, transparent);
+  box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.5);
+}
+
+.plyr__preview-thumb__time-container {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Active menu values + current quality/speed use the accent. */
+.plyr__menu__container .plyr__control[role='menuitemradio'][aria-checked='true']::before {
+  background: var(--color-accent);
+}
+
+.plyr__menu__container .plyr__control[role='menuitemradio']::after {
+  width: 8px;
+  height: 8px;
+}
+
+.plyr__badge {
+  border-radius: var(--radius-field, 0.5rem);
+}
+
+/* Keyboard focus rings in the accent color. */
+.plyr__control:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

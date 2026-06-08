@@ -197,7 +197,7 @@ more colons, indented two spaces:
 | `:home-features{set="benefits"}`     | `benefits`                             | customer-outcome benefits grid (3 items)         |
 | `:home-testimonials`                 | `useCases`                             | use-case cards (renamed from `testimonials`)     |
 | `:home-comparison`                   | `comparison`                           | competitor comparison table with cost footnote   |
-| `:home-video`                        | `video`                                | demo video streamed from R2_LANDING              |
+| `:home-video`                        | `video`                                | custom Plyr player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from R2_LANDING with Range |
 | `:home-faq`                          | `faqs`                                 | also emitted as FAQPage structured data          |
 | `:home-stars`                        | — (live from `/api/v1/github/stars`)   | live GitHub star count                           |
 | `:::home-cta`                        | inline `primary`/`secondary`/`align`   | small CTA block, edited in place; each CTA accepts optional `icon` |
@@ -215,7 +215,7 @@ more colons, indented two spaces:
 | `benefits`   | array of objects     | `icon`, `title`, `body` — customer-outcome wording         |
 | `useCases`   | array of objects     | `icon`, `persona`, `scenario`, `payoff`                    |
 | `comparison` | object               | `caption`, `columns[]`, `rows[]{label, values[]}`          |
-| `video`      | object               | `src` (R2 path), `poster` (optional), `caption` (optional) |
+| `video`      | object               | `src`, `poster?`, `caption?`, `qualities[]{src,size,label?}`, `captions[]{src,label,srclang,default?}`, `markers[]{time:"m:ss",label}`, `thumbnails?` — see Demo video player note below |
 | `faqs`       | array of objects     | `question`, `answer` — also powers FAQPage JSON-LD         |
 
 So to change the carousel images you edit the **`carousel`** list in Page
@@ -341,6 +341,26 @@ is published in Studio, the rebuild + redeploy refreshes it.
   nested widget is indented two spaces with one extra colon (`:::home-widget`).
 - **Adding a new widget**: create `app/components/content/HomeX.vue` (delegating
   to a real UI component), then use it as `::home-x` in the markdown.
+
+### Demo video player
+
+- The player is `app/components/landing/VideoPlayer.client.vue` ([Plyr](https://github.com/sampotts/plyr),
+  client-only), themed to DaisyUI via `app/assets/css/plyr-theme.css`
+  (maps `--plyr-*` onto `--color-accent`/glass; scoped to `.landing-player`).
+- Assets are produced by `pnpm run landing:video` (`scripts/landing-demo-video.mjs`):
+  `demo.mp4` (720p, default), `demo-360.mp4`, `demo-1080.mp4` (quality ladder),
+  and `demo.en.vtt` (fake captions). They are validated with **mediabunny** and
+  seeded into the local `R2_LANDING` bucket; served by `server/routes/videos/[name].ts`
+  (HTTP Range, per-extension content-type, fixed allow-list).
+- **Markers** are authored in the `video.markers` frontmatter as `"m:ss"`
+  timecodes (quote them — unquoted `0:12` is parsed by YAML as a number) and
+  rendered as accent pins on the progress bar.
+- **Hover thumbnails** are generated on the client: mediabunny streams the MP4
+  via `UrlSource` (Range) and decodes frames with `CanvasSink` into a sprite,
+  drawn by a custom overlay (Plyr's `previewThumbnails` can't load `blob:` URLs).
+  A hidden-`<video>` canvas-seek fallback covers browsers without WebCodecs.
+- mediabunny is in `vite.optimizeDeps.exclude` (`nuxt.config.ts`) — its Web
+  Worker breaks under Vite's dep pre-bundler otherwise.
 
 ## 7. Troubleshooting
 

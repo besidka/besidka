@@ -28,6 +28,8 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - [Resend](https://resend.com/)
 - [Daisy UI](https://daisyui.com/)
 - [Vercel AI SDK](https://ai-sdk.dev/docs)
+- [Mediabunny](https://mediabunny.dev/) (high-performance streaming video from Cloudflare R2 bucket)
+- [Plyr](https://plyr.io/) (video player)
 
 ## Features
 

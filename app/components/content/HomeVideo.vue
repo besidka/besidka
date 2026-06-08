@@ -1,19 +1,34 @@
 <template>
-  <LandingDemoVideo
-    :src="resolvedSrc"
-    :poster="resolvedPoster"
-    :caption="resolvedCaption"
-  />
+  <ClientOnly>
+    <LazyLandingVideoPlayer
+      :src="resolvedSrc"
+      :poster="resolvedPoster"
+      :caption="resolvedCaption"
+      :qualities="video.qualities ?? []"
+      :captions="video.captions ?? []"
+      :markers="video.markers ?? []"
+      :thumbnails="video.thumbnails ?? true"
+    />
+
+    <template #fallback>
+      <div class="w-full">
+        <div
+          class="skeleton skeleton--default w-full aspect-video rounded-2xl"
+        />
+        <p
+          v-if="resolvedCaption"
+          class="text-sm text-base-content/60 text-center mt-3"
+        >
+          {{ resolvedCaption }}
+        </p>
+      </div>
+    </template>
+  </ClientOnly>
 </template>
 
 <script setup lang="ts">
 import type { MaybeRefOrGetter } from 'vue'
-
-type VideoData = {
-  src?: string
-  poster?: string
-  caption?: string
-}
+import type { VideoData } from '#shared/types/video.d'
 
 const props = withDefaults(defineProps<{
   src?: string
@@ -30,12 +45,16 @@ const data = inject<MaybeRefOrGetter<{ video?: VideoData }>>(
   {},
 )
 
+const video = computed<VideoData>(() => {
+  return toValue(data)?.video ?? {}
+})
+
 const resolvedSrc = computed<string>(() => {
   if (props.src) {
     return props.src
   }
 
-  return toValue(data)?.video?.src ?? '/videos/demo.mp4'
+  return video.value.src ?? '/videos/demo.mp4'
 })
 
 const resolvedPoster = computed<string | undefined>(() => {
@@ -43,7 +62,7 @@ const resolvedPoster = computed<string | undefined>(() => {
     return props.poster
   }
 
-  return toValue(data)?.video?.poster ?? undefined
+  return video.value.poster
 })
 
 const resolvedCaption = computed<string | undefined>(() => {
@@ -51,6 +70,6 @@ const resolvedCaption = computed<string | undefined>(() => {
     return props.caption
   }
 
-  return toValue(data)?.video?.caption ?? undefined
+  return video.value.caption
 })
 </script>

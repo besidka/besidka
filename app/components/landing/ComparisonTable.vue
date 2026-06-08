@@ -1,5 +1,5 @@
 <template>
-  <div class="overflow-x-auto w-full">
+  <div class="overflow-x-auto w-full rounded-box">
     <table
       class="table table-sm table-pin-rows table-pin-cols w-full table-fixed
         min-w-[56rem]"

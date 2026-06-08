@@ -194,7 +194,7 @@ export default defineContentConfig({
               .string()
               .optional()
               .describe(
-                'Video URL, e.g. /videos/demo.mp4 served from R2_LANDING',
+                'Default video URL, e.g. /videos/demo.mp4 from R2_LANDING',
               ),
             poster: z
               .string()
@@ -204,6 +204,63 @@ export default defineContentConfig({
               .string()
               .optional()
               .describe('Short caption displayed below the video player'),
+            qualities: z
+              .array(
+                z.object({
+                  src: z
+                    .string()
+                    .describe('Resolution URL, e.g. /videos/demo-720.mp4'),
+                  size: z
+                    .number()
+                    .describe('Frame height in px, e.g. 720 (quality key)'),
+                  label: z
+                    .string()
+                    .optional()
+                    .describe('Optional label; defaults to "${size}p"'),
+                }),
+              )
+              .default([])
+              .describe('Selectable resolutions for the quality menu'),
+            captions: z
+              .array(
+                z.object({
+                  src: z
+                    .string()
+                    .describe('WebVTT URL, e.g. /videos/demo.en.vtt'),
+                  label: z
+                    .string()
+                    .describe('Menu label, e.g. "English"'),
+                  srclang: z
+                    .string()
+                    .describe('BCP 47 language tag, e.g. "en"'),
+                  default: z
+                    .boolean()
+                    .optional()
+                    .describe('Active by default when true'),
+                }),
+              )
+              .default([])
+              .describe('WebVTT caption tracks'),
+            markers: z
+              .array(
+                z.object({
+                  time: z
+                    .string()
+                    .describe('Timecode "m:ss"/"mm:ss"/"h:mm:ss", e.g. 0:12'),
+                  label: z
+                    .string()
+                    .describe('Chapter label shown on hover, e.g. "Projects"'),
+                }),
+              )
+              .default([])
+              .describe('Chapter markers rendered on the progress bar'),
+            thumbnails: z
+              .boolean()
+              .optional()
+              .describe(
+                'Generate hover preview thumbnails on the client'
+                + ' via mediabunny (default true)',
+              ),
           })
           .optional()
           .describe('Demo video shown in the how-it-works section'),

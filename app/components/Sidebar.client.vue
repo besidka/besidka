@@ -1,6 +1,6 @@
 <template>
   <div
-    class="fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 max-sm:left-0 z-50 transition-transform duration-500 ease-in-out"
+    class="fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 sm:[[data-studio-active='true']_&]:!left-auto max-sm:left-0 z-50 transition-transform duration-500 ease-in-out"
     :class="{
       'sm:translate-x-0': visible,
       'sm:translate-x-[calc(100%_+_(var(--spacing)_*_10))]': !visible,

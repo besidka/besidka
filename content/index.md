@@ -160,6 +160,31 @@ useCases:
 video:
   src: /videos/demo.mp4
   caption: A quick tour of Besidka
+  qualities:
+    - src: /videos/demo-1080.mp4
+      size: 1080
+      label: 1080p
+    - src: /videos/demo.mp4
+      size: 720
+      label: 720p
+    - src: /videos/demo-360.mp4
+      size: 360
+      label: 360p
+  captions:
+    - src: /videos/demo.en.vtt
+      label: English
+      srclang: en
+      default: true
+  markers:
+    - time: 0:02
+      label: Welcome
+    - time: 0:04
+      label: Multiple models
+    - time: 0:06
+      label: File attachments
+    - time: 0:08
+      label: Projects
+  thumbnails: true
 ---
 
 ::home-bubble{role="user" sr-label="User requesting a product demo"}
