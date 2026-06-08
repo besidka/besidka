@@ -4,7 +4,8 @@ on:
   push:
     branches: ['main']
     paths-ignore:
-      - '**/*.md'
+      # NOTE: do not ignore '**/*.md' — content/*.md is the landing page
+      # source and MUST trigger build+deploy (Studio publishes via commit it).
       - '.agents/**'
       - '.agent/**'
       - '.claude/**'

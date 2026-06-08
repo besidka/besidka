@@ -73,6 +73,8 @@
 		"@besidka/nuxt-cookie-consent": "workspace:*",
 		"@nuxtjs/i18n": "^10.4.0",
 		"@nuxtjs/mdc": "^0.22.0",
+		"@nuxtjs/robots": "^6.0.9",
+		"@nuxtjs/sitemap": "^8.0.15",
 		"@tailwindcss/vite": "^4.3.0",
 		"@vite-pwa/nuxt": "^1.1.1",
 		"@vueuse/core": "^14.3.0",

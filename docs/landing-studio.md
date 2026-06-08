@@ -10,6 +10,87 @@ reference, and how to run Nuxt Studio for visual editing.
 
 ---
 
+## Studio: local vs preview vs production
+
+Studio here is the **self-hosted `nuxt-studio` module** (not the hosted
+nuxt.studio SaaS dashboard). Its `studio` config in `nuxt.config.ts` points at
+the GitHub repo it commits to:
+
+```ts
+studio: {
+  repository: {
+    provider: 'github',
+    owner: 'besidka',
+    repo: 'besidka',
+    branch: 'main',
+  },
+},
+```
+
+It behaves differently depending on whether you are running dev or a built
+Worker.
+
+### Local development (`pnpm run dev`)
+
+There is **no `/_studio` route** in dev — a 404 at
+`http://localhost:3000/_studio` is **expected**. Instead Studio injects a
+floating **"Edit this page" button (bottom-left)**. Clicking it opens an
+in-page editor that writes changes **directly to the local content files on
+disk** (e.g. `content/index.md`). No GitHub OAuth, no env vars, no
+commit/publish step — it is a local file editor.
+
+> **Caveat** (see also [Troubleshooting](#7-troubleshooting)): opening the dev
+> editor rewrites `content/index.md` into Studio's canonical serialization and
+> can revert outside edits made in the same session. The file on disk is the
+> source of truth — edit in the file **or** in the dev editor, not both.
+
+### Preview & production (a built Worker — `pnpm run preview` or deployed)
+
+A real **`/_studio` route exists**. Editors visit
+`https://<host>/_studio`, sign in with **GitHub OAuth**, and edit content
+through the browser UI. Clicking **Publish** makes Studio **commit the change
+to the configured GitHub repo/branch** (`besidka/besidka` @ `main`) — exactly
+like a developer committing a content edit.
+
+That push to `main` then triggers the normal CI (`production.yml`), which
+rebuilds and redeploys, so the live content updates the same way a code change
+ships. This is **why** the CI `paths-ignore` was fixed to stop ignoring
+`content/*.md` — otherwise the content commit would not trigger a deploy.
+
+### Summary
+
+| Environment              | Editor entry point                      | Where edits go                                   | Auth required |
+| ------------------------ | --------------------------------------- | ------------------------------------------------ | ------------- |
+| Local dev (`pnpm run dev`) | "Edit this page" button (bottom-left) | Local files on disk (`content/index.md`)         | None          |
+| Preview (built Worker)   | `/_studio` route                        | Git commit to `besidka/besidka` @ `main`         | GitHub OAuth  |
+| Production (built Worker) | `/_studio` route                       | Git commit to `besidka/besidka` @ `main` → CI deploy | GitHub OAuth  |
+
+### Why OAuth/secrets are needed only for preview/prod
+
+The `/_studio` GitHub sign-in requires a **GitHub OAuth App**. Dev has no
+`/_studio` route, so it needs no OAuth at all. To enable sign-in on a deployed
+Worker:
+
+1. GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**.
+2. **Authorization callback URL**: `https://www.besidka.com/_studio`
+   (production — use the `www` host, since a Cloudflare redirect sends the apex
+   to `www.besidka.com`) or the preview Worker URL + `/_studio`.
+   `http://localhost:3000/_studio` is **not** needed — dev has no `/_studio`
+   route.
+3. Provide the client id/secret to the deployed Worker as wrangler secrets:
+   ```bash
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET
+   # production env:
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID --env production
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET --env production
+   ```
+
+> For the full owner-only provisioning checklist (D1, R2, secrets, account
+> plan), see [`docs/landing-production-todo.md`](./landing-production-todo.md).
+
+---
+
 ## 1. How it works (architecture)
 
 ```

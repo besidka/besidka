@@ -13,6 +13,8 @@ const modules = [
   '@nuxtjs/color-mode',
   '@nuxtjs/device',
   '@nuxtjs/mdc',
+  '@nuxtjs/robots',
+  '@nuxtjs/sitemap',
   'nuxt-svgo',
   '@vueuse/nuxt',
   '@vite-pwa/nuxt',
@@ -126,6 +128,40 @@ export default defineNuxtConfig({
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
     },
+  },
+  site: {
+    // Canonical host is the www subdomain: a Cloudflare redirect rule sends
+    // the apex (besidka.com) to www.besidka.com, so robots/sitemap/canonical
+    // URLs must use www to match the post-redirect host. Override at runtime
+    // with NUXT_PUBLIC_BASE_URL (set it to https://www.besidka.com in prod).
+    url: process.env.NUXT_PUBLIC_BASE_URL || 'https://www.besidka.com',
+    name: 'Besidka',
+  },
+  robots: {
+    disallow: [
+      '/api/',
+      '/chats/',
+      '/profile/',
+      '/signin',
+      '/signup',
+      '/new-password',
+      '/reset-password',
+      '/_studio',
+      '/__nuxt_content/',
+    ],
+  },
+  sitemap: {
+    exclude: [
+      '/api/**',
+      '/chats/**',
+      '/profile/**',
+      '/signin',
+      '/signup',
+      '/new-password',
+      '/reset-password',
+      '/_studio',
+      '/__nuxt_content/**',
+    ],
   },
   colorMode: {
     dataValue: 'theme',
