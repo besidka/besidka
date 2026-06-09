@@ -120,6 +120,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/video.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
+    'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
   ]
 

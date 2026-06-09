@@ -21,29 +21,34 @@
         </p>
       </video>
 
-      <div
-        v-if="sprite && preview.visible"
-        class="landing-player__preview pointer-events-none absolute z-20
-          flex flex-col gap-1 p-1.5 rounded-2xl bubble"
-        :style="overlayStyle"
-        aria-hidden="true"
+      <Teleport
+        v-if="plyrRef"
+        :to="plyrRef"
       >
         <div
-          class="rounded-xl overflow-hidden ring-1 ring-accent/40"
-          :style="thumbStyle"
-        />
-        <div class="flex items-center justify-between gap-2 px-1 pb-0.5">
-          <span
-            v-if="preview.label"
-            class="text-xs font-medium text-base-content truncate max-w-[7rem]"
-          >
-            {{ preview.label }}
-          </span>
-          <span class="text-xs tabular-nums text-base-content/70 ml-auto">
-            {{ preview.timeLabel }}
-          </span>
+          v-if="sprite && preview.visible"
+          class="landing-player__preview pointer-events-none absolute z-20
+            flex flex-col gap-1 p-1.5 rounded-2xl bubble w-fit"
+          :style="overlayStyle"
+          aria-hidden="true"
+        >
+          <div
+            class="rounded-xl overflow-hidden ring-1 ring-accent/40"
+            :style="thumbStyle"
+          />
+          <div class="flex items-center justify-between gap-2 px-1 pb-0.5">
+            <span
+              v-if="preview.label"
+              class="text-xs font-medium text-base-content truncate max-w-[7rem]"
+            >
+              {{ preview.label }}
+            </span>
+            <span class="text-xs tabular-nums text-base-content/70 ml-auto">
+              {{ preview.timeLabel }}
+            </span>
+          </div>
         </div>
-      </div>
+      </Teleport>
 
       <div
         v-if="!isReady && !hasError"
@@ -107,6 +112,7 @@ const THUMBNAIL_COUNT = 12
 
 const videoRef = shallowRef<HTMLVideoElement | null>(null)
 const containerRef = shallowRef<HTMLElement | null>(null)
+const plyrRef = shallowRef<HTMLElement | null>(null)
 const isReady = shallowRef<boolean>(false)
 const hasError = shallowRef<boolean>(false)
 const sprite = shallowRef<ThumbnailSprite | null>(null)
@@ -133,7 +139,6 @@ const overlayStyle = computed(() => {
   return {
     left: `${preview.left}px`,
     top: `${preview.top}px`,
-    width: `${sprite.value?.tileWidth ?? 160}px`,
   }
 })
 
@@ -246,16 +251,19 @@ function buildOptions(): Plyr.Options {
   return options
 }
 
+// p-1.5 is 6px per side = 12px total horizontal padding
+const OVERLAY_H_PADDING = 12
+
 function onPreviewMove(event: PointerEvent) {
   const data = sprite.value
-  const container = containerRef.value
+  const plyrElement = plyrRef.value ?? containerRef.value
 
-  if (!data || !container || !progressElement) {
+  if (!data || !plyrElement || !progressElement) {
     return
   }
 
   const bar = progressElement.getBoundingClientRect()
-  const box = container.getBoundingClientRect()
+  const box = plyrElement.getBoundingClientRect()
   const ratio = (event.clientX - bar.left) / bar.width
   const fraction = Math.min(1, Math.max(0, ratio))
   const time = fraction * data.duration
@@ -267,10 +275,11 @@ function onPreviewMove(event: PointerEvent) {
   preview.timeLabel = formatClock(time)
   preview.label = chapterAt(time)
 
-  const left = (event.clientX - box.left) - data.tileWidth / 2
+  const overlayWidth = data.tileWidth + OVERLAY_H_PADDING
+  const left = (event.clientX - box.left) - overlayWidth / 2
 
   preview.left = Math.min(
-    box.width - data.tileWidth - 8,
+    box.width - overlayWidth - 8,
     Math.max(8, left),
   )
   preview.top = Math.max(
@@ -282,6 +291,50 @@ function onPreviewMove(event: PointerEvent) {
 
 function onPreviewLeave() {
   preview.visible = false
+}
+
+// Maximum pixel movement between pointerdown and pointerup to count as a click
+const CLICK_DRAG_THRESHOLD = 6
+// Snap radius as a fraction of duration; never less than 0.4 s
+const SNAP_FRACTION = 0.04
+
+let pointerDownX = 0
+
+function onProgressPointerDown(event: PointerEvent) {
+  pointerDownX = event.clientX
+}
+
+function onProgressPointerUp(event: PointerEvent) {
+  if (!player || !markerPoints.length || !progressElement) {
+    return
+  }
+
+  const moved = Math.abs(event.clientX - pointerDownX)
+
+  if (moved >= CLICK_DRAG_THRESHOLD) {
+    return
+  }
+
+  const bar = progressElement.getBoundingClientRect()
+  const ratio = (event.clientX - bar.left) / bar.width
+  const fraction = Math.min(1, Math.max(0, ratio))
+  const clickedTime = fraction * player.duration
+  const snapRadius = Math.max(0.4, player.duration * SNAP_FRACTION)
+  let nearest: VideoMarkerPoint | null = null
+  let nearestDistance = Infinity
+
+  for (const point of markerPoints) {
+    const distance = Math.abs(point.time - clickedTime)
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearest = point
+    }
+  }
+
+  if (nearest && nearestDistance <= snapRadius) {
+    player.currentTime = nearest.time
+  }
 }
 
 function setupPreview() {
@@ -299,10 +352,14 @@ function setupPreview() {
 
   progressElement.addEventListener('pointermove', onPreviewMove)
   progressElement.addEventListener('pointerleave', onPreviewLeave)
+  progressElement.addEventListener('pointerdown', onProgressPointerDown)
+  progressElement.addEventListener('pointerup', onProgressPointerUp)
 
   detachPreview = () => {
     progressElement?.removeEventListener('pointermove', onPreviewMove)
     progressElement?.removeEventListener('pointerleave', onPreviewLeave)
+    progressElement?.removeEventListener('pointerdown', onProgressPointerDown)
+    progressElement?.removeEventListener('pointerup', onProgressPointerUp)
     progressElement = null
   }
 }
@@ -310,6 +367,7 @@ function setupPreview() {
 function registerListeners(instance: Plyr) {
   instance.on('ready', () => {
     isReady.value = true
+    plyrRef.value = containerRef.value?.querySelector('.plyr') ?? null
     setupPreview()
   })
 
@@ -398,6 +456,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   cancelled = true
+  plyrRef.value = null
   detachPreview?.()
 
   if (player) {
