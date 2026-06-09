@@ -1,7 +1,7 @@
 <template>
   <div
     :id="id || undefined"
-    class="chat scroll-mt-24"
+    class="chat landing-anchor"
     :class="role === 'assistant' ? 'chat-start' : 'chat-end'"
     role="doc-example"
     :aria-label="srLabel || undefined"

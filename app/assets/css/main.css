@@ -417,11 +417,20 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   @apply size-4 shrink-0 transition-transform lg:group-hover/cta:motion-safe:-translate-x-0.5 group-focus-visible/cta:motion-safe:-translate-x-0.5;
 }
 
+@utility landing-anchor {
+  /* In-page anchor targets land just below the sticky landing header instead
+     of behind it. --landing-header-offset is measured from the real header at
+     runtime (see app/layouts/landing.vue); the 4rem fallback matches the
+     header's height (pt-3 + nav h-13) for SSR / before hydration. */
+  scroll-margin-top: calc(var(--landing-header-offset, 4rem) + 0.75rem);
+}
+
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  --landing-header-offset: 4rem;
 }
 
 @layer components {

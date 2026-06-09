@@ -113,11 +113,19 @@
   font-size: 1rem;
 }
 
-/* Chapter markers: rounded accent pins with a halo for contrast. */
+/* Chapter markers: rounded accent pins with a larger transparent hit area. */
 .plyr__progress__marker {
-  width: 2px;
-  height: var(--plyr-range-track-height, 5px);
+  width: 3px;
+  height: 8px;
   background: var(--color-base-100);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+.plyr__progress__marker::before {
+  content: '';
+  position: absolute;
+  inset: -6px -5px;
 }
 
 /* Hover preview thumbnails: framed with a soft accent edge. */
