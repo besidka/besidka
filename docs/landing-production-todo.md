@@ -22,11 +22,11 @@ For how Studio editing works across environments, see
 
 ## Prerequisites / account-level
 
-- [ ] Confirm the Cloudflare account is on the **Workers PAID** plan. Both the
+- [x] Confirm the Cloudflare account is on the **Workers PAID** plan. Both the
   Analytics Engine (`ANALYTICS` binding) and the `swr: 3600` route cache on
   `/` (set in `nuxt.config.ts` `routeRules`) require it. A Worker that binds
   `analytics_engine_datasets` will **fail to deploy on the Free plan**.
-- [ ] Enable **Cloudflare Web Analytics** in the dashboard (manual owner
+- [x] Enable **Cloudflare Web Analytics** in the dashboard (manual owner
   action).
 
 ---
@@ -35,25 +35,34 @@ For how Studio editing works across environments, see
 
 The preview environment is the **top-level** block in `wrangler.jsonc`.
 
-- [ ] Create the preview content D1 database (or reuse `besidka-content` if you
+- [x] Create the preview content D1 database (or reuse `besidka-content` if you
   prefer to share one):
+
   ```bash
   pnpm exec wrangler d1 create besidka-content-preview
   ```
+
   Paste the returned `database_id` into the preview `CONTENT_DB` block in
   `wrangler.jsonc`, replacing `"TO_BE_CREATED"`.
-- [ ] Create the preview R2 bucket (bound as `R2_LANDING`):
+- [x] Create the preview R2 bucket (bound as `CMS_BUCKET`):
+
   ```bash
-  pnpm exec wrangler r2 bucket create besidka-landing-preview
+  pnpm exec wrangler r2 bucket create besidka-cms-preview
   ```
-- [ ] Upload the demo video assets to the preview bucket. The player needs
+
+- [x] Upload the demo video assets to the preview bucket. The player needs
   four objects: `demo.mp4` (720p), `demo-360.mp4`, `demo-1080.mp4` (quality
   ladder) and `demo.en.vtt` (captions):
+
   ```bash
-  pnpm run landing:video
+  pnpm run cms:files:upload --remote
   ```
-  Then run the printed `wrangler r2 object put` commands (one per asset).
+
+  This uploads each asset to the remote preview `CMS_BUCKET` (resolved from
+  `wrangler.jsonc`), skipping any object that already exists. Without
+  `--remote` it seeds the local persisted R2 instead.
 - [ ] _(Optional)_ Enable Studio editing on the preview Worker:
+
   ```bash
   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID
   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET
@@ -71,13 +80,18 @@ The production environment is **`env.production`** in `wrangler.jsonc`.
   ```
   Paste the returned `database_id` into the `env.production` `CONTENT_DB`
   block in `wrangler.jsonc`, replacing `"TO_BE_CREATED"`.
-- [ ] Create the production R2 bucket (bound as `R2_LANDING`):
+- [ ] Create the production R2 bucket (bound as `CMS_BUCKET`):
   ```bash
   pnpm exec wrangler r2 bucket create besidka-landing
   ```
 - [ ] Upload all four demo video assets (`demo.mp4`, `demo-360.mp4`,
-  `demo-1080.mp4`, `demo.en.vtt`) to the production bucket (same `pnpm run
-  landing:video` flow, targeting `besidka-landing` with `--env production`).
+  `demo-1080.mp4`, `demo.en.vtt`) to the production bucket:
+  ```bash
+  pnpm run cms:files:upload --remote -e production
+  ```
+  This targets whatever bucket the `env.production` `CMS_BUCKET` binding
+  resolves to in `wrangler.jsonc` (currently `besidka-cms-preview` — point it
+  at a dedicated production bucket here and in `wrangler.jsonc` if desired).
 - [ ] Set the Studio production OAuth secrets:
   ```bash
   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID --env production

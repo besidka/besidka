@@ -29,9 +29,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { R2_LANDING } = env
+  const { CMS_BUCKET } = env
 
-  if (!R2_LANDING) {
+  if (!CMS_BUCKET) {
     throw createError({
       status: 503,
       message: 'Video storage unavailable',
@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
   const rangeHeader = getRequestHeader(event, 'range')
   const method = event.method
 
-  const headObject = await R2_LANDING.head(name)
+  const headObject = await CMS_BUCKET.head(name)
 
   if (!headObject) {
     throw createError({
@@ -94,7 +94,7 @@ export default defineEventHandler(async (event) => {
       return null
     }
 
-    const object = await R2_LANDING.get(name, {
+    const object = await CMS_BUCKET.get(name, {
       range: { offset, length },
     })
 
@@ -125,7 +125,7 @@ export default defineEventHandler(async (event) => {
     return null
   }
 
-  const object = await R2_LANDING.get(name)
+  const object = await CMS_BUCKET.get(name)
 
   if (!object) {
     const logger = useLogger(event)

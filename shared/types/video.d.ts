@@ -9,7 +9,7 @@
 
 /** A single selectable resolution for the quality menu. */
 export interface VideoQuality {
-  /** Source URL, e.g. /videos/demo-720.mp4 served from R2_LANDING. */
+  /** Source URL, e.g. /videos/demo-720.mp4 served from CMS_BUCKET. */
   src: string
   /** Frame height in pixels (Plyr keys the quality menu off this), e.g. 720. */
   size: number
@@ -19,7 +19,7 @@ export interface VideoQuality {
 
 /** A WebVTT caption/subtitle track. */
 export interface VideoCaption {
-  /** WebVTT file URL, e.g. /videos/demo.en.vtt served from R2_LANDING. */
+  /** WebVTT file URL, e.g. /videos/demo.en.vtt served from CMS_BUCKET. */
   src: string
   /** Menu label, e.g. "English". */
   label: string
