@@ -228,7 +228,7 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 Configured in `wrangler.jsonc`:
 - `DB` - D1 database binding
 - `KV` - KV namespace binding
-- `R2_BUCKET` - R2 storage bucket
+- `DATA_BUCKET` - R2 storage bucket
 - `IMAGES` - Cloudflare Images binding
 
 **Binding access patterns**:
@@ -238,7 +238,7 @@ import { env } from 'cloudflare:workers'
 ```
 
 - For D1 and KV: use `const { KV } = env`
-- For R2: use `const { R2_BUCKET } = env` 
+- For R2: use `const { DATA_BUCKET } = env` 
 
 This is intentional and correct, do NOT change to `event.context.cloudflare.env`
 

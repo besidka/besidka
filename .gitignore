@@ -55,5 +55,5 @@ stats.html
 # Claude Code session memory (must live in ~/.claude, never in repo)
 /memory/
 
-# Landing video downloads (large binary assets — upload to R2 instead)
-.videos/
+# CMS bucket assets (large binary files — upload to R2 instead)
+.files/

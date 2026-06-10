@@ -44,7 +44,7 @@
 		{
 			"binding": "CONTENT_DB",
 			"database_name": "besidka-content",
-			"database_id": "TO_BE_CREATED"
+			"database_id": "0d1eab21-938c-4c7b-8aa4-bbfabd9a4a17"
 		}
 	],
 	"kv_namespaces": [
@@ -56,17 +56,17 @@
 	"r2_buckets": [
 		{
 			"bucket_name": "besidka-preview",
-			"binding": "R2_BUCKET"
+			"binding": "DATA_BUCKET"
 		},
 		{
-			"bucket_name": "besidka-landing-preview",
-			"binding": "R2_LANDING"
+			"bucket_name": "besidka-cms-preview",
+			"binding": "CMS_BUCKET"
 		}
 	],
 	"analytics_engine_datasets": [
 		{
 			"binding": "ANALYTICS",
-			"dataset": "landing_events_preview"
+			"dataset": "besidka_cms_events_preview"
 		}
 	],
 	"images": {
@@ -128,7 +128,7 @@
 				{
 					"binding": "CONTENT_DB",
 					"database_name": "besidka-content",
-					"database_id": "TO_BE_CREATED"
+					"database_id": "0d1eab21-938c-4c7b-8aa4-bbfabd9a4a17"
 				}
 			],
 			"kv_namespaces": [
@@ -140,17 +140,17 @@
 			"r2_buckets": [
 				{
 					"bucket_name": "besidka",
-					"binding": "R2_BUCKET"
+					"binding": "DATA_BUCKET"
 				},
 				{
-					"bucket_name": "besidka-landing",
-					"binding": "R2_LANDING"
+					"bucket_name": "besidka-cms",
+					"binding": "CMS_BUCKET"
 				}
 			],
 			"analytics_engine_datasets": [
 				{
 					"binding": "ANALYTICS",
-					"dataset": "landing_events"
+					"dataset": "besidka_cms_events_preview"
 				}
 			],
 			"images": {

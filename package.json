@@ -55,7 +55,9 @@
 		"prepare": "husky",
 		"postinstall": "node scripts/setup-ai-agents.mjs && pnpm --filter @besidka/nuxt-cookie-consent dev:prepare && nuxt prepare",
 		"test:cookie-consent": "pnpm --filter @besidka/nuxt-cookie-consent test:run",
-		"landing:video": "node scripts/landing-demo-video.mjs"
+		"landing:video": "node scripts/landing-demo-video.mjs",
+		"cms:files:upload": "node scripts/cms-bucket-manager.mjs upload",
+		"cms:files:download": "node scripts/cms-bucket-manager.mjs download"
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^3.0.80",

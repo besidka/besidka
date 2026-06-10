@@ -156,8 +156,13 @@
 }
 
 .plyr__menu__container .plyr__control[role='menuitemradio']::after {
-  width: 8px;
+  left: 12.5px;
+  width: 8px; 
   height: 8px;
+
+  @media (width < 40rem) {
+    left: 8px;
+  }
 }
 
 .plyr__badge {
@@ -168,4 +173,77 @@
 .plyr__control:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+/*
+ * Clip the video element (not the whole player) so the settings/quality menu
+ * can overflow the player frame freely. The outer .landing-player no longer
+ * carries overflow:hidden; rounding is reproduced here.
+ */
+.landing-player .plyr__video-wrapper {
+  overflow: hidden;
+  border-radius: 1rem;
+}
+
+.landing-player .plyr__poster {
+  border-radius: 1rem;
+}
+
+/* ── Mobile compact overrides (< 640 px) ────────────────────────────────── */
+@media (max-width: 639px) {
+  .landing-player .plyr {
+    --plyr-control-spacing: 6px;
+    --plyr-font-size-base: 0.75rem;
+    --plyr-font-size-time: 0.6875rem;
+  }
+
+  /* Tighter floating control bar. */
+  .landing-player .plyr--video .plyr__controls {
+    margin: 0 0.375rem 0.375rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: 1.25rem;
+  }
+
+  /* Smaller centre play button. */
+  .landing-player .plyr__control--overlaid {
+    padding: calc(var(--plyr-control-spacing) * 1.5);
+  }
+
+  /*
+   * Hide the volume range slider on mobile — it consumes too much horizontal
+   * space on narrow viewports. The mute toggle button remains visible.
+   */
+  .landing-player .plyr__volume input[type='range'] {
+    display: none;
+  }
+
+  /* Compact settings/quality/speed menu. */
+  .landing-player .plyr__menu__container {
+    min-width: 120px;
+    padding: 0.25rem;
+  }
+
+  .landing-player .plyr__menu__container .plyr__control {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    font-size: var(--plyr-font-size-base);
+  }
+
+  /*
+   * Preserve room for the › / ‹ submenu chevrons. Plyr's default is
+   * calc(--plyr-control-spacing * .7 * 4) ≈ 16.8 px at spacing=6 px.
+   * We use 1.75 rem (28 px) — matches Plyr's desktop default — so the
+   * chevron (positioned ~2 px from the edge) never overlaps value text.
+   */
+  .landing-player .plyr__menu__container .plyr__control--forward {
+    padding-right: 1.75rem;
+  }
+
+  .landing-player .plyr__menu__container .plyr__control--back {
+    padding-left: 1.75rem;
+  }
+
+  .landing-player .plyr__menu__container .plyr__menu__value {
+    font-size: var(--plyr-font-size-base);
+  }
 }

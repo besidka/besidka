@@ -197,7 +197,7 @@ more colons, indented two spaces:
 | `:home-features{set="benefits"}`     | `benefits`                             | customer-outcome benefits grid (3 items)         |
 | `:home-testimonials`                 | `useCases`                             | use-case cards (renamed from `testimonials`)     |
 | `:home-comparison`                   | `comparison`                           | competitor comparison table with cost footnote   |
-| `:home-video`                        | `video`                                | custom Plyr player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from R2_LANDING with Range |
+| `:home-video`                        | `video`                                | custom Plyr player (DaisyUI-themed): quality switch, captions, chapter markers, hover thumbnails; streamed from CMS_BUCKET with Range |
 | `:home-faq`                          | `faqs`                                 | also emitted as FAQPage structured data          |
 | `:home-stars`                        | — (live from `/api/v1/github/stars`)   | live GitHub star count                           |
 | `:::home-cta`                        | inline `primary`/`secondary`/`align`   | small CTA block, edited in place; each CTA accepts optional `icon` |
@@ -347,11 +347,15 @@ is published in Studio, the rebuild + redeploy refreshes it.
 - The player is `app/components/landing/VideoPlayer.client.vue` ([Plyr](https://github.com/sampotts/plyr),
   client-only), themed to DaisyUI via `app/assets/css/plyr-theme.css`
   (maps `--plyr-*` onto `--color-accent`/glass; scoped to `.landing-player`).
-- Assets are produced by `pnpm run landing:video` (`scripts/landing-demo-video.mjs`):
+- Assets are managed by `pnpm run cms:files:upload` /
+  `pnpm run cms:files:download` (`scripts/cms-bucket-manager.mjs`):
   `demo.mp4` (720p, default), `demo-360.mp4`, `demo-1080.mp4` (quality ladder),
-  and `demo.en.vtt` (fake captions). They are validated with **mediabunny** and
-  seeded into the local `R2_LANDING` bucket; served by `server/routes/videos/[name].ts`
-  (HTTP Range, per-extension content-type, fixed allow-list).
+  and `demo.en.vtt` (fake captions). `upload` fetches/generates any missing
+  asset into `.files`, validates videos with **mediabunny**, and PUTs them into
+  the `CMS_BUCKET` bucket (local persisted R2 by default; `--remote` and
+  `-e production` target remote R2). `download` pulls them back from the bucket.
+  Served by `server/routes/videos/[name].ts` (HTTP Range, per-extension
+  content-type, fixed allow-list).
 - **Markers** are authored in the `video.markers` frontmatter as `"m:ss"`
   timecodes (quote them — unquoted `0:12` is parsed by YAML as a number) and
   rendered as accent pins on the progress bar.

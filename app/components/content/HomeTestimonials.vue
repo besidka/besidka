@@ -1,13 +1,15 @@
 <template>
     <div
       v-if="resolvedItems?.length"
-      class="grid grid-cols-1 lg:grid-cols-3 gap-3"
+      class="grid grid-cols-1 lg:grid-cols-3 gap-3
+        lg:grid-rows-[auto_auto_1fr_auto]"
     >
       <div
         v-for="(item, index) in resolvedItems"
         :key="index"
         class="bg-base-100/50 dark:bg-base-content/5 rounded-2xl p-4
-          flex flex-col gap-3"
+          flex flex-col gap-3 lg:grid lg:grid-rows-subgrid
+          lg:row-span-4"
       >
         <div
           class="w-9 h-9 rounded-xl bg-base-200 grid place-items-center

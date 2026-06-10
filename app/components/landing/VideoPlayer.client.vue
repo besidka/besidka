@@ -6,7 +6,7 @@
     <div
       ref="containerRef"
       class="landing-player js-landing-player relative w-full aspect-video
-        rounded-2xl overflow-hidden bg-base-300
+        rounded-2xl bg-base-300
         ring-1 ring-base-content/10 shadow-xl"
     >
       <video

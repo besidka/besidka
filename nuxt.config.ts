@@ -75,6 +75,16 @@ export default defineNuxtConfig({
         type: 'module',
       },
     },
+    studio: {
+      /**
+       * Uncomment to debug Nuxt Studio GitHub OAuth
+       * Make sure you setup ENV vars in .dev.vars(.production|.preview)
+       * and GitHub OAuth app with correct callback URL
+       * @docs https://nuxt.studio/setup#dev-mode
+       * @docs https://nuxt.studio/auth-providers#github
+       */
+      // dev: false,
+    },
   },
   $production: {
     routeRules: {
@@ -147,6 +157,7 @@ export default defineNuxtConfig({
       '/new-password',
       '/reset-password',
       '/_studio',
+      '/__nuxt_studio',
       '/__nuxt_content/',
     ],
   },
@@ -160,6 +171,7 @@ export default defineNuxtConfig({
       '/new-password',
       '/reset-password',
       '/_studio',
+      '/__nuxt_studio',
       '/__nuxt_content/**',
     ],
   },
@@ -318,6 +330,28 @@ export default defineNuxtConfig({
         ],
       })
     },
+    // @nuxt/content marks /__nuxt_content/**/sql_dump.txt routes as
+    // prerender:true so the SQL dumps are embedded in the static output.
+    // The Cloudflare Workers preset (cloudflare_module) cannot prerender
+    // server-side routes that import cloudflare: bindings. Remove those
+    // prerender rules after all modules have set them so the build succeeds.
+    'nitro:config': (nitroConfig) => {
+      if (!nitroConfig.routeRules) {
+        return
+      }
+
+      for (const route of Object.keys(nitroConfig.routeRules)) {
+        if (
+          route.startsWith('/__nuxt_content/')
+          || route === '/__preview.json'
+        ) {
+          nitroConfig.routeRules[route] = {
+            ...nitroConfig.routeRules[route],
+            prerender: false,
+          }
+        }
+      }
+    },
   },
   cookieConsent: {
     categories: [
@@ -436,30 +470,15 @@ export default defineNuxtConfig({
       owner: 'besidka',
       repo: 'besidka',
       branch: 'main',
+      private: false,
     },
-  },
-  hooks: {
-    // @nuxt/content marks /__nuxt_content/**/sql_dump.txt routes as
-    // prerender:true so the SQL dumps are embedded in the static output.
-    // The Cloudflare Workers preset (cloudflare_module) cannot prerender
-    // server-side routes that import cloudflare: bindings. Remove those
-    // prerender rules after all modules have set them so the build succeeds.
-    'nitro:config': (nitroConfig) => {
-      if (!nitroConfig.routeRules) {
-        return
-      }
-
-      for (const route of Object.keys(nitroConfig.routeRules)) {
-        if (
-          route.startsWith('/__nuxt_content/')
-          || route === '/__preview.json'
-        ) {
-          nitroConfig.routeRules[route] = {
-            ...nitroConfig.routeRules[route],
-            prerender: false,
-          }
-        }
-      }
+    editor: {
+      iconLibraries: ['lucide', 'streamline-logos'],
+    },
+    git: {
+      commit: {
+        messagePrefix: 'content:',
+      },
     },
   },
   // https://stackblitz.com/edit/vite-pwa-nuxt-42xnmfqg?file=playground%2Fnuxt.config.ts

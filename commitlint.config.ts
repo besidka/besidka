@@ -24,6 +24,7 @@ const Configuration: UserConfig = {
         'legal',
         'kludge',
         'ai',
+        'content',
       ],
     ],
     'subject-case': [

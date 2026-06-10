@@ -7,7 +7,7 @@
     >
       <NuxtLink
         to="/"
-        class="btn btn-sm btn-ghost -translate-x-4 rounded-full"
+        class="btn btn-sm btn-ghost -translate-x-2.5 rounded-full"
         aria-label="Besidka home"
       >
         <Logo class="h-7 w-auto" />
@@ -43,15 +43,15 @@
         </li>
       </ul>
 
-      <div class="flex items-center gap-2 translate-x-3">
+      <div class="flex items-center gap-2 translate-x-2.5">
         <SidebarThemeSwitcher tips tips-position="bottom" size="sm" />
         <NuxtLink
           v-if="loggedIn"
           to="/chats/new"
-          class="group/cta btn btn-accent btn-sm rounded-full"
+          class="group/cta btn btn-accent btn-sm rounded-full max-xs:btn-circle"
           @click="track('header_cta_click', { target: '/chats/new' })"
         >
-          New chat
+          <span class="max-xs:sr-only">New chat</span>
           <Icon
             name="lucide:message-circle-plus"
             size="16"
@@ -62,10 +62,10 @@
         <NuxtLink
           v-else
           to="/signup"
-          class="btn btn-accent btn-sm rounded-full"
+          class="btn btn-accent btn-sm rounded-full max-xs:btn-circle"
           @click="track('header_cta_click', { target: '/signup' })"
         >
-          Get started
+          <span class="max-xs:sr-only">Get started</span>
           <Icon
             name="lucide:user-plus"
             size="16"

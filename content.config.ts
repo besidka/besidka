@@ -194,7 +194,7 @@ export default defineContentConfig({
               .string()
               .optional()
               .describe(
-                'Default video URL, e.g. /videos/demo.mp4 from R2_LANDING',
+                'Default video URL, e.g. /videos/demo.mp4 from CMS_BUCKET',
               ),
             poster: z
               .string()
