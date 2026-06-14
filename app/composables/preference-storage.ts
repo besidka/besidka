@@ -1,7 +1,13 @@
+import { shallowRef } from 'vue'
+
 // Browser-only session state: values stored here survive the session
 // in-memory when the preferences category is denied, so composables
 // keep working without touching real localStorage.
 const pendingStorage = new Map<string, string>()
+
+// Bumped on every real mutation (setItem, removeItem, flushPending) so
+// that customRef consumers across all component instances re-evaluate.
+const storageVersion = shallowRef<number>(0)
 
 // localStorage may be missing or throw (private browsing, locked-down
 // embeds, test environments) — degrade to the in-memory pending map.
@@ -28,6 +34,8 @@ export function usePreferenceStorage() {
       pendingStorage.set(key, value)
       storage?.removeItem(key)
     }
+
+    storageVersion.value++
   }
 
   function getItem(key: string): string | null {
@@ -35,10 +43,18 @@ export function usePreferenceStorage() {
       return null
     }
 
-    const real = getStorage()?.getItem(key) ?? null
+    // Touch the version ref so customRef consumers re-evaluate after a
+    // cross-instance setItem()/flushPending() mutation.
+    if (storageVersion.value < 0) {
+      return null
+    }
 
-    if (real !== null) {
-      return real
+    if (useCookieConsent().isAllowed('preferences')) {
+      const real = getStorage()?.getItem(key) ?? null
+
+      if (real !== null) {
+        return real
+      }
     }
 
     return pendingStorage.get(key) ?? null
@@ -51,6 +67,7 @@ export function usePreferenceStorage() {
 
     pendingStorage.delete(key)
     getStorage()?.removeItem(key)
+    storageVersion.value++
   }
 
   function flushPending(): void {
@@ -69,6 +86,7 @@ export function usePreferenceStorage() {
     }
 
     pendingStorage.clear()
+    storageVersion.value++
   }
 
   return {

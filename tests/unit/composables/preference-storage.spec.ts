@@ -1,3 +1,4 @@
+import { nextTick, watchEffect } from 'vue'
 import { describe, expect, it } from 'vitest'
 import {
   useCookieConsent,
@@ -107,6 +108,35 @@ describe('usePreferenceStorage (sequential lifecycle)', () => {
     const { getItem } = usePreferenceStorage()
 
     expect(getItem('chat_input')).toBe('real-value')
+  })
+
+  it('reactivity: watchEffect re-runs after flushPending bumps storageVersion', async () => {
+    const { withdrawAll, allowAll } = useCookieConsent()
+
+    withdrawAll()
+
+    const { setItem, flushPending, getItem } = usePreferenceStorage()
+
+    setItem('flush-key', 'pre-flush')
+
+    const observed: Array<string | null> = []
+    const stop = watchEffect(() => {
+      observed.push(getItem('flush-key'))
+    })
+
+    // Initial run recorded
+    expect(observed).toHaveLength(1)
+    expect(observed[0]).toBe('pre-flush')
+
+    allowAll()
+    flushPending()
+    await nextTick()
+
+    // After flush the effect must have re-run and now reads real storage
+    expect(observed.length).toBeGreaterThan(1)
+    expect(observed.at(-1)).toBe('pre-flush')
+
+    stop()
   })
 
   it('flushPending writes all pending entries to localStorage and clears map', () => {

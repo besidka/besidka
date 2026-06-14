@@ -58,6 +58,7 @@ watch(
 )
 
 const slotProps = {
+  titleId,
   get categories() {
     return consent.categories
   },

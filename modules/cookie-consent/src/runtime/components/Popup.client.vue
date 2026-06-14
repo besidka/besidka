@@ -114,6 +114,7 @@ onBeforeUnmount(() => {
 })
 
 const slotProps = {
+  titleId,
   get categories() {
     return consent.categories
   },

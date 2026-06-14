@@ -1,6 +1,8 @@
 import { useLogger, createError } from 'evlog'
 import { getCookie, getRequestHeader } from 'h3'
-import type { CookieCategoryDeclaration } from '~~/modules/cookie-consent/src/runtime/types/module'
+import type {
+  ModuleOptions,
+} from '~~/modules/cookie-consent/src/runtime/types/module'
 import {
   deriveConsentDecision,
   parseConsentCookieValue,
@@ -12,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     id: z.string().max(64),
-    date: z.string(),
+    date: z.string().datetime(),
     revision: z.number().int().nonnegative(),
     granted: z.array(z.string().max(24)).max(16),
     denied: z.array(z.string().max(24)).max(16),
@@ -31,11 +33,7 @@ export default defineEventHandler(async (event) => {
   const { id, date, revision, granted, denied, changed } = body.data
 
   const config = useRuntimeConfig()
-  const cookieConsentOptions = config.public.cookieConsent as unknown as {
-    cookieName: string
-    revision: number
-    categories: CookieCategoryDeclaration[]
-  }
+  const cookieConsentOptions = config.public.cookieConsent as ModuleOptions
 
   const rawCookie = getCookie(event, cookieConsentOptions.cookieName)
   const parsedCookie = parseConsentCookieValue(rawCookie)

@@ -42,6 +42,7 @@ const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
 
     <CookieConsentPopup
       v-slot="{
+        titleId,
         categories,
         isDecided,
         isAllowed,
@@ -68,7 +69,10 @@ const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
       >
         <div class="card-body p-3 gap-3">
           <div class="flex items-center justify-between gap-2">
-            <h2 class="font-semibold text-sm leading-tight">
+            <h2
+              :id="titleId"
+              class="font-semibold text-sm leading-tight"
+            >
               {{ $t('cookieConsent.title') }}
             </h2>
             <button
@@ -210,6 +214,7 @@ const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
 
     <CookieConsentModal
       v-slot="{
+        titleId,
         categories,
         draft,
         toggleDraft,
@@ -238,7 +243,10 @@ const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
         "
       >
         <div class="shrink-0 flex items-center justify-between gap-3 p-4 pb-3">
-          <h2 class="text-lg font-bold">
+          <h2
+            :id="titleId"
+            class="text-lg font-bold"
+          >
             {{ $t('cookieConsent.title') }}
           </h2>
           <button

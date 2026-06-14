@@ -171,6 +171,12 @@ jobs:
       - name: Apply DB migrations for E2E
         run: yes | pnpm exec wrangler d1 migrations apply DB --local
 
+      - name: Generate consent DB migrations for E2E
+        run: pnpm run db:consents:generate
+
+      - name: Apply consent DB migrations for E2E
+        run: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --local
+
       - name: Run all E2E tests
         id: test-e2e
         run: |

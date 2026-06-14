@@ -41,6 +41,7 @@ export function useUserSetting() {
   const fallbackReasoningExpanded = customRef<boolean>((track, trigger) => ({
     get() {
       track()
+
       const raw = prefStorage.getItem('settings_reasoning_expanded')
 
       return raw !== null ? raw === 'true' : false
@@ -53,6 +54,7 @@ export function useUserSetting() {
   const fallbackReasoningAutoHide = customRef<boolean>((track, trigger) => ({
     get() {
       track()
+
       const raw = prefStorage.getItem('settings_reasoning_auto_hide')
 
       return raw !== null ? raw === 'true' : true

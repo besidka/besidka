@@ -348,11 +348,15 @@ export default defineEventHandler(async (event) => {
     cost: getModelCostMap(),
     toolInputs: {
       transform: (input) => {
-        const serialized = typeof input === 'string'
-          ? input
-          : JSON.stringify(input ?? null)
+        if (typeof input === 'string') {
+          return { length: input.length }
+        }
 
-        return { length: serialized.length }
+        try {
+          return { length: JSON.stringify(input ?? null).length }
+        } catch {
+          return { length: 0 }
+        }
       },
     },
   })

@@ -41,7 +41,11 @@ export function trapTabKey(
   const active = document.activeElement as HTMLElement
 
   if (event.shiftKey) {
-    if (active === firstElement || active === container) {
+    if (
+      active === firstElement
+      || active === container
+      || !focusable.includes(active)
+    ) {
       event.preventDefault()
       lastElement.focus()
     }

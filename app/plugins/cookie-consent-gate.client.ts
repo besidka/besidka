@@ -36,22 +36,17 @@ export default defineNuxtPlugin(() => {
       // sending immediately would race ahead of the consent cookie and
       // break the server-side corroboration (consistent flag).
       setTimeout(() => {
-        try {
-          $fetch('/api/v1/consents', {
-            method: 'POST',
-            body: {
-              id,
-              date,
-              revision: cookieConsent.revision,
-              granted,
-              denied,
-              changed,
-            },
-          })
-        } catch (exception) {
-          // Fire-and-forget: logging failures must never affect UX
-          void exception
-        }
+        $fetch('/api/v1/consents', {
+          method: 'POST',
+          body: {
+            id,
+            date,
+            revision: cookieConsent.revision,
+            granted,
+            denied,
+            changed,
+          },
+        }).catch(() => {})
       }, 150)
     }
   })

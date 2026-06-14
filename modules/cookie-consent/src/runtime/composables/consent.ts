@@ -11,6 +11,7 @@ import {
   useCookie,
 } from '#imports'
 import type {
+  ModuleOptions,
   CookieCategoryDeclaration,
   CookieConsentChangedPayload,
   ConsentCookie,
@@ -47,12 +48,7 @@ function generateConsentId(): string {
 
 export function useCookieConsent() {
   const config = useRuntimeConfig()
-  const options = config.public.cookieConsent as unknown as {
-    cookieName: string
-    cookieMaxAge: number
-    revision: number
-    categories: CookieCategoryDeclaration[]
-  }
+  const options = config.public.cookieConsent as ModuleOptions
 
   const categories = options.categories as CookieCategoryDeclaration[]
   const requiredIds = getRequiredIds(categories)

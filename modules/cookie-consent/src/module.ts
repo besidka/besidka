@@ -47,10 +47,10 @@ export default defineNuxtModule<ModuleOptions>({
         strategy: 'no_prefix',
         defaultLocale: 'en',
         detectBrowserLanguage: false,
-        locales: [
-          { code: 'en', language: 'en-US' },
-          { code: 'uk', language: 'uk-UA' },
-        ],
+        // `locales` is intentionally omitted: defu concatenates arrays, so a
+        // default here would duplicate the consumer's locales. The en/uk
+        // locale files are registered via the `i18n:registerModule` hook
+        // in setup() instead.
       },
     },
   },

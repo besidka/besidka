@@ -32,11 +32,11 @@
 			"migrations_dir": ".drizzle/migrations"
 		},
 		{
-      "binding": "CONSENT_DB",
-      "database_name": "besidka-consent-preview",
-      "database_id": "d110f034-1e7a-4512-b4c0-bc1e881b6d02",
-      "migrations_dir": ".drizzle/migrations-consent"
-    }
+			"binding": "CONSENT_DB",
+			"database_name": "besidka-consent-preview",
+			"database_id": "d110f034-1e7a-4512-b4c0-bc1e881b6d02",
+			"migrations_dir": ".drizzle/migrations-consent"
+		}
 	],
 	"kv_namespaces": [
 		{

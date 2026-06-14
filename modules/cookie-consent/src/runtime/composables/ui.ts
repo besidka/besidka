@@ -1,10 +1,11 @@
-import { computed } from 'vue'
+import { computed, onScopeDispose, getCurrentScope } from 'vue'
 import { useState, useRuntimeConfig } from '#imports'
 import type { CookieConsentView } from '../types/module'
 import { useCookieConsent } from './consent'
 
 // Browser-only module scope — resets per page load, never touched during SSR.
 let autoShowScheduled = false
+let autoShowTimer: ReturnType<typeof setTimeout> | null = null
 let triggerElement: HTMLElement | null = null
 
 export function useCookieConsentUi() {
@@ -134,11 +135,22 @@ export function useCookieConsentUi() {
     const options = runtimeConfig.public.cookieConsent as { showDelay: number }
     const delay = options?.showDelay ?? 1200
 
-    setTimeout(() => {
+    autoShowTimer = setTimeout(() => {
+      autoShowTimer = null
+
       if (!consent.isDecided.value) {
         openPopup()
       }
     }, delay)
+
+    if (getCurrentScope()) {
+      onScopeDispose(() => {
+        if (autoShowTimer !== null) {
+          clearTimeout(autoShowTimer)
+          autoShowTimer = null
+        }
+      })
+    }
   }
 
   function switchProps(categoryId: string): {
