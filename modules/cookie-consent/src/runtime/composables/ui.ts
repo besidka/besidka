@@ -120,7 +120,7 @@ export function useCookieConsentUi() {
     close()
   }
 
-  function scheduleAutoShow(): void {
+  function scheduleAutoShow(view: 'popup' | 'modal' = 'popup'): void {
     if (autoShowScheduled) {
       return
     }
@@ -138,7 +138,13 @@ export function useCookieConsentUi() {
     autoShowTimer = setTimeout(() => {
       autoShowTimer = null
 
-      if (!consent.isDecided.value) {
+      if (consent.isDecided.value) {
+        return
+      }
+
+      if (view === 'modal') {
+        expand()
+      } else {
         openPopup()
       }
     }, delay)

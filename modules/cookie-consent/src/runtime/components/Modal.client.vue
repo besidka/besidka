@@ -3,6 +3,7 @@ import {
   shallowRef,
   watch,
   useId,
+  onMounted,
 } from 'vue'
 import { useI18n } from '#imports'
 import { useCookieConsentUi } from '../composables/ui'
@@ -10,8 +11,9 @@ import { useCookieConsent } from '../composables/consent'
 import { trapTabKey } from '../utils/focus-trap'
 
 const props = withDefaults(defineProps<{
+  autoShow?: boolean
   transition?: string
-}>(), { transition: undefined })
+}>(), { autoShow: false, transition: undefined })
 
 const { t } = useI18n()
 
@@ -56,6 +58,12 @@ watch(
   },
   { flush: 'post' },
 )
+
+onMounted(() => {
+  if (props.autoShow) {
+    ui.scheduleAutoShow('modal')
+  }
+})
 
 const slotProps = {
   titleId,
