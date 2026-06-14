@@ -1,7 +1,12 @@
 import { test, expect, type Page } from '@playwright/test'
+import {
+  authenticateUserByApi,
+  createUniqueUser,
+} from '../helpers/auth'
 
 const CONSENT_COOKIE = 'cookies_consent'
 const SHOW_DELAY_BUFFER = 4000
+const AUTH_STATE_PATH = '.playwright/auth-user.json'
 
 test.use({
   storageState: {
@@ -376,5 +381,67 @@ test.describe('Cookie consent banner', () => {
     await trigger.click()
     await expect(popup).toBeHidden()
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
+test.describe('Cookie consent banner (chat layout)', () => {
+  test.describe('decided user', () => {
+    test.use({ storageState: AUTH_STATE_PATH })
+
+    test.beforeEach(async ({ page }) => {
+      await page.goto('/chats/new')
+      await page.waitForLoadState('domcontentloaded')
+    })
+
+    test('hides the floating trigger and opens the modal from the '
+      + 'sidebar menu', async ({ page }) => {
+      await expect(page.getByTestId('cookies-trigger')).toHaveCount(0)
+      await expect(page.getByTestId('cookies-popup')).toHaveCount(0)
+
+      // Open the "More Features" sidebar dropdown that hosts the cookie
+      // entry on chat pages: hover the trigger then force the <details>
+      // open (mirrors the proven sidebar-dropdown pattern in files.spec).
+      const moreTrigger = page.getByTestId('sidebar-more-features')
+
+      await moreTrigger.hover()
+      await moreTrigger.evaluate((element) => {
+        const details = element.closest('details')
+
+        if (details instanceof HTMLDetailsElement) {
+          details.open = true
+        }
+      })
+
+      const menuItem = page.getByTestId('cookies-trigger-menu')
+
+      await expect(menuItem).toBeVisible()
+      await menuItem.evaluate((element) => {
+        ;(element as HTMLButtonElement).click()
+      })
+
+      await expect(page.getByTestId('cookies-modal')).toBeVisible()
+    })
+  })
+
+  test.describe('undecided user', () => {
+    test.use({ storageState: { cookies: [], origins: [] } })
+
+    test.beforeEach(async ({ page }) => {
+      await authenticateUserByApi(
+        page,
+        createUniqueUser('cookies-chat'),
+        '/chats/new',
+      )
+    })
+
+    test('auto-shows the modal instead of the popup on a chat page',
+      async ({ page }) => {
+        await expect(page.getByTestId('cookies-modal')).toBeVisible({
+          timeout: SHOW_DELAY_BUFFER,
+        })
+
+        await expect(page.getByTestId('cookies-popup')).toHaveCount(0)
+        await expect(page.getByTestId('cookies-trigger')).toHaveCount(0)
+      })
   })
 })

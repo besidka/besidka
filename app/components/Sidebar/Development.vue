@@ -8,6 +8,7 @@
         title="More Features"
         circle
         tag="summary"
+        data-testid="sidebar-more-features"
       />
     </template>
     <UiButton
