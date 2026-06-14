@@ -354,6 +354,10 @@ export default defineNuxtConfig({
     },
   },
   cookieConsent: {
+    // revision is the module default (1). Bump it when adding or changing a
+    // consent-affecting category so already-decided visitors are re-prompted —
+    // not needed now (no active users), so the analytics category ships on v1.
+    revision: 1,
     categories: [
       {
         id: 'necessary',
@@ -426,10 +430,15 @@ export default defineNuxtConfig({
           },
         ],
       },
-      // {
-      //   id: 'analytics',
-      //   entries: [],
-      // },
+      {
+        // First-party, cookieless landing analytics (Cloudflare Analytics
+        // Engine). No client cookies/localStorage to purge, so entries is
+        // empty — the category gates the SENDING of events, enforced in
+        // app/composables/landing-analytics.ts (client) and
+        // server/api/v1/events/index.post.ts (server defense-in-depth).
+        id: 'analytics',
+        entries: [],
+      },
       // {
       //   id: 'marketing',
       //   entries: [],

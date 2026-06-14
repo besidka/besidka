@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  trackLandingEvent: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/files/file-governance', () => ({
@@ -12,6 +13,10 @@ vi.mock('~~/server/utils/files/file-governance', () => ({
 
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
+}))
+
+vi.mock('~~/server/utils/landing/analytics-events', () => ({
+  trackLandingEvent: mocks.trackLandingEvent,
 }))
 
 vi.mock('evlog', () => ({
@@ -81,6 +86,11 @@ describe('new chat API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
+    vi.stubGlobal('getCookieConsent', () => ({
+      isDecided: true,
+      granted: ['analytics'],
+      isAllowed: (id: string) => id === 'analytics',
+    }))
   })
 
   it('bumps project activity when creating a new chat inside a project', async () => {
@@ -146,5 +156,57 @@ describe('new chat API', () => {
       1,
       db,
     )
+    expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
+      'new_chat_created',
+      undefined,
+      expect.anything(),
+    )
   })
+
+  it('skips new_chat_created when analytics consent is not granted',
+    async () => {
+      vi.stubGlobal('getCookieConsent', () => ({
+        isDecided: true,
+        granted: ['necessary'],
+        isAllowed: (id: string) => id === 'necessary',
+      }))
+
+      const handler = await getNewChatHandler()
+      const chatsInsertValues = vi.fn(() => ({
+        returning: vi.fn(() => ({
+          get: vi.fn(() => ({
+            id: 'chat-2',
+            slug: 'chat-2',
+          })),
+        })),
+      }))
+      const messagesInsertValues = vi.fn(async () => undefined)
+      const db = {
+        query: {
+          projects: {
+            findFirst: vi.fn(async () => undefined),
+          },
+        },
+        insert: vi.fn()
+          .mockReturnValueOnce({
+            values: chatsInsertValues,
+          })
+          .mockReturnValueOnce({
+            values: messagesInsertValues,
+          }),
+      }
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        body: {
+          parts: [{ type: 'text', text: 'Hello' }],
+          tools: [],
+          reasoning: 'off',
+        },
+      } as any)
+
+      expect(response).toEqual({ slug: 'chat-2' })
+      expect(mocks.trackLandingEvent).not.toHaveBeenCalled()
+    })
 })

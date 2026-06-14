@@ -24,11 +24,11 @@ export default defineEventHandler(async (event) => {
 
   const secFetchSite = getHeader(event, 'sec-fetch-site')
 
-  if (secFetchSite !== 'same-origin' && secFetchSite !== 'same-site') {
+  if (secFetchSite !== 'same-origin') {
     throw createError({
       message: 'Forbidden',
       status: 403,
-      why: `sec-fetch-site "${secFetchSite}" is not same-origin or same-site`,
+      why: `sec-fetch-site "${secFetchSite}" is not same-origin`,
     })
   }
 
@@ -52,7 +52,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  logger.set({ analytics: { event: name } })
+  // Defense-in-depth: getCookieConsent fails closed (missing/invalid/stale
+  // cookie => denied). Skip silently to keep the fire-and-forget client quiet.
+  if (!getCookieConsent(event).isAllowed('analytics')) {
+    logger.set({ analytics: { event: name, consent: 'denied' } })
+
+    return { ok: true }
+  }
+
+  logger.set({ analytics: { event: name, consent: 'granted' } })
 
   trackLandingEvent(
     name as ClientLandingEventName,

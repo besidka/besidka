@@ -24,6 +24,19 @@ export default defineNuxtPlugin(() => {
       // pending map values remain for in-session continuity — no action needed.
     }
 
+    if (granted.includes('analytics')) {
+      // Deferred like the receipt POST below: useCookie writes the consent
+      // cookie on the next tick, and the replayed events must carry it to
+      // pass the server-side gate.
+      setTimeout(() => {
+        flushPendingLandingAnalytics()
+      }, 150)
+    }
+
+    if (denied.includes('analytics')) {
+      clearPendingLandingAnalytics()
+    }
+
     const id = consentId.value
     const date = consentDate.value
 
@@ -50,6 +63,13 @@ export default defineNuxtPlugin(() => {
       }, 150)
     }
   })
+
+  // Returning visitors who already granted analytics: the consent cookie is
+  // present at boot (no write race), so replay anything queued before consent
+  // state hydrated this session.
+  if (isAllowed('analytics')) {
+    flushPendingLandingAnalytics()
+  }
 
   watch(
     () => colorMode.preference,

@@ -121,6 +121,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
+    'tests/unit/composables/landing-analytics.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
   ]
 
@@ -158,6 +159,10 @@ export function getAffectedTests(changedFiles) {
       tests: landingTests,
     },
     {
+      pattern: /^app\/composables\/landing-analytics\.ts$/,
+      tests: landingTests,
+    },
+    {
       pattern: /^app\/assets\/css\/plyr-theme\.css$/,
       tests: landingTests,
     },
@@ -169,6 +174,14 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|i18n\/|app\/composables\/preference-storage\.ts$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
+    },
+    {
+      // The consent gate plugin flushes/clears the landing analytics queue, so
+      // changes to it (or the analytics category in the cookie-consent module)
+      // must also exercise the landing-analytics queue-and-flush unit spec.
+      pattern:
+        /^(app\/plugins\/cookie-consent-gate\.client\.ts$|modules\/cookie-consent\/)/,
+      tests: ['tests/unit/composables/landing-analytics.spec.ts'],
     },
     {
       pattern:

@@ -116,7 +116,11 @@ export default defineEventHandler(async (event) => {
     await markProjectsMemoryStale([projectId], userId, db)
   }
 
-  trackLandingEvent('new_chat_created', undefined, event)
+  // Recorded only with granted analytics consent — getCookieConsent fails
+  // closed on a missing/invalid/stale cookie.
+  if (getCookieConsent(event).isAllowed('analytics')) {
+    trackLandingEvent('new_chat_created', undefined, event)
+  }
 
   return {
     slug: chat.slug,

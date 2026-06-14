@@ -41,6 +41,7 @@ export function getCookieConsent(event: H3Event): {
     || typeof parsed !== 'object'
     || parsed.v !== options.revision
     || !Array.isArray(parsed.granted)
+    || !parsed.granted.every(item => typeof item === 'string')
   ) {
     return {
       isDecided: false,
