@@ -3,7 +3,6 @@ import {
   shallowRef,
   watch,
   useId,
-  onMounted,
 } from 'vue'
 import { useI18n } from '#imports'
 import { useCookieConsentUi } from '../composables/ui'
@@ -59,11 +58,19 @@ watch(
   { flush: 'post' },
 )
 
-onMounted(() => {
-  if (props.autoShow) {
-    ui.scheduleAutoShow('modal')
-  }
-})
+// The modal is mounted for the whole app lifetime, so `autoShow` toggles
+// reactively when the layout changes (e.g. navigating into the chat layout).
+// `flush: 'post'` runs this after the popup's unmount cleanup, so its
+// cancelAutoShow() has reopened the gate before the modal reschedules.
+watch(
+  () => props.autoShow,
+  (enabled) => {
+    if (enabled) {
+      ui.scheduleAutoShow('modal')
+    }
+  },
+  { immediate: true, flush: 'post' },
+)
 
 const slotProps = {
   titleId,

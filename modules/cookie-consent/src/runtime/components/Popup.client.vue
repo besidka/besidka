@@ -111,6 +111,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   detachOutsideClick()
+  // If the popup is removed before its auto-show fired (e.g. navigating into
+  // the chat layout where the popup is v-if-hidden), hand the auto-show over
+  // so the modal can take it; a popup that already showed keeps the gate shut.
+  ui.cancelAutoShow()
 })
 
 const slotProps = {

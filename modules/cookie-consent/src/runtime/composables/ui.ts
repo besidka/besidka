@@ -154,9 +154,25 @@ export function useCookieConsentUi() {
         if (autoShowTimer !== null) {
           clearTimeout(autoShowTimer)
           autoShowTimer = null
+          autoShowScheduled = false
         }
       })
     }
+  }
+
+  // Cancel a pending (not-yet-fired) auto-show and reopen the once-per-load
+  // gate so a different surface can reschedule. A timer that already fired
+  // leaves the gate closed — the prompt was shown once, as intended. Called
+  // when the hosting surface unmounts (e.g. the popup is removed entering the
+  // chat layout) so the modal can take over the auto-show.
+  function cancelAutoShow(): void {
+    if (autoShowTimer === null) {
+      return
+    }
+
+    clearTimeout(autoShowTimer)
+    autoShowTimer = null
+    autoShowScheduled = false
   }
 
   function switchProps(categoryId: string): {
@@ -190,6 +206,7 @@ export function useCookieConsentUi() {
     close,
     isTriggerNode,
     scheduleAutoShow,
+    cancelAutoShow,
     switchProps,
   }
 }
