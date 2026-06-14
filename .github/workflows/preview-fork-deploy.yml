@@ -84,7 +84,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
-
       - name: Record deploy start time
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
