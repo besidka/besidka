@@ -10,8 +10,9 @@ import { useCookieConsent } from '../composables/consent'
 import { trapTabKey } from '../utils/focus-trap'
 
 const props = withDefaults(defineProps<{
+  autoShow?: boolean
   transition?: string
-}>(), { transition: undefined })
+}>(), { autoShow: false, transition: undefined })
 
 const { t } = useI18n()
 
@@ -55,6 +56,20 @@ watch(
     containerRef.value?.focus()
   },
   { flush: 'post' },
+)
+
+// The modal is mounted for the whole app lifetime, so `autoShow` toggles
+// reactively when the layout changes (e.g. navigating into the chat layout).
+// `flush: 'post'` runs this after the popup's unmount cleanup, so its
+// cancelAutoShow() has reopened the gate before the modal reschedules.
+watch(
+  () => props.autoShow,
+  (enabled) => {
+    if (enabled) {
+      ui.scheduleAutoShow('modal')
+    }
+  },
+  { immediate: true, flush: 'post' },
 )
 
 const slotProps = {

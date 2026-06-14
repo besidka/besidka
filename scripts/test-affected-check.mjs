@@ -122,7 +122,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|i18n\/|app\/composables\/preference-storage\.ts$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|i18n\/|app\/composables\/preference-storage\.ts$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {

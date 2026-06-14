@@ -1,12 +1,15 @@
 <script setup lang="ts">
+const route = useRoute()
 const isDetailsOpen = shallowRef<boolean>(false)
 const ui = useCookieConsentUi()
 const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
+const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
 </script>
 
 <template>
   <div>
     <CookieConsentTrigger
+      v-if="!isChatLayout"
       v-slot="{ isOpen }"
       data-testid="cookies-trigger"
       :title="
@@ -41,6 +44,7 @@ const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
     </CookieConsentTrigger>
 
     <CookieConsentPopup
+      v-if="!isChatLayout"
       v-slot="{
         titleId,
         categories,
@@ -224,6 +228,7 @@ const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
         withdrawAll,
         close,
       }"
+      :auto-show="isChatLayout"
       transition="cc-modal"
       class="
         fixed inset-0 z-50
