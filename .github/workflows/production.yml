@@ -270,7 +270,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
@@ -282,7 +281,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           preCommands: pnpm run db:consents:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote --env production
@@ -294,7 +292,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: deploy --env production
 
       - name: Calculate deploy time
@@ -362,6 +359,11 @@ jobs:
       WORKER_NAME: besidka-preview
 
     steps:
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Find version for PR
         if: needs.resolve-preview-context.outputs.pr-number
         id: find-version
@@ -402,7 +404,6 @@ jobs:
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: versions deploy --version-id ${{ steps.find-version.outputs.version-id }} --name ${{ env.WORKER_NAME }} --yes
 
       - name: Skip promotion for direct push
@@ -436,6 +437,12 @@ jobs:
         with:
           run_install: false
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
       - name: Apply migrations to preview database
         if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v4
@@ -443,7 +450,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
@@ -455,7 +461,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           preCommands: pnpm run db:consents:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
@@ -466,7 +471,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
 
   cleanup-preview-build-artifact:
     name: Cleanup preview build artifact
