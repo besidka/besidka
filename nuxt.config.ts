@@ -366,7 +366,7 @@ export default defineNuxtConfig({
           },
           {
             id: 'session-token',
-            name: 'better_auth.session_token',
+            name: '__Secure-better-auth.session_token',
             type: 'cookie',
           },
           {
