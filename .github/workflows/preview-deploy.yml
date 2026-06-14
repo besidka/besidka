@@ -100,6 +100,13 @@ jobs:
         with:
           run_install: false
 
+      - name: Install Node.js
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
       - name: Record deploy start time
         if: steps.fork-check.outputs.is-fork == 'false'
         id: deploy-start
