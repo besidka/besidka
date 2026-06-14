@@ -77,6 +77,88 @@ vi.mock('better-auth/vue', () => ({
   })),
 }))
 
+/**
+ * Node 26 ships an experimental `localStorage` global that is `undefined`
+ * unless `--localstorage-file` is passed. The happy-dom nuxt test env does
+ * not provide one either, so any spec that calls `localStorage.clear()` (or
+ * any other method) crashes. Install a Map-backed Proxy shim as a true
+ * `globalThis` property (not a vi.stubGlobal stub) so it survives
+ * `vi.unstubAllGlobals()` calls in individual specs. `configurable: true`
+ * and `writable: true` allow per-spec `vi.stubGlobal('localStorage', ...)`
+ * overrides to take effect — vitest will restore to this shim (not undefined)
+ * on unstub. Because `window === globalThis` in this env, the same property
+ * is also visible as `window.localStorage`.
+ */
+function createStorageShim() {
+  const entries = new Map<string, string>()
+  const methods = {
+    getItem: (key: string) => entries.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      entries.set(key, String(value))
+    },
+    removeItem: (key: string) => {
+      entries.delete(key)
+    },
+    clear: () => {
+      entries.clear()
+    },
+  }
+
+  return new Proxy(methods, {
+    ownKeys: () => Array.from(entries.keys()),
+    getOwnPropertyDescriptor: (_target, key) => {
+      if (!entries.has(String(key))) {
+        return undefined
+      }
+
+      return {
+        enumerable: true,
+        configurable: true,
+        value: entries.get(String(key)),
+      }
+    },
+    get: (target, key) => {
+      if (key in target) {
+        return target[key as keyof typeof target]
+      }
+
+      return entries.get(String(key))
+    },
+  })
+}
+
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  writable: true,
+  value: createStorageShim(),
+})
+
+Object.defineProperty(globalThis, 'sessionStorage', {
+  configurable: true,
+  writable: true,
+  value: createStorageShim(),
+})
+
+/**
+ * Pre-grant all cookie-consent categories so that `usePreferenceStorage`
+ * writes through to real localStorage by default. Specs that need denied
+ * state (e.g. preference-storage.spec.ts) override this by calling
+ * `withdrawAll()` directly, which mutates the shared `useState` ref and
+ * takes precedence over the initial cookie value. The cookie must be set
+ * at module-load time — before any test file creates its Nuxt app instance
+ * and `useCookieConsent` reads the initial state from `useCookie`.
+ */
+document.cookie = [
+  'cookies_consent=',
+  encodeURIComponent(JSON.stringify({
+    v: 1,
+    granted: ['necessary', 'preferences', 'analytics', 'marketing'],
+    id: 'test-setup',
+    date: '2026-01-01T00:00:00.000Z',
+  })),
+  '; path=/',
+].join('')
+
 const windowHistory = window.history
 const unstubAllGlobals = vi.unstubAllGlobals.bind(vi)
 
