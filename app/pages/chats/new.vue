@@ -55,14 +55,34 @@ useSeoMeta({
 
 const route = useRoute()
 const router = useRouter()
-const message = useLocalStorage<string>('chat_input', '')
+const prefStorage = usePreferenceStorage()
+const message = customRef<string>((track, trigger) => ({
+  get() {
+    track()
+
+    return prefStorage.getItem('chat_input') ?? ''
+  },
+  set(value) {
+    prefStorage.setItem('chat_input', value)
+    trigger()
+  },
+}))
 const files = ref<FileMetadata[]>([])
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
-const reasoning = useLocalStorage<ReasoningLevel>(
-  'settings_reasoning_level',
-  'off',
-)
+const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
+  get() {
+    track()
+
+    return (
+      prefStorage.getItem('settings_reasoning_level') as ReasoningLevel
+    ) ?? 'off'
+  },
+  set(value) {
+    prefStorage.setItem('settings_reasoning_level', value)
+    trigger()
+  },
+}))
 
 function parseRouteProjectId(projectId: unknown): string | null {
   return typeof projectId === 'string' && projectId.length > 0

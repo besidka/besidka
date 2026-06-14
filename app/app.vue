@@ -30,6 +30,7 @@
     <UiMessages />
     <Sidebar />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
+    <LazyCookiesBanner />
   </ClientOnly>
 </template>
 

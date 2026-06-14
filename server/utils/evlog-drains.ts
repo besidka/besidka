@@ -1,13 +1,31 @@
 import { auditOnly } from 'evlog'
 import { createAxiomDrain } from 'evlog/axiom'
-import type { DrainFn, WideEvent } from 'evlog'
+import type { DrainContext, DrainFn, WideEvent } from 'evlog'
 
 interface CachedDrains {
   main: DrainFn | null
   audit: DrainFn | null
+  consent: DrainFn | null
 }
 
 let cached: CachedDrains | undefined
+
+/**
+ * Wrap a drain so it only receives wide events that carry a non-empty
+ * `consent` field. Used to route consent receipts to a dedicated Axiom
+ * dataset without affecting the main or audit drain pipelines.
+ */
+function consentOnly(drain: DrainFn): DrainFn {
+  return (ctx: DrainContext) => {
+    const consent = (ctx.event as WideEvent & { consent?: unknown }).consent
+
+    if (!consent || typeof consent !== 'object') {
+      return
+    }
+
+    return drain(ctx)
+  }
+}
 
 /**
  * Build (and cache) the Axiom drain functions from runtime config.
@@ -32,7 +50,7 @@ export function getAxiomDrains(): CachedDrains {
   }
 
   const config = useRuntimeConfig()
-  const result: CachedDrains = { main: null, audit: null }
+  const result: CachedDrains = { main: null, audit: null, consent: null }
 
   if (config.axiomToken && config.axiomDataset) {
     result.main = createAxiomDrain({
@@ -48,6 +66,13 @@ export function getAxiomDrains(): CachedDrains {
     }))
   }
 
+  if (config.axiomConsentToken && config.axiomConsentDataset) {
+    result.consent = consentOnly(createAxiomDrain({
+      apiKey: config.axiomConsentToken,
+      dataset: config.axiomConsentDataset,
+    }))
+  }
+
   cached = result
 
   return cached
@@ -59,7 +84,7 @@ export function getAxiomDrains(): CachedDrains {
  * `ExecutionContext.waitUntil()` on Cloudflare Workers.
  */
 export function shipWideEventToAxiom(wideEvent: WideEvent): Promise<unknown> {
-  const { main, audit } = getAxiomDrains()
+  const { main, audit, consent } = getAxiomDrains()
   const tasks: Promise<unknown>[] = []
 
   if (main) {
@@ -76,6 +101,15 @@ export function shipWideEventToAxiom(wideEvent: WideEvent): Promise<unknown> {
       Promise.resolve(audit({ event: wideEvent })).catch((exception) => {
         // eslint-disable-next-line no-console
         console.error('[evlog] axiom audit drain failed:', exception)
+      }),
+    )
+  }
+
+  if (consent) {
+    tasks.push(
+      Promise.resolve(consent({ event: wideEvent })).catch((exception) => {
+        // eslint-disable-next-line no-console
+        console.error('[evlog] axiom consent drain failed:', exception)
       }),
     )
   }

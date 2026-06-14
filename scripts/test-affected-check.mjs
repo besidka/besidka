@@ -108,10 +108,22 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/context-menu.spec.ts',
   ]
 
+  const cookieConsentTests = [
+    'tests/unit/composables/preference-storage.spec.ts',
+    'tests/unit/utils/consents.spec.ts',
+    'tests/integration/api/consents.spec.ts',
+    'tests/e2e/cookies/consent.spec.ts',
+  ]
+
   const testMappings = [
     {
       pattern: /^app\/components\/Chat\/(Message|ContextMenu\.client)\.vue$/,
       tests: contextMenuTests,
+    },
+    {
+      pattern:
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|i18n\/|app\/composables\/preference-storage\.ts$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
+      tests: cookieConsentTests,
     },
     {
       pattern:

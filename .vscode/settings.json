@@ -16,5 +16,6 @@
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
 	},
 	"snyk.advanced.organization": "01d6b078-216c-485c-bee0-abadbaf757b6",
-	"snyk.advanced.autoSelectOrganization": true
+	"snyk.advanced.autoSelectOrganization": true,
+	"cSpell.language": "en,uk"
 }

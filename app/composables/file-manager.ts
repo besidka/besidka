@@ -17,7 +17,20 @@ export function useFileManager() {
   const isDeletingSelected = shallowRef<boolean>(false)
   const searchLoadingTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
   const search = shallowRef<string>('')
-  const viewMode = useLocalStorage<ViewMode>('file-manager-view-mode', 'grid')
+  const prefStorage = usePreferenceStorage()
+  const viewMode = customRef<ViewMode>((track, trigger) => ({
+    get() {
+      track()
+
+      return (
+        prefStorage.getItem('file-manager-view-mode') as ViewMode
+      ) ?? 'grid'
+    },
+    set(value) {
+      prefStorage.setItem('file-manager-view-mode', value)
+      trigger()
+    },
+  }))
   const pagination = reactive({
     offset: 0,
     limit: 20,

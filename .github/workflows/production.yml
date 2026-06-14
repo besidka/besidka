@@ -269,6 +269,18 @@ jobs:
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
 
+      - name: Apply consent migrations to production database
+        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+          preCommands: pnpm run db:consents:generate
+          command: -v
+          postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote --env production
+
       - name: Deploy app to Cloudflare Workers via Wrangler
         id: deploy
         uses: cloudflare/wrangler-action@v4
@@ -429,6 +441,18 @@ jobs:
           preCommands: pnpm run db:generate
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
+
+      - name: Apply consent migrations to preview database
+        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+          preCommands: pnpm run db:consents:generate
+          command: -v
+          postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
 
       - name: Deploy preview for direct push
         uses: cloudflare/wrangler-action@v4

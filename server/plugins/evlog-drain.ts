@@ -1,5 +1,5 @@
 export default defineNitroPlugin((nitroApp) => {
-  const { main, audit } = getAxiomDrains()
+  const { main, audit, consent } = getAxiomDrains()
 
   if (main) {
     nitroApp.hooks.hook('evlog:drain', main)
@@ -7,5 +7,9 @@ export default defineNitroPlugin((nitroApp) => {
 
   if (audit) {
     nitroApp.hooks.hook('evlog:drain', audit)
+  }
+
+  if (consent) {
+    nitroApp.hooks.hook('evlog:drain', consent)
   }
 })

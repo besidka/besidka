@@ -116,6 +116,17 @@ jobs:
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
+      - name: Apply consent migrations to preview database
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          packageManager: pnpm
+          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
+          command: -v
+          postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
+
       - name: Deploy to Cloudflare Workers
         if: steps.fork-check.outputs.is-fork == 'false'
         id: deploy

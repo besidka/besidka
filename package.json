@@ -48,8 +48,13 @@
 		"db:migrate:preview": "pnpm exec wrangler d1 migrations apply DB --remote",
 		"db:migrate:prod": "pnpm exec wrangler d1 migrations apply DB --env production --remote",
 		"db:studio": "drizzle-kit studio",
+		"db:consents:generate": "drizzle-kit generate --config=drizzle-consent.config.ts",
+		"db:consents:migrate": "pnpm exec wrangler d1 migrations apply CONSENT_DB",
+		"db:consents:migrate:preview": "pnpm exec wrangler d1 migrations apply CONSENT_DB --remote",
+		"db:consents:migrate:prod": "pnpm exec wrangler d1 migrations apply CONSENT_DB --env production --remote",
 		"prepare": "husky",
-		"postinstall": "node scripts/setup-ai-agents.mjs && nuxt prepare"
+		"postinstall": "node scripts/setup-ai-agents.mjs && pnpm --filter @besidka/nuxt-cookie-consent dev:prepare && nuxt prepare",
+		"test:cookie-consent": "pnpm --filter @besidka/nuxt-cookie-consent test:run"
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^3.0.80",
@@ -63,6 +68,8 @@
 		"@nuxt/image": "^2.0.0",
 		"@nuxtjs/color-mode": "^4.0.0",
 		"@nuxtjs/device": "^4.0.0",
+		"@besidka/nuxt-cookie-consent": "workspace:*",
+		"@nuxtjs/i18n": "^10.4.0",
 		"@nuxtjs/mdc": "^0.22.0",
 		"@tailwindcss/vite": "^4.3.0",
 		"@vite-pwa/nuxt": "^1.1.1",
@@ -99,6 +106,7 @@
 		"@commitlint/config-conventional": "^21.0.0",
 		"@commitlint/format": "^21.0.0",
 		"@commitlint/types": "^21.0.0",
+		"@nuxt/kit": "^4.4.8",
 		"@nuxt/test-utils": "^4.0.3",
 		"@playwright/test": "^1.60.0",
 		"@stylistic/eslint-plugin": "^5.10.0",

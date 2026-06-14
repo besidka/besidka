@@ -37,14 +37,31 @@ export function useUserSetting() {
     'user-settings:sync-token',
     () => 0,
   )
-  const fallbackReasoningExpanded = useLocalStorage<boolean>(
-    'settings_reasoning_expanded',
-    false,
-  )
-  const fallbackReasoningAutoHide = useLocalStorage<boolean>(
-    'settings_reasoning_auto_hide',
-    true,
-  )
+  const prefStorage = usePreferenceStorage()
+  const fallbackReasoningExpanded = customRef<boolean>((track, trigger) => ({
+    get() {
+      track()
+      const raw = prefStorage.getItem('settings_reasoning_expanded')
+
+      return raw !== null ? raw === 'true' : false
+    },
+    set(value) {
+      prefStorage.setItem('settings_reasoning_expanded', String(value))
+      trigger()
+    },
+  }))
+  const fallbackReasoningAutoHide = customRef<boolean>((track, trigger) => ({
+    get() {
+      track()
+      const raw = prefStorage.getItem('settings_reasoning_auto_hide')
+
+      return raw !== null ? raw === 'true' : true
+    },
+    set(value) {
+      prefStorage.setItem('settings_reasoning_auto_hide', String(value))
+      trigger()
+    },
+  }))
 
   const reasoningExpanded = computed<boolean>(() => {
     if (

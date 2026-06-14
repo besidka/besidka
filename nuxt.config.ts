@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers'
 
@@ -14,6 +15,7 @@ const modules = [
   '@vueuse/nuxt',
   '@vite-pwa/nuxt',
   'evlog/nuxt',
+  '@besidka/nuxt-cookie-consent',
 ]
 
 if (enableFonts) {
@@ -81,6 +83,8 @@ export default defineNuxtConfig({
     axiomToken: '',
     axiomAuditDataset: '',
     axiomAuditToken: '',
+    axiomConsentDataset: '',
+    axiomConsentToken: '',
     public: {
       baseUrl: '',
       defaultModel,
@@ -236,6 +240,103 @@ export default defineNuxtConfig({
     typescriptPlugin: true,
     // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
     nitroAutoImports: true,
+  },
+  hooks: {
+    // App-level cookie texts must merge through the same lazy locale-file
+    // pipeline as the module's own messages — config-file messages get
+    // replaced when registered locale files load.
+    'i18n:registerModule': (register) => {
+      register({
+        langDir: fileURLToPath(new URL('./i18n/locales', import.meta.url)),
+        locales: [
+          { code: 'en', file: 'cookie-consent.en.ts' },
+          { code: 'uk', file: 'cookie-consent.uk.ts' },
+        ],
+      })
+    },
+  },
+  cookieConsent: {
+    categories: [
+      {
+        id: 'necessary',
+        required: true,
+        entries: [
+          {
+            id: 'consent',
+            name: 'cookies_consent',
+            type: 'cookie',
+          },
+          {
+            id: 'session-token',
+            name: 'better_auth.session_token',
+            type: 'cookie',
+          },
+        ],
+      },
+      {
+        id: 'preferences',
+        entries: [
+          {
+            id: 'last-login-method',
+            name: 'better_auth.last_login_method',
+            type: 'cookie',
+          },
+          {
+            id: 'color-mode',
+            name: 'nuxt-color-mode',
+            type: 'localStorage',
+          },
+          {
+            id: 'color-mode-cookie',
+            name: 'nuxt-color-mode',
+            type: 'cookie',
+          },
+          {
+            id: 'file-manager-view-mode',
+            name: 'file-manager-view-mode',
+            type: 'localStorage',
+          },
+          {
+            id: 'reasoning-expanded',
+            name: 'settings_reasoning_expanded',
+            type: 'localStorage',
+          },
+          {
+            id: 'reasoning-auto-hide',
+            name: 'settings_reasoning_auto_hide',
+            type: 'localStorage',
+          },
+          {
+            id: 'reasoning-level',
+            name: 'settings_reasoning_level',
+            type: 'localStorage',
+          },
+          {
+            id: 'chat-input',
+            name: 'chat_input',
+            type: 'localStorage',
+          },
+          {
+            id: 'model',
+            name: 'model',
+            type: 'localStorage',
+          },
+          {
+            id: 'plyr',
+            name: 'plyr',
+            type: 'localStorage',
+          },
+        ],
+      },
+      // {
+      //   id: 'analytics',
+      //   entries: [],
+      // },
+      // {
+      //   id: 'marketing',
+      //   entries: [],
+      // },
+    ],
   },
   mdc: {
     remarkPlugins: {

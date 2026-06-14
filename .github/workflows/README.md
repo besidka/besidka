@@ -19,6 +19,8 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │  └─ preview-deploy.yml (workflow_run, privileged)                │
 │      ├─ Download artifacts from build                            │
 │      ├─ Apply DB migrations from PR .drizzle artifact            │
+│      │   ├─ DB          (.drizzle/migrations)                    │
+│      │   └─ CONSENT_DB  (.drizzle/migrations-consent)            │
 │      ├─ Deploy to Cloudflare Workers (version with PR alias)     │
 │      └─ Comment preview URLs + metrics on PR                     │
 │                                                                  │
@@ -72,6 +74,8 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
 2. Check if PR is from a fork - skip deploy if so
 3. Download build and `.drizzle` artifacts from the same build run
 4. Apply preview D1 migrations from the downloaded `.drizzle` artifact
+   - `DB` from `.drizzle/migrations`
+   - `CONSENT_DB` from `.drizzle/migrations-consent`
 5. Deploy to Cloudflare Workers with PR alias
 6. Comment preview URLs and metrics on PR
 
@@ -89,12 +93,21 @@ Triggers when a maintainer comments `/deploy-preview` on a fork PR.
 
 Triggers on push to `main`. Two parallel jobs:
 
-**build-production**: Full test suite, build, deploy to production.
+**build-production**: Full test suite, build, deploy to production. When
+`.drizzle/` changed, applies remote migrations to both production databases
+(`DB`, then `CONSENT_DB`) before deploy.
 
 **update-preview**: Finds the PR version by alias and promotes it to the
-preview environment. For direct pushes to `main` (no PR), it runs a plain
-preview deploy. If a PR exists but no version alias is found, it skips
-promotion gracefully.
+preview environment. For direct pushes to `main` (no PR), the
+`deploy-preview-direct-push` job runs a plain preview deploy and, when
+`.drizzle/` changed, applies remote migrations to both preview databases
+(`DB`, then `CONSENT_DB`). If a PR exists but no version alias is found, it
+skips promotion gracefully.
+
+Both databases are gated on the same `drizzle-changed` detection (any change
+under `.drizzle/`). `wrangler d1 migrations apply` is idempotent — it only
+runs migrations not yet recorded in each database's `d1_migrations` table, so
+applying both when only one changed is a harmless no-op.
 
 ### `cleanup-runs.yml` - Workflow Run Cleanup
 
@@ -125,8 +138,10 @@ The solution is a two-phase approach:
 **Maintainer-gated fork deployment**: Fork PRs skip automatic deployment. A maintainer must explicitly approve by commenting `/deploy-preview`, which triggers a permission-checked workflow.
 
 **Migration source consistency**: `preview-build.yml` uploads `.drizzle` as an
-artifact, and `preview-deploy.yml` applies migrations from that exact artifact
-before deploy. This keeps preview DB schema aligned with the deployed PR build.
+artifact (both `migrations/` and `migrations-consent/`), and
+`preview-deploy.yml` applies migrations for both `DB` and `CONSENT_DB` from
+that exact artifact before deploy. This keeps both preview DB schemas aligned
+with the deployed PR build.
 
 **Artifact trust boundary**: Build artifacts from forks contain untrusted code. The `/deploy-preview` command means "I reviewed this PR and trust it enough to deploy to preview" - analogous to clicking "Approve and Run" on fork workflow runs.
 
@@ -263,7 +278,60 @@ pnpm run deploy --env production
 wrangler versions upload --preview-alias pr-test
 ```
 
+## Database Migrations
+
+The app uses **two** independent Cloudflare D1 databases, each with its own
+Drizzle config, migrations directory, and binding:
+
+| Binding | Migrations dir | Drizzle config | Purpose |
+|---------|----------------|----------------|---------|
+| `DB` | `.drizzle/migrations` | `drizzle.config.ts` | Main app schema (users, chats, projects, files, …) |
+| `CONSENT_DB` | `.drizzle/migrations-consent` | `drizzle-consent.config.ts` | Cookie-consent receipts (system of record) |
+
+CI applies migrations for **both** databases at every deploy. Each binding is
+migrated with a separate step so a failure is attributable to one database:
+
+| Workflow / job | Trigger | DB step | CONSENT_DB step | Source |
+|----------------|---------|---------|-----------------|--------|
+| `preview-deploy.yml` → `deploy` | Same-repo PR build success | `wrangler d1 migrations apply DB --remote` | `wrangler d1 migrations apply CONSENT_DB --remote` | Downloaded `preview-drizzle` artifact (committed migrations) |
+| `production.yml` → `build-production` | Merge / push to `main` | `… apply DB --remote --env production` | `… apply CONSENT_DB --remote --env production` | Regenerated in-step via `preCommands` |
+| `production.yml` → `deploy-preview-direct-push` | Direct push to `main` (no PR) | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
+
+**Regeneration source.** Preview-deploy applies the exact migration files from
+the uploaded `.drizzle` artifact (no regeneration). The production jobs
+regenerate before applying via `preCommands`: `pnpm run db:generate` for `DB`
+and `pnpm run db:consents:generate` for `CONSENT_DB`.
+
+**Gating.** Both DB and CONSENT_DB apply steps in `production.yml` share the
+`drizzle-changed` output (true when any file under `.drizzle/` changed in the
+push). Because `wrangler d1 migrations apply` only runs migrations missing
+from each database's `d1_migrations` tracking table, running both steps when
+only one database changed is an idempotent no-op.
+
+**Local commands** (mirror the CI steps; run these yourself for remote DBs —
+never let CI touch a remote DB you have not migrated locally first):
+
+```bash
+# Main DB
+pnpm run db:generate            # generate migrations from schema
+pnpm run db:migrate             # apply to local
+pnpm run db:migrate:preview     # apply to remote preview
+pnpm run db:migrate:prod        # apply to remote production
+
+# Consent DB
+pnpm run db:consents:generate         # generate from server/db/consent/schema.ts
+pnpm run db:consents:migrate          # apply to local
+pnpm run db:consents:migrate:preview  # apply to remote preview
+pnpm run db:consents:migrate:prod     # apply to remote production
+```
+
+> [!WARNING]
+> Read the D1 migration-safety rules in [`/CLAUDE.md`](/CLAUDE.md) before
+> generating or applying any migration. SQLite/D1 table rebuilds can trigger
+> cascade deletes; always inspect the generated `.sql` for `DROP TABLE` first.
+
 ## Related Documentation
 
 - Project setup: [`/CLAUDE.md`](/CLAUDE.md)
 - Cloudflare configuration: [`/wrangler.jsonc`](/wrangler.jsonc)
+- Cookie-consent / `CONSENT_DB` details: [`/docs/cookie-consent.md`](/docs/cookie-consent.md)

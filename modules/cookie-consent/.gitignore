@@ -1,0 +1,6 @@
+dist/
+.nuxt/
+node_modules/
+playground/.nuxt/
+playground/node_modules/
+test/fixtures/basic/.nuxt/

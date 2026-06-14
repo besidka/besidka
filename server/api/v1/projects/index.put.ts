@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const userId = parseInt(session.user.id)
 
-  logger.set({ userId, name: body.data.name })
+  logger.set({ userId, nameLength: body.data.name.length })
 
   const project = await db
     .insert(schema.projects)

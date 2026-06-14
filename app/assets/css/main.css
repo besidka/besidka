@@ -401,6 +401,14 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   
 }
 
+@utility hitslop {
+	@apply relative cursor-pointer;
+
+	&::before {
+		@apply content-[''] absolute top-1/2 left-1/2 w-full min-w-12 h-12 -translate-x-1/2 -translate-y-1/2;
+	}
+}
+
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -514,3 +522,115 @@ body {
     }
   }
 }
+
+/* ─── Cookie Consent Animations ──────────────────────────────────── */
+
+/* Trigger: one-shot appear on mount */
+@keyframes cc-trigger-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cc-trigger {
+  transform-origin: center;
+  animation: cc-trigger-appear 200ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+/* Popup enter/leave */
+.cc-popup-enter-active {
+  transition:
+    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: bottom left;
+}
+
+.cc-popup-leave-active {
+  transition:
+    opacity 150ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: bottom left;
+}
+
+.cc-popup-enter-from,
+.cc-popup-leave-to {
+  opacity: 0;
+  transform: scale(0.92) translateY(8px);
+}
+
+/* Modal overlay enter/leave */
+.cc-modal-enter-active {
+  transition: opacity 250ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.cc-modal-leave-active {
+  transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.cc-modal-enter-from,
+.cc-modal-leave-to {
+  opacity: 0;
+}
+
+/* Modal inner card scale during enter */
+.cc-modal-enter-active [data-testid="cookies-modal"] {
+  transition:
+    opacity 250ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 250ms cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: center;
+}
+
+/* Modal inner card scale during leave */
+.cc-modal-leave-active [data-testid="cookies-modal"] {
+  transition:
+    opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: center;
+}
+
+.cc-modal-enter-from [data-testid="cookies-modal"],
+.cc-modal-leave-to [data-testid="cookies-modal"] {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* Trigger icon crossfade — icons stack inside the relative span wrapper */
+.cc-icon-enter-active,
+.cc-icon-leave-active {
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cc-icon-enter-from,
+.cc-icon-leave-to {
+  opacity: 0;
+}
+
+/* Reduced motion: disable all cookie banner animations */
+@media (prefers-reduced-motion: reduce) {
+  .cc-trigger {
+    animation: none;
+  }
+
+  .cc-popup-enter-active,
+  .cc-popup-leave-active,
+  .cc-modal-enter-active,
+  .cc-modal-leave-active,
+  .cc-modal-enter-active [data-testid="cookies-modal"],
+  .cc-modal-leave-active [data-testid="cookies-modal"],
+  .cc-icon-enter-active,
+  .cc-icon-leave-active {
+    transition: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
