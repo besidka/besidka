@@ -380,7 +380,18 @@ function reportChatClientError(payload: ChatClientErrorReport) {
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
-  const input = useLocalStorage<string>('chat_input', '')
+  const prefStorage = usePreferenceStorage()
+  const input = customRef<string>((track, trigger) => ({
+    get() {
+      track()
+
+      return prefStorage.getItem('chat_input') ?? ''
+    },
+    set(value) {
+      prefStorage.setItem('chat_input', value)
+      trigger()
+    },
+  }))
   const files = ref<FileMetadata[]>([])
   const pendingError = shallowRef<ChatErrorPayload | null>(null)
   const transportRequestId = shallowRef<string>()
@@ -391,10 +402,18 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const tools = shallowRef<Tools>(
     chat.messages[chat.messages.length - 1]?.tools || [],
   )
-  const savedReasoningLevel = useLocalStorage<ReasoningLevel>(
-    'settings_reasoning_level',
-    'off',
-  )
+  const savedReasoningLevel = customRef<ReasoningLevel>((track, trigger) => ({
+    get() {
+      track()
+
+      return (prefStorage.getItem('settings_reasoning_level') as ReasoningLevel)
+        ?? 'off'
+    },
+    set(value) {
+      prefStorage.setItem('settings_reasoning_level', value)
+      trigger()
+    },
+  }))
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
   )

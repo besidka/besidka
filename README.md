@@ -104,6 +104,15 @@ Apply the migrations to the D1 database.
 pnpx wrangler d1 migrations apply DB
 ```
 
+Prepare and apply the cookie-consent database migrations. This is a separate
+D1 database (`CONSENT_DB`) used to store consent receipts. See
+[`docs/cookie-consent.md`](docs/cookie-consent.md) for details.
+```bash
+# Expected output is .drizzle/migrations-consent/*.sql
+pnpm run db:consents:generate
+pnpm run db:consents:migrate
+```
+
 Start the development server.
 ```bash
 pnpm run dev

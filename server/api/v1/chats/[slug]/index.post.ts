@@ -342,9 +342,23 @@ export default defineEventHandler(async (event) => {
   // standalone child loggers don't inherit so we attach explicitly.
   attachCloudflareMeta(aiLogger, event)
 
+  // Tool inputs are conversation-derived content (e.g. web_search queries)
+  // and must never ship to Axiom — log shape only (data minimization).
   const ai = createAILogger(aiLogger, {
     cost: getModelCostMap(),
-    toolInputs: { maxLength: 500 },
+    toolInputs: {
+      transform: (input) => {
+        if (typeof input === 'string') {
+          return { length: input.length }
+        }
+
+        try {
+          return { length: JSON.stringify(input ?? null).length }
+        } catch {
+          return { length: 0 }
+        }
+      },
+    },
   })
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []

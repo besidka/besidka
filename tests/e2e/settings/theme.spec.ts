@@ -1,8 +1,28 @@
 import { test, expect } from '@playwright/test'
 
+// Theme (`nuxt-color-mode`) lives in the `preferences` consent category, so it
+// only persists to localStorage once preferences consent is granted. Seed a
+// granted consent cookie so the banner stays hidden and the gate lets the
+// color-mode key persist — otherwise the gate purges it on every write.
+const grantedConsent = encodeURIComponent(JSON.stringify({
+  v: 1,
+  granted: ['necessary', 'preferences'],
+  id: 'e2e-theme',
+  date: '2026-01-01T00:00:00.000Z',
+}))
+
 test.use({
   storageState: {
-    cookies: [],
+    cookies: [{
+      name: 'cookies_consent',
+      value: grantedConsent,
+      domain: 'localhost',
+      path: '/',
+      expires: -1,
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
+    }],
     origins: [],
   },
 })

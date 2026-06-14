@@ -38,7 +38,11 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const userId = parseInt(session.user.id)
 
-  logger.set({ userId, projectId: params.data.id, name: body.data.name })
+  logger.set({
+    userId,
+    projectId: params.data.id,
+    nameLength: body.data.name.length,
+  })
 
   const project = await db.query.projects.findFirst({
     where(projects, { and, eq }) {

@@ -30,6 +30,12 @@
 			"database_name": "besidka-preview",
 			"database_id": "d30ca34f-9b29-4846-a77b-fcbda41cb598",
 			"migrations_dir": ".drizzle/migrations"
+		},
+		{
+			"binding": "CONSENT_DB",
+			"database_name": "besidka-consent-preview",
+			"database_id": "d110f034-1e7a-4512-b4c0-bc1e881b6d02",
+			"migrations_dir": ".drizzle/migrations-consent"
 		}
 	],
 	"kv_namespaces": [
@@ -91,7 +97,13 @@
 					"database_name": "besidka",
 					"database_id": "4d03fd8e-027e-4485-bd11-f387b1677e88",
 					"migrations_dir": ".drizzle/migrations"
-				}
+				},
+				{
+				"binding": "CONSENT_DB",
+				"database_name": "besidka-consent",
+				"database_id": "d79f8088-c9ce-4d55-a07c-e3bd564354fb",
+				"migrations_dir": ".drizzle/migrations-consent"
+			}
 			],
 			"kv_namespaces": [
 				{

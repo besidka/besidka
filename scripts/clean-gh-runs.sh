@@ -10,6 +10,7 @@ DEFAULT_PATTERNS=(
   "chore(deps-dev): bump"
   "chore(deps): bump"
   "npm_and_yarn"
+  "Cleanup workflow runs"
 )
 
 # Parse arguments
@@ -79,17 +80,19 @@ for index in "${!PATTERNS[@]}"; do
   PATTERN_FILTER+=")"
 done
 
-JQ_FILTER='.[] | select('
+# Only ever touch completed runs so the current in-progress cleanup run
+# (matched by the "Cleanup workflow runs" pattern) is never deleted.
+JQ_FILTER='.[] | select(((.status // "") == "completed") and ('
 JQ_FILTER+='((.conclusion // "") == "skipped")'
 JQ_FILTER+=' or ((.conclusion // "") == "failure")'
 JQ_FILTER+=' or ((.conclusion // "") == "cancelled")'
 JQ_FILTER+=" or ($PATTERN_FILTER)"
-JQ_FILTER+=')'
+JQ_FILTER+='))'
 
 # Fetch and filter runs
 set +e
 RUN_IDS=$(gh run list --limit "$LIMIT" \
-  --json databaseId,displayTitle,workflowName,name,conclusion 2>/dev/null | \
+  --json databaseId,displayTitle,workflowName,name,status,conclusion 2>/dev/null | \
   jq -r "$JQ_FILTER | .databaseId" 2>/dev/null)
 JQ_EXIT=$?
 set -e
