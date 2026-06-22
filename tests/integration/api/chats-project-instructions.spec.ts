@@ -203,6 +203,11 @@ function createDb(chat: {
     returning: () => ({
       get: insertGet,
     }),
+    onConflictDoNothing: () => ({
+      returning: () => ({
+        get: insertGet,
+      }),
+    }),
   }))
 
   return {

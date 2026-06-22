@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { streamText } from 'ai'
 
 function createMockUIMessageStream(messageId: string) {
   return new ReadableStream({
@@ -182,6 +183,11 @@ function createDb(overrides: {
   insertValues.mockImplementation(() => ({
     returning: () => ({
       get: insertGet,
+    }),
+    onConflictDoNothing: () => ({
+      returning: () => ({
+        get: insertGet,
+      }),
     }),
   }))
 
@@ -403,4 +409,208 @@ describe('chat duplicate message detection', () => {
       publicId: 'new-message-id',
     })
   })
+
+  it('replays the stored assistant when the turn already fully persisted (issue #263 disconnect retry)', async () => {
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Question' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const assistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Stored answer' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db, insertValues, updateSet } = createDb({
+      messages: [userMessage, assistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+
+    expect(insertValues).not.toHaveBeenCalled()
+    expect(updateSet).not.toHaveBeenCalled()
+    expect(streamText).not.toHaveBeenCalled()
+    expect(chunks[0]).toEqual({
+      type: 'start',
+      messageId: 'assistant-public-1',
+    })
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: 'text-delta',
+      delta: 'Stored answer',
+    }))
+    expect(chunks.at(-1)).toEqual({ type: 'finish' })
+  })
+
+  it('replays the assistant adjacent to the matched user message, not a later turn', async () => {
+    const handler = await getHandler()
+    const messages = [
+      {
+        id: 'db-user-1',
+        publicId: 'user-public-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'First question' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:00:00Z'),
+      },
+      {
+        id: 'db-assistant-1',
+        publicId: 'assistant-public-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'First answer' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:00:05Z'),
+      },
+      {
+        id: 'db-user-2',
+        publicId: 'user-public-2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Second question' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:01:00Z'),
+      },
+      {
+        id: 'db-assistant-2',
+        publicId: 'assistant-public-2',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Second answer' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:01:05Z'),
+      },
+    ]
+    const { db, insertValues } = createDb({ messages })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'First question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+
+    expect(insertValues).not.toHaveBeenCalled()
+    expect(chunks[0]).toEqual({
+      type: 'start',
+      messageId: 'assistant-public-1',
+    })
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: 'text-delta',
+      delta: 'First answer',
+    }))
+    expect(chunks).not.toContainEqual(expect.objectContaining({
+      type: 'text-delta',
+      delta: 'Second answer',
+    }))
+  })
+
+  it('does not replay reasoning parts when reasoning is off', async () => {
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Question' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const assistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Hidden reasoning' },
+        { type: 'text', text: 'Visible answer' },
+      ],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db } = createDb({
+      messages: [userMessage, assistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+    const reasoningChunks = chunks.filter((chunk) => {
+      return typeof chunk?.type === 'string'
+        && chunk.type.startsWith('reasoning')
+    })
+
+    expect(reasoningChunks).toHaveLength(0)
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: 'text-delta',
+      delta: 'Visible answer',
+    }))
+  })
 })
+
+async function collectStreamChunks(stream: any): Promise<any[]> {
+  const reader = stream.getReader()
+  const chunks: any[] = []
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    chunks.push(value)
+  }
+
+  return chunks
+}

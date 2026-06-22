@@ -1,4 +1,4 @@
-import type { LanguageModel, UIMessage } from 'ai'
+import type { LanguageModel, UIMessage, InferUIMessageChunk } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
@@ -113,6 +113,15 @@ export default defineEventHandler(async (event) => {
           reasoning: true,
           createdAt: true,
         },
+        // Persistence order is load-bearing: previousMessages is the model
+        // context AND the basis for detecting whether a re-sent user message
+        // already has a persisted assistant reply (issue #263). id is the
+        // autoincrement integer primary key, so ascending id is insertion
+        // order — making the user/assistant adjacency deterministic instead of
+        // relying on the implicit D1 rowid ordering.
+        orderBy(messages, { asc }) {
+          return asc(messages.id)
+        },
       },
     },
   })
@@ -154,6 +163,62 @@ export default defineEventHandler(async (event) => {
       tools: message.tools,
       reasoning: message.reasoning,
     }))
+
+  // Idempotent-retry guard for issue #263. When the client never receives a
+  // finished stream (a mobile-Safari connection drop, a backgrounded tab, a
+  // flaky last mile) it re-sends the same user message id. If that turn already
+  // fully persisted server-side (user message + assistant reply), re-running
+  // the model would recharge tokens and write a duplicate assistant row, and
+  // re-inserting the user message would collide on messages.public_id (UNIQUE)
+  // — the message-persist-failed reported in #263. Detect the assistant reply
+  // already stored for this exact user message and replay it, so the user sees
+  // the real response with no error and no extra cost.
+  //
+  // This is unambiguous in the current UI: a completed turn's user id is only
+  // ever re-sent by a disconnect retry. The Regenerate button is gated on a
+  // stopped/errored stream (canShowRegenerate -> displayRegenerate), and there
+  // is no per-message regenerate that would legitimately expect a fresh
+  // response for an already-answered message. Revisit this short-circuit if
+  // such a feature is added.
+  const persistedUserIndex = previousMessages.findIndex((message) => {
+    return message.role === 'user' && message.id === newMessage.id
+  })
+  const followingPersistedMessage = persistedUserIndex >= 0
+    ? previousMessages[persistedUserIndex + 1]
+    : undefined
+  const persistedAssistantMessage
+    = followingPersistedMessage?.role === 'assistant'
+      ? followingPersistedMessage
+      : undefined
+
+  if (newMessage.role === 'user' && persistedAssistantMessage) {
+    logger.set({
+      stage: 'replay-persisted-assistant',
+      replayedAssistantPublicId: persistedAssistantMessage.id,
+    })
+
+    return createUIMessageStreamResponse({
+      stream: createUIMessageStream({
+        onError(error) {
+          return JSON.stringify(normalizeChatError({
+            error,
+            event,
+          }))
+        },
+        execute({ writer }) {
+          const replayChunks = buildPersistedAssistantReplayChunks({
+            publicId: persistedAssistantMessage.id,
+            parts: persistedAssistantMessage.parts as UIMessage['parts'],
+            sendReasoning: persistedAssistantMessage.reasoning !== 'off',
+          })
+
+          for (const chunk of replayChunks) {
+            writer.write(chunk)
+          }
+        },
+      }),
+    })
+  }
 
   const allMessages = [...previousMessages, newMessage]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
@@ -224,6 +289,7 @@ export default defineEventHandler(async (event) => {
             reasoning: body.data.reasoning,
           },
           publicId: newMessage.id,
+          ignoreConflict: true,
         })
 
         await db.update(schema.chats)
@@ -614,22 +680,131 @@ export default defineEventHandler(async (event) => {
   })
 })
 
+// Returns the inserted { id, publicId } row, OR `undefined` when
+// `ignoreConflict` is set and the public_id already existed (ON CONFLICT DO
+// NOTHING inserts no row, so `.get()` yields undefined). Callers that pass
+// `ignoreConflict: true` must not assume a row came back.
 async function insertMessageWithPublicId(input: {
   db: ReturnType<typeof useDb>
   values: typeof schema.messages.$inferInsert
   publicId: string
+  ignoreConflict?: boolean
 }) {
-  return await input.db
+  const insert = input.db
     .insert(schema.messages)
     .values({
       ...input.values,
       publicId: input.publicId,
     })
+
+  // Belt-and-suspenders idempotency for issue #263. The in-memory duplicate
+  // scan reads a single chat snapshot, so two near-simultaneous retries of the
+  // same user message (before either commits, and before any assistant reply
+  // exists to replay) could both pass it. ON CONFLICT DO NOTHING keeps this a
+  // single atomic statement (preserving the #205/#207 fix — no insert-then-
+  // update) and guarantees a duplicate public_id can never again surface as a
+  // message-persist-failed 500. It does NOT serialize the racing requests: the
+  // losing one no-ops here and still streams its own assistant, so that rare
+  // window can leave a second assistant row (no error, no data loss) rather
+  // than a 500. Closing that fully would need a lock/transaction, which is not
+  // worth it for D1 at this probability. Scoped to the public_id target so an
+  // unrelated constraint still throws. Only the user-message insert opts in;
+  // the assistant insert keeps strict behavior so a genuine DB failure still
+  // surfaces loudly.
+  const statement = input.ignoreConflict
+    ? insert.onConflictDoNothing({ target: schema.messages.publicId })
+    : insert
+
+  return await statement
     .returning({
       id: schema.messages.id,
       publicId: schema.messages.publicId,
     })
     .get()
+}
+
+// Rebuild a UI message stream from an already-persisted assistant message so a
+// disconnect retry (issue #263) replays the stored reply instead of erroring or
+// re-calling the model. Emits the same chunk vocabulary that
+// result.toUIMessageStream produces, so the client transport reconstructs a
+// normal assistant message with no client changes. The persisted parts already
+// passed through normalizeAssistantParts, so the part vocabulary is bounded; an
+// unmapped part degrades to "reload to see it", never to data loss (the row is
+// intact in D1).
+function buildPersistedAssistantReplayChunks(input: {
+  publicId: string
+  parts: UIMessage['parts']
+  sendReasoning: boolean
+}): InferUIMessageChunk<UIMessage>[] {
+  const chunks: InferUIMessageChunk<UIMessage>[] = [{
+    type: 'start',
+    messageId: input.publicId,
+  }]
+
+  for (const [index, part] of input.parts.entries()) {
+    if (part.type === 'text') {
+      const id = `replay-text-${index}`
+
+      chunks.push(
+        { type: 'text-start', id },
+        { type: 'text-delta', id, delta: part.text },
+        { type: 'text-end', id },
+      )
+
+      continue
+    }
+
+    if (part.type === 'reasoning') {
+      if (!input.sendReasoning || !part.text) {
+        continue
+      }
+
+      const id = `replay-reasoning-${index}`
+
+      chunks.push(
+        { type: 'reasoning-start', id },
+        { type: 'reasoning-delta', id, delta: part.text },
+        { type: 'reasoning-end', id },
+      )
+
+      continue
+    }
+
+    if (part.type === 'source-url') {
+      chunks.push({
+        type: 'source-url',
+        sourceId: part.sourceId,
+        url: part.url,
+        title: part.title,
+      })
+
+      continue
+    }
+
+    if (part.type === 'source-document') {
+      chunks.push({
+        type: 'source-document',
+        sourceId: part.sourceId,
+        mediaType: part.mediaType,
+        title: part.title,
+        filename: part.filename,
+      })
+
+      continue
+    }
+
+    if (part.type === 'file') {
+      chunks.push({
+        type: 'file',
+        url: part.url,
+        mediaType: part.mediaType,
+      })
+    }
+  }
+
+  chunks.push({ type: 'finish' })
+
+  return chunks
 }
 
 async function persistAssistantMessageFromStream(input: {
