@@ -288,6 +288,20 @@ if (import.meta.client) {
   }, { immediate: true })
 }
 
+onMounted(() => {
+  // Restore a draft backed up by a previously failed send (e.g. after a
+  // /signin redirect or a PWA relaunch), unless the input already has text.
+  if (message.value?.trim()) {
+    return
+  }
+
+  const backup = useChatDraftBackup().peek()
+
+  if (backup) {
+    message.value = backup
+  }
+})
+
 function openProjectPicker() {
   projectPickerRef.value?.open(projectId.value)
 }
@@ -313,7 +327,14 @@ function onProjectPickerSubmit(payload: {
 }
 
 async function onSubmit() {
+  // ChatInput clears the textarea optimistically on submit, so snapshot the
+  // text first and back it up durably — a failed send (e.g. a 401 from a dead
+  // session) must never lose what the user typed.
+  const draft = message.value
+  const draftBackup = useChatDraftBackup()
+
   pending.value = true
+  draftBackup.save(draft)
 
   try {
     const response = await $fetch('/api/v1/chats/new', {
@@ -322,7 +343,7 @@ async function onSubmit() {
         parts: [
           {
             type: 'text',
-            text: message.value,
+            text: draft,
           } as TextUIPart,
           ...(files.value.length
             ? files.value.map((file): FileUIPart => ({
@@ -348,14 +369,21 @@ async function onSubmit() {
       })
     }
 
+    draftBackup.clear()
     navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
+    // Restore the optimistically-cleared input; the backup stays until a send
+    // actually succeeds so the draft also survives a redirect or relaunch.
+    message.value = draft
+
     const parsedException = parseError(exception)
 
     if (parsedException.status === 401) {
       const { fetchSession, session } = useAuth()
 
-      await fetchSession()
+      // Bypass the 5-minute cookie cache: a 401 means the server session is
+      // gone, and a cached get-session would mask that and skip the redirect.
+      await fetchSession({ disableCookieCache: true })
 
       if (!session.value) {
         await navigateTo('/signin')

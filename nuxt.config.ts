@@ -271,6 +271,11 @@ export default defineNuxtConfig({
             name: 'better_auth.session_token',
             type: 'cookie',
           },
+          {
+            id: 'chat-input-backup',
+            name: 'chat_input_backup',
+            type: 'localStorage',
+          },
         ],
       },
       {

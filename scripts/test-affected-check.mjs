@@ -115,6 +115,11 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/cookies/consent.spec.ts',
   ]
 
+  const sessionRecoveryTests = [
+    'tests/unit/composables/chat-draft.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+  ]
+
   const testMappings = [
     {
       pattern: /^app\/components\/Chat\/(Message|ContextMenu\.client)\.vue$/,
@@ -196,6 +201,19 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/pages\/chats\/(history|new)\.vue$/,
       tests: historyProjectsTests,
+    },
+    {
+      pattern:
+        /^(app\/composables\/(chat-draft|auth)\.ts|app\/pages\/chats\/new\.vue|app\/app\.vue|app\/plugins\/session-revalidate\.client\.ts)$/,
+      tests: sessionRecoveryTests,
+    },
+    {
+      pattern: /^server\/utils\/session\.ts$/,
+      tests: [
+        'tests/integration/api/chats-new.spec.ts',
+        'tests/integration/api/projects.spec.ts',
+        'tests/integration/api/chats-branch.spec.ts',
+      ],
     },
     {
       pattern: /^app\/pages\/chats\/projects\/.*\.vue$/,

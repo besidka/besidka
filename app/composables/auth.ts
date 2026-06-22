@@ -15,6 +15,12 @@ interface RuntimeAuthConfig {
   redirectGuestTo: RouteLocationRaw | string
 }
 
+// Client-only fetch sequencing: when a cache-bypassing recovery fetch overlaps
+// a normal (possibly cookie-cached) fetch already in flight, only the most
+// recently started fetch may write session state — so a stale truthy result
+// cannot resurrect a session the bypass call just found dead.
+let latestSessionFetchId = 0
+
 export function useAuth() {
   const headers = import.meta.server ? useRequestHeaders() : undefined
 
@@ -61,12 +67,20 @@ export function useAuth() {
     }
   }
 
-  async function fetchSession() {
-    if (sessionFetching.value) {
+  async function fetchSession(options?: { disableCookieCache?: boolean }) {
+    // A cache-bypassing refresh is the 401 recovery path: it must always run,
+    // never no-op behind an in-flight cached fetch, or a stale truthy session
+    // would survive and skip the redirect to /signin.
+    if (sessionFetching.value && !options?.disableCookieCache) {
       return
     }
 
     sessionFetching.value = true
+
+    const fetchId = import.meta.client ? ++latestSessionFetchId : 0
+    const query = options?.disableCookieCache
+      ? { disableCookieCache: true }
+      : undefined
 
     try {
       let data: Awaited<ReturnType<typeof client.getSession>>['data']
@@ -74,15 +88,22 @@ export function useAuth() {
       if (import.meta.server) {
         data = await $fetch('/api/auth/get-session', {
           headers,
+          query,
         })
       } else {
         const result = await client.getSession({
           fetchOptions: {
             headers,
           },
+          query,
         })
 
         data = result.data
+      }
+
+      // A newer fetch started after this one — let it be the source of truth.
+      if (import.meta.client && fetchId !== latestSessionFetchId) {
+        return data
       }
 
       session.value = data?.session || null
@@ -98,6 +119,10 @@ export function useAuth() {
 
       return data
     } catch {
+      if (import.meta.client && fetchId !== latestSessionFetchId) {
+        return
+      }
+
       session.value = null
       user.value = null
     } finally {
