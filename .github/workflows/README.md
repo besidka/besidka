@@ -241,9 +241,7 @@ back to a standard `wrangler deploy` for preview.
 
 Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows use the `preview` or `production` GitHub Environment.
 
-| Variable | Description |
-|----------|-------------|
-| `WRANGLER_VERSION` | Wrangler CLI version (default: `4.62.0`) |
+No repository variables are required. The Wrangler CLI version is pinned as a `devDependency` in `pnpm-lock.yaml` and installed via `pnpm install --frozen-lockfile`; deploy steps use that pinned binary directly, so no `wranglerVersion` input or `WRANGLER_VERSION` variable is needed.
 
 ## Fork PR Handling
 
