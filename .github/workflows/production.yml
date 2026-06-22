@@ -443,6 +443,9 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Apply migrations to preview database
         if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v4

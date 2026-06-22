@@ -76,6 +76,15 @@ jobs:
         with:
           run_install: false
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Record deploy start time
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
@@ -87,7 +96,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: versions upload --preview-alias pr-${{ steps.pr.outputs.number }} --message "https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}"
 
       - name: Calculate deploy time

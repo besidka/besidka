@@ -100,6 +100,17 @@ jobs:
         with:
           run_install: false
 
+      - name: Install Node.js
+        if: steps.fork-check.outputs.is-fork == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: steps.fork-check.outputs.is-fork == 'false'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Record deploy start time
         if: steps.fork-check.outputs.is-fork == 'false'
         id: deploy-start
@@ -112,7 +123,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
@@ -123,7 +133,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: -v
           postCommands: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --remote
 
@@ -135,7 +144,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           packageManager: pnpm
-          wranglerVersion: ${{ vars.WRANGLER_VERSION }}
           command: versions upload --preview-alias pr-${{ steps.pr.outputs.number }} --message "https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}"
 
       - name: Calculate deploy time
