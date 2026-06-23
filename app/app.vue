@@ -64,7 +64,9 @@ async function onException(exception: unknown) {
   if (parsedException.status === 401) {
     const { fetchSession, session } = useAuth()
 
-    await fetchSession()
+    // Bypass the cookie cache so a dead server session is detected here
+    // instead of being masked by a still-cached get-session.
+    await fetchSession({ disableCookieCache: true })
 
     if (!session.value) {
       await navigateTo('/signin')

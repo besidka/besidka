@@ -55,6 +55,7 @@ useSeoMeta({
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuth()
 const prefStorage = usePreferenceStorage()
 const message = customRef<string>((track, trigger) => ({
   get() {
@@ -288,6 +289,20 @@ if (import.meta.client) {
   }, { immediate: true })
 }
 
+onMounted(() => {
+  // Restore a draft backed up by a previously failed send (e.g. after a
+  // /signin redirect or a PWA relaunch), unless the input already has text.
+  if (message.value?.trim()) {
+    return
+  }
+
+  const backup = useChatDraftBackup().peek()
+
+  if (backup) {
+    message.value = backup
+  }
+})
+
 function openProjectPicker() {
   projectPickerRef.value?.open(projectId.value)
 }
@@ -313,6 +328,17 @@ function onProjectPickerSubmit(payload: {
 }
 
 async function onSubmit() {
+  if (pending.value) {
+    return
+  }
+
+  // ChatInput clears the textarea and attached files optimistically on submit,
+  // so snapshot both first — a failed send (e.g. a 401 from a dead session)
+  // must never lose what the user typed or attached.
+  const draft = message.value
+  const draftFiles = [...files.value]
+  const draftBackup = useChatDraftBackup()
+
   pending.value = true
 
   try {
@@ -322,10 +348,10 @@ async function onSubmit() {
         parts: [
           {
             type: 'text',
-            text: message.value,
+            text: draft,
           } as TextUIPart,
-          ...(files.value.length
-            ? files.value.map((file): FileUIPart => ({
+          ...(draftFiles.length
+            ? draftFiles.map((file): FileUIPart => ({
               type: 'file',
               mediaType: file.type,
               filename: file.name,
@@ -348,16 +374,23 @@ async function onSubmit() {
       })
     }
 
-    navigateTo(`/chats/${response.slug}`)
+    draftBackup.clear()
+    await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
+    // Back up the draft only on a real failure (a successful send never leaves
+    // one behind) and restore the optimistically-cleared input and files.
+    draftBackup.save(draft)
+    message.value = draft
+    files.value = draftFiles
+
     const parsedException = parseError(exception)
 
     if (parsedException.status === 401) {
-      const { fetchSession, session } = useAuth()
+      // Bypass the 5-minute cookie cache: a 401 means the server session is
+      // gone, and a cached get-session would mask that and skip the redirect.
+      await auth.fetchSession({ disableCookieCache: true })
 
-      await fetchSession()
-
-      if (!session.value) {
+      if (!auth.session.value) {
         await navigateTo('/signin')
 
         return
