@@ -55,6 +55,7 @@ useSeoMeta({
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuth()
 const prefStorage = usePreferenceStorage()
 const message = customRef<string>((track, trigger) => ({
   get() {
@@ -327,14 +328,18 @@ function onProjectPickerSubmit(payload: {
 }
 
 async function onSubmit() {
-  // ChatInput clears the textarea optimistically on submit, so snapshot the
-  // text first and back it up durably — a failed send (e.g. a 401 from a dead
-  // session) must never lose what the user typed.
+  if (pending.value) {
+    return
+  }
+
+  // ChatInput clears the textarea and attached files optimistically on submit,
+  // so snapshot both first — a failed send (e.g. a 401 from a dead session)
+  // must never lose what the user typed or attached.
   const draft = message.value
+  const draftFiles = [...files.value]
   const draftBackup = useChatDraftBackup()
 
   pending.value = true
-  draftBackup.save(draft)
 
   try {
     const response = await $fetch('/api/v1/chats/new', {
@@ -345,8 +350,8 @@ async function onSubmit() {
             type: 'text',
             text: draft,
           } as TextUIPart,
-          ...(files.value.length
-            ? files.value.map((file): FileUIPart => ({
+          ...(draftFiles.length
+            ? draftFiles.map((file): FileUIPart => ({
               type: 'file',
               mediaType: file.type,
               filename: file.name,
@@ -370,22 +375,22 @@ async function onSubmit() {
     }
 
     draftBackup.clear()
-    navigateTo(`/chats/${response.slug}`)
+    await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
-    // Restore the optimistically-cleared input; the backup stays until a send
-    // actually succeeds so the draft also survives a redirect or relaunch.
+    // Back up the draft only on a real failure (a successful send never leaves
+    // one behind) and restore the optimistically-cleared input and files.
+    draftBackup.save(draft)
     message.value = draft
+    files.value = draftFiles
 
     const parsedException = parseError(exception)
 
     if (parsedException.status === 401) {
-      const { fetchSession, session } = useAuth()
-
       // Bypass the 5-minute cookie cache: a 401 means the server session is
       // gone, and a cached get-session would mask that and skip the redirect.
-      await fetchSession({ disableCookieCache: true })
+      await auth.fetchSession({ disableCookieCache: true })
 
-      if (!session.value) {
+      if (!auth.session.value) {
         await navigateTo('/signin')
 
         return

@@ -5,7 +5,7 @@
 const MIN_REVALIDATE_INTERVAL = 30_000
 
 export default defineNuxtPlugin((nuxtApp) => {
-  const { fetchSession, session, loggedIn } = useAuth()
+  const { fetchSession, session, loggedIn, options } = useAuth()
   const route = useRoute()
 
   let lastRevalidatedAt = 0
@@ -23,6 +23,9 @@ export default defineNuxtPlugin((nuxtApp) => {
 
     lastRevalidatedAt = now
 
+    // A transient/transport failure leaves session.value untouched (see
+    // fetchSession), so only an authoritative empty session falls through to
+    // the redirect — a network blip on resume cannot force a logout.
     await fetchSession({ disableCookieCache: true })
 
     if (session.value) {
@@ -32,17 +35,23 @@ export default defineNuxtPlugin((nuxtApp) => {
     const auth = route.meta.auth
 
     if (auth && typeof auth === 'object' && auth.only === 'user') {
-      await nuxtApp.runWithContext(() => navigateTo('/signin'))
+      await nuxtApp.runWithContext(() => navigateTo(options.redirectGuestTo))
     }
+  }
+
+  // Swallow async rejections so the sync event listeners never surface an
+  // unhandled promise rejection (e.g. from a navigation abort).
+  function scheduleRevalidate() {
+    revalidate().catch(() => {})
   }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      revalidate()
+      scheduleRevalidate()
     }
   })
 
   window.addEventListener('focus', () => {
-    revalidate()
+    scheduleRevalidate()
   })
 })

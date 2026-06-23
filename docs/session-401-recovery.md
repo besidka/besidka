@@ -105,19 +105,29 @@ kept to avoid regressing the auth-middleware change in `393015b`) is unchanged.
   (`useChatDraftBackup`). The user's own unsent message is functional data, so
   it is written straight to `localStorage` (not gated by the `preferences`
   consent category) and registered under the `necessary` category in
-  `nuxt.config.ts`. `chats/new` `onSubmit` snapshots the draft, backs it up,
-  restores the input on failure, clears the backup on success, and restores it
-  on mount (after a `/signin` redirect or a PWA relaunch).
+  `nuxt.config.ts`. It stores `{ text, savedAt }` with a 24h TTL (`peek()`
+  prunes expired/corrupt entries). `chats/new` `onSubmit` snapshots the draft
+  **and the attached files**, restores both on failure (`ChatInput` clears
+  text and files optimistically), backs up the draft only on failure, clears
+  it on success, and restores it on mount (after a `/signin` redirect or a PWA
+  relaunch). The backup is also cleared on `signOut` so it cannot leak to the
+  next user on a shared device.
 - **Reliable 401 recovery** — `fetchSession()` accepts
   `{ disableCookieCache: true }` and bypasses both the cookie cache and its
-  re-entrancy guard (`app/composables/auth.ts`), so the recovery reflects real
-  KV/DB state instead of a cached session. A client-only fetch-generation guard
-  prevents an in-flight cached fetch from resurrecting a session the bypass
-  call just found dead. `chats/new` `onSubmit` and `app.vue` `onException` use
-  this before deciding whether to redirect to `/signin`.
+  in-flight guard (`app/composables/auth.ts`), so the recovery reflects real
+  KV/DB state instead of a cached session. A transport/network error (offline,
+  flaky cell, 5xx) is **not** treated as a dead session — the last-known
+  session is preserved so a blip cannot force a logout; only an authoritative
+  empty response clears it. A fetch-generation guard prevents a stale in-flight
+  cached fetch from resurrecting a session the bypass call just found dead.
+  `chats/new` `onSubmit` and `app.vue` `onException` use this before deciding
+  whether to redirect to `/signin`. (The cache-bypass `get-session` response
+  also expires the session cookies on a dead session, so the redirect does not
+  bounce back through the auth middleware.)
 - **Resume re-validation** — `app/plugins/session-revalidate.client.ts`
   re-validates (cache-bypass) on `visibilitychange`/`focus` and redirects a
-  dead session to `/signin` *before* the user types.
+  dead session to the configured guest route *before* the user types. A
+  transient failure leaves the session intact (no redirect).
 - **Diagnostic** — `useUserSession()` logs
   `sessionCheck.tokenCookiePresent` (a boolean, never the cookie value) when
   `getSession` returns `null`, so a 401 can be classified as a missing
@@ -133,9 +143,20 @@ kept to avoid regressing the auth-middleware change in `393015b`) is unchanged.
 
 ## Tests
 
+- `tests/unit/composables/auth.spec.ts` — `fetchSession` preserves the session
+  on a transport error / thrown error, clears it on an authoritative empty
+  response, passes `disableCookieCache` only on the bypass call, detects a dead
+  session via bypass even when the cached path reports alive, de-dupes
+  concurrent fetches, and blocks a stale in-flight fetch from overwriting a
+  newer bypass result.
 - `tests/unit/composables/chat-draft.spec.ts` — backup save/peek/clear,
-  blank-only rejection, verbatim + cross-instance persistence, graceful
-  degradation without `localStorage`.
-- `tests/unit/pages/chats-new.spec.ts` — on a 401 the draft is backed up, the
-  input is restored and it redirects to `/signin`; on success the backup is
-  cleared; a backed-up draft is restored on mount.
+  blank-only rejection, verbatim + cross-instance persistence, TTL expiry,
+  corrupt/legacy-value discard, and graceful degradation when `localStorage`
+  is missing or throws.
+- `tests/unit/pages/chats-new.spec.ts` — on a failed send the draft and
+  attached files are restored and the request still carries the files; on a
+  dead-session 401 it redirects to `/signin`; on success the backup is cleared;
+  a backed-up draft is restored on mount.
+- `tests/unit/plugins/session-revalidate.client.spec.ts` — redirects only on an
+  authoritative empty session, never on a transient failure, only on user-only
+  routes, skips when logged out, and throttles repeated revalidations.

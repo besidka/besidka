@@ -7,10 +7,11 @@ export function useUnauthorizedError() {
   })
 }
 
-// Matches the better-auth session-token cookie under any prefix:
-// `better-auth.session_token`, `__Secure-...`, or `__Host-...`.
+// Matches the better-auth session-token cookie under any prefix and either
+// separator: better-auth reads `${prefix}.${name}` OR `${prefix}-${name}`,
+// optionally with a `__Secure-`/`__Host-` cookie prefix.
 const SESSION_TOKEN_COOKIE
-  = /(?:^|;\s*)(?:__Secure-|__Host-)?better-auth\.session_token=/
+  = /(?:^|;\s*)(?:__Secure-|__Host-)?better-auth[.-]session_token=/
 
 export async function useUserSession() {
   const event = useEvent()

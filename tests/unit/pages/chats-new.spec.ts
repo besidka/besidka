@@ -59,8 +59,12 @@ function createSendStubs() {
         type: String,
         default: '',
       },
+      files: {
+        type: Array,
+        default: () => [],
+      },
     },
-    emits: ['submit', 'update:message'],
+    emits: ['submit', 'update:message', 'update:files'],
     template: '<div data-testid="chat-input-message">{{ message }}</div>',
   })
   const projectPickerStub = defineComponent({
@@ -349,9 +353,61 @@ describe('chats new page', () => {
     await nextTick()
     await flushPromises()
 
-    expect(storage.getItem('chat_input_backup')).toBe('unsent message')
+    const storedBackup = storage.getItem('chat_input_backup')
+
+    expect(storedBackup).not.toBeNull()
+    expect(JSON.parse(storedBackup as string).text).toBe('unsent message')
     expect(navigateToMock).toHaveBeenCalledWith('/signin')
     expect(chatInput.props('message')).toBe('unsent message')
+  })
+
+  it('restores attached files on a failed send', async () => {
+    const storage = createStorageShim()
+
+    const fetchMock = vi.fn(() => {
+      return Promise.reject(
+        Object.assign(new Error('Server error'), {
+          statusCode: 500,
+          status: 500,
+        }),
+      )
+    })
+
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createSendStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+    const attached = [
+      { name: 'report.pdf', type: 'application/pdf', storageKey: 'k1' },
+    ]
+
+    chatInput.vm.$emit('update:message', 'see attached')
+    chatInput.vm.$emit('update:files', attached)
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    // ChatInput clears BOTH the textarea and the files optimistically.
+    chatInput.vm.$emit('update:message', '')
+    chatInput.vm.$emit('update:files', [])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    // The outgoing request carries the snapshot, not the optimistically
+    // cleared live files.
+    const sentBody = fetchMock.mock.calls[0]?.[1]?.body as {
+      parts: { type: string }[]
+    }
+
+    expect(sentBody.parts.some(part => part.type === 'file')).toBe(true)
+    // The input and its attachments are restored after the failed send.
+    expect(chatInput.props('message')).toBe('see attached')
+    expect(chatInput.props('files')).toEqual(attached)
   })
 
   it('clears the draft backup after a successful send', async () => {
@@ -385,7 +441,13 @@ describe('chats new page', () => {
     const storage = createStorageShim()
 
     storage.setItem('chat_input', '')
-    storage.setItem('chat_input_backup', 'recovered after relaunch')
+    storage.setItem(
+      'chat_input_backup',
+      JSON.stringify({
+        text: 'recovered after relaunch',
+        savedAt: Date.now(),
+      }),
+    )
 
     vi.stubGlobal('localStorage', storage)
     vi.stubGlobal('$fetch', vi.fn())

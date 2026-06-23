@@ -116,8 +116,10 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const sessionRecoveryTests = [
+    'tests/unit/composables/auth.spec.ts',
     'tests/unit/composables/chat-draft.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/plugins/session-revalidate.client.spec.ts',
   ]
 
   const testMappings = [

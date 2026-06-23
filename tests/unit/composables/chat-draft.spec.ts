@@ -76,4 +76,51 @@ describe('useChatDraftBackup', () => {
     expect(backup.peek()).toBeNull()
     expect(() => backup.clear()).not.toThrow()
   })
+
+  it('discards an expired draft and prunes the entry', () => {
+    const expired = Date.now() - 48 * 60 * 60 * 1000
+
+    window.localStorage.setItem(
+      'chat_input_backup',
+      JSON.stringify({ text: 'stale draft', savedAt: expired }),
+    )
+
+    const backup = useChatDraftBackup()
+
+    expect(backup.peek()).toBeNull()
+    expect(window.localStorage.getItem('chat_input_backup')).toBeNull()
+  })
+
+  it('discards a corrupt or legacy plain-string value', () => {
+    window.localStorage.setItem('chat_input_backup', 'legacy-plain-string')
+
+    const backup = useChatDraftBackup()
+
+    expect(backup.peek()).toBeNull()
+    expect(window.localStorage.getItem('chat_input_backup')).toBeNull()
+  })
+
+  it('does not throw when localStorage access throws (private mode)', () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('SecurityError')
+      },
+    })
+
+    try {
+      const backup = useChatDraftBackup()
+
+      expect(() => backup.save('x')).not.toThrow()
+      expect(() => backup.peek()).not.toThrow()
+      expect(backup.peek()).toBeNull()
+      expect(() => backup.clear()).not.toThrow()
+    } finally {
+      if (original) {
+        Object.defineProperty(globalThis, 'localStorage', original)
+      }
+    }
+  })
 })
