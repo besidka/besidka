@@ -48,7 +48,7 @@ export function trackLandingEvent(
       return
     }
 
-    const path = h3Event.path ?? '/'
+    const path = data?.path ?? h3Event.path ?? '/'
     const target = truncate(data?.target, 100)
     const country = (
       (h3Event.context.cf as Record<string, unknown> | undefined)?.country

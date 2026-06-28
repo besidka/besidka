@@ -123,7 +123,7 @@ describe('events ingest API', () => {
   it('accepts cta_click and returns ok:true even when ANALYTICS binding is absent', async () => {
     const handler = await getEventsHandler()
     const event = makeEvent(
-      { event: 'cta_click', target: 'hero-button' },
+      { event: 'cta_click', path: '/', target: 'hero-button' },
       { 'sec-fetch-site': 'same-origin' },
     )
 
@@ -134,9 +134,21 @@ describe('events ingest API', () => {
     expect(result).toEqual({ ok: true })
     expect(mocks.trackLandingEvent).toHaveBeenCalledWith(
       'cta_click',
-      { target: 'hero-button', value: undefined },
+      { path: '/', target: 'hero-button', value: undefined },
       expect.anything(),
     )
+  })
+
+  it('rejects unknown client path values (400)', async () => {
+    const handler = await getEventsHandler()
+    const event = makeEvent(
+      { event: 'cta_click', path: '/admin' },
+      { 'sec-fetch-site': 'same-origin' },
+    )
+
+    await expect(handler(event as any)).rejects.toMatchObject({
+      statusCode: 400,
+    })
   })
 
   it('accepts all client-allowed event names', async () => {

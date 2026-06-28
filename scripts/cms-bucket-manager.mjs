@@ -371,6 +371,8 @@ function putObject(bucketName, asset, filePath, remote) {
   try {
     execSync(command, { cwd: ROOT, stdio: 'inherit' })
     console.log(`  ✓ Uploaded ${asset.key}`)
+
+    return true
   } catch (exception) {
     console.error(
       `  ✗ Upload failed for ${asset.key}:`,
@@ -378,6 +380,8 @@ function putObject(bucketName, asset, filePath, remote) {
     )
     console.log('\n  You can retry manually:')
     console.log(`    ${command}`)
+
+    return false
   }
 }
 
@@ -397,6 +401,8 @@ function getObject(bucketName, key, filePath, remote) {
   try {
     execSync(command, { cwd: ROOT, stdio: 'inherit' })
     console.log(`  ✓ Downloaded ${key}`)
+
+    return true
   } catch (exception) {
     console.error(
       `  ✗ Download failed for ${key}:`,
@@ -404,10 +410,14 @@ function getObject(bucketName, key, filePath, remote) {
     )
     console.log('\n  You can retry manually:')
     console.log(`    ${command}`)
+
+    return false
   }
 }
 
 async function runUpload(bucketName, remote) {
+  let hasFailures = false
+
   for (const asset of ASSETS) {
     const filePath = join(FILES_DIR, asset.key)
 
@@ -419,12 +429,19 @@ async function runUpload(bucketName, remote) {
       continue
     }
 
-    putObject(bucketName, asset, filePath, remote)
+    const wasUploaded = putObject(bucketName, asset, filePath, remote)
+
+    if (!wasUploaded) {
+      hasFailures = true
+    }
   }
+
+  return !hasFailures
 }
 
 async function runDownload(bucketName, remote) {
   await mkdir(FILES_DIR, { recursive: true })
+  let hasFailures = false
 
   for (const asset of ASSETS) {
     const filePath = join(FILES_DIR, asset.key)
@@ -435,8 +452,19 @@ async function runDownload(bucketName, remote) {
       continue
     }
 
-    getObject(bucketName, asset.key, filePath, remote)
+    const wasDownloaded = getObject(
+      bucketName,
+      asset.key,
+      filePath,
+      remote,
+    )
+
+    if (!wasDownloaded) {
+      hasFailures = true
+    }
   }
+
+  return !hasFailures
 }
 
 async function main() {
@@ -452,9 +480,23 @@ async function main() {
   console.log(`Bucket:      ${bucketName} (CMS_BUCKET)`)
 
   if (action === 'upload') {
-    await runUpload(bucketName, remote)
+    const succeeded = await runUpload(bucketName, remote)
+
+    if (!succeeded) {
+      console.error('\nOne or more uploads failed.')
+      process.exitCode = 1
+
+      return
+    }
   } else {
-    await runDownload(bucketName, remote)
+    const succeeded = await runDownload(bucketName, remote)
+
+    if (!succeeded) {
+      console.error('\nOne or more downloads failed.')
+      process.exitCode = 1
+
+      return
+    }
   }
 
   console.log(`\n✓ Done (${action} → ${bucketName}).`)

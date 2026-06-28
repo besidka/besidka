@@ -12,9 +12,11 @@ const CLIENT_ALLOWED_EVENTS = new Set<ClientLandingEventName>([
   'video_complete',
   'github_click',
 ])
+const CLIENT_ALLOWED_PATHS = ['/', '/privacy', '/terms'] as const
 
 const bodySchema = z.object({
   event: z.string().max(64),
+  path: z.enum(CLIENT_ALLOWED_PATHS).optional(),
   target: z.string().max(200).optional(),
   value: z.number().finite().min(0).max(1e9).optional(),
 })
@@ -42,7 +44,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { event: name, target, value } = body.data
+  const { event: name, path, target, value } = body.data
 
   if (!CLIENT_ALLOWED_EVENTS.has(name as ClientLandingEventName)) {
     throw createError({
@@ -56,7 +58,7 @@ export default defineEventHandler(async (event) => {
 
   trackLandingEvent(
     name as ClientLandingEventName,
-    { target, value },
+    { path, target, value },
     event,
   )
 

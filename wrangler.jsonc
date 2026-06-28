@@ -43,8 +43,8 @@
 		// wrangler d1 create commands to get the real database_id.
 		{
 			"binding": "CONTENT_DB",
-			"database_name": "besidka-content",
-			"database_id": "0d1eab21-938c-4c7b-8aa4-bbfabd9a4a17"
+			"database_name": "besidka-content-preview",
+			"database_id": "32796d2a-29cc-45f7-99c9-37c6f171f754"
 		}
 	],
 	"kv_namespaces": [
@@ -150,7 +150,7 @@
 			"analytics_engine_datasets": [
 				{
 					"binding": "ANALYTICS",
-					"dataset": "besidka_cms_events_preview"
+					"dataset": "besidka_cms_events"
 				}
 			],
 			"images": {

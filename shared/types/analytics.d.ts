@@ -14,6 +14,7 @@ export type ClientLandingEventName = Exclude<
 >
 
 export interface LandingEventData {
+  path?: string
   target?: string
   value?: number
 }

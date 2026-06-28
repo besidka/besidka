@@ -16,6 +16,7 @@ export function useLandingAnalytics() {
       method: 'POST',
       body: {
         event,
+        path: window.location.pathname,
         target: data?.target,
         value: data?.value,
       },
