@@ -187,7 +187,8 @@ video:
   thumbnails: true
 ---
 
-::home-bubble{role="user" sr-label="User requesting a product demo"}
+<!-- TODO: Add a real demo screenshots -->
+<!-- ::home-bubble{role="user" sr-label="User requesting a product demo"}
 Show me what it looks like.
 ::
 
@@ -195,7 +196,7 @@ Show me what it looks like.
 Here is a quick look at Besidka running in both light and dark themes.
 
 :home-carousel
-::
+:: -->
 
 ::home-bubble{role="user" sr-label="User question about adoption"}
 How many people are using this?
@@ -279,7 +280,8 @@ role: assistant
 :home-features{set="steps"}
 ::
 
-::home-bubble{role="user" sr-label="User asking for a live demo of the app"}
+<!-- TODO: record a real demo video -->
+<!-- ::home-bubble{role="user" sr-label="User asking for a live demo of the app"}
 Can I see it in action?
 ::
 
@@ -292,7 +294,7 @@ sr-label: Demo video showing Besidka in action
 Here is a short walkthrough of the key features.
 
 :home-video
-::
+:: -->
 
 ::home-bubble{role="user" sr-label="User asking about available features"}
 What can I actually do with it?
