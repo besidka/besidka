@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { createError } from 'evlog'
 
 export interface GithubStars {
@@ -62,7 +63,7 @@ export async function fetchGithubStars(
 }
 
 export const cachedGithubStars = defineCachedFunction(
-  async (repo: string = 'besidka/besidka') => {
+  async (_event: H3Event | undefined, repo: string = 'besidka/besidka') => {
     return fetchGithubStars(repo)
   },
   {
@@ -70,7 +71,7 @@ export const cachedGithubStars = defineCachedFunction(
     maxAge: 60 * 60,
     swr: true,
     staleMaxAge: 24 * 60 * 60,
-    getKey: (repo = 'besidka/besidka') => repo,
+    getKey: (_event: H3Event | undefined, repo = 'besidka/besidka') => repo,
     group: 'landing',
   },
 )

@@ -13,10 +13,13 @@
       aria-hidden="true"
     />
     <span
-      v-if="pending"
+      v-if="data"
+      class="tabular-nums font-medium"
+    >{{ formattedStars }}</span>
+    <span
+      v-else
       class="skeleton skeleton--default h-4 w-8 rounded"
     />
-    <span v-else class="tabular-nums font-medium">{{ formattedStars }}</span>
     <span v-if="showLabel">stars on GitHub</span>
     <span class="sr-only">(opens in new tab)</span>
   </a>
@@ -33,7 +36,7 @@ const props = withDefaults(defineProps<{
 
 const { track } = useLandingAnalytics()
 
-const { data, pending } = await useGithubStars()
+const { data } = await useGithubStars()
 
 const starsCount = computed<number>(() => {
   if (!data.value) {

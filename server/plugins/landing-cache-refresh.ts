@@ -63,8 +63,8 @@ export async function runLandingCacheRefreshJob(
   ])
 
   const [statsResult, githubStarsResult] = await Promise.allSettled([
-    cachedStats(),
-    cachedGithubStars('besidka/besidka'),
+    cachedStats(undefined),
+    cachedGithubStars(undefined, 'besidka/besidka'),
   ])
 
   logger.set({

@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const data = await cachedGithubStars('besidka/besidka')
+    const data = await cachedGithubStars(event, 'besidka/besidka')
 
     result = { ...data, source: 'cache' }
   } catch {

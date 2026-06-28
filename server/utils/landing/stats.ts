@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import { sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
@@ -35,7 +36,7 @@ export async function readStatsFromDb(): Promise<LandingStats> {
 }
 
 export const cachedStats = defineCachedFunction(
-  async () => {
+  async (_event: H3Event | undefined) => {
     return readStatsFromDb()
   },
   {
@@ -43,7 +44,7 @@ export const cachedStats = defineCachedFunction(
     maxAge: 24 * 60 * 60,
     swr: true,
     staleMaxAge: 24 * 60 * 60,
-    getKey: () => 'global',
+    getKey: (_event: H3Event | undefined) => 'global',
     group: 'landing',
   },
 )

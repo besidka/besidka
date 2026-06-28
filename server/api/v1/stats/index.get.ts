@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   let result: Awaited<ReturnType<typeof cachedStats>> & { source: string }
 
   try {
-    const data = await cachedStats()
+    const data = await cachedStats(event)
 
     result = { ...data, source: 'cache' }
   } catch {
