@@ -1,6 +1,6 @@
 <template>
   <ClientOnly>
-    <LazyPwaRefresher v-if="$pwa?.needRefresh" />
+    <LazyPwaRefresher v-if="$pwa?.needRefresh && !studioSession" />
   </ClientOnly>
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />
@@ -39,6 +39,17 @@
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
+
+// Nuxt Studio registers its own service worker at scope '/'
+// (host.js: `navigator.serviceWorker.register('/sw.js?<version>')`), which
+// competes with the @vite-pwa worker for the single scope-'/' registration.
+// Each re-registration parks a fresh worker in `waiting`, latching
+// `$pwa.needRefresh` to true, so the "app updated" prompt recurs on every
+// /_studio visit and never clears. The Studio editor is only active for
+// signed-in editors — its activation plugin populates the `studio-session`
+// state — so suppress the (false) prompt in that case. Normal post-deploy
+// update prompts for everyone else are unaffected.
+const studioSession = useState<object | null>('studio-session', () => null)
 
 const { siteName, description } = useAppConfig()
 

@@ -1,8 +1,21 @@
 import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers'
 
 const enableFonts = process.env.CI !== 'true'
+
+// Stable per-build identifier, shared by Nuxt's app manifest
+// (runtimeConfig.app.buildId) and the '/' SWR cache key. In CI this is the
+// commit SHA; locally it is a fresh UUID per build. Binding the cache key to
+// it guarantees every deploy misses the cached home-page render and re-renders
+// with the live buildId. Otherwise a stale cross-deploy render inlines a
+// buildId whose /_nuxt/builds/meta/<id>.json no longer exists, which 404s and
+// breaks Nuxt Studio's editor (its activation awaits getAppManifest() before
+// mounting the "Edit this page" UI).
+const buildId = process.env.NUXT_BUILD_ID
+  || process.env.GITHUB_SHA
+  || randomUUID()
 
 const modules = [
   '@nuxt/content',
@@ -28,6 +41,7 @@ if (enableFonts) {
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-01-28',
+  buildId,
   devtools: { enabled: true },
   features: {
     // devLogs: true,
@@ -90,10 +104,16 @@ export default defineNuxtConfig({
     routeRules: {
       // The landing page is runtime SSR on the cloudflare_module preset: each
       // request queries CONTENT_DB via Nuxt Content. SWR caches the rendered
-      // response in the Workers Cache API for 1 hour, then revalidates in the
-      // background — so CONTENT_DB is queried at most once per hour per edge
-      // datacenter rather than on every hit.
-      '/': { swr: 3600 },
+      // response in the KV-backed Nitro cache for 1 hour, then revalidates in
+      // the background — so CONTENT_DB is queried at most once per hour per
+      // edge datacenter rather than on every hit.
+      //
+      // `cache.name` is pinned to the per-build `buildId` so each deploy uses a
+      // fresh cache key: a previous build's cached HTML (which inlines that
+      // build's now-deleted app-manifest id) can never be served after a
+      // redeploy. This scopes the build-busting to '/' only — the stats and
+      // github-stars caches keep their own keys and still survive deploys.
+      '/': { cache: { swr: true, maxAge: 3600, name: buildId } },
     },
   },
   runtimeConfig: {
