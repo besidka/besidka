@@ -143,6 +143,7 @@ jobs:
       - name: Run TypeScript type checks
         run: |
           pnpm run dev:prepare
+          pnpm run cf-typegen
           pnpm run typecheck
 
       - name: Run affected unit tests
