@@ -1,0 +1,9 @@
+# Gitignored files copied into each Claude Code worktree (.gitignore syntax).
+# Only files that are BOTH listed here AND gitignored are copied; tracked files
+# are never duplicated. This is a Claude Code feature (not git) — it only
+# applies to worktrees Claude creates (`claude -w`, subagents, desktop sessions).
+.wrangler
+.dev.vars
+.dev.vars.preview
+.dev.vars.production
+worker-configuration.d.ts
