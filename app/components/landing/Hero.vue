@@ -109,9 +109,7 @@ withDefaults(defineProps<{
 
 const { track } = useLandingAnalytics()
 
-const { data: starsData, pending: starsPending } = await useLazyFetch(
-  '/api/v1/github/stars',
-)
+const { data: starsData, pending: starsPending } = await useGithubStars()
 
 const showStarsBadge = computed<boolean>(() => {
   if (starsPending.value || !starsData.value) {

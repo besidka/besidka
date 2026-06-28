@@ -72,16 +72,18 @@ describe('events ingest API', () => {
     })
   })
 
-  it('rejects requests where sec-fetch-site is missing (403)', async () => {
+  it('accepts requests where sec-fetch-site is missing', async () => {
     const handler = await getEventsHandler()
     const event = makeEvent(
       { event: 'cta_click' },
       {},
     )
 
-    await expect(handler(event as any)).rejects.toMatchObject({
-      statusCode: 403,
-    })
+    mocks.trackLandingEvent.mockResolvedValue(undefined)
+
+    const result = await handler(event as any)
+
+    expect(result).toEqual({ ok: true })
   })
 
   it('rejects requests where sec-fetch-site is cross-site (403)', async () => {

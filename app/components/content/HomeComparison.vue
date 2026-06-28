@@ -25,19 +25,7 @@
 
 <script setup lang="ts">
 import type { MaybeRefOrGetter } from 'vue'
-
-type ComparisonRow = {
-  label: string
-  values: string[]
-}
-
-type ComparisonData = {
-  caption?: string
-  columns: string[]
-  rows: ComparisonRow[]
-  note?: string
-  priceDate?: string
-}
+import type { ComparisonData } from '#shared/types/landing.d'
 
 type HomeDataShape = {
   comparison?: ComparisonData | null

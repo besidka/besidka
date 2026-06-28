@@ -18,10 +18,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 const sizeClass = computed(() => {
   const sizeMap: Record<'xs' | 'sm' | 'md' | 'lg', string> = {
-    xs: 'size-8', // 32px - btn-xs
-    sm: 'size-10', // 40px - btn-sm
-    md: 'size-12', // 48px - btn-md
-    lg: 'size-14', // 56px - btn-lg
+    xs: 'size-8',
+    sm: 'size-10',
+    md: 'size-12',
+    lg: 'size-14',
   }
 
   return `skeleton ${sizeMap[props.size]}`

@@ -84,10 +84,7 @@
 </template>
 
 <script setup lang="ts">
-type ComparisonRow = {
-  label: string
-  values: string[]
-}
+import type { ComparisonRow } from '#shared/types/landing.d'
 
 withDefaults(defineProps<{
   caption?: string

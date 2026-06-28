@@ -33,7 +33,7 @@ const props = withDefaults(defineProps<{
 
 const { track } = useLandingAnalytics()
 
-const { data, pending } = await useLazyFetch('/api/v1/github/stars')
+const { data, pending } = await useGithubStars()
 
 const starsCount = computed<number>(() => {
   if (!data.value) {
@@ -46,8 +46,6 @@ const starsCount = computed<number>(() => {
 })
 
 const formattedStars = computed<string>(() => {
-  return new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-  }).format(starsCount.value)
+  return formatCompactNumber(starsCount.value)
 })
 </script>

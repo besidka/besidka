@@ -12,31 +12,24 @@ export interface LandingStats {
 export async function readStatsFromDb(): Promise<LandingStats> {
   const db = useDb()
 
-  const [usersResult, chatsResult, messagesResult, filesResult]
-    = await Promise.all([
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.users)
-        .get(),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.chats)
-        .get(),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.messages)
-        .get(),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.files)
-        .get(),
-    ])
+  const counts = await db.get<{
+    users: number
+    chats: number
+    messages: number
+    files: number
+  }>(sql`
+    SELECT
+      (SELECT count(*) FROM ${schema.users}) AS users,
+      (SELECT count(*) FROM ${schema.chats}) AS chats,
+      (SELECT count(*) FROM ${schema.messages}) AS messages,
+      (SELECT count(*) FROM ${schema.files}) AS files
+  `)
 
   return {
-    users: usersResult?.count ?? 0,
-    chats: chatsResult?.count ?? 0,
-    messages: messagesResult?.count ?? 0,
-    files: filesResult?.count ?? 0,
+    users: counts?.users ?? 0,
+    chats: counts?.chats ?? 0,
+    messages: counts?.messages ?? 0,
+    files: counts?.files ?? 0,
     updatedAt: new Date().toISOString(),
   }
 }

@@ -92,9 +92,7 @@ const displayValue = computed<string>(() => {
   const value = rawValue.value
 
   if (props.format === 'compact') {
-    return new Intl.NumberFormat('en-US', {
-      notation: 'compact',
-    }).format(value)
+    return formatCompactNumber(value)
   }
 
   return new Intl.NumberFormat('en-US').format(value)

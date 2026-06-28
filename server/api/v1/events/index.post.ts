@@ -26,11 +26,11 @@ export default defineEventHandler(async (event) => {
 
   const secFetchSite = getHeader(event, 'sec-fetch-site')
 
-  if (secFetchSite !== 'same-origin' && secFetchSite !== 'same-site') {
+  if (secFetchSite === 'cross-site') {
     throw createError({
       message: 'Forbidden',
       status: 403,
-      why: `sec-fetch-site "${secFetchSite}" is not same-origin or same-site`,
+      why: `sec-fetch-site "${secFetchSite}" is cross-site`,
     })
   }
 
