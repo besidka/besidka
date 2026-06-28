@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="Besidka chat preview — light theme">
+  <defs>
+    <linearGradient id="bg-l" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fef5fa"/>
+      <stop offset="100%" stop-color="#fde4f1"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="6" flood-opacity="0.06"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg-l)"/>
+  <g transform="translate(40,40)">
+    <rect width="1200" height="640" rx="20" fill="#ffffff" filter="url(#shadow)"/>
+    <g transform="translate(24,24)" font-family="ui-sans-serif, system-ui, sans-serif">
+      <rect width="180" height="592" rx="14" fill="#faf2f6"/>
+      <g transform="translate(16,18)" fill="#7b526a">
+        <rect width="148" height="32" rx="8" fill="#e34d8a" opacity="0.9"/>
+        <text x="14" y="21" font-size="13" font-weight="600" fill="#ffffff">+ New chat</text>
+        <text x="0" y="62" font-size="11" font-weight="700" fill="#7b526a" letter-spacing="0.1em">RECENT</text>
+        <rect y="76" width="148" height="28" rx="6" fill="#ffffff"/>
+        <text x="8" y="94" font-size="12" fill="#4b283c">Refactor auth flow</text>
+        <rect y="112" width="148" height="28" rx="6" fill="#ffffff" opacity="0.5"/>
+        <text x="8" y="130" font-size="12" fill="#4b283c">Drizzle migration help</text>
+        <rect y="148" width="148" height="28" rx="6" fill="#ffffff" opacity="0.5"/>
+        <text x="8" y="166" font-size="12" fill="#4b283c">Vue 3 composables</text>
+        <rect y="184" width="148" height="28" rx="6" fill="#ffffff" opacity="0.5"/>
+        <text x="8" y="202" font-size="12" fill="#4b283c">Tailwind v4 setup</text>
+      </g>
+    </g>
+    <g transform="translate(228,24)" font-family="ui-sans-serif, system-ui, sans-serif">
+      <rect x="0" y="0" width="948" height="44" rx="10" fill="#faf2f6"/>
+      <text x="16" y="28" font-size="13" font-weight="600" fill="#4b283c">GPT-4o</text>
+      <circle cx="98" cy="22" r="3" fill="#4b283c" opacity="0.3"/>
+      <text x="112" y="27" font-size="12" fill="#7b526a">Reasoning: high</text>
+      <text x="920" y="28" font-size="12" text-anchor="end" fill="#7b526a">⏱ $0.12</text>
+
+      <g transform="translate(60,80)">
+        <rect width="540" height="60" rx="14" fill="#fde4f1"/>
+        <text x="20" y="26" font-size="13" font-weight="600" fill="#4b283c">You</text>
+        <text x="20" y="46" font-size="13" fill="#4b283c">Explain the difference between SSR and ISR in Nuxt 4.</text>
+      </g>
+
+      <g transform="translate(60,168)">
+        <rect width="840" height="240" rx="14" fill="#ffffff" stroke="#f3d7e6"/>
+        <text x="20" y="26" font-size="13" font-weight="600" fill="#4b283c">Besidka · GPT-4o</text>
+        <text x="20" y="50" font-size="12" fill="#4b283c">Nuxt 4 supports three rendering modes that intersect with how data freshness</text>
+        <text x="20" y="68" font-size="12" fill="#4b283c">is handled:</text>
+        <text x="20" y="96" font-size="12" font-weight="600" fill="#4b283c">• SSR (Server-Side Rendering)</text>
+        <text x="36" y="114" font-size="12" fill="#4b283c">renders on every request — always fresh, higher origin load.</text>
+        <text x="20" y="138" font-size="12" font-weight="600" fill="#4b283c">• ISR (Incremental Static Regeneration)</text>
+        <text x="36" y="156" font-size="12" fill="#4b283c">caches the rendered HTML and revalidates in the background.</text>
+        <rect x="20" y="174" width="800" height="50" rx="8" fill="#1f1623"/>
+        <text x="32" y="194" font-size="11" font-family="ui-monospace, monospace" fill="#a5e9b5">routeRules: { '/blog/**': { isr: 3600 } }</text>
+        <text x="32" y="212" font-size="11" font-family="ui-monospace, monospace" fill="#7b526a">// regenerates every hour</text>
+      </g>
+
+      <g transform="translate(60,432)">
+        <rect width="840" height="60" rx="14" fill="#ffffff" stroke="#f3d7e6"/>
+        <text x="20" y="28" font-size="12" fill="#7b526a">Ask anything — code, docs, ideas…</text>
+        <rect x="780" y="14" width="44" height="32" rx="8" fill="#e34d8a"/>
+        <path d="M796,28 L808,28 M800,22 L808,30 L800,36" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+    </g>
+  </g>
+</svg>

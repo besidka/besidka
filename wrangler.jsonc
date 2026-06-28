@@ -36,6 +36,15 @@
 			"database_name": "besidka-consent-preview",
 			"database_id": "d110f034-1e7a-4512-b4c0-bc1e881b6d02",
 			"migrations_dir": ".drizzle/migrations-consent"
+		},
+		// Nuxt Content v3 uses a dedicated D1 database, separate from the
+		// main app DB, to avoid Drizzle migration blast-radius on chat/user
+		// data. See README.md § "Content (Nuxt Content + Studio)" for the
+		// wrangler d1 create commands to get the real database_id.
+		{
+			"binding": "CONTENT_DB",
+			"database_name": "besidka-content-preview",
+			"database_id": "32796d2a-29cc-45f7-99c9-37c6f171f754"
 		}
 	],
 	"kv_namespaces": [
@@ -47,7 +56,17 @@
 	"r2_buckets": [
 		{
 			"bucket_name": "besidka-preview",
-			"binding": "R2_BUCKET"
+			"binding": "DATA_BUCKET"
+		},
+		{
+			"bucket_name": "besidka-cms-preview",
+			"binding": "CMS_BUCKET"
+		}
+	],
+	"analytics_engine_datasets": [
+		{
+			"binding": "ANALYTICS",
+			"dataset": "besidka_cms_events_preview"
 		}
 	],
 	"images": {
@@ -99,11 +118,18 @@
 					"migrations_dir": ".drizzle/migrations"
 				},
 				{
-				"binding": "CONSENT_DB",
-				"database_name": "besidka-consent",
-				"database_id": "d79f8088-c9ce-4d55-a07c-e3bd564354fb",
-				"migrations_dir": ".drizzle/migrations-consent"
-			}
+					"binding": "CONSENT_DB",
+					"database_name": "besidka-consent",
+					"database_id": "d79f8088-c9ce-4d55-a07c-e3bd564354fb",
+					"migrations_dir": ".drizzle/migrations-consent"
+				},
+				// Nuxt Content v3 dedicated D1 (production). See README.md
+				// § "Content (Nuxt Content + Studio)" for setup.
+				{
+					"binding": "CONTENT_DB",
+					"database_name": "besidka-content",
+					"database_id": "0d1eab21-938c-4c7b-8aa4-bbfabd9a4a17"
+				}
 			],
 			"kv_namespaces": [
 				{
@@ -114,7 +140,17 @@
 			"r2_buckets": [
 				{
 					"bucket_name": "besidka",
-					"binding": "R2_BUCKET"
+					"binding": "DATA_BUCKET"
+				},
+				{
+					"bucket_name": "besidka-cms",
+					"binding": "CMS_BUCKET"
+				}
+			],
+			"analytics_engine_datasets": [
+				{
+					"binding": "ANALYTICS",
+					"dataset": "besidka_cms_events"
 				}
 			],
 			"images": {

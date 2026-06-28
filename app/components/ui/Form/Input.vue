@@ -1,5 +1,5 @@
 <template>
-  <UiFormLabel>
+  <UiFormLabel class="[--radius-field:0.5rem]">
     <UiFormFieldLabel :label="label" />
     <label
       class="relative input w-full rounded-field"

@@ -122,7 +122,52 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/plugins/session-revalidate.client.spec.ts',
   ]
 
+  const landingTests = [
+    'tests/unit/utils/landing-video-range.spec.ts',
+    'tests/unit/utils/video.spec.ts',
+    'tests/unit/components/landing/StatCard.spec.ts',
+    'tests/unit/components/landing/VideoPlayer.client.spec.ts',
+    'tests/unit/components/landing/CtaButtons.spec.ts',
+    'tests/integration/api/events-ingest.spec.ts',
+  ]
+
   const testMappings = [
+    {
+      pattern: /^app\/components\/landing\/.*\.vue$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^app\/components\/content\/Home.*\.vue$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/utils\/landing\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/events\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/routes\/videos\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^shared\/utils\/video\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^shared\/types\/video\.d\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^app\/composables\/landing-video-thumbnails\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^app\/assets\/css\/plyr-theme\.css$/,
+      tests: landingTests,
+    },
     {
       pattern: /^app\/components\/Chat\/(Message|ContextMenu\.client)\.vue$/,
       tests: contextMenuTests,

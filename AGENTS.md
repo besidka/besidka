@@ -142,6 +142,10 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
+- `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
+  components, Studio local-vs-preview-vs-prod flow, deploy runbook
+- `docs/landing-production-todo.md` - Owner checklist of remaining manual steps
+  to make the landing page production-ready (D1/R2/secrets per environment)
 
 ### Tech Stack
 
@@ -151,6 +155,34 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - **Auth**: Better Auth with email/password, Google, GitHub OAuth
 - **AI**: Vercel AI SDK with resumable streams
 - **UI**: Tailwind CSS v4 + DaisyUI v5 (see [DaisyUI Reference](#daisyui-reference))
+- **Landing CMS**: Nuxt Content v3 (isolated `CONTENT_DB` D1) + Nuxt Studio
+- **SEO**: `@nuxtjs/robots` + `@nuxtjs/sitemap` (auto-generated `/robots.txt`
+  and `/sitemap.xml`; see [SEO and canonical host](#seo-and-canonical-host))
+
+### SEO and canonical host
+
+- **Canonical host is `www.besidka.com`.** A Cloudflare redirect rule sends the
+  apex (`besidka.com`) to `www.besidka.com`, so all crawler-facing URLs must use
+  the `www` subdomain to match the post-redirect host. Pointing them at the apex
+  would advertise URLs that immediately 301, splitting SEO signals.
+- `robots.txt` and `sitemap.xml` are **auto-generated** by `@nuxtjs/robots` and
+  `@nuxtjs/sitemap` — there is NO static `public/robots.txt` (it was removed; a
+  static file would conflict with the module-owned route). Edit the `robots`
+  (disallow) and `sitemap` (exclude) keys in `nuxt.config.ts` instead.
+  - `@nuxtjs/robots` also merges a `public/_robots.txt` if present — do NOT
+    create one; it silently overrides the config (this resurrected a stale `www`
+    sitemap line and a dead `/projects/` rule during setup).
+- The canonical URL comes from `site.url` in `nuxt.config.ts`, which defaults to
+  `https://www.besidka.com` and is overridden at runtime by
+  `NUXT_PUBLIC_BASE_URL`. **Set `NUXT_PUBLIC_BASE_URL=https://www.besidka.com`
+  in the production Worker env** so sitemap/robots/canonical all resolve to www.
+- Robots indexing is blocked in dev (the module's default); verify production
+  rules locally with `curl 'http://localhost:3000/robots.txt?mockProductionEnv'`.
+- Studio OAuth callback URL must also use the `www` host
+  (`https://www.besidka.com/_studio`).
+- Only `/`, `/privacy`, `/terms` are public/indexable; authenticated app routes
+  (`/chats/**`, `/profile/**`), auth routes, `/api/**`, `/_studio`, and
+  `/__nuxt_content/**` are disallowed in robots and excluded from the sitemap.
 
 ### Key Patterns
 
@@ -196,7 +228,7 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 Configured in `wrangler.jsonc`:
 - `DB` - D1 database binding
 - `KV` - KV namespace binding
-- `R2_BUCKET` - R2 storage bucket
+- `DATA_BUCKET` - R2 storage bucket
 - `IMAGES` - Cloudflare Images binding
 
 **Binding access patterns**:
@@ -206,7 +238,7 @@ import { env } from 'cloudflare:workers'
 ```
 
 - For D1 and KV: use `const { KV } = env`
-- For R2: use `const { R2_BUCKET } = env` 
+- For R2: use `const { DATA_BUCKET } = env` 
 
 This is intentional and correct, do NOT change to `event.context.cloudflare.env`
 

@@ -45,8 +45,15 @@ database.sqlite
 # Vite
 stats.html
 
-# Agent symlinks
+# Agents
 .claude/plans
+.pi
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+
+# Claude Code session memory (must live in ~/.claude, never in repo)
+/memory/
+
+# CMS bucket assets (large binary files — upload to R2 instead)
+.files/

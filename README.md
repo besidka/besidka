@@ -21,17 +21,22 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 ## Tech stack
 
 - [Nuxt (Vue + Nitro + Cloudflare workers)](https://nuxt.com/)
+- [Nuxt Content](https://content.nuxt.com/) (landing page CMS, isolated D1)
+- [Nuxt Studio](https://nuxt.studio/) (visual content editor)
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Better Auth](https://www.better-auth.com/)
 - [Resend](https://resend.com/)
 - [Daisy UI](https://daisyui.com/)
 - [Vercel AI SDK](https://ai-sdk.dev/docs)
+- [Evlog](https://evlog.dev/) (observability and logging)
+- [Mediabunny](https://mediabunny.dev/) (high-performance streaming video from a Cloudflare R2 bucket)
+- [Plyr](https://plyr.io/) (video player)
 
 ## Features
 
 - **PINK** — Dark and light themes, both unapologetically pink
 - **BYOK — Bring Your Own API Key** — Use your OpenAI or Google AI Studio keys and only pay for what you use. No subscriptions, no markup
-- **Multiple AI Models** — Switch between GPT-4o, Gemini and other LLMs in one place
+- **Multiple AI Models** — Switch between the latest GPT and Gemini models in one place
 - **Web Search** — Ground AI answers with real-time web context
 - **Reasoning Mode** — Step-by-step thinking for complex questions
 - **File Attachments & File Manager** — Send images and PDFs, reuse files across chats
@@ -127,6 +132,52 @@ pnpm run preview
 2. Sign up [http://localhost:3000/signup](http://localhost:3000/signup). Please use the Email + Password flow because you don't have prepared API keys for Google and GitHub OAuth yet. In development mode you don't need to wait for email confirmation. You have to be automatically redirected to the home page as a customer already.
 3. Put your own API keys here: [http://localhost:3000/profile/keys](http://localhost:3000/profile/keys)
 4. You are welcome to start a new chat: [http://localhost:3000/chats/new](http://localhost:3000/chats/new)
+
+## Content (Nuxt Content + Studio)
+
+The landing page is powered by [Nuxt Content v3](https://content.nuxt.com) with a dedicated Cloudflare D1 database (`CONTENT_DB`) that is fully isolated from the main application database (`DB`). [Nuxt Studio](https://nuxt.studio) provides an optional in-app visual editor that commits changes directly to the GitHub repository.
+
+### Creating the D1 databases
+
+Run these commands once after cloning. They print a `database_id` UUID — copy it into the matching `"TO_BE_CREATED"` placeholder in `wrangler.jsonc`.
+
+```bash
+# Preview environment (default env in wrangler.jsonc)
+pnpm exec wrangler d1 create besidka-content
+
+# Production environment
+pnpm exec wrangler d1 create besidka-content --env production
+```
+
+Replace both `"TO_BE_CREATED"` values in `wrangler.jsonc` under the `CONTENT_DB` binding with the returned UUIDs.
+
+Nuxt Content manages its own schema inside `CONTENT_DB` at runtime — no Drizzle migrations are needed for this database.
+
+### Studio OAuth setup
+
+Studio is optional. The landing page renders and all content is editable via Git without it. Studio adds a `/_studio` route to the deployed site so editors can make changes through a browser UI.
+
+1. Go to GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
+2. Set **Homepage URL** to `https://www.besidka.com` (the canonical `www` host — a Cloudflare redirect sends the apex `besidka.com` to `www.besidka.com`).
+3. Set **Authorization callback URL** to `https://www.besidka.com/_studio` (production) or `http://localhost:3000/_studio` (development).
+4. Copy the Client ID and generate a Client Secret.
+5. Add them to `.dev.vars` for local development:
+   ```
+   STUDIO_GITHUB_CLIENT_ID=<your_client_id>
+   STUDIO_GITHUB_CLIENT_SECRET=<your_client_secret>
+   ```
+6. Add them as Wrangler secrets for the deployed Worker:
+   ```bash
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET
+   # For production:
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID --env production
+   pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET --env production
+   ```
+
+### Landing page without Studio
+
+The landing page works without Studio configured. Content lives in `content/landing/` as Markdown files and is committed to the repository like any other source file. Studio is purely an authoring convenience — it does not affect how the landing page is built or served.
 
 ## Security
 

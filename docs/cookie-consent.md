@@ -39,6 +39,13 @@ need reactivity to re-run when consent changes.
 
 ## Subscribing to consent changes
 
+> **Reference pattern.** The landing analytics is **not** consent-gated today
+> (it is cookieless and anonymous — see
+> [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
+> The `analytics`-gated example below is preserved as the recommended pattern
+> for **if/when you introduce a consent-requiring analytics tool** (e.g. GA4).
+> Substitute your own category id where it reads `analytics`.
+
 Use `onConsentChange` for side effects that must run when the user commits or
 revises their choice. Pass `immediate: true` to also fire right away when
 consent is already decided — this is the correct pattern for late-init
@@ -116,9 +123,17 @@ interface CookieConsentChangedPayload {
 
 ## Server-side gating
 
-For analytics or event ingestion endpoints, use `getCookieConsent(event)` —
-auto-imported in Nitro — to guard the route as defense-in-depth. This parses
-the `cookies_consent` cookie server-side and is synchronous (no DB call):
+> **Reference pattern.** The events ingest endpoint (`/api/v1/events`) is
+> **not** consent-gated today — it records cookieless, anonymous data that
+> does not require consent (see
+> [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
+> The check below is the recommended defense-in-depth pattern for **if/when you
+> introduce a consent-requiring analytics tool**.
+
+For a consent-requiring analytics or event ingestion endpoint, use
+`getCookieConsent(event)` — auto-imported in Nitro — to guard the route as
+defense-in-depth. This parses the `cookies_consent` cookie server-side and is
+synchronous (no DB call):
 
 ```ts
 // server/api/v1/events/index.post.ts
@@ -150,6 +165,93 @@ cleanup routine — server-side logic must handle revocation of those entries.
 
 ---
 
+## Analytics consent — when it is (and isn't) required
+
+Besidka's landing analytics is **cookieless and anonymous**, so it is **not
+gated behind consent** and **not shown as a banner category**. It uses two
+mechanisms:
+
+- **Cloudflare Analytics Engine** — server-side `writeDataPoint` via
+  `/api/v1/events`, recording event name, path, target, coarse country, and
+  device class. No IP is stored, no user id, no cookie.
+- **Cloudflare Web Analytics** — a cookieless edge beacon.
+
+Neither stores or reads anything on the user's device, and neither processes
+personal data. The analytics simply runs.
+
+### Why cookieless + anonymous analytics needs no consent
+
+- **ePrivacy Directive Art. 5(3)** — the "cookie law" that mandates the consent
+  banner — is triggered **only** by *storing or reading information on the
+  user's device* (cookies, localStorage, fingerprinting). Cookieless analytics
+  never touches the device, so Art. 5(3) is not triggered.
+- **GDPR** governs *processing of personal data*. Truly anonymous, aggregate
+  data (no IP retained, no identifier, cannot single out a person) falls
+  outside GDPR's scope (Recital 26). No personal data → no consent needed.
+- This is exactly why privacy-first analytics (Cloudflare Web Analytics,
+  Plausible, Fathom) advertise "no cookie banner required."
+
+### Decision rule
+
+Analytics consent is required only when the analytics tool either:
+
+1. **Stores or reads data on the device** — cookies, localStorage,
+   fingerprinting (→ ePrivacy Art. 5(3)), **or**
+2. **Processes personal data** — IP retained, persistent id, cross-site
+   tracking (→ GDPR).
+
+If a tool does neither, it runs without consent.
+
+| Tool | Device access | Personal data | Consent? |
+|------|---------------|---------------|----------|
+| Cloudflare Web Analytics | None (cookieless) | None (anonymous) | **No** |
+| Cloudflare Analytics Engine (our `/api/v1/events`) | None (cookieless) | None (aggregate, no IP/id) | **No** |
+| Plausible / Fathom (self-hosted, cookieless) | None | None | **No** |
+| Google Analytics 4 (GA4) | Sets `_ga` / `_gid` cookies | Yes (personal data) | **Required** |
+| Meta Pixel / ad-tech | Cookies + cross-site tracking | Yes | **Required** + "Do Not Sell/Share" |
+
+When a tool lands in the **Required** rows, add the `analytics` category back
+and gate it (see [Re-enabling consent-gated analytics](#re-enabling-consent-gated-analytics)).
+
+### Remaining obligation either way
+
+Cookieless/anonymous analytics still requires **transparency** under
+**GDPR Art. 13**: disclose it in the privacy policy. That is disclosure, not
+consent.
+
+### Important nuance — Cloudflare Web Analytics is not app-controllable
+
+Cloudflare Web Analytics is **auto-injected at the edge by Cloudflare** and is
+**not controllable by app-level consent code**. If a future tool must be
+consent-gated, it has to be loaded by app code (manually), **not** via a
+platform auto-injector — an auto-injected beacon cannot be held back behind a
+consent decision.
+
+### Re-enabling consent-gated analytics
+
+If you introduce a consent-requiring analytics tool (e.g. GA4), re-enable
+consent gating in three steps:
+
+1. **Add the category.** Add `{ id: 'analytics' }` to
+   `cookieConsent.categories` in `nuxt.config.ts` so it appears in the banner.
+2. **Gate both ends.** Gate the client send (the queue-and-flush
+   `useLandingAnalytics().track()` pattern in
+   [Subscribing to consent changes](#subscribing-to-consent-changes)) **and**
+   add the server `getCookieConsent(event).isAllowed('analytics')` check (see
+   [Server-side gating](#server-side-gating)) as defense-in-depth.
+3. **Declare the cookies.** Declare any cookies the tool sets as `entries`
+   under the `analytics` category so the module's cleanup routine purges them
+   on withdrawal (see [Adding new cookies to the manifest](#adding-new-cookies-to-the-manifest)).
+
+Two hardenings are worth applying at the same time:
+
+- **Validate the consent cookie** in the server util — confirm the parsed
+  `granted[]` contains only strings before trusting it.
+- **Restrict the ingest endpoint** — limit `/api/v1/events` to requests whose
+  `sec-fetch-site` is `same-origin`.
+
+---
+
 ## SSR and edge-cache constraints
 
 **Never branch cacheable SSR HTML on consent state.** Consent is a
@@ -163,9 +265,9 @@ suffixes and are mode: 'client'). The styled banner is also `.client.vue`.
 `LazyCookiesBanner` is wrapped in `<ClientOnly>` in `app.vue`, so it never
 renders on the server.
 
-For personalisation that depends on consent (e.g. showing/hiding an analytics
-widget), gate it in client-side Vue (`v-if="isAllowed('analytics')"`) not in
-server-rendered layouts.
+For personalisation that depends on consent (e.g. showing/hiding a
+preference-driven widget), gate it in client-side Vue
+(`v-if="isAllowed('preferences')"`) not in server-rendered layouts.
 
 ---
 
@@ -227,8 +329,14 @@ messages: {
 
 ## Gating `useLandingAnalytics().track()`
 
-When the `feat/244` landing branch ships first-party analytics, gate the `track`
-call as shown in the subscribing section above. The recommended pattern:
+> **Reference pattern.** The landing analytics shipped cookieless and
+> anonymous, so it is **not** gated today (see
+> [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
+> This is the recommended pattern for **if/when you introduce a
+> consent-requiring analytics tool** and gate the `track` call.
+
+If you introduce a consent-requiring analytics tool, gate the `track` call as
+shown in the subscribing section above. The recommended pattern:
 
 ```ts
 // Usage in a component or composable
@@ -347,8 +455,13 @@ Plyr's default `storageKey` is `'plyr'`, which is already declared in the
 |-------------|----------|---------|
 | `necessary` | Yes | Auth session and consent cookie — always active |
 | `preferences` | No | UI state persisted in cookies/localStorage |
-| `analytics` | No | First-party, cookieless analytics (gates event sending) |
 | `marketing` | No | Not currently in use — shown as "not used" in the banner |
+
+There is **no `analytics` category** today: the landing analytics is cookieless
+and anonymous and runs without consent (see
+[Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
+Add an `analytics` category only when a consent-requiring analytics tool (e.g.
+GA4) is introduced.
 
 Check `nuxt.config.ts` → `cookieConsent.categories` for the full list of
 declared entries per category.
@@ -643,9 +756,9 @@ by running the DELETE on a monthly schedule.
 | CF R2 (JSONL archive) | Lifecycle/locks | Immutable — conflicts with erasure | Cold WORM archive of exports only |
 
 Axiom remains the analytics layer (acceptance rates, withdraw spikes,
-consistency monitoring). Analytics Engine stays as first-party page
-analytics on feat/244 and must not hold consent receipts (sampling +
-92-day limit).
+consistency monitoring). Analytics Engine stays as the cookieless,
+first-party page analytics layer and must not hold consent receipts
+(sampling + 92-day limit).
 
 ## Axiom setup — datasets and dashboards
 

@@ -180,10 +180,66 @@ function ensureHistoryGlobal() {
  */
 ensureHistoryGlobal()
 
+/**
+ * Provide an in-memory localStorage global for Node.js 26+ compatibility.
+ *
+ * Node 26 introduces an experimental built-in `localStorage` that is
+ * `undefined` unless `--localstorage-file` is provided. The @vite-pwa/nuxt
+ * client plugin accesses `localStorage.getItem()` during Nuxt app
+ * initialization (which runs in a `beforeAll` hook registered by
+ * @nuxt/test-utils before any tests execute), crashing the entire worker.
+ *
+ * This stub is placed at the top level of the setup file so it is installed
+ * synchronously before @nuxt/test-utils fires `setupNuxt()` in `beforeAll`.
+ * happy-dom does expose a localStorage on `window`, but `window.localStorage`
+ * is also `undefined` at this point because Node 26's experimental localStorage
+ * shadows it. We create our own Storage-compatible instance instead.
+ */
+function createInMemoryStorage(): Storage {
+  const store = new Map<string, string>()
+
+  return {
+    get length() {
+      return store.size
+    },
+    key(index: number): string | null {
+      return [...store.keys()][index] ?? null
+    },
+    getItem(key: string): string | null {
+      return store.get(key) ?? null
+    },
+    setItem(key: string, value: string): void {
+      store.set(key, String(value))
+    },
+    removeItem(key: string): void {
+      store.delete(key)
+    },
+    clear(): void {
+      store.clear()
+    },
+  }
+}
+
+const inMemoryLocalStorage = createInMemoryStorage()
+
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  enumerable: true,
+  writable: true,
+  value: inMemoryLocalStorage,
+})
+
 ;(vi as typeof vi & { unstubAllGlobals: typeof vi.unstubAllGlobals })
   .unstubAllGlobals = () => {
     unstubAllGlobals()
     ensureHistoryGlobal()
+
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: inMemoryLocalStorage,
+    })
   }
 
 beforeEach(() => {

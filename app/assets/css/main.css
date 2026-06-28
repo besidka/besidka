@@ -46,7 +46,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-error: var(--color-red-600);
   --color-error-content: var(--color-white);
   --radius-selector: 1rem;
-  --radius-field: .5rem;
+  --radius-field: 2rem;
   --radius-box: .5rem;
   --size-selector: .3rem;
   --size-field: .3rem;
@@ -90,7 +90,7 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
   --color-error: var(--color-red-200);
   --color-error-content: var(--color-red-950);
   --radius-selector: 1rem;
-  --radius-field: .5rem;
+  --radius-field: 2rem;
   --radius-box: .5rem;
   --size-selector: .3rem;
   --size-field: .3rem;
@@ -409,11 +409,28 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 	}
 }
 
+@utility cta-icon {
+  @apply size-4 shrink-0 transition-transform lg:group-hover/cta:motion-safe:translate-x-0.5 group-focus-visible/cta:motion-safe:translate-x-0.5;
+}
+
+@utility cta-icon-left {
+  @apply size-4 shrink-0 transition-transform lg:group-hover/cta:motion-safe:-translate-x-0.5 group-focus-visible/cta:motion-safe:-translate-x-0.5;
+}
+
+@utility landing-anchor {
+  /* In-page anchor targets land just below the sticky landing header instead
+     of behind it. --landing-header-offset is measured from the real header at
+     runtime (see app/layouts/landing.vue); the 4rem fallback matches the
+     header's height (pt-3 + nav h-13) for SSR / before hydration. */
+  scroll-margin-top: calc(var(--landing-header-offset, 4rem) + 0.75rem);
+}
+
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  --landing-header-offset: 4rem;
 }
 
 @layer components {
@@ -433,6 +450,29 @@ html {
 
 body {
   @apply background-gradient;
+}
+
+/**
+ * Nuxt Studio editing sidebar.
+ *
+ * studio-sidebar.client.ts intercepts the `left` Studio writes onto our
+ * position:fixed <html> via adjustFixedElements() and mirrors it into
+ * `--studio-sidebar-width`. A non-zero <html> left is the reference frame
+ * floating-ui uses inside Studio's shadow-DOM popovers, causing section
+ * property popovers to compute an off-screen-left position and get clipped.
+ * Clearing it fixes popover placement. We offset the app beside the panel
+ * via body `margin-left` + `width` and inset the `::before` gradient, all
+ * driven by the variable so layout tracks sidebar resizing automatically.
+ * The `html` prefix raises specificity to (0,2,2) to beat Studio's own
+ * late-injected `body[data-studio-active][data-expand-sidebar]` rule (0,2,1).
+ */
+html body[data-studio-active][data-expand-sidebar] {
+  margin-left: var(--studio-sidebar-width, 440px);
+  width: calc(100% - var(--studio-sidebar-width, 440px));
+}
+
+html body[data-studio-active][data-expand-sidebar]::before {
+  left: var(--studio-sidebar-width, 440px);
 }
 
 .icon {
@@ -634,3 +674,9 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  :where(a.link) {
+    @apply rounded-field;
+  }
+}

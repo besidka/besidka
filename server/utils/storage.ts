@@ -2,10 +2,10 @@
 import { env } from 'cloudflare:workers'
 
 export function useFileStorage() {
-  const storage = env.R2_BUCKET
+  const storage = env.DATA_BUCKET
 
   if (!storage) {
-    throw createError(`R2 not found in ENV: R2_BUCKET`)
+    throw createError(`R2 not found in ENV: DATA_BUCKET`)
   }
 
   return storage

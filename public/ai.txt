@@ -1,0 +1,7 @@
+# Besidka AI crawler policy
+# https://github.com/besidka/besidka
+
+User-agent: *
+Allow-Inference: true
+Allow-RAG: true
+Disallow-Training: true

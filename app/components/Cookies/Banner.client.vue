@@ -4,6 +4,7 @@ const isDetailsOpen = shallowRef<boolean>(false)
 const ui = useCookieConsentUi()
 const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
 const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
+const isHomePage = computed<boolean>(() => route.path === '/')
 </script>
 
 <template>
@@ -26,11 +27,13 @@ const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
         cc-trigger
         btn btn-circle btn-ghost bubble rounded-full!
         fixed
-        max-sm:bottom-[calc(var(--spacing)*24+var(--sab))]
         sm:bottom-[calc(var(--spacing)*6+var(--sab))]
         left-2 sm:left-4 z-40
         max-sm:btn-sm hitslop
       "
+      :class="isHomePage
+        ? 'max-sm:bottom-[calc(var(--spacing)*6+var(--sab))]'
+        : 'max-sm:bottom-[calc(var(--spacing)*24+var(--sab))]'"
     >
       <span class="relative flex size-5 items-center justify-center">
         <Transition name="cc-icon">
@@ -59,13 +62,15 @@ const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
       transition="cc-popup"
       class="
         fixed
-        max-sm:bottom-[calc(var(--spacing)*38+var(--sab))]
         sm:bottom-[calc(var(--spacing)*20+var(--sab))]
         left-4
         z-40
         w-[min(20rem,calc(100vw-2rem))]
         focus:outline-none focus-visible:outline-none
       "
+      :class="isHomePage
+        ? 'max-sm:bottom-[calc(var(--spacing)*20+var(--sab))]'
+        : 'max-sm:bottom-[calc(var(--spacing)*38+var(--sab))]'"
     >
       <div
         data-testid="cookies-popup"

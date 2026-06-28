@@ -110,7 +110,6 @@ jobs:
       - name: Install dependencies
         if: steps.fork-check.outputs.is-fork == 'false'
         run: pnpm install --frozen-lockfile --ignore-scripts
-
       - name: Record deploy start time
         if: steps.fork-check.outputs.is-fork == 'false'
         id: deploy-start

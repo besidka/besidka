@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { trackLandingEvent } from '~~/server/utils/landing/analytics-events'
 
 const textPart = z.object({
   type: z.literal('text'),
@@ -114,6 +115,8 @@ export default defineEventHandler(async (event) => {
 
     await markProjectsMemoryStale([projectId], userId, db)
   }
+
+  trackLandingEvent('new_chat_created', undefined, event)
 
   return {
     slug: chat.slug,

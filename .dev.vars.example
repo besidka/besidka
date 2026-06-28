@@ -39,3 +39,17 @@ NUXT_AXIOM_AUDIT_DATASET=
 NUXT_AXIOM_AUDIT_TOKEN=
 NUXT_AXIOM_CONSENT_DATASET=
 NUXT_AXIOM_CONSENT_TOKEN=
+
+# Nuxt Studio — credentials for the PRODUCTION self-hosted editor (optional).
+# NOT needed for local development: with `pnpm run dev` the editor is the
+# "Edit this page" floating button (bottom-left) that writes straight to the
+# local files — no auth, no env vars. Publishing (Git commits) is disabled in
+# dev. These credentials only power the deployed editor at /_studio, where
+# editors sign in with GitHub and changes are committed to the repo.
+# Setup: GitHub → Settings → Developer settings → OAuth Apps → New OAuth App
+#   Homepage URL:               https://www.besidka.com
+#   Authorization callback URL: https://www.besidka.com/_studio
+#   (use the canonical www host — prod redirects besidka.com → www.besidka.com,
+#    and the OAuth callback must match the final host exactly)
+STUDIO_GITHUB_CLIENT_ID=
+STUDIO_GITHUB_CLIENT_SECRET=
