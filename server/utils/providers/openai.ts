@@ -5,7 +5,7 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import { createOpenAI } from '@ai-sdk/openai'
 import {
   resolveReasoningLevelForModel,
-  toOpenAiReasoningEffort,
+  toReasoningEffort,
 } from './reasoning'
 
 export async function useOpenAI(
@@ -71,24 +71,24 @@ export async function useOpenAI(
     return result
   }
 
+  const { model: modelData } = getModel(model)
+  const reasoningLevel = resolveReasoningLevelForModel(
+    modelData,
+    requestedReasoning,
+  )
+
   function getProviderOptions(): SharedV2ProviderOptions {
     const result: SharedV2ProviderOptions = {}
 
-    const { model: modelData } = getModel(model)
-    const reasoningLevel = resolveReasoningLevelForModel(
-      modelData,
-      requestedReasoning,
-    )
-    const reasoningEffort = toOpenAiReasoningEffort(reasoningLevel)
-
-    if (reasoningEffort) {
+    if (reasoningLevel !== 'off') {
       /**
-       * @example
-       * https://ai-sdk.dev/providers/ai-sdk-providers/openai#reasoning
-       * https://platform.openai.com/docs/guides/reasoning
+       * Reasoning effort is set provider-agnostically via the top-level
+       * `reasoning` option on streamText (AI SDK v7). providerOptions only
+       * carries the output flag, because the SDK never enables reasoning
+       * summaries on its own.
+       * @see https://ai-sdk.dev/providers/ai-sdk-providers/openai#reasoning
        */
       Object.assign(result, {
-        reasoningEffort,
         reasoningSummary: 'detailed',
       })
     }
@@ -101,5 +101,6 @@ export async function useOpenAI(
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),
+    reasoning: toReasoningEffort(reasoningLevel),
   }
 }

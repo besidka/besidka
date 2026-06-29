@@ -29,46 +29,49 @@ vi.mock('ai', async (importOriginal) => {
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
     streamText: vi.fn(() => ({
       consumeStream: vi.fn(),
-      toUIMessageStream: vi.fn((options) => {
-        mocks.toUIMessageStreamOptions.push(options)
-        const generatedMessageId = options.generateMessageId()
-
-        mocks.generatedMessageIds.push(generatedMessageId)
-
-        return new ReadableStream({
-          start(controller) {
-            const chunks = mocks.uiMessageStreamChunks ?? [
-              {
-                type: 'start',
-                messageId: generatedMessageId,
-              },
-              {
-                type: 'text-start',
-                id: 'text-1',
-              },
-              {
-                type: 'text-delta',
-                id: 'text-1',
-                delta: 'Hi',
-              },
-              {
-                type: 'text-end',
-                id: 'text-1',
-              },
-              {
-                type: 'finish',
-              },
-            ]
-
-            for (const chunk of chunks) {
-              controller.enqueue(chunk)
-            }
-
-            controller.close()
-          },
-        })
-      }),
+      stream: new ReadableStream({ start(c) {
+        c.close()
+      } }),
     })),
+    toUIMessageStream: vi.fn((options) => {
+      mocks.toUIMessageStreamOptions.push(options)
+      const generatedMessageId = options.generateMessageId()
+
+      mocks.generatedMessageIds.push(generatedMessageId)
+
+      return new ReadableStream({
+        start(controller) {
+          const chunks = mocks.uiMessageStreamChunks ?? [
+            {
+              type: 'start',
+              messageId: generatedMessageId,
+            },
+            {
+              type: 'text-start',
+              id: 'text-1',
+            },
+            {
+              type: 'text-delta',
+              id: 'text-1',
+              delta: 'Hi',
+            },
+            {
+              type: 'text-end',
+              id: 'text-1',
+            },
+            {
+              type: 'finish',
+            },
+          ]
+
+          for (const chunk of chunks) {
+            controller.enqueue(chunk)
+          }
+
+          controller.close()
+        },
+      })
+    }),
     smoothStream: vi.fn(() => undefined),
     convertToModelMessages: vi.fn(async (messages) => {
       if (mocks.failConvertToModelMessages) {

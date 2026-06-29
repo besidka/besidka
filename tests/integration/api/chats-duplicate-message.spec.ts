@@ -88,10 +88,13 @@ vi.mock('ai', async (importOriginal) => {
     ) => stream,
     streamText: vi.fn(() => ({
       consumeStream: vi.fn(),
-      toUIMessageStream: vi.fn((options) => {
-        return createMockUIMessageStream(options.generateMessageId())
-      }),
+      stream: new ReadableStream({ start(c) {
+        c.close()
+      } }),
     })),
+    toUIMessageStream: vi.fn((options) => {
+      return createMockUIMessageStream(options.generateMessageId())
+    }),
     smoothStream: vi.fn(() => undefined),
     convertToModelMessages: vi.fn(
       async (messages: unknown) => messages,

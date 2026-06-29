@@ -14,8 +14,7 @@ export async function useChatTitle(
 
   const { text } = await generateText({
     model,
-    system: instructions.join('.\n -'),
-    allowSystemInMessages: false,
+    instructions: instructions.join('.\n -'),
     messages: [
       {
         role: 'user',

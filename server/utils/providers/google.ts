@@ -5,8 +5,7 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import {
   resolveReasoningLevelForModel,
-  toGoogleGemini25ReasoningBudget,
-  toGoogleReasoningLevel,
+  toReasoningEffort,
 } from './reasoning'
 
 export async function useGoogle(
@@ -71,34 +70,26 @@ export async function useGoogle(
     return result
   }
 
+  const { model: modelData } = getModel(model)
+  const reasoningLevel = resolveReasoningLevelForModel(
+    modelData,
+    requestedReasoning,
+  )
+
   function getProviderOptions(): SharedV2ProviderOptions {
     const result: SharedV2ProviderOptions = {}
 
-    const { model: modelData } = getModel(model)
-    const reasoningLevel = resolveReasoningLevelForModel(
-      modelData,
-      requestedReasoning,
-    )
-
     if (reasoningLevel !== 'off') {
       /**
-       * @example
-       * https://ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai#thinking
-       * https://ai.google.dev/gemini-api/docs/thinking
+       * Reasoning effort maps to the model's thinkingLevel (Gemini 3) or
+       * thinkingBudget (Gemini 2.5) automatically via the top-level `reasoning`
+       * option on streamText (AI SDK v7). providerOptions only carries
+       * `includeThoughts`, which the SDK never sets on its own.
+       * @see https://ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai#thinking
        */
-      const isGemini25Model = model.startsWith('gemini-2.5')
-      const googleReasoningLevel = isGemini25Model
-        ? null
-        : toGoogleReasoningLevel(model, reasoningLevel)
-      const googleReasoningBudget = isGemini25Model
-        ? toGoogleGemini25ReasoningBudget(reasoningLevel)
-        : null
-
       Object.assign(result, {
         thinkingConfig: {
           includeThoughts: true,
-          thinkingBudget: googleReasoningBudget ?? undefined,
-          thinkingLevel: googleReasoningLevel ?? undefined,
         },
       })
     }
@@ -111,5 +102,6 @@ export async function useGoogle(
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),
+    reasoning: toReasoningEffort(reasoningLevel),
   }
 }
