@@ -53,8 +53,8 @@ function findLongestPrefixMatch(
 }
 
 /**
- * Build the cost map consumed by evlog's `createAILogger({ cost })`.
- * Keys are model IDs; values are dollars per 1,000,000 tokens.
+ * Build the cost map consumed by `computeModelCost()` in the chat stream
+ * handler. Keys are model IDs; values are dollars per 1,000,000 tokens.
  *
  * The map is computed once per worker instance. It is wrapped in a Proxy
  * that falls back to a longest-prefix match when no exact key exists, so

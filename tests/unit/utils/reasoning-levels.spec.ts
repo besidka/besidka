@@ -48,7 +48,7 @@ describe('reasoning levels', () => {
   })
 
   it('maps canonical levels to the provider-agnostic reasoning effort', () => {
-    expect(toReasoningEffort('off')).toBe('none')
+    expect(toReasoningEffort('off')).toBeUndefined()
     expect(toReasoningEffort('low')).toBe('low')
     expect(toReasoningEffort('medium')).toBe('medium')
     expect(toReasoningEffort('high')).toBe('high')

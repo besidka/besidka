@@ -472,13 +472,17 @@ This was worked around by `server/utils/files/resolve-data-urls.ts`, which
 rewrote `data:` URL strings to `Uint8Array` before the download stage.
 
 **AI SDK v7 fixes this upstream** ([vercel/ai#13103](https://github.com/vercel/ai/issues/13103)):
-`convertToModelMessages()` now emits a tagged `FilePart.data` union and splits
-`data:` URLs into `{ type: 'data', data }` *before* `downloadAssets()` runs, so
-they are never treated as downloadable URLs. The `resolve-data-urls.ts`
-workaround was removed during the v7 upgrade; inline `data:` URLs in
-`FileUIPart.url` now pass straight through. Note: passing a `data:` URL *inside*
-a `{ type: 'data', data }` part is rejected (`InvalidDataContentError`) — send
-raw bytes via `{ type: 'data' }` or a `data:`/hosted URL via `url`.
+`convertToModelMessages()` still emits `{ type: 'url', url: new URL(part.url) }`
+for file parts (including `data:` URLs). The split happens *inside*
+`downloadAssets()`: its internal `convertUrlToFilePartData()` detects
+`url.protocol === 'data:'` and converts the entry to `{ type: 'data', data }`,
+after which the `.filter(part => part.data.type === 'url')` step removes it from
+`plannedDownloads` — so it never reaches the http/https SSRF guard. The
+`resolve-data-urls.ts` workaround was removed during the v7 upgrade; inline
+`data:` URLs in `FileUIPart.url` now pass straight through. Note: passing a
+`data:` URL *inside* a `{ type: 'data', data }` part is rejected
+(`InvalidDataContentError`) — send raw bytes via `{ type: 'data' }` or a
+`data:`/hosted URL via `url`.
 
 ## Troubleshooting
 

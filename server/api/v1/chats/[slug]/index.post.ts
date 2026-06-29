@@ -400,7 +400,7 @@ export default defineEventHandler(async (event) => {
 
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
-  let reasoningEffort: 'none' | 'low' | 'medium' | 'high' = 'none'
+  let reasoningEffort: 'low' | 'medium' | 'high' | undefined
   const providerOptions: SharedV2ProviderOptions = {}
 
   try {
@@ -514,6 +514,7 @@ export default defineEventHandler(async (event) => {
       }
 
       let result: ReturnType<typeof streamText>
+      let isAborted = false
 
       try {
         result = streamText({
@@ -523,15 +524,38 @@ export default defineEventHandler(async (event) => {
           messages: await convertToModelMessages(messagesForAI),
           experimental_transform: smoothStream(),
           onEnd({ usage }) {
+            if (isAborted) {
+              return
+            }
+
             aiLogger.set({
               ai: {
                 tokens: {
-                  input: usage.inputTokens,
-                  output: usage.outputTokens,
+                  input: usage.inputTokens ?? 0,
+                  output: usage.outputTokens ?? 0,
                   reasoning: usage.outputTokenDetails?.reasoningTokens,
-                  total: usage.totalTokens,
+                  total: usage.totalTokens ?? 0,
                 },
                 cost: computeModelCost(model.id, usage),
+              },
+            })
+          },
+          onAbort({ steps }) {
+            isAborted = true
+
+            const abortedUsage = aggregateAbortedUsage(steps)
+
+            aiLogger.set({
+              ai: {
+                aborted: true,
+                finishedSteps: steps.length,
+                tokens: {
+                  input: abortedUsage.inputTokens,
+                  output: abortedUsage.outputTokens,
+                  reasoning: abortedUsage.reasoningTokens,
+                  total: abortedUsage.totalTokens,
+                },
+                cost: computeModelCost(model.id, abortedUsage),
               },
             })
           },
@@ -654,12 +678,35 @@ export default defineEventHandler(async (event) => {
   })
 })
 
+// On a stop, `onAbort` carries every finished step with its own usage; summing
+// them recovers the partial tokens the user was charged for. This is the
+// authoritative usage for an aborted turn: when a stop lands after >=1 step,
+// `streamText` STILL fires `onEnd` with zeroed totals (the final `finish`
+// chunk never arrived), so the `isAborted` guard in `onEnd` defers to this.
+function aggregateAbortedUsage(
+  steps: ReadonlyArray<{ usage: LanguageModelUsage }>,
+) {
+  return steps.reduce(
+    (totals, step) => {
+      const { usage } = step
+
+      totals.inputTokens += usage.inputTokens ?? 0
+      totals.outputTokens += usage.outputTokens ?? 0
+      totals.reasoningTokens += usage.outputTokenDetails?.reasoningTokens ?? 0
+      totals.totalTokens += usage.totalTokens ?? 0
+
+      return totals
+    },
+    { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, totalTokens: 0 },
+  )
+}
+
 // Dollars spent on a single generation, derived from the per-1M-token prices
 // in `getModelCostMap()`. Returns undefined when the model has no known price
 // so callers omit `ai.cost` rather than logging a misleading 0.
 function computeModelCost(
   modelId: string,
-  usage: LanguageModelUsage,
+  usage: Pick<LanguageModelUsage, 'inputTokens' | 'outputTokens'>,
 ): number | undefined {
   const cost = getModelCostMap()[modelId]
 

@@ -752,8 +752,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   return {
     chatSdk,
-    messages: chatSdk.messages,
-    messagesLength: chatSdk.messages.length,
     input,
     submit,
     stop,
@@ -762,7 +760,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     tools,
     reasoning,
     getMessageReasoning,
-    status: chatSdk.status,
     isLoading,
     displayRegenerate,
     displayStop,

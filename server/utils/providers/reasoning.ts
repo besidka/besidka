@@ -20,9 +20,9 @@ export function resolveReasoningLevelForModel(
 
 export function toReasoningEffort(
   reasoningLevel: ReasoningLevel,
-): 'none' | 'low' | 'medium' | 'high' {
+): 'low' | 'medium' | 'high' | undefined {
   if (reasoningLevel === 'off') {
-    return 'none'
+    return undefined
   }
 
   return reasoningLevel
