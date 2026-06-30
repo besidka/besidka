@@ -4,6 +4,7 @@ import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
+  isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
   shouldRecoverInterruptedGeneration,
@@ -392,6 +393,67 @@ describe('chat error helpers', () => {
     ]
 
     expect(shouldRecoverInterruptedGeneration('ready', messages)).toBe(false)
+  })
+
+  it('auto-recovers from a Safari "Load failed" disconnect even when the SDK does not flag isDisconnect', () => {
+    // Reproduces the real-world iOS PWA bug: the AI SDK only sets
+    // isDisconnect for a TypeError whose message contains "fetch" or
+    // "network" — Safari's actual wording ("Load failed") never matches, so
+    // this must fall back to the broader transport-error recognizer instead
+    // of trusting the SDK flag alone.
+    const parsedError = normalizeChatClientError(new Error('Load failed'))
+
+    expect(isAutoRecoverableTransportInterruption(parsedError, {
+      isAbort: false,
+      isDisconnect: false,
+      isTestChat: false,
+    })).toBe(true)
+  })
+
+  it('auto-recovers when the SDK does flag isDisconnect', () => {
+    expect(isAutoRecoverableTransportInterruption(null, {
+      isAbort: false,
+      isDisconnect: true,
+      isTestChat: false,
+    })).toBe(true)
+  })
+
+  it('does not auto-recover a deliberate user-initiated stop', () => {
+    const parsedError = normalizeChatClientError(new Error('Load failed'))
+
+    expect(isAutoRecoverableTransportInterruption(parsedError, {
+      isAbort: true,
+      isDisconnect: false,
+      isTestChat: false,
+    })).toBe(false)
+  })
+
+  it('does not auto-recover on the dev test route', () => {
+    const parsedError = normalizeChatClientError(new Error('Load failed'))
+
+    expect(isAutoRecoverableTransportInterruption(parsedError, {
+      isAbort: false,
+      isDisconnect: true,
+      isTestChat: true,
+    })).toBe(false)
+  })
+
+  it('does not treat an unrelated error as auto-recoverable', () => {
+    const parsedError = normalizeChatClientError(new Error('Something else'))
+
+    expect(isAutoRecoverableTransportInterruption(parsedError, {
+      isAbort: false,
+      isDisconnect: false,
+      isTestChat: false,
+    })).toBe(false)
+  })
+
+  it('does not treat a clean "still generating" pending signal as an interruption', () => {
+    expect(isAutoRecoverableTransportInterruption(null, {
+      isAbort: false,
+      isDisconnect: false,
+      isTestChat: false,
+    })).toBe(false)
   })
 
   it('does not surface raw rate-limit errors when assistant text is already visible', () => {
