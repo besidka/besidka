@@ -458,29 +458,31 @@ If CDN caching is needed in the future:
 
 ## Known Issues and Fixes
 
-### `data:` URL scheme rejection in AI SDK ≥ 6.0.x / provider-utils ≥ 4.0.15
+### `data:` URL handling (resolved in AI SDK v7)
 
-**Production impact**: file attachments (images, PDFs) silently fail with
-`"URL scheme must be http or https, got data:"` when sending a chat message.
+`convertFilesForAI()` encodes R2 file bytes as `data:<mime>;base64,<content>`
+strings in `FileUIPart.url`. In AI SDK v6 this silently broke attachments
+(images, PDFs) with `"URL scheme must be http or https, got data:"`:
+`convertToModelMessages()` mapped `url` → a plain-string `FilePart.data`, and
+`streamText()`'s `downloadAssets()` pipeline then ran `new URL(data)` on it.
+Because `data:` strings are valid `URL` objects, they entered the download path
+where the http/https SSRF guard (`provider-utils` ≥ 4.0.15) rejected them.
 
-**Root cause**: `convertFilesForAI()` encodes R2 file bytes as
-`data:<mime>;base64,<content>` strings and places them in `FileUIPart.url`.
-`convertToModelMessages()` maps `url` → `FilePart.data`. Then `streamText()`
-calls `downloadAssets()`, which tries `new URL(data)` on any string data field.
-`data:` strings are valid `URL` objects (protocol `data:`), so they enter the
-download path, where `validateDownloadUrl()` rejects non-http/https schemes.
+This was worked around by `server/utils/files/resolve-data-urls.ts`, which
+rewrote `data:` URL strings to `Uint8Array` before the download stage.
 
-In AI SDK v5 (`@ai-sdk/provider-utils` 3.x) this path did not exist —
-`data:` URL strings were passed directly to providers. The `downloadAssets()`
-download pipeline was introduced in v6, and the strict http/https SSRF guard
-was added/tightened in `provider-utils` 4.0.15 (landed via manual dep update
-on 2026-03-10).
-
-**Fix**: `server/utils/files/resolve-data-urls.ts` — `resolveDataUrlsInModelMessages()`
-post-processes the output of `convertToModelMessages()`, converting any
-`data:` URL strings in user message file parts to `Uint8Array`. A `Uint8Array`
-is not parsed as a URL, so `downloadAssets()` skips it; the SDK's internal
-`convertToLanguageModelV3DataContent()` then handles it correctly.
+**AI SDK v7 fixes this upstream** ([vercel/ai#13103](https://github.com/vercel/ai/issues/13103)):
+`convertToModelMessages()` still emits `{ type: 'url', url: new URL(part.url) }`
+for file parts (including `data:` URLs). The split happens *inside*
+`downloadAssets()`: its internal `convertUrlToFilePartData()` detects
+`url.protocol === 'data:'` and converts the entry to `{ type: 'data', data }`,
+after which the `.filter(part => part.data.type === 'url')` step removes it from
+`plannedDownloads` — so it never reaches the http/https SSRF guard. The
+`resolve-data-urls.ts` workaround was removed during the v7 upgrade; inline
+`data:` URLs in `FileUIPart.url` now pass straight through. Note: passing a
+`data:` URL *inside* a `{ type: 'data', data }` part is rejected
+(`InvalidDataContentError`) — send raw bytes via `{ type: 'data' }` or a
+`data:`/hosted URL via `url`.
 
 ## Troubleshooting
 

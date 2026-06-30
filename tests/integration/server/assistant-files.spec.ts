@@ -193,7 +193,10 @@ describe('assistant files scaffolding', () => {
             type: 'file',
             mediaType: 'text/plain',
             filename: 'notes.txt',
-            data: 'data:text/plain;base64,SGVsbG8=',
+            data: {
+              type: 'url',
+              url: new URL('data:text/plain;base64,SGVsbG8='),
+            },
           },
         ],
       },

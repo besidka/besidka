@@ -60,10 +60,10 @@
 		"cms:files:download": "node scripts/cms-bucket-manager.mjs download"
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^3.0.80",
-		"@ai-sdk/openai": "^3.0.66",
-		"@ai-sdk/provider": "^3.0.10",
-		"@ai-sdk/vue": "^3.0.191",
+		"@ai-sdk/google": "^4.0.2",
+		"@ai-sdk/openai": "^4.0.2",
+		"@ai-sdk/provider": "^4.0.0",
+		"@ai-sdk/vue": "^4.0.4",
 		"@iconify-json/lucide": "^1.2.110",
 		"@nuxt/content": "^3.14.0",
 		"@nuxt/eslint": "^1.15.2",
@@ -81,7 +81,7 @@
 		"@vite-pwa/nuxt": "^1.1.1",
 		"@vueuse/core": "^14.3.0",
 		"@vueuse/nuxt": "^14.3.0",
-		"ai": "^6.0.191",
+		"ai": "^7.0.4",
 		"better-auth": "^1.6.10",
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.5.20",

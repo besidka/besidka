@@ -148,30 +148,28 @@ Note:
 ## Provider mapping behavior
 
 ### Capability-first fallback
-- Requested level is resolved against model capability.
+- Requested level is resolved against model capability
+  (`resolveReasoningLevelForModel`).
 - If unsupported, resolved level becomes `off`.
 
-### OpenAI
-- Canonical mapping:
-  - `low -> low`,
-  - `medium -> medium`,
-  - `high -> high`,
-  - `off -> null` (omit reasoning effort).
-- Provider options include `reasoningSummary: 'detailed'`.
+### Provider-agnostic effort (AI SDK v7)
+- Effort is set once via the top-level `reasoning` option on `streamText`.
+  `toReasoningEffort` maps `off -> none`; `low|medium|high` pass through.
+- The SDK maps that effort to each provider natively:
+  - OpenAI -> `reasoningEffort`,
+  - Gemini 3 -> `thinkingLevel`,
+  - Gemini 2.5 -> a computed `thinkingBudget`.
+- `providerOptions` carries only the reasoning *output* flags, which the SDK
+  never enables on its own:
+  - OpenAI: `reasoningSummary: 'detailed'`,
+  - Google: `thinkingConfig.includeThoughts: true`.
 
-### Google
-- Uses `thinkingConfig`.
-- Gemini 2.5 models:
-  - use `thinkingBudget` (token budget),
-  - budgets:
-    - `low: 1024`
-    - `medium: 8192`
-    - `high: 24576`
-- Gemini 3+ models:
-  - use `thinkingLevel`.
-- Special alignment:
-  - for `gemini-3-pro-preview` and `gemini-3.1-pro-preview`,
-    requested `medium` maps to provider `high`.
+### Behavior change from the v6 implementation
+The hand-rolled provider mapping was removed in the v7 upgrade:
+- fixed Gemini 2.5 budgets (`low: 1024`, `medium: 8192`, `high: 24576`) are no
+  longer set — the SDK computes the budget per model;
+- the `gemini-3-pro-preview` / `gemini-3.1-pro-preview` `medium -> high`
+  upgrade quirk was dropped (requested `medium` now maps to provider `medium`).
 
 ## `/chats/test` behavior
 

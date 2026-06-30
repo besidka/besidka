@@ -1,11 +1,15 @@
-import type { LanguageModel, UIMessage, InferUIMessageChunk } from 'ai'
+import type {
+  LanguageModel,
+  UIMessage,
+  InferUIMessageChunk,
+  LanguageModelUsage,
+} from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
-import { createAILogger, createEvlogIntegration } from 'evlog/ai'
 import { eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -15,6 +19,7 @@ import {
   smoothStream,
   convertToModelMessages,
   readUIMessageStream,
+  toUIMessageStream,
 } from 'ai'
 import * as schema from '~~/server/db/schema'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
@@ -24,7 +29,6 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
-import { resolveDataUrlsInModelMessages } from '~~/server/utils/files/resolve-data-urls'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
@@ -334,41 +338,17 @@ export default defineEventHandler(async (event) => {
 
   const { provider, model } = useChatProvider(userModel)
 
-  // @TODO Replace `aiLogger` + this manual emit with
-  //   `logger.fork('ai-stream', async () => { ... })`
-  //   once evlog ships `fork()` support for the Nuxt/Nitro integration.
+  // Nuxt/Nitro emits the parent request wide event the moment this handler
+  // returns the streaming Response — BEFORE the AI stream finishes — so the
+  // `ai.{tokens, cost, ...}` we capture in streamText's `onEnd` would land on
+  // an already-sealed event and be dropped. We accumulate those metrics on a
+  // dedicated `aiLogger` (linked to the parent via `_parentRequestId`) and
+  // `emit()` it after the stream completes.
   //
-  // Why we use a dedicated request logger here:
-  //   Nuxt/Nitro emits the parent request wide event when the handler returns
-  //   the streaming Response — which happens BEFORE the AI stream finishes.
-  //   `createAILogger`'s middleware then writes `ai.{tokens, cost, ...}` onto
-  //   the parent logger, which is already sealed, so evlog drops the keys
-  //   and prints:
-  //     "[evlog] log.set() called after the wide event was emitted —
-  //      Keys dropped: ai. ... use log.fork('label', fn) when your
-  //      integration supports it"
-  //   `log.fork()` is currently attached only by Next.js, SvelteKit, Hono,
-  //   Express, Fastify, NestJS, Elysia integrations — see the integration
-  //   whitelist in evlog/dist/integration-*.mjs. The Nitro adapter does not
-  //   call `attachForkToLogger`, so `logger.fork` is `undefined` here.
-  //
-  // What this workaround does:
-  //   Creates a separate `aiLogger` via `createRequestLogger`, feeds it to
-  //   `createAILogger`, and `emit()`s it in `onFinish`. The middleware writes
-  //   to this independent logger (never sealed prematurely), so no warning
-  //   fires and the resulting wide event carries the full `ai.*` block.
-  //   `_parentRequestId` links it back to the parent request event.
-  //
-  // When to migrate to fork():
-  //   - When evlog adds `attachForkToLogger` to its Nitro integration
-  //     (track upstream: https://github.com/evlogdev/evlog).
-  //   - Verify by checking `typeof logger.fork === 'function'`. The d.ts
-  //     already declares `fork?` on `RequestLogger`.
-  //   - Migration: replace `aiLogger` with the implicit child logger
-  //     `logger.fork('ai-stream', async () => { /* await stream */ })`,
-  //     remove `createRequestLogger` import + `aiLogger.emit(...)` calls.
-  //     The child event will inherit `requestId` automatically as
-  //     `_parentRequestId`.
+  // Token usage + cost are captured natively from `onEnd` (see below): AI SDK
+  // v7 dropped the `bindTelemetryIntegration` export that `evlog/ai`'s
+  // `createAILogger`/`createEvlogIntegration` depend on, so the evlog/ai
+  // middleware is not usable here until evlog ships a v7-compatible build.
   const parentRequestId = logger.getContext().requestId as string | undefined
   // Required on Cloudflare Workers — without this, the Axiom drain `fetch()`
   // initiated by `aiLogger.emit()` (running after the Response body finishes)
@@ -408,24 +388,6 @@ export default defineEventHandler(async (event) => {
   // standalone child loggers don't inherit so we attach explicitly.
   attachCloudflareMeta(aiLogger, event)
 
-  // Tool inputs are conversation-derived content (e.g. web_search queries)
-  // and must never ship to Axiom — log shape only (data minimization).
-  const ai = createAILogger(aiLogger, {
-    cost: getModelCostMap(),
-    toolInputs: {
-      transform: (input) => {
-        if (typeof input === 'string') {
-          return { length: input.length }
-        }
-
-        try {
-          return { length: JSON.stringify(input ?? null).length }
-        } catch {
-          return { length: 0 }
-        }
-      },
-    },
-  })
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools
@@ -438,6 +400,7 @@ export default defineEventHandler(async (event) => {
 
   let instance: LanguageModel
   let parsedTools: FormattedTools = {}
+  let reasoningEffort: 'low' | 'medium' | 'high' | undefined
   const providerOptions: SharedV2ProviderOptions = {}
 
   try {
@@ -447,6 +410,7 @@ export default defineEventHandler(async (event) => {
           instance: openAiInstance,
           tools: openAiTools,
           providerOptions: openAiProviderOptions,
+          reasoning: openAiReasoning,
         } = await useOpenAI(
           session.user.id,
           model.id,
@@ -456,6 +420,7 @@ export default defineEventHandler(async (event) => {
 
         instance = openAiInstance
         parsedTools = openAiTools
+        reasoningEffort = openAiReasoning
         Object.assign(providerOptions, {
           openai: openAiProviderOptions,
         })
@@ -467,6 +432,7 @@ export default defineEventHandler(async (event) => {
           instance: googleInstance,
           tools: googleTools,
           providerOptions: googleProviderOptions,
+          reasoning: googleReasoning,
         } = await useGoogle(
           session.user.id,
           model.id,
@@ -476,6 +442,7 @@ export default defineEventHandler(async (event) => {
 
         instance = googleInstance
         parsedTools = googleTools
+        reasoningEffort = googleReasoning
         Object.assign(providerOptions, {
           google: googleProviderOptions,
         })
@@ -549,17 +516,32 @@ export default defineEventHandler(async (event) => {
       let result: ReturnType<typeof streamText>
 
       try {
+        // No abortSignal here: the cloudflare_module preset (Nitro 2.13 / h3
+        // v1 + node-mock-http) surfaces no client-disconnect signal to the
+        // handler, and fully draining on disconnect is intentional — it lets a
+        // reconnect replay the already-persisted reply. Don't wire one: on this
+        // stack it is a no-op, or would defeat that replay by skipping persist.
+        // (Providers also bill and omit usage on abort, so there is no cost to
+        // recover here either.)
         result = streamText({
-          model: ai.wrap(instance),
-          system: projectSystemPrompt || undefined,
-          allowSystemInMessages: false,
-          messages: resolveDataUrlsInModelMessages(
-            await convertToModelMessages(messagesForAI),
-          ),
+          model: instance,
+          instructions: projectSystemPrompt || undefined,
+          reasoning: reasoningEffort,
+          messages: await convertToModelMessages(messagesForAI),
           experimental_transform: smoothStream(),
-          experimental_telemetry: {
-            isEnabled: true,
-            integrations: [createEvlogIntegration(ai)],
+          onEnd({ usage }) {
+            aiLogger.set({
+              ai: {
+                tokens: {
+                  input: usage.inputTokens ?? 0,
+                  output: usage.outputTokens ?? 0,
+                  reasoning: usage.outputTokenDetails?.reasoningTokens,
+                  total: usage.totalTokens
+                    ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
+                },
+                cost: computeModelCost(model.id, usage),
+              },
+            })
           },
           ...parsedTools,
           providerOptions,
@@ -594,7 +576,8 @@ export default defineEventHandler(async (event) => {
         throw chatError
       }
 
-      const uiMessageStream = result.toUIMessageStream({
+      const uiMessageStream = toUIMessageStream({
+        stream: result.stream,
         originalMessages: messagesForAI,
         generateMessageId: () => messagePublicId,
         sendSources: true,
@@ -650,11 +633,10 @@ export default defineEventHandler(async (event) => {
       })
 
       // Emit the dedicated AI wide event AFTER the persistence stream is
-      // fully consumed. By this point streamText.onFinish has fired, the
-      // middleware's `wrapStream` transform has flushed its final state to
-      // `aiLogger`, and `createEvlogIntegration`'s `onFinish` has run.
-      // Emitting earlier (e.g. in streamText.onFinish) races with these
-      // flushes and triggers evlog's "set called after emit" warning.
+      // fully consumed. By this point streamText's `onEnd` has fired and
+      // written the `ai.{tokens, cost}` block to `aiLogger`. Emitting earlier
+      // races with that write and triggers evlog's "set called after emit"
+      // warning.
       //
       // Standalone `createRequestLogger().emit()` does NOT dispatch through
       // the Nitro hook system that our `evlog-drain.ts` plugin registers —
@@ -679,6 +661,25 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
+
+// Dollars spent on a single generation, derived from the per-1M-token prices
+// in `getModelCostMap()`. Returns undefined when the model has no known price
+// so callers omit `ai.cost` rather than logging a misleading 0.
+function computeModelCost(
+  modelId: string,
+  usage: LanguageModelUsage,
+): number | undefined {
+  const cost = getModelCostMap()[modelId]
+
+  if (!cost) {
+    return undefined
+  }
+
+  const inputTokens = usage.inputTokens ?? 0
+  const outputTokens = usage.outputTokens ?? 0
+
+  return (inputTokens * cost.input + outputTokens * cost.output) / 1_000_000
+}
 
 // Returns the inserted { id, publicId } row, OR `undefined` when
 // `ignoreConflict` is set and the public_id already existed (ON CONFLICT DO

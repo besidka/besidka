@@ -307,7 +307,7 @@ async function refreshChatProjectMemorySummary(
 
   const { text } = await generateText({
     model,
-    system: [
+    instructions: [
       'Summarize only durable project memory from this chat.',
       'Use a concise structured memo with these sections when relevant:',
       'Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
@@ -317,7 +317,6 @@ async function refreshChatProjectMemorySummary(
       'Exclude temporary task status, one-off troubleshooting, short-lived details, and raw link dumps.',
       'Return plain text only and keep it concise.',
     ].join(' '),
-    allowSystemInMessages: false,
     messages: [
       {
         role: 'user',
@@ -345,7 +344,7 @@ async function synthesizeProjectMemory(
 ) {
   const { text } = await generateText({
     model,
-    system: [
+    instructions: [
       `You are maintaining durable memory for the project "${projectName}".`,
       'Merge the provided chat summaries into one concise structured memo.',
       'Use these sections when they have durable content: Purpose & context, Actual state, Key learnings and principles, Approach & patterns, Tools and resources used.',
@@ -355,7 +354,6 @@ async function synthesizeProjectMemory(
       'If there is no durable memory, respond with NONE.',
       'Return plain text only.',
     ].join(' '),
-    allowSystemInMessages: false,
     messages: [
       {
         role: 'user',

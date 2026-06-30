@@ -10,7 +10,7 @@ import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
-import { Chat as ChatSdk } from '@ai-sdk/vue'
+import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
 
 export interface ProcessedMessage {
@@ -419,9 +419,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   )
   const { api, shouldAutoRegenerate } = useChatTest(chat, reasoning)
 
-  const chatSdk = new ChatSdk({
+  const {
+    messages: sdkMessages,
+    status: sdkStatus,
+    error: sdkError,
+    regenerate: sdkRegenerate,
+    stop: sdkStop,
+    clearError: sdkClearError,
+  } = useChatSdk<UIMessage>({
     id: chat.id,
-    messages: chat.messages,
+    messages: chat.messages as unknown as UIMessage[],
     transport: new DefaultChatTransport({
       api: api.value,
       async fetch(input, init) {
@@ -454,7 +461,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       if (!parsedError && isError) {
         parsedError = normalizeChatClientError(
-          (chatSdk as { error?: unknown }).error || new Error('Load Error'),
+          sdkError.value || new Error('Load Error'),
           { requestId },
         )
       }
@@ -476,12 +483,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       if (parsedError) {
         if (shouldSurfaceChatError(messages, parsedError)) {
-          chatSdk.messages = showChatError(
+          sdkMessages.value = showChatError(
             messages,
             parsedError,
-          ) as typeof chatSdk.messages
+          ) as typeof sdkMessages.value
         } else {
-          chatSdk.clearError()
+          sdkClearError()
         }
       }
 
@@ -546,6 +553,24 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
     },
   })
+
+  const chatSdk = {
+    get messages() {
+      return sdkMessages.value
+    },
+    set messages(value: UIMessage[]) {
+      sdkMessages.value = value
+    },
+    get status() {
+      return sdkStatus.value
+    },
+    get error() {
+      return sdkError.value
+    },
+    regenerate: sdkRegenerate,
+    stop: sdkStop,
+    clearError: sdkClearError,
+  }
 
   const lastMessage = computed<UIMessage | undefined>(() => {
     return chatSdk.messages.at(-1)
@@ -619,13 +644,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       parts.push(...fileParts)
     }
 
-    chatSdk.messages.push({
-      id: ulid(),
-      role: 'user',
-      parts,
-      createdAt: new Date(),
-      reasoning: reasoning.value,
-    } as any)
+    chatSdk.messages = [
+      ...chatSdk.messages,
+      {
+        id: ulid(),
+        role: 'user',
+        parts,
+        createdAt: new Date(),
+        reasoning: reasoning.value,
+      } as unknown as UIMessage,
+    ]
 
     chatSdk.regenerate()
   }
@@ -724,8 +752,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   return {
     chatSdk,
-    messages: chatSdk.messages,
-    messagesLength: chatSdk.messages.length,
     input,
     submit,
     stop,
@@ -734,7 +760,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     tools,
     reasoning,
     getMessageReasoning,
-    status: chatSdk.status,
     isLoading,
     displayRegenerate,
     displayStop,

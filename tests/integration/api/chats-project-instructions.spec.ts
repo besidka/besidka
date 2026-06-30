@@ -94,10 +94,13 @@ vi.mock('ai', async (importOriginal) => {
 
       return {
         consumeStream: vi.fn(),
-        toUIMessageStream: vi.fn((options) => {
-          return createMockUIMessageStream(options.generateMessageId())
-        }),
+        stream: new ReadableStream({ start(c) {
+          c.close()
+        } }),
       }
+    }),
+    toUIMessageStream: vi.fn((options) => {
+      return createMockUIMessageStream(options.generateMessageId())
     }),
     smoothStream: vi.fn(() => undefined),
     convertToModelMessages: vi.fn(async messages => messages),
@@ -320,7 +323,7 @@ describe('chat project instructions', () => {
       role: 'user',
     })
     expect(mocks.streamTextCalls[0]).toMatchObject({
-      system: expect.stringContaining(
+      instructions: expect.stringContaining(
         'Stay focused on milestone decisions',
       ),
     })
@@ -405,10 +408,10 @@ describe('chat project instructions', () => {
       role: 'user',
     })
     expect(mocks.streamTextCalls[0]).toMatchObject({
-      system: expect.stringContaining('Project memory:'),
+      instructions: expect.stringContaining('Project memory:'),
     })
     expect(mocks.streamTextCalls[0]).toMatchObject({
-      system: expect.stringContaining('milestone-based updates'),
+      instructions: expect.stringContaining('milestone-based updates'),
     })
   })
 })

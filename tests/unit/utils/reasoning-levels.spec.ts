@@ -6,9 +6,7 @@ import {
 } from '../../../shared/utils/reasoning'
 import {
   resolveReasoningLevelForModel,
-  toGoogleGemini25ReasoningBudget,
-  toGoogleReasoningLevel,
-  toOpenAiReasoningEffort,
+  toReasoningEffort,
 } from '../../../server/utils/providers/reasoning'
 
 describe('reasoning levels', () => {
@@ -49,23 +47,10 @@ describe('reasoning levels', () => {
     expect(resolveReasoningLevelForModel(model, 'high')).toBe('high')
   })
 
-  it('maps openai effort from canonical levels', () => {
-    expect(toOpenAiReasoningEffort('off')).toBeNull()
-    expect(toOpenAiReasoningEffort('low')).toBe('low')
-    expect(toOpenAiReasoningEffort('medium')).toBe('medium')
-    expect(toOpenAiReasoningEffort('high')).toBe('high')
-  })
-
-  it('maps google gemini reasoning options', () => {
-    expect(
-      toGoogleReasoningLevel('gemini-3-pro-preview', 'medium'),
-    ).toBe('high')
-    expect(
-      toGoogleReasoningLevel('gemini-3-flash-preview', 'medium'),
-    ).toBe('medium')
-    expect(toGoogleGemini25ReasoningBudget('low')).toBe(1024)
-    expect(toGoogleGemini25ReasoningBudget('medium')).toBe(8192)
-    expect(toGoogleGemini25ReasoningBudget('high')).toBe(24576)
-    expect(toGoogleGemini25ReasoningBudget('off')).toBeNull()
+  it('maps canonical levels to the provider-agnostic reasoning effort', () => {
+    expect(toReasoningEffort('off')).toBeUndefined()
+    expect(toReasoningEffort('low')).toBe('low')
+    expect(toReasoningEffort('medium')).toBe('medium')
+    expect(toReasoningEffort('high')).toBe('high')
   })
 })
