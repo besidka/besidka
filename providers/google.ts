@@ -42,7 +42,7 @@ export default {
       tools: ['web_search'],
       reasoning: {
         mode: 'levels',
-        levels: ['low', 'medium', 'high'],
+        levels: ['low', 'high'],
       },
     },
     {
