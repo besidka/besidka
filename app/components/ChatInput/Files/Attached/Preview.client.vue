@@ -245,7 +245,7 @@
         class="group sticky right-0 carousel-item flex items-center"
       >
         <button
-          class="btn btn-error btn-soft size-16 flex flex-col gap-1 shadow-sm"
+          class="btn btn-error btn-soft size-16 rounded-box flex flex-col gap-1 shadow-sm"
           aria-label="Detach all files"
           title="Detach all files"
           data-testid="files-preview-detach-all"
