@@ -516,6 +516,13 @@ export default defineEventHandler(async (event) => {
       let result: ReturnType<typeof streamText>
 
       try {
+        // No abortSignal here: the cloudflare_module preset (Nitro 2.13 / h3
+        // v1 + node-mock-http) surfaces no client-disconnect signal to the
+        // handler, and fully draining on disconnect is intentional — it lets a
+        // reconnect replay the already-persisted reply. Don't wire one: on this
+        // stack it is a no-op, or would defeat that replay by skipping persist.
+        // (Providers also bill and omit usage on abort, so there is no cost to
+        // recover here either.)
         result = streamText({
           model: instance,
           instructions: projectSystemPrompt || undefined,
