@@ -206,6 +206,31 @@ function createDb() {
   }
 }
 
+function createKv(isGenerating = false) {
+  const get = vi.fn(async () => (isGenerating ? '1' : null))
+  const put = vi.fn(async () => undefined)
+  const remove = vi.fn(async () => undefined)
+
+  return {
+    kv: { get, put, delete: remove },
+    get,
+    put,
+    delete: remove,
+  }
+}
+
+function createPersistedUserMessage(text: string) {
+  return {
+    id: 1,
+    publicId: 'message-1',
+    role: 'user' as const,
+    parts: [{ type: 'text', text }],
+    tools: [],
+    reasoning: 'off' as const,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  }
+}
+
 const ULID_PATTERN = /^[0-9A-Z]{26}$/
 
 describe('chat stream message ids', () => {
@@ -263,6 +288,7 @@ describe('chat stream message ids', () => {
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
+    vi.stubGlobal('useKV', () => createKv().kv)
   })
 
   it('uses a pre-generated ULID as the streamed assistant message id', async () => {
@@ -298,6 +324,67 @@ describe('chat stream message ids', () => {
       reasoning: 'off',
       publicId: generatedId,
     }))
+  })
+
+  it('sets and clears the in-flight generation flag around a normal run', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { kv, put, delete: remove } = createKv()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useKV', () => kv)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(put).toHaveBeenCalledWith(
+      'chat-generating:chat-1:message-1',
+      '1',
+      { expirationTtl: 600 },
+    )
+    expect(remove).toHaveBeenCalledWith('chat-generating:chat-1:message-1')
+  })
+
+  it('returns a pending signal instead of starting a duplicate generation', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { kv } = createKv(true)
+
+    db.query.chats.findFirst.mockResolvedValue({
+      id: 'chat-1',
+      projectId: null,
+      project: null,
+      messages: [createPersistedUserMessage('Hello')],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useKV', () => kv)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(response.writer.write).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'data-generation-pending' }),
+    )
+    expect(mocks.generatedMessageIds).toHaveLength(0)
   })
 
   it('does not insert assistant row when the stream is aborted', async () => {

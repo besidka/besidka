@@ -6,6 +6,7 @@ import {
   buildChatErrorMessage,
   isChatErrorTextPart,
   normalizeChatClientError,
+  shouldRecoverInterruptedGeneration,
   shouldSurfaceChatError,
   shouldSurfaceEmptyAssistantResponse,
 } from '../../../app/composables/chat'
@@ -331,6 +332,66 @@ describe('chat error helpers', () => {
         parts: [{ type: 'text', text: 'Completed answer' }],
       } as UIMessage,
     ])).toBe(false)
+  })
+
+  it('recovers an interrupted generation left with no assistant reply', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverInterruptedGeneration('ready', messages)).toBe(true)
+    expect(shouldRecoverInterruptedGeneration('error', messages)).toBe(true)
+  })
+
+  it('recovers an interrupted generation left with an empty assistant reply', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverInterruptedGeneration('ready', messages)).toBe(true)
+  })
+
+  it('does not recover while a generation is actively in flight', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverInterruptedGeneration('submitted', messages)).toBe(false)
+    expect(shouldRecoverInterruptedGeneration('streaming', messages)).toBe(false)
+  })
+
+  it('does not recover when the assistant already replied', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverInterruptedGeneration('ready', messages)).toBe(false)
   })
 
   it('does not surface raw rate-limit errors when assistant text is already visible', () => {

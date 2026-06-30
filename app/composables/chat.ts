@@ -3,6 +3,7 @@ import type {
   TextUIPart,
   SourceUrlUIPart,
   ReasoningUIPart,
+  ChatStatus,
 } from 'ai'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Tools } from '#shared/types/chats.d'
@@ -185,6 +186,24 @@ export function shouldSurfaceEmptyAssistantResponse(
   }
 
   return !hasMeaningfulAssistantParts(lastMessage)
+}
+
+// Issue #275: iOS suspends the page on screen-lock or app-switch with no
+// grace period, killing the in-flight stream client-side while the server
+// (per the tee+persist pipeline below) keeps generating regardless. On
+// visibilitychange/focus, this decides whether the chat looks like it was
+// cut off mid-turn and should auto-retrigger the existing disconnect-replay
+// path (issue #263) instead of waiting for the user to notice and click
+// Regenerate.
+export function shouldRecoverInterruptedGeneration(
+  status: ChatStatus,
+  messages: UIMessage[],
+): boolean {
+  if (status === 'streaming' || status === 'submitted') {
+    return false
+  }
+
+  return shouldSurfaceEmptyAssistantResponse(messages)
 }
 
 export function buildChatErrorLines(error: ChatErrorPayload): string[] {
@@ -377,6 +396,14 @@ function reportChatClientError(payload: ChatClientErrorReport) {
   })
 }
 
+// Bounds how long the client keeps polling a "still generating" turn (issue
+// #275) before giving up and falling back to the manual Regenerate button.
+// 30 attempts * 10s comfortably covers the 2-3 min generations from the bug
+// report, with margin, and stays under the server's KV ttl on the in-flight
+// generation flag (server/api/v1/chats/[slug]/index.post.ts).
+const MAX_GENERATION_RETRY_ATTEMPTS = 30
+const GENERATION_RETRY_DELAY_MS = 10_000
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
@@ -417,7 +444,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
   )
-  const { api, shouldAutoRegenerate } = useChatTest(chat, reasoning)
+  const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
+  const wakeLock = useWakeLock()
+  let isPendingGenerationRetry = false
+  let pendingRetryAttempts = 0
+  let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
 
   const {
     messages: sdkMessages,
@@ -457,7 +488,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }),
     onFinish({ isAbort, isDisconnect, isError, messages }) {
       const requestId = transportRequestId.value
+      const wasPendingGenerationRetry = isPendingGenerationRetry
       let parsedError = pendingError.value
+
+      isPendingGenerationRetry = false
 
       if (!parsedError && isError) {
         parsedError = normalizeChatClientError(
@@ -470,6 +504,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         !parsedError
         && !isAbort
         && !isDisconnect
+        && !wasPendingGenerationRetry
         && shouldSurfaceEmptyAssistantResponse(messages)
       ) {
         parsedError = normalizeChatClientError(
@@ -491,6 +526,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
           sdkClearError()
         }
       }
+
+      if (wasPendingGenerationRetry && !parsedError) {
+        scheduleGenerationRetry()
+        return
+      }
+
+      wakeLock.release()
 
       if (isAbort || isDisconnect) {
         isStopped.value = true
@@ -535,6 +577,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
     },
     onData(dataPart) {
+      if (dataPart.type === 'data-generation-pending') {
+        isPendingGenerationRetry = true
+        return
+      }
+
       if (dataPart.type !== 'data-missing-files') {
         return
       }
@@ -613,6 +660,50 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return isStopped.value || chatSdk.status === 'error'
   })
 
+  function clearScheduledGenerationRetry(): void {
+    if (pendingRetryTimeoutId === undefined) {
+      return
+    }
+
+    clearTimeout(pendingRetryTimeoutId)
+    pendingRetryTimeoutId = undefined
+  }
+
+  function scheduleGenerationRetry(): void {
+    if (pendingRetryAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
+      isStopped.value = true
+      wakeLock.release()
+
+      return
+    }
+
+    pendingRetryAttempts += 1
+    pendingRetryTimeoutId = setTimeout(() => {
+      chatSdk.regenerate()
+    }, GENERATION_RETRY_DELAY_MS)
+  }
+
+  function recoverIfInterrupted(): void {
+    if (isTestChat.value) {
+      return
+    }
+
+    if (!shouldRecoverInterruptedGeneration(chatSdk.status, chatSdk.messages)) {
+      return
+    }
+
+    clearScheduledGenerationRetry()
+    isStopped.value = false
+    wakeLock.acquire()
+    chatSdk.regenerate()
+  }
+
+  function handleVisibilityChange(): void {
+    if (document.visibilityState === 'visible') {
+      recoverIfInterrupted()
+    }
+  }
+
   onMounted(() => {
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
@@ -620,6 +711,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     ) {
       chatSdk.regenerate()
     }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', recoverIfInterrupted)
+  })
+
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.removeEventListener('focus', recoverIfInterrupted)
+    clearScheduledGenerationRetry()
+    wakeLock.release()
   })
 
   useSetChatTitle(chat.title)
@@ -628,6 +729,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   async function submit() {
     isStopped.value = false
+    pendingRetryAttempts = 0
+    clearScheduledGenerationRetry()
+    wakeLock.acquire()
 
     const parts: any[] = []
 
@@ -659,12 +763,17 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   function stop() {
+    clearScheduledGenerationRetry()
+    wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
   }
 
   function regenerate() {
     isStopped.value = false
+    pendingRetryAttempts = 0
+    clearScheduledGenerationRetry()
+    wakeLock.acquire()
     chatSdk.regenerate()
     nuxtApp.callHook('chat:regenerate')
   }

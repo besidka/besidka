@@ -281,6 +281,11 @@ describe('chat duplicate message detection', () => {
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
+    vi.stubGlobal('useKV', () => ({
+      get: vi.fn(async () => null),
+      put: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    }))
   })
 
   it('detects duplicate by message ID even when reasoning differs', async () => {
