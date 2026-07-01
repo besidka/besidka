@@ -22,6 +22,7 @@ export const userSettings = sqliteTable(
       .notNull()
       .default(true),
     allowExternalLinks: integer({ mode: 'boolean' }),
+    notificationPromptState: integer({ mode: 'boolean' }),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

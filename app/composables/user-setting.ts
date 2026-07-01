@@ -21,6 +21,10 @@ export function useUserSetting() {
     'user-settings:allow-external-links',
     () => null,
   )
+  const serverNotificationPromptState = useState<boolean | null>(
+    'user-settings:notification-prompt-state',
+    () => null,
+  )
   const isLoadingSettings = useState<boolean>(
     'user-settings:is-loading',
     () => false,
@@ -100,6 +104,21 @@ export function useUserSetting() {
     return serverAllowExternalLinks.value ?? false
   })
 
+  // Genuine tri-state, unlike allowExternalLinks above: null means "not
+  // loaded yet" to callers as much as it means "never asked", so this is
+  // not collapsed to a boolean default here — the notification-prompt
+  // composable needs to tell "unknown" apart from "explicitly declined".
+  const notificationPromptState = computed<boolean | null>(() => {
+    if (
+      !activeUserId.value
+      || loadedUserId.value !== activeUserId.value
+    ) {
+      return null
+    }
+
+    return serverNotificationPromptState.value
+  })
+
   async function syncForUser(userId: string) {
     activeUserId.value = userId
     settingsError.value = null
@@ -142,6 +161,8 @@ export function useUserSetting() {
       serverReasoningAutoHide.value = nextReasoningAutoHide
       fallbackReasoningAutoHide.value = nextReasoningAutoHide
       serverAllowExternalLinks.value = response.allowExternalLinks ?? null
+      serverNotificationPromptState.value
+        = response.notificationPromptState ?? null
     } catch (exception) {
       if (
         activeUserId.value !== userId
@@ -154,6 +175,7 @@ export function useUserSetting() {
       serverReasoningExpanded.value = null
       serverReasoningAutoHide.value = null
       serverAllowExternalLinks.value = null
+      serverNotificationPromptState.value = null
 
       const parsedException = parseError(exception)
 
@@ -311,12 +333,56 @@ export function useUserSetting() {
     }
   }
 
+  async function setNotificationPromptState(value: boolean) {
+    settingsError.value = null
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousValue = serverNotificationPromptState.value
+
+    serverNotificationPromptState.value = value
+    isSavingSettings.value = true
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          notificationPromptState: value,
+        },
+      })
+
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverNotificationPromptState.value = value
+    } catch (exception) {
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverNotificationPromptState.value = previousValue
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      isSavingSettings.value = false
+    }
+  }
+
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
     serverReasoningExpanded.value = null
     serverReasoningAutoHide.value = null
     serverAllowExternalLinks.value = null
+    serverNotificationPromptState.value = null
     settingsError.value = null
     isLoadingSettings.value = false
     isSavingSettings.value = false
@@ -327,6 +393,7 @@ export function useUserSetting() {
     reasoningExpanded,
     reasoningAutoHide,
     allowExternalLinks,
+    notificationPromptState,
     isLoadingSettings,
     isSavingSettings,
     settingsError,
@@ -334,6 +401,7 @@ export function useUserSetting() {
     setReasoningExpanded,
     setReasoningAutoHide,
     setAllowExternalLinks,
+    setNotificationPromptState,
     clearUserContext,
   }
 }

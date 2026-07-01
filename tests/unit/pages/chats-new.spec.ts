@@ -7,11 +7,20 @@ import {
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
 
-const { navigateToMock } = vi.hoisted(() => ({
+const { navigateToMock, maybeShowProactivelyMock } = vi.hoisted(() => ({
   navigateToMock: vi.fn(),
+  maybeShowProactivelyMock: vi.fn(),
 }))
 
 mockNuxtImport('navigateTo', () => navigateToMock)
+mockNuxtImport('useNotificationPrompt', () => {
+  return () => ({
+    isVisible: { value: false },
+    dismiss: vi.fn(),
+    enable: vi.fn(),
+    maybeShowProactively: maybeShowProactivelyMock,
+  })
+})
 
 async function flushPromises() {
   await Promise.resolve()
@@ -110,6 +119,7 @@ describe('chats new page', () => {
   beforeEach(() => {
     resetMockNuxtState()
     installMockNuxtState()
+    maybeShowProactivelyMock.mockClear()
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     vi.stubGlobal('useRoute', () => route)
@@ -435,6 +445,17 @@ describe('chats new page', () => {
 
     expect(navigateToMock).toHaveBeenCalledWith('/chats/created-chat')
     expect(storage.getItem('chat_input_backup')).toBeNull()
+  })
+
+  it('proactively checks the notification prompt on mount', async () => {
+    vi.stubGlobal('$fetch', vi.fn())
+
+    const { stubs } = createSendStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+    await nextTick()
+
+    expect(maybeShowProactivelyMock).toHaveBeenCalledTimes(1)
   })
 
   it('restores a backed-up draft on mount', async () => {

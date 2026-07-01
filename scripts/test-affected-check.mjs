@@ -65,6 +65,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-settings.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
+    'tests/unit/composables/notification-prompt.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -137,6 +138,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/push.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
   ]
 
   const testMappings = [
@@ -265,7 +267,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(app\/composables\/(chat-draft|auth)\.ts|app\/pages\/chats\/new\.vue|app\/app\.vue|app\/plugins\/session-revalidate\.client\.ts)$/,
-      tests: sessionRecoveryTests,
+      tests: [
+        ...sessionRecoveryTests,
+        'tests/unit/composables/notification-prompt.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/session\.ts$/,
