@@ -97,7 +97,14 @@ export default defineConfig({
     command: 'pnpm run db:migrate && pnpm run dev',
     env: WEB_SERVER_ENV,
     url: 'http://localhost:3000',
-    timeout: 120_000,
+    // TEMPORARY DIAGNOSTIC — was 120_000. CI (both Blacksmith and
+    // ubuntu-latest) times out here with zero output after the first Nuxt
+    // startup log line, while local startup completes in under 15s in every
+    // configuration tried (fresh checkout, fresh install, CI's exact env
+    // vars). This tests whether it's genuinely stuck forever or just far
+    // slower in CI than 120s for a reason not yet found. Revert to 120_000
+    // once diagnosed either way.
+    timeout: 600_000,
     reuseExistingServer: !process.env.CI,
   },
 })

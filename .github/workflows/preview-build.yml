@@ -110,13 +110,9 @@ jobs:
       - check-pr-state
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
-    # TEMPORARY DIAGNOSTIC — was blacksmith-4vcpu-ubuntu-2404. E2E webServer
-    # startup times out consistently (2/2) on Blacksmith after this PR's
-    # changes, with zero output after the first log line — while it starts
-    # in 8-15s locally and every earlier commit on this same branch passed
-    # on Blacksmith. This isolates whether it's Blacksmith-runner-specific.
-    # Revert to blacksmith-4vcpu-ubuntu-2404 once diagnosed either way.
-    runs-on: ubuntu-latest
+    # Confirmed NOT Blacksmith-specific — the same E2E webServer timeout
+    # reproduced identically on ubuntu-latest, so reverted back to this.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       statuses: write
