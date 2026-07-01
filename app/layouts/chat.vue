@@ -1,8 +1,8 @@
 <template>
-  <NuxtPage/>
   <ClientOnly>
     <LazyNotificationPrompt />
   </ClientOnly>
+  <NuxtPage/>
 </template>
 
 <script setup lang="ts">
