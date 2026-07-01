@@ -65,6 +65,7 @@
 		"@ai-sdk/provider": "^4.0.0",
 		"@ai-sdk/vue": "^4.0.4",
 		"@besidka/nuxt-cookie-consent": "workspace:*",
+		"@block65/webcrypto-web-push": "^1.0.2",
 		"@iconify-json/lucide": "^1.2.110",
 		"@nuxt/content": "^3.14.0",
 		"@nuxt/eslint": "^1.15.2",

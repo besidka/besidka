@@ -7,6 +7,7 @@ import {
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
+  shouldNotifyGenerationReadyWhileHidden,
   shouldRecoverInterruptedGeneration,
   shouldSurfaceChatError,
   shouldSurfaceEmptyAssistantResponse,
@@ -454,6 +455,23 @@ describe('chat error helpers', () => {
       isDisconnect: false,
       isTestChat: false,
     })).toBe(false)
+  })
+
+  it('notifies when a turn finishes while the tab is hidden, with no interruption', () => {
+    expect(shouldNotifyGenerationReadyWhileHidden(false, 'hidden')).toBe(true)
+  })
+
+  it('notifies when a turn required recovery, even once the tab is visible again', () => {
+    // The iOS case: recovery only ever resolves after the user has already
+    // returned (the connection died while the page was frozen, undetected
+    // until execution resumes), so by the time onFinish sees a clean
+    // success, visibilityState already reads 'visible' — the interruption
+    // flag is the only signal that a real disruption happened.
+    expect(shouldNotifyGenerationReadyWhileHidden(true, 'visible')).toBe(true)
+  })
+
+  it('does not notify for a turn that finished normally while visible', () => {
+    expect(shouldNotifyGenerationReadyWhileHidden(false, 'visible')).toBe(false)
   })
 
   it('does not surface raw rate-limit errors when assistant text is already visible', () => {

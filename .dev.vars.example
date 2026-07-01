@@ -32,6 +32,18 @@ NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100
 NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS=20000
 NUXT_FILES_MAINTENANCE_TOKEN=
 
+# Web Push — "your response is ready" notifications.
+# Generate a keypair once with: npx web-push generate-vapid-keys
+# (the web-push package is only needed for this one-off generation step —
+# it is not a runtime dependency; the Worker sends pushes via
+# @block65/webcrypto-web-push instead, since web-push itself relies on
+# Node-only crypto APIs unavailable on Cloudflare Workers)
+NUXT_VAPID_PRIVATE_KEY=
+NUXT_PUBLIC_VAPID_PUBLIC_KEY=
+# A contact URI for push services to reach you about delivery issues —
+# either mailto:you@domain.com or an https: URL, per RFC 8292.
+NUXT_VAPID_SUBJECT=mailto:support@domain.com
+
 # Axiom observability (production only)
 NUXT_AXIOM_DATASET=
 NUXT_AXIOM_TOKEN=

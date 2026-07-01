@@ -105,6 +105,19 @@ The production environment is **`env.production`** in `wrangler.jsonc`.
 - [ ] **Legal pages**: fill in real privacy + terms content in
   `app/pages/(legal)/privacy.vue` and `app/pages/(legal)/terms.vue` — currently
   stubbed. The links are already wired.
+  - [ ] **Push notifications** (added with the optional "your response is
+    ready" feature, `server/utils/push.ts`): once real Privacy Policy content
+    exists, it must disclose the push subscription data collected when a user
+    opts in — endpoint URL + p256dh/auth keys, stored in the `push_subscriptions`
+    table, used only to deliver this one notification type, deleted when the
+    user revokes or the subscription itself expires (the push service returns
+    404/410, which the server already deletes it on). Per compliance research
+    (CNIL 2025 Mobile Applications Recommendation; EDPB Guidelines 05/2020),
+    the in-app contextual prompt shown before the native permission dialog
+    (`app/components/NotificationPrompt.client.vue`) already satisfies the
+    "prior informed disclosure" requirement for the permission itself — this
+    Privacy Policy entry is the separate, additional disclosure needed for the
+    resulting server-side data storage.
 - [ ] **Carousel mockups**: replace the placeholder SVG mockups
   (`public/preview-*.svg`) with real product screenshots.
 - [ ] **Canonical host**: a Cloudflare redirect rule sends the apex

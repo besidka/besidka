@@ -1,6 +1,7 @@
 <template>
   <ClientOnly>
     <LazyPwaRefresher v-if="$pwa?.needRefresh && !studioSession" />
+    <LazyNotificationPrompt />
   </ClientOnly>
   <NuxtPwaManifest />
   <NuxtRouteAnnouncer />

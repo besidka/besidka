@@ -667,7 +667,7 @@ export default defineEventHandler(async (event) => {
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
 
-        await persistAssistantMessageFromStream({
+        const wasPersisted = await persistAssistantMessageFromStream({
           stream: persistenceStream,
           db,
           event,
@@ -682,6 +682,35 @@ export default defineEventHandler(async (event) => {
           publicId: messagePublicId,
           logger,
         })
+
+        // There is no reliable signal here for "is the client still
+        // connected/looking at this" — iOS suspension makes any such check
+        // unreliable anyway (see app/composables/wake-lock.ts) — so this
+        // always sends if a subscription exists; the service worker's push
+        // handler is what actually suppresses a redundant notification when
+        // a window is already visible. waitUntil keeps the Worker alive for
+        // this the same way it already does for shipping the wide event
+        // below — sending a push is one signed HTTPS POST, well inside the
+        // 30s waitUntil budget.
+        if (wasPersisted && cfCtx?.waitUntil) {
+          const runtimeConfig = useRuntimeConfig()
+
+          cfCtx.waitUntil(sendPushNotificationToUser(
+            db,
+            userId,
+            {
+              title: 'Your response is ready',
+              body: 'Open the chat to see what Besidka generated for you.',
+              url: `/chats/${params.data.slug}`,
+            },
+            {
+              subject: runtimeConfig.vapidSubject || undefined,
+              publicKey: runtimeConfig.public.vapidPublicKey || undefined,
+              privateKey: runtimeConfig.vapidPrivateKey || undefined,
+            },
+            logger,
+          ))
+        }
 
         // Emit the dedicated AI wide event AFTER the persistence stream is
         // fully consumed. By this point streamText's `onEnd` has fired and
@@ -890,7 +919,7 @@ async function persistAssistantMessageFromStream(input: {
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
-}) {
+}): Promise<boolean> {
   let isAborted = false
   let responseMessage: UIMessage | null = null
   const trackedStream = input.stream.pipeThrough(new TransformStream({
@@ -910,7 +939,7 @@ async function persistAssistantMessageFromStream(input: {
   }
 
   if (isAborted || !responseMessage) {
-    return
+    return false
   }
 
   try {
@@ -936,6 +965,8 @@ async function persistAssistantMessageFromStream(input: {
       },
       publicId: input.publicId,
     })
+
+    return true
   } catch (exception) {
     const chatError = normalizeChatError({
       error: exception,

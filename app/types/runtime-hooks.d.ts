@@ -4,6 +4,7 @@ declare module '#app' {
     'chat:submit': (payload: { text: string }) => void
     'chat:stop': () => void
     'chat:regenerate': () => void
+    'chat:generation-ready-while-hidden': () => void
     'chat:message-selected': (messageId: string | null) => void
     'chat:scroll-to-user-message': () => void
     'chat:scroll-to-bottom': () => void

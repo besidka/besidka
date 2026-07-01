@@ -234,6 +234,8 @@ function createPersistedUserMessage(text: string) {
 const ULID_PATTERN = /^[0-9A-Z]{26}$/
 
 describe('chat stream message ids', () => {
+  let sendPushNotificationToUserMock: ReturnType<typeof vi.fn>
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -289,7 +291,23 @@ describe('chat stream message ids', () => {
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
     vi.stubGlobal('useKV', () => createKv().kv)
+    sendPushNotificationToUserMock = vi.fn(async () => undefined)
+    vi.stubGlobal('sendPushNotificationToUser', sendPushNotificationToUserMock)
   })
+
+  function createWaitUntilEvent(base: Record<string, any>) {
+    const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
+
+    return {
+      event: {
+        ...base,
+        context: {
+          cloudflare: { context: { waitUntil } },
+        },
+      },
+      waitUntil,
+    }
+  }
 
   it('uses a pre-generated ULID as the streamed assistant message id', async () => {
     const handler = await getHandler()
@@ -324,6 +342,63 @@ describe('chat stream message ids', () => {
       reasoning: 'off',
       publicId: generatedId,
     }))
+  })
+
+  it('sends a push notification via waitUntil after a successful generation', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { event, waitUntil } = createWaitUntilEvent({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect(sendPushNotificationToUserMock).toHaveBeenCalledWith(
+      db,
+      1,
+      {
+        title: 'Your response is ready',
+        body: 'Open the chat to see what Besidka generated for you.',
+        url: '/chats/01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      },
+      expect.anything(),
+      expect.anything(),
+    )
+  })
+
+  it('does not send a push notification when the stream is aborted', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    })
+
+    mocks.uiMessageStreamChunks = [{ type: 'abort' }]
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
   })
 
   it('sets and clears the in-flight generation flag around a normal run', async () => {

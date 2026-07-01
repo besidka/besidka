@@ -91,6 +91,23 @@ export function isAutoRecoverableTransportInterruption(
   return flags.isDisconnect || (error ? isTransportLoadError(error) : false)
 }
 
+// Decides whether a just-completed turn is worth the "you were away when
+// this finished" contextual disclosure (issue #275 follow-up). Two distinct
+// signals, not one sticky "was the tab ever hidden" flag: a plain
+// visibility check alone would false-positive whenever the user backgrounds
+// the tab and returns *before* generation finishes (they end up watching it
+// complete live, not away when it lands) — hadInterruptionThisTurn instead
+// tracks only whether the turn actually had to auto-recover from a
+// connection interruption (iOS-suspension scenario), which by definition
+// only resolves once the user is back regardless of what the page's live
+// visibility state reads by that point.
+export function shouldNotifyGenerationReadyWhileHidden(
+  hadInterruptionThisTurn: boolean,
+  visibilityState: DocumentVisibilityState,
+): boolean {
+  return hadInterruptionThisTurn || visibilityState === 'hidden'
+}
+
 function isChatErrorPayload(value: unknown): value is ChatErrorPayload {
   if (!value || typeof value !== 'object') {
     return false
@@ -483,6 +500,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   let isPendingGenerationRetry = false
   let pendingRetryAttempts = 0
   let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
+  let hadInterruptionThisTurn = false
 
   const {
     messages: sdkMessages,
@@ -583,11 +601,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       if (isAbort) {
         wakeLock.release()
         isAwaitingGeneration.value = false
+        hadInterruptionThisTurn = false
         isStopped.value = true
         return
       }
 
       if (wasTransportInterruption) {
+        hadInterruptionThisTurn = true
         recoverFromTransportInterruption()
         return
       }
@@ -599,7 +619,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         isStopped.value = parsedError
           ? shouldSurfaceChatError(messages, parsedError)
           : true
+      } else if (shouldNotifyGenerationReadyWhileHidden(
+        hadInterruptionThisTurn,
+        document.visibilityState,
+      )) {
+        nuxtApp.callHook('chat:generation-ready-while-hidden')
       }
+
+      hadInterruptionThisTurn = false
     },
     onError(error: any) {
       const parsedError = normalizeChatClientError(error, {
@@ -825,6 +852,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   async function submit() {
     isStopped.value = false
     isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     clearScheduledGenerationRetry()
     wakeLock.acquire()
@@ -861,6 +889,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   function stop() {
     clearScheduledGenerationRetry()
     isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
     wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
@@ -869,6 +898,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   function regenerate() {
     isStopped.value = false
     isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     clearScheduledGenerationRetry()
     wakeLock.acquire()
