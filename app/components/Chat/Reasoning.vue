@@ -34,6 +34,7 @@
           </template>
           <span
             v-if="reasoningLabel.length > 0"
+            data-testid="reasoning-timer-label"
           >
             ({{ reasoningLabel }})
           </span>
@@ -235,6 +236,7 @@ const activeStreamingTitle = computed<string>(() => {
 
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
+const reasoningStartedAt = shallowRef<number>(0)
 const {
   reasoningExpanded: isReasoningExpanded,
   reasoningAutoHide,
@@ -425,13 +427,24 @@ function startReasoningTimer() {
   }
 
   reasoningDurationSeconds.value = 0
+  reasoningStartedAt.value = Date.now()
   reasoningSeconds.value = 1
   reasoningInterval.value = setInterval(() => {
-    reasoningSeconds.value += 1
+    reasoningSeconds.value = Math.max(
+      1,
+      Math.round((Date.now() - reasoningStartedAt.value) / 1000),
+    )
   }, 1000)
 }
 
 function stopReasoningTimer() {
+  if (reasoningStartedAt.value > 0) {
+    reasoningSeconds.value = Math.max(
+      1,
+      Math.round((Date.now() - reasoningStartedAt.value) / 1000),
+    )
+  }
+
   reasoningDurationSeconds.value = reasoningSeconds.value
 
   if (reasoningInterval.value) {
@@ -440,6 +453,7 @@ function stopReasoningTimer() {
   }
 
   reasoningSeconds.value = 0
+  reasoningStartedAt.value = 0
 }
 
 onBeforeUnmount(() => {

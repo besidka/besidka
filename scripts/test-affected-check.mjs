@@ -372,7 +372,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/Chat\/(UrlSources|Reasoning)\.vue$/,
-      tests: profileSettingsTests,
+      tests: [
+        ...profileSettingsTests,
+        'tests/unit/components/Chat/Reasoning.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,
