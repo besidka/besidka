@@ -65,7 +65,6 @@
 		"@ai-sdk/provider": "^4.0.0",
 		"@ai-sdk/vue": "^4.0.4",
 		"@besidka/nuxt-cookie-consent": "workspace:*",
-		"@block65/webcrypto-web-push": "^1.0.2",
 		"@iconify-json/lucide": "^1.2.110",
 		"@nuxt/content": "^3.14.0",
 		"@nuxt/eslint": "^1.15.2",
@@ -107,6 +106,7 @@
 		"vue": "^3.5.35",
 		"vue-router": "^5.1.0",
 		"web-haptics": "0.0.6",
+		"web-push": "^3.6.7",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
@@ -122,6 +122,7 @@
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "24.12.4",
 		"@types/sanitize-html": "^2.16.1",
+		"@types/web-push": "^3.6.4",
 		"@vitest/coverage-v8": "^4.1.7",
 		"@vitest/ui": "^4.1.7",
 		"@vue/test-utils": "^2.4.10",

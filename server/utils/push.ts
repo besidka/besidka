@@ -1,9 +1,4 @@
-import type {
-  PushMessage,
-  PushSubscription as WebPushSubscription,
-  VapidKeys,
-} from '@block65/webcrypto-web-push'
-import { buildPushPayload } from '@block65/webcrypto-web-push'
+import { generateRequestDetails } from 'web-push'
 import { createRequestLogger } from 'evlog'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -18,6 +13,12 @@ export type PushNotificationPayload = {
   title: string
   body: string
   url: string
+}
+
+export interface VapidKeys {
+  publicKey?: string
+  privateKey?: string
+  subject?: string
 }
 
 interface StoredPushSubscription {
@@ -68,7 +69,7 @@ export function isAllowedPushServiceEndpoint(endpoint: string): boolean {
 }
 
 export function isPushConfigured(vapid: VapidKeys): boolean {
-  return Boolean(vapid.publicKey && vapid.privateKey)
+  return Boolean(vapid.publicKey && vapid.privateKey && vapid.subject)
 }
 
 // NUXT_VAPID_SUBJECT holds a bare contact address (e.g. abuse@domain.com) —
@@ -94,6 +95,14 @@ export function buildVapidSubject(
 // dropped it (uninstalled, cleared site data, etc.), so this is the only
 // place that ever finds out and is the right place to clean it up.
 //
+// generateRequestDetails() only builds the request (encryption + VAPID
+// headers) — it never touches Node's https module, unlike sendNotification()
+// on this same package, which does. Sending via fetch() ourselves is what
+// keeps this Workers-compatible: web-push's crypto path only needs
+// node:crypto (ECDH/HMAC/AES-GCM), which Cloudflare Workers' nodejs_compat
+// has genuinely supported since workerd PR #3688 (2025-03-10) — its HTTP
+// client path does not need to work here, and hasn't been verified to.
+//
 // Never pass subscription.endpoint/p256dhKey/authKey to the wide event built
 // in sendPushNotificationToUser below — the endpoint is a capability URL
 // (anyone who has it can trigger a push to that browser) and the keys let
@@ -102,28 +111,38 @@ export function buildVapidSubject(
 async function sendToSubscription(
   db: ReturnType<typeof useDb>,
   subscription: StoredPushSubscription,
-  message: PushMessage,
-  vapid: VapidKeys,
+  payloadJson: string,
+  vapid: Required<VapidKeys>,
 ): Promise<SendOutcome> {
   if (!isAllowedPushServiceEndpoint(subscription.endpoint)) {
     return 'rejected'
   }
 
-  const webPushSubscription: WebPushSubscription = {
-    endpoint: subscription.endpoint,
-    expirationTime: null,
-    keys: {
-      p256dh: subscription.p256dhKey,
-      auth: subscription.authKey,
-    },
-  }
-
   try {
-    const payload = await buildPushPayload(message, webPushSubscription, vapid)
-    const response = await fetch(
-      subscription.endpoint,
-      payload as RequestInit,
+    const requestDetails = generateRequestDetails(
+      {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.p256dhKey,
+          auth: subscription.authKey,
+        },
+      },
+      payloadJson,
+      {
+        vapidDetails: vapid,
+        TTL: 300,
+        urgency: 'normal',
+        contentEncoding: 'aes128gcm',
+      },
     )
+
+    const response = await fetch(requestDetails.endpoint, {
+      method: requestDetails.method,
+      headers: requestDetails.headers,
+      // Buffer extends Uint8Array at runtime — a valid BodyInit — but its
+      // Node type doesn't structurally match fetch()'s DOM-lib signature.
+      body: requestDetails.body as BodyInit | null,
+    })
 
     if (response.status === 404 || response.status === 410) {
       await db.delete(schema.pushSubscriptions)
@@ -178,13 +197,7 @@ export async function sendPushNotificationToUser(
     return
   }
 
-  const message: PushMessage = {
-    data: payload,
-    options: {
-      ttl: 300,
-      urgency: 'normal',
-    },
-  }
+  const payloadJson = JSON.stringify(payload)
 
   const outcomes: Record<SendOutcome, number> = {
     sent: 0,
@@ -194,7 +207,12 @@ export async function sendPushNotificationToUser(
   }
 
   for (const subscription of subscriptions) {
-    const outcome = await sendToSubscription(db, subscription, message, vapid)
+    const outcome = await sendToSubscription(
+      db,
+      subscription,
+      payloadJson,
+      vapid as Required<VapidKeys>,
+    )
 
     outcomes[outcome] += 1
   }

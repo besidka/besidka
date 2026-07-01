@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  buildPushPayload: vi.fn(async () => ({
-    headers: { authorization: 'vapid t=...' },
-    method: 'POST',
+  generateRequestDetails: vi.fn((subscription: { endpoint: string }) => ({
+    endpoint: subscription.endpoint,
+    method: 'POST' as const,
+    headers: { Authorization: 'vapid t=...' },
     body: new Uint8Array([1, 2, 3]),
   })),
   loggerSet: vi.fn(),
@@ -12,8 +13,8 @@ const mocks = vi.hoisted(() => ({
   shipWideEventToAxiom: vi.fn(async () => undefined),
 }))
 
-vi.mock('@block65/webcrypto-web-push', () => ({
-  buildPushPayload: mocks.buildPushPayload,
+vi.mock('web-push', () => ({
+  generateRequestDetails: mocks.generateRequestDetails,
 }))
 
 vi.mock('evlog', () => ({
@@ -78,7 +79,7 @@ describe('push utils', () => {
   let waitUntilMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    mocks.buildPushPayload.mockClear()
+    mocks.generateRequestDetails.mockClear()
     mocks.loggerSet.mockClear()
     mocks.loggerEmit.mockClear()
     mocks.shipWideEventToAxiom.mockClear()
@@ -101,6 +102,15 @@ describe('push utils', () => {
 
     expect(isPushConfigured(unconfiguredVapid)).toBe(false)
     expect(isPushConfigured(configuredVapid)).toBe(true)
+  })
+
+  it('reports unconfigured when the VAPID subject is missing', async () => {
+    const { isPushConfigured } = await importPushUtils()
+
+    expect(isPushConfigured({
+      ...configuredVapid,
+      subject: undefined,
+    })).toBe(false)
   })
 
   it('prepends mailto: to a bare VAPID subject address', async () => {
@@ -242,6 +252,29 @@ describe('push utils', () => {
         sent: 2,
       }),
     }))
+  })
+
+  it('requests aes128gcm with a 5-minute TTL, not the library defaults', async () => {
+    const { sendPushNotificationToUser } = await importPushUtils()
+    const { db } = createDb([createSubscription()])
+
+    await sendPushNotificationToUser(
+      db as any,
+      1,
+      { title: 't', body: 'b', url: '/chats/1' },
+      configuredVapid,
+      waitUntilMock,
+    )
+
+    expect(mocks.generateRequestDetails).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({
+        TTL: 300,
+        urgency: 'normal',
+        contentEncoding: 'aes128gcm',
+      }),
+    )
   })
 
   it('deletes the subscription when the push service reports it gone (410)', async () => {

@@ -136,6 +136,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/push-notifications.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
     'tests/unit/utils/push.spec.ts',
+    'tests/unit/utils/push-encryption.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
