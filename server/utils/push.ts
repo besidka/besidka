@@ -3,23 +3,6 @@ import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { shipWideEventToAxiom } from './evlog-drains'
 
-// DIAGNOSTIC STUB — temporarily replaces the real `web-push` import to
-// bisect a CI-only E2E webServer hang. Must be reverted before merge.
-type StubRequestDetails = {
-  endpoint: string
-  method: string
-  headers: Record<string, string>
-  body: Buffer | null
-}
-
-function generateRequestDetails(
-  _subscription: unknown,
-  _payload: string,
-  _options: unknown,
-): StubRequestDetails {
-  throw new Error('diagnostic stub — web-push import removed')
-}
-
 // Push payloads transit third-party infrastructure (Google/Mozilla/Apple's
 // own push services) and can render on a lock screen — never put generated
 // message content or the user's prompt in title/body, only a fixed generic
@@ -124,6 +107,13 @@ export function buildVapidSubject(
 // (anyone who has it can trigger a push to that browser) and the keys let
 // anyone decrypt payloads sent to it; both are spec-treated as secrets, not
 // just identifiers. Only aggregate outcome counts are ever logged.
+//
+// The `web-push` import below is dynamic, not static, so Nitro's dev server
+// never needs to resolve its dependency graph (jws/asn1.js/https-proxy-agent)
+// at startup — a static top-level import here made the Playwright webServer
+// hang indefinitely in CI (Linux runners only; unreproducible on macOS),
+// with no failure past `nuxt dev`'s first log line. The production Workers
+// build was never affected; only Nitro's own dev-server bundling was.
 async function sendToSubscription(
   db: ReturnType<typeof useDb>,
   subscription: StoredPushSubscription,
@@ -135,6 +125,7 @@ async function sendToSubscription(
   }
 
   try {
+    const { generateRequestDetails } = await import('web-push')
     const requestDetails = generateRequestDetails(
       {
         endpoint: subscription.endpoint,
