@@ -1,5 +1,40 @@
 # Drizzle ORM v0 → v1 upgrade (issue #276)
 
+## Rebase onto main after PRs #277/#278 (2026-07-01)
+
+This branch was rebased onto `main` after merging #277 (iOS wake-lock) and
+#278 (push notifications). #278 added a new `push_subscriptions` table and
+a `user_settings.notification_prompt_state` column as three new v0-format
+flat migrations (`0019_wide_ravenous`, `0020_famous_old_lace`,
+`0021_fancy_mantis`). These were converted into this branch's v1 folder
+format the same way as the original 19 — via the real `drizzle-kit up`
+binary on an isolated copy of the *complete* migration history (a partial,
+headless chain starting mid-sequence does not get its snapshot version
+bumped to the current format; confirmed empirically) — then relinked to
+follow `tidy_vengeance` (this branch's own extra migration) instead of
+`motionless_prowler` directly, since #278 was authored with no knowledge of
+that insertion.
+
+`server/db/schemas/push-subscriptions.ts` was converted to `snakeCase.table`
+(it still used plain `sqliteTable`, which would have silently resolved
+`p256dhKey`/`authKey`/`userId` to the wrong, non-existent column names), and
+its two `db.query.pushSubscriptions.findFirst/findMany` call sites
+(`server/api/v1/push/subscribe.post.ts`,
+`server/utils/push.ts`) were converted to the v1 declarative filter syntax.
+The unique-constraint taxonomy fix (see "sqliteTable() -> snakeCase.table()"
+below) had to be reapplied to the new latest snapshot (`fancy_mantis`),
+since it was generated fresh from #278's un-fixed v0 history and didn't
+carry the earlier fix forward. `scripts/drizzle-v1-migration-rename.sql`
+gained three more entries for `0019`/`0020`/`0021`, on the assumption they
+were already deployed to preview/production via the normal merge-to-main
+pipeline before this rebase.
+
+Re-verified end to end: `db:generate` clean no-op, full chain (23
+migrations) rebuilt from scratch on a wiped local D1 with `push_subscriptions`
+and the new `user_settings` column both present and correctly named, 563/563
+unit+integration tests passing (470 before #277/#278, 561 on main after
+them, 563 on this branch).
+
 ## Overview
 
 `drizzle-orm` and `drizzle-kit` are pinned to `1.0.0-rc.4` (exact, no `^`).

@@ -17,3 +17,6 @@ UPDATE d1_migrations SET name = '20260310204206_fuzzy_tempest/migration.sql' WHE
 UPDATE d1_migrations SET name = '20260311101000_dark_rictor/migration.sql' WHERE name = '0016_dark_rictor.sql';
 UPDATE d1_migrations SET name = '20260317195311_clear_shard/migration.sql' WHERE name = '0017_clear_shard.sql';
 UPDATE d1_migrations SET name = '20260515171512_motionless_prowler/migration.sql' WHERE name = '0018_motionless_prowler.sql';
+UPDATE d1_migrations SET name = '20260630234840_wide_ravenous/migration.sql' WHERE name = '0019_wide_ravenous.sql';
+UPDATE d1_migrations SET name = '20260701151448_famous_old_lace/migration.sql' WHERE name = '0020_famous_old_lace.sql';
+UPDATE d1_migrations SET name = '20260701175225_fancy_mantis/migration.sql' WHERE name = '0021_fancy_mantis.sql';

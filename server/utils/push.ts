@@ -195,9 +195,7 @@ export async function sendPushNotificationToUser(
   }
 
   const subscriptions = await db.query.pushSubscriptions.findMany({
-    where(table, { eq }) {
-      return eq(table.userId, userId)
-    },
+    where: { userId },
   })
 
   if (subscriptions.length === 0) {
