@@ -19,7 +19,7 @@
         @click="enable"
       />
       <UiButton
-        soft
+        ghost
         text="Not now"
         size="xs"
         @click="dismiss"
