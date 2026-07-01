@@ -1,8 +1,24 @@
-import { generateRequestDetails } from 'web-push'
 import { createRequestLogger } from 'evlog'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { shipWideEventToAxiom } from './evlog-drains'
+
+// DIAGNOSTIC STUB — temporarily replaces the real `web-push` import to
+// bisect a CI-only E2E webServer hang. Must be reverted before merge.
+type StubRequestDetails = {
+  endpoint: string
+  method: string
+  headers: Record<string, string>
+  body: Buffer | null
+}
+
+function generateRequestDetails(
+  _subscription: unknown,
+  _payload: string,
+  _options: unknown,
+): StubRequestDetails {
+  throw new Error('diagnostic stub — web-push import removed')
+}
 
 // Push payloads transit third-party infrastructure (Google/Mozilla/Apple's
 // own push services) and can render on a lock screen — never put generated
