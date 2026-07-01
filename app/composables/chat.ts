@@ -842,6 +842,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    if (isStopped.value) {
+      return
+    }
+
     if (!shouldRecoverInterruptedGeneration(chatSdk.status, chatSdk.messages)) {
       return
     }
@@ -870,6 +874,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // "still generating" poll loop as a live recovery, not just a replay.
       isAwaitingGeneration.value = true
       currentTurnStartedAt.value = Date.now()
+      wakeLock.acquire()
       chatSdk.regenerate()
     }
 

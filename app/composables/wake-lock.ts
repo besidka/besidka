@@ -62,6 +62,7 @@ export function useWakeLock() {
   const isActive = shallowRef<boolean>(false)
   let sentinel: WakeLockSentinel | undefined
   let onVisible: (() => void) | undefined
+  let generation = 0
 
   function primeFallback(): void {
     try {
@@ -86,13 +87,33 @@ export function useWakeLock() {
     }
   }
 
-  async function requestNativeWakeLock(): Promise<void> {
+  async function requestNativeWakeLock(
+    requestedGeneration: number,
+  ): Promise<void> {
     if (!('wakeLock' in navigator)) {
       return
     }
 
     try {
-      sentinel = await navigator.wakeLock.request('screen')
+      const requestedSentinel = await navigator.wakeLock.request('screen')
+
+      // A release() or a newer acquire() may have run while the request
+      // above was pending. If the generation has moved on, this sentinel is
+      // stale — release it immediately instead of writing it to the shared
+      // `sentinel` variable, otherwise it would either orphan an OS-level
+      // wake lock (release() already ran and found nothing to release) or
+      // clobber a sentinel a newer acquire() already stored.
+      if (requestedGeneration !== generation) {
+        try {
+          await requestedSentinel.release()
+        } catch (exception) {
+          void exception
+        }
+
+        return
+      }
+
+      sentinel = requestedSentinel
     } catch (exception) {
       void exception
     }
@@ -103,6 +124,10 @@ export function useWakeLock() {
       return
     }
 
+    generation += 1
+
+    const currentGeneration = generation
+
     isActive.value = true
 
     // The video fallback must start synchronously, in the same gesture as
@@ -112,7 +137,7 @@ export function useWakeLock() {
     // comment above for why detection alone can't be trusted here).
     primeFallback()
 
-    await requestNativeWakeLock()
+    await requestNativeWakeLock(currentGeneration)
 
     if (!onVisible) {
       onVisible = () => {
@@ -121,7 +146,7 @@ export function useWakeLock() {
         }
 
         primeFallback()
-        requestNativeWakeLock().catch((exception) => {
+        requestNativeWakeLock(currentGeneration).catch((exception) => {
           void exception
         })
       }
@@ -135,6 +160,8 @@ export function useWakeLock() {
       return
     }
 
+    generation += 1
+
     isActive.value = false
 
     if (onVisible) {
@@ -142,13 +169,16 @@ export function useWakeLock() {
       onVisible = undefined
     }
 
+    const releasedSentinel = sentinel
+
+    sentinel = undefined
+
     try {
-      await sentinel?.release()
+      await releasedSentinel?.release()
     } catch (exception) {
       void exception
     }
 
-    sentinel = undefined
     stopFallback()
   }
 

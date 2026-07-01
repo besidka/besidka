@@ -150,4 +150,87 @@ describe('useWakeLock', () => {
 
     await wakeLock.release()
   })
+
+  it(
+    'releases the sentinel and leaves no active lock when release() runs '
+    + 'while the native request is still pending',
+    async () => {
+      let resolveRequest: (
+        sentinel: { release: typeof sentinelRelease },
+      ) => void = () => {}
+
+      wakeLockRequest.mockImplementation(() => {
+        return new Promise((resolve) => {
+          resolveRequest = resolve
+        })
+      })
+
+      const wakeLock = useWakeLock()
+      const acquirePromise = wakeLock.acquire()
+
+      await Promise.resolve()
+      await wakeLock.release()
+
+      expect(wakeLock.isActive.value).toBe(false)
+
+      const pendingSentinelRelease = vi.fn().mockResolvedValue(undefined)
+
+      resolveRequest({ release: pendingSentinelRelease })
+      await acquirePromise
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(pendingSentinelRelease).toHaveBeenCalledTimes(1)
+      expect(wakeLock.isActive.value).toBe(false)
+
+      pendingSentinelRelease.mockClear()
+      sentinelRelease.mockClear()
+      await wakeLock.release()
+
+      expect(pendingSentinelRelease).not.toHaveBeenCalled()
+      expect(sentinelRelease).not.toHaveBeenCalled()
+    },
+  )
+
+  it(
+    'does not let a stale release() clobber the sentinel from an '
+    + 'immediately-following acquire()',
+    async () => {
+      const wakeLock = useWakeLock()
+
+      await wakeLock.acquire()
+
+      let resolveSecondRelease: () => void = () => {}
+      const secondSentinelRelease = vi.fn(() => {
+        return new Promise<void>((resolve) => {
+          resolveSecondRelease = resolve
+        })
+      })
+
+      sentinelRelease.mockImplementationOnce(secondSentinelRelease)
+
+      const releasePromise = wakeLock.release()
+
+      await Promise.resolve()
+
+      const nextSentinelRelease = vi.fn().mockResolvedValue(undefined)
+
+      wakeLockRequest.mockResolvedValueOnce({
+        release: nextSentinelRelease,
+      })
+
+      const acquirePromise = wakeLock.acquire()
+
+      await acquirePromise
+
+      resolveSecondRelease()
+      await releasePromise
+
+      expect(wakeLock.isActive.value).toBe(true)
+
+      await wakeLock.release()
+
+      expect(nextSentinelRelease).toHaveBeenCalledTimes(1)
+    },
+  )
 })
