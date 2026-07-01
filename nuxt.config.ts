@@ -141,6 +141,8 @@ export default defineNuxtConfig({
     axiomAuditToken: '',
     axiomConsentDataset: '',
     axiomConsentToken: '',
+    vapidPrivateKey: '',
+    vapidSubject: '',
     public: {
       baseUrl: '',
       defaultModel,
@@ -157,6 +159,7 @@ export default defineNuxtConfig({
       ],
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
+      vapidPublicKey: '',
     },
   },
   site: {
@@ -513,6 +516,13 @@ export default defineNuxtConfig({
       globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
       globIgnores: ['_studio-app/**'],
       navigateFallback: null,
+      // Workbox's generateSW strategy builds the whole service worker from
+      // its own config and has no hook for custom push/notificationclick
+      // listeners — importScripts is the only way to add them without
+      // switching to injectManifest (which would mean owning the entire SW
+      // source, caching strategy included). sw-push.js lives in public/ and
+      // is concatenated into the generated worker as-is.
+      importScripts: ['/sw-push.js'],
     },
     client: {
       installPrompt: true,

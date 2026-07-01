@@ -395,4 +395,112 @@ describe('useUserSetting', () => {
     expect(allowExternalLinks.value).toBe(false)
     expect(settingsError.value).not.toBeNull()
   })
+
+  it('defaults notificationPromptState to null for guests', () => {
+    const { notificationPromptState } = useUserSetting()
+
+    expect(notificationPromptState.value).toBeNull()
+  })
+
+  it('syncs notificationPromptState from server response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      notificationPromptState: false,
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { syncForUser, notificationPromptState } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    expect(notificationPromptState.value).toBe(false)
+  })
+
+  it('does not persist notificationPromptState for guests', async () => {
+    const fetchMock = vi.fn()
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      notificationPromptState,
+      setNotificationPromptState,
+    } = useUserSetting()
+
+    await setNotificationPromptState(true)
+
+    expect(notificationPromptState.value).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('persists notificationPromptState for authenticated users', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        notificationPromptState: null,
+      })
+      .mockResolvedValueOnce({
+        notificationPromptState: true,
+      })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      syncForUser,
+      notificationPromptState,
+      setNotificationPromptState,
+    } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    const savePromise = setNotificationPromptState(true)
+
+    expect(notificationPromptState.value).toBe(true)
+    await savePromise
+
+    expect(notificationPromptState.value).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/v1/profiles/settings',
+      {
+        method: 'PATCH',
+        body: {
+          notificationPromptState: true,
+        },
+      },
+    )
+  })
+
+  it('rolls back optimistic notificationPromptState when save fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        notificationPromptState: null,
+      })
+      .mockRejectedValueOnce(new Error('Save failed'))
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      notificationPromptState,
+      settingsError,
+      syncForUser,
+      setNotificationPromptState,
+    } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    expect(notificationPromptState.value).toBeNull()
+
+    const savePromise = setNotificationPromptState(false)
+
+    expect(notificationPromptState.value).toBe(false)
+    await savePromise
+
+    expect(notificationPromptState.value).toBeNull()
+    expect(settingsError.value).not.toBeNull()
+  })
 })

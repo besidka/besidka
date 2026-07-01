@@ -91,6 +91,23 @@ export function isAutoRecoverableTransportInterruption(
   return flags.isDisconnect || (error ? isTransportLoadError(error) : false)
 }
 
+// Decides whether a just-completed turn is worth the "you were away when
+// this finished" contextual disclosure (issue #275 follow-up). Two distinct
+// signals, not one sticky "was the tab ever hidden" flag: a plain
+// visibility check alone would false-positive whenever the user backgrounds
+// the tab and returns *before* generation finishes (they end up watching it
+// complete live, not away when it lands) — hadInterruptionThisTurn instead
+// tracks only whether the turn actually had to auto-recover from a
+// connection interruption (iOS-suspension scenario), which by definition
+// only resolves once the user is back regardless of what the page's live
+// visibility state reads by that point.
+export function shouldNotifyGenerationReadyWhileHidden(
+  hadInterruptionThisTurn: boolean,
+  visibilityState: DocumentVisibilityState,
+): boolean {
+  return hadInterruptionThisTurn || visibilityState === 'hidden'
+}
+
 function isChatErrorPayload(value: unknown): value is ChatErrorPayload {
   if (!value || typeof value !== 'object') {
     return false
@@ -303,6 +320,20 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }) || false
 }
 
+// isAwaitingGeneration only needs to force the generic loading indicator for
+// the idle gaps between recovery polls, when there is nothing else on screen
+// to show it's still working — once a recovered stream is actively producing
+// visible reasoning/text again, that message bubble already is the loading
+// indicator, and showing this one too underneath it is pure duplication
+// (issue #275 follow-up: reported as two bubbles after returning from an app
+// switch mid-generation).
+export function shouldForceGenericLoadingIndicator(
+  isAwaitingGeneration: boolean,
+  lastMessage: UIMessage | undefined,
+): boolean {
+  return isAwaitingGeneration && !hasVisibleAssistantContent(lastMessage)
+}
+
 export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
   if (!message || message.role !== 'assistant') {
     return false
@@ -483,6 +514,20 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   let isPendingGenerationRetry = false
   let pendingRetryAttempts = 0
   let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
+  let hadInterruptionThisTurn = false
+  // Anchors "how long has this turn been reasoning" to a timestamp owned by
+  // this composable rather than any per-message component's local state.
+  // The recovery-poll loop (attemptGenerationRecovery below) resends the
+  // same user message every few seconds via regenerate(), which the AI SDK
+  // implements by slicing the in-progress assistant reply off chatSdk.
+  // messages and later re-adding it under a brand new id once the response
+  // resumes — since ChatReasoning is keyed by message.id, that destroys and
+  // remounts the component on every single poll, wiping any local timer
+  // state it holds. A value read from this stable, page-lifetime ref
+  // survives that churn: a freshly (re)mounted ChatReasoning instance reads
+  // the same currentTurnStartedAt and immediately computes the correct
+  // elapsed time, with no special-casing needed for the remount itself.
+  const currentTurnStartedAt = shallowRef<number>(0)
 
   const {
     messages: sdkMessages,
@@ -583,11 +628,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       if (isAbort) {
         wakeLock.release()
         isAwaitingGeneration.value = false
+        hadInterruptionThisTurn = false
         isStopped.value = true
         return
       }
 
       if (wasTransportInterruption) {
+        hadInterruptionThisTurn = true
         recoverFromTransportInterruption()
         return
       }
@@ -599,7 +646,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         isStopped.value = parsedError
           ? shouldSurfaceChatError(messages, parsedError)
           : true
+      } else if (shouldNotifyGenerationReadyWhileHidden(
+        hadInterruptionThisTurn,
+        document.visibilityState,
+      )) {
+        nuxtApp.callHook('chat:generation-ready-while-hidden')
       }
+
+      hadInterruptionThisTurn = false
     },
     onError(error: any) {
       const parsedError = normalizeChatClientError(error, {
@@ -680,7 +734,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const isLoading = computed<boolean>(() => {
-    if (isAwaitingGeneration.value) {
+    if (shouldForceGenericLoadingIndicator(
+      isAwaitingGeneration.value,
+      lastMessage.value,
+    )) {
       return true
     } else if (chatSdk.status === 'submitted') {
       return true
@@ -747,6 +804,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
     if (!options.immediate) {
       pendingRetryTimeoutId = setTimeout(() => {
+        // The generation this was polling for may have resumed on its own
+        // between scheduling and firing (e.g. a brief connection hiccup that
+        // self-recovered) — resending against an already-active generation
+        // would push a second, redundant response into the message list.
+        if (['submitted', 'streaming'].includes(chatSdk.status)) {
+          return
+        }
+
         chatSdk.regenerate()
       }, GENERATION_RETRY_DELAY_MS)
 
@@ -777,6 +842,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    if (isStopped.value) {
+      return
+    }
+
     if (!shouldRecoverInterruptedGeneration(chatSdk.status, chatSdk.messages)) {
       return
     }
@@ -804,6 +873,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // be generating server-side, so this may resolve into the same
       // "still generating" poll loop as a live recovery, not just a replay.
       isAwaitingGeneration.value = true
+      currentTurnStartedAt.value = Date.now()
+      wakeLock.acquire()
       chatSdk.regenerate()
     }
 
@@ -825,7 +896,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   async function submit() {
     isStopped.value = false
     isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
+    currentTurnStartedAt.value = Date.now()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
 
@@ -861,6 +934,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   function stop() {
     clearScheduledGenerationRetry()
     isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
+    currentTurnStartedAt.value = 0
     wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
@@ -869,7 +944,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   function regenerate() {
     isStopped.value = false
     isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
+    currentTurnStartedAt.value = Date.now()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
     chatSdk.regenerate()
@@ -974,5 +1051,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isLastAssistantMessage,
     shouldDisplayMessage,
     files,
+    currentTurnStartedAt,
   }
 }

@@ -5,6 +5,7 @@ interface SettingsRecord {
   reasoningExpanded: boolean
   reasoningAutoHide: boolean
   allowExternalLinks: boolean | null
+  notificationPromptState: boolean | null
 }
 
 function createDbMock() {
@@ -18,12 +19,14 @@ function createDbMock() {
     reasoningExpanded?: boolean
     reasoningAutoHide?: boolean
     allowExternalLinks?: boolean | null
+    notificationPromptState?: boolean | null
   }) => {
     currentSettings = {
       id: 1,
       reasoningExpanded: values.reasoningExpanded ?? false,
       reasoningAutoHide: values.reasoningAutoHide ?? true,
       allowExternalLinks: values.allowExternalLinks ?? null,
+      notificationPromptState: values.notificationPromptState ?? null,
     }
   })
   const insert = vi.fn(() => ({
@@ -36,6 +39,7 @@ function createDbMock() {
     reasoningExpanded?: boolean
     reasoningAutoHide?: boolean
     allowExternalLinks?: boolean | null
+    notificationPromptState?: boolean | null
   }) => {
     currentSettings = {
       id: 1,
@@ -48,6 +52,9 @@ function createDbMock() {
       allowExternalLinks: 'allowExternalLinks' in values
         ? (values.allowExternalLinks ?? null)
         : (currentSettings?.allowExternalLinks ?? null),
+      notificationPromptState: 'notificationPromptState' in values
+        ? (values.notificationPromptState ?? null)
+        : (currentSettings?.notificationPromptState ?? null),
     }
 
     return {
@@ -159,6 +166,7 @@ describe('profile settings API', () => {
       reasoningExpanded: false,
       reasoningAutoHide: true,
       allowExternalLinks: null,
+      notificationPromptState: null,
     })
   })
 
@@ -202,6 +210,7 @@ describe('profile settings API', () => {
       reasoningExpanded: false,
       reasoningAutoHide: true,
       allowExternalLinks: null,
+      notificationPromptState: null,
     })
   })
 
@@ -233,6 +242,7 @@ describe('profile settings API', () => {
       reasoningExpanded: false,
       reasoningAutoHide: false,
       allowExternalLinks: null,
+      notificationPromptState: null,
     })
   })
 
@@ -264,6 +274,39 @@ describe('profile settings API', () => {
       reasoningExpanded: false,
       reasoningAutoHide: true,
       allowExternalLinks: true,
+      notificationPromptState: null,
+    })
+  })
+
+  it('saves and returns notificationPromptState', async () => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        notificationPromptState: false,
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      notificationPromptState: false,
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toEqual({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      allowExternalLinks: null,
+      notificationPromptState: false,
     })
   })
 

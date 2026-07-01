@@ -57,6 +57,7 @@
             :message="m"
             :reasoning-level="getMessageReasoning(m, messageIndex)"
             :status="chatSdk.status"
+            :turn-started-at="currentTurnStartedAt"
           />
           <div
             v-for="(part, index) in m.parts"
@@ -262,6 +263,7 @@ const {
   isLastAssistantMessage,
   shouldDisplayMessage,
   files,
+  currentTurnStartedAt,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()

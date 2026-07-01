@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `notification_prompt_state` integer;

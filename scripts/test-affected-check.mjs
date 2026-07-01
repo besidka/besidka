@@ -65,6 +65,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-settings.spec.ts',
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
+    'tests/unit/composables/notification-prompt.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -131,7 +132,22 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/events-ingest.spec.ts',
   ]
 
+  const pushNotificationTests = [
+    'tests/unit/composables/push-notifications.spec.ts',
+    'tests/unit/composables/notification-prompt.spec.ts',
+    'tests/unit/utils/push.spec.ts',
+    'tests/unit/utils/push-encryption.spec.ts',
+    'tests/integration/api/push-subscriptions.spec.ts',
+    'tests/integration/api/chats-message-id-stream.spec.ts',
+    'tests/unit/pages/chats-new.spec.ts',
+  ]
+
   const testMappings = [
+    {
+      pattern:
+        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js)$/,
+      tests: pushNotificationTests,
+    },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,
       tests: landingTests,
@@ -252,7 +268,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(app\/composables\/(chat-draft|auth)\.ts|app\/pages\/chats\/new\.vue|app\/app\.vue|app\/plugins\/session-revalidate\.client\.ts)$/,
-      tests: sessionRecoveryTests,
+      tests: [
+        ...sessionRecoveryTests,
+        'tests/unit/composables/notification-prompt.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/session\.ts$/,
@@ -336,6 +355,7 @@ export function getAffectedTests(changedFiles) {
         ...historyProjectsTests,
         ...chatStreamBranchTests,
         ...profileSettingsTests,
+        ...pushNotificationTests,
       ],
     },
     {
@@ -358,7 +378,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/Chat\/(UrlSources|Reasoning)\.vue$/,
-      tests: profileSettingsTests,
+      tests: [
+        ...profileSettingsTests,
+        'tests/unit/components/Chat/Reasoning.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,

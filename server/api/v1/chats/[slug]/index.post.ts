@@ -244,8 +244,21 @@ export default defineEventHandler(async (event) => {
       return createUIMessageStreamResponse({
         stream: createUIMessageStream({
           execute({ writer }) {
-            writer.write({ type: 'start', messageId: ulid() })
-            writer.write({ type: 'data-generation-pending', data: {} })
+            // No messageId on start and no metadata on finish — either would
+            // make the AI SDK write() a message-list entry keyed by a fresh
+            // id unrelated to the real in-progress assistant message, which
+            // pushes a genuine (if content-less and hidden) extra message
+            // into chatSdk.messages and pollutes later
+            // shouldSurfaceEmptyAssistantResponse checks. transient: true
+            // routes the pending signal to onData only, the same way — never
+            // becoming a message part. This response should be a complete
+            // no-op against the message list; only onData should observe it.
+            writer.write({ type: 'start' })
+            writer.write({
+              type: 'data-generation-pending',
+              data: {},
+              transient: true,
+            })
             writer.write({ type: 'finish' })
           },
         }),
@@ -537,10 +550,15 @@ export default defineEventHandler(async (event) => {
       // #275 auto-recovery on visibilitychange) sees "still working" instead
       // of triggering a second concurrent streamText() call. The ttl is a
       // safety bound, not the expected lifetime — a clean exit always
-      // deletes it in the finally block below. Not awaited: KV writes are
-      // already only eventually consistent, and not blocking here keeps
-      // streamText() starting immediately rather than behind an extra tick.
-      kv.put(generatingKey, '1', { expirationTtl: 600 }).catch((exception) => {
+      // deletes it in the finally block below. Awaited: a client that
+      // disconnects and reconnects fast enough could otherwise run the guard
+      // check above before this put() landed in KV, see no flag, and start a
+      // second concurrent generation — double-billing the provider for one
+      // user turn (caught by Codex's automated review). Awaiting here
+      // guarantees the flag is visible before any provider work begins.
+      try {
+        await kv.put(generatingKey, '1', { expirationTtl: 600 })
+      } catch (exception) {
         logger.set({
           generationGuard: {
             operation: 'put',
@@ -549,7 +567,7 @@ export default defineEventHandler(async (event) => {
               : String(exception),
           },
         })
-      })
+      }
 
       try {
         if (missingFiles.length > 0) {
@@ -667,7 +685,7 @@ export default defineEventHandler(async (event) => {
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
 
-        await persistAssistantMessageFromStream({
+        const wasPersisted = await persistAssistantMessageFromStream({
           stream: persistenceStream,
           db,
           event,
@@ -682,6 +700,38 @@ export default defineEventHandler(async (event) => {
           publicId: messagePublicId,
           logger,
         })
+
+        // There is no reliable signal here for "is the client still
+        // connected/looking at this" — iOS suspension makes any such check
+        // unreliable anyway (see app/composables/wake-lock.ts) — so this
+        // always sends if a subscription exists. The service worker's push
+        // handler always shows the notification too, even if a window is
+        // visible: subscribing with userVisibleOnly:true is a promise to the
+        // browser that every push shows one, and suppressing it risks Chrome
+        // showing its own generic notification instead or penalizing the
+        // subscription. waitUntil keeps the Worker alive for this the same
+        // way it already does for shipping the wide event below — sending a
+        // push is one signed HTTPS POST, well inside the 30s waitUntil
+        // budget.
+        if (wasPersisted && cfCtx?.waitUntil) {
+          const runtimeConfig = useRuntimeConfig()
+
+          cfCtx.waitUntil(sendPushNotificationToUser(
+            db,
+            userId,
+            {
+              title: 'Your response is ready',
+              body: 'Open the chat to see what Besidka generated for you.',
+              url: `/chats/${params.data.slug}`,
+            },
+            {
+              subject: buildVapidSubject(runtimeConfig.vapidSubject),
+              publicKey: runtimeConfig.public.vapidPublicKey || undefined,
+              privateKey: runtimeConfig.vapidPrivateKey || undefined,
+            },
+            cfCtx.waitUntil.bind(cfCtx),
+          ))
+        }
 
         // Emit the dedicated AI wide event AFTER the persistence stream is
         // fully consumed. By this point streamText's `onEnd` has fired and
@@ -890,7 +940,7 @@ async function persistAssistantMessageFromStream(input: {
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
-}) {
+}): Promise<boolean> {
   let isAborted = false
   let responseMessage: UIMessage | null = null
   const trackedStream = input.stream.pipeThrough(new TransformStream({
@@ -910,7 +960,7 @@ async function persistAssistantMessageFromStream(input: {
   }
 
   if (isAborted || !responseMessage) {
-    return
+    return false
   }
 
   try {
@@ -936,6 +986,8 @@ async function persistAssistantMessageFromStream(input: {
       },
       publicId: input.publicId,
     })
+
+    return true
   } catch (exception) {
     const chatError = normalizeChatError({
       error: exception,

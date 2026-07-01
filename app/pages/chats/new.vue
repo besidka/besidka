@@ -303,6 +303,10 @@ onMounted(() => {
   }
 })
 
+onMounted(() => {
+  useNotificationPrompt().maybeShowProactively()
+})
+
 function openProjectPicker() {
   projectPickerRef.value?.open(projectId.value)
 }

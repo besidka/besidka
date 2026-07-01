@@ -13,6 +13,7 @@ export default defineEventHandler(async () => {
       reasoningExpanded: true,
       reasoningAutoHide: true,
       allowExternalLinks: true,
+      notificationPromptState: true,
     },
   })
 
@@ -20,5 +21,6 @@ export default defineEventHandler(async () => {
     reasoningExpanded: settings?.reasoningExpanded ?? false,
     reasoningAutoHide: settings?.reasoningAutoHide ?? true,
     allowExternalLinks: settings?.allowExternalLinks ?? null,
+    notificationPromptState: settings?.notificationPromptState ?? null,
   }
 })
