@@ -312,7 +312,7 @@ describe('chat project instructions', () => {
 
     vi.stubGlobal('useDb', () => db)
 
-    await handler({
+    const response = await handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5-mini',
@@ -321,6 +321,8 @@ describe('chat project instructions', () => {
         messages: [createMessage('Hello')],
       },
     } as any)
+
+    await response.ready
 
     const convertMessages = mocks.convertFilesForAICalls[0] as Array<any>
 
@@ -362,7 +364,7 @@ describe('chat project instructions', () => {
 
     vi.stubGlobal('useDb', () => db)
 
-    await handler({
+    const response = await handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5-mini',
@@ -371,6 +373,8 @@ describe('chat project instructions', () => {
         messages: [createMessage('Hello')],
       },
     } as any)
+
+    await response.ready
 
     const convertMessages = mocks.convertFilesForAICalls[0] as Array<any>
 
@@ -397,7 +401,7 @@ describe('chat project instructions', () => {
 
     vi.stubGlobal('useDb', () => db)
 
-    await handler({
+    const response = await handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5-mini',
@@ -406,6 +410,8 @@ describe('chat project instructions', () => {
         messages: [createMessage('Hello')],
       },
     } as any)
+
+    await response.ready
 
     const convertMessages = mocks.convertFilesForAICalls[0] as Array<any>
 

@@ -550,10 +550,15 @@ export default defineEventHandler(async (event) => {
       // #275 auto-recovery on visibilitychange) sees "still working" instead
       // of triggering a second concurrent streamText() call. The ttl is a
       // safety bound, not the expected lifetime — a clean exit always
-      // deletes it in the finally block below. Not awaited: KV writes are
-      // already only eventually consistent, and not blocking here keeps
-      // streamText() starting immediately rather than behind an extra tick.
-      kv.put(generatingKey, '1', { expirationTtl: 600 }).catch((exception) => {
+      // deletes it in the finally block below. Awaited: a client that
+      // disconnects and reconnects fast enough could otherwise run the guard
+      // check above before this put() landed in KV, see no flag, and start a
+      // second concurrent generation — double-billing the provider for one
+      // user turn (caught by Codex's automated review). Awaiting here
+      // guarantees the flag is visible before any provider work begins.
+      try {
+        await kv.put(generatingKey, '1', { expirationTtl: 600 })
+      } catch (exception) {
         logger.set({
           generationGuard: {
             operation: 'put',
@@ -562,7 +567,7 @@ export default defineEventHandler(async (event) => {
               : String(exception),
           },
         })
-      })
+      }
 
       try {
         if (missingFiles.length > 0) {
@@ -699,12 +704,15 @@ export default defineEventHandler(async (event) => {
         // There is no reliable signal here for "is the client still
         // connected/looking at this" — iOS suspension makes any such check
         // unreliable anyway (see app/composables/wake-lock.ts) — so this
-        // always sends if a subscription exists; the service worker's push
-        // handler is what actually suppresses a redundant notification when
-        // a window is already visible. waitUntil keeps the Worker alive for
-        // this the same way it already does for shipping the wide event
-        // below — sending a push is one signed HTTPS POST, well inside the
-        // 30s waitUntil budget.
+        // always sends if a subscription exists. The service worker's push
+        // handler always shows the notification too, even if a window is
+        // visible: subscribing with userVisibleOnly:true is a promise to the
+        // browser that every push shows one, and suppressing it risks Chrome
+        // showing its own generic notification instead or penalizing the
+        // subscription. waitUntil keeps the Worker alive for this the same
+        // way it already does for shipping the wide event below — sending a
+        // push is one signed HTTPS POST, well inside the 30s waitUntil
+        // budget.
         if (wasPersisted && cfCtx?.waitUntil) {
           const runtimeConfig = useRuntimeConfig()
 
