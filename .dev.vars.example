@@ -1,6 +1,3 @@
-# General
-NUXT_PUBLIC_BASE_URL=http://localhost:3000
-
 # Drizzle
 NUXT_ENCRYPTION_HASHIDS=secret
 NUXT_ENCRYPTION_KEY=secret
@@ -8,8 +5,6 @@ NUXT_ENCRYPTION_KEY=secret
 # Resend
 # https://resend.com/api-keys
 NUXT_RESEND_API_KEY=
-NUXT_RESEND_SENDER_NOREPLY=noreply@domain.com
-NUXT_RESEND_SENDER_PERSONALIZED=serhii@domain.com
 # Set true in CI E2E to skip real email sending
 NUXT_EMAIL_NOOP_ENABLED=false
 
@@ -32,19 +27,6 @@ NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100
 NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS=20000
 NUXT_FILES_MAINTENANCE_TOKEN=
 
-# Web Push — "your response is ready" notifications.
-# Generate a keypair once with: npx web-push generate-vapid-keys
-# (the web-push package is only needed for this one-off generation step —
-# it is not a runtime dependency; the Worker sends pushes via
-# @block65/webcrypto-web-push instead, since web-push itself relies on
-# Node-only crypto APIs unavailable on Cloudflare Workers)
-NUXT_VAPID_PRIVATE_KEY=
-NUXT_PUBLIC_VAPID_PUBLIC_KEY=
-# A monitored contact address for push services to reach you about delivery
-# issues, e.g. abuse — bare email only, no "mailto:" prefix (the code adds
-# it). abuse@ is the RFC 2142 convention push-service reviewers expect.
-NUXT_VAPID_SUBJECT=abuse@domain.com
-
 # Axiom observability (production only)
 NUXT_AXIOM_DATASET=
 NUXT_AXIOM_TOKEN=
@@ -66,3 +48,11 @@ NUXT_AXIOM_CONSENT_TOKEN=
 #    and the OAuth callback must match the final host exactly)
 STUDIO_GITHUB_CLIENT_ID=
 STUDIO_GITHUB_CLIENT_SECRET=
+
+# Web Push — "your response is ready" notifications.
+# Generate a keypair once with: npx web-push generate-vapid-keys
+# (the web-push package is only needed for this one-off generation step —
+# it is not a runtime dependency; the Worker sends pushes via
+# @block65/webcrypto-web-push instead, since web-push itself relies on
+# Node-only crypto APIs unavailable on Cloudflare Workers)
+NUXT_VAPID_PRIVATE_KEY=
