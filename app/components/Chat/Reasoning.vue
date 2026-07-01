@@ -139,6 +139,7 @@ const props = defineProps<{
   message: UIMessage
   status: ChatStatus
   reasoningLevel: ReasoningLevel
+  turnStartedAt: number
 }>()
 
 interface ReasoningStep {
@@ -236,7 +237,6 @@ const activeStreamingTitle = computed<string>(() => {
 
 const reasoningSeconds = shallowRef<number>(0)
 const reasoningDurationSeconds = shallowRef<number>(0)
-const reasoningStartedAt = shallowRef<number>(0)
 const {
   reasoningExpanded: isReasoningExpanded,
   reasoningAutoHide,
@@ -301,6 +301,9 @@ watch(hasTextPart, (textStarted, hadText) => {
   flush: 'post',
 })
 
+// immediate: true — a recovery-poll remount (see turnStartedAt prop above)
+// can create this component directly in an already-streaming state, with
+// no false->true edge for a non-immediate watcher to ever observe.
 watch(isReasoningStreaming, (streaming, wasStreaming) => {
   if (streaming) {
     startReasoningTimer()
@@ -314,6 +317,8 @@ watch(isReasoningStreaming, (streaming, wasStreaming) => {
   }
 
   stopReasoningTimer()
+}, {
+  immediate: true,
 })
 
 watch(
@@ -421,39 +426,47 @@ function isStreamingStep(stepId: string): boolean {
   return activeStreamingStepId.value === stepId
 }
 
+// Elapsed time is computed from props.turnStartedAt (owned by useChat(),
+// see its comment there) rather than a timestamp captured locally by this
+// component — the recovery-poll loop destroys and remounts this exact
+// component every few seconds while a turn is being resent, so any locally
+// captured "started at" value would reset on every poll and perpetually
+// show ~1s. Deriving from the stable prop means a freshly remounted
+// instance immediately computes the correct elapsed time regardless of how
+// many times it has been torn down and rebuilt.
+function computeElapsedReasoningSeconds(): number {
+  if (!props.turnStartedAt) {
+    return 0
+  }
+
+  return Math.max(
+    1,
+    Math.round((Date.now() - props.turnStartedAt) / 1000),
+  )
+}
+
 function startReasoningTimer() {
+  reasoningDurationSeconds.value = 0
+  reasoningSeconds.value = computeElapsedReasoningSeconds()
+
   if (reasoningInterval.value) {
     return
   }
 
-  reasoningDurationSeconds.value = 0
-  reasoningStartedAt.value = Date.now()
-  reasoningSeconds.value = 1
   reasoningInterval.value = setInterval(() => {
-    reasoningSeconds.value = Math.max(
-      1,
-      Math.round((Date.now() - reasoningStartedAt.value) / 1000),
-    )
+    reasoningSeconds.value = computeElapsedReasoningSeconds()
   }, 1000)
 }
 
 function stopReasoningTimer() {
-  if (reasoningStartedAt.value > 0) {
-    reasoningSeconds.value = Math.max(
-      1,
-      Math.round((Date.now() - reasoningStartedAt.value) / 1000),
-    )
+  if (!reasoningInterval.value) {
+    return
   }
 
-  reasoningDurationSeconds.value = reasoningSeconds.value
-
-  if (reasoningInterval.value) {
-    clearInterval(reasoningInterval.value)
-    reasoningInterval.value = null
-  }
-
+  reasoningDurationSeconds.value = computeElapsedReasoningSeconds()
+  clearInterval(reasoningInterval.value)
+  reasoningInterval.value = null
   reasoningSeconds.value = 0
-  reasoningStartedAt.value = 0
 }
 
 onBeforeUnmount(() => {

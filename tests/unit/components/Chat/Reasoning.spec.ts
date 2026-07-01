@@ -16,12 +16,15 @@ function timerLabel(wrapper: VueWrapper): string {
   return wrapper.find('[data-testid="reasoning-timer-label"]').text()
 }
 
-async function mountAndStartReasoning(): Promise<VueWrapper> {
+async function mountAndStartReasoning(
+  turnStartedAt: number,
+): Promise<VueWrapper> {
   const wrapper = await mountSuspended(Reasoning, {
     props: {
       message: createMessage([]),
       status: 'streaming',
       reasoningLevel: 'low',
+      turnStartedAt,
     },
   })
 
@@ -45,13 +48,13 @@ describe('Chat/Reasoning', () => {
   })
 
   it('shows 1s immediately once reasoning starts streaming', async () => {
-    const wrapper = await mountAndStartReasoning()
+    const wrapper = await mountAndStartReasoning(Date.now())
 
     expect(timerLabel(wrapper)).toBe('(1s)')
   })
 
   it('shows real elapsed time after a JS suspension, not tick count', async () => {
-    const wrapper = await mountAndStartReasoning()
+    const wrapper = await mountAndStartReasoning(Date.now())
 
     vi.setSystemTime(Date.now() + 45000)
     vi.advanceTimersByTime(1000)
@@ -61,7 +64,7 @@ describe('Chat/Reasoning', () => {
   })
 
   it('reports the real duration when reasoning finishes', async () => {
-    const wrapper = await mountAndStartReasoning()
+    const wrapper = await mountAndStartReasoning(Date.now())
 
     vi.setSystemTime(Date.now() + 9000)
     vi.advanceTimersByTime(1000)
@@ -73,6 +76,53 @@ describe('Chat/Reasoning', () => {
         { type: 'text', text: 'Here is the answer.' },
       ]),
     })
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(10s)')
+  })
+
+  it('shows the real elapsed time immediately on a fresh mount, not 1s, when the turn already started earlier', async () => {
+    const turnStartedAt = Date.now() - 12_000
+
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: 'Thinking about the request.' },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt,
+      },
+    })
+
+    expect(timerLabel(wrapper)).toBe('(12s)')
+  })
+
+  it('keeps counting from the same anchor across a status flicker instead of resetting to 1s', async () => {
+    const turnStartedAt = Date.now()
+    const wrapper = await mountAndStartReasoning(turnStartedAt)
+
+    vi.setSystemTime(Date.now() + 4000)
+    vi.advanceTimersByTime(1000)
+
+    await wrapper.setProps({ status: 'submitted' })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({ status: 'ready' })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({ status: 'streaming' })
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).not.toBe('(1s)')
+    expect(timerLabel(wrapper)).toBe('(5s)')
+
+    vi.setSystemTime(Date.now() + 4000)
+    vi.advanceTimersByTime(1000)
+
+    await wrapper.setProps({ status: 'submitted' })
+    await wrapper.vm.$nextTick()
+    await wrapper.setProps({ status: 'streaming' })
     await wrapper.vm.$nextTick()
 
     expect(timerLabel(wrapper)).toBe('(10s)')

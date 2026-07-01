@@ -515,6 +515,19 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   let pendingRetryAttempts = 0
   let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
   let hadInterruptionThisTurn = false
+  // Anchors "how long has this turn been reasoning" to a timestamp owned by
+  // this composable rather than any per-message component's local state.
+  // The recovery-poll loop (attemptGenerationRecovery below) resends the
+  // same user message every few seconds via regenerate(), which the AI SDK
+  // implements by slicing the in-progress assistant reply off chatSdk.
+  // messages and later re-adding it under a brand new id once the response
+  // resumes — since ChatReasoning is keyed by message.id, that destroys and
+  // remounts the component on every single poll, wiping any local timer
+  // state it holds. A value read from this stable, page-lifetime ref
+  // survives that churn: a freshly (re)mounted ChatReasoning instance reads
+  // the same currentTurnStartedAt and immediately computes the correct
+  // elapsed time, with no special-casing needed for the remount itself.
+  const currentTurnStartedAt = shallowRef<number>(0)
 
   const {
     messages: sdkMessages,
@@ -856,6 +869,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // be generating server-side, so this may resolve into the same
       // "still generating" poll loop as a live recovery, not just a replay.
       isAwaitingGeneration.value = true
+      currentTurnStartedAt.value = Date.now()
       chatSdk.regenerate()
     }
 
@@ -879,6 +893,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
+    currentTurnStartedAt.value = Date.now()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
 
@@ -915,6 +930,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     clearScheduledGenerationRetry()
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
+    currentTurnStartedAt.value = 0
     wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
@@ -925,6 +941,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
+    currentTurnStartedAt.value = Date.now()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
     chatSdk.regenerate()
@@ -1029,5 +1046,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isLastAssistantMessage,
     shouldDisplayMessage,
     files,
+    currentTurnStartedAt,
   }
 }
