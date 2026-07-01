@@ -64,6 +64,25 @@ export function usePushNotifications() {
       const subscription = await registration.pushManager.getSubscription()
 
       isSubscribed.value = subscription !== null
+
+      if (subscription !== null) {
+        try {
+          await $fetch('/api/v1/push/subscribe', {
+            method: 'POST',
+            body: {
+              endpoint: subscription.endpoint,
+              keys: {
+                p256dh: arrayBufferToBase64Url(
+                  subscription.getKey('p256dh'),
+                ),
+                auth: arrayBufferToBase64Url(subscription.getKey('auth')),
+              },
+            },
+          })
+        } catch (exception) {
+          void exception
+        }
+      }
     } catch (exception) {
       void exception
     }

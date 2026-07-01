@@ -1,4 +1,5 @@
 import {
+  index,
   integer,
   sqliteTable,
   text,
@@ -20,5 +21,6 @@ export const pushSubscriptions = sqliteTable(
   },
   table => [
     uniqueIndex('uq_push_subscriptions_endpoint').on(table.endpoint),
+    index('idx_push_subscriptions_user_id').on(table.userId),
   ],
 )

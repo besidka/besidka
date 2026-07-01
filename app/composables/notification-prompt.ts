@@ -106,7 +106,11 @@ export function useNotificationPrompt() {
   }
 
   async function enable(): Promise<void> {
-    await pushNotifications.subscribe()
+    const subscribed = await pushNotifications.subscribe()
+
+    if (!subscribed) {
+      return
+    }
 
     isVisible.value = false
     userSetting.setNotificationPromptState(true)

@@ -141,6 +141,51 @@ describe('usePushNotifications', () => {
     )
   })
 
+  it('re-posts an existing subscription found on load to the server', async () => {
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/existing',
+      getKey: (name: string) => {
+        return name === 'p256dh'
+          ? new TextEncoder().encode('p256dh-bytes').buffer
+          : new TextEncoder().encode('auth-bytes').buffer
+      },
+    })
+
+    const composable = usePushNotifications()
+
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/push/subscribe', {
+      method: 'POST',
+      body: {
+        endpoint: 'https://push.example.com/existing',
+        keys: {
+          p256dh: expect.any(String),
+          auth: expect.any(String),
+        },
+      },
+    })
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
+  it('ignores a failed re-post of an existing subscription on load', async () => {
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/existing',
+      getKey: (name: string) => {
+        return name === 'p256dh'
+          ? new TextEncoder().encode('p256dh-bytes').buffer
+          : new TextEncoder().encode('auth-bytes').buffer
+      },
+    })
+    mocks.fetch.mockRejectedValueOnce(new Error('401 Unauthorized'))
+
+    const composable = usePushNotifications()
+
+    await flushPromises()
+
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
   it('unsubscribes and notifies the server', async () => {
     const unsubscribeMock = vi.fn(async () => true)
 

@@ -148,6 +148,13 @@
       "when": 1782918888578,
       "tag": "0020_famous_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1782928345179,
+      "tag": "0021_fancy_mantis",
+      "breakpoints": true
     }
   ]
 }

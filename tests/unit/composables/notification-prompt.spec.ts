@@ -189,6 +189,20 @@ describe('useNotificationPrompt', () => {
       .toHaveBeenCalledWith(true)
   })
 
+  it('keeps the banner open and does not record state when subscribe fails', async () => {
+    mocks.subscribe.mockResolvedValueOnce(false)
+
+    const prompt = useNotificationPrompt()
+
+    await fireGenerationReadyHook()
+    await prompt.enable()
+
+    expect(mocks.subscribe).toHaveBeenCalledTimes(1)
+    expect(prompt.isVisible.value).toBe(true)
+    expect(userSettingMocks.setNotificationPromptState).not
+      .toHaveBeenCalled()
+  })
+
   it('dismiss hides the banner and records declined without subscribing', async () => {
     const prompt = useNotificationPrompt()
 

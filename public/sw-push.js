@@ -22,32 +22,13 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clients) => {
-        // There is no reliable server-side signal for "is the user already
-        // looking at this" (this app's only attempt would be guessing from
-        // an idle stream connection, which iOS suspension makes unreliable
-        // anyway) — so the server always sends the push once a subscription
-        // exists, and this is the one place that actually knows whether any
-        // window is visible right now, so it is the right place to suppress
-        // a redundant notification.
-        const isAnyClientVisible = clients.some(
-          client => client.visibilityState === 'visible',
-        )
-
-        if (isAnyClientVisible) {
-          return undefined
-        }
-
-        return self.registration.showNotification(payload.title, {
-          body: payload.body,
-          icon: '/web-app-manifest-192x192.png',
-          badge: '/favicon-96x96.png',
-          data: { url: payload.url },
-          tag: 'besidka-response-ready',
-        })
-      }),
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/web-app-manifest-192x192.png',
+      badge: '/favicon-96x96.png',
+      data: { url: payload.url },
+      tag: 'besidka-response-ready',
+    }),
   )
 })
 
