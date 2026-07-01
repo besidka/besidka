@@ -26,9 +26,10 @@ mockNuxtImport('usePushNotifications', () => {
   return () => ({
     // Live getters, not a value snapshot: useNotificationPrompt() only
     // registers its 'chat:generation-ready-while-hidden' handler once
-    // (matching real app.vue + /chats/new sharing behavior), so later
-    // tests exercise the closure from the FIRST call — it must keep
-    // reading whatever beforeEach set mocks.isSupported/permission to.
+    // (matching the real chat.vue layout + NotificationPrompt.client.vue
+    // sharing behavior), so later tests exercise the closure from the FIRST
+    // call — it must keep reading whatever beforeEach set
+    // mocks.isSupported/permission to.
     isSupported: {
       get value() {
         return mocks.isSupported
@@ -125,7 +126,7 @@ describe('useNotificationPrompt', () => {
     })
   })
 
-  describe('maybeShowProactively (e.g. /chats/new)', () => {
+  describe('maybeShowProactively (chat layout onMounted)', () => {
     it('shows immediately for a never-asked user whose settings already loaded', () => {
       userSettingMocks.activeUserId.value = 'user-1'
       userSettingMocks.notificationPromptState.value = null

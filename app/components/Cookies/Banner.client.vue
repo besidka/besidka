@@ -437,7 +437,11 @@ const isHomePage = computed<boolean>(() => route.path === '/')
           <button
             type="button"
             data-testid="cookies-allow-selected"
-            class="btn btn-sm btn-primary btn-outline max-sm:btn-block"
+            class="
+              btn btn-sm max-sm:btn-block
+              light:btn-primary light:btn-outline
+              dark:btn-secondary
+            "
             @click="commitDraft()"
           >
             {{ $t('cookieConsent.actions.allowSelected') }}
