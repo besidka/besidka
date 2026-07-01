@@ -47,18 +47,48 @@ optional, see "wrangler migrations_pattern" below.
 
 ## REQUIRED manual step before the next deploy
 
-**Run this against preview (and, separately, production) before the next
-`wrangler d1 migrations apply --remote` for either database, or the deploy
-will fail on the very first migration with `table accounts already exists`:**
+**Timing matters, not just order.** `preview-build.yml` triggers on
+`pull_request: [opened, synchronize, reopened]`, and `preview-deploy.yml`
+runs automatically once that build succeeds — so **opening the PR itself
+kicks off an automatic deploy attempt against real preview**, migrations
+included. `production.yml` triggers on `push: main` — merging the PR
+kicks off the production deploy the same way. Run the preview rename
+**before opening the PR**, and the production rename **before merging it**
+(or immediately after merge, before the auto-triggered production deploy
+job reaches its migration-apply step — you may need to be fast, or hold the
+merge until you're ready to run the production command right away).
 
 ```bash
+# before opening the PR:
 npx wrangler d1 execute besidka-preview --remote --file=scripts/drizzle-v1-migration-rename.sql
 npx wrangler d1 execute besidka-consent-preview --remote --file=scripts/drizzle-v1-migration-rename-consent.sql
 
-# later, when promoting to production:
-npx wrangler d1 execute besidka --remote --file=scripts/drizzle-v1-migration-rename.sql
-npx wrangler d1 execute besidka-consent --remote --file=scripts/drizzle-v1-migration-rename-consent.sql
+# before/immediately at merge time (note --env production, not a different db name flag):
+npx wrangler d1 execute besidka --env production --remote --file=scripts/drizzle-v1-migration-rename.sql
+npx wrangler d1 execute besidka-consent --env production --remote --file=scripts/drizzle-v1-migration-rename-consent.sql
 ```
+
+**Verified against the real databases (read-only, 2026-07-01)**, not just
+reasoned about from git history: every name both scripts expect is present
+verbatim on all 4 real databases (preview main, preview consent, production
+main, production consent). `files.source`/`origin_provider`/
+`origin_message_id`, `push_subscriptions`, and
+`user_settings.notification_prompt_state` all already exist on both preview
+and production (PR #278 was already deployed before this branch existed).
+
+One harmless discrepancy found only in production's real `d1_migrations`
+table (not visible from git, since it predates git tracking `.drizzle/` at
+all): an extra row, `0001_oval_blizzard.sql` (applied 2025-07-08), with no
+corresponding file anywhere in this repo's history — the exact same phantom
+entry already identified and removed from the local journal earlier in this
+upgrade, except it turns out it really was applied to production once,
+before its source file was ever committed. Preview doesn't have this row
+(provisioned later from an already-consolidated set). This does **not**
+block the rename script — wrangler's migration-apply only cares about
+files it can't find a matching applied-row for, never about extra applied
+rows with no file — so no action is needed; it's just a permanent, inert
+bookkeeping artifact. Do not attempt to delete it; there is no benefit and
+it touches production's tracking table for no operational gain.
 
 Why: drizzle-kit v1's mandatory migration-folder codemod (`drizzle-kit up`)
 renames every migration file from the old flat `0000_name.sql` form to a new
