@@ -717,11 +717,11 @@ export default defineEventHandler(async (event) => {
               url: `/chats/${params.data.slug}`,
             },
             {
-              subject: runtimeConfig.vapidSubject || undefined,
+              subject: buildVapidSubject(runtimeConfig.vapidSubject),
               publicKey: runtimeConfig.public.vapidPublicKey || undefined,
               privateKey: runtimeConfig.vapidPrivateKey || undefined,
             },
-            logger,
+            cfCtx.waitUntil.bind(cfCtx),
           ))
         }
 

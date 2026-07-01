@@ -59,6 +59,13 @@ export default defineEventHandler(async (event) => {
           toUserId: userId,
         },
       })
+    } else {
+      logger.set({
+        push: {
+          operation: 'resubscribe',
+          userId,
+        },
+      })
     }
 
     await db.update(schema.pushSubscriptions)
@@ -69,6 +76,13 @@ export default defineEventHandler(async (event) => {
       })
       .where(eq(schema.pushSubscriptions.id, existing.id))
   } else {
+    logger.set({
+      push: {
+        operation: 'subscribe',
+        userId,
+      },
+    })
+
     await db.insert(schema.pushSubscriptions).values({
       userId,
       endpoint,

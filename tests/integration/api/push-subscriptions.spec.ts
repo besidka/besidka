@@ -96,6 +96,12 @@ describe('push subscription API', () => {
         p256dhKey: 'p256dh-key',
         authKey: 'auth-key',
       }))
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        push: expect.objectContaining({
+          operation: 'subscribe',
+          userId: 7,
+        }),
+      }))
     })
 
     it('re-associates an existing subscription endpoint with the current user', async () => {
@@ -142,7 +148,7 @@ describe('push subscription API', () => {
       }))
     })
 
-    it('does not log a reassignment for the same user re-subscribing', async () => {
+    it('logs a resubscribe, not a reassignment, for the same user', async () => {
       const { db } = createDb({ id: 99, userId: 7 })
 
       vi.stubGlobal('useDb', () => db)
@@ -156,7 +162,15 @@ describe('push subscription API', () => {
         },
       } as any)
 
-      expect(mocks.loggerSet).not.toHaveBeenCalled()
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        push: expect.objectContaining({
+          operation: 'resubscribe',
+          userId: 7,
+        }),
+      }))
+      expect(mocks.loggerSet).not.toHaveBeenCalledWith(expect.objectContaining({
+        push: expect.objectContaining({ operation: 'reassign' }),
+      }))
     })
 
     it('rejects an invalid subscription body', async () => {
@@ -228,6 +242,12 @@ describe('push subscription API', () => {
       } as any)
 
       expect(deleteWhere).toHaveBeenCalledTimes(1)
+      expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+        push: expect.objectContaining({
+          operation: 'unsubscribe',
+          userId: 7,
+        }),
+      }))
     })
 
     it('rejects an invalid unsubscribe body', async () => {

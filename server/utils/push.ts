@@ -4,8 +4,10 @@ import type {
   VapidKeys,
 } from '@block65/webcrypto-web-push'
 import { buildPushPayload } from '@block65/webcrypto-web-push'
+import { createRequestLogger } from 'evlog'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { shipWideEventToAxiom } from './evlog-drains'
 
 // Push payloads transit third-party infrastructure (Google/Mozilla/Apple's
 // own push services) and can render on a lock screen — never put generated
@@ -25,9 +27,7 @@ interface StoredPushSubscription {
   authKey: string
 }
 
-interface PushLogger {
-  set: (fields: Record<string, unknown>) => void
-}
+type SendOutcome = 'sent' | 'staleRemoved' | 'rejected' | 'failed'
 
 // Without this, a client could subscribe with any URL as the "endpoint" and
 // the server would fetch() it on every future generation via waitUntil — an
@@ -71,31 +71,42 @@ export function isPushConfigured(vapid: VapidKeys): boolean {
   return Boolean(vapid.publicKey && vapid.privateKey)
 }
 
+// NUXT_VAPID_SUBJECT holds a bare contact address (e.g. abuse@domain.com) —
+// this adds the mailto: scheme RFC 8292 requires. Left as-is if it already
+// carries a scheme (mailto: or https:, both spec-valid), so a stale
+// pre-existing value never ends up double-prefixed or malformed.
+export function buildVapidSubject(
+  vapidSubject: string,
+): string | undefined {
+  if (!vapidSubject) {
+    return undefined
+  }
+
+  if (/^(mailto|https):/.test(vapidSubject)) {
+    return vapidSubject
+  }
+
+  return `mailto:${vapidSubject}`
+}
+
 // Web Push gives no other signal for "this subscription no longer exists"
 // than the push service's own HTTP response — 404/410 means the browser
 // dropped it (uninstalled, cleared site data, etc.), so this is the only
 // place that ever finds out and is the right place to clean it up.
 //
-// Never pass subscription.endpoint/p256dhKey/authKey to logger.set() below —
-// the endpoint is a capability URL (anyone who has it can trigger a push to
-// that browser) and the keys let anyone decrypt payloads sent to it; both are
-// spec-treated as secrets, not just identifiers.
+// Never pass subscription.endpoint/p256dhKey/authKey to the wide event built
+// in sendPushNotificationToUser below — the endpoint is a capability URL
+// (anyone who has it can trigger a push to that browser) and the keys let
+// anyone decrypt payloads sent to it; both are spec-treated as secrets, not
+// just identifiers. Only aggregate outcome counts are ever logged.
 async function sendToSubscription(
   db: ReturnType<typeof useDb>,
   subscription: StoredPushSubscription,
   message: PushMessage,
   vapid: VapidKeys,
-  logger: PushLogger,
-): Promise<void> {
+): Promise<SendOutcome> {
   if (!isAllowedPushServiceEndpoint(subscription.endpoint)) {
-    logger.set({
-      push: {
-        operation: 'send',
-        error: 'endpoint host not in the push service allowlist',
-      },
-    })
-
-    return
+    return 'rejected'
   }
 
   const webPushSubscription: WebPushSubscription = {
@@ -118,38 +129,40 @@ async function sendToSubscription(
       await db.delete(schema.pushSubscriptions)
         .where(eq(schema.pushSubscriptions.id, subscription.id))
 
-      return
+      return 'staleRemoved'
     }
 
     if (!response.ok) {
-      logger.set({
-        push: {
-          operation: 'send',
-          status: response.status,
-        },
-      })
+      return 'failed'
     }
+
+    return 'sent'
   } catch (exception) {
-    logger.set({
-      push: {
-        operation: 'send',
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
-      },
-    })
+    void exception
+
+    return 'failed'
   }
 }
 
 // Sequential, not Promise.allSettled — Workers cap simultaneous connections
 // at 6, and a notification arriving a beat later across someone's several
 // devices costs nothing, so there is no reason to parallelize this.
+//
+// This runs inside a fire-and-forget ExecutionContext.waitUntil() call from
+// the chat handler, well after that request's own evlog wide event has
+// already been built and emitted on the Nitro `afterResponse` hook — calling
+// logger.set() on the shared per-request logger here would race that emit
+// and silently miss it (evlog logs a "set called after emit" warning and
+// drops the fields, the same hazard documented for aiLogger in
+// server/api/v1/chats/[slug]/index.post.ts). So this builds its own
+// standalone wide event via createRequestLogger and ships it to Axiom
+// directly, the same pattern aiLogger/shipWideEventToAxiom already uses.
 export async function sendPushNotificationToUser(
   db: ReturnType<typeof useDb>,
   userId: number,
   payload: PushNotificationPayload,
   vapid: VapidKeys,
-  logger: PushLogger,
+  waitUntil?: (promise: Promise<unknown>) => void,
 ): Promise<void> {
   if (!isPushConfigured(vapid)) {
     return
@@ -173,7 +186,40 @@ export async function sendPushNotificationToUser(
     },
   }
 
+  const outcomes: Record<SendOutcome, number> = {
+    sent: 0,
+    staleRemoved: 0,
+    rejected: 0,
+    failed: 0,
+  }
+
   for (const subscription of subscriptions) {
-    await sendToSubscription(db, subscription, message, vapid, logger)
+    const outcome = await sendToSubscription(db, subscription, message, vapid)
+
+    outcomes[outcome] += 1
+  }
+
+  const logger = createRequestLogger({
+    method: 'PUSH',
+    path: '/internal/push-send',
+    waitUntil,
+  })
+
+  logger.set({
+    push: {
+      operation: 'send',
+      userId,
+      subscriptionCount: subscriptions.length,
+      ...outcomes,
+    },
+  })
+
+  const wideEvent = logger.emit({
+    message: 'Push notification send completed',
+    status: outcomes.failed > 0 ? 502 : 200,
+  })
+
+  if (wideEvent && waitUntil) {
+    waitUntil(shipWideEventToAxiom(wideEvent))
   }
 }

@@ -291,6 +291,9 @@ describe('chat stream message ids', () => {
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
     vi.stubGlobal('useKV', () => createKv().kv)
+    vi.stubGlobal('buildVapidSubject', vi.fn((subject: string) => {
+      return subject ? `mailto:${subject}` : undefined
+    }))
     sendPushNotificationToUserMock = vi.fn(async () => undefined)
     vi.stubGlobal('sendPushNotificationToUser', sendPushNotificationToUserMock)
   })

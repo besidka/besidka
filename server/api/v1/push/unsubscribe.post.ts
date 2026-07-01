@@ -1,8 +1,9 @@
-import { createError } from 'evlog'
+import { useLogger, createError } from 'evlog'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const session = await useUserSession()
 
   if (!session) {
@@ -24,6 +25,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDb()
+
+  logger.set({
+    push: {
+      operation: 'unsubscribe',
+      userId,
+    },
+  })
 
   await db.delete(schema.pushSubscriptions)
     .where(and(
