@@ -320,6 +320,20 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }) || false
 }
 
+// isAwaitingGeneration only needs to force the generic loading indicator for
+// the idle gaps between recovery polls, when there is nothing else on screen
+// to show it's still working — once a recovered stream is actively producing
+// visible reasoning/text again, that message bubble already is the loading
+// indicator, and showing this one too underneath it is pure duplication
+// (issue #275 follow-up: reported as two bubbles after returning from an app
+// switch mid-generation).
+export function shouldForceGenericLoadingIndicator(
+  isAwaitingGeneration: boolean,
+  lastMessage: UIMessage | undefined,
+): boolean {
+  return isAwaitingGeneration && !hasVisibleAssistantContent(lastMessage)
+}
+
 export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
   if (!message || message.role !== 'assistant') {
     return false
@@ -707,7 +721,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const isLoading = computed<boolean>(() => {
-    if (isAwaitingGeneration.value) {
+    if (shouldForceGenericLoadingIndicator(
+      isAwaitingGeneration.value,
+      lastMessage.value,
+    )) {
       return true
     } else if (chatSdk.status === 'submitted') {
       return true
@@ -774,6 +791,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
     if (!options.immediate) {
       pendingRetryTimeoutId = setTimeout(() => {
+        // The generation this was polling for may have resumed on its own
+        // between scheduling and firing (e.g. a brief connection hiccup that
+        // self-recovered) — resending against an already-active generation
+        // would push a second, redundant response into the message list.
+        if (['submitted', 'streaming'].includes(chatSdk.status)) {
+          return
+        }
+
         chatSdk.regenerate()
       }, GENERATION_RETRY_DELAY_MS)
 

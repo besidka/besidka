@@ -7,6 +7,7 @@ import {
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
+  shouldForceGenericLoadingIndicator,
   shouldNotifyGenerationReadyWhileHidden,
   shouldRecoverInterruptedGeneration,
   shouldSurfaceChatError,
@@ -472,6 +473,52 @@ describe('chat error helpers', () => {
 
   it('does not notify for a turn that finished normally while visible', () => {
     expect(shouldNotifyGenerationReadyWhileHidden(false, 'visible')).toBe(false)
+  })
+
+  it('forces the generic loading indicator during an idle recovery gap', () => {
+    // No assistant message at all yet — the message list still ends on the
+    // user's own turn.
+    expect(shouldForceGenericLoadingIndicator(true, undefined)).toBe(true)
+
+    const emptyAssistantMessage: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [],
+    } as UIMessage
+
+    expect(shouldForceGenericLoadingIndicator(
+      true,
+      emptyAssistantMessage,
+    )).toBe(true)
+  })
+
+  it('does not duplicate the loader once the recovered stream has visible content', () => {
+    // Reproduces the real-world bug: returning from an app switch mid-
+    // generation showed the real, actively-streaming reasoning bubble AND a
+    // separate, empty generic loader underneath it.
+    const streamingAssistantMessage: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: 'Searching for news sources' }],
+    } as UIMessage
+
+    expect(shouldForceGenericLoadingIndicator(
+      true,
+      streamingAssistantMessage,
+    )).toBe(false)
+  })
+
+  it('never forces the loader once a generation is not being awaited', () => {
+    const emptyAssistantMessage: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [],
+    } as UIMessage
+
+    expect(shouldForceGenericLoadingIndicator(
+      false,
+      emptyAssistantMessage,
+    )).toBe(false)
   })
 
   it('does not surface raw rate-limit errors when assistant text is already visible', () => {

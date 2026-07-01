@@ -456,9 +456,17 @@ describe('chat stream message ids', () => {
 
     await response.ready
 
-    expect(response.writer.write).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'data-generation-pending' }),
-    )
+    // transient: true and no messageId on start/finish are load-bearing: any
+    // of those would make the AI SDK write() a message-list entry keyed by a
+    // fresh id unrelated to the real in-progress assistant message, pushing
+    // a hidden phantom message into chatSdk.messages (issue #275 follow-up).
+    expect(response.writer.write).toHaveBeenCalledWith({ type: 'start' })
+    expect(response.writer.write).toHaveBeenCalledWith({
+      type: 'data-generation-pending',
+      data: {},
+      transient: true,
+    })
+    expect(response.writer.write).toHaveBeenCalledWith({ type: 'finish' })
     expect(mocks.generatedMessageIds).toHaveLength(0)
   })
 

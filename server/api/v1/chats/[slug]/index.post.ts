@@ -244,8 +244,21 @@ export default defineEventHandler(async (event) => {
       return createUIMessageStreamResponse({
         stream: createUIMessageStream({
           execute({ writer }) {
-            writer.write({ type: 'start', messageId: ulid() })
-            writer.write({ type: 'data-generation-pending', data: {} })
+            // No messageId on start and no metadata on finish — either would
+            // make the AI SDK write() a message-list entry keyed by a fresh
+            // id unrelated to the real in-progress assistant message, which
+            // pushes a genuine (if content-less and hidden) extra message
+            // into chatSdk.messages and pollutes later
+            // shouldSurfaceEmptyAssistantResponse checks. transient: true
+            // routes the pending signal to onData only, the same way — never
+            // becoming a message part. This response should be a complete
+            // no-op against the message list; only onData should observe it.
+            writer.write({ type: 'start' })
+            writer.write({
+              type: 'data-generation-pending',
+              data: {},
+              transient: true,
+            })
             writer.write({ type: 'finish' })
           },
         }),
