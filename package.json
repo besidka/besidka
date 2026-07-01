@@ -86,9 +86,8 @@
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.5.20",
 		"defu": "^6.1.7",
-		"drizzle-kit": "^0.31.10",
-		"drizzle-orm": "0.45.2",
-		"drizzle-query-logger": "^1.1.2",
+		"drizzle-kit": "1.0.0-rc.4",
+		"drizzle-orm": "1.0.0-rc.4",
 		"eslint": "^10.4.0",
 		"evlog": "2.18.1",
 		"hashids": "^2.3.0",
@@ -139,7 +138,7 @@
 		"vitest-environment-nuxt": "^2.0.0",
 		"vue-tsc": "^3.3.2",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.94.0"
+		"wrangler": "^4.106.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"

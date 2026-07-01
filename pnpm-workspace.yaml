@@ -2,6 +2,9 @@ packages:
   - '.'
   - 'modules/*'
 
+overrides:
+  drizzle-orm: 1.0.0-rc.4
+
 allowBuilds:
   '@parcel/watcher': true
   '@prisma/engines': false
@@ -13,3 +16,13 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workerd-darwin-64@1.20260630.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20260630.1'
+  - '@cloudflare/workerd-linux-64@1.20260630.1'
+  - '@cloudflare/workerd-linux-arm64@1.20260630.1'
+  - '@cloudflare/workerd-windows-64@1.20260630.1'
+  - miniflare@4.20260630.0
+  - workerd@1.20260630.1
+  - wrangler@4.106.0

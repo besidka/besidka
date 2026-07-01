@@ -2,11 +2,11 @@ import type { D1Database } from '@cloudflare/workers-types'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/d1'
-import { EnhancedQueryLogger } from 'drizzle-query-logger'
 import { createError } from 'evlog'
 import type { RequestLogger } from 'evlog'
 import { consentReceipts } from '~~/server/db/consent/schema'
 import type { ConsentDecision } from '~~/server/utils/consents'
+import { DrizzleQueryLogger } from '~~/server/utils/drizzle-logger'
 
 export interface ConsentReceiptRecord {
   id: string
@@ -35,10 +35,8 @@ export function useConsentDb() {
   const runtimeConfig = useRuntimeConfig()
 
   return drizzle(db, {
-    schema: { consentReceipts },
-    casing: 'snake_case',
     logger: runtimeConfig.drizzleDebug
-      ? new EnhancedQueryLogger()
+      ? new DrizzleQueryLogger()
       : false,
   })
 }

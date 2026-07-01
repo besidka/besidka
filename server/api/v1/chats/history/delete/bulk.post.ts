@@ -32,11 +32,9 @@ export default defineEventHandler(async (event) => {
     chatIdsCount: body.data.chatIds.length,
   })
   const chats = await db.query.chats.findMany({
-    where(chats, { and, eq, inArray }) {
-      return and(
-        eq(chats.userId, userId),
-        inArray(chats.id, body.data.chatIds),
-      )
+    where: {
+      userId,
+      id: { in: body.data.chatIds },
     },
     columns: {
       projectId: true,

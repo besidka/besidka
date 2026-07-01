@@ -414,6 +414,10 @@ export function getAffectedTests(changedFiles) {
       pattern: /^tests\/.*\.spec\.ts$/,
       tests: file => [file],
     },
+    {
+      pattern: /^(server\/db\/|drizzle.*\.config\.ts$)/,
+      tests: ['tests/unit/db/migrations-clean.spec.ts'],
+    },
   ]
 
   for (const file of changedFiles) {

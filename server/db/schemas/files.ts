@@ -1,13 +1,11 @@
-import { relations } from 'drizzle-orm'
 import {
-  sqliteTable, text, integer, uniqueIndex, index,
+  snakeCase, text, integer, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
-import { chatShareFiles } from './chat-shares'
 import { messages } from './chats'
 
-export const files = sqliteTable(
+export const files = snakeCase.table(
   'files',
   {
     ...defaultSchemaWithPublicId,
@@ -32,15 +30,3 @@ export const files = sqliteTable(
     index('idx_files_expires_at').on(table.expiresAt),
   ],
 )
-
-export const filesRelations = relations(files, ({ one, many }) => ({
-  user: one(users, {
-    fields: [files.userId],
-    references: [users.id],
-  }),
-  originMessage: one(messages, {
-    fields: [files.originMessageId],
-    references: [messages.id],
-  }),
-  shares: many(chatShareFiles),
-}))

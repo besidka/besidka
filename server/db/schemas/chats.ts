@@ -1,17 +1,16 @@
 import type { UIMessage } from 'ai'
 import { persistedMessageRoles } from '#shared/utils/chat-message-role'
-import { relations, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import {
-  sqliteTable, text, integer, uniqueIndex, index,
+  snakeCase, text, integer, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 import { publicId } from '../../utils/custom-db-types'
-import { chatShares } from './chat-shares'
 import { projects } from './projects'
 
-export const chats = sqliteTable(
+export const chats = snakeCase.table(
   'chats',
   {
     ...defaultSchemaWithPublicId,
@@ -36,7 +35,7 @@ export const chats = sqliteTable(
   ],
 )
 
-export const messages = sqliteTable(
+export const messages = snakeCase.table(
   'messages',
   {
     ...defaultSchemaWithPublicId,
@@ -60,23 +59,3 @@ export const messages = sqliteTable(
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),
   ],
 )
-
-export const chatsRelations = relations(chats, ({ one, many }) => ({
-  user: one(users, {
-    fields: [chats.userId],
-    references: [users.id],
-  }),
-  messages: many(messages),
-  shares: many(chatShares),
-  project: one(projects, {
-    fields: [chats.projectId],
-    references: [projects.id],
-  }),
-}))
-
-export const messagesRelations = relations(messages, ({ one }) => ({
-  chat: one(chats, {
-    fields: [messages.chatId],
-    references: [chats.id],
-  }),
-}))

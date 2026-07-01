@@ -26,8 +26,8 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const userId = parseInt(session.user.id)
   const existingSettings = await db.query.userSettings.findFirst({
-    where(userSettings, { eq }) {
-      return eq(userSettings.userId, userId)
+    where: {
+      userId,
     },
     columns: {
       id: true,

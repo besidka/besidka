@@ -35,11 +35,9 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
   const userId = parseInt(session.user.id)
   const chat = await db.query.chats.findFirst({
-    where(chats, { and, eq }) {
-      return and(
-        eq(chats.slug, params.data.slug),
-        eq(chats.userId, userId),
-      )
+    where: {
+      slug: params.data.slug,
+      userId,
     },
     columns: {
       id: true,
@@ -49,12 +47,10 @@ export default defineEventHandler(async (event) => {
     with: {
       messages: {
         limit: 1,
-        where(messages, { eq }) {
-          return eq(messages.role, 'user')
+        where: {
+          role: 'user',
         },
-        orderBy(messages, { asc }) {
-          return asc(messages.createdAt)
-        },
+        orderBy: { createdAt: 'asc' },
         columns: {
           parts: true,
         },

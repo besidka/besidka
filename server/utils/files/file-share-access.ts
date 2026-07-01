@@ -47,11 +47,9 @@ export async function hasShareTokenFileAccess(
 
   const now = new Date()
   const shareGrant = await useDb().query.chatShareFiles.findFirst({
-    where(chatShareFiles, { and, eq }) {
-      return and(
-        eq(chatShareFiles.chatShareId, payload.shareId),
-        eq(chatShareFiles.fileId, payload.fileId),
-      )
+    where: {
+      chatShareId: payload.shareId,
+      fileId: payload.fileId,
     },
     columns: {
       id: true,

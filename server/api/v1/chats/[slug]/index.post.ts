@@ -87,11 +87,9 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   const chat = await db.query.chats.findFirst({
-    where(chats, { and, eq }) {
-      return and(
-        eq(chats.slug, params.data.slug),
-        eq(chats.userId, userId),
-      )
+    where: {
+      slug: params.data.slug,
+      userId,
     },
     columns: {
       id: true,
@@ -123,9 +121,7 @@ export default defineEventHandler(async (event) => {
         // autoincrement integer primary key, so ascending id is insertion
         // order — making the user/assistant adjacency deterministic instead of
         // relying on the implicit D1 rowid ordering.
-        orderBy(messages, { asc }) {
-          return asc(messages.id)
-        },
+        orderBy: { id: 'asc' },
       },
     },
   })

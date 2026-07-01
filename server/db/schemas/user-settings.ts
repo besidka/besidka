@@ -1,13 +1,12 @@
 import {
-  sqliteTable,
+  snakeCase,
   integer,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
-import { relations } from 'drizzle-orm'
 import { defaultSchemaTimestamps } from '../../utils/schema'
 import { users } from './auth'
 
-export const userSettings = sqliteTable(
+export const userSettings = snakeCase.table(
   'user_settings',
   {
     ...defaultSchemaTimestamps,
@@ -28,10 +27,3 @@ export const userSettings = sqliteTable(
     uniqueIndex('uq_user_settings_user').on(table.userId),
   ],
 )
-
-export const userSettingsRelations = relations(userSettings, ({ one }) => ({
-  user: one(users, {
-    fields: [userSettings.userId],
-    references: [users.id],
-  }),
-}))

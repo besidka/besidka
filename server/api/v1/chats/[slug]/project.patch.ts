@@ -68,11 +68,9 @@ export default defineEventHandler(async (event) => {
   })
 
   const chat = await db.query.chats.findFirst({
-    where(chats, { and, eq }) {
-      return and(
-        eq(chats.slug, params.data.slug),
-        eq(chats.userId, userId),
-      )
+    where: {
+      slug: params.data.slug,
+      userId,
     },
     columns: { id: true, projectId: true },
   })
@@ -90,11 +88,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.projectId !== null) {
     const project = await db.query.projects.findFirst({
-      where(projects, { and, eq }) {
-        return and(
-          eq(projects.id, body.data.projectId!),
-          eq(projects.userId, userId),
-        )
+      where: {
+        id: body.data.projectId!,
+        userId,
       },
       columns: { id: true },
     })

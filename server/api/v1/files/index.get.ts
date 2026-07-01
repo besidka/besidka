@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, like, sql, desc } from 'drizzle-orm'
+import { and, eq, like, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
 const querySchema = z.object({
@@ -37,10 +37,17 @@ export default defineEventHandler(async (event) => {
     )
     : eq(schema.files.userId, userId)
 
+  const relationalWhere = search
+    ? {
+      userId,
+      name: { like: `%${search}%` },
+    }
+    : { userId }
+
   const [files, countResult] = await Promise.all([
     db.query.files.findMany({
-      where: whereConditions,
-      orderBy: desc(schema.files.createdAt),
+      where: relationalWhere,
+      orderBy: { createdAt: 'desc' },
       offset,
       limit,
       columns: {

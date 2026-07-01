@@ -47,9 +47,7 @@ export async function resolveProjectMemoryModel(
   db: DbClient = useDb(),
 ): Promise<ProjectMemoryModelSelection | null> {
   const savedKeys = await db.query.keys.findMany({
-    where(keys, { eq }) {
-      return eq(keys.userId, userId)
-    },
+    where: { userId },
     columns: {
       provider: true,
     },
@@ -120,12 +118,7 @@ export async function refreshProjectMemory(
   db: DbClient = useDb(),
 ) {
   const project = await db.query.projects.findFirst({
-    where(projects, { and, eq }) {
-      return and(
-        eq(projects.id, projectId),
-        eq(projects.userId, userId),
-      )
-    },
+    where: { id: projectId, userId },
     columns: {
       id: true,
       userId: true,
@@ -184,12 +177,7 @@ export async function refreshProjectMemory(
       selection.modelId,
     )
     const chats = await db.query.chats.findMany({
-      where(chats, { and, eq }) {
-        return and(
-          eq(chats.userId, userId),
-          eq(chats.projectId, project.id),
-        )
-      },
+      where: { userId, projectId: project.id },
       columns: {
         id: true,
         projectId: true,
@@ -203,9 +191,7 @@ export async function refreshProjectMemory(
             parts: true,
             createdAt: true,
           },
-          orderBy(messages, { asc }) {
-            return asc(messages.createdAt)
-          },
+          orderBy: { createdAt: 'asc' },
         },
       },
     })
@@ -391,12 +377,7 @@ export async function toggleProjectMemory(
   db: DbClient = useDb(),
 ) {
   const project = await db.query.projects.findFirst({
-    where(projects, { and, eq }) {
-      return and(
-        eq(projects.id, projectId),
-        eq(projects.userId, userId),
-      )
-    },
+    where: { id: projectId, userId },
     columns: {
       id: true,
       userId: true,
@@ -452,12 +433,7 @@ export async function getProjectMemoryState(
   db: DbClient,
 ) {
   return await db.query.projects.findFirst({
-    where(projects, { and, eq }) {
-      return and(
-        eq(projects.id, projectId),
-        eq(projects.userId, userId),
-      )
-    },
+    where: { id: projectId, userId },
     columns: {
       id: true,
       memory: true,

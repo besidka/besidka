@@ -1,7 +1,7 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { integer, snakeCase, text } from 'drizzle-orm/sqlite-core'
 import { defaultSchemaTimestamps } from '../../utils/schema'
 
-export const imageTransformUsageMonthly = sqliteTable(
+export const imageTransformUsageMonthly = snakeCase.table(
   'image_transform_usage_monthly',
   {
     ...defaultSchemaTimestamps,

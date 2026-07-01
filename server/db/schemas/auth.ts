@@ -1,18 +1,12 @@
 import {
-  sqliteTable,
+  snakeCase,
   text,
   integer,
   index,
 } from 'drizzle-orm/sqlite-core'
-import { relations } from 'drizzle-orm'
 import { defaultSchemaTimestamps } from '../../utils/schema'
-import { chats } from './chats'
-import { keys } from './keys'
-import { files } from './files'
-import { storages } from './storages'
-import { userSettings } from './user-settings'
 
-export const users = sqliteTable('users', {
+export const users = snakeCase.table('users', {
   ...defaultSchemaTimestamps,
   id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
   name: text().notNull(),
@@ -22,7 +16,7 @@ export const users = sqliteTable('users', {
   lastLoginMethod: text(),
 })
 
-export const sessions = sqliteTable(
+export const sessions = snakeCase.table(
   'sessions',
   {
     ...defaultSchemaTimestamps,
@@ -38,7 +32,7 @@ export const sessions = sqliteTable(
   table => [index('sessions_userId_idx').on(table.userId)],
 )
 
-export const accounts = sqliteTable(
+export const accounts = snakeCase.table(
   'accounts',
   {
     ...defaultSchemaTimestamps,
@@ -59,7 +53,7 @@ export const accounts = sqliteTable(
   table => [index('accounts_userId_idx').on(table.userId)],
 )
 
-export const verifications = sqliteTable(
+export const verifications = snakeCase.table(
   'verifications',
   {
     ...defaultSchemaTimestamps,
@@ -70,45 +64,3 @@ export const verifications = sqliteTable(
   },
   table => [index('verifications_identifier_idx').on(table.identifier)],
 )
-
-export const usersRelations = relations(users, ({ many, one }) => ({
-  accounts: many(accounts),
-  sessions: many(sessions),
-  chats: many(chats),
-  chat: one(chats, {
-    fields: [users.id],
-    references: [chats.userId],
-  }),
-  keys: many(keys),
-  key: one(keys, {
-    fields: [users.id],
-    references: [keys.userId],
-  }),
-  files: many(files),
-  file: one(files, {
-    fields: [users.id],
-    references: [files.userId],
-  }),
-  storage: one(storages, {
-    fields: [users.id],
-    references: [storages.userId],
-  }),
-  settings: one(userSettings, {
-    fields: [users.id],
-    references: [userSettings.userId],
-  }),
-}))
-
-export const accountsRelations = relations(accounts, ({ one }) => ({
-  user: one(users, {
-    fields: [accounts.userId],
-    references: [users.id],
-  }),
-}))
-
-export const sessionsRelations = relations(sessions, ({ one }) => ({
-  user: one(users, {
-    fields: [sessions.userId],
-    references: [users.id],
-  }),
-}))

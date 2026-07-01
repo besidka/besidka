@@ -86,9 +86,7 @@ export async function getOrCreateStoragePolicyRow(
     .run()
 
   const row = await db.query.storages.findFirst({
-    where(storages, { eq }) {
-      return eq(storages.userId, userId)
-    },
+    where: { userId },
     columns: {
       tier: true,
       storage: true,
@@ -188,9 +186,7 @@ export async function recomputeUserFileExpiry(
   )
   const retentionDays = await getEffectiveRetentionDays(userId)
   const files = await db.query.files.findMany({
-    where(files, { eq }) {
-      return eq(files.userId, userId)
-    },
+    where: { userId },
     columns: {
       id: true,
       createdAt: true,
@@ -303,9 +299,7 @@ export async function getGlobalMonthlyTransformStats(
     .run()
 
   const row = await db.query.imageTransformUsageMonthly.findFirst({
-    where(imageTransformUsageMonthly, { eq }) {
-      return eq(imageTransformUsageMonthly.monthKey, monthKey)
-    },
+    where: { monthKey },
     columns: {
       monthKey: true,
       transformsUsed: true,
@@ -414,11 +408,9 @@ export async function validateMessageFilePolicy(
 
   const uniqueStorageKeys = Array.from(new Set(storageKeys))
   const files = await useDb().query.files.findMany({
-    where(files, { and, eq, inArray }) {
-      return and(
-        eq(files.userId, userId),
-        inArray(files.storageKey, uniqueStorageKeys),
-      )
+    where: {
+      userId,
+      storageKey: { in: uniqueStorageKeys },
     },
     columns: {
       storageKey: true,
@@ -454,11 +446,9 @@ export async function getOwnedFilesByStorageKeys(
 
   const uniqueStorageKeys = Array.from(new Set(storageKeys))
   const files = await useDb().query.files.findMany({
-    where(files, { and, eq, inArray }) {
-      return and(
-        eq(files.userId, userId),
-        inArray(files.storageKey, uniqueStorageKeys),
-      )
+    where: {
+      userId,
+      storageKey: { in: uniqueStorageKeys },
     },
     columns: {
       id: true,
@@ -584,9 +574,7 @@ async function reserveGlobalTransformSlot(
 
   if (!reserved) {
     const current = await db.query.imageTransformUsageMonthly.findFirst({
-      where(imageTransformUsageMonthly, { eq }) {
-        return eq(imageTransformUsageMonthly.monthKey, monthKey)
-      },
+      where: { monthKey },
       columns: {
         transformsUsed: true,
         transformsLimit: true,

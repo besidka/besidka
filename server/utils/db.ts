@@ -2,8 +2,8 @@ import type { D1Database } from '@cloudflare/workers-types'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/d1'
-import { EnhancedQueryLogger } from 'drizzle-query-logger'
-import * as schema from '~~/server/db/schema'
+import { relations } from '~~/server/db/relations'
+import { DrizzleQueryLogger } from '~~/server/utils/drizzle-logger'
 
 export function useDb() {
   const db = env.DB
@@ -21,10 +21,9 @@ export function useDb() {
   }
 
   return drizzle(db as D1Database, {
-    schema,
-    casing: 'snake_case',
+    relations,
     logger: runtimeConfig.drizzleDebug
-      ? new EnhancedQueryLogger()
+      ? new DrizzleQueryLogger()
       : false,
   })
 }

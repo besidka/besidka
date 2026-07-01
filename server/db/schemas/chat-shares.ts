@@ -1,7 +1,6 @@
-import { relations } from 'drizzle-orm'
 import {
   integer,
-  sqliteTable,
+  snakeCase,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import { chats } from './chats'
@@ -9,7 +8,7 @@ import { files } from './files'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 import { publicId } from '../../utils/custom-db-types'
 
-export const chatShares = sqliteTable(
+export const chatShares = snakeCase.table(
   'chat_shares',
   {
     ...defaultSchemaWithPublicId,
@@ -26,7 +25,7 @@ export const chatShares = sqliteTable(
   ],
 )
 
-export const chatShareFiles = sqliteTable(
+export const chatShareFiles = snakeCase.table(
   'chat_share_files',
   {
     ...defaultSchemaWithPublicId,
@@ -41,22 +40,3 @@ export const chatShareFiles = sqliteTable(
     uniqueIndex('uq_chat_share_file').on(table.chatShareId, table.fileId),
   ],
 )
-
-export const chatSharesRelations = relations(chatShares, ({ one, many }) => ({
-  chat: one(chats, {
-    fields: [chatShares.chatId],
-    references: [chats.id],
-  }),
-  files: many(chatShareFiles),
-}))
-
-export const chatShareFilesRelations = relations(chatShareFiles, ({ one }) => ({
-  share: one(chatShares, {
-    fields: [chatShareFiles.chatShareId],
-    references: [chatShares.id],
-  }),
-  file: one(files, {
-    fields: [chatShareFiles.fileId],
-    references: [files.id],
-  }),
-}))
