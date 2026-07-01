@@ -110,8 +110,6 @@ jobs:
       - check-pr-state
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
-    # Confirmed NOT Blacksmith-specific — the same E2E webServer timeout
-    # reproduced identically on ubuntu-latest, so reverted back to this.
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
