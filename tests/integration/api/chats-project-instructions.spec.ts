@@ -288,6 +288,11 @@ describe('chat project instructions', () => {
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
+    vi.stubGlobal('useKV', () => ({
+      get: vi.fn(async () => null),
+      put: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    }))
   })
 
   it('passes project instructions via system prompt without persisting them', async () => {

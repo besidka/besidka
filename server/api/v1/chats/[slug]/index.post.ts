@@ -224,6 +224,35 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Issue #275: a client that auto-recovers after iOS suspends/backgrounds the
+  // page (visibilitychange) can resend this same user message id while the
+  // original Worker invocation is still mid-generation (generation runs
+  // 2-3 min; the client can return in seconds). Without this guard that
+  // resend would fall through to a second concurrent streamText() call —
+  // double-billing the provider and racing the unique messages.public_id
+  // constraint. The flag is set for the duration of generation (see
+  // execute() below) so a retry within that window gets a lightweight
+  // "still working" signal instead of starting a duplicate generation.
+  if (newMessage.role === 'user' && persistedUserIndex >= 0) {
+    const isGenerating = await useKV().get(
+      generationInProgressKvKey(chat.id, newMessage.id),
+    )
+
+    if (isGenerating) {
+      logger.set({ stage: 'generation-in-progress' })
+
+      return createUIMessageStreamResponse({
+        stream: createUIMessageStream({
+          execute({ writer }) {
+            writer.write({ type: 'start', messageId: ulid() })
+            writer.write({ type: 'data-generation-pending', data: {} })
+            writer.write({ type: 'finish' })
+          },
+        }),
+      })
+    }
+  }
+
   const allMessages = [...previousMessages, newMessage]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
   const projectSystemPrompt = buildProjectSystemPrompt(chat.project
@@ -500,98 +529,84 @@ export default defineEventHandler(async (event) => {
     },
     async execute({ writer }) {
       const messagePublicId = ulid()
+      const kv = useKV()
+      const generatingKey = generationInProgressKvKey(chat.id, newMessage.id)
 
-      if (missingFiles.length > 0) {
-        writer.write({
-          type: 'data-missing-files',
-          data: {
-            count: missingFiles.length,
-            filenames: missingFiles
-              .map(file => file.filename)
-              .filter((name): name is string => Boolean(name)),
+      // Mirrors the guard above: hold this flag for the lifetime of the
+      // generation so a client retry of the same user message id (issue
+      // #275 auto-recovery on visibilitychange) sees "still working" instead
+      // of triggering a second concurrent streamText() call. The ttl is a
+      // safety bound, not the expected lifetime — a clean exit always
+      // deletes it in the finally block below. Not awaited: KV writes are
+      // already only eventually consistent, and not blocking here keeps
+      // streamText() starting immediately rather than behind an extra tick.
+      kv.put(generatingKey, '1', { expirationTtl: 600 }).catch((exception) => {
+        logger.set({
+          generationGuard: {
+            operation: 'put',
+            error: exception instanceof Error
+              ? exception.message
+              : String(exception),
           },
         })
-      }
-
-      let result: ReturnType<typeof streamText>
+      })
 
       try {
-        // No abortSignal here: the cloudflare_module preset (Nitro 2.13 / h3
-        // v1 + node-mock-http) surfaces no client-disconnect signal to the
-        // handler, and fully draining on disconnect is intentional — it lets a
-        // reconnect replay the already-persisted reply. Don't wire one: on this
-        // stack it is a no-op, or would defeat that replay by skipping persist.
-        // (Providers also bill and omit usage on abort, so there is no cost to
-        // recover here either.)
-        result = streamText({
-          model: instance,
-          instructions: projectSystemPrompt || undefined,
-          reasoning: reasoningEffort,
-          messages: await convertToModelMessages(messagesForAI),
-          experimental_transform: smoothStream(),
-          onEnd({ usage }) {
-            aiLogger.set({
-              ai: {
-                tokens: {
-                  input: usage.inputTokens ?? 0,
-                  output: usage.outputTokens ?? 0,
-                  reasoning: usage.outputTokenDetails?.reasoningTokens,
-                  total: usage.totalTokens
-                    ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
+        if (missingFiles.length > 0) {
+          writer.write({
+            type: 'data-missing-files',
+            data: {
+              count: missingFiles.length,
+              filenames: missingFiles
+                .map(file => file.filename)
+                .filter((name): name is string => Boolean(name)),
+            },
+          })
+        }
+
+        let result: ReturnType<typeof streamText>
+
+        try {
+          // No abortSignal here: the cloudflare_module preset (Nitro 2.13 /
+          // h3 v1 + node-mock-http) surfaces no client-disconnect signal to
+          // the handler, and fully draining on disconnect is intentional —
+          // it lets a reconnect replay the already-persisted reply. Don't
+          // wire one: on this stack it is a no-op, or would defeat that
+          // replay by skipping persist. (Providers also bill and omit usage
+          // on abort, so there is no cost to recover here either.)
+          result = streamText({
+            model: instance,
+            instructions: projectSystemPrompt || undefined,
+            reasoning: reasoningEffort,
+            messages: await convertToModelMessages(messagesForAI),
+            experimental_transform: smoothStream(),
+            onEnd({ usage }) {
+              aiLogger.set({
+                ai: {
+                  tokens: {
+                    input: usage.inputTokens ?? 0,
+                    output: usage.outputTokens ?? 0,
+                    reasoning: usage.outputTokenDetails?.reasoningTokens,
+                    total: usage.totalTokens
+                      ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
+                  },
+                  cost: computeModelCost(model.id, usage),
                 },
-                cost: computeModelCost(model.id, usage),
-              },
-            })
-          },
-          ...parsedTools,
-          providerOptions,
-        })
-      } catch (exception) {
-        const chatError = normalizeChatError({
-          error: exception,
-          event,
-          providerId,
-        })
-
-        logger.set({
-          message: chatError.message,
-          stage: 'start-stream',
-          errorCode: chatError.code,
-          providerStatus: chatError.status,
-          providerRequestId: chatError.providerRequestId,
-          errorMessage: chatError.why,
-        })
-        emitChatErrorLog({
-          chatError,
-          event,
-          stage: 'start-stream',
-          userId,
-          chatId: chat.id,
-          projectId: chat.projectId,
-          modelId: model.id,
-          reasoning: body.data.reasoning,
-          tools: body.data.tools,
-        })
-
-        throw chatError
-      }
-
-      const uiMessageStream = toUIMessageStream({
-        stream: result.stream,
-        originalMessages: messagesForAI,
-        generateMessageId: () => messagePublicId,
-        sendSources: true,
-        sendReasoning: body.data.reasoning !== 'off',
-        onError(error) {
+              })
+            },
+            ...parsedTools,
+            providerOptions,
+          })
+        } catch (exception) {
           const chatError = normalizeChatError({
-            error,
+            error: exception,
             event,
             providerId,
           })
 
           logger.set({
             message: chatError.message,
-            stage: 'stream',
+            stage: 'start-stream',
             errorCode: chatError.code,
             providerStatus: chatError.status,
             providerRequestId: chatError.providerRequestId,
@@ -600,7 +615,7 @@ export default defineEventHandler(async (event) => {
           emitChatErrorLog({
             chatError,
             event,
-            stage: 'stream',
+            stage: 'start-stream',
             userId,
             chatId: chat.id,
             projectId: chat.projectId,
@@ -609,50 +624,101 @@ export default defineEventHandler(async (event) => {
             tools: body.data.tools,
           })
 
-          return JSON.stringify(chatError)
-        },
-      })
-      const [clientStream, persistenceStream] = uiMessageStream.tee()
+          throw chatError
+        }
 
-      writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
+        const uiMessageStream = toUIMessageStream({
+          stream: result.stream,
+          originalMessages: messagesForAI,
+          generateMessageId: () => messagePublicId,
+          sendSources: true,
+          sendReasoning: body.data.reasoning !== 'off',
+          onError(error) {
+            const chatError = normalizeChatError({
+              error,
+              event,
+              providerId,
+            })
 
-      await persistAssistantMessageFromStream({
-        stream: persistenceStream,
-        db,
-        event,
-        providerId: provider.id,
-        supportedProviderId: providerId,
-        userId,
-        chatId: chat.id,
-        projectId: chat.projectId,
-        modelId: model.id,
-        reasoning: body.data.reasoning,
-        tools: body.data.tools,
-        publicId: messagePublicId,
-        logger,
-      })
+            logger.set({
+              message: chatError.message,
+              stage: 'stream',
+              errorCode: chatError.code,
+              providerStatus: chatError.status,
+              providerRequestId: chatError.providerRequestId,
+              errorMessage: chatError.why,
+            })
+            emitChatErrorLog({
+              chatError,
+              event,
+              stage: 'stream',
+              userId,
+              chatId: chat.id,
+              projectId: chat.projectId,
+              modelId: model.id,
+              reasoning: body.data.reasoning,
+              tools: body.data.tools,
+            })
 
-      // Emit the dedicated AI wide event AFTER the persistence stream is
-      // fully consumed. By this point streamText's `onEnd` has fired and
-      // written the `ai.{tokens, cost}` block to `aiLogger`. Emitting earlier
-      // races with that write and triggers evlog's "set called after emit"
-      // warning.
-      //
-      // Standalone `createRequestLogger().emit()` does NOT dispatch through
-      // the Nitro hook system that our `evlog-drain.ts` plugin registers —
-      // it goes through evlog's `globalDrain` / `globalPluginRunner`, which
-      // the Nitro adapter doesn't populate. So `emit()` builds the event +
-      // console.log's it (visible in CF Observability) but never ships it
-      // to Axiom on its own. We manually push the built wide event to the
-      // same Axiom drains used by the Nitro hook, registered via waitUntil
-      // so the Worker stays alive until the fetch resolves.
-      const aiWideEvent = aiLogger.emit({
-        message: 'AI stream completed',
-        status: 200,
-      })
+            return JSON.stringify(chatError)
+          },
+        })
+        const [clientStream, persistenceStream] = uiMessageStream.tee()
 
-      if (aiWideEvent && cfCtx?.waitUntil) {
-        cfCtx.waitUntil(shipWideEventToAxiom(aiWideEvent))
+        writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
+
+        await persistAssistantMessageFromStream({
+          stream: persistenceStream,
+          db,
+          event,
+          providerId: provider.id,
+          supportedProviderId: providerId,
+          userId,
+          chatId: chat.id,
+          projectId: chat.projectId,
+          modelId: model.id,
+          reasoning: body.data.reasoning,
+          tools: body.data.tools,
+          publicId: messagePublicId,
+          logger,
+        })
+
+        // Emit the dedicated AI wide event AFTER the persistence stream is
+        // fully consumed. By this point streamText's `onEnd` has fired and
+        // written the `ai.{tokens, cost}` block to `aiLogger`. Emitting
+        // earlier races with that write and triggers evlog's "set called
+        // after emit" warning.
+        //
+        // Standalone `createRequestLogger().emit()` does NOT dispatch
+        // through the Nitro hook system that our `evlog-drain.ts` plugin
+        // registers — it goes through evlog's `globalDrain` /
+        // `globalPluginRunner`, which the Nitro adapter doesn't populate.
+        // So `emit()` builds the event + console.log's it (visible in CF
+        // Observability) but never ships it to Axiom on its own. We manually
+        // push the built wide event to the same Axiom drains used by the
+        // Nitro hook, registered via waitUntil so the Worker stays alive
+        // until the fetch resolves.
+        const aiWideEvent = aiLogger.emit({
+          message: 'AI stream completed',
+          status: 200,
+        })
+
+        if (aiWideEvent && cfCtx?.waitUntil) {
+          cfCtx.waitUntil(shipWideEventToAxiom(aiWideEvent))
+        }
+      } finally {
+        try {
+          await kv.delete(generatingKey)
+        } catch (exception) {
+          logger.set({
+            generationGuard: {
+              operation: 'delete',
+              error: exception instanceof Error
+                ? exception.message
+                : String(exception),
+            },
+          })
+        }
       }
     },
   })
@@ -901,6 +967,13 @@ async function persistAssistantMessageFromStream(input: {
 
     throw chatError
   }
+}
+
+function generationInProgressKvKey(
+  chatId: string,
+  userMessageId: string,
+): string {
+  return `chat-generating:${chatId}:${userMessageId}`
 }
 
 function hasSameParts(

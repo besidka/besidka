@@ -3,6 +3,7 @@ import type {
   TextUIPart,
   SourceUrlUIPart,
   ReasoningUIPart,
+  ChatStatus,
 } from 'ai'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Tools } from '#shared/types/chats.d'
@@ -61,6 +62,33 @@ function isTransportLoadError(error: ChatErrorPayload): boolean {
   return error.message === 'The chat response failed to load.'
     || isTransportLoadErrorMessage(error.why)
     || isTransportLoadErrorMessage(error.message)
+}
+
+export interface TransportInterruptionFlags {
+  isAbort: boolean
+  isDisconnect: boolean
+  isTestChat: boolean
+}
+
+// Issue #275: the AI SDK's own isDisconnect flag only fires for a TypeError
+// whose message contains "fetch" or "network" — it never matches Safari's
+// actual wording ("Load failed") for a connection killed by iOS suspending
+// the page. isTransportLoadError() is this codebase's broader, already-
+// proven recognizer for that whole error family (issue #263), so this checks
+// both rather than trusting the SDK flag alone. A turn flagged this way
+// should auto-recover silently (no error bubble, automatic resend) instead
+// of surfacing as a user-facing failure. Scoped off for isAbort (the user
+// deliberately stopped — never auto-resume that) and the dev test route
+// (deliberately simulated errors must still render as errors there).
+export function isAutoRecoverableTransportInterruption(
+  error: ChatErrorPayload | null,
+  flags: TransportInterruptionFlags,
+): boolean {
+  if (flags.isTestChat || flags.isAbort) {
+    return false
+  }
+
+  return flags.isDisconnect || (error ? isTransportLoadError(error) : false)
 }
 
 function isChatErrorPayload(value: unknown): value is ChatErrorPayload {
@@ -185,6 +213,24 @@ export function shouldSurfaceEmptyAssistantResponse(
   }
 
   return !hasMeaningfulAssistantParts(lastMessage)
+}
+
+// Issue #275: iOS suspends the page on screen-lock or app-switch with no
+// grace period, killing the in-flight stream client-side while the server
+// (per the tee+persist pipeline below) keeps generating regardless. On
+// visibilitychange/focus, this decides whether the chat looks like it was
+// cut off mid-turn and should auto-retrigger the existing disconnect-replay
+// path (issue #263) instead of waiting for the user to notice and click
+// Regenerate.
+export function shouldRecoverInterruptedGeneration(
+  status: ChatStatus,
+  messages: UIMessage[],
+): boolean {
+  if (status === 'streaming' || status === 'submitted') {
+    return false
+  }
+
+  return shouldSurfaceEmptyAssistantResponse(messages)
 }
 
 export function buildChatErrorLines(error: ChatErrorPayload): string[] {
@@ -377,6 +423,16 @@ function reportChatClientError(payload: ChatClientErrorReport) {
   })
 }
 
+// Bounds how long the client keeps polling a "still generating" turn (issue
+// #275) before giving up and falling back to the manual Regenerate button.
+// 150 attempts * 4s = 10 min, comfortably covering the 2-3 min generations
+// from the bug report with margin, and roughly matching the server's KV ttl
+// on the in-flight generation flag (server/api/v1/chats/[slug]/index.post.ts)
+// — once that expires a retry just starts a fresh generation instead, which
+// is an acceptable fallback.
+const MAX_GENERATION_RETRY_ATTEMPTS = 150
+const GENERATION_RETRY_DELAY_MS = 4_000
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
@@ -417,7 +473,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
   )
-  const { api, shouldAutoRegenerate } = useChatTest(chat, reasoning)
+  const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
+  const wakeLock = useWakeLock()
+  // True for the whole span of an auto-recovery attempt, including the idle
+  // gaps between individual "still generating" polls — chatSdk.status alone
+  // settles back to a terminal value between each poll, which would
+  // otherwise make the UI flash back to "nothing happening" every cycle.
+  const isAwaitingGeneration = shallowRef<boolean>(false)
+  let isPendingGenerationRetry = false
+  let pendingRetryAttempts = 0
+  let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
 
   const {
     messages: sdkMessages,
@@ -457,7 +522,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }),
     onFinish({ isAbort, isDisconnect, isError, messages }) {
       const requestId = transportRequestId.value
+      const wasPendingGenerationRetry = isPendingGenerationRetry
       let parsedError = pendingError.value
+
+      isPendingGenerationRetry = false
 
       if (!parsedError && isError) {
         parsedError = normalizeChatClientError(
@@ -466,10 +534,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         )
       }
 
+      const wasTransportInterruption = isAutoRecoverableTransportInterruption(
+        parsedError,
+        { isAbort, isDisconnect, isTestChat: isTestChat.value },
+      )
+
       if (
         !parsedError
         && !isAbort
-        && !isDisconnect
+        && !wasTransportInterruption
+        && !wasPendingGenerationRetry
         && shouldSurfaceEmptyAssistantResponse(messages)
       ) {
         parsedError = normalizeChatClientError(
@@ -481,7 +555,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       pendingError.value = null
       transportRequestId.value = undefined
 
-      if (parsedError) {
+      // The AI SDK never calls onError on the abort path (it returns before
+      // reaching that call), so parsedError && isAbort can't co-occur here in
+      // practice — the !isAbort guard is defensive, not load-bearing.
+      if (parsedError && !isAbort && !wasTransportInterruption) {
         if (shouldSurfaceChatError(messages, parsedError)) {
           sdkMessages.value = showChatError(
             messages,
@@ -490,12 +567,33 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         } else {
           sdkClearError()
         }
+      } else if (parsedError) {
+        sdkClearError()
       }
 
-      if (isAbort || isDisconnect) {
+      if (
+        wasPendingGenerationRetry
+        && !isAbort
+        && !wasTransportInterruption
+      ) {
+        scheduleGenerationRetry()
+        return
+      }
+
+      if (isAbort) {
+        wakeLock.release()
+        isAwaitingGeneration.value = false
         isStopped.value = true
         return
       }
+
+      if (wasTransportInterruption) {
+        recoverFromTransportInterruption()
+        return
+      }
+
+      wakeLock.release()
+      isAwaitingGeneration.value = false
 
       if (isError) {
         isStopped.value = parsedError
@@ -535,6 +633,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       }
     },
     onData(dataPart) {
+      if (dataPart.type === 'data-generation-pending') {
+        isPendingGenerationRetry = true
+        return
+      }
+
       if (dataPart.type !== 'data-missing-files') {
         return
       }
@@ -577,7 +680,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const isLoading = computed<boolean>(() => {
-    if (chatSdk.status === 'submitted') {
+    if (isAwaitingGeneration.value) {
+      return true
+    } else if (chatSdk.status === 'submitted') {
       return true
     } else if (chatSdk.status !== 'streaming') {
       return false
@@ -613,13 +718,104 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return isStopped.value || chatSdk.status === 'error'
   })
 
+  function clearScheduledGenerationRetry(): void {
+    if (pendingRetryTimeoutId === undefined) {
+      return
+    }
+
+    clearTimeout(pendingRetryTimeoutId)
+    pendingRetryTimeoutId = undefined
+  }
+
+  // Shared by scheduleGenerationRetry() and recoverFromTransportInterruption()
+  // so a network flaky enough to make every recovery attempt disconnect (not
+  // just every "still generating" poll) is still bounded by the same cap,
+  // instead of looping forever through the immediate-retry path.
+  function attemptGenerationRecovery(options: { immediate: boolean }): void {
+    isAwaitingGeneration.value = true
+
+    if (pendingRetryAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
+      isAwaitingGeneration.value = false
+      isStopped.value = true
+      wakeLock.release()
+
+      return
+    }
+
+    pendingRetryAttempts += 1
+    clearScheduledGenerationRetry()
+
+    if (!options.immediate) {
+      pendingRetryTimeoutId = setTimeout(() => {
+        chatSdk.regenerate()
+      }, GENERATION_RETRY_DELAY_MS)
+
+      return
+    }
+
+    isStopped.value = false
+    wakeLock.acquire()
+    chatSdk.regenerate()
+  }
+
+  function scheduleGenerationRetry(): void {
+    attemptGenerationRecovery({ immediate: false })
+  }
+
+  // Called once onFinish has already confirmed (via wasTransportInterruption)
+  // that this exact turn was cut off — so unlike recoverIfInterrupted() below,
+  // this does not re-check shouldRecoverInterruptedGeneration's message-shape
+  // heuristic: a turn with substantial partial reasoning/text already visible
+  // still needs the resend, since that heuristic only exists to *infer*
+  // interruption from message shape when there is no direct signal.
+  function recoverFromTransportInterruption(): void {
+    attemptGenerationRecovery({ immediate: true })
+  }
+
+  function recoverIfInterrupted(): void {
+    if (isTestChat.value) {
+      return
+    }
+
+    if (!shouldRecoverInterruptedGeneration(chatSdk.status, chatSdk.messages)) {
+      return
+    }
+
+    clearScheduledGenerationRetry()
+    isAwaitingGeneration.value = true
+    isStopped.value = false
+    wakeLock.acquire()
+    chatSdk.regenerate()
+  }
+
+  function handleVisibilityChange(): void {
+    if (document.visibilityState === 'visible') {
+      recoverIfInterrupted()
+    }
+  }
+
   onMounted(() => {
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
       && shouldAutoRegenerate.value
     ) {
+      // A reply-less last message on a freshly loaded chat (issue #275) means
+      // the previous attempt never persisted before this load — could still
+      // be generating server-side, so this may resolve into the same
+      // "still generating" poll loop as a live recovery, not just a replay.
+      isAwaitingGeneration.value = true
       chatSdk.regenerate()
     }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', recoverIfInterrupted)
+  })
+
+  onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    window.removeEventListener('focus', recoverIfInterrupted)
+    clearScheduledGenerationRetry()
+    wakeLock.release()
   })
 
   useSetChatTitle(chat.title)
@@ -628,6 +824,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   async function submit() {
     isStopped.value = false
+    isAwaitingGeneration.value = false
+    pendingRetryAttempts = 0
+    clearScheduledGenerationRetry()
+    wakeLock.acquire()
 
     const parts: any[] = []
 
@@ -659,12 +859,19 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   function stop() {
+    clearScheduledGenerationRetry()
+    isAwaitingGeneration.value = false
+    wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
   }
 
   function regenerate() {
     isStopped.value = false
+    isAwaitingGeneration.value = false
+    pendingRetryAttempts = 0
+    clearScheduledGenerationRetry()
+    wakeLock.acquire()
     chatSdk.regenerate()
     nuxtApp.callHook('chat:regenerate')
   }
