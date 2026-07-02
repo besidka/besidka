@@ -296,18 +296,16 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
         }
     }
     &.btn-outline {
-      @media (hover: hover) {
-        &:not(:hover):not(:focus-visible):not(:active) {
-          @variant dark {
-            &.btn-primary {
-              --btn-color: var(--color-primary-content);
-            }
-            &.btn-secondary {
-              --btn-color: var(--color-secondary-content);
-            }
-            &.btn-neutral {
-              --btn-color: var(--color-neutral-content);
-            }
+      &:not(:hover):not(:focus-visible):not(:active) {
+        @variant dark {
+          &.btn-primary {
+            --btn-color: var(--color-primary-content);
+          }
+          &.btn-secondary {
+            --btn-color: var(--color-secondary-content);
+          }
+          &.btn-neutral {
+            --btn-color: var(--color-neutral-content);
           }
         }
       }
