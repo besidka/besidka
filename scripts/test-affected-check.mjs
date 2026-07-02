@@ -140,12 +140,13 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/layouts/chat.spec.ts',
   ]
 
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js)$/,
+        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js)$/,
       tests: pushNotificationTests,
     },
     {

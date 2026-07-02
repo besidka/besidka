@@ -15,10 +15,13 @@
 // true means enabled, false means declined/dismissed. Two independent
 // triggers write and read it:
 //   - maybeShowProactively(): a one-time ask for a user who has never been
-//     asked (state === null), meant to be called from a page like
-//     /chats/new. Chrome's own telemetry shows a cold permission prompt
+//     asked (state === null), called from the chat layout's onMounted so it
+//     fires on both /chats/new and /chats/[slug] without duplicating the
+//     call per page. Chrome's own telemetry shows a cold permission prompt
 //     converts far worse than one shown after the user has experienced the
-//     product, so this intentionally is NOT wired to first app load.
+//     product, so this intentionally is NOT wired to first app load (the
+//     banner itself also only renders within that layout — see chat.vue —
+//     so it never shows on the home page or elsewhere).
 //   - maybeShowAfterMissedNotification(): fired from chat.ts's
 //     'chat:generation-ready-while-hidden' hook — a generation finished
 //     while the user was away with no way to notify them. Re-asks only a
