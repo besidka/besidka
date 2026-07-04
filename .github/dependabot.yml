@@ -7,6 +7,12 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
+    # Match pnpm 11's default minimumReleaseAge (1440 minutes = 1 day) so
+    # Dependabot never proposes a version pnpm's install-time supply-chain
+    # policy would then reject as too freshly published. Does not apply to
+    # security-update PRs, which always ignore cooldown.
+    cooldown:
+      default-days: 1
     # Group minor and patch updates together to reduce PR noise
     groups:
       development-dependencies:
