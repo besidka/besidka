@@ -1,4 +1,5 @@
 import type { Logger } from 'drizzle-orm'
+import { log } from 'evlog'
 
 export class DrizzleQueryLogger implements Logger {
   logQuery(query: string, params: unknown[]): void {
@@ -6,7 +7,6 @@ export class DrizzleQueryLogger implements Logger {
       ? ` -- params: ${JSON.stringify(params)}`
       : ''
 
-    // eslint-disable-next-line no-console
-    console.log(`[drizzle] ${query}${formattedParams}`)
+    log.debug('drizzle', `${query}${formattedParams}`)
   }
 }

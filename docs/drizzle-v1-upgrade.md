@@ -68,6 +68,37 @@ npx wrangler d1 execute besidka --env production --remote --file=scripts/drizzle
 npx wrangler d1 execute besidka-consent --env production --remote --file=scripts/drizzle-v1-migration-rename-consent.sql
 ```
 
+**Recommended precaution before the production commands above.** The rename
+script itself only runs `UPDATE d1_migrations SET name = ...` bookkeeping
+statements — no `CREATE TABLE`, no `DROP TABLE`, no touching any application
+data — so it does not fall under CLAUDE.md's D1 migration-rebuild danger
+pattern, and the destructive-DDL risk that rule targets does not apply here.
+Even so, this is the highest-risk migration-format change this project has
+made, and both `production.yml` and `preview-deploy.yml` run the real
+`wrangler d1 migrations apply --remote` step unconditionally right after this
+manual step — so as defense-in-depth, take a Time Travel bookmark and record
+row counts on the cascade-child tables before running the production rename
+commands, the same way CLAUDE.md's own D1 safety checklist requires for real
+schema migrations:
+
+```bash
+npx wrangler d1 time-travel info besidka --env production
+npx wrangler d1 time-travel info besidka-consent --env production
+```
+
+Save the returned bookmarks somewhere retrievable before proceeding. Then
+capture row counts on `chats`, `messages`, `projects`, and `accounts` — the
+tables that cascade-delete off `users` — both before and after running the
+production rename commands, and confirm they match:
+
+```bash
+npx wrangler d1 execute besidka --env production --remote --command="SELECT
+  (SELECT COUNT(*) FROM chats) AS chats,
+  (SELECT COUNT(*) FROM messages) AS messages,
+  (SELECT COUNT(*) FROM projects) AS projects,
+  (SELECT COUNT(*) FROM accounts) AS accounts;"
+```
+
 **Verified against the real databases (read-only, 2026-07-01)**, not just
 reasoned about from git history: every name both scripts expect is present
 verbatim on all 4 real databases (preview main, preview consent, production

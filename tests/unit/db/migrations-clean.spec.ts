@@ -6,6 +6,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+function listSchemaFiles(): string[] {
+  const schemasDir = join(process.cwd(), 'server/db/schemas')
+  const schemaFiles = readdirSync(schemasDir)
+    .filter(entry => entry.endsWith('.ts'))
+    .map(entry => join(schemasDir, entry))
+
+  return [
+    ...schemaFiles,
+    join(process.cwd(), 'server/db/consent/schema.ts'),
+  ]
+}
+
 interface MigrationsCheckResult {
   newSqlFiles: string[]
   forbiddenStatements: string[]
@@ -93,4 +105,14 @@ describe('drizzle migrations stay clean', () => {
     expect(result.newSqlFiles).toEqual([])
     expect(result.forbiddenStatements).toEqual([])
   }, 30_000)
+
+  it('never uses bare sqliteTable instead of snakeCase.table', () => {
+    const offendingFiles = listSchemaFiles().filter((schemaFilePath) => {
+      const content = readFileSync(schemaFilePath, 'utf-8')
+
+      return content.includes('sqliteTable(')
+    })
+
+    expect(offendingFiles).toEqual([])
+  })
 })
