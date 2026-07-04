@@ -548,14 +548,38 @@ html body[data-studio-active][data-expand-sidebar]::before {
   }
 }
 
-/* https://github.com/saadeghi/daisyui/issues/4413#event-22477057789 */
+/*
+ * https://github.com/saadeghi/daisyui/issues/4413#event-22477057789
+ *
+ * daisyUI 5.6.0 moved .btn-ghost's idle-state color from --btn-fg onto a
+ * new --btn-rest-fg variable (falling back to --btn-color, i.e. the
+ * accent/primary/etc color, before --color-base-content). --btn-fg is
+ * still what :hover/:checked/:focus-visible/:active:not(.btn-active)
+ * read, but this rule only targets the resting state (see the :not()
+ * below), where --btn-fg no longer has any effect — --btn-rest-fg is
+ * the only variable that matters here.
+ *
+ * The .btn-active toggle class (our web-search/reasoning/files "on"
+ * state) is deliberately excluded from that resting rule so it shows
+ * the color modifier instead of base-content — but daisyUI's own
+ * :active:not(.btn-active) rule (the only other place that resets
+ * color for a pressed-looking state) explicitly excludes .btn-active
+ * too, so nothing sets --btn-rest-fg there either, and it falls through
+ * to --btn-color (e.g. accent) same as the idle bug above, giving
+ * accent-on-accent instead of accent-content-on-accent. Point it at
+ * --btn-fg (e.g. accent-content) to match pre-5.6 behavior.
+ */
 @utility btn-ghost-legacy {
+  &.btn-active {
+    --btn-rest-fg: var(--btn-fg, var(--color-base-content, currentColor));
+  }
+
   &:not(.btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn)) {
-    --btn-fg: var(--color-base-content, currentColor);
+    --btn-rest-fg: var(--color-base-content, currentColor);
 
     &.btn-disabled {
       @supports (color: color-mix(in lab, red, red)) {
-        --btn-fg: color-mix(in oklch, var(--color-base-content) 20%, #0000);
+        --btn-rest-fg: color-mix(in oklch, var(--color-base-content) 20%, #0000);
       }
     }
   }

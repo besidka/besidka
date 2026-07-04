@@ -24,7 +24,7 @@ export function getCookieConsent(event: H3Event): {
     }
   }
 
-  let parsed: ConsentCookie | null = null
+  let parsed: ConsentCookie | null
 
   try {
     parsed = JSON.parse(raw) as ConsentCookie

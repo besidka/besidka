@@ -68,7 +68,7 @@ export function uploadWithProgress<T = any>(
         }
       } else {
         let errorMessage = xhr.statusText
-        let parsedErrorMessage: string | null = null
+        let parsedErrorMessage: string | null
 
         try {
           const errorData = JSON.parse(xhr.responseText)

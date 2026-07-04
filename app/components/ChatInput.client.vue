@@ -299,7 +299,7 @@ const files = defineModel<FileMetadata[]>('files', {
 })
 
 const tools = defineModel<Tools>('tools', {
-  default: [],
+  default: () => [],
 })
 
 const reasoning = defineModel<ReasoningLevel>('reasoning', {

@@ -290,7 +290,7 @@ export function useLandingVideoThumbnails() {
     // so mediabunny's UrlSource needs an absolute URL.
     const absoluteUrl = new URL(videoUrl, window.location.href).href
 
-    let data: SpriteData | null = null
+    let data: SpriteData | null
 
     try {
       data = await generateViaMediabunny(absoluteUrl, count, width, height)
