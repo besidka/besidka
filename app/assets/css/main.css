@@ -548,14 +548,24 @@ html body[data-studio-active][data-expand-sidebar]::before {
   }
 }
 
-/* https://github.com/saadeghi/daisyui/issues/4413#event-22477057789 */
+/*
+ * https://github.com/saadeghi/daisyui/issues/4413#event-22477057789
+ *
+ * daisyUI 5.6.0 split .btn-ghost's idle-state color onto a new
+ * --btn-rest-fg variable (falling back to --btn-color, i.e. the
+ * accent/primary/etc color, before --color-base-content), while :hover
+ * still reads the original --btn-fg. Overriding --btn-fg alone no longer
+ * reaches the rest state, so both variables need to be set here.
+ */
 @utility btn-ghost-legacy {
   &:not(.btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn)) {
     --btn-fg: var(--color-base-content, currentColor);
+    --btn-rest-fg: var(--color-base-content, currentColor);
 
     &.btn-disabled {
       @supports (color: color-mix(in lab, red, red)) {
         --btn-fg: color-mix(in oklch, var(--color-base-content) 20%, #0000);
+        --btn-rest-fg: color-mix(in oklch, var(--color-base-content) 20%, #0000);
       }
     }
   }
