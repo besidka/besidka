@@ -695,6 +695,57 @@ html body[data-studio-active][data-expand-sidebar]::before {
   }
 }
 
+/* ───────────────────────────────────────────────────────────────────
+ * Desktop sidebar hover-reveal
+ *
+ * On mouse-driven desktop viewports the right-side sidebar tucks
+ * off-screen so only its middle icon peeks from the edge; hover or
+ * keyboard focus slides the full pill in. Gated on all of: lg width,
+ * prefers-reduced-motion: no-preference, a fine hovering pointer
+ * (hover + pointer, so touch/pen "desktop" devices such as an iPad on a
+ * Mac user-agent are never trapped behind a hover-only reveal), and the
+ * .sidebar-hoverable class (added only for the desktop user agent). Any
+ * of these failing leaves .sidebar-clip as display: contents — a no-op
+ * box — so tablet, touch, and reduced-motion users keep the
+ * always-visible sidebar and the mobile bottom bar is untouched.
+ *
+ * The transform lives on .sidebar-clip (not the fixed ancestor), so its
+ * hit-box tracks the visible peek in both states; the ancestor is
+ * pointer-events: none so the empty offset region it would otherwise
+ * occupy never intercepts clicks meant for page content underneath.
+ * ─────────────────────────────────────────────────────────────────── */
+.sidebar-clip {
+  display: contents;
+}
+
+@media (min-width: 64rem) and (prefers-reduced-motion: no-preference)
+  and (hover: hover) and (pointer: fine) {
+  .sidebar-hoverable {
+    pointer-events: none;
+  }
+
+  .sidebar-hoverable .sidebar-clip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    max-height: 3.25rem;
+    border-radius: 9999px;
+    pointer-events: auto;
+    transform: translateX(calc(100% - 1.5rem));
+    transition:
+      transform 0.5s ease-in-out,
+      max-height 0.5s ease-in-out;
+  }
+
+  .sidebar-hoverable:hover .sidebar-clip,
+  .sidebar-hoverable:focus-within .sidebar-clip {
+    max-height: 18rem;
+    overflow: visible;
+    transform: translateX(0);
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────────── */
 
 @layer components {
