@@ -15,11 +15,9 @@ export async function useGoogle(
   requestedReasoning: ReasoningLevel,
 ) {
   const data = await useDb().query.keys.findFirst({
-    where(keys, { and, eq }) {
-      return and(
-        eq(keys.userId, parseInt(userId)),
-        eq(keys.provider, 'google'),
-      )
+    where: {
+      userId: parseInt(userId),
+      provider: 'google',
     },
     columns: {
       apiKey: true,

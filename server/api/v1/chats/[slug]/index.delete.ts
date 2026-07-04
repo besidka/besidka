@@ -30,11 +30,9 @@ export default defineEventHandler(async (event) => {
   logger.set({ userId, chatSlug: params.data.slug })
 
   const chat = await db.query.chats.findFirst({
-    where(chats, { and, eq }) {
-      return and(
-        eq(chats.slug, params.data.slug),
-        eq(chats.userId, userId),
-      )
+    where: {
+      slug: params.data.slug,
+      userId,
     },
     columns: {
       id: true,

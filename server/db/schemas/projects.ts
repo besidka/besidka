@@ -1,12 +1,10 @@
-import { relations } from 'drizzle-orm'
 import {
-  sqliteTable, text, integer, uniqueIndex, index,
+  snakeCase, text, integer, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
-import { chats } from './chats'
 
-export const projects = sqliteTable(
+export const projects = snakeCase.table(
   'projects',
   {
     ...defaultSchemaWithPublicId,
@@ -45,11 +43,3 @@ export const projects = sqliteTable(
     index('idx_projects_activity_at').on(table.activityAt),
   ],
 )
-
-export const projectsRelations = relations(projects, ({ one, many }) => ({
-  user: one(users, {
-    fields: [projects.userId],
-    references: [users.id],
-  }),
-  chats: many(chats),
-}))

@@ -6,11 +6,9 @@ export default defineEventHandler(async () => {
   }
 
   const data = await useDb().query.keys.findFirst({
-    where(keys, { and, eq }) {
-      return and(
-        eq(keys.userId, parseInt(session.user.id)),
-        eq(keys.provider, 'openai'),
-      )
+    where: {
+      userId: parseInt(session.user.id),
+      provider: 'openai',
     },
     columns: {
       apiKey: true,

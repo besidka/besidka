@@ -31,10 +31,10 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
 
   const file = await db.query.files.findFirst({
-    where: and(
-      eq(schema.files.id, id),
-      eq(schema.files.userId, userId),
-    ),
+    where: {
+      id,
+      userId,
+    },
     columns: {
       storageKey: true,
     },

@@ -1,11 +1,10 @@
-import { relations } from 'drizzle-orm'
 import {
-  sqliteTable, integer, uniqueIndex, text,
+  snakeCase, integer, uniqueIndex, text,
 } from 'drizzle-orm/sqlite-core'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
 
-export const storages = sqliteTable(
+export const storages = snakeCase.table(
   'storages',
   {
     ...defaultSchemaWithPublicId,
@@ -36,10 +35,3 @@ export const storages = sqliteTable(
     uniqueIndex('uq_storage_user').on(table.userId),
   ],
 )
-
-export const storagesRelations = relations(storages, ({ one }) => ({
-  user: one(users, {
-    fields: [storages.userId],
-    references: [users.id],
-  }),
-}))

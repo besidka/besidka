@@ -14,12 +14,7 @@ export async function refreshProjectActivityAt(
 
   for (const projectId of uniqueProjectIds) {
     const project = await db.query.projects.findFirst({
-      where(projects, { and, eq }) {
-        return and(
-          eq(projects.id, projectId),
-          eq(projects.userId, userId),
-        )
-      },
+      where: { id: projectId, userId },
       columns: {
         id: true,
         createdAt: true,
@@ -31,18 +26,11 @@ export async function refreshProjectActivityAt(
     }
 
     const latestChat = await db.query.chats.findFirst({
-      where(chats, { and, eq }) {
-        return and(
-          eq(chats.projectId, project.id),
-          eq(chats.userId, userId),
-        )
-      },
+      where: { projectId: project.id, userId },
       columns: {
         activityAt: true,
       },
-      orderBy(chats, { desc }) {
-        return [desc(chats.activityAt)]
-      },
+      orderBy: { activityAt: 'desc' },
     })
 
     await db.update(schema.projects)

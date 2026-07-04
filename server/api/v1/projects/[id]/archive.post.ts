@@ -29,12 +29,7 @@ export default defineEventHandler(async (event) => {
   logger.set({ userId, projectId: params.data.id })
 
   const project = await db.query.projects.findFirst({
-    where(projects, { and, eq }) {
-      return and(
-        eq(projects.id, params.data.id),
-        eq(projects.userId, userId),
-      )
-    },
+    where: { id: params.data.id, userId },
     columns: { id: true, archivedAt: true },
   })
 

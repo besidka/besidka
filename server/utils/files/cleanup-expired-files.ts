@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
@@ -28,13 +28,13 @@ export async function cleanupExpiredFiles(
   const startedAt = Date.now()
   const affectedUserIds = new Set<number>()
   const selectedFiles = await db.query.files.findMany({
-    where(files, { and, isNotNull, lte }) {
-      return and(
-        isNotNull(files.expiresAt),
-        lte(files.expiresAt, now),
-      )
+    where: {
+      expiresAt: {
+        isNotNull: true,
+        lte: now,
+      },
     },
-    orderBy: asc(schema.files.expiresAt),
+    orderBy: { expiresAt: 'asc' },
     limit: Math.max(input.batchSize, 1),
     columns: {
       id: true,

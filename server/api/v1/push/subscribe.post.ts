@@ -41,9 +41,7 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
 
   const existing = await db.query.pushSubscriptions.findFirst({
-    where(table, { eq }) {
-      return eq(table.endpoint, endpoint)
-    },
+    where: { endpoint },
   })
 
   if (existing) {

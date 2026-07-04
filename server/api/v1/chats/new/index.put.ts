@@ -68,11 +68,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.projectId) {
     const project = await db.query.projects.findFirst({
-      where(projects, { and, eq }) {
-        return and(
-          eq(projects.id, body.data.projectId!),
-          eq(projects.userId, userId),
-        )
+      where: {
+        id: body.data.projectId!,
+        userId,
       },
       columns: { id: true },
     })

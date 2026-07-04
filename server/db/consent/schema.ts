@@ -1,11 +1,11 @@
 import {
-  sqliteTable,
+  snakeCase,
   text,
   integer,
   index,
 } from 'drizzle-orm/sqlite-core'
 
-export const consentReceipts = sqliteTable(
+export const consentReceipts = snakeCase.table(
   'consent_receipts',
   {
     id: text().primaryKey(),

@@ -15,11 +15,9 @@ export async function useOpenAI(
   requestedReasoning: ReasoningLevel,
 ) {
   const data = await useDb().query.keys.findFirst({
-    where(keys, { and, eq }) {
-      return and(
-        eq(keys.userId, parseInt(userId)),
-        eq(keys.provider, 'openai'),
-      )
+    where: {
+      userId: parseInt(userId),
+      provider: 'openai',
     },
     columns: {
       apiKey: true,

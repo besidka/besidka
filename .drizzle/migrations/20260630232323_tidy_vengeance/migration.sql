@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS `files_storageKey_unique`;

@@ -11,8 +11,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const file = await useDb().query.files.findFirst({
-    where(files, { eq }) {
-      return eq(files.storageKey, storageKey)
+    where: {
+      storageKey,
     },
     columns: {
       id: true,
