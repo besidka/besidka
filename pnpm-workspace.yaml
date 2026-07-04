@@ -3,8 +3,18 @@ packages:
   - 'modules/*'
 
 overrides:
+  '@ai-sdk/gateway': 4.0.11
+  '@clack/core': 1.4.2
+  '@clack/prompts': 1.6.0
+  '@cloudflare/workers-types': ^4.20260702.1
+  '@es-joy/jsdoccomment': 0.87.0
+  '@types/node': 24.13.2
+  baseline-browser-mapping: 2.10.41
   drizzle-orm: 1.0.0-rc.4
+  electron-to-chromium: 1.5.385
+  eslint-plugin-jsdoc: 63.0.10
   fontless>esbuild: '>=0.28.1'
+  srvx: 0.11.20
 
 allowBuilds:
   '@parcel/watcher': true
