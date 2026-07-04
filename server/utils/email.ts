@@ -1,29 +1,29 @@
-import { Resend } from 'resend'
+// @ts-ignore
+import { env } from 'cloudflare:workers'
 
 type From = 'noreply' | 'personalized'
 
 interface EmailRuntimeConfig {
   emailNoopEnabled: boolean | string
-  resendApiKey: string
-  resendSenderNoreply: string
-  resendSenderPersonalized: string
+  emailSenderNoreply: string
+  emailSenderPersonalized: string
 }
 
 function getSenderEmail(
   from: From,
-  resendSenderNoreply: string,
-  resendSenderPersonalized: string,
+  emailSenderNoreply: string,
+  emailSenderPersonalized: string,
 ): string {
   switch (from) {
     case 'noreply':
-      if (resendSenderNoreply) {
-        return resendSenderNoreply
+      if (emailSenderNoreply) {
+        return emailSenderNoreply
       }
 
       throw createError('Sender email is required for noreply emails')
     case 'personalized':
-      if (resendSenderPersonalized) {
-        return resendSenderPersonalized
+      if (emailSenderPersonalized) {
+        return emailSenderPersonalized
       }
 
       throw createError('Sender email is required for personalized emails')
@@ -32,25 +32,41 @@ function getSenderEmail(
   }
 }
 
+function htmlToText(html: string): string {
+  return html
+    .replace(/<a\b[^>]*\bhref="([^"]*)"[^>]*>(.*?)<\/a>/gi, '$2 ($1)')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, '\'')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export const useEmail = (
   runtimeConfig: EmailRuntimeConfig = useRuntimeConfig(),
+  emailBinding: SendEmail | undefined = env.EMAIL,
 ) => {
   const {
     emailNoopEnabled,
-    resendApiKey,
-    resendSenderNoreply,
-    resendSenderPersonalized,
+    emailSenderNoreply,
+    emailSenderPersonalized,
   } = runtimeConfig
 
   async function send({
     to,
     subject,
     html,
+    text,
     from = 'noreply' as From,
   }: {
     to: string
     subject: string
     html: string
+    text?: string
     from?: From
   }) {
     if (!to || !subject || !html) {
@@ -58,29 +74,32 @@ export const useEmail = (
     }
 
     if (String(emailNoopEnabled) === 'true') {
-      return { id: 'email-noop' }
+      return { messageId: 'email-noop' }
     }
 
-    if (!resendApiKey) {
+    if (!emailBinding) {
       throw createError({
         statusCode: 500,
-        statusMessage: 'Resend API key is not set in the runtime configuration.',
+        statusMessage: 'Email binding (EMAIL) is not available in the runtime.',
       })
     }
 
     const resultFrom = getSenderEmail(
       from,
-      resendSenderNoreply,
-      resendSenderPersonalized,
+      emailSenderNoreply,
+      emailSenderPersonalized,
     )
-    const resend = new Resend(resendApiKey)
 
     try {
-      return await resend.emails.send({
-        from: resultFrom,
+      return await emailBinding.send({
+        from: {
+          name: 'Besidka',
+          email: resultFrom,
+        },
         to,
         subject,
         html,
+        text: text ?? htmlToText(html),
       })
     } catch (exception: any) {
       throw createError(exception)

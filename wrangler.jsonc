@@ -26,8 +26,8 @@
 	},
 	"vars": {
 		"NUXT_PUBLIC_BASE_URL": "https://besidka-preview.chernenko.workers.dev",
-		"NUXT_RESEND_SENDER_NOREPLY": "noreply@besidka.com",
-		"NUXT_RESEND_SENDER_PERSONALIZED": "serhii@besidka.com",
+		"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
+		"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
 		"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
 		"NUXT_PUBLIC_VAPID_PUBLIC_KEY": "BJECS1JELjYP0aXYJdlCqKA1DzKRfG70EEYo1FB3v6M8-oRA25ufhWgRZ32ZKanL0CX585c3mLCQQnnIeeBvAc8",
 		"NUXT_FILES_RETENTION_CLEANUP_ENABLED": true,
@@ -84,6 +84,15 @@
 	"images": {
     "binding": "IMAGES"
   },
+	"send_email": [
+		{
+			"name": "EMAIL",
+			"allowed_sender_addresses": [
+				"noreply@besidka.com",
+				"serhii@besidka.com"
+			]
+		}
+	],
 	"triggers": {
 		"crons": [
 			"0 * * * *"
@@ -124,8 +133,8 @@
 			},
 			"vars": {
 				"NUXT_PUBLIC_BASE_URL": "https://www.besidka.com",
-				"NUXT_RESEND_SENDER_NOREPLY": "noreply@besidka.com",
-				"NUXT_RESEND_SENDER_PERSONALIZED": "serhii@besidka.com",
+				"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
+				"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
 				"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
 				"NUXT_PUBLIC_VAPID_PUBLIC_KEY": "BMHfsKCit5SCDRu10-nPopt23_fvj6QJ8KLF5dEmv1sNG48O_7zcgwkxjQwLvKOO863YdKtsn4dE5Gm0GdboKwk",
 				"NUXT_FILES_RETENTION_CLEANUP_ENABLED": true,
@@ -182,7 +191,16 @@
 			],
 			"images": {
 				"binding": "IMAGES"
-			}
+			},
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"allowed_sender_addresses": [
+						"noreply@besidka.com",
+						"serhii@besidka.com"
+					]
+				}
+			]
 		}
 	}
 }
