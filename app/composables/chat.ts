@@ -10,6 +10,11 @@ import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type {
+  ResearchAnswer,
+  ResearchClarificationResponse,
+  ResearchDepthSetting,
+} from '#shared/types/research.d'
 import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
@@ -505,6 +510,31 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
   )
+  const savedResearchDepth = customRef<ResearchDepthSetting>(
+    (track, trigger) => ({
+      get() {
+        track()
+
+        return normalizeResearchDepthSetting(
+          prefStorage.getItem('settings_research_depth'),
+        )
+      },
+      set(value) {
+        prefStorage.setItem('settings_research_depth', value)
+        trigger()
+      },
+    }),
+  )
+  const researchDepth = shallowRef<ResearchDepthSetting>(
+    chat.messages[chat.messages.length - 1]?.researchDepth
+    ?? savedResearchDepth.value,
+  )
+  const pendingClarification = shallowRef<ResearchClarificationResponse | null>(
+    null,
+  )
+  const isClarifying = shallowRef<boolean>(false)
+  let deferredResearchParts: any[] = []
+  let deferredResearchAnswers: ResearchAnswer[] | undefined
   const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
   const wakeLock = useWakeLock()
   // True for the whole span of an auto-recovery attempt, including the idle
@@ -565,15 +595,19 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       },
       prepareSendMessagesRequest({ messages }) {
         const lastMessage = messages[messages.length - 1]
-
-        return {
-          body: {
-            model: userModel.value,
-            tools: tools.value,
-            messages: [lastMessage],
-            reasoning: reasoning.value,
-          },
+        const body: Record<string, unknown> = {
+          model: userModel.value,
+          tools: tools.value,
+          messages: [lastMessage],
+          reasoning: reasoning.value,
+          researchDepth: researchDepth.value,
         }
+
+        if (deferredResearchAnswers) {
+          body.researchAnswers = deferredResearchAnswers
+        }
+
+        return { body }
       },
     }),
     onFinish({ isAbort, isDisconnect, isError, messages }) {
@@ -904,7 +938,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const nuxtApp = useNuxtApp()
 
-  async function submit() {
+  function beginGenerationTurn(): void {
     isStopped.value = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
@@ -912,13 +946,15 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     currentTurnStartedAt.value = Date.now()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
+  }
 
+  async function buildUserMessageParts(text: string): Promise<any[]> {
     const parts: any[] = []
 
-    if (input.value.trim()) {
+    if (text.trim()) {
       parts.push({
         type: 'text',
-        text: input.value,
+        text,
       })
     }
 
@@ -928,6 +964,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       parts.push(...fileParts)
     }
 
+    return parts
+  }
+
+  function appendUserMessageAndStart(parts: any[]): void {
     chatSdk.messages = [
       ...chatSdk.messages,
       {
@@ -940,6 +980,88 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     ]
 
     chatSdk.regenerate()
+  }
+
+  function submitResearchClarification(answers: ResearchAnswer[]): void {
+    const parts = deferredResearchParts
+
+    deferredResearchParts = []
+    deferredResearchAnswers = answers
+    pendingClarification.value = null
+
+    if (!parts.length) {
+      return
+    }
+
+    beginGenerationTurn()
+    appendUserMessageAndStart(parts)
+  }
+
+  async function requestResearchClarification(topic: string): Promise<void> {
+    try {
+      deferredResearchParts = await buildUserMessageParts(topic)
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      input.value = topic
+
+      useErrorMessage(
+        parsedException.message || 'Failed to prepare your message',
+        parsedException.why,
+      )
+
+      return
+    }
+
+    isClarifying.value = true
+
+    try {
+      const response = await $fetch<ResearchClarificationResponse>(
+        '/api/v1/chats/research/clarify',
+        {
+          method: 'POST',
+          body: {
+            model: userModel.value,
+            topic,
+          },
+        },
+      )
+
+      pendingClarification.value = response
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to prepare research questions',
+        parsedException.why,
+      )
+
+      submitResearchClarification([])
+    } finally {
+      isClarifying.value = false
+    }
+  }
+
+  async function submit() {
+    deferredResearchAnswers = undefined
+
+    const topic = input.value
+
+    if (
+      isDeepResearchActive(researchDepth.value)
+      && !pendingClarification.value
+      && topic.trim()
+    ) {
+      await requestResearchClarification(topic)
+
+      return
+    }
+
+    beginGenerationTurn()
+
+    const parts = await buildUserMessageParts(topic)
+
+    appendUserMessageAndStart(parts)
   }
 
   function stop() {
@@ -1045,6 +1167,19 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     flush: 'post',
   })
 
+  // No immediate: true here (unlike the reasoning watcher above) —
+  // researchDepth seeds from the last message's history value first (see its
+  // declaration above), and firing this on mount would push that history-
+  // seeded value into the global settings_research_depth preference, making
+  // a past research chat sticky for future new chats just by being opened.
+  // Only an explicit user change of the depth control (the only other place
+  // researchDepth.value is assigned) should persist to the global setting.
+  watch(researchDepth, (depth) => {
+    savedResearchDepth.value = depth
+  }, {
+    flush: 'post',
+  })
+
   return {
     chatSdk,
     input,
@@ -1054,6 +1189,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     regenerate,
     tools,
     reasoning,
+    researchDepth,
+    pendingClarification,
+    isClarifying,
+    submitResearchClarification,
     getMessageReasoning,
     isLoading,
     displayRegenerate,

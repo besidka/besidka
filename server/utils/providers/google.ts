@@ -1,6 +1,7 @@
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ResearchDepthSetting } from '#shared/types/research.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import {
@@ -13,6 +14,7 @@ export async function useGoogle(
   model: string,
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
+  researchDepth: ResearchDepthSetting = 'off',
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -47,6 +49,15 @@ export async function useGoogle(
   }
 
   function getTools(): FormattedTools {
+    if (isDeepResearchActive(researchDepth)) {
+      return {
+        tools: {
+          web_search: google.tools.googleSearch({}),
+          url_context: google.tools.urlContext({}),
+        },
+      }
+    }
+
     if (!requestedTools?.length) {
       return {}
     }
@@ -69,9 +80,13 @@ export async function useGoogle(
   }
 
   const { model: modelData } = getModel(model)
+  const effectiveReasoning: ReasoningLevel
+    = isDeepResearchActive(researchDepth) && requestedReasoning === 'off'
+      ? 'medium'
+      : requestedReasoning
   const reasoningLevel = resolveReasoningLevelForModel(
     modelData,
-    requestedReasoning,
+    effectiveReasoning,
   )
 
   function getProviderOptions(): SharedV2ProviderOptions {

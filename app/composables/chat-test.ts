@@ -20,12 +20,14 @@ export function useChatTest(
         scenario: undefined,
         messages: undefined,
         effort: undefined,
+        depth: undefined,
         error: undefined,
       }
     }
 
     let scenario = route.query.scenario as string
     let effort = route.query.effort as string
+    let depth = route.query.depth as string
     const error = (
       typeof route.query.error === 'string'
       && isChatTestErrorId(route.query.error)
@@ -33,7 +35,7 @@ export function useChatTest(
       ? route.query.error
       : undefined
 
-    if (!['short', 'long', 'reasoning'].includes(scenario)) {
+    if (!['short', 'long', 'reasoning', 'deep-research'].includes(scenario)) {
       scenario = 'short'
     }
 
@@ -41,10 +43,15 @@ export function useChatTest(
       effort = 'medium'
     }
 
+    if (!['quick', 'standard', 'thorough'].includes(depth)) {
+      depth = 'standard'
+    }
+
     return {
       scenario,
       messages: route.query.messages as string || '1',
       effort,
+      depth,
       error,
     }
   })
@@ -61,6 +68,10 @@ export function useChatTest(
 
     if (query.value.scenario === 'reasoning') {
       searchParams.set('effort', query.value.effort ?? 'medium')
+    }
+
+    if (query.value.scenario === 'deep-research') {
+      searchParams.set('depth', query.value.depth ?? 'standard')
     }
 
     if (query.value.error) {

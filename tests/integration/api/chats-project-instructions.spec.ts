@@ -277,7 +277,7 @@ describe('chat project instructions', () => {
     }))
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini' },
+      model: { id: 'gpt-5-mini', tools: [] },
       modelName: 'GPT-5 mini',
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({

@@ -271,7 +271,7 @@ describe('chat duplicate message detection', () => {
     )
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini' },
+      model: { id: 'gpt-5-mini', tools: [] },
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({
       instance: {},

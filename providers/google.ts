@@ -10,7 +10,7 @@ export default {
         input: 'from $2.00',
         output: 'from $12.00',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -24,7 +24,7 @@ export default {
         input: '$0.25',
         output: '$1.50',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -39,7 +39,7 @@ export default {
         input: 'from $2.00',
         output: 'from $12.00',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'high'],
@@ -53,7 +53,7 @@ export default {
         input: '$0.50',
         output: '$3.00',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -67,7 +67,7 @@ export default {
         input: 'from $1.25',
         output: 'from $10.00',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -81,7 +81,7 @@ export default {
         input: '$0.30',
         output: '$2.50',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -96,7 +96,7 @@ export default {
         input: '$0.10',
         output: '$0.40',
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],

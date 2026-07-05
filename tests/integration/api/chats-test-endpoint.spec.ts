@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getResearchStepsCount } from '../../../server/utils/chats/test/research-steps-count'
 
 const mocks = vi.hoisted(() => ({
   capturedChunks: [] as { chunks: any[], ready?: Promise<void> }[],
 }))
+
+function getExpectedResearchSourcesCount(stepsCount: number): number {
+  const phaseRepeatsCount = Math.floor((stepsCount - 3) / 2)
+
+  return Math.min(6, phaseRepeatsCount * 2)
+}
 
 vi.mock('ai', () => ({
   createUIMessageStream: ({ execute }: any) => {
@@ -265,5 +272,177 @@ describe('test chat endpoints', () => {
       code: 'provider-unavailable',
       requestId: 'cf-ray-test-456',
     }))
+  })
+
+  it('returns a structured pre-stream error response when error=clarification-failed', async () => {
+    const handler = await getPostHandler()
+    const response = await handler({
+      query: {
+        scenario: 'deep-research',
+        messages: '1',
+        effort: 'off',
+        error: 'clarification-failed',
+      },
+      node: {
+        req: {
+          headers: {
+            'cf-ray': 'cf-ray-test-789',
+          },
+        },
+      },
+    } as any)
+
+    expect(response).toBeInstanceOf(Response)
+    expect(response.status).toBe(502)
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      code: 'clarification-failed',
+      requestId: 'cf-ray-test-789',
+    }))
+  })
+
+  it('streams a structured error chunk when error=research-step-failed', async () => {
+    const handler = await getPostHandler()
+
+    await handler({
+      query: {
+        scenario: 'deep-research',
+        messages: '1',
+        effort: 'off',
+        error: 'research-step-failed',
+      },
+      node: {
+        req: {
+          headers: {
+            'cf-ray': 'cf-ray-test-101',
+          },
+        },
+      },
+    } as any)
+
+    await mocks.capturedChunks.at(-1)?.ready
+
+    const lastCapture = mocks.capturedChunks.at(-1)!
+    const errorChunk = lastCapture.chunks.find((chunk: any) => {
+      return chunk.type === 'error'
+    })
+
+    expect(JSON.parse(errorChunk.errorText)).toEqual(expect.objectContaining({
+      code: 'research-step-failed',
+      requestId: 'cf-ray-test-101',
+    }))
+  })
+
+  describe('deep-research scenario', () => {
+    it('streams bounded research step, source and brief chunks per depth', async () => {
+      const handler = await getPostHandler()
+
+      await handler(createEvent({
+        scenario: 'deep-research',
+        messages: '1',
+        depth: 'standard',
+      }) as any)
+
+      const capture = mocks.capturedChunks[0]!
+
+      await capture.ready
+
+      const stepsCount = getResearchStepsCount('standard')
+      const stepChunks = capture.chunks.filter((chunk: any) => {
+        return chunk.type === 'data-research-step'
+      })
+      const sourceChunks = capture.chunks.filter((chunk: any) => {
+        return chunk.type === 'source-url'
+      })
+      const briefChunks = capture.chunks.filter((chunk: any) => {
+        return chunk.type === 'data-research-brief'
+      })
+      const reportText = capture.chunks
+        .filter((chunk: any) => chunk.type === 'text-delta')
+        .map((chunk: any) => chunk.delta)
+        .join('')
+
+      expect(stepChunks).toHaveLength(stepsCount)
+      expect(stepChunks.every((chunk: any) => {
+        return chunk.id === `research-step-${chunk.data.phase}`
+      })).toBe(true)
+      expect(sourceChunks).toHaveLength(
+        getExpectedResearchSourcesCount(stepsCount),
+      )
+      expect(briefChunks).toHaveLength(1)
+      expect(briefChunks[0].data.depth).toBe('standard')
+      expect(typeof briefChunks[0].data.topic).toBe('string')
+      expect(briefChunks[0].data.topic.length).toBeGreaterThan(0)
+      expect(reportText).toContain('Deep research report')
+    })
+
+    it('scales milestone and source counts with a thorough depth', async () => {
+      const handler = await getPostHandler()
+
+      await handler(createEvent({
+        scenario: 'deep-research',
+        messages: '1',
+        depth: 'thorough',
+      }) as any)
+
+      const capture = mocks.capturedChunks[0]!
+
+      await capture.ready
+
+      const stepsCount = getResearchStepsCount('thorough')
+      const stepChunks = capture.chunks.filter((chunk: any) => {
+        return chunk.type === 'data-research-step'
+      })
+      const sourceChunks = capture.chunks.filter((chunk: any) => {
+        return chunk.type === 'source-url'
+      })
+
+      expect(stepChunks).toHaveLength(stepsCount)
+      expect(sourceChunks).toHaveLength(
+        getExpectedResearchSourcesCount(stepsCount),
+      )
+    })
+
+    it('fabricates a matching history message for the get endpoint', async () => {
+      const handler = await getGetHandler()
+      const response = await handler(createEvent({
+        scenario: 'deep-research',
+        messages: '2',
+        depth: 'quick',
+      }) as any)
+
+      const assistantMessage = response.messages.find((message: any) => {
+        return message.role === 'assistant'
+      })
+      const userMessage = response.messages.find((message: any) => {
+        return message.role === 'user'
+      })
+      const sourceParts = assistantMessage.parts.filter((part: any) => {
+        return part.type === 'source-url'
+      })
+      const briefPart = assistantMessage.parts.find((part: any) => {
+        return part.type === 'data-research-brief'
+      })
+      const textPart = assistantMessage.parts.find((part: any) => {
+        return part.type === 'text'
+      })
+      const userTextPart = userMessage.parts.find((part: any) => {
+        return part.type === 'text'
+      })
+
+      const stepsCount = getResearchStepsCount('quick')
+
+      expect(sourceParts).toHaveLength(
+        getExpectedResearchSourcesCount(stepsCount),
+      )
+      expect(briefPart.data).toEqual(expect.objectContaining({
+        depth: 'quick',
+        answers: [],
+      }))
+      expect(textPart.text).toContain('Deep research report')
+      expect(userTextPart.text.length).toBeGreaterThan(0)
+      expect(assistantMessage.parts.some((part: any) => {
+        return part.type === 'data-research-step'
+      })).toBe(false)
+    })
   })
 })

@@ -1,6 +1,7 @@
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ResearchDepthSetting } from '#shared/types/research.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createOpenAI } from '@ai-sdk/openai'
 import {
@@ -13,6 +14,7 @@ export async function useOpenAI(
   model: string,
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
+  researchDepth: ResearchDepthSetting = 'off',
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -47,6 +49,18 @@ export async function useOpenAI(
   }
 
   function getTools(): FormattedTools {
+    if (isDeepResearchActive(researchDepth)) {
+      const searchContextSize = researchDepth === 'thorough'
+        ? 'high'
+        : 'medium'
+
+      return {
+        tools: {
+          web_search: openai.tools.webSearch({ searchContextSize }),
+        },
+      }
+    }
+
     if (!requestedTools?.length) {
       return {}
     }
@@ -70,9 +84,13 @@ export async function useOpenAI(
   }
 
   const { model: modelData } = getModel(model)
+  const effectiveReasoning: ReasoningLevel
+    = isDeepResearchActive(researchDepth) && requestedReasoning === 'off'
+      ? 'medium'
+      : requestedReasoning
   const reasoningLevel = resolveReasoningLevelForModel(
     modelData,
-    requestedReasoning,
+    effectiveReasoning,
   )
 
   function getProviderOptions(): SharedV2ProviderOptions {

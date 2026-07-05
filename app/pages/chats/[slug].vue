@@ -59,6 +59,11 @@
             :status="chatSdk.status"
             :turn-started-at="currentTurnStartedAt"
           />
+          <ChatDeepResearchProgress
+            :message="m"
+            :status="chatSdk.status"
+            :turn-started-at="currentTurnStartedAt"
+          />
           <div
             v-for="(part, index) in m.parts"
             :key="`message-${m.id}-part-${index}`"
@@ -101,6 +106,12 @@
           <ChatUrlSources :message="m" />
         </ChatMessage>
       </div>
+      <ChatDeepResearchClarify
+        v-if="pendingClarification"
+        :clarification="pendingClarification"
+        @submit="submitResearchClarification"
+        @skip="() => submitResearchClarification([])"
+      />
       <LazyChatLoader :show="isLoading" />
       <div ref="messagesEndRef" />
     </ChatContainer>
@@ -111,6 +122,7 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    v-model:research-depth="researchDepth"
     display-project-picker
     :project-context="projectContext"
     :messages-length="chatSdk.messages.length"
@@ -264,12 +276,15 @@ const {
   displayRegenerate,
   displayStop,
   reasoning,
+  researchDepth,
   getMessageReasoning,
   isLastUserMessage,
   isLastAssistantMessage,
   shouldDisplayMessage,
   files,
   currentTurnStartedAt,
+  pendingClarification,
+  submitResearchClarification,
 } = useChat(toValue(chat.value))
 
 const { components, getUnwrap } = useChatFormat()

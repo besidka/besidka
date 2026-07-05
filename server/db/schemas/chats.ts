@@ -51,12 +51,13 @@ export const messages = snakeCase.table(
       .default(sql`'[]'`),
     tools: text({ mode: 'json' })
       .notNull()
-      .$type<Array<'web_search'>>()
+      .$type<Array<'web_search' | 'deep_research'>>()
       .default(sql`'[]'`),
     reasoning: text({ enum: ['off', 'low', 'medium', 'high'] })
       .notNull()
       .default('off'),
     usage: text({ mode: 'json' }).$type<MessageUsage>(),
+    researchDepth: text({ enum: ['quick', 'standard', 'thorough'] }),
     publicId: text('public_id').unique().$defaultFn(() => ulid()),
   }, table => [
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),

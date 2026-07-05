@@ -41,7 +41,7 @@ self.addEventListener('push', (event) => {
           icon: '/web-app-manifest-192x192.png',
           badge: '/favicon-96x96.png',
           data: { url: payload.url },
-          tag: 'besidka-response-ready',
+          tag: payload.tag ?? 'besidka-response-ready',
         })
       }),
   )

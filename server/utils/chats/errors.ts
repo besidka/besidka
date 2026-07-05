@@ -9,6 +9,9 @@ const chatErrorCodes: ChatErrorCode[] = [
   'provider-auth',
   'message-persist-failed',
   'chat-request-invalid',
+  'search-provider-unavailable',
+  'research-step-failed',
+  'clarification-failed',
   'unknown',
 ]
 

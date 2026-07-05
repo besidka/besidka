@@ -8,7 +8,10 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { Tools } from '#shared/types/chats.d'
+import type { ResearchBriefData, ResearchDepth } from '#shared/types/research.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { getResearchBudget, isDeepResearchActive } from '#shared/utils/research'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
 import { eq } from 'drizzle-orm'
@@ -18,6 +21,7 @@ import {
   createUIMessageStreamResponse,
   streamText,
   smoothStream,
+  stepCountIs,
   convertToModelMessages,
   readUIMessageStream,
   toUIMessageStream,
@@ -25,6 +29,12 @@ import {
 import * as schema from '~~/server/db/schema'
 import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
+import {
+  buildResearchSystemPrompt,
+  createResearchMilestoneState,
+  getUserMessageText,
+  mapStepToResearchMilestones,
+} from '~~/server/utils/chats/deep-research'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import {
@@ -50,8 +60,18 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    tools: z.array(z.enum(['web_search'])),
+    tools: z.array(z.enum(['web_search', 'deep_research'])),
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
+    researchDepth: z
+      .enum(['off', 'quick', 'standard', 'thorough'])
+      .default('off'),
+    researchAnswers: z.array(
+      z.object({
+        id: z.string(),
+        question: z.string().max(500),
+        answer: z.string().max(4000),
+      }),
+    ).max(20).optional(),
     messages: z.array(
       z.object({
         id: z.string().nonempty(),
@@ -141,6 +161,7 @@ export default defineEventHandler(async (event) => {
     projectId: chat.projectId,
     reasoning: body.data.reasoning,
     tools: body.data.tools,
+    researchDepth: body.data.researchDepth,
   })
 
   const { messages: newMessages, model: userModel } = body.data
@@ -152,6 +173,39 @@ export default defineEventHandler(async (event) => {
       status: 400,
     })
   }
+
+  const { provider, model } = useChatProvider(userModel)
+  const supportsDeepResearch = model.tools.includes('deep_research')
+  const requestedResearchDepth = body.data.researchDepth
+
+  if (!supportsDeepResearch && requestedResearchDepth !== 'off') {
+    logger.set({
+      stage: 'research-capability-downgrade',
+      modelId: model.id,
+      requestedResearchDepth,
+    })
+  }
+
+  const researchDepth = supportsDeepResearch
+    ? requestedResearchDepth
+    : 'off'
+  const effectiveTools = supportsDeepResearch
+    ? body.data.tools
+    : body.data.tools.filter((tool) => {
+      return tool !== 'deep_research'
+    })
+  const researchBudget = isDeepResearchActive(researchDepth)
+    ? getResearchBudget(researchDepth)
+    : null
+  const isResearch = effectiveTools.includes('deep_research')
+    && researchBudget !== null
+  const persistedResearchDepth: ResearchDepth | null
+    = isResearch && isDeepResearchActive(researchDepth)
+      ? researchDepth
+      : null
+  const researchGenerationTtlSeconds = isResearch && researchBudget
+    ? Math.max(900, researchBudget.maxSteps * 120)
+    : 600
 
   const previousMessages = chat.messages
     .filter((message) => {
@@ -287,6 +341,29 @@ export default defineEventHandler(async (event) => {
     newMessage.parts as UIMessage['parts'],
   )
 
+  const researchTopic = isResearch
+    ? getUserMessageText(newMessage.parts as UIMessage['parts'])
+    : ''
+  const researchAnswers = body.data.researchAnswers ?? []
+  const researchBrief: ResearchBriefData | null
+    = isResearch && isDeepResearchActive(researchDepth)
+      ? {
+        topic: researchTopic,
+        depth: researchDepth,
+        answers: researchAnswers,
+      }
+      : null
+  const researchSystemPrompt = researchBrief && researchBudget
+    ? buildResearchSystemPrompt({
+      topic: researchBrief.topic,
+      answers: researchBrief.answers,
+      budget: researchBudget,
+    })
+    : ''
+  const streamInstructions = [projectSystemPrompt, researchSystemPrompt]
+    .filter(Boolean)
+    .join('\n\n') || undefined
+
   const {
     messages: messagesForAI,
     missingFiles,
@@ -310,7 +387,7 @@ export default defineEventHandler(async (event) => {
         )
         && hasSameTools(
           lastPersistedMessage.tools,
-          body.data.tools,
+          effectiveTools,
         )
         && lastPersistedMessage.reasoning
         === body.data.reasoning
@@ -329,8 +406,9 @@ export default defineEventHandler(async (event) => {
             chatId: chat.id,
             role: 'user',
             parts: newMessage.parts,
-            tools: body.data.tools,
+            tools: effectiveTools,
             reasoning: body.data.reasoning,
+            researchDepth: persistedResearchDepth,
           },
           publicId: newMessage.id,
           ignoreConflict: true,
@@ -376,8 +454,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const { provider, model } = useChatProvider(userModel)
-
   // Nuxt/Nitro emits the parent request wide event the moment this handler
   // returns the streaming Response — BEFORE the AI stream finishes — so the
   // `ai.{tokens, cost, ...}` we capture in streamText's `onEnd` would land on
@@ -419,7 +495,8 @@ export default defineEventHandler(async (event) => {
     modelId: model.id,
     providerId: provider.id,
     reasoning: body.data.reasoning,
-    tools: body.data.tools,
+    tools: effectiveTools,
+    researchDepth,
   })
 
   // Mirror Cloudflare edge metadata (colo, country, ASN, etc.) onto the
@@ -430,7 +507,7 @@ export default defineEventHandler(async (event) => {
 
   const requestedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
-    : body.data.tools
+    : effectiveTools
   const providerId = toSupportedProviderId(provider.id)
 
   logger.set({
@@ -456,6 +533,7 @@ export default defineEventHandler(async (event) => {
           model.id,
           requestedTools,
           body.data.reasoning,
+          researchDepth,
         )
 
         instance = openAiInstance
@@ -478,6 +556,7 @@ export default defineEventHandler(async (event) => {
           model.id,
           requestedTools,
           body.data.reasoning,
+          researchDepth,
         )
 
         instance = googleInstance
@@ -519,7 +598,7 @@ export default defineEventHandler(async (event) => {
       projectId: chat.projectId,
       modelId: model.id,
       reasoning: body.data.reasoning,
-      tools: body.data.tools,
+      tools: effectiveTools,
     })
 
     return new Response(JSON.stringify(chatError), {
@@ -555,7 +634,9 @@ export default defineEventHandler(async (event) => {
       // user turn (caught by Codex's automated review). Awaiting here
       // guarantees the flag is visible before any provider work begins.
       try {
-        await kv.put(generatingKey, '1', { expirationTtl: 600 })
+        await kv.put(generatingKey, '1', {
+          expirationTtl: researchGenerationTtlSeconds,
+        })
       } catch (exception) {
         logger.set({
           generationGuard: {
@@ -581,6 +662,7 @@ export default defineEventHandler(async (event) => {
         }
 
         let result: ReturnType<typeof streamText>
+        const researchMilestoneState = createResearchMilestoneState()
 
         try {
           // No abortSignal here: the cloudflare_module preset (Nitro 2.13 /
@@ -592,10 +674,34 @@ export default defineEventHandler(async (event) => {
           // on abort, so there is no cost to recover here either.)
           result = streamText({
             model: instance,
-            instructions: projectSystemPrompt || undefined,
+            instructions: streamInstructions,
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
+            stopWhen: isResearch && researchBudget
+              ? stepCountIs(researchBudget.maxSteps)
+              : undefined,
+            onStepFinish: isResearch
+              ? (step) => {
+                if (!researchBudget) {
+                  return
+                }
+
+                const milestones = mapStepToResearchMilestones({
+                  step,
+                  state: researchMilestoneState,
+                  budget: researchBudget,
+                })
+
+                for (const data of milestones) {
+                  writer.write({
+                    type: 'data-research-step',
+                    id: `research-step-${data.phase}`,
+                    data,
+                  })
+                }
+              }
+              : undefined,
             onEnd({ usage }) {
               aiLogger.set({
                 ai: {
@@ -637,10 +743,17 @@ export default defineEventHandler(async (event) => {
             projectId: chat.projectId,
             modelId: model.id,
             reasoning: body.data.reasoning,
-            tools: body.data.tools,
+            tools: effectiveTools,
           })
 
           throw chatError
+        }
+
+        if (researchBrief) {
+          writer.write({
+            type: 'data-research-brief',
+            data: researchBrief,
+          })
         }
 
         const uiMessageStream = toUIMessageStream({
@@ -689,7 +802,7 @@ export default defineEventHandler(async (event) => {
               projectId: chat.projectId,
               modelId: model.id,
               reasoning: body.data.reasoning,
-              tools: body.data.tools,
+              tools: effectiveTools,
             })
 
             return JSON.stringify(chatError)
@@ -711,7 +824,9 @@ export default defineEventHandler(async (event) => {
           projectId: chat.projectId,
           modelId: model.id,
           reasoning: body.data.reasoning,
-          tools: body.data.tools,
+          tools: effectiveTools,
+          researchDepth: persistedResearchDepth,
+          researchBrief,
           publicId: messagePublicId,
           logger,
         })
@@ -734,11 +849,18 @@ export default defineEventHandler(async (event) => {
           cfCtx.waitUntil(sendPushNotificationToUser(
             db,
             userId,
-            {
-              title: 'Your response is ready',
-              body: 'Open the chat to see what Besidka generated for you.',
-              url: `/chats/${params.data.slug}`,
-            },
+            isResearch
+              ? {
+                title: 'Your research is ready',
+                body: 'Open the chat to view your research report.',
+                url: `/chats/${params.data.slug}`,
+                tag: 'besidka-research-ready',
+              }
+              : {
+                title: 'Your response is ready',
+                body: 'Open the chat to see what Besidka generated for you.',
+                url: `/chats/${params.data.slug}`,
+              },
             {
               subject: buildVapidSubject(runtimeConfig.vapidSubject),
               publicKey: runtimeConfig.public.vapidPublicKey || undefined,
@@ -924,6 +1046,15 @@ function buildPersistedAssistantReplayChunks(input: {
       continue
     }
 
+    if (part.type === 'data-research-brief') {
+      chunks.push({
+        type: 'data-research-brief',
+        data: part.data,
+      } as InferUIMessageChunk<UIMessage>)
+
+      continue
+    }
+
     if (part.type === 'file') {
       chunks.push({
         type: 'file',
@@ -951,6 +1082,8 @@ async function persistAssistantMessageFromStream(input: {
   modelId: string
   reasoning: 'off' | 'low' | 'medium' | 'high'
   tools: string[]
+  researchDepth?: ResearchDepth | null
+  researchBrief?: ResearchBriefData | null
   publicId: string
   logger: {
     set: (fields: Record<string, unknown>) => void
@@ -989,6 +1122,16 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+    const persistedParts = normalizedParts.filter((part) => {
+      return part.type !== 'data-research-brief'
+    })
+
+    if (input.researchBrief) {
+      persistedParts.push({
+        type: 'data-research-brief',
+        data: input.researchBrief,
+      })
+    }
 
     let usage: MessageUsage | undefined
 
@@ -1013,10 +1156,11 @@ async function persistAssistantMessageFromStream(input: {
       values: {
         chatId: input.chatId,
         role: 'assistant',
-        parts: normalizedParts,
+        parts: persistedParts,
         tools: [],
         reasoning: input.reasoning,
         usage: usage ?? null,
+        researchDepth: input.researchDepth ?? null,
       },
       publicId: input.publicId,
     })
@@ -1070,8 +1214,8 @@ function hasSameParts(
 }
 
 function hasSameTools(
-  leftTools: Array<'web_search'>,
-  rightTools: Array<'web_search'>,
+  leftTools: Tools,
+  rightTools: Tools,
 ): boolean {
   return JSON.stringify(leftTools || []) === JSON.stringify(rightTools || [])
 }

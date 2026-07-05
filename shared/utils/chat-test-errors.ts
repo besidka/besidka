@@ -6,6 +6,9 @@ export const chatTestErrorIds = [
   'provider-quota-exceeded',
   'provider-unavailable',
   'message-persist-failed',
+  'search-provider-unavailable',
+  'research-step-failed',
+  'clarification-failed',
 ] as const
 
 export type ChatTestErrorId = (typeof chatTestErrorIds)[number]
@@ -76,6 +79,39 @@ export const chatTestErrors = {
     why: 'The response could not be stored in the database.',
     fix: 'Retry the message. If it keeps failing, contact support with the request ID.',
     providerId: 'openai',
+  },
+  'search-provider-unavailable': {
+    id: 'search-provider-unavailable',
+    phase: 'stream',
+    status: 503,
+    code: 'search-provider-unavailable',
+    message: 'The web search provider failed during research.',
+    why: 'The upstream search tool returned an error while gathering sources.',
+    fix: 'Retry the research request. If it keeps failing, try again later or use a different model.',
+    providerId: 'google',
+    providerRequestId: 'req_test_search_provider_unavailable',
+  },
+  'research-step-failed': {
+    id: 'research-step-failed',
+    phase: 'stream',
+    status: 500,
+    code: 'research-step-failed',
+    message: 'A research step failed to complete.',
+    why: 'The research agent could not finish one of its steps.',
+    fix: 'Retry the message. If it keeps failing, lower the research depth and try again.',
+    providerId: 'openai',
+    providerRequestId: 'req_test_research_step_failed',
+  },
+  'clarification-failed': {
+    id: 'clarification-failed',
+    phase: 'prestream',
+    status: 502,
+    code: 'clarification-failed',
+    message: 'Could not generate clarifying questions.',
+    why: 'The model failed to produce the clarification questionnaire.',
+    fix: 'Skip the clarifying questions or try again.',
+    providerId: 'openai',
+    providerRequestId: 'req_test_clarification_failed',
   },
 } as const satisfies Record<ChatTestErrorId, ChatTestErrorConfig>
 

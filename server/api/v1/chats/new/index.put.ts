@@ -1,6 +1,7 @@
 import { useLogger, createError } from 'evlog'
 import type { TextUIPart, FileUIPart } from 'ai'
 import { and, eq } from 'drizzle-orm'
+import { isDeepResearchActive } from '#shared/utils/research'
 import * as schema from '~~/server/db/schema'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
@@ -23,8 +24,11 @@ const rules = z.object({
   parts: z.array(z.union([textPart, filePart])).nonempty().refine((parts) => {
     return parts.some(part => part.type === 'text')
   }),
-  tools: z.array(z.enum(['web_search'])),
+  tools: z.array(z.enum(['web_search', 'deep_research'])),
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
+  researchDepth: z
+    .enum(['off', 'quick', 'standard', 'thorough'])
+    .default('off'),
   projectId: z.string().nonempty().optional(),
 })
 
@@ -53,6 +57,7 @@ export default defineEventHandler(async (event) => {
     partsCount: body.data.parts.length,
     toolsCount: body.data.tools.length,
     reasoning: body.data.reasoning,
+    researchDepth: body.data.researchDepth,
     requestedProjectId: body.data.projectId ?? null,
   })
 
@@ -93,6 +98,10 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
+  const persistedResearchDepth = isDeepResearchActive(body.data.researchDepth)
+    ? body.data.researchDepth
+    : null
+
   await db
     .insert(schema.messages)
     .values({
@@ -101,6 +110,7 @@ export default defineEventHandler(async (event) => {
       parts: body.data.parts as (TextUIPart | FileUIPart)[],
       tools: body.data.tools,
       reasoning: body.data.reasoning,
+      researchDepth: persistedResearchDepth,
     })
 
   if (projectId) {

@@ -119,7 +119,7 @@
                   @open="openFilesModal"
                 />
                 <UiButton
-                  v-if="isWebSearchSupported"
+                  v-if="isWebSearchSupported && !isResearchActive"
                   mode="accent"
                   :ghost="isWebSearchEnabled ? undefined : true"
                   :circle="!isWebSearchEnabled"
@@ -172,6 +172,11 @@
                     <SvgoThinkMedium class="size-4 text-current" />
                   </template>
                 </UiButton>
+                <LazyChatInputDeepResearchTrigger
+                  v-if="isDeepResearchSupported"
+                  v-model:research-depth="researchDepth"
+                  :is-web-search-enabled="isWebSearchEnabled"
+                />
               </div>
               <LazyChatInputToolbarMore
                 hydrate-on-idle
@@ -185,6 +190,8 @@
                   ? reasoningCapability.levels
                   : []
                 "
+                :is-deep-research-supported="isDeepResearchSupported"
+                :research-depth="researchDepth"
                 :display-project-picker="shouldDisplayProjectPicker"
                 :project-context="projectContext"
                 :files-count="files.length"
@@ -195,6 +202,7 @@
                 @open-files-upload="openFilesModal('upload')"
                 @select-reasoning-level="reasoning = $event"
                 @toggle-reasoning="toggleReasoning"
+                @select-research-depth="researchDepth = $event"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -254,6 +262,7 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ResearchDepthSetting } from '#shared/types/research.d'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -285,6 +294,7 @@ const {
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
+  isDeepResearchSupported,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -306,8 +316,16 @@ const reasoning = defineModel<ReasoningLevel>('reasoning', {
   default: 'off',
 })
 
+const researchDepth = defineModel<ResearchDepthSetting>('researchDepth', {
+  default: 'off',
+})
+
 const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
+})
+
+const isResearchActive = computed<boolean>(() => {
+  return isDeepResearchActive(researchDepth.value)
 })
 
 const isKeyboardVisible = shallowRef<boolean>(false)
@@ -389,6 +407,25 @@ watch(
     flush: 'post',
   },
 )
+
+watch(researchDepth, (depth) => {
+  const isActive = isDeepResearchActive(depth)
+
+  if (isActive && !tools.value.includes('deep_research')) {
+    tools.value = [...tools.value, 'deep_research']
+
+    return
+  }
+
+  if (!isActive && tools.value.includes('deep_research')) {
+    tools.value = tools.value.filter((tool) => {
+      return tool !== 'deep_research'
+    })
+  }
+}, {
+  immediate: true,
+  flush: 'post',
+})
 
 const { textarea, input } = useTextareaAutosize({
   input: message,

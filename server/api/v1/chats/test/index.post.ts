@@ -5,6 +5,12 @@ import {
   createUIMessageStreamResponse,
 } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type {
+  ResearchBriefData,
+  ResearchDepth,
+  ResearchStepData,
+  ResearchStepPhase,
+} from '#shared/types/research.d'
 import {
   chatTestErrorIds,
   chatTestErrors,
@@ -12,8 +18,9 @@ import {
 } from '#shared/utils/chat-test-errors'
 import { getRequestHeader } from 'h3'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
+import { getResearchStepsCount } from '~~/server/utils/chats/test/research-steps-count'
 
-type Scenario = 'short' | 'long' | 'reasoning'
+type Scenario = 'short' | 'long' | 'reasoning' | 'deep-research'
 
 const INITIAL_DELAY: number = 800
 const TEXT_CHUNK_DELAY: number = 50
@@ -54,6 +61,48 @@ const LONG_TEXT: string[] = [
   + 'tempore, cum soluta nobis est eligendi optio cumque '
   + 'nihil impedit quo minus id quod maxime placeat.',
 ]
+
+const RESEARCH_TOPIC: string
+  = 'the impact of remote work on team productivity'
+
+const RESEARCH_SOURCES: Array<{ url: string, title: string }> = [
+  {
+    url: 'https://example.com/research/remote-work-study',
+    title: 'Remote Work Productivity Study',
+  },
+  {
+    url: 'https://example.com/research/team-collaboration',
+    title: 'Team Collaboration Trends Report',
+  },
+  {
+    url: 'https://example.com/research/hybrid-office',
+    title: 'Hybrid Office Survey Results',
+  },
+  {
+    url: 'https://example.com/research/manager-perspectives',
+    title: 'Manager Perspectives On Distributed Teams',
+  },
+  {
+    url: 'https://example.com/research/employee-wellbeing',
+    title: 'Employee Wellbeing And Output Metrics',
+  },
+  {
+    url: 'https://example.com/research/longitudinal-analysis',
+    title: 'Longitudinal Analysis Of Output Metrics',
+  },
+]
+
+const RESEARCH_REPORT_TEXT: string = [
+  '## Deep research report',
+  '',
+  '### Key findings',
+  '- Remote work shows mixed effects on productivity depending on role.',
+  '- Structured communication rituals reduce coordination overhead.',
+  '- Employee wellbeing correlates positively with sustained output.',
+  '',
+  '### Sources',
+  'Findings are cross-checked against the search results collected above.',
+].join('\n')
 
 function splitIntoChunks(text: string): string[] {
   const words = text.split(' ')
@@ -112,9 +161,109 @@ function buildReasoningChunks(
   return chunks
 }
 
+function buildResearchStepChunk(
+  phase: ResearchStepPhase,
+  data: ResearchStepData,
+): UIMessageChunk {
+  return {
+    type: 'data-research-step',
+    id: `research-step-${phase}`,
+    data,
+  }
+}
+
+function getResearchPhaseRepeatsCount(depth: ResearchDepth): number {
+  return Math.floor((getResearchStepsCount(depth) - 3) / 2)
+}
+
+function buildResearchStepChunks(depth: ResearchDepth): UIMessageChunk[] {
+  const phaseRepeatsCount = getResearchPhaseRepeatsCount(depth)
+  const sourcesCount = Math.min(
+    RESEARCH_SOURCES.length,
+    phaseRepeatsCount * 2,
+  )
+  const chunks: UIMessageChunk[] = [
+    buildResearchStepChunk('planning', {
+      phase: 'planning',
+      label: 'Planned the research approach',
+      status: 'done',
+    }),
+  ]
+
+  for (
+    let searchIndex = 0;
+    searchIndex < phaseRepeatsCount;
+    searchIndex++
+  ) {
+    chunks.push(buildResearchStepChunk('searching', {
+      phase: 'searching',
+      label: 'Searching the web',
+      status: 'active',
+      count: searchIndex + 1,
+      detail: `Query ${searchIndex + 1}: ${RESEARCH_TOPIC}`,
+    }))
+  }
+
+  for (
+    let sourceIndex = 0;
+    sourceIndex < sourcesCount;
+    sourceIndex++
+  ) {
+    const source = RESEARCH_SOURCES[sourceIndex]!
+
+    chunks.push({
+      type: 'source-url',
+      sourceId: `test-research-source-${sourceIndex + 1}`,
+      url: source.url,
+      title: source.title,
+    })
+  }
+
+  for (
+    let readIndex = 0;
+    readIndex < phaseRepeatsCount;
+    readIndex++
+  ) {
+    chunks.push(buildResearchStepChunk('reading', {
+      phase: 'reading',
+      label: 'Reading sources',
+      status: 'active',
+      count: readIndex + 1,
+    }))
+  }
+
+  chunks.push(buildResearchStepChunk('analyzing', {
+    phase: 'analyzing',
+    label: 'Analyzing the findings',
+    status: 'active',
+  }))
+
+  chunks.push(buildResearchStepChunk('synthesizing', {
+    phase: 'synthesizing',
+    label: 'Writing the report',
+    status: 'done',
+  }))
+
+  return chunks
+}
+
+function buildResearchBriefChunk(depth: ResearchDepth): UIMessageChunk {
+  const data: ResearchBriefData = {
+    topic: RESEARCH_TOPIC,
+    depth,
+    answers: [],
+  }
+
+  return {
+    type: 'data-research-brief',
+    data,
+  }
+}
+
 function getChunksForScenario(
   scenario: Scenario,
   effort: ReasoningLevel,
+  depth: ResearchDepth,
 ): UIMessageChunk[] {
   const effectiveScenario = scenario === 'reasoning' && effort === 'off'
     ? 'short'
@@ -165,6 +314,15 @@ function getChunksForScenario(
 
       return chunks
     }
+    case 'deep-research': {
+      const chunks: UIMessageChunk[] = []
+
+      chunks.push(...buildResearchStepChunks(depth))
+      chunks.push(buildResearchBriefChunk(depth))
+      chunks.push(...buildTextChunks(RESEARCH_REPORT_TEXT, 'test-text-0'))
+
+      return chunks
+    }
     default:
       return buildTextChunks(SHORT_TEXT, 'test-text-0')
   }
@@ -202,10 +360,11 @@ export default defineEventHandler(async (event) => {
 
   const query = await getValidatedQuery(event, z.object({
     scenario: z
-      .enum(['short', 'long', 'reasoning'])
+      .enum(['short', 'long', 'reasoning', 'deep-research'])
       .default('short'),
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
+    depth: z.enum(['quick', 'standard', 'thorough']).default('standard'),
     error: z.enum(chatTestErrorIds).optional(),
   }).safeParse)
 
@@ -240,6 +399,7 @@ export default defineEventHandler(async (event) => {
     : getChunksForScenario(
       query.data.scenario,
       query.data.effort,
+      query.data.depth,
     )
 
   const stream = createUIMessageStream({

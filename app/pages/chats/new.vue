@@ -20,6 +20,7 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    v-model:research-depth="researchDepth"
     display-project-picker
     :project-context="projectContext"
     :messages-length="0"
@@ -41,6 +42,7 @@ import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ResearchDepthSetting } from '#shared/types/research.d'
 
 definePageMeta({
   layout: 'chat',
@@ -81,6 +83,19 @@ const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
   },
   set(value) {
     prefStorage.setItem('settings_reasoning_level', value)
+    trigger()
+  },
+}))
+const researchDepth = customRef<ResearchDepthSetting>((track, trigger) => ({
+  get() {
+    track()
+
+    return normalizeResearchDepthSetting(
+      prefStorage.getItem('settings_research_depth'),
+    )
+  },
+  set(value) {
+    prefStorage.setItem('settings_research_depth', value)
     trigger()
   },
 }))
@@ -362,6 +377,7 @@ async function onSubmit() {
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         reasoning: reasoning.value,
+        researchDepth: researchDepth.value,
         ...(projectId.value ? { projectId: projectId.value } : {}),
       },
       cache: 'no-cache',

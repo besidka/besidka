@@ -46,6 +46,7 @@ export default defineEventHandler(async (event) => {
           reasoning: true,
           createdAt: true,
           usage: true,
+          researchDepth: true,
         },
       },
     },

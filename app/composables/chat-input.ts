@@ -39,11 +39,22 @@ export function useChatInput() {
     return getReasoningDropdownLevels(reasoningCapability.value)
   })
 
+  const isDeepResearchSupported = computed<boolean>(() => {
+    const currentModel = toValue(userModel)
+
+    if (!currentModel) return false
+
+    const { model } = getModel(currentModel)
+
+    return !!model?.tools.includes('deep_research')
+  })
+
   return {
     isWebSearchSupported,
     reasoningCapability,
     reasoningMode,
     reasoningLevels,
     isReasoningSupported,
+    isDeepResearchSupported,
   }
 }

@@ -17,7 +17,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -38,7 +38,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -59,7 +59,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -81,7 +81,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -102,7 +102,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -123,7 +123,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
@@ -144,7 +144,7 @@ export default {
         input: ['text', 'image'],
         output: ['text'],
       },
-      tools: ['web_search'],
+      tools: ['web_search', 'deep_research'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],

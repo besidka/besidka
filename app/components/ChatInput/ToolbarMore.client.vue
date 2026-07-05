@@ -37,6 +37,12 @@
               @select-level="emit('select-reasoning-level', $event)"
             />
           </template>
+          <template v-if="isDeepResearchSupported">
+            <ChatInputDeepResearchMenuItems
+              :research-depth="researchDepth ?? 'off'"
+              @select-research-depth="emit('select-research-depth', $event)"
+            />
+          </template>
           <li>
             <label class="menu-title text-xs">
               <span class="divider my-0"/>
@@ -78,7 +84,7 @@
               </span>
             </button>
           </li>
-          <li v-if="isWebSearchSupported">
+          <li v-if="isWebSearchSupported && !isResearchActive">
             <label class="flex items-center gap-2 cursor-pointer">
               <Icon name="lucide:globe" size="16" />
               <span class="grow">Web search</span>
@@ -101,6 +107,7 @@ import type {
   ReasoningLevel,
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
+import type { ResearchDepthSetting } from '#shared/types/research.d'
 
 const props = defineProps<{
   isWebSearchSupported?: boolean
@@ -110,6 +117,8 @@ const props = defineProps<{
   reasoningMode?: 'none' | 'toggle' | 'levels'
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
+  isDeepResearchSupported?: boolean
+  researchDepth?: ResearchDepthSetting
   displayProjectPicker?: boolean
   projectContext?: {
     id: string
@@ -126,6 +135,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'select-reasoning-level': [level: ReasoningLevel]
   'toggle-reasoning': []
+  'select-research-depth': [depth: ResearchDepthSetting]
 }>()
 
 const { isIos, isAndroid } = useDevice()
@@ -133,10 +143,15 @@ const { isIos, isAndroid } = useDevice()
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 const isDropdownHovered = useElementHover(dropdown)
 
+const isResearchActive = computed<boolean>(() => {
+  return isDeepResearchActive(props.researchDepth ?? 'off')
+})
+
 const isAnyFeatureActive = computed<boolean>(() => {
   return !!(
     props.isWebSearchEnabled
     || props.isReasoningActive
+    || isResearchActive.value
     || (props.filesCount ?? 0) > 0
     || props.projectContext
   )

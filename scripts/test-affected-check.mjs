@@ -77,6 +77,17 @@ export function getAffectedTests(changedFiles) {
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
   ]
+  const deepResearchTests = [
+    'tests/unit/utils/research.spec.ts',
+    'tests/unit/utils/deep-research.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/components/Chat/DeepResearchProgress.spec.ts',
+    'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
+    'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
+    'tests/unit/components/ChatInput/DeepResearchMenuItems.spec.ts',
+    'tests/integration/api/chats-research-clarify.spec.ts',
+    'tests/integration/api/chats-test-endpoint.spec.ts',
+  ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
@@ -339,6 +350,42 @@ export function getAffectedTests(changedFiles) {
       tests: chatStreamBranchTests,
     },
     {
+      pattern:
+        /^shared\/(types\/research\.d\.ts|utils\/research\.ts)$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/deep-research\.ts$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/test\/research-steps-count\.ts$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/research\/.*\.ts$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^server\/api\/v1\/chats\/test\/(index\.(get|post))\.ts$/,
+      tests: [...chatTestEndpointTests, ...deepResearchTests],
+    },
+    {
+      pattern: /^app\/composables\/chat-input\.ts$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^app\/components\/Chat\/DeepResearch(Progress|Clarify)\.vue$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^app\/components\/ChatInput\/DeepResearch(Trigger|MenuItems)\.vue$/,
+      tests: deepResearchTests,
+    },
+    {
       pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
       tests: historyProjectsTests,
     },
@@ -385,6 +432,7 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...chatTestEndpointTests,
         ...messageUsageTests,
+        ...deepResearchTests,
       ],
     },
     {
@@ -421,11 +469,15 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/types\/chat-errors\.d\.ts$/,
-      tests: chatStreamBranchTests,
+      tests: [
+        ...chatStreamBranchTests,
+        ...chatTestEndpointTests,
+        ...deepResearchTests,
+      ],
     },
     {
       pattern: /^shared\/utils\/chat-test-errors\.ts$/,
-      tests: chatTestEndpointTests,
+      tests: [...chatTestEndpointTests, ...deepResearchTests],
     },
     {
       pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly)\.ts$/,

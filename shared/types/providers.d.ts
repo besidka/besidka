@@ -17,7 +17,7 @@ export interface Model {
     input: string[]
     output: string[]
   }
-  tools: Array<'web_search'>
+  tools: Array<'web_search' | 'deep_research'>
   reasoning?: ReasoningCapability
 }
 
