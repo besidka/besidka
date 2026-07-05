@@ -39,6 +39,8 @@ export default defineEventHandler(async (event) => {
           parts: true,
           tools: true,
           reasoning: true,
+          createdAt: true,
+          usage: true,
         },
       },
     },

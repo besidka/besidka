@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import type { MessageUsage } from '#shared/types/message-usage.d'
 import { persistedMessageRoles } from '#shared/utils/chat-message-role'
 import { sql } from 'drizzle-orm'
 import {
@@ -54,6 +55,7 @@ export const messages = snakeCase.table(
     reasoning: text({ enum: ['off', 'low', 'medium', 'high'] })
       .notNull()
       .default('off'),
+    usage: text({ mode: 'json' }).$type<MessageUsage>(),
     publicId: text('public_id').unique().$defaultFn(() => ulid()),
   }, table => [
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),

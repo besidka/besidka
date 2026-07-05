@@ -136,6 +136,7 @@
       v-if="selectedMessageId"
       :message-id="selectedMessageId"
       :anchor-el="selectedAnchorEl"
+      :info="selectedMessageInfo"
       @branch="branchFromMessage"
       @close="clearMessageSelection"
     />
@@ -144,6 +145,7 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
+import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 
 definePageMeta({
   layout: 'chat',
@@ -495,10 +497,16 @@ async function clearProjectContext() {
   })
 }
 
+const { hapticRigid, hapticSoft } = useHaptics()
+
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 
 function onMessageSelect(messageId: string) {
+  if (selectedMessageId.value === messageId) return
+
+  hapticRigid()
+
   selectedMessageId.value = messageId
 
   nuxtApp.callHook('chat:message-selected', messageId)
@@ -509,11 +517,17 @@ function onMessageSelect(messageId: string) {
 }
 
 function clearMessageSelection() {
+  hapticSoft()
+
   selectedMessageId.value = null
   selectedAnchorEl.value = null
 
   nuxtApp.callHook('chat:message-selected', null)
 }
+
+const selectedMessageInfo = computed(() => {
+  return resolveMessageMenuInfo(chatSdk.messages, selectedMessageId.value)
+})
 
 if (import.meta.client) {
   onMounted(() => {
