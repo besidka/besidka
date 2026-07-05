@@ -203,7 +203,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,
-      tests: messageUsageTests,
+      tests: [
+        ...messageUsageTests,
+        'tests/unit/composables/haptics.spec.ts',
+      ],
     },
     {
       pattern:

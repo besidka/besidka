@@ -497,10 +497,16 @@ async function clearProjectContext() {
   })
 }
 
+const { hapticRigid, hapticSoft } = useHaptics()
+
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 
 function onMessageSelect(messageId: string) {
+  if (selectedMessageId.value === messageId) return
+
+  hapticRigid()
+
   selectedMessageId.value = messageId
 
   nuxtApp.callHook('chat:message-selected', messageId)
@@ -511,6 +517,8 @@ function onMessageSelect(messageId: string) {
 }
 
 function clearMessageSelection() {
+  hapticSoft()
+
   selectedMessageId.value = null
   selectedAnchorEl.value = null
 

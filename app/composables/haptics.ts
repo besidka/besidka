@@ -4,8 +4,10 @@ import { useWebHaptics } from 'web-haptics/vue'
  * @docs https://haptics.lochie.me/
  */
 export function useHaptics() {
+  const { isDesktop } = useDevice()
+
   const { trigger } = useWebHaptics({
-    debug: true,
+    debug: isDesktop,
   })
 
   return {
