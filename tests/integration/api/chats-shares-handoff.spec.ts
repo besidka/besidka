@@ -103,7 +103,14 @@ describe('shared chat handoff API', () => {
       },
     })))
 
-    sendPushNotificationToUserMock = vi.fn(async () => undefined)
+    vi.stubGlobal('isPushConfigured', vi.fn(() => true))
+
+    sendPushNotificationToUserMock = vi.fn(async () => ({
+      sent: 1,
+      staleRemoved: 0,
+      rejected: 0,
+      failed: 0,
+    }))
     vi.stubGlobal(
       'sendPushNotificationToUser',
       sendPushNotificationToUserMock,
@@ -119,7 +126,7 @@ describe('shared chat handoff API', () => {
   it('sends a push with the shared page url and reports sent', async () => {
     const handler = await getHandler()
     const db = createDb()
-    const { event, waitUntil } = createWaitUntilEvent({
+    const { event } = createWaitUntilEvent({
       params: { slug: 'share-slug' },
     })
 
@@ -127,8 +134,7 @@ describe('shared chat handoff API', () => {
 
     const response = await handler(event as never)
 
-    expect(response).toEqual({ sent: true })
-    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect(response).toEqual({ sent: true, reason: null })
     expect(sendPushNotificationToUserMock).toHaveBeenCalledWith(
       db,
       1,
@@ -145,6 +151,45 @@ describe('shared chat handoff API', () => {
       '1',
       { expirationTtl: 60 },
     )
+  })
+
+  it('reports not-configured when VAPID keys are missing', async () => {
+    vi.stubGlobal('isPushConfigured', vi.fn(() => false))
+
+    const handler = await getHandler()
+    const db = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as never)
+
+    expect(response).toEqual({ sent: false, reason: 'not-configured' })
+    expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
+    expect(kvPutMock).not.toHaveBeenCalled()
+  })
+
+  it('reports delivery-failed when no push service accepted', async () => {
+    sendPushNotificationToUserMock.mockResolvedValue({
+      sent: 0,
+      staleRemoved: 1,
+      rejected: 0,
+      failed: 1,
+    })
+
+    const handler = await getHandler()
+    const db = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as never)
+
+    expect(response).toEqual({ sent: false, reason: 'delivery-failed' })
   })
 
   it('rejects cross-site requests', async () => {
@@ -191,11 +236,11 @@ describe('shared chat handoff API', () => {
 
     const response = await handler(event as never)
 
-    expect(response).toEqual({ sent: false })
+    expect(response).toEqual({ sent: false, reason: 'no-subscriptions' })
     expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
   })
 
-  it('reports not sent without a waitUntil context', async () => {
+  it('still sends without a waitUntil context', async () => {
     const handler = await getHandler()
     const db = createDb()
 
@@ -206,8 +251,14 @@ describe('shared chat handoff API', () => {
       context: {},
     } as never)
 
-    expect(response).toEqual({ sent: false })
-    expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
+    expect(response).toEqual({ sent: true, reason: null })
+    expect(sendPushNotificationToUserMock).toHaveBeenCalledWith(
+      db,
+      1,
+      expect.anything(),
+      expect.anything(),
+      undefined,
+    )
   })
 
   it('throws 404 when the share is missing or inactive', async () => {

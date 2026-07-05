@@ -77,7 +77,15 @@ export function useNotificationPrompt() {
 
         stopWatchingSettingsLoad?.()
 
-        if (settings.state !== null) {
+        // notificationPromptState is account-level, but the browser
+        // permission and push subscription are per-install: a fresh PWA
+        // install starts back at permission 'default' with no subscription,
+        // so a user who already opted in on another install must be
+        // re-prompted here — otherwise the new install can never subscribe.
+        const enabledOnAnotherInstall = settings.state === true
+          && pushNotifications.permission.value === 'default'
+
+        if (settings.state !== null && !enabledOnAnotherInstall) {
           return
         }
 

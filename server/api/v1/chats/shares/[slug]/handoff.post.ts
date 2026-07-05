@@ -10,9 +10,11 @@ const paramsRules = z.object({
  *
  * iOS cannot open an external link inside an installed PWA, so this endpoint
  * lets a logged-in visitor on the public shared page send themselves a Web
- * Push whose tap opens the shared chat inside their installed app. Responds
- * with { sent: false } when the account has no push subscription so the UI
- * can explain how to enable it.
+ * Push whose tap opens the shared chat inside their installed app. The send
+ * is awaited so the response reflects the real outcome: { sent: true } only
+ * when at least one push service accepted the notification, otherwise
+ * { sent: false, reason: 'not-configured' | 'no-subscriptions'
+ * | 'delivery-failed' } so the UI can explain what to do.
  */
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -75,6 +77,19 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const runtimeConfig = useRuntimeConfig()
+  const vapid = {
+    subject: buildVapidSubject(runtimeConfig.vapidSubject),
+    publicKey: runtimeConfig.public.vapidPublicKey || undefined,
+    privateKey: runtimeConfig.vapidPrivateKey || undefined,
+  }
+
+  if (!isPushConfigured(vapid)) {
+    logger.set({ handoff: { sent: false, reason: 'not-configured' } })
+
+    return { sent: false, reason: 'not-configured' as const }
+  }
+
   const db = useDb()
 
   const subscriptions = await db.query.pushSubscriptions.findMany({
@@ -85,8 +100,10 @@ export default defineEventHandler(async (event) => {
   if (subscriptions.length === 0) {
     logger.set({ handoff: { sent: false, reason: 'no-subscriptions' } })
 
-    return { sent: false }
+    return { sent: false, reason: 'no-subscriptions' as const }
   }
+
+  await kv.put(cooldownKey, '1', { expirationTtl: 60 })
 
   type WaitUntilCtx = {
     cloudflare?: {
@@ -97,19 +114,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const cfCtx = (event.context as WaitUntilCtx | undefined)?.cloudflare?.context
-
-  if (!cfCtx?.waitUntil) {
-    logger.set({ handoff: { sent: false, reason: 'no-wait-until' } })
-
-    return { sent: false }
-  }
-
-  await kv.put(cooldownKey, '1', { expirationTtl: 60 })
-
-  const runtimeConfig = useRuntimeConfig()
+  const waitUntil = cfCtx?.waitUntil
+    ? cfCtx.waitUntil.bind(cfCtx)
+    : undefined
   const shareSlug = share.slug ?? params.data.slug
 
-  cfCtx.waitUntil(sendPushNotificationToUser(
+  // Awaited, not fire-and-forget: the whole point of this endpoint is the
+  // caller finding out whether a push actually reached the push service, so
+  // the response must reflect the real delivery outcome.
+  const outcomes = await sendPushNotificationToUser(
     db,
     userId,
     {
@@ -117,15 +130,17 @@ export default defineEventHandler(async (event) => {
       body: 'Tap to open the shared chat in Besidka.',
       url: `/shared/${shareSlug}`,
     },
-    {
-      subject: buildVapidSubject(runtimeConfig.vapidSubject),
-      publicKey: runtimeConfig.public.vapidPublicKey || undefined,
-      privateKey: runtimeConfig.vapidPrivateKey || undefined,
-    },
-    cfCtx.waitUntil.bind(cfCtx),
-  ))
+    vapid,
+    waitUntil,
+  )
 
-  logger.set({ handoff: { sent: true } })
+  const sent = (outcomes?.sent ?? 0) > 0
 
-  return { sent: true }
+  logger.set({ handoff: { sent, outcomes } })
+
+  if (!sent) {
+    return { sent: false, reason: 'delivery-failed' as const }
+  }
+
+  return { sent: true, reason: null }
 })

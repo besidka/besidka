@@ -225,12 +225,33 @@ export function useChatShare() {
             'Notification sent',
             'Tap the Besidka notification to open this chat in the app.',
           )
-        } else {
-          useInfoMessage(
-            'No app notifications enabled',
-            'Open the Besidka app, allow notifications, then try again.',
-          )
+
+          return
         }
+
+        if (response.reason === 'not-configured') {
+          useErrorMessage(
+            'Push is not configured on this server',
+            'This environment is missing its web push (VAPID) keys.',
+          )
+
+          return
+        }
+
+        if (response.reason === 'delivery-failed') {
+          useErrorMessage(
+            'Notification could not be delivered',
+            'The push service rejected it — re-enable notifications in the '
+            + 'Besidka app, then try again.',
+          )
+
+          return
+        }
+
+        useInfoMessage(
+          'No app notifications enabled',
+          'Open the Besidka app, allow notifications, then try again.',
+        )
       })
     } catch (exception) {
       const parsedException = parseError(exception)

@@ -29,6 +29,8 @@ interface StoredPushSubscription {
 
 type SendOutcome = 'sent' | 'staleRemoved' | 'rejected' | 'failed'
 
+export type PushSendOutcomes = Record<SendOutcome, number>
+
 // Without this, a client could subscribe with any URL as the "endpoint" and
 // the server would fetch() it on every future generation via waitUntil — an
 // attacker-controlled outbound request trigger. Push service domains aren't
@@ -189,9 +191,9 @@ export async function sendPushNotificationToUser(
   payload: PushNotificationPayload,
   vapid: VapidKeys,
   waitUntil?: (promise: Promise<unknown>) => void,
-): Promise<void> {
+): Promise<PushSendOutcomes | null> {
   if (!isPushConfigured(vapid)) {
-    return
+    return null
   }
 
   const subscriptions = await db.query.pushSubscriptions.findMany({
@@ -199,7 +201,7 @@ export async function sendPushNotificationToUser(
   })
 
   if (subscriptions.length === 0) {
-    return
+    return { sent: 0, staleRemoved: 0, rejected: 0, failed: 0 }
   }
 
   const payloadJson = JSON.stringify(payload)
@@ -245,4 +247,6 @@ export async function sendPushNotificationToUser(
   if (wideEvent && waitUntil) {
     waitUntil(shipWideEventToAxiom(wideEvent))
   }
+
+  return outcomes
 }

@@ -160,9 +160,33 @@ describe('useNotificationPrompt', () => {
 
       expect(prompt.isVisible.value).toBe(false)
 
-      userSettingMocks.notificationPromptState.value = true
+      userSettingMocks.notificationPromptState.value = false
       userSettingMocks.isLoadingSettings.value = false
       await nextTick()
+
+      expect(prompt.isVisible.value).toBe(false)
+    })
+
+    it('re-shows for a user who enabled on another install', () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'default'
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
+
+      expect(prompt.isVisible.value).toBe(true)
+    })
+
+    it('does not re-show when this install already has permission', () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'granted'
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
 
       expect(prompt.isVisible.value).toBe(false)
     })

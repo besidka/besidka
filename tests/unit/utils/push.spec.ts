@@ -351,7 +351,12 @@ describe('push utils', () => {
       { title: 't', body: 'b', url: '/chats/1' },
       configuredVapid,
       waitUntilMock,
-    )).resolves.toBeUndefined()
+    )).resolves.toEqual({
+      sent: 0,
+      staleRemoved: 0,
+      rejected: 0,
+      failed: 1,
+    })
 
     expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
       push: expect.objectContaining({ failed: 1 }),
