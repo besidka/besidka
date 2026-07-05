@@ -120,8 +120,11 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/chat-share.spec.ts',
     'tests/integration/server/rewrite-share-file-urls.spec.ts',
     'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/integration/api/chats-shares-handoff.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
+    'tests/unit/utils/shared-link.spec.ts',
+    'tests/unit/composables/ios-in-app-browser.spec.ts',
   ]
 
   const cookieConsentTests = [
@@ -142,6 +145,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
+    'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
@@ -165,7 +169,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js)$/,
+        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts)$/,
       tests: pushNotificationTests,
     },
     {
@@ -226,7 +230,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts)$/,
+        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|shared\/utils\/shared-link\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue)$/,
       tests: chatShareTests,
     },
     {

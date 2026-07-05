@@ -32,6 +32,66 @@ self.addEventListener('push', (event) => {
   )
 })
 
+// iOS can drop the openWindow URL when the PWA cold-starts from a killed
+// state (firebase-js-sdk#7698) and launch at start_url instead. Persist the
+// target path so app/plugins/push-navigation.client.ts can finish the
+// navigation on boot. DB/store/key names must stay in sync with that plugin.
+const PENDING_NAVIGATION_DB = 'besidka-push'
+const PENDING_NAVIGATION_STORE = 'pending-navigation'
+const PENDING_NAVIGATION_KEY = 'latest'
+
+function isInternalPath(url) {
+  return typeof url === 'string'
+    && url.startsWith('/')
+    && !url.startsWith('//')
+}
+
+function savePendingNavigation(url) {
+  return new Promise((resolve) => {
+    if (!isInternalPath(url)) {
+      resolve(undefined)
+
+      return
+    }
+
+    let openRequest
+
+    try {
+      openRequest = indexedDB.open(PENDING_NAVIGATION_DB, 1)
+    } catch (exception) {
+      void exception
+      resolve(undefined)
+
+      return
+    }
+
+    openRequest.onupgradeneeded = () => {
+      openRequest.result.createObjectStore(PENDING_NAVIGATION_STORE)
+    }
+
+    openRequest.onsuccess = () => {
+      const db = openRequest.result
+      const transaction = db.transaction(PENDING_NAVIGATION_STORE, 'readwrite')
+
+      transaction.objectStore(PENDING_NAVIGATION_STORE).put(
+        { url, savedAt: Date.now() },
+        PENDING_NAVIGATION_KEY,
+      )
+
+      transaction.oncomplete = () => {
+        db.close()
+        resolve(undefined)
+      }
+      transaction.onabort = () => {
+        db.close()
+        resolve(undefined)
+      }
+    }
+
+    openRequest.onerror = () => resolve(undefined)
+  })
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
@@ -53,7 +113,9 @@ self.addEventListener('notificationclick', (event) => {
         }
 
         if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl)
+          return savePendingNavigation(targetUrl).then(() => {
+            return self.clients.openWindow(targetUrl)
+          })
         }
 
         return undefined

@@ -59,25 +59,43 @@
                 {{ data.title || 'Shared chat' }}
               </h1>
             </div>
-            <UiButton
-              v-if="data.allowBranch && loggedIn"
-              data-testid="shared-add-to-chats"
-              text="Add To My Chats"
-              icon-name="lucide:git-fork"
-              size="sm"
-              class="max-md:btn-block max-md:w-full shrink-0"
-              :disabled="isBranching"
-              @click="branchSharedChat(shareSlug)"
-            />
-            <UiButton
-              v-else-if="data.allowBranch"
-              data-testid="shared-add-to-chats"
-              to="/signin"
-              text="Sign in to add to your chats"
-              icon-name="lucide:git-fork"
-              size="sm"
-              class="max-md:btn-block max-md:w-full shrink-0"
-            />
+            <div
+              class="
+                flex flex-col gap-2 shrink-0
+                md:flex-row md:items-center
+              "
+            >
+              <UiButton
+                v-if="showOpenInApp && loggedIn"
+                data-testid="shared-open-in-app"
+                ghost
+                text="Open in the app"
+                icon-name="lucide:smartphone"
+                size="sm"
+                class="max-md:btn-block max-md:w-full"
+                :disabled="isSendingToApp"
+                @click="sendSharedChatToApp(shareSlug)"
+              />
+              <UiButton
+                v-if="data.allowBranch && loggedIn"
+                data-testid="shared-add-to-chats"
+                text="Add To My Chats"
+                icon-name="lucide:git-fork"
+                size="sm"
+                class="max-md:btn-block max-md:w-full"
+                :disabled="isBranching"
+                @click="branchSharedChat(shareSlug)"
+              />
+              <UiButton
+                v-else-if="data.allowBranch"
+                data-testid="shared-add-to-chats"
+                to="/signin"
+                text="Sign in to add to your chats"
+                icon-name="lucide:git-fork"
+                size="sm"
+                class="max-md:btn-block max-md:w-full"
+              />
+            </div>
           </div>
 
           <details
@@ -253,13 +271,20 @@ useHead({
 
 const { components, getUnwrap } = useChatFormat()
 const { loggedIn } = useAuth()
-const { isBranching, branchSharedChat } = useChatShare()
+const {
+  isBranching,
+  isSendingToApp,
+  branchSharedChat,
+  sendSharedChatToApp,
+} = useChatShare()
 
 const isSettingsExpanded = shallowRef<boolean>(false)
 const showOpenInSafariHint = shallowRef<boolean>(false)
+const showOpenInApp = shallowRef<boolean>(false)
 
 onMounted(() => {
   showOpenInSafariHint.value = isIosInAppBrowser()
+  showOpenInApp.value = isIosExternalBrowser()
 })
 
 function dismissOpenInSafariHint(): void {

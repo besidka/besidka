@@ -29,6 +29,10 @@ export function useChatShare() {
     'chat-share:is-branching',
     () => false,
   )
+  const isSendingToApp = useState<boolean>(
+    'chat-share:is-sending-to-app',
+    () => false,
+  )
 
   async function loadShare(slug: string) {
     isLoading.value = true
@@ -206,6 +210,42 @@ export function useChatShare() {
     }
   }
 
+  async function sendSharedChatToApp(shareSlug: string) {
+    isSendingToApp.value = true
+
+    try {
+      const response = await $fetch(
+        `/api/v1/chats/shares/${shareSlug}/handoff`,
+        { method: 'POST' },
+      )
+
+      nuxtApp.runWithContext(() => {
+        if (response.sent) {
+          useSuccessMessage(
+            'Notification sent',
+            'Tap the Besidka notification to open this chat in the app.',
+          )
+        } else {
+          useInfoMessage(
+            'No app notifications enabled',
+            'Open the Besidka app, allow notifications, then try again.',
+          )
+        }
+      })
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to reach the app',
+          parsedException.why,
+        )
+      })
+    } finally {
+      isSendingToApp.value = false
+    }
+  }
+
   return {
     isModalOpen,
     targetChatSlug,
@@ -214,6 +254,7 @@ export function useChatShare() {
     isLoading,
     isSaving,
     isBranching,
+    isSendingToApp,
     openShareModal,
     closeShareModal,
     loadShare,
@@ -221,5 +262,6 @@ export function useChatShare() {
     revokeShare,
     branchOwnedChat,
     branchSharedChat,
+    sendSharedChatToApp,
   }
 }

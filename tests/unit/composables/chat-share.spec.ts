@@ -14,12 +14,14 @@ function resetChatShareState() {
     isLoading,
     isSaving,
     isBranching,
+    isSendingToApp,
   } = useChatShare()
 
   closeShareModal()
   isLoading.value = false
   isSaving.value = false
   isBranching.value = false
+  isSendingToApp.value = false
 }
 
 describe('useChatShare', () => {
@@ -232,5 +234,31 @@ describe('useChatShare', () => {
       { method: 'POST' },
     )
     expect(navigateToMock).toHaveBeenCalledWith('/chats/branched-chat')
+  })
+
+  it('requests a push handoff for the shared chat', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ sent: true })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { sendSharedChatToApp, isSendingToApp } = useChatShare()
+
+    await sendSharedChatToApp('share-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/chats/shares/share-1/handoff',
+      { method: 'POST' },
+    )
+    expect(isSendingToApp.value).toBe(false)
+  })
+
+  it('resets the sending state when the handoff request fails', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('boom'))
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { sendSharedChatToApp, isSendingToApp } = useChatShare()
+
+    await sendSharedChatToApp('share-1')
+
+    expect(isSendingToApp.value).toBe(false)
   })
 })

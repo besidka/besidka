@@ -41,3 +41,15 @@ export function isIosInAppBrowser(): boolean {
 
   return !safariTokenPattern.test(userAgent)
 }
+
+export function isIosExternalBrowser(): boolean {
+  if (!import.meta.client) {
+    return false
+  }
+
+  if (!isIosDevice(navigator.userAgent)) {
+    return false
+  }
+
+  return !isStandaloneDisplay()
+}
