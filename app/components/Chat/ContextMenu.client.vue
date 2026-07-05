@@ -20,7 +20,7 @@
             <div
               v-if="dateTimeInfo.date"
               data-testid="message-menu-datetime"
-              class="text-xs font-normal text-base-content/50"
+              class="text-right text-xs font-normal text-base-content/50"
             >
               {{ dateTimeInfo.date }} · {{ dateTimeInfo.time }}
             </div>
@@ -35,12 +35,33 @@
               </span>
             </div>
             <div
+              v-if="info.reasoning && info.reasoning !== 'off'"
+              data-testid="message-menu-reasoning"
+              class="flex items-center justify-between gap-3 text-xs"
+            >
+              <span class="font-normal text-base-content/50">Reasoning</span>
+              <span
+                class="flex items-center gap-1.5 font-normal capitalize
+                  text-base-content"
+              >
+                <component
+                  :is="reasoningIconName"
+                  class="size-3.5"
+                />
+                {{ info.reasoning }}
+              </span>
+            </div>
+            <div
               v-if="toolsLabel"
               data-testid="message-menu-tools"
               class="flex items-center justify-between gap-3 text-xs"
             >
               <span class="font-normal text-base-content/50">Tools</span>
-              <span class="truncate font-normal text-base-content">
+              <span
+                class="flex items-center gap-1.5 font-normal
+                  text-base-content"
+              >
+                <Icon name="lucide:globe" size="14" />
                 {{ toolsLabel }}
               </span>
             </div>
@@ -130,6 +151,12 @@ const menuStyle = shallowRef<Record<string, string> | null>(
 
 const dateTimeInfo = computed(() => {
   return formatMessageDateTime(props.info?.createdAt)
+})
+
+const reasoningIconName = computed<string>(() => {
+  const level = props.info?.reasoning ?? 'off'
+
+  return `SvgoThink${level.charAt(0).toUpperCase()}${level.slice(1)}`
 })
 
 const toolsLabel = computed<string>(() => {

@@ -117,6 +117,17 @@ describe('resolveMessageMenuInfo', () => {
     })
   })
 
+  it('exposes the stored reasoning level for assistant messages', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: assistantUsage },
+      reasoning: 'medium' as const,
+    }]
+
+    expect(resolveMessageMenuInfo(messages, 'a1')?.reasoning).toBe('medium')
+  })
+
   it('attributes the input side of the next reply to a user message', () => {
     const messages = [
       { id: 'u1', role: 'user', metadata: { createdAt: 'sent' } },

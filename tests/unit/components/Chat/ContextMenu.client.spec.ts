@@ -139,6 +139,7 @@ describe('Chat/ContextMenu.client', () => {
         createdAt: '2026-01-15T10:30:00.000Z',
         model: 'gpt-5.4',
         usedTools: ['web_search'],
+        reasoning: 'medium',
         tokens: 1180,
         reasoningTokens: 320,
         cost: 0.0047,
@@ -160,6 +161,9 @@ describe('Chat/ContextMenu.client', () => {
       expect(
         wrapper.find('[data-testid="message-menu-tools"]').text(),
       ).toContain('Web search')
+      expect(
+        wrapper.find('[data-testid="message-menu-reasoning"]').text(),
+      ).toContain('medium')
       expect(
         wrapper.find('[data-testid="message-menu-tokens"]').text(),
       ).toContain('1,180 output')

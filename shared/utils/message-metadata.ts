@@ -1,10 +1,12 @@
 import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 
 export type MessageMenuInfo = {
   role: 'user' | 'assistant'
   createdAt?: string | number | Date
   model?: string
   usedTools?: Array<'web_search'>
+  reasoning?: ReasoningLevel
   tokens?: number
   reasoningTokens?: number
   cost?: number
@@ -16,6 +18,7 @@ type MenuMessage = {
   role: string
   metadata?: unknown
   parts?: unknown
+  reasoning?: ReasoningLevel
   createdAt?: string | number | Date
 }
 
@@ -81,6 +84,7 @@ export function resolveMessageMenuInfo(
       createdAt: metadata.createdAt,
       model: usage?.model,
       usedTools: getMessageUsedTools(message),
+      reasoning: message.reasoning,
       tokens: usage?.outputTokens,
       reasoningTokens: usage?.reasoningTokens,
       cost: usage?.outputCost,
