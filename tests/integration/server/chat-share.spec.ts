@@ -71,6 +71,12 @@ function createDb(overrides: Record<string, unknown> = {}) {
 describe('durationToExpiresAt', () => {
   const now = new Date('2026-07-05T12:00:00.000Z')
 
+  it('offsets by 1 day for day', () => {
+    expect(durationToExpiresAt('day', now)).toEqual(
+      new Date('2026-07-06T12:00:00.000Z'),
+    )
+  })
+
   it('offsets by 7 days for week', () => {
     expect(durationToExpiresAt('week', now)).toEqual(
       new Date('2026-07-12T12:00:00.000Z'),

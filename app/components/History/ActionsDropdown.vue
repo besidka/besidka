@@ -73,7 +73,7 @@
             Rename
           </button>
         </li>
-        <li>
+        <li v-if="variant !== 'shared'">
           <button
             type="button"
             data-testid="chat-action-share"

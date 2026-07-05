@@ -10,7 +10,12 @@ import {
 
 export const SHARE_FILE_TOKEN_TTL_SECONDS = 3600
 
-export type ChatShareDuration = 'week' | 'month' | 'year' | 'never'
+export type ChatShareDuration
+  = | 'day'
+    | 'week'
+    | 'month'
+    | 'year'
+    | 'never'
 
 export interface ChatFileReference {
   fileId: string
@@ -18,6 +23,7 @@ export interface ChatFileReference {
 }
 
 const DURATION_DAYS: Record<Exclude<ChatShareDuration, 'never'>, number> = {
+  day: 1,
   week: 7,
   month: 30,
   year: 365,

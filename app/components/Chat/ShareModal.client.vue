@@ -15,15 +15,16 @@
           class="flex-1 min-h-0 overflow-y-auto mt-2.5 py-1.5 -mx-1.5 px-1.5 space-y-4"
         >
           <div>
-            <label class="label" for="chat-share-duration">
+            <label class="label mb-1.5" for="chat-share-duration">
               <span class="label-text">Link expires</span>
             </label>
             <select
               id="chat-share-duration"
               v-model="duration"
               data-testid="share-duration-select"
-              class="select select-bordered w-full"
+              class="select select-bordered select-sm w-full"
             >
+              <option value="day">1 day</option>
               <option value="week">1 week</option>
               <option value="month">1 month</option>
               <option value="year">1 year</option>
@@ -32,8 +33,11 @@
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-between gap-3">
-              <span class="label-text flex-1 text-start">
+            <label
+              class="label cursor-pointer w-full flex items-center
+                justify-between gap-3"
+            >
+              <span class="label-text flex-1 min-w-0 text-start">
                 Allow search engines to index this page
               </span>
               <input
@@ -46,8 +50,11 @@
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-between gap-3">
-              <span class="label-text flex-1 text-start">
+            <label
+              class="label cursor-pointer w-full flex items-center
+                justify-between gap-3"
+            >
+              <span class="label-text flex-1 min-w-0 text-start">
                 Show images & file names
               </span>
               <input
@@ -60,8 +67,11 @@
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-between gap-3">
-              <span class="label-text flex-1 text-start">
+            <label
+              class="label cursor-pointer w-full flex items-center
+                justify-between gap-3"
+            >
+              <span class="label-text flex-1 min-w-0 text-start">
                 Show message details (date & time)
               </span>
               <input
@@ -74,8 +84,11 @@
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-between gap-3">
-              <span class="label-text flex-1 text-start">
+            <label
+              class="label cursor-pointer w-full flex items-center
+                justify-between gap-3"
+            >
+              <span class="label-text flex-1 min-w-0 text-start">
                 Show author's picture
               </span>
               <input
@@ -88,8 +101,11 @@
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-between gap-3">
-              <span class="label-text flex-1 text-start">
+            <label
+              class="label cursor-pointer w-full flex items-center
+                justify-between gap-3"
+            >
+              <span class="label-text flex-1 min-w-0 text-start">
                 Allow branching
               </span>
               <input
@@ -234,6 +250,10 @@ function inferDurationFromExpiresAt(
   const daysRemaining = Math.round(
     (new Date(expiresAt).getTime() - Date.now()) / millisecondsPerDay,
   )
+
+  if (daysRemaining <= 2) {
+    return 'day'
+  }
 
   if (daysRemaining <= 10) {
     return 'week'

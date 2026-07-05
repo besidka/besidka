@@ -83,7 +83,7 @@ const hasCustomIcon = computed<boolean>(() => {
 })
 
 const showTooltip = computed<boolean>(() => {
-  if (props.disabled && props.tooltip === null) {
+  if (props.tooltip === null) {
     return false
   }
 

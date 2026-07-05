@@ -1,4 +1,9 @@
-export type ChatShareDuration = 'week' | 'month' | 'year' | 'never'
+export type ChatShareDuration
+  = | 'day'
+    | 'week'
+    | 'month'
+    | 'year'
+    | 'never'
 
 export interface ChatShare {
   slug: string

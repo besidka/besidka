@@ -44,7 +44,7 @@
               text="Add To My Chats"
               icon-name="lucide:git-fork"
               size="sm"
-              class="shrink-0"
+              class="max-md:btn-block max-md:w-full shrink-0"
               :disabled="isBranching"
               @click="branchSharedChat(shareSlug)"
             />
@@ -55,12 +55,12 @@
               text="Sign in to add to your chats"
               icon-name="lucide:git-fork"
               size="sm"
-              class="shrink-0"
+              class="max-md:btn-block max-md:w-full shrink-0"
             />
           </div>
 
           <details
-            class="group collapse mt-2"
+            class="group collapse mt-4 md:mt-2"
             :open="isSettingsExpanded"
           >
             <summary
