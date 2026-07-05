@@ -40,7 +40,9 @@ function isFullWidthCard(index: number): boolean {
     && props.metrics.length % 2 === 1
 }
 
-const { data, pending } = await useLazyFetch('/api/v1/stats')
+const { data, pending } = await useLazyFetch('/api/v1/stats', {
+  query: { v: 2 },
+})
 
 provide<InjectedStats>('stat-grid-data', { data, pending })
 </script>

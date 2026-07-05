@@ -53,7 +53,10 @@ const injectedStats = inject<InjectedStats | null>('stat-grid-data', null)
 
 const { data: ownData, pending: ownPending } = await useLazyFetch(
   '/api/v1/stats',
-  { immediate: !injectedStats },
+  {
+    immediate: !injectedStats,
+    query: { v: 2 },
+  },
 )
 
 const isLoading = computed<boolean>(() => {
