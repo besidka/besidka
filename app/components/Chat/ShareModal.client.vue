@@ -66,7 +66,7 @@
                 class="toggle toggle-sm"
               >
               <span class="label-text">
-                Show message details (date, cost, tokens)
+                Show message details (date & time)
               </span>
             </label>
           </div>

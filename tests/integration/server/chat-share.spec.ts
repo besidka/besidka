@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   insertValues: vi.fn(),
   insertOnConflictDoNothing: vi.fn(),
   dbBatch: vi.fn(),
+  dbDelete: vi.fn(),
+  deleteWhere: vi.fn(),
 }))
 
 vi.mock('evlog', () => ({
@@ -59,6 +61,9 @@ function createDb(overrides: Record<string, unknown> = {}) {
       }
     }),
     batch: mocks.dbBatch,
+    delete: mocks.dbDelete.mockReturnValue({
+      where: mocks.deleteWhere,
+    }),
     ...overrides,
   }
 }
@@ -273,7 +278,7 @@ describe('syncChatShareFiles', () => {
     const db = createDb()
     vi.stubGlobal('useDb', () => db)
 
-    await syncChatShareFiles('share-1', 'chat-1', 42)
+    await syncChatShareFiles('share-1', 'chat-1', 42, true)
 
     expect(mocks.insertValues).toHaveBeenCalledWith({
       chatShareId: 'share-1',
@@ -296,8 +301,23 @@ describe('syncChatShareFiles', () => {
     const db = createDb()
     vi.stubGlobal('useDb', () => db)
 
-    await syncChatShareFiles('share-1', 'chat-1', 42)
+    await syncChatShareFiles('share-1', 'chat-1', 42, true)
 
     expect(mocks.dbBatch).not.toHaveBeenCalled()
+  })
+
+  it('deletes all grants and skips insert when showFiles is false', async () => {
+    mocks.deleteWhere.mockResolvedValue(undefined)
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+
+    await syncChatShareFiles('share-1', 'chat-1', 42, false)
+
+    expect(mocks.dbDelete).toHaveBeenCalledTimes(1)
+    expect(mocks.deleteWhere).toHaveBeenCalledTimes(1)
+    expect(mocks.messagesFindMany).not.toHaveBeenCalled()
+    expect(mocks.dbBatch).not.toHaveBeenCalled()
+    expect(mocks.insertValues).not.toHaveBeenCalled()
   })
 })

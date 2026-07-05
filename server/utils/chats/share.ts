@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import type { BatchItem } from 'drizzle-orm/batch'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
@@ -151,8 +151,25 @@ export async function syncChatShareFiles(
   chatShareId: string,
   chatId: string,
   ownerUserId: number,
+  showFiles: boolean,
   event: H3Event = useEvent(),
 ): Promise<void> {
+  const db = useDb()
+
+  if (!showFiles) {
+    await db.delete(schema.chatShareFiles)
+      .where(eq(schema.chatShareFiles.chatShareId, chatShareId))
+
+    useLogger(event).set({
+      chatShareFileSync: {
+        chatShareId,
+        fileCount: 0,
+      },
+    })
+
+    return
+  }
+
   const fileReferences = await enumerateChatFileIds(
     chatId,
     ownerUserId,
@@ -170,7 +187,6 @@ export async function syncChatShareFiles(
     return
   }
 
-  const db = useDb()
   const inserts = fileReferences.map((reference) => {
     return db
       .insert(schema.chatShareFiles)

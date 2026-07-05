@@ -33,6 +33,10 @@ export function useChatShare() {
     try {
       const response = await $fetch(`/api/v1/chats/${slug}/share`)
 
+      if (targetChatSlug.value !== slug) {
+        return
+      }
+
       targetHasFiles.value = response.hasFiles
       share.value = response.share?.slug && response.share.url
         ? {

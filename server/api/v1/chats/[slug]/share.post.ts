@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm'
 import { createError, useLogger } from 'evlog'
-import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
 import {
   durationToExpiresAt,
@@ -17,13 +16,6 @@ const bodyRules = z.object({
   showFiles: z.boolean(),
   showMetadata: z.boolean(),
 })
-
-interface ChatShareOptions {
-  expiresAt: Date | null
-  indexable: boolean
-  showFiles: boolean
-  showMetadata: boolean
-}
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -83,24 +75,51 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const options: ChatShareOptions = {
-    expiresAt: durationToExpiresAt(body.data.duration),
-    indexable: body.data.indexable,
-    showFiles: body.data.showFiles,
-    showMetadata: body.data.showMetadata,
+  const expiresAt = durationToExpiresAt(body.data.duration)
+
+  const shareRow = await db
+    .insert(schema.chatShares)
+    .values({
+      chatId: chat.id,
+      indexable: body.data.indexable,
+      showFiles: body.data.showFiles,
+      showMetadata: body.data.showMetadata,
+      expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: schema.chatShares.chatId,
+      set: {
+        indexable: body.data.indexable,
+        showFiles: body.data.showFiles,
+        showMetadata: body.data.showMetadata,
+        expiresAt,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({
+      id: schema.chatShares.id,
+      slug: schema.chatShares.slug,
+    })
+    .get()
+
+  if (!shareRow.slug) {
+    throw createError({
+      message: 'Failed to generate a share link',
+      status: 500,
+      why: 'Share row is missing a slug after upsert',
+    })
   }
 
-  const existingShare = await db.query.chatShares.findFirst({
-    where: { chatId: chat.id },
-    columns: { id: true, slug: true },
-    orderBy: { createdAt: 'desc' },
-  })
+  const shareId = shareRow.id
+  const slug = shareRow.slug
 
-  const share = existingShare
-    ? await updateChatShare(db, existingShare, options)
-    : await createChatShare(db, chat.id, options)
-
-  await syncChatShareFiles(share.id, chat.id, userId, event)
+  await syncChatShareFiles(
+    shareId,
+    chat.id,
+    userId,
+    body.data.showFiles,
+    event,
+  )
 
   await db.update(schema.chats)
     .set({ shared: true })
@@ -110,59 +129,11 @@ export default defineEventHandler(async (event) => {
     .replace(/\/$/, '')
 
   return {
-    slug: share.slug,
-    url: `${baseUrl}/shared/${share.slug}`,
-    expiresAt: options.expiresAt,
-    indexable: options.indexable,
-    showFiles: options.showFiles,
-    showMetadata: options.showMetadata,
+    slug,
+    url: `${baseUrl}/shared/${slug}`,
+    expiresAt,
+    indexable: body.data.indexable,
+    showFiles: body.data.showFiles,
+    showMetadata: body.data.showMetadata,
   }
 })
-
-interface ChatShareIdentity {
-  id: string
-  slug: string
-}
-
-interface ExistingChatShare {
-  id: string
-  slug: string | null
-}
-
-async function updateChatShare(
-  db: ReturnType<typeof useDb>,
-  existingShare: ExistingChatShare,
-  options: ChatShareOptions,
-): Promise<ChatShareIdentity> {
-  const slug = existingShare.slug ?? ulid()
-
-  await db.update(schema.chatShares)
-    .set({
-      revoked: false,
-      slug,
-      ...options,
-    })
-    .where(eq(schema.chatShares.id, existingShare.id))
-
-  return { id: existingShare.id, slug }
-}
-
-async function createChatShare(
-  db: ReturnType<typeof useDb>,
-  chatId: string,
-  options: ChatShareOptions,
-): Promise<ChatShareIdentity> {
-  const slug = ulid()
-
-  const share = await db
-    .insert(schema.chatShares)
-    .values({
-      chatId,
-      slug,
-      ...options,
-    })
-    .returning({ id: schema.chatShares.id })
-    .get()
-
-  return { id: share.id, slug }
-}

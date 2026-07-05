@@ -46,7 +46,7 @@ const formattedTimestamp = computed<string>(() => {
     return ''
   }
 
-  return timestamp.value.toLocaleString(undefined, {
+  return timestamp.value.toLocaleString('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
   })

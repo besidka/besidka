@@ -174,7 +174,7 @@ async function forkChat() {
       { method: 'POST' },
     )
 
-    navigateTo(`/chats/${response.slug}`)
+    await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
     const parsedException = parseError(exception)
 

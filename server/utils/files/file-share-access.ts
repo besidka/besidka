@@ -59,6 +59,7 @@ export async function hasShareTokenFileAccess(
         columns: {
           revoked: true,
           expiresAt: true,
+          showFiles: true,
         },
       },
     },
@@ -75,6 +76,10 @@ export async function hasShareTokenFileAccess(
   }
 
   if (share.expiresAt && share.expiresAt <= now) {
+    return false
+  }
+
+  if (!share.showFiles) {
     return false
   }
 

@@ -11,7 +11,15 @@ export async function rewriteShareFileParts<
   shareId: string,
   event: H3Event = useEvent(),
 ): Promise<TMessage[]> {
-  const storageKeyToFileId = await buildStorageKeyToFileIdMap(messages)
+  const hasFileParts = messages.some((message) => {
+    return message.parts.some((part) => {
+      return part.type === 'file'
+    })
+  })
+
+  const storageKeyToFileId = hasFileParts
+    ? await buildGrantedStorageKeyToFileIdMap(shareId)
+    : new Map<string, string>()
   const tokensByFileId = new Map<string, string>()
   const rewrittenMessages: TMessage[] = []
 
@@ -82,43 +90,27 @@ async function rewriteFilePart(
   }
 }
 
-async function buildStorageKeyToFileIdMap<
-  TMessage extends { parts: UIMessage['parts'] },
->(messages: TMessage[]): Promise<Map<string, string>> {
-  const storageKeys = new Set<string>()
-
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (part.type !== 'file') {
-        continue
-      }
-
-      const storageKey = extractStorageKeyFromFileUrl(part.url)
-
-      if (storageKey) {
-        storageKeys.add(storageKey)
-      }
-    }
-  }
-
-  if (storageKeys.size === 0) {
-    return new Map()
-  }
-
-  const files = await useDb().query.files.findMany({
-    where: {
-      storageKey: { in: Array.from(storageKeys) },
-    },
+async function buildGrantedStorageKeyToFileIdMap(
+  shareId: string,
+): Promise<Map<string, string>> {
+  const grants = await useDb().query.chatShareFiles.findMany({
+    where: { chatShareId: shareId },
     columns: {
-      id: true,
-      storageKey: true,
+      fileId: true,
+    },
+    with: {
+      file: {
+        columns: {
+          storageKey: true,
+        },
+      },
     },
   })
 
   const storageKeyToFileId = new Map<string, string>()
 
-  for (const file of files) {
-    storageKeyToFileId.set(file.storageKey, file.id)
+  for (const grant of grants) {
+    storageKeyToFileId.set(grant.file.storageKey, grant.fileId)
   }
 
   return storageKeyToFileId

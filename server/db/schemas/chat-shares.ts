@@ -35,6 +35,7 @@ export const chatShares = snakeCase.table(
   table => [
     uniqueIndex('uq_chat_share_chat').on(table.chatId, table.id),
     uniqueIndex('uq_chat_share_slug').on(table.slug),
+    uniqueIndex('uq_chat_share_chat_id').on(table.chatId),
   ],
 )
 

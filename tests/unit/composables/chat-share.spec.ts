@@ -46,8 +46,14 @@ describe('useChatShare', () => {
       hasFiles: true,
     }))
 
-    const { loadShare, share, targetHasFiles } = useChatShare()
+    const {
+      loadShare,
+      share,
+      targetChatSlug,
+      targetHasFiles,
+    } = useChatShare()
 
+    targetChatSlug.value = 'chat-1'
     await loadShare('chat-1')
 
     expect(share.value).toBeNull()
@@ -60,8 +66,14 @@ describe('useChatShare', () => {
       hasFiles: false,
     }))
 
-    const { loadShare, share, targetHasFiles } = useChatShare()
+    const {
+      loadShare,
+      share,
+      targetChatSlug,
+      targetHasFiles,
+    } = useChatShare()
 
+    targetChatSlug.value = 'chat-1'
     await loadShare('chat-1')
 
     expect(share.value).toBeNull()
@@ -81,8 +93,9 @@ describe('useChatShare', () => {
       hasFiles: false,
     }))
 
-    const { loadShare, share } = useChatShare()
+    const { loadShare, share, targetChatSlug } = useChatShare()
 
+    targetChatSlug.value = 'chat-1'
     await loadShare('chat-1')
 
     expect(share.value).toEqual({
