@@ -268,7 +268,7 @@ const containerClasses = computed<Partial<Record<string, boolean>>>(() => {
     ...tooltipClasses.value,
     ...(isTagSummary.value
       ? {
-        'z-[2]': true,
+        'relative z-[2]': true,
         ...buttonStyleClasses.value,
       }
       : {}),
