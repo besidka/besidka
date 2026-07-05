@@ -36,9 +36,14 @@ interface PreparedInsert {
   __values: unknown
 }
 
+type BranchTestMessage = ReturnType<typeof createMessages>[number] & {
+  usage?: unknown
+  createdAt?: unknown
+}
+
 function createDb(overrides: {
   projectId?: string | null
-  messages?: ReturnType<typeof createMessages>
+  messages?: BranchTestMessage[]
 } = {}) {
   const batchedQueries: PreparedInsert[][] = []
 
@@ -212,6 +217,56 @@ describe('chat branch API', () => {
       expect(value).not.toHaveProperty('id')
       expect(value).not.toHaveProperty('publicId')
     }
+  })
+
+  it('copies usage and original createdAt onto branched messages', async () => {
+    const handler = await getHandler()
+    const usage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+    }
+    const createdAt = new Date('2026-07-05T12:00:00.000Z')
+    const messages: BranchTestMessage[] = [
+      {
+        id: 'message-1',
+        publicId: 'public-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Reply' }],
+        tools: [],
+        reasoning: 'off',
+        usage,
+        createdAt,
+      },
+    ]
+    const { db, insertValues } = createDb({ messages })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      body: {
+        chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        messageId: 'message-1',
+      },
+    } as never)
+
+    const messageInsertCalls = insertValues.mock.calls.filter(
+      ([value]) => {
+        return value.role === 'user'
+          || value.role === 'assistant'
+      },
+    )
+
+    expect(messageInsertCalls[0][0]).toMatchObject({
+      chatId: 'new-chat',
+      role: 'assistant',
+      usage,
+      createdAt,
+    })
   })
 
   it('copies only messages up to the branch point', async () => {

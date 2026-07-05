@@ -11,6 +11,14 @@ export type MessageMenuInfo = {
   turnTotalCost?: number
 }
 
+type MenuMessage = {
+  id?: string
+  role: string
+  metadata?: unknown
+  parts?: unknown
+  createdAt?: string | number | Date
+}
+
 export function getMessageMetadata(
   message: { metadata?: unknown, createdAt?: string | number | Date },
 ): ChatMessageMetadata {
@@ -39,4 +47,61 @@ export function getMessageUsedTools(
   })
 
   return hasWebSearchPart ? ['web_search'] : []
+}
+
+export function resolveMessageMenuInfo(
+  messages: MenuMessage[],
+  selectedMessageId: string | null,
+): MessageMenuInfo | null {
+  if (!selectedMessageId) {
+    return null
+  }
+
+  const messageIndex = messages.findIndex((message) => {
+    return message.id === selectedMessageId
+  })
+
+  const message = messages[messageIndex]
+
+  if (!message) {
+    return null
+  }
+
+  const metadata = getMessageMetadata(message)
+
+  if (message.role === 'assistant') {
+    const usage = metadata.usage
+    const turnTotalCost
+      = usage?.inputCost !== undefined && usage?.outputCost !== undefined
+        ? usage.inputCost + usage.outputCost
+        : undefined
+
+    return {
+      role: 'assistant',
+      createdAt: metadata.createdAt,
+      model: usage?.model,
+      usedTools: getMessageUsedTools(message),
+      tokens: usage?.outputTokens,
+      reasoningTokens: usage?.reasoningTokens,
+      cost: usage?.outputCost,
+      turnTotalCost,
+    }
+  }
+
+  const nextMessage = messages
+    .slice(messageIndex + 1)
+    .find((candidate) => {
+      return candidate.role === 'user' || candidate.role === 'assistant'
+    })
+
+  const followingUsage = nextMessage?.role === 'assistant'
+    ? getMessageMetadata(nextMessage).usage
+    : undefined
+
+  return {
+    role: 'user',
+    createdAt: metadata.createdAt,
+    tokens: followingUsage?.inputTokens,
+    cost: followingUsage?.inputCost,
+  }
 }

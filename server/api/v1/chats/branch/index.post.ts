@@ -48,6 +48,8 @@ export default defineEventHandler(async (event) => {
           parts: true,
           tools: true,
           reasoning: true,
+          usage: true,
+          createdAt: true,
         },
       },
     },
@@ -103,6 +105,8 @@ export default defineEventHandler(async (event) => {
         parts: message.parts,
         tools: message.tools,
         reasoning: message.reasoning,
+        usage: message.usage,
+        createdAt: message.createdAt,
       })
   }) as unknown as [BatchItem<'sqlite'>]
 
