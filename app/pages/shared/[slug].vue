@@ -21,7 +21,7 @@
     />
   </div>
   <template v-else-if="data">
-    <ChatContainer class="!gap-0">
+    <ChatContainer class="!gap-0 pb-2">
       <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
         <UiBubble class="!block shadow-none">
           <div
