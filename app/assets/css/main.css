@@ -714,6 +714,11 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * Only .sidebar-clip slides, so the cursor stays inside this zone while
  * the pill reveals — including the gap the pill leaves on its right — so
  * the reveal never flickers or ping-pongs between open and closed.
+ *
+ * On reveal, overflow stays hidden for the transition and only flips to
+ * visible at the end (transition: overflow 0s 0.5s + allow-discrete), so
+ * the circle visibly grows into the full pill — a mirror of the
+ * collapse-back-to-circle, rather than the pill appearing all at once.
  * ─────────────────────────────────────────────────────────────────── */
 .sidebar-clip {
   display: contents;
@@ -756,6 +761,12 @@ html body[data-studio-active][data-expand-sidebar]::before {
     max-height: 18rem;
     overflow: visible;
     transform: translateX(0);
+    transition:
+      transform 0.5s ease-in-out,
+      width 0.5s ease-in-out,
+      max-height 0.5s ease-in-out,
+      overflow 0s ease 0.5s;
+    transition-behavior: allow-discrete;
   }
 }
 
