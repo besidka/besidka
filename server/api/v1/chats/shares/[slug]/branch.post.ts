@@ -46,6 +46,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (!share.allowBranch) {
+    throw createError({
+      message: 'Branching is disabled for this shared chat',
+      status: 403,
+      why: 'The share owner has turned off branching for this link',
+    })
+  }
+
   const db = useDb()
 
   const sourceChat = await db.query.chats.findFirst({

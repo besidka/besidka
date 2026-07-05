@@ -23,7 +23,6 @@
         }"
       >
         <div
-          v-if="role !== 'user' || !hideUserAvatar"
           class="chat-image avatar rounded-full"
           :class="{
             'avatar-placeholder':
@@ -67,7 +66,6 @@ const props = withDefaults(defineProps<{
   anySelected?: boolean
   authorName?: string | null
   authorImage?: string | null
-  hideUserAvatar?: boolean
 }>(), {
   hideAssistantAvatarOnMobile: true,
   messageId: undefined,
@@ -75,7 +73,6 @@ const props = withDefaults(defineProps<{
   anySelected: false,
   authorName: undefined,
   authorImage: undefined,
-  hideUserAvatar: false,
 })
 
 const emit = defineEmits<{

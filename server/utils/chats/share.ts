@@ -10,14 +10,14 @@ import {
 
 export const SHARE_FILE_TOKEN_TTL_SECONDS = 3600
 
-export type ChatShareDuration = 'week' | 'month' | 'year' | 'forever'
+export type ChatShareDuration = 'week' | 'month' | 'year' | 'never'
 
 export interface ChatFileReference {
   fileId: string
   storageKey: string
 }
 
-const DURATION_DAYS: Record<Exclude<ChatShareDuration, 'forever'>, number> = {
+const DURATION_DAYS: Record<Exclude<ChatShareDuration, 'never'>, number> = {
   week: 7,
   month: 30,
   year: 365,
@@ -33,13 +33,14 @@ const ACTIVE_SHARE_COLUMNS = {
   showFiles: true,
   showMetadata: true,
   showAuthorAvatar: true,
+  allowBranch: true,
 } as const
 
 export function durationToExpiresAt(
   duration: ChatShareDuration,
   now: Date = new Date(),
 ): Date | null {
-  if (duration === 'forever') {
+  if (duration === 'never') {
     return null
   }
 

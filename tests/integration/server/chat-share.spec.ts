@@ -89,8 +89,8 @@ describe('durationToExpiresAt', () => {
     )
   })
 
-  it('returns null for forever', () => {
-    expect(durationToExpiresAt('forever', now)).toBeNull()
+  it('returns null for never', () => {
+    expect(durationToExpiresAt('never', now)).toBeNull()
   })
 })
 

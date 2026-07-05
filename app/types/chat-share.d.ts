@@ -1,4 +1,4 @@
-export type ChatShareDuration = 'week' | 'month' | 'year' | 'forever'
+export type ChatShareDuration = 'week' | 'month' | 'year' | 'never'
 
 export interface ChatShare {
   slug: string
@@ -8,6 +8,7 @@ export interface ChatShare {
   showFiles: boolean
   showMetadata: boolean
   showAuthorAvatar: boolean
+  allowBranch: boolean
 }
 
 export interface ChatShareOptions {
@@ -16,4 +17,5 @@ export interface ChatShareOptions {
   showFiles: boolean
   showMetadata: boolean
   showAuthorAvatar: boolean
+  allowBranch: boolean
 }

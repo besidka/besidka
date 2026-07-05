@@ -21,36 +21,85 @@
     />
   </div>
   <template v-else-if="data">
-    <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24 mb-6">
-      <UiBubble class="!block shadow-none">
-        <div class="flex items-center justify-between gap-3">
-          <h1
-            data-testid="shared-chat-title"
-            class="text-sm sm:text-base font-semibold truncate"
-          >
-            {{ data.title || 'Shared chat' }}
-          </h1>
-          <UiButton
-            v-if="loggedIn"
-            data-testid="shared-add-to-chats"
-            text="Add To My Chats"
-            icon-name="lucide:git-fork"
-            size="sm"
-            :disabled="isBranching"
-            @click="branchSharedChat(shareSlug)"
-          />
-          <UiButton
-            v-else
-            data-testid="shared-add-to-chats"
-            to="/signin"
-            text="Sign in to add to your chats"
-            icon-name="lucide:git-fork"
-            size="sm"
-          />
-        </div>
-      </UiBubble>
-    </div>
     <ChatContainer class="!gap-0">
+      <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
+        <UiBubble class="!block shadow-none">
+          <div
+            class="
+              flex flex-col gap-3
+              md:flex-row md:items-center md:justify-between
+            "
+          >
+            <div class="min-w-0">
+              <h1
+                data-testid="shared-chat-title"
+                class="text-sm sm:text-base font-semibold truncate"
+              >
+                {{ data.title || 'Shared chat' }}
+              </h1>
+            </div>
+            <UiButton
+              v-if="data.allowBranch && loggedIn"
+              data-testid="shared-add-to-chats"
+              text="Add To My Chats"
+              icon-name="lucide:git-fork"
+              size="sm"
+              class="shrink-0"
+              :disabled="isBranching"
+              @click="branchSharedChat(shareSlug)"
+            />
+            <UiButton
+              v-else-if="data.allowBranch"
+              data-testid="shared-add-to-chats"
+              to="/signin"
+              text="Sign in to add to your chats"
+              icon-name="lucide:git-fork"
+              size="sm"
+              class="shrink-0"
+            />
+          </div>
+
+          <details
+            class="group collapse mt-2"
+            :open="isSettingsExpanded"
+          >
+            <summary
+              data-testid="shared-settings-toggle"
+              class="collapse-title flex items-center gap-1 p-0 text-xs"
+              @click.prevent="isSettingsExpanded = !isSettingsExpanded"
+            >
+              <Icon name="lucide:settings-2" size="12" />
+              <span>Share settings</span>
+              <Icon
+                name="lucide:chevron-right"
+                class="
+                  size-4 text-base-content/60 transition-transform
+                  group-open:rotate-90
+                "
+              />
+            </summary>
+            <div
+              v-if="isSettingsExpanded"
+              class="collapse-content mt-3 px-0 pb-0"
+            >
+              <div class="flex flex-col gap-1.5">
+                <div
+                  v-for="setting in shareSettings"
+                  :key="setting.label"
+                  class="flex items-center justify-between gap-3"
+                >
+                  <span class="text-xs text-base-content/70">
+                    {{ setting.label }}
+                  </span>
+                  <span class="text-sm font-medium">
+                    {{ setting.value }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </details>
+        </UiBubble>
+      </div>
       <div
         v-for="m in data.messages"
         :key="`message-${m.id}`"
@@ -59,9 +108,8 @@
         <ChatMessage
           :role="m.role"
           :message-id="m.id"
-          :author-name="data.author?.name"
-          :author-image="data.author?.image"
-          :hide-user-avatar="!data.author"
+          :author-name="data.author?.name ?? null"
+          :author-image="data.author?.image ?? null"
         >
           <ChatFiles :message="m" />
           <ChatReasoning
@@ -131,8 +179,14 @@ interface SharedChatResponse {
   showFiles: boolean
   showMetadata: boolean
   showAuthorAvatar: boolean
+  allowBranch: boolean
   author: SharedChatAuthor | null
   messages: SharedChatMessage[]
+}
+
+interface ShareSettingRow {
+  label: string
+  value: string
 }
 
 definePageMeta({
@@ -175,4 +229,31 @@ useHead({
 const { components, getUnwrap } = useChatFormat()
 const { loggedIn } = useAuth()
 const { isBranching, branchSharedChat } = useChatShare()
+
+const isSettingsExpanded = shallowRef<boolean>(false)
+
+const shareSettings = computed<ShareSettingRow[]>(() => {
+  if (!data.value) {
+    return []
+  }
+
+  return [
+    {
+      label: 'Search engines',
+      value: data.value.indexable ? 'Allowed' : 'Blocked',
+    },
+    {
+      label: 'Images & file names',
+      value: data.value.showFiles ? 'Visible' : 'Hidden',
+    },
+    {
+      label: 'Message details',
+      value: data.value.showMetadata ? 'Shown' : 'Hidden',
+    },
+    {
+      label: 'Branching',
+      value: data.value.allowBranch ? 'Allowed' : 'Off',
+    },
+  ]
+})
 </script>

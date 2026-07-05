@@ -99,6 +99,7 @@ export function useChatShare() {
         showFiles: response.showFiles,
         showMetadata: response.showMetadata,
         showAuthorAvatar: response.showAuthorAvatar,
+        allowBranch: response.allowBranch,
       }
 
       nuxtApp.runWithContext(() => {

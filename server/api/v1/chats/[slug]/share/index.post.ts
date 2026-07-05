@@ -11,11 +11,12 @@ const paramsRules = z.object({
 })
 
 const bodyRules = z.object({
-  duration: z.enum(['week', 'month', 'year', 'forever']),
+  duration: z.enum(['week', 'month', 'year', 'never']),
   indexable: z.boolean(),
   showFiles: z.boolean(),
   showMetadata: z.boolean(),
   showAuthorAvatar: z.boolean(),
+  allowBranch: z.boolean(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -86,6 +87,7 @@ export default defineEventHandler(async (event) => {
       showFiles: body.data.showFiles,
       showMetadata: body.data.showMetadata,
       showAuthorAvatar: body.data.showAuthorAvatar,
+      allowBranch: body.data.allowBranch,
       expiresAt,
     })
     .onConflictDoUpdate({
@@ -95,6 +97,7 @@ export default defineEventHandler(async (event) => {
         showFiles: body.data.showFiles,
         showMetadata: body.data.showMetadata,
         showAuthorAvatar: body.data.showAuthorAvatar,
+        allowBranch: body.data.allowBranch,
         expiresAt,
         updatedAt: new Date(),
       },
@@ -139,5 +142,6 @@ export default defineEventHandler(async (event) => {
     showFiles: body.data.showFiles,
     showMetadata: body.data.showMetadata,
     showAuthorAvatar: body.data.showAuthorAvatar,
+    allowBranch: body.data.allowBranch,
   }
 })

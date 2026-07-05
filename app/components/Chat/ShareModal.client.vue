@@ -27,63 +27,77 @@
               <option value="week">1 week</option>
               <option value="month">1 month</option>
               <option value="year">1 year</option>
-              <option value="forever">Forever</option>
+              <option value="never">Never</option>
             </select>
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-3">
+            <label class="label cursor-pointer justify-between gap-3">
+              <span class="label-text flex-1 text-start">
+                Allow search engines to index this page
+              </span>
               <input
                 v-model="indexable"
                 type="checkbox"
                 data-testid="share-toggle-indexable"
-                class="toggle toggle-sm"
+                class="toggle toggle-sm shrink-0"
               >
-              <span class="label-text">
-                Allow search engines to index this page
-              </span>
             </label>
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-3">
+            <label class="label cursor-pointer justify-between gap-3">
+              <span class="label-text flex-1 text-start">
+                Show images & file names
+              </span>
               <input
                 v-model="showFiles"
                 type="checkbox"
                 data-testid="share-toggle-files"
-                class="toggle toggle-sm"
+                class="toggle toggle-sm shrink-0"
               >
-              <span class="label-text">
-                Show images & file names
-              </span>
             </label>
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-3">
+            <label class="label cursor-pointer justify-between gap-3">
+              <span class="label-text flex-1 text-start">
+                Show message details (date & time)
+              </span>
               <input
                 v-model="showMetadata"
                 type="checkbox"
                 data-testid="share-toggle-metadata"
-                class="toggle toggle-sm"
+                class="toggle toggle-sm shrink-0"
               >
-              <span class="label-text">
-                Show message details (date & time)
-              </span>
             </label>
           </div>
 
           <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-3">
+            <label class="label cursor-pointer justify-between gap-3">
+              <span class="label-text flex-1 text-start">
+                Show author's picture
+              </span>
               <input
                 v-model="showAuthorAvatar"
                 type="checkbox"
                 data-testid="share-toggle-author"
-                class="toggle toggle-sm"
+                class="toggle toggle-sm shrink-0"
               >
-              <span class="label-text">
-                Show author's picture
+            </label>
+          </div>
+
+          <div class="form-control">
+            <label class="label cursor-pointer justify-between gap-3">
+              <span class="label-text flex-1 text-start">
+                Allow branching
               </span>
+              <input
+                v-model="allowBranch"
+                type="checkbox"
+                data-testid="share-toggle-branch"
+                class="toggle toggle-sm shrink-0"
+              >
             </label>
           </div>
 
@@ -199,11 +213,12 @@ const {
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
 
-const duration = shallowRef<ChatShareDuration>('forever')
+const duration = shallowRef<ChatShareDuration>('never')
 const indexable = shallowRef<boolean>(true)
 const showFiles = shallowRef<boolean>(true)
 const showMetadata = shallowRef<boolean>(true)
 const showAuthorAvatar = shallowRef<boolean>(true)
+const allowBranch = shallowRef<boolean>(true)
 const justCopied = shallowRef<boolean>(false)
 
 let copiedTimeoutId: ReturnType<typeof setTimeout> | null = null
@@ -212,7 +227,7 @@ function inferDurationFromExpiresAt(
   expiresAt: string | null,
 ): ChatShareDuration {
   if (!expiresAt) {
-    return 'forever'
+    return 'never'
   }
 
   const millisecondsPerDay = 24 * 60 * 60 * 1000
@@ -242,11 +257,12 @@ function resetCopiedState() {
 
 watch(share, (nextShare) => {
   if (!nextShare) {
-    duration.value = 'forever'
+    duration.value = 'never'
     indexable.value = true
     showFiles.value = true
     showMetadata.value = true
     showAuthorAvatar.value = true
+    allowBranch.value = true
     resetCopiedState()
 
     return
@@ -257,6 +273,7 @@ watch(share, (nextShare) => {
   showFiles.value = nextShare.showFiles
   showMetadata.value = nextShare.showMetadata
   showAuthorAvatar.value = nextShare.showAuthorAvatar
+  allowBranch.value = nextShare.allowBranch
 }, { immediate: true })
 
 watch(isModalOpen, (open) => {
@@ -319,6 +336,7 @@ async function onGenerate() {
     showFiles: showFiles.value,
     showMetadata: showMetadata.value,
     showAuthorAvatar: showAuthorAvatar.value,
+    allowBranch: allowBranch.value,
   })
 
   if (!url) {

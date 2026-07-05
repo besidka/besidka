@@ -88,6 +88,34 @@ describe('Chat/ShareModal.client', () => {
     expect((authorToggle.element as HTMLInputElement).checked).toBe(true)
   })
 
+  it('defaults the allow branch toggle to on', async () => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    const branchToggle = wrapper.find('[data-testid="share-toggle-branch"]')
+
+    expect((branchToggle.element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('renders each toggle row with the label before the toggle', async () => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    const toggleTestIds = [
+      'share-toggle-indexable',
+      'share-toggle-files',
+      'share-toggle-metadata',
+      'share-toggle-author',
+      'share-toggle-branch',
+    ]
+
+    toggleTestIds.forEach((testId) => {
+      const toggleInput = wrapper.find(`[data-testid="${testId}"]`)
+      const toggleRow = toggleInput.element.closest('label')
+
+      expect(toggleRow?.firstElementChild?.tagName).toBe('SPAN')
+      expect(toggleRow?.lastElementChild?.tagName).toBe('INPUT')
+    })
+  })
+
   it('generates a share link, auto-copies it, and shows the Copied state', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       slug: 'share-1',
@@ -97,6 +125,7 @@ describe('Chat/ShareModal.client', () => {
       showFiles: true,
       showMetadata: true,
       showAuthorAvatar: true,
+      allowBranch: true,
     })
     vi.stubGlobal('$fetch', fetchMock)
 
@@ -111,11 +140,12 @@ describe('Chat/ShareModal.client', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/share', {
       method: 'POST',
       body: {
-        duration: 'forever',
+        duration: 'never',
         indexable: true,
         showFiles: true,
         showMetadata: true,
         showAuthorAvatar: true,
+        allowBranch: true,
       },
     })
 
@@ -146,6 +176,7 @@ describe('Chat/ShareModal.client', () => {
       showFiles: true,
       showMetadata: true,
       showAuthorAvatar: true,
+      allowBranch: true,
     }
 
     const wrapper = await mountSuspended(ShareModal)
@@ -180,6 +211,7 @@ describe('Chat/ShareModal.client', () => {
       showFiles: true,
       showMetadata: true,
       showAuthorAvatar: true,
+      allowBranch: true,
     }
 
     const wrapper = await mountSuspended(ShareModal)

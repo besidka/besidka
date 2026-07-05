@@ -73,6 +73,7 @@ export default defineEventHandler(async (event) => {
       showFiles: share.showFiles,
       showMetadata: share.showMetadata,
       showAuthorAvatar: share.showAuthorAvatar,
+      allowBranch: share.allowBranch,
     },
   }
 })

@@ -43,6 +43,7 @@ describe('useChatShare', () => {
         showFiles: true,
         showMetadata: true,
         showAuthorAvatar: true,
+        allowBranch: true,
       },
       hasFiles: true,
     }))
@@ -91,6 +92,7 @@ describe('useChatShare', () => {
         showFiles: true,
         showMetadata: false,
         showAuthorAvatar: true,
+        allowBranch: false,
       },
       hasFiles: false,
     }))
@@ -108,6 +110,7 @@ describe('useChatShare', () => {
       showFiles: true,
       showMetadata: false,
       showAuthorAvatar: true,
+      allowBranch: false,
     })
   })
 
@@ -136,27 +139,30 @@ describe('useChatShare', () => {
       showFiles: false,
       showMetadata: true,
       showAuthorAvatar: false,
+      allowBranch: true,
     })
     vi.stubGlobal('$fetch', fetchMock)
 
     const { createOrUpdateShare, share } = useChatShare()
 
     const url = await createOrUpdateShare('chat-1', {
-      duration: 'forever',
+      duration: 'never',
       indexable: true,
       showFiles: false,
       showMetadata: true,
       showAuthorAvatar: false,
+      allowBranch: true,
     })
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/share', {
       method: 'POST',
       body: {
-        duration: 'forever',
+        duration: 'never',
         indexable: true,
         showFiles: false,
         showMetadata: true,
         showAuthorAvatar: false,
+        allowBranch: true,
       },
     })
     expect(url).toBe('http://localhost:3000/shared/new-slug')
@@ -168,6 +174,7 @@ describe('useChatShare', () => {
       showFiles: false,
       showMetadata: true,
       showAuthorAvatar: false,
+      allowBranch: true,
     })
   })
 
@@ -185,6 +192,7 @@ describe('useChatShare', () => {
       showFiles: true,
       showMetadata: true,
       showAuthorAvatar: true,
+      allowBranch: true,
     }
 
     await revokeShare('chat-1')

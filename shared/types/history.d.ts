@@ -27,6 +27,7 @@ type SharedChatRow = HistoryChatRow & {
   shareSlug: typeof schema.chatShares.$inferSelect['slug']
   expiresAt: typeof schema.chatShares.$inferSelect['expiresAt']
   showAuthorAvatar: typeof schema.chatShares.$inferSelect['showAuthorAvatar']
+  allowBranch: typeof schema.chatShares.$inferSelect['allowBranch']
 }
 
 export type SharedChat = Serialize<SharedChatRow>
