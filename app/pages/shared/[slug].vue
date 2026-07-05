@@ -91,8 +91,11 @@
                   <span class="text-xs text-base-content/70">
                     {{ setting.label }}
                   </span>
-                  <span class="text-sm font-medium">
-                    {{ setting.value }}
+                  <span
+                    class="text-sm font-medium"
+                    :class="setting.enabled ? 'text-success' : 'text-error'"
+                  >
+                    {{ setting.enabled ? 'Yes' : 'No' }}
                   </span>
                 </div>
               </div>
@@ -186,11 +189,12 @@ interface SharedChatResponse {
 
 interface ShareSettingRow {
   label: string
-  value: string
+  enabled: boolean
 }
 
 definePageMeta({
   auth: false,
+  layout: 'shared',
 })
 
 const route = useRoute()
@@ -239,20 +243,20 @@ const shareSettings = computed<ShareSettingRow[]>(() => {
 
   return [
     {
-      label: 'Search engines',
-      value: data.value.indexable ? 'Allowed' : 'Blocked',
+      label: 'Allowed in search',
+      enabled: data.value.indexable,
     },
     {
-      label: 'Images & file names',
-      value: data.value.showFiles ? 'Visible' : 'Hidden',
+      label: 'Show images & file names',
+      enabled: data.value.showFiles,
     },
     {
-      label: 'Message details',
-      value: data.value.showMetadata ? 'Shown' : 'Hidden',
+      label: 'Show message details',
+      enabled: data.value.showMetadata,
     },
     {
-      label: 'Branching',
-      value: data.value.allowBranch ? 'Allowed' : 'Off',
+      label: 'Allow branching',
+      enabled: data.value.allowBranch,
     },
   ]
 })
