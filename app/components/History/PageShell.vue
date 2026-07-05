@@ -42,6 +42,20 @@
         />
         Projects
       </NuxtLink>
+      <NuxtLink
+        to="/chats/shared"
+        class="tab grow"
+        data-testid="tab-shared"
+        :class="{ 'tab-active': activeTab === 'shared' }"
+        :aria-current="activeTab === 'shared' ? 'page' : undefined"
+      >
+        <Icon
+          name="lucide:share-2"
+          size="14"
+          class="mr-2"
+        />
+        Shared
+      </NuxtLink>
     </nav>
 
     <slot name="toolbar" />
@@ -56,6 +70,6 @@
 
 <script setup lang="ts">
 defineProps<{
-  activeTab: 'chats' | 'projects'
+  activeTab: 'chats' | 'projects' | 'shared'
 }>()
 </script>

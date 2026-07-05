@@ -34,7 +34,7 @@
             Select
           </button>
         </li>
-        <li>
+        <li v-if="variant !== 'shared'">
           <button
             type="button"
             @click="onPin"
@@ -46,7 +46,7 @@
             {{ chat.pinnedAt ? 'Unpin' : 'Pin' }}
           </button>
         </li>
-        <li>
+        <li v-if="variant !== 'shared'">
           <button
             type="button"
             @click="onAddToProject"
@@ -55,7 +55,7 @@
             {{ chat.projectId ? 'Change project' : 'Add to project' }}
           </button>
         </li>
-        <li v-if="chat.projectId">
+        <li v-if="variant !== 'shared' && chat.projectId">
           <button
             type="button"
             @click="onRemoveFromProject"
@@ -64,7 +64,7 @@
             Remove from project
           </button>
         </li>
-        <li>
+        <li v-if="variant !== 'shared'">
           <button
             type="button"
             @click="onRename"
@@ -74,6 +74,37 @@
           </button>
         </li>
         <li>
+          <button
+            type="button"
+            data-testid="chat-action-share"
+            @click="onShare"
+          >
+            <Icon name="lucide:share-2" size="14" />
+            Share
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            data-testid="chat-action-fork"
+            @click="onFork"
+          >
+            <Icon name="lucide:git-branch-plus" size="14" />
+            Fork
+          </button>
+        </li>
+        <li v-if="chat.shared">
+          <button
+            type="button"
+            class="text-warning"
+            data-testid="chat-action-cancel-sharing"
+            @click="onCancelSharing"
+          >
+            <Icon name="lucide:link-2-off" size="14" />
+            Cancel sharing
+          </button>
+        </li>
+        <li v-if="variant !== 'shared'">
           <button
             type="button"
             class="text-error"
@@ -91,10 +122,16 @@
 <script setup lang="ts">
 import type { HistoryChat } from '#shared/types/history.d'
 
-defineProps<{
-  chat: HistoryChat
-  isSelectionMode: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    chat: HistoryChat
+    isSelectionMode: boolean
+    variant?: 'default' | 'shared'
+  }>(),
+  {
+    variant: 'default',
+  },
+)
 
 const emit = defineEmits<{
   pin: []
@@ -103,6 +140,7 @@ const emit = defineEmits<{
   select: []
   addToProject: []
   removeFromProject: []
+  cancelSharing: []
 }>()
 
 const dropdownRef = useTemplateRef<HTMLDetailsElement>('dropdownRef')
@@ -145,6 +183,21 @@ function onRemoveFromProject() {
 function onRename() {
   closeDropdown()
   emit('rename')
+}
+
+function onShare() {
+  closeDropdown()
+  useChatShare().openShareModal(props.chat.slug)
+}
+
+function onFork() {
+  closeDropdown()
+  useChatShare().forkOwnedChat(props.chat.slug)
+}
+
+function onCancelSharing() {
+  closeDropdown()
+  emit('cancelSharing')
 }
 
 function onDelete() {

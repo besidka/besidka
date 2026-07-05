@@ -33,6 +33,7 @@
           :index="pinnedIndex"
           :is-selection-mode="isSelectionMode"
           :is-selected="selectedIds.has(chat.id)"
+          :variant="variant"
           @pin="emit('pin', chat.id)"
           @rename="onRename"
           @delete="onDelete"
@@ -40,6 +41,7 @@
           @enter-select="onEnterSelect"
           @add-to-project="onAddToProject"
           @remove-from-project="onRemoveFromProject"
+          @cancel-sharing="onCancelSharing"
         />
       </ul>
     </template>
@@ -63,6 +65,7 @@
             :index="flatChatIndexMap.get(chat.id) ?? 0"
             :is-selection-mode="isSelectionMode"
             :is-selected="selectedIds.has(chat.id)"
+            :variant="variant"
             @pin="emit('pin', chat.id)"
             @rename="onRename"
             @delete="onDelete"
@@ -70,6 +73,7 @@
             @enter-select="onEnterSelect"
             @add-to-project="onAddToProject"
             @remove-from-project="onRemoveFromProject"
+            @cancel-sharing="onCancelSharing"
           />
         </ul>
       </template>
@@ -102,6 +106,24 @@
           class="btn btn-primary btn-sm"
         >
           {{ emptyActionLabel || 'New chat' }}
+        </NuxtLink>
+      </template>
+      <template v-else-if="emptyStateMode === 'shared'">
+        <Icon
+          name="lucide:share-2"
+          size="40"
+          class="mx-auto mb-3 opacity-60"
+        />
+        <p class="font-medium">No shared chats yet</p>
+        <p class="mt-2 mb-4 text-sm opacity-60">
+          Share a chat from its "..." menu to see it here.
+        </p>
+        <NuxtLink
+          v-if="emptyActionTo"
+          :to="emptyActionTo"
+          class="btn btn-primary btn-sm"
+        >
+          {{ emptyActionLabel || 'View chats' }}
         </NuxtLink>
       </template>
       <template v-else>
@@ -138,15 +160,17 @@ const props = withDefaults(
     isLoadingInitial: boolean
     isSelectionMode: boolean
     selectedIds?: Set<string>
-    emptyStateMode: 'history' | 'project' | 'search'
+    emptyStateMode: 'history' | 'project' | 'search' | 'shared'
     emptyActionTo?: string
     emptyActionLabel?: string
+    variant?: 'default' | 'shared'
   }>(),
   {
     selectedIds: () => new Set<string>(),
     groupedAt: undefined,
     emptyActionTo: undefined,
     emptyActionLabel: undefined,
+    variant: 'default',
   },
 )
 
@@ -158,6 +182,7 @@ const emit = defineEmits<{
   'enter-select': [chatId: string, index: number]
   'add-to-project': [chat: HistoryChat]
   'remove-from-project': [chatId: string, slug: string]
+  'cancel-sharing': [chatId: string, slug: string]
 }>()
 
 const groups = computed(() => groupByDate(props.chats, props.groupedAt))
@@ -200,5 +225,9 @@ function onAddToProject(chat: HistoryChat) {
 
 function onRemoveFromProject(chatId: string, slug: string) {
   emit('remove-from-project', chatId, slug)
+}
+
+function onCancelSharing(chatId: string, slug: string) {
+  emit('cancel-sharing', chatId, slug)
 }
 </script>

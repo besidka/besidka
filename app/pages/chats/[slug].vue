@@ -141,6 +141,20 @@
       @close="clearMessageSelection"
     />
   </ClientOnly>
+
+  <div
+    class="
+      fixed z-30 left-2 sm:left-4
+      top-[calc(var(--sat)_+_0.5rem)]
+    "
+  >
+    <ClientOnly>
+      <LazyChatActionsMenu
+        :chat-slug="chatSlug"
+        :has-files="hasFiles"
+      />
+    </ClientOnly>
+  </div>
 </template>
 <script setup lang="ts">
 import { parseError } from 'evlog'
@@ -160,6 +174,8 @@ useSeoMeta({
 })
 
 const route = useRoute()
+
+const chatSlug = computed<string>(() => route.params.slug as string)
 
 const isTestChat = computed<boolean>(() => {
   return import.meta.dev && route.path === '/chats/test'
@@ -267,6 +283,14 @@ const {
   files,
   currentTurnStartedAt,
 } = useChat(toValue(chat.value))
+
+const hasFiles = computed<boolean>(() => {
+  return chatSdk.messages.some((message) => {
+    return message.parts.some((part) => {
+      return part.type === 'file'
+    })
+  })
+})
 
 const { components, getUnwrap } = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)

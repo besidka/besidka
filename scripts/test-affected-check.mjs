@@ -116,6 +116,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
   ]
 
+  const chatShareTests = [
+    'tests/integration/server/chat-share.spec.ts',
+    'tests/integration/server/rewrite-share-file-urls.spec.ts',
+    'tests/unit/composables/chat-share.spec.ts',
+    'tests/unit/components/Chat/ShareModal.client.spec.ts',
+  ]
+
   const cookieConsentTests = [
     'tests/unit/composables/preference-storage.spec.ts',
     'tests/unit/utils/consents.spec.ts',
@@ -215,6 +222,11 @@ export function getAffectedTests(changedFiles) {
         ...messageUsageTests,
         'tests/unit/composables/haptics.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts)$/,
+      tests: chatShareTests,
     },
     {
       pattern:
@@ -367,14 +379,19 @@ export function getAffectedTests(changedFiles) {
       tests: chatTestEndpointTests,
     },
     {
-      pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly|chat-shares)\.ts$/,
+      pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly)\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/db\/schemas\/chat-shares\.ts$/,
+      tests: [...filesModuleTests, ...chatShareTests],
     },
     {
       pattern: /^server\/db\/schemas\/(chats|projects|messages)\.ts$/,
       tests: [
         ...historyProjectsTests,
         ...chatStreamBranchTests,
+        ...chatShareTests,
       ],
     },
     {

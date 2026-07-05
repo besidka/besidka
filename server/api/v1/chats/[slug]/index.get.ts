@@ -1,4 +1,6 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { rewriteShareFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -29,6 +31,7 @@ export default defineEventHandler(async (event) => {
       slug: true,
       title: true,
       projectId: true,
+      forkedFromShareSlug: true,
     },
     with: {
       messages: {
@@ -53,15 +56,25 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const messages = chat.messages
+    .filter((message) => {
+      return isPersistedMessageRole(message.role)
+    })
+    .map(message => ({
+      ...message,
+      id: message.publicId ?? message.id,
+    }))
+
+  const sourceShare = chat.forkedFromShareSlug
+    ? await resolveActiveShareBySlug(chat.forkedFromShareSlug, event)
+    : null
+
+  const resolvedMessages = sourceShare
+    ? await rewriteShareFileParts(messages, sourceShare.id, event)
+    : messages
+
   return {
     ...chat,
-    messages: chat.messages
-      .filter((message) => {
-        return isPersistedMessageRole(message.role)
-      })
-      .map(message => ({
-        ...message,
-        id: message.publicId ?? message.id,
-      })),
+    messages: resolvedMessages,
   }
 })

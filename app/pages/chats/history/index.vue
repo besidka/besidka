@@ -45,6 +45,7 @@
       @enter-select="onEnterSelect"
       @add-to-project="openProjectPicker"
       @remove-from-project="onRemoveFromProject"
+      @cancel-sharing="onCancelSharing"
     />
 
     <div
@@ -107,6 +108,7 @@ const {
   deleteSelected,
   renameChat,
   deleteChat,
+  cancelSharing,
   moveChatToProject,
   moveSelectedToProject,
 } = useHistory()
@@ -253,6 +255,10 @@ async function onRemoveFromProject(chatId: string, slug: string) {
 async function onRenameSubmit(chatId: string, slug: string, title: string) {
   await renameChat(chatId, slug, title)
   renameModalRef.value?.close()
+}
+
+async function onCancelSharing(chatId: string) {
+  await cancelSharing(chatId)
 }
 
 async function onDeleteChat(chatId: string, slug: string) {

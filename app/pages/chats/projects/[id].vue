@@ -80,6 +80,7 @@
       @delete="onDeleteChat"
       @add-to-project="openProjectPicker"
       @remove-from-project="onRemoveFromProject"
+      @cancel-sharing="onCancelSharing"
     />
 
     <div
@@ -143,6 +144,7 @@ const {
   removeChat,
   renameChat,
   moveChat,
+  setChatShared,
   togglePin,
   updateProject,
 } = useProjectChats(projectId)
@@ -587,6 +589,30 @@ async function onDeleteChat(chatId: string, slug: string) {
     nuxtApp.runWithContext(() => {
       useErrorMessage(
         parsedException.message || 'Failed to delete chat',
+        parsedException.why,
+      )
+    })
+  }
+}
+
+async function onCancelSharing(chatId: string) {
+  try {
+    await $fetch('/api/v1/chats/shared/revoke', {
+      method: 'POST',
+      body: { chatIds: [chatId] },
+    })
+
+    setChatShared(chatId, false)
+
+    nuxtApp.runWithContext(() => {
+      useSuccessMessage('Sharing cancelled')
+    })
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    nuxtApp.runWithContext(() => {
+      useErrorMessage(
+        parsedException.message || 'Failed to cancel sharing',
         parsedException.why,
       )
     })

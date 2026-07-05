@@ -279,6 +279,35 @@ export function useProjectChats(projectId: MaybeRefOrGetter<string>) {
     })
   }
 
+  function setChatShared(chatId: string, shared: boolean) {
+    const existingChat = [...pinned.value, ...chats.value].find((chat) => {
+      return chat.id === chatId
+    })
+
+    if (!existingChat) {
+      return
+    }
+
+    const updatedChat = { ...existingChat, shared }
+
+    setEntry(cacheKey.value, {
+      project: project.value,
+      pinned: existingChat.pinnedAt
+        ? pinned.value.map((chat) => {
+          return chat.id === chatId ? updatedChat : chat
+        })
+        : pinned.value,
+      chats: existingChat.pinnedAt
+        ? chats.value
+        : chats.value.map((chat) => {
+          return chat.id === chatId ? updatedChat : chat
+        }),
+      nextCursor: nextCursor.value,
+      hasLoaded: true,
+      lastFetchedAt: Date.now(),
+    })
+  }
+
   function moveChat(chatId: string, projectTargetId: string | null) {
     if (projectTargetId !== resolvedProjectId.value) {
       removeChat(chatId)
@@ -375,6 +404,7 @@ export function useProjectChats(projectId: MaybeRefOrGetter<string>) {
     removeChat,
     renameChat,
     moveChat,
+    setChatShared,
     togglePin,
     updateProject,
   }

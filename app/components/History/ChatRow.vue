@@ -45,18 +45,28 @@
           <Icon name="lucide:folder" size="10" />
           {{ chat.projectName }}
         </span>
+        <span
+          v-if="chat.shared"
+          data-testid="chat-shared-badge"
+          class="badge badge-ghost badge-sm gap-1"
+        >
+          <Icon name="lucide:link" size="10" />
+          Shared
+        </span>
       </div>
     </div>
 
     <HistoryActionsDropdown
       :chat="chat"
       :is-selection-mode="isSelectionMode"
+      :variant="variant"
       @pin="onPin"
       @rename="onRename"
       @delete="onDelete"
       @select="onEnterSelect"
       @add-to-project="onAddToProject"
       @remove-from-project="onRemoveFromProject"
+      @cancel-sharing="onCancelSharing"
     />
   </li>
 </template>
@@ -65,12 +75,18 @@
 import type { HistoryChat } from '#shared/types/history.d'
 import { formatActivityAge } from '#shared/utils/date-groups'
 
-const props = defineProps<{
-  chat: HistoryChat
-  isSelectionMode: boolean
-  isSelected: boolean
-  index: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    chat: HistoryChat
+    isSelectionMode: boolean
+    isSelected: boolean
+    index: number
+    variant?: 'default' | 'shared'
+  }>(),
+  {
+    variant: 'default',
+  },
+)
 
 const emit = defineEmits<{
   pin: [chatId: string]
@@ -80,6 +96,7 @@ const emit = defineEmits<{
   enterSelect: [chatId: string, index: number]
   addToProject: [chat: HistoryChat]
   removeFromProject: [chatId: string, slug: string]
+  cancelSharing: [chatId: string, slug: string]
 }>()
 
 const activityAge = computed(() => {
@@ -112,5 +129,9 @@ function onAddToProject() {
 
 function onRemoveFromProject() {
   emit('removeFromProject', props.chat.id, props.chat.slug)
+}
+
+function onCancelSharing() {
+  emit('cancelSharing', props.chat.id, props.chat.slug)
 }
 </script>

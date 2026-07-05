@@ -31,6 +31,7 @@
   <ClientOnly>
     <UiConfirmation />
     <UiMessages />
+    <LazyChatShareModal />
     <Sidebar v-if="$route.path !== '/'" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />

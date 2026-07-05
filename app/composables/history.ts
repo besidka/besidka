@@ -510,6 +510,61 @@ export function useHistory() {
     }
   }
 
+  async function cancelSharingSelected() {
+    if (selectedIds.value.size === 0) return
+
+    const chatIds = Array.from(selectedIds.value)
+    const selectedChatIds = new Set(chatIds)
+    const chunks = []
+
+    for (let index = 0; index < chatIds.length; index += 90) {
+      chunks.push(chatIds.slice(index, index + 90))
+    }
+
+    try {
+      for (const chunk of chunks) {
+        await $fetch('/api/v1/chats/shared/revoke', {
+          method: 'POST',
+          body: { chatIds: chunk },
+        })
+      }
+
+      updateEntries((entry) => {
+        return {
+          ...entry,
+          chats: entry.chats.map((chat) => {
+            return selectedChatIds.has(chat.id)
+              ? { ...chat, shared: false }
+              : chat
+          }),
+          pinned: entry.pinned.map((chat) => {
+            return selectedChatIds.has(chat.id)
+              ? { ...chat, shared: false }
+              : chat
+          }),
+        }
+      })
+
+      clearCompletedSelection(chatIds)
+
+      nuxtApp.runWithContext(() => {
+        useSuccessMessage(
+          `Sharing cancelled for ${chatIds.length} `
+          + `chat${chatIds.length === 1 ? '' : 's'}`,
+        )
+      })
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to cancel sharing',
+          parsedException.why,
+        )
+      })
+    }
+  }
+
   async function renameChat(chatId: string, slug: string, title: string) {
     try {
       await $fetch(`/api/v1/chats/${slug}/rename`, {
@@ -595,6 +650,40 @@ export function useHistory() {
       nuxtApp.runWithContext(() => {
         useErrorMessage(
           parsedException.message || 'Failed to delete chat',
+          parsedException.why,
+        )
+      })
+    }
+  }
+
+  async function cancelSharing(chatId: string) {
+    try {
+      await $fetch('/api/v1/chats/shared/revoke', {
+        method: 'POST',
+        body: { chatIds: [chatId] },
+      })
+
+      updateEntries((entry) => {
+        return {
+          ...entry,
+          chats: entry.chats.map((chat) => {
+            return chat.id === chatId ? { ...chat, shared: false } : chat
+          }),
+          pinned: entry.pinned.map((chat) => {
+            return chat.id === chatId ? { ...chat, shared: false } : chat
+          }),
+        }
+      })
+
+      nuxtApp.runWithContext(() => {
+        useSuccessMessage('Sharing cancelled')
+      })
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to cancel sharing',
           parsedException.why,
         )
       })
@@ -754,6 +843,8 @@ export function useHistory() {
     deleteSelected,
     renameChat,
     deleteChat,
+    cancelSharing,
+    cancelSharingSelected,
     moveChatToProject,
     moveSelectedToProject,
   }
