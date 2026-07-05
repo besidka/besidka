@@ -45,6 +45,7 @@
               </span>
             </div>
             <div
+              v-if="info.tokens !== undefined"
               data-testid="message-menu-tokens"
               class="flex items-center justify-between gap-3 text-xs"
             >
@@ -54,6 +55,7 @@
               </span>
             </div>
             <div
+              v-if="info.cost !== undefined"
               data-testid="message-menu-cost"
               class="flex items-center justify-between gap-3 text-xs"
             >
@@ -76,7 +78,10 @@
             </div>
           </div>
         </li>
-        <li aria-hidden="true">
+        <li
+          aria-hidden="true"
+          class="pointer-events-none"
+        >
           <hr class="my-1 border-base-200">
         </li>
       </template>

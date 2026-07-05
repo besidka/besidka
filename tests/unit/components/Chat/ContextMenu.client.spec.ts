@@ -225,5 +225,37 @@ describe('Chat/ContextMenu.client', () => {
       ).toBe(false)
       expect(wrapper.text()).toContain('New chat from here')
     })
+
+    it('hides tokens and cost rows when they are unavailable', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['web_search'],
+        tokens: undefined,
+        cost: undefined,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-tokens"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-cost"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-datetime"]').exists(),
+      ).toBe(true)
+      expect(
+        wrapper.find('[data-testid="message-menu-tools"]').text(),
+      ).toContain('Web search')
+    })
   })
 })
