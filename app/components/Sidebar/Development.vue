@@ -1,5 +1,5 @@
 <template>
-  <LazySidebarSubmenu>
+  <LazySidebarSubmenu v-if="showPinToggle || isChatLayout">
     <template #trigger>
       <UiButton
         ghost
@@ -12,26 +12,14 @@
       />
     </template>
     <UiButton
-      to="/assistants"
+      v-if="showPinToggle"
       ghost
-      disabled
-      icon-name="lucide:bot-message-square"
-      :icon-only="true"
-      title="Assistants (In development)"
       circle
-      tooltip-position="bottom"
-      tooltip-style="error"
-    />
-    <UiButton
-      to="/workspaces"
-      ghost
-      disabled
-      icon-name="lucide:layers-2"
       :icon-only="true"
-      title="Workspaces (In development)"
-      circle
+      :icon-name="sidebarPinned ? 'lucide:pin-off' : 'lucide:pin'"
+      :title="sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'"
       tooltip-position="bottom"
-      tooltip-style="error"
+      @click="setSidebarPinned(!sidebarPinned)"
     />
     <UiButton
       v-if="isChatLayout"
@@ -50,8 +38,15 @@
 <script setup lang="ts">
 const route = useRoute()
 const ui = useCookieConsentUi()
+const { isDesktop } = useDevice()
+const reducedMotion = usePreferredReducedMotion()
+const { sidebarPinned, setSidebarPinned } = useUserSetting()
 
 const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
+
+const showPinToggle = computed<boolean>(() => {
+  return isDesktop && reducedMotion.value !== 'reduce'
+})
 
 function openCookieSettings(event: MouseEvent): void {
   const details = (event.target as HTMLElement | null)
