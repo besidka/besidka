@@ -1,10 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const AUTH_STATE_PATH = '.playwright/auth-user.json'
+const E2E_PORT = process.env.E2E_PORT || '3000'
+const E2E_BASE_URL = `http://localhost:${E2E_PORT}`
 const WEB_SERVER_ENV = {
   ...process.env,
   CI: 'true',
-  NUXT_PUBLIC_BASE_URL: 'http://localhost:3000',
+  PORT: E2E_PORT,
+  NUXT_PUBLIC_BASE_URL: E2E_BASE_URL,
   NUXT_ENCRYPTION_HASHIDS: 'secret',
   NUXT_ENCRYPTION_KEY: 'secret',
   NUXT_BETTER_AUTH_SECRET: 'secret',
@@ -43,7 +46,7 @@ export default defineConfig({
   // Shared settings for all the projects below.
   // See https://playwright.dev/docs/api/class-testoptions.
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: E2E_BASE_URL,
     // Collect trace when retrying the failed test.
     // See https://playwright.dev/docs/trace-viewer
     trace: 'on-first-retry',
@@ -96,7 +99,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm run db:migrate && pnpm run dev',
     env: WEB_SERVER_ENV,
-    url: 'http://localhost:3000',
+    url: E2E_BASE_URL,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
   },

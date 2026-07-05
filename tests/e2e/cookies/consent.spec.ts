@@ -337,7 +337,7 @@ test.describe('Cookie consent banner', () => {
           v: 0,
           granted: ['necessary'],
         })),
-        url: 'http://localhost:3000',
+        url: `http://localhost:${process.env.E2E_PORT || '3000'}`,
       }])
 
       await page.reload()

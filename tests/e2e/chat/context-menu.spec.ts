@@ -53,6 +53,8 @@ async function quickTap(locator: Locator): Promise<void> {
 
 test.describe('chat context menu selection state', () => {
   test.beforeEach(async ({ page }) => {
+    test.setTimeout(30_000)
+
     await page.goto('/chats/test?scenario=short&messages=2')
     await page.waitForSelector('[data-role="assistant"]')
     await page.waitForFunction(() => {
