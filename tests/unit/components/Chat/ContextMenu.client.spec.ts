@@ -165,11 +165,14 @@ describe('Chat/ContextMenu.client', () => {
         wrapper.find('[data-testid="message-menu-reasoning"]').text(),
       ).toContain('medium')
       expect(
-        wrapper.find('[data-testid="message-menu-tokens"]').text(),
-      ).toContain('1,180 output')
+        wrapper.find('[data-testid="message-menu-reasoning"]').text(),
+      ).toContain('320 tokens')
       expect(
         wrapper.find('[data-testid="message-menu-tokens"]').text(),
-      ).toContain('320 reasoning')
+      ).toContain('Tokens (output)')
+      expect(
+        wrapper.find('[data-testid="message-menu-tokens"]').text(),
+      ).toContain('1,180')
       expect(
         wrapper.find('[data-testid="message-menu-cost"]').text(),
       ).toContain('$0.0047')
@@ -200,7 +203,10 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(
         wrapper.find('[data-testid="message-menu-tokens"]').text(),
-      ).toContain('5,240 input')
+      ).toContain('Tokens (input)')
+      expect(
+        wrapper.find('[data-testid="message-menu-tokens"]').text(),
+      ).toContain('5,240')
       expect(
         wrapper.find('[data-testid="message-menu-cost"]').text(),
       ).toContain('$0.0131')

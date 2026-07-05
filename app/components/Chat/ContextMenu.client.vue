@@ -29,8 +29,8 @@
               data-testid="message-menu-model"
               class="flex items-center justify-between gap-3 text-xs"
             >
-              <span class="font-normal text-base-content/50">Model</span>
-              <span class="truncate font-normal text-base-content">
+              <span class="shrink-0 font-normal text-base-content/50">Model</span>
+              <span class="min-w-0 truncate font-normal text-base-content">
                 {{ info.model }}
               </span>
             </div>
@@ -39,16 +39,16 @@
               data-testid="message-menu-reasoning"
               class="flex items-center justify-between gap-3 text-xs"
             >
-              <span class="font-normal text-base-content/50">Reasoning</span>
-              <span
-                class="flex items-center gap-1.5 font-normal capitalize
-                  text-base-content"
-              >
-                <component
-                  :is="reasoningIconName"
-                  class="size-3.5"
-                />
-                {{ info.reasoning }}
+              <span class="shrink-0 font-normal text-base-content/50">Reasoning</span>
+              <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
+                <component :is="reasoningIconName" class="size-3.5 shrink-0" />
+                <span class="capitalize">{{ info.reasoning }}</span>
+                <span
+                  v-if="info.reasoningTokens !== undefined"
+                  class="text-base-content/50"
+                >
+                  ({{ formatTokenCount(info.reasoningTokens) }} tokens)
+                </span>
               </span>
             </div>
             <div
@@ -56,12 +56,9 @@
               data-testid="message-menu-tools"
               class="flex items-center justify-between gap-3 text-xs"
             >
-              <span class="font-normal text-base-content/50">Tools</span>
-              <span
-                class="flex items-center gap-1.5 font-normal
-                  text-base-content"
-              >
-                <Icon name="lucide:globe" size="14" />
+              <span class="shrink-0 font-normal text-base-content/50">Tools</span>
+              <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
+                <Icon name="lucide:globe" size="14" class="shrink-0" />
                 {{ toolsLabel }}
               </span>
             </div>
@@ -70,9 +67,11 @@
               data-testid="message-menu-tokens"
               class="flex items-center justify-between gap-3 text-xs"
             >
-              <span class="font-normal text-base-content/50">Tokens</span>
-              <span class="truncate font-normal text-base-content">
+              <span class="shrink-0 font-normal text-base-content/50">
                 {{ tokensLabel }}
+              </span>
+              <span class="min-w-0 truncate font-normal text-base-content">
+                {{ formatTokenCount(info.tokens) }}
               </span>
             </div>
             <div
@@ -80,8 +79,8 @@
               data-testid="message-menu-cost"
               class="flex items-center justify-between gap-3 text-xs"
             >
-              <span class="font-normal text-base-content/50">Cost</span>
-              <span class="font-normal text-base-content">
+              <span class="shrink-0 font-normal text-base-content/50">Cost</span>
+              <span class="min-w-0 truncate font-normal text-base-content">
                 {{ formatMessageCost(info.cost) }}
               </span>
             </div>
@@ -90,10 +89,10 @@
               data-testid="message-menu-turn-total"
               class="flex items-center justify-between gap-3 text-xs"
             >
-              <span class="font-normal text-base-content/50">
+              <span class="shrink-0 font-normal text-base-content/50">
                 Turn total
               </span>
-              <span class="font-normal text-base-content">
+              <span class="min-w-0 truncate font-normal text-base-content">
                 {{ formatMessageCost(info.turnTotalCost) }}
               </span>
             </div>
@@ -170,23 +169,9 @@ const toolsLabel = computed<string>(() => {
 })
 
 const tokensLabel = computed<string>(() => {
-  if (!props.info) {
-    return ''
-  }
-
-  const tokens = formatTokenCount(props.info.tokens)
-
-  if (props.info.role === 'user') {
-    return `${tokens} input`
-  }
-
-  if (props.info.reasoningTokens !== undefined) {
-    const reasoningTokens = formatTokenCount(props.info.reasoningTokens)
-
-    return `${tokens} output · ${reasoningTokens} reasoning`
-  }
-
-  return `${tokens} output`
+  return props.info?.role === 'user'
+    ? 'Tokens (input)'
+    : 'Tokens (output)'
 })
 
 onMounted(async () => {
