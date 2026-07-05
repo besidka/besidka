@@ -118,5 +118,35 @@ export default defineEventHandler(async (event) => {
     await db.batch(messageInserts)
   }
 
+  type WaitUntilCtx = {
+    cloudflare?: {
+      context?: {
+        waitUntil?: (promise: Promise<unknown>) => void
+      }
+    }
+  }
+
+  const cfCtx = (event.context as WaitUntilCtx | undefined)?.cloudflare?.context
+
+  if (cfCtx?.waitUntil) {
+    const runtimeConfig = useRuntimeConfig()
+
+    cfCtx.waitUntil(sendPushNotificationToUser(
+      db,
+      userId,
+      {
+        title: 'Added to your chats',
+        body: 'Your shared chat is ready in Besidka.',
+        url: `/chats/${newChat.slug}`,
+      },
+      {
+        subject: buildVapidSubject(runtimeConfig.vapidSubject),
+        publicKey: runtimeConfig.public.vapidPublicKey || undefined,
+        privateKey: runtimeConfig.vapidPrivateKey || undefined,
+      },
+      cfCtx.waitUntil.bind(cfCtx),
+    ))
+  }
+
   return { slug: newChat.slug }
 })

@@ -41,6 +41,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - **Reasoning Mode** — Step-by-step thinking for complex questions
 - **File Attachments & File Manager** — Send images and PDFs, reuse files across chats
 - **Chat Branching** — Fork a conversation mid-thread to explore a different direction
+- **Shareable Chats** — Share a chat via a public, unguessable link that anyone can view without an account and branch into their own chats; control link expiry, search-engine indexing, and what's visible per share
 - **Projects** — Organize chats with shared instructions and memory
 - **Resumable Streams** — Refresh the page and pick up right where you left off
 - **Chat History** — Search, pin and rename past conversations

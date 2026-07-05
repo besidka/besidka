@@ -23,6 +23,27 @@
   <template v-else-if="data">
     <ChatContainer class="!gap-0 pb-2">
       <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
+        <div
+          v-if="showOpenInSafariHint"
+          data-testid="shared-open-in-safari-hint"
+          role="alert"
+          class="alert alert-info alert-soft mb-3 !shadow-lg"
+        >
+          <Icon name="lucide:info" size="16" class="shrink-0" />
+          <span class="text-xs sm:text-sm">
+            For the best experience, open this page in Safari — tap the
+            ••• (or share) menu and choose "Open in Safari".
+          </span>
+          <UiButton
+            circle
+            ghost
+            size="xs"
+            text="Dismiss"
+            icon-only
+            icon-name="lucide:x"
+            @click="dismissOpenInSafariHint"
+          />
+        </div>
         <UiBubble class="!block shadow-none">
           <div
             class="
@@ -235,6 +256,15 @@ const { loggedIn } = useAuth()
 const { isBranching, branchSharedChat } = useChatShare()
 
 const isSettingsExpanded = shallowRef<boolean>(false)
+const showOpenInSafariHint = shallowRef<boolean>(false)
+
+onMounted(() => {
+  showOpenInSafariHint.value = isIosInAppBrowser()
+})
+
+function dismissOpenInSafariHint(): void {
+  showOpenInSafariHint.value = false
+}
 
 const shareSettings = computed<ShareSettingRow[]>(() => {
   if (!data.value) {

@@ -64,6 +64,13 @@ comparison:
         - no
         - no
         - yes
+    - label: Shareable chat links
+      values:
+        - yes
+        - Link only, no branching
+        - Link + branch, no privacy controls
+        - Link only, no branching
+        - Basic sharing only
     - label: Message caps from the app
       values:
         - None
@@ -92,6 +99,8 @@ faqs:
     answer: Yes. Besidka is MIT-licensed and designed to run on Cloudflare Workers. Clone the repository, configure your Cloudflare account per the README, and deploy with pnpm run deploy. You bring the Cloudflare account.
   - question: Is my chat history private?
     answer: Chat history is stored in your own Cloudflare D1 database, scoped to your account. If you self-host, no third party has access. On the hosted version at besidka.com, only you can read your conversations.
+  - question: Can I share a chat?
+    answer: Yes. Any chat can be shared via a public, unguessable link — recipients view a read-only copy without needing an account, and can branch it into their own chats. You control per-share options like link expiry, search-engine indexing, and whether images, file names, message details, or your avatar are visible, and you can revoke a share at any time. Shared files are served through short-lived, revocable tokens rather than a public bucket.
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at their per-token rates. There is no monthly fee, no seat charge, and no markup. You only pay when you actually send a message.
   - question: What does "Besidka" mean?
@@ -119,6 +128,9 @@ features:
   - icon: lucide:git-branch
     title: Chat branching
     body: Fork any conversation mid-thread to explore a different direction without losing the original.
+  - icon: lucide:share-2
+    title: Shareable chats
+    body: Share a chat with a public, unguessable link. Anyone can view it without an account and branch it into their own chats — you control expiry, indexing, and what's visible.
   - icon: lucide:folder-kanban
     title: Projects
     body: Group related chats under a project with shared instructions and memory so every conversation has context.
