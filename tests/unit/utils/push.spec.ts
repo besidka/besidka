@@ -356,6 +356,11 @@ describe('push utils', () => {
       staleRemoved: 0,
       rejected: 0,
       failed: 1,
+      failures: [{
+        host: 'fcm.googleapis.com',
+        status: 0,
+        reason: 'network down',
+      }],
     })
 
     expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({

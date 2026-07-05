@@ -239,10 +239,15 @@ export function useChatShare() {
         }
 
         if (response.reason === 'delivery-failed') {
+          const failure = response.failures[0]
+
           useErrorMessage(
             'Notification could not be delivered',
-            'The push service rejected it — re-enable notifications in the '
-            + 'Besidka app, then try again.',
+            failure
+              ? `${failure.host} responded ${failure.status}: `
+              + `${failure.reason}`
+              : 'The push service rejected it — re-enable notifications '
+                + 'in the Besidka app, then try again.',
           )
 
           return

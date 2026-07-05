@@ -110,6 +110,7 @@ describe('shared chat handoff API', () => {
       staleRemoved: 0,
       rejected: 0,
       failed: 0,
+      failures: [],
     }))
     vi.stubGlobal(
       'sendPushNotificationToUser',
@@ -171,12 +172,19 @@ describe('shared chat handoff API', () => {
     expect(kvPutMock).not.toHaveBeenCalled()
   })
 
-  it('reports delivery-failed when no push service accepted', async () => {
+  it('reports delivery-failed with details when nothing was accepted', async () => {
+    const failures = [{
+      host: 'web.push.apple.com',
+      status: 403,
+      reason: '{"reason":"VapidPkHashMismatch"}',
+    }]
+
     sendPushNotificationToUserMock.mockResolvedValue({
       sent: 0,
       staleRemoved: 1,
       rejected: 0,
       failed: 1,
+      failures,
     })
 
     const handler = await getHandler()
@@ -189,7 +197,12 @@ describe('shared chat handoff API', () => {
 
     const response = await handler(event as never)
 
-    expect(response).toEqual({ sent: false, reason: 'delivery-failed' })
+    expect(response).toEqual({
+      sent: false,
+      reason: 'delivery-failed',
+      failures,
+    })
+    expect(kvPutMock).not.toHaveBeenCalled()
   })
 
   it('rejects cross-site requests', async () => {

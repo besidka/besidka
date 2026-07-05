@@ -103,8 +103,6 @@ export default defineEventHandler(async (event) => {
     return { sent: false, reason: 'no-subscriptions' as const }
   }
 
-  await kv.put(cooldownKey, '1', { expirationTtl: 60 })
-
   type WaitUntilCtx = {
     cloudflare?: {
       context?: {
@@ -139,8 +137,14 @@ export default defineEventHandler(async (event) => {
   logger.set({ handoff: { sent, outcomes } })
 
   if (!sent) {
-    return { sent: false, reason: 'delivery-failed' as const }
+    return {
+      sent: false,
+      reason: 'delivery-failed' as const,
+      failures: outcomes?.failures ?? [],
+    }
   }
+
+  await kv.put(cooldownKey, '1', { expirationTtl: 60 })
 
   return { sent: true, reason: null }
 })

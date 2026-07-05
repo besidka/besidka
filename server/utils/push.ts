@@ -29,7 +29,34 @@ interface StoredPushSubscription {
 
 type SendOutcome = 'sent' | 'staleRemoved' | 'rejected' | 'failed'
 
-export type PushSendOutcomes = Record<SendOutcome, number>
+export interface PushFailureDetail {
+  host: string
+  status: number
+  reason: string
+}
+
+export interface PushSendOutcomes {
+  sent: number
+  staleRemoved: number
+  rejected: number
+  failed: number
+  failures: PushFailureDetail[]
+}
+
+interface SendResult {
+  outcome: SendOutcome
+  failure?: PushFailureDetail
+}
+
+function getEndpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host
+  } catch (exception) {
+    void exception
+
+    return 'invalid-endpoint'
+  }
+}
 
 // Without this, a client could subscribe with any URL as the "endpoint" and
 // the server would fetch() it on every future generation via waitUntil — an
@@ -121,9 +148,18 @@ async function sendToSubscription(
   subscription: StoredPushSubscription,
   payloadJson: string,
   vapid: Required<VapidKeys>,
-): Promise<SendOutcome> {
+): Promise<SendResult> {
+  const host = getEndpointHost(subscription.endpoint)
+
   if (!isAllowedPushServiceEndpoint(subscription.endpoint)) {
-    return 'rejected'
+    return {
+      outcome: 'rejected',
+      failure: {
+        host,
+        status: 0,
+        reason: 'push service host is not allowed',
+      },
+    }
   }
 
   try {
@@ -157,18 +193,51 @@ async function sendToSubscription(
       await db.delete(schema.pushSubscriptions)
         .where(eq(schema.pushSubscriptions.id, subscription.id))
 
-      return 'staleRemoved'
+      return {
+        outcome: 'staleRemoved',
+        failure: {
+          host,
+          status: response.status,
+          reason: 'subscription expired at the push service — removed',
+        },
+      }
     }
 
     if (!response.ok) {
-      return 'failed'
+      let body = ''
+
+      try {
+        body = await response.text()
+      } catch (exception) {
+        void exception
+      }
+
+      return {
+        outcome: 'failed',
+        failure: {
+          host,
+          status: response.status,
+          reason: body.slice(0, 140)
+            || response.statusText
+            || 'rejected by the push service',
+        },
+      }
     }
 
-    return 'sent'
+    return { outcome: 'sent' }
   } catch (exception) {
-    void exception
+    const message = exception instanceof Error
+      ? exception.message
+      : String(exception)
 
-    return 'failed'
+    return {
+      outcome: 'failed',
+      failure: {
+        host,
+        status: 0,
+        reason: message.slice(0, 140),
+      },
+    }
   }
 }
 
@@ -201,27 +270,32 @@ export async function sendPushNotificationToUser(
   })
 
   if (subscriptions.length === 0) {
-    return { sent: 0, staleRemoved: 0, rejected: 0, failed: 0 }
+    return { sent: 0, staleRemoved: 0, rejected: 0, failed: 0, failures: [] }
   }
 
   const payloadJson = JSON.stringify(payload)
 
-  const outcomes: Record<SendOutcome, number> = {
+  const outcomes: PushSendOutcomes = {
     sent: 0,
     staleRemoved: 0,
     rejected: 0,
     failed: 0,
+    failures: [],
   }
 
   for (const subscription of subscriptions) {
-    const outcome = await sendToSubscription(
+    const result = await sendToSubscription(
       db,
       subscription,
       payloadJson,
       vapid as Required<VapidKeys>,
     )
 
-    outcomes[outcome] += 1
+    outcomes[result.outcome] += 1
+
+    if (result.failure) {
+      outcomes.failures.push(result.failure)
+    }
   }
 
   const logger = createRequestLogger({
