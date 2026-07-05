@@ -118,6 +118,25 @@ describe('research clarify API', () => {
     )
   })
 
+  it('returns unauthorized before touching the model when there is no session', async () => {
+    stubProviderForModel('gpt-5', ['deep_research'])
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
+
+    const handler = await getClarifyHandler()
+
+    await expect(handler({
+      body: {
+        model: 'openai:gpt-5',
+        topic: 'the future of remote work',
+      },
+    } as any)).rejects.toThrow('Unauthorized')
+
+    expect(mocks.generateObject).not.toHaveBeenCalled()
+    expect((globalThis as any).useChatProvider).not.toHaveBeenCalled()
+    expect((globalThis as any).useOpenAI).not.toHaveBeenCalled()
+    expect((globalThis as any).useGoogle).not.toHaveBeenCalled()
+  })
+
   it('returns 400 when the model does not support deep research', async () => {
     stubProviderForModel('gpt-5-nano', [])
 

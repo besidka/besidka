@@ -147,4 +147,94 @@ describe('new chat API', () => {
       db,
     )
   })
+
+  it('accepts deep research tools and persists the research depth', async () => {
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-1',
+          slug: 'chat-1',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(async () => undefined)
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => undefined),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({
+          values: chatsInsertValues,
+        })
+        .mockReturnValueOnce({
+          values: messagesInsertValues,
+        }),
+      update: vi.fn(),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: ['deep_research'],
+        reasoning: 'off',
+        researchDepth: 'standard',
+      },
+    } as any)).resolves.toEqual({ slug: 'chat-1' })
+
+    expect(messagesInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        researchDepth: 'standard',
+      }),
+    )
+  })
+
+  it('persists a null research depth when the mode is off', async () => {
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-2',
+          slug: 'chat-2',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(async () => undefined)
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => undefined),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({
+          values: chatsInsertValues,
+        })
+        .mockReturnValueOnce({
+          values: messagesInsertValues,
+        }),
+      update: vi.fn(),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Just a question' }],
+        tools: [],
+        reasoning: 'off',
+        researchDepth: 'off',
+      },
+    } as any)).resolves.toEqual({ slug: 'chat-2' })
+
+    expect(messagesInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        researchDepth: null,
+      }),
+    )
+  })
 })

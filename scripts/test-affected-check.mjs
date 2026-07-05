@@ -69,6 +69,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
+    'tests/unit/composables/chat-research-clarify.spec.ts',
     'tests/unit/utils/filter-ui-message-stream.spec.ts',
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
@@ -81,6 +82,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/research.spec.ts',
     'tests/unit/utils/deep-research.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/composables/chat-research-clarify.spec.ts',
     'tests/unit/components/Chat/DeepResearchProgress.spec.ts',
     'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
     'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
