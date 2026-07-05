@@ -1,5 +1,5 @@
 <template>
-  <LazySidebarSubmenu v-if="showPinToggle || isChatLayout">
+  <LazySidebarSubmenu>
     <template #trigger>
       <UiButton
         ghost
@@ -23,7 +23,6 @@
       @click="setSidebarPinned(!sidebarPinned)"
     />
     <UiButton
-      v-if="isChatLayout"
       ghost
       icon-name="lucide:cookie"
       :icon-only="true"
@@ -32,6 +31,16 @@
       tooltip-position="bottom"
       data-testid="cookies-trigger-menu"
       @click="openCookieSettings"
+    />
+    <UiButton
+      ghost
+      icon-name="lucide:clipboard-paste"
+      :icon-only="true"
+      title="Open shared link"
+      circle
+      tooltip-position="bottom"
+      data-testid="sidebar-open-shared-link"
+      @click="onOpenSharedLink"
     />
     <UiButton
       v-if="isOwnedChatPage"
@@ -59,14 +68,15 @@
 </template>
 
 <script setup lang="ts">
+import { extractSharedChatPath } from '#shared/utils/shared-link'
+
 const route = useRoute()
 const ui = useCookieConsentUi()
 const { isDesktop } = useDevice()
 const reducedMotion = usePreferredReducedMotion()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
 const { openShareModal, branchOwnedChat } = useChatShare()
-
-const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
+const { paste } = useClipboardWithPaste()
 
 const showPinToggle = computed<boolean>(() => {
   return isDesktop && reducedMotion.value !== 'reduce'
@@ -100,5 +110,28 @@ function onShare(event: MouseEvent): void {
 function onBranch(event: MouseEvent): void {
   closeSubmenu(event)
   branchOwnedChat(route.params.slug as string)
+}
+
+async function onOpenSharedLink(event: MouseEvent): Promise<void> {
+  closeSubmenu(event)
+
+  const text = await paste()
+
+  if (!text) {
+    return
+  }
+
+  const path = extractSharedChatPath(text)
+
+  if (!path) {
+    useErrorMessage(
+      'No shared link in clipboard',
+      'Copy a Besidka shared-chat link first, then try again.',
+    )
+
+    return
+  }
+
+  await navigateTo(path)
 }
 </script>

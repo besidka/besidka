@@ -48,8 +48,8 @@
             circle
             tooltip-position="left"
           />
-          <LazySidebarDevelopment />
         </template>
+        <LazySidebarDevelopment />
       </UiBubble>
     </div>
   </div>
