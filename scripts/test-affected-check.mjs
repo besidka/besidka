@@ -78,13 +78,13 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-test-endpoint.spec.ts',
   ]
   const historyProjectsTests = [
-    'tests/unit/components/HistoryPageShell.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ProjectActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/projects.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
-    'tests/unit/components/HistoryChatSections.spec.ts',
+    'tests/unit/components/History/ChatSections.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
     'tests/unit/utils/date-groups.spec.ts',

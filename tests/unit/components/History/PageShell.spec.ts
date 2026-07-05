@@ -34,10 +34,12 @@ describe('HistoryPageShell', () => {
 
     expect(navigation.classes()).toContain('tabs')
     expect(navigation.classes()).toContain('tabs-border')
-    expect(links).toHaveLength(2)
+    expect(links).toHaveLength(3)
     expect(links[0]?.attributes('href')).toBe('/chats/history')
     expect(links[0]?.attributes('aria-current')).toBeUndefined()
     expect(links[1]?.attributes('href')).toBe('/chats/projects')
     expect(links[1]?.attributes('aria-current')).toBe('page')
+    expect(links[2]?.attributes('href')).toBe('/chats/shared')
+    expect(links[2]?.attributes('aria-current')).toBeUndefined()
   })
 })
