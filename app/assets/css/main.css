@@ -715,10 +715,12 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * the pill reveals — including the gap the pill leaves on its right — so
  * the reveal never flickers or ping-pongs between open and closed.
  *
- * On reveal, overflow stays hidden for the transition and only flips to
- * visible at the end (transition: overflow 0s 0.5s + allow-discrete), so
- * the circle visibly grows into the full pill — a mirror of the
- * collapse-back-to-circle, rather than the pill appearing all at once.
+ * The clip is a clip-path: circle() that grows from a small circle (the
+ * peek) to one large enough to expose the whole pill, so the reveal
+ * visibly grows the circle into the pill and the collapse shrinks it back
+ * — a smoothly interpolated mirror on the same duration as the slide. The
+ * revealed radius is kept large enough that button tooltips and submenu
+ * popovers are never clipped in the settled hover state.
  * ─────────────────────────────────────────────────────────────────── */
 .sidebar-clip {
   display: contents;
@@ -740,15 +742,12 @@ html body[data-studio-active][data-expand-sidebar]::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
-    width: 4rem;
-    max-height: 4rem;
-    border-radius: 9999px;
+    width: 4.25rem;
+    clip-path: circle(2rem at center);
     transform: translateX(2.25rem);
     transition:
       transform 0.5s ease-in-out,
-      width 0.5s ease-in-out,
-      max-height 0.5s ease-in-out;
+      clip-path 0.5s ease-in-out;
   }
 
   .sidebar-hoverable .sidebar-clip > * {
@@ -757,16 +756,8 @@ html body[data-studio-active][data-expand-sidebar]::before {
 
   .sidebar-hoverable:hover .sidebar-clip,
   .sidebar-hoverable:focus-within .sidebar-clip {
-    width: 4.25rem;
-    max-height: 18rem;
-    overflow: visible;
+    clip-path: circle(20rem at center);
     transform: translateX(0);
-    transition:
-      transform 0.5s ease-in-out,
-      width 0.5s ease-in-out,
-      max-height 0.5s ease-in-out,
-      overflow 0s ease 0.5s;
-    transition-behavior: allow-discrete;
   }
 }
 
