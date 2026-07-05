@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
     reasoningAutoHide: z.boolean().optional(),
     allowExternalLinks: z.boolean().nullable().optional(),
     notificationPromptState: z.boolean().nullable().optional(),
+    sidebarPinned: z.boolean().optional(),
   }).safeParse)
 
   if (body.error) {
@@ -39,6 +40,7 @@ export default defineEventHandler(async (event) => {
     reasoningAutoHide?: boolean
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
+    sidebarPinned?: boolean
   } = {}
 
   if (body.data.reasoningExpanded !== undefined) {
@@ -56,6 +58,10 @@ export default defineEventHandler(async (event) => {
   if ('notificationPromptState' in body.data) {
     fieldUpdates.notificationPromptState
       = body.data.notificationPromptState ?? null
+  }
+
+  if (body.data.sidebarPinned !== undefined) {
+    fieldUpdates.sidebarPinned = body.data.sidebarPinned
   }
 
   if (Object.keys(fieldUpdates).length === 0) {

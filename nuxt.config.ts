@@ -452,6 +452,11 @@ export default defineNuxtConfig({
             name: 'plyr',
             type: 'localStorage',
           },
+          {
+            id: 'sidebar-pinned',
+            name: 'settings_sidebar_pinned',
+            type: 'localStorage',
+          },
         ],
       },
       // {

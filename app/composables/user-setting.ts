@@ -25,6 +25,10 @@ export function useUserSetting() {
     'user-settings:notification-prompt-state',
     () => null,
   )
+  const serverSidebarPinned = useState<boolean | null>(
+    'user-settings:sidebar-pinned',
+    () => null,
+  )
   const isLoadingSettings = useState<boolean>(
     'user-settings:is-loading',
     () => false,
@@ -65,6 +69,19 @@ export function useUserSetting() {
     },
     set(value) {
       prefStorage.setItem('settings_reasoning_auto_hide', String(value))
+      trigger()
+    },
+  }))
+  const fallbackSidebarPinned = customRef<boolean>((track, trigger) => ({
+    get() {
+      track()
+
+      const raw = prefStorage.getItem('settings_sidebar_pinned')
+
+      return raw !== null ? raw === 'true' : false
+    },
+    set(value) {
+      prefStorage.setItem('settings_sidebar_pinned', String(value))
       trigger()
     },
   }))
@@ -119,6 +136,18 @@ export function useUserSetting() {
     return serverNotificationPromptState.value
   })
 
+  const sidebarPinned = computed<boolean>(() => {
+    if (
+      !activeUserId.value
+      || loadedUserId.value !== activeUserId.value
+      || serverSidebarPinned.value === null
+    ) {
+      return fallbackSidebarPinned.value
+    }
+
+    return serverSidebarPinned.value
+  })
+
   async function syncForUser(userId: string) {
     activeUserId.value = userId
     settingsError.value = null
@@ -163,6 +192,10 @@ export function useUserSetting() {
       serverAllowExternalLinks.value = response.allowExternalLinks ?? null
       serverNotificationPromptState.value
         = response.notificationPromptState ?? null
+
+      const nextSidebarPinned = Boolean(response.sidebarPinned)
+      serverSidebarPinned.value = nextSidebarPinned
+      fallbackSidebarPinned.value = nextSidebarPinned
     } catch (exception) {
       if (
         activeUserId.value !== userId
@@ -176,6 +209,7 @@ export function useUserSetting() {
       serverReasoningAutoHide.value = null
       serverAllowExternalLinks.value = null
       serverNotificationPromptState.value = null
+      serverSidebarPinned.value = null
 
       const parsedException = parseError(exception)
 
@@ -376,6 +410,58 @@ export function useUserSetting() {
     }
   }
 
+  async function setSidebarPinned(
+    sidebarPinned: boolean,
+  ) {
+    settingsError.value = null
+
+    const previousFallbackSidebarPinned
+      = fallbackSidebarPinned.value
+    fallbackSidebarPinned.value = sidebarPinned
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousServerSidebarPinned
+      = serverSidebarPinned.value as boolean
+
+    serverSidebarPinned.value = sidebarPinned
+    isSavingSettings.value = true
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          sidebarPinned,
+        },
+      })
+
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverSidebarPinned.value = sidebarPinned
+      fallbackSidebarPinned.value = sidebarPinned
+    } catch (exception) {
+      if (activeUserId.value !== currentUserId) {
+        return
+      }
+
+      serverSidebarPinned.value = previousServerSidebarPinned
+      fallbackSidebarPinned.value = previousFallbackSidebarPinned
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      isSavingSettings.value = false
+    }
+  }
+
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
@@ -383,6 +469,7 @@ export function useUserSetting() {
     serverReasoningAutoHide.value = null
     serverAllowExternalLinks.value = null
     serverNotificationPromptState.value = null
+    serverSidebarPinned.value = null
     settingsError.value = null
     isLoadingSettings.value = false
     isSavingSettings.value = false
@@ -394,6 +481,7 @@ export function useUserSetting() {
     reasoningAutoHide,
     allowExternalLinks,
     notificationPromptState,
+    sidebarPinned,
     isLoadingSettings,
     isSavingSettings,
     settingsError,
@@ -402,6 +490,7 @@ export function useUserSetting() {
     setReasoningAutoHide,
     setAllowExternalLinks,
     setNotificationPromptState,
+    setSidebarPinned,
     clearUserContext,
   }
 }

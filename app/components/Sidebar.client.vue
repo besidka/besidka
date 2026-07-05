@@ -1,5 +1,6 @@
 <template>
   <div
+    data-testid="sidebar"
     class="fixed max-sm:bottom-0 sm:top-1/2 sm:-translate-y-1/2 right-0 sm:right-4 sm:[[data-studio-active='true']_&]:!left-auto max-sm:left-0 z-50 transition-transform duration-500 ease-in-out"
     :class="{
       'sm:translate-x-0': visible,
@@ -11,50 +12,55 @@
       'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
       'max-sm:translate-y-[var(--sab)]':
         visible && !isKeyboardVisible && hasSafeAreaBottom,
+      'sidebar-hoverable': isDesktop && !sidebarPinned,
     }"
   >
-    <UiBubble
-      class="
-        grid gap-2
-        max-sm:grid-flow-col max-sm:auto-cols-fr max-sm:place-items-center
-        !p-2 max-sm:!pb-[calc(var(--spacing)_*_6_+_var(--sab))]
-        max-sm:!rounded-none sm:!rounded-full
-      "
-    >
-      <UiButton
-        to="/"
-        ghost
-        :disabled="isHomePage"
-        icon-name="lucide:home"
-        :icon-only="true"
-        title="Go to home page"
-        circle
-        :tooltip="isHomePage ? null : undefined"
-        tooltip-position="left"
-      />
-      <SidebarAuthCta />
-      <template v-if="loggedIn">
-        <LazySidebarNewChat />
+    <div class="sidebar-clip">
+      <UiBubble
+        class="
+          grid gap-2
+          max-sm:grid-flow-col max-sm:auto-cols-fr max-sm:place-items-center
+          !p-2 max-sm:!pb-[calc(var(--spacing)_*_6_+_var(--sab))]
+          max-sm:!rounded-none sm:!rounded-full
+        "
+      >
         <UiButton
-          to="/chats/history"
+          to="/"
           ghost
-          :disabled="$route.path === '/chats/history'"
-          icon-name="lucide:history"
+          :disabled="isHomePage"
+          icon-name="lucide:home"
           :icon-only="true"
-          title="History"
+          title="Go to home page"
           circle
+          :tooltip="isHomePage ? null : undefined"
           tooltip-position="left"
         />
-        <LazySidebarDevelopment />
-      </template>
-    </UiBubble>
+        <SidebarAuthCta />
+        <template v-if="loggedIn">
+          <LazySidebarNewChat />
+          <UiButton
+            to="/chats/history"
+            ghost
+            :disabled="$route.path === '/chats/history'"
+            icon-name="lucide:history"
+            :icon-only="true"
+            title="History"
+            circle
+            tooltip-position="left"
+          />
+          <LazySidebarDevelopment />
+        </template>
+      </UiBubble>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
 const route = useRoute()
 const { loggedIn } = useAuth()
+const { isDesktop } = useDevice()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
+const { sidebarPinned } = useUserSetting()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 

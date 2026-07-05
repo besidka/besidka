@@ -14,6 +14,7 @@ export default defineEventHandler(async () => {
       reasoningAutoHide: true,
       allowExternalLinks: true,
       notificationPromptState: true,
+      sidebarPinned: true,
     },
   })
 
@@ -22,5 +23,6 @@ export default defineEventHandler(async () => {
     reasoningAutoHide: settings?.reasoningAutoHide ?? true,
     allowExternalLinks: settings?.allowExternalLinks ?? null,
     notificationPromptState: settings?.notificationPromptState ?? null,
+    sidebarPinned: settings?.sidebarPinned ?? false,
   }
 })

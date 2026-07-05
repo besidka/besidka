@@ -503,4 +503,154 @@ describe('useUserSetting', () => {
     expect(notificationPromptState.value).toBeNull()
     expect(settingsError.value).not.toBeNull()
   })
+
+  it('uses local storage fallback of false for sidebarPinned before sync', () => {
+    localStorage.setItem('settings_sidebar_pinned', 'true')
+
+    const { sidebarPinned } = useUserSetting()
+
+    expect(sidebarPinned.value).toBe(true)
+  })
+
+  it('uses DB value as source of truth for sidebarPinned after sync', async () => {
+    localStorage.setItem('settings_sidebar_pinned', 'true')
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      sidebarPinned: false,
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      sidebarPinned,
+      syncForUser,
+    } = useUserSetting()
+
+    expect(sidebarPinned.value).toBe(true)
+
+    await syncForUser('user-1')
+
+    expect(sidebarPinned.value).toBe(false)
+    expect(localStorage.getItem('settings_sidebar_pinned')).toBe(
+      'false',
+    )
+  })
+
+  it('updates local storage without API call for sidebarPinned guests', async () => {
+    const fetchMock = vi.fn()
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      sidebarPinned,
+      setSidebarPinned,
+    } = useUserSetting()
+
+    await setSidebarPinned(true)
+
+    expect(sidebarPinned.value).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('persists sidebarPinned for authenticated users', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        sidebarPinned: false,
+      })
+      .mockResolvedValueOnce({
+        sidebarPinned: true,
+      })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      syncForUser,
+      sidebarPinned,
+      setSidebarPinned,
+    } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    const savePromise = setSidebarPinned(true)
+
+    expect(sidebarPinned.value).toBe(true)
+    await savePromise
+
+    expect(sidebarPinned.value).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/v1/profiles/settings',
+      {
+        method: 'PATCH',
+        body: {
+          sidebarPinned: true,
+        },
+      },
+    )
+  })
+
+  it('persists sidebarPinned when authenticated user is active before sync', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      sidebarPinned: true,
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      activeUserId,
+      sidebarPinned,
+      setSidebarPinned,
+    } = useUserSetting()
+
+    activeUserId.value = 'user-1'
+
+    await setSidebarPinned(true)
+
+    expect(sidebarPinned.value).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/profiles/settings',
+      {
+        method: 'PATCH',
+        body: {
+          sidebarPinned: true,
+        },
+      },
+    )
+  })
+
+  it('rolls back optimistic sidebarPinned when authenticated save fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        sidebarPinned: false,
+      })
+      .mockRejectedValueOnce(new Error('Save failed'))
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const {
+      sidebarPinned,
+      settingsError,
+      syncForUser,
+      setSidebarPinned,
+    } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    expect(sidebarPinned.value).toBe(false)
+
+    const savePromise = setSidebarPinned(true)
+
+    expect(sidebarPinned.value).toBe(true)
+    await savePromise
+
+    expect(sidebarPinned.value).toBe(false)
+    expect(settingsError.value).not.toBeNull()
+  })
 })

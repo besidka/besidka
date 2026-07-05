@@ -91,6 +91,12 @@ export default defineI18nLocale(() => ({
           + 'the home page).',
         duration: 'Until deleted',
       },
+      'sidebar-pinned': {
+        description:
+          'Remembers whether you pinned the sidebar open '
+          + 'so it stays visible instead of revealing on hover.',
+        duration: 'Until deleted',
+      },
     },
   },
 }))
