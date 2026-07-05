@@ -7,6 +7,7 @@ import type {
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type { MessageUsage } from '#shared/types/message-usage.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -22,6 +23,7 @@ import {
   toUIMessageStream,
 } from 'ai'
 import * as schema from '~~/server/db/schema'
+import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
@@ -604,7 +606,7 @@ export default defineEventHandler(async (event) => {
                     total: usage.totalTokens
                       ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
                   },
-                  cost: computeModelCost(model.id, usage),
+                  cost: computeModelCost(model.id, provider.id, usage),
                 },
               })
             },
@@ -647,6 +649,22 @@ export default defineEventHandler(async (event) => {
           generateMessageId: () => messagePublicId,
           sendSources: true,
           sendReasoning: body.data.reasoning !== 'off',
+          messageMetadata({ part }) {
+            if (part.type !== 'finish') {
+              return undefined
+            }
+
+            const usage = buildMessageUsage(
+              part.totalUsage,
+              model.id,
+              provider.id,
+            )
+
+            return {
+              createdAt: new Date().toISOString(),
+              ...(usage ? { usage } : {}),
+            }
+          },
           onError(error) {
             const chatError = normalizeChatError({
               error,
@@ -683,6 +701,7 @@ export default defineEventHandler(async (event) => {
 
         const wasPersisted = await persistAssistantMessageFromStream({
           stream: persistenceStream,
+          result,
           db,
           event,
           providerId: provider.id,
@@ -774,23 +793,22 @@ export default defineEventHandler(async (event) => {
   })
 })
 
-// Dollars spent on a single generation, derived from the per-1M-token prices
-// in `getModelCostMap()`. Returns undefined when the model has no known price
-// so callers omit `ai.cost` rather than logging a misleading 0.
+// Dollars spent on a single generation, derived from the same per-1M-token
+// pricing `buildMessageUsage()` uses for persisted/streamed usage. Returns
+// undefined when the usage is incomplete or the model has no known price, so
+// callers omit `ai.cost` rather than logging a misleading 0.
 function computeModelCost(
   modelId: string,
+  providerId: string,
   usage: LanguageModelUsage,
 ): number | undefined {
-  const cost = getModelCostMap()[modelId]
+  const messageUsage = buildMessageUsage(usage, modelId, providerId)
 
-  if (!cost) {
+  if (!messageUsage || messageUsage.inputCost === undefined) {
     return undefined
   }
 
-  const inputTokens = usage.inputTokens ?? 0
-  const outputTokens = usage.outputTokens ?? 0
-
-  return (inputTokens * cost.input + outputTokens * cost.output) / 1_000_000
+  return messageUsage.inputCost + (messageUsage.outputCost ?? 0)
 }
 
 // Returns the inserted { id, publicId } row, OR `undefined` when
@@ -922,6 +940,7 @@ function buildPersistedAssistantReplayChunks(input: {
 
 async function persistAssistantMessageFromStream(input: {
   stream: ReadableStream<any>
+  result: ReturnType<typeof streamText>
   db: ReturnType<typeof useDb>
   event: H3Event
   providerId: string
@@ -971,6 +990,24 @@ async function persistAssistantMessageFromStream(input: {
       normalizationInput,
     )
 
+    let usage: MessageUsage | undefined
+
+    try {
+      usage = buildMessageUsage(
+        await input.result.usage,
+        input.modelId,
+        input.providerId,
+      )
+    } catch (exception) {
+      input.logger.set({
+        usageCapture: {
+          error: exception instanceof Error
+            ? exception.message
+            : String(exception),
+        },
+      })
+    }
+
     await insertMessageWithPublicId({
       db: input.db,
       values: {
@@ -979,6 +1016,7 @@ async function persistAssistantMessageFromStream(input: {
         parts: normalizedParts,
         tools: [],
         reasoning: input.reasoning,
+        usage: usage ?? null,
       },
       publicId: input.publicId,
     })

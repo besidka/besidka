@@ -8,6 +8,7 @@ import type {
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
+import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
@@ -529,6 +530,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
 
+  const hydratedMessages = chat.messages.map((message) => {
+    return {
+      ...message,
+      metadata: {
+        usage: message.usage ?? undefined,
+        createdAt: message.createdAt,
+      } satisfies ChatMessageMetadata,
+    }
+  })
+
   const {
     messages: sdkMessages,
     status: sdkStatus,
@@ -538,7 +549,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     clearError: sdkClearError,
   } = useChatSdk<UIMessage>({
     id: chat.id,
-    messages: chat.messages as unknown as UIMessage[],
+    messages: hydratedMessages as unknown as UIMessage[],
     transport: new DefaultChatTransport({
       api: api.value,
       async fetch(input, init) {

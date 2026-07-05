@@ -136,6 +136,7 @@
       v-if="selectedMessageId"
       :message-id="selectedMessageId"
       :anchor-el="selectedAnchorEl"
+      :info="selectedMessageInfo"
       @branch="branchFromMessage"
       @close="clearMessageSelection"
     />
@@ -144,6 +145,11 @@
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
+import {
+  getMessageMetadata,
+  getMessageUsedTools,
+} from '#shared/utils/message-metadata'
+import type { MessageMenuInfo } from '#shared/utils/message-metadata'
 
 definePageMeta({
   layout: 'chat',
@@ -514,6 +520,59 @@ function clearMessageSelection() {
 
   nuxtApp.callHook('chat:message-selected', null)
 }
+
+const selectedMessageInfo = computed<MessageMenuInfo | null>(() => {
+  if (!selectedMessageId.value) {
+    return null
+  }
+
+  const messageIndex = chatSdk.messages.findIndex((message) => {
+    return message.id === selectedMessageId.value
+  })
+
+  const message = chatSdk.messages[messageIndex]
+
+  if (!message) {
+    return null
+  }
+
+  const metadata = getMessageMetadata(message)
+
+  if (message.role === 'assistant') {
+    const turnTotalCost = (
+      metadata.usage?.inputCost !== undefined
+      && metadata.usage?.outputCost !== undefined
+    )
+      ? metadata.usage.inputCost + metadata.usage.outputCost
+      : undefined
+
+    return {
+      role: 'assistant',
+      createdAt: metadata.createdAt,
+      model: metadata.usage?.model,
+      usedTools: getMessageUsedTools(message),
+      tokens: metadata.usage?.outputTokens,
+      reasoningTokens: metadata.usage?.reasoningTokens,
+      cost: metadata.usage?.outputCost,
+      turnTotalCost,
+    }
+  }
+
+  const followingAssistant = chatSdk.messages
+    .slice(messageIndex + 1)
+    .find(candidate => candidate.role === 'assistant')
+
+  const followingUsage = followingAssistant
+    ? getMessageMetadata(followingAssistant).usage
+    : undefined
+
+  return {
+    role: 'user',
+    createdAt: metadata.createdAt,
+    tokens: followingUsage?.inputTokens,
+    cost: followingUsage?.inputCost,
+  }
+})
 
 if (import.meta.client) {
   onMounted(() => {

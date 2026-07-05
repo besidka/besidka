@@ -109,6 +109,13 @@ export function getAffectedTests(changedFiles) {
     'tests/e2e/chat/context-menu.spec.ts',
   ]
 
+  const messageUsageTests = [
+    'tests/unit/utils/message-format.spec.ts',
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+    'tests/unit/components/Chat/ContextMenu.client.spec.ts',
+  ]
+
   const cookieConsentTests = [
     'tests/unit/composables/preference-storage.spec.ts',
     'tests/unit/utils/consents.spec.ts',
@@ -191,6 +198,15 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/message-usage\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
+      tests: messageUsageTests,
+    },
+    {
+      pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,
+      tests: messageUsageTests,
+    },
+    {
+      pattern:
         /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|i18n\/|app\/composables\/preference-storage\.ts$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
@@ -236,7 +252,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/chat\.ts$/,
-      tests: chatStreamBranchTests,
+      tests: [...chatStreamBranchTests, ...messageUsageTests],
     },
     {
       pattern: /^app\/composables\/chat-test\.ts$/,
@@ -296,6 +312,7 @@ export function getAffectedTests(changedFiles) {
         ...historyProjectsTests,
         ...chatStreamBranchTests,
         ...chatTestEndpointTests,
+        ...messageUsageTests,
       ],
     },
     {

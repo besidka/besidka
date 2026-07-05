@@ -1,5 +1,6 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MessageMenuInfo } from '#shared/utils/message-metadata'
 import ContextMenu from '../../../../app/components/Chat/ContextMenu.client.vue'
 
 describe('Chat/ContextMenu.client', () => {
@@ -129,5 +130,100 @@ describe('Chat/ContextMenu.client', () => {
     }))
 
     expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  describe('usage info rendering', () => {
+    it('renders assistant usage info with model, tools, and costs', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+        usedTools: ['web_search'],
+        tokens: 1180,
+        reasoningTokens: 320,
+        cost: 0.0047,
+        turnTotalCost: 0.0178,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-model"]').text(),
+      ).toContain('gpt-5.4')
+      expect(
+        wrapper.find('[data-testid="message-menu-tools"]').text(),
+      ).toContain('Web search')
+      expect(
+        wrapper.find('[data-testid="message-menu-tokens"]').text(),
+      ).toContain('1,180 output')
+      expect(
+        wrapper.find('[data-testid="message-menu-tokens"]').text(),
+      ).toContain('320 reasoning')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost"]').text(),
+      ).toContain('$0.0047')
+      expect(
+        wrapper.find('[data-testid="message-menu-turn-total"]').text(),
+      ).toContain('$0.0178')
+      expect(
+        wrapper.find('[data-testid="message-menu-datetime"]').exists(),
+      ).toBe(true)
+    })
+
+    it('renders user usage info without model, tools, or turn total', async () => {
+      const info: MessageMenuInfo = {
+        role: 'user',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        tokens: 5240,
+        cost: 0.0131,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-tokens"]').text(),
+      ).toContain('5,240 input')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost"]').text(),
+      ).toContain('$0.0131')
+      expect(
+        wrapper.find('[data-testid="message-menu-model"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-tools"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-turn-total"]').exists(),
+      ).toBe(false)
+    })
+
+    it('renders no info block when info is omitted', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-info"]').exists(),
+      ).toBe(false)
+      expect(wrapper.text()).toContain('New chat from here')
+    })
   })
 })
