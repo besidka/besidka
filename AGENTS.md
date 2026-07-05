@@ -221,6 +221,26 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 
 **API routes**: Located in `server/api/v1/`. Chat endpoints stream AI responses.
 
+**API route file layout (consistency rule)**: When a resource has more than one
+route (a base route plus sub-actions), group them all under a directory named
+after the resource and use `index.<method>.ts` for the base route — do NOT mix a
+flat `resource.<method>.ts` file with a `resource/subaction.<method>.ts`
+subdirectory. Pick the directory form as soon as a second route appears.
+  ```
+  # Correct — everything for the resource lives in one dir
+  server/api/v1/chats/[slug]/share/index.get.ts     # GET  /chats/:slug/share
+  server/api/v1/chats/[slug]/share/index.post.ts    # POST /chats/:slug/share
+  server/api/v1/chats/[slug]/share/revoke.post.ts   # POST /chats/:slug/share/revoke
+
+  # Wrong — flat files alongside a same-named subdirectory
+  server/api/v1/chats/[slug]/share.get.ts
+  server/api/v1/chats/[slug]/share.post.ts
+  server/api/v1/chats/[slug]/share/revoke.post.ts
+  ```
+  Nitro routes `share/index.get.ts` and `share.get.ts` to the same URL, so
+  moving between the two forms never changes the route — prefer the directory
+  form for consistency.
+
 **Composables**: Frontend state/logic in `app/composables/`. The `useChat()` composable manages chat state with AI SDK.
 
 **Environment**: Runtime config in `nuxt.config.ts`. Secrets go in `.dev.vars` (gitignored), with example in `.dev.vars.example`.
