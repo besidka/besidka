@@ -22,6 +22,7 @@ export const userSettings = snakeCase.table(
       .default(true),
     allowExternalLinks: integer({ mode: 'boolean' }),
     notificationPromptState: integer({ mode: 'boolean' }),
+    sidebarPinned: integer({ mode: 'boolean' }),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

@@ -26,6 +26,15 @@
       tips-position="bottom"
     />
     <UiButton
+      v-if="showPinToggle"
+      ghost
+      circle
+      :icon-only="true"
+      :icon-name="sidebarPinned ? 'lucide:pin-off' : 'lucide:pin'"
+      :title="sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'"
+      @click="setSidebarPinned(!sidebarPinned)"
+    />
+    <UiButton
       to="/profile/keys"
       :disabled="$route.path === '/profile/keys'"
       ghost
@@ -58,8 +67,15 @@
 <script setup lang="ts">
 const $auth = useAuth()
 const { loggedIn } = $auth
+const { isDesktop } = useDevice()
+const reducedMotion = usePreferredReducedMotion()
+const { sidebarPinned, setSidebarPinned } = useUserSetting()
 
 const pending = shallowRef<boolean>(false)
+
+const showPinToggle = computed<boolean>(() => {
+  return isDesktop && reducedMotion.value !== 'reduce'
+})
 
 async function signOut() {
   pending.value = true

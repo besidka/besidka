@@ -6,6 +6,7 @@ interface SettingsRecord {
   reasoningAutoHide: boolean
   allowExternalLinks: boolean | null
   notificationPromptState: boolean | null
+  sidebarPinned: boolean
 }
 
 function createDbMock() {
@@ -20,6 +21,7 @@ function createDbMock() {
     reasoningAutoHide?: boolean
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
+    sidebarPinned?: boolean
   }) => {
     currentSettings = {
       id: 1,
@@ -27,6 +29,7 @@ function createDbMock() {
       reasoningAutoHide: values.reasoningAutoHide ?? true,
       allowExternalLinks: values.allowExternalLinks ?? null,
       notificationPromptState: values.notificationPromptState ?? null,
+      sidebarPinned: values.sidebarPinned ?? false,
     }
   })
   const insert = vi.fn(() => ({
@@ -40,6 +43,7 @@ function createDbMock() {
     reasoningAutoHide?: boolean
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
+    sidebarPinned?: boolean
   }) => {
     currentSettings = {
       id: 1,
@@ -55,6 +59,9 @@ function createDbMock() {
       notificationPromptState: 'notificationPromptState' in values
         ? (values.notificationPromptState ?? null)
         : (currentSettings?.notificationPromptState ?? null),
+      sidebarPinned: values.sidebarPinned
+        ?? currentSettings?.sidebarPinned
+        ?? false,
     }
 
     return {
@@ -167,6 +174,7 @@ describe('profile settings API', () => {
       reasoningAutoHide: true,
       allowExternalLinks: null,
       notificationPromptState: null,
+      sidebarPinned: false,
     })
   })
 
@@ -211,6 +219,7 @@ describe('profile settings API', () => {
       reasoningAutoHide: true,
       allowExternalLinks: null,
       notificationPromptState: null,
+      sidebarPinned: false,
     })
   })
 
@@ -243,6 +252,7 @@ describe('profile settings API', () => {
       reasoningAutoHide: false,
       allowExternalLinks: null,
       notificationPromptState: null,
+      sidebarPinned: false,
     })
   })
 
@@ -275,6 +285,7 @@ describe('profile settings API', () => {
       reasoningAutoHide: true,
       allowExternalLinks: true,
       notificationPromptState: null,
+      sidebarPinned: false,
     })
   })
 
@@ -307,6 +318,40 @@ describe('profile settings API', () => {
       reasoningAutoHide: true,
       allowExternalLinks: null,
       notificationPromptState: false,
+      sidebarPinned: false,
+    })
+  })
+
+  it('saves and returns sidebarPinned', async () => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        sidebarPinned: true,
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      sidebarPinned: true,
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toEqual({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      allowExternalLinks: null,
+      notificationPromptState: null,
+      sidebarPinned: true,
     })
   })
 

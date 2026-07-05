@@ -11,7 +11,7 @@
       'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
       'max-sm:translate-y-[var(--sab)]':
         visible && !isKeyboardVisible && hasSafeAreaBottom,
-      'sidebar-hoverable': isDesktop,
+      'sidebar-hoverable': isDesktop && !sidebarPinned,
     }"
   >
     <div class="sidebar-clip">
@@ -59,6 +59,7 @@ const { loggedIn } = useAuth()
 const { isDesktop } = useDevice()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
+const { sidebarPinned } = useUserSetting()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 
