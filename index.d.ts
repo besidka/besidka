@@ -7,9 +7,9 @@ declare module 'nuxt/schema' {
     drizzleDebug?: boolean
     encryptionHashids: string
     encryptionKey: string
-    resendApiKey: string
-    resendSenderNoreply: string
-    resendSenderPersonalized: string
+    emailNoopEnabled: boolean
+    emailSenderNoreply: string
+    emailSenderPersonalized: string
     betterAuthSecret: string
     googleClientId: string
     googleClientSecret: string

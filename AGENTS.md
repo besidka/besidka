@@ -142,6 +142,8 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 ### Project Docs
 
 - `docs/files.md` - Files functionality, upload flow, and Workers constraints
+- `docs/email.md` - Transactional email (Cloudflare Email Sending binding):
+  architecture, config, testing, and the Resend-revert runbook
 - `docs/landing-studio.md` - Landing page (Nuxt Content + Studio): editing,
   components, Studio local-vs-preview-vs-prod flow, deploy runbook
 - `docs/landing-production-todo.md` - Owner checklist of remaining manual steps

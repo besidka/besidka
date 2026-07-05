@@ -143,11 +143,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/layouts/chat.spec.ts',
   ]
 
+  const emailTests = [
+    'tests/integration/server/email.spec.ts',
+  ]
+
   const testMappings = [
     {
       pattern:
         /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js)$/,
       tests: pushNotificationTests,
+    },
+    {
+      pattern: /^server\/utils\/(email|auth)\.ts$/,
+      tests: emailTests,
     },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,

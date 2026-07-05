@@ -2,10 +2,10 @@
 NUXT_ENCRYPTION_HASHIDS=secret
 NUXT_ENCRYPTION_KEY=secret
 
-# Resend
-# https://resend.com/api-keys
-NUXT_RESEND_API_KEY=
-# Set true in CI E2E to skip real email sending
+# Cloudflare Email Sending (Workers binding — no API key needed).
+# Domain besidka.com must be onboarded to Email Sending.
+# Senders are set via wrangler.jsonc vars; only the noop flag lives here.
+# Set true in CI E2E to skip real email sending.
 NUXT_EMAIL_NOOP_ENABLED=false
 
 # Better Auth

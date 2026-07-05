@@ -103,6 +103,7 @@ function createAuth() {
           to: user.email,
           subject: 'Reset your password',
           html: `Click the link to reset your password: ${url}`,
+          text: `Click the link to reset your password: ${url}`,
         })
       },
     },
@@ -122,6 +123,7 @@ function createAuth() {
           to: user.email,
           subject: 'Verify your email address',
           html: `Click the link to verify your email: ${url}`,
+          text: `Click the link to verify your email: ${url}`,
         })
       },
     },

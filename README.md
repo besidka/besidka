@@ -25,7 +25,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - [Nuxt Studio](https://nuxt.studio/) (visual content editor)
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [Better Auth](https://www.better-auth.com/)
-- [Resend](https://resend.com/)
+- [Cloudflare Email Sending](https://developers.cloudflare.com/email-service/)
 - [Daisy UI](https://daisyui.com/)
 - [Vercel AI SDK](https://ai-sdk.dev/docs)
 - [Evlog](https://evlog.dev/) (observability and logging)
