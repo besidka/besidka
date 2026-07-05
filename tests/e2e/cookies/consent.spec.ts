@@ -398,9 +398,15 @@ test.describe('Cookie consent banner (chat layout)', () => {
       await expect(page.getByTestId('cookies-trigger')).toHaveCount(0)
       await expect(page.getByTestId('cookies-popup')).toHaveCount(0)
 
-      // Open the "More Features" sidebar dropdown that hosts the cookie
-      // entry on chat pages: hover the trigger then force the <details>
-      // open (mirrors the proven sidebar-dropdown pattern in files.spec).
+      // The desktop sidebar hides behind a hover-reveal clip-path at rest
+      // (only its middle icon peeks), so the "More Features" trigger isn't
+      // hit-testable until the pill is actually revealed. Real-hover the
+      // container first so Chromium applies :hover and runs the reveal
+      // transition, then hover the trigger itself, then force the
+      // <details> open (mirrors the proven sidebar-dropdown pattern in
+      // files.spec).
+      await page.getByTestId('sidebar').hover()
+
       const moreTrigger = page.getByTestId('sidebar-more-features')
 
       await moreTrigger.hover()
