@@ -7,6 +7,7 @@ export interface ChatShare {
   indexable: boolean
   showFiles: boolean
   showMetadata: boolean
+  showAuthorAvatar: boolean
 }
 
 export interface ChatShareOptions {
@@ -14,4 +15,5 @@ export interface ChatShareOptions {
   indexable: boolean
   showFiles: boolean
   showMetadata: boolean
+  showAuthorAvatar: boolean
 }

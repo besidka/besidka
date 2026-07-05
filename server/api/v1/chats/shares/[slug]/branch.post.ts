@@ -78,15 +78,15 @@ export default defineEventHandler(async (event) => {
   })
 
   const title = sourceChat.title
-    ? `Fork: ${sourceChat.title.replace(/(Fork|Branch): /g, '')}`
-    : 'Fork'
+    ? `Branch: ${sourceChat.title.replace(/Branch: /g, '')}`
+    : 'Branch'
 
   const newChat = await db
     .insert(schema.chats)
     .values({
       userId,
       title,
-      forkedFromShareSlug: params.data.slug,
+      branchedFromShareSlug: params.data.slug,
     })
     .returning({
       id: schema.chats.id,

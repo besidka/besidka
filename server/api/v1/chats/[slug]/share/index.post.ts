@@ -15,6 +15,7 @@ const bodyRules = z.object({
   indexable: z.boolean(),
   showFiles: z.boolean(),
   showMetadata: z.boolean(),
+  showAuthorAvatar: z.boolean(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -84,6 +85,7 @@ export default defineEventHandler(async (event) => {
       indexable: body.data.indexable,
       showFiles: body.data.showFiles,
       showMetadata: body.data.showMetadata,
+      showAuthorAvatar: body.data.showAuthorAvatar,
       expiresAt,
     })
     .onConflictDoUpdate({
@@ -92,6 +94,7 @@ export default defineEventHandler(async (event) => {
         indexable: body.data.indexable,
         showFiles: body.data.showFiles,
         showMetadata: body.data.showMetadata,
+        showAuthorAvatar: body.data.showAuthorAvatar,
         expiresAt,
         updatedAt: new Date(),
       },
@@ -135,5 +138,6 @@ export default defineEventHandler(async (event) => {
     indexable: body.data.indexable,
     showFiles: body.data.showFiles,
     showMetadata: body.data.showMetadata,
+    showAuthorAvatar: body.data.showAuthorAvatar,
   }
 })

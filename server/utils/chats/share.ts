@@ -32,6 +32,7 @@ const ACTIVE_SHARE_COLUMNS = {
   indexable: true,
   showFiles: true,
   showMetadata: true,
+  showAuthorAvatar: true,
 } as const
 
 export function durationToExpiresAt(

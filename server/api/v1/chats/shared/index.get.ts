@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
     projectName: schema.projects.name,
     shareSlug: schema.chatShares.slug,
     expiresAt: schema.chatShares.expiresAt,
+    showAuthorAvatar: schema.chatShares.showAuthorAvatar,
   })
     .from(schema.chats)
     .innerJoin(

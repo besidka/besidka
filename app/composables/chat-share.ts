@@ -25,7 +25,10 @@ export function useChatShare() {
   )
   const isLoading = useState<boolean>('chat-share:is-loading', () => false)
   const isSaving = useState<boolean>('chat-share:is-saving', () => false)
-  const isForking = useState<boolean>('chat-share:is-forking', () => false)
+  const isBranching = useState<boolean>(
+    'chat-share:is-branching',
+    () => false,
+  )
 
   async function loadShare(slug: string) {
     isLoading.value = true
@@ -38,11 +41,11 @@ export function useChatShare() {
       }
 
       targetHasFiles.value = response.hasFiles
-      share.value = response.share?.slug && response.share.url
+      share.value = response.share?.slug
         ? {
           ...response.share,
           slug: response.share.slug,
-          url: response.share.url,
+          url: `${window.location.origin}/shared/${response.share.slug}`,
         }
         : null
     } catch (exception) {
@@ -86,20 +89,23 @@ export function useChatShare() {
         body: options,
       })
 
+      const url = `${window.location.origin}/shared/${response.slug}`
+
       share.value = {
         slug: response.slug,
-        url: response.url,
+        url,
         expiresAt: response.expiresAt,
         indexable: response.indexable,
         showFiles: response.showFiles,
         showMetadata: response.showMetadata,
+        showAuthorAvatar: response.showAuthorAvatar,
       }
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage('Share link ready')
       })
 
-      return response.url
+      return url
     } catch (exception) {
       const parsedException = parseError(exception)
 
@@ -143,8 +149,8 @@ export function useChatShare() {
     }
   }
 
-  async function forkOwnedChat(slug: string) {
-    isForking.value = true
+  async function branchOwnedChat(slug: string) {
+    isBranching.value = true
 
     try {
       const response = await $fetch('/api/v1/chats/branch', {
@@ -153,7 +159,7 @@ export function useChatShare() {
       })
 
       nuxtApp.runWithContext(() => {
-        useSuccessMessage('Chat forked')
+        useSuccessMessage('Chat branched')
       })
 
       await navigateTo(`/chats/${response.slug}`)
@@ -162,12 +168,40 @@ export function useChatShare() {
 
       nuxtApp.runWithContext(() => {
         useErrorMessage(
-          parsedException.message || 'Failed to fork chat',
+          parsedException.message || 'Failed to branch chat',
           parsedException.why,
         )
       })
     } finally {
-      isForking.value = false
+      isBranching.value = false
+    }
+  }
+
+  async function branchSharedChat(shareSlug: string) {
+    isBranching.value = true
+
+    try {
+      const response = await $fetch(
+        `/api/v1/chats/shares/${shareSlug}/branch`,
+        { method: 'POST' },
+      )
+
+      nuxtApp.runWithContext(() => {
+        useSuccessMessage('Chat branched')
+      })
+
+      await navigateTo(`/chats/${response.slug}`)
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to branch chat',
+          parsedException.why,
+        )
+      })
+    } finally {
+      isBranching.value = false
     }
   }
 
@@ -178,12 +212,13 @@ export function useChatShare() {
     share,
     isLoading,
     isSaving,
-    isForking,
+    isBranching,
     openShareModal,
     closeShareModal,
     loadShare,
     createOrUpdateShare,
     revokeShare,
-    forkOwnedChat,
+    branchOwnedChat,
+    branchSharedChat,
   }
 }

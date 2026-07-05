@@ -21,28 +21,34 @@
     />
   </div>
   <template v-else-if="data">
-    <div class="flex items-center justify-between gap-3 mb-6">
-      <h1
-        data-testid="shared-chat-title"
-        class="text-xl font-semibold truncate"
-      >
-        {{ data.title || 'Shared chat' }}
-      </h1>
-      <UiButton
-        v-if="loggedIn"
-        data-testid="shared-fork-button"
-        text="Add to my chats"
-        icon-name="lucide:git-fork"
-        :disabled="isForking"
-        @click="forkChat"
-      />
-      <UiButton
-        v-else
-        data-testid="shared-fork-button"
-        to="/signin"
-        text="Sign in to add to your chats"
-        icon-name="lucide:git-fork"
-      />
+    <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24 mb-6">
+      <UiBubble class="!block shadow-none">
+        <div class="flex items-center justify-between gap-3">
+          <h1
+            data-testid="shared-chat-title"
+            class="text-sm sm:text-base font-semibold truncate"
+          >
+            {{ data.title || 'Shared chat' }}
+          </h1>
+          <UiButton
+            v-if="loggedIn"
+            data-testid="shared-add-to-chats"
+            text="Add To My Chats"
+            icon-name="lucide:git-fork"
+            size="sm"
+            :disabled="isBranching"
+            @click="branchSharedChat(shareSlug)"
+          />
+          <UiButton
+            v-else
+            data-testid="shared-add-to-chats"
+            to="/signin"
+            text="Sign in to add to your chats"
+            icon-name="lucide:git-fork"
+            size="sm"
+          />
+        </div>
+      </UiBubble>
     </div>
     <ChatContainer class="!gap-0">
       <div
@@ -53,6 +59,9 @@
         <ChatMessage
           :role="m.role"
           :message-id="m.id"
+          :author-name="data.author?.name"
+          :author-image="data.author?.image"
+          :hide-user-avatar="!data.author"
         >
           <ChatFiles :message="m" />
           <ChatReasoning
@@ -94,11 +103,6 @@
           </div>
           <ChatUrlSources :message="m" />
         </ChatMessage>
-        <SharedMessageMeta
-          v-if="data.showMetadata"
-          :role="m.role"
-          :created-at="m.createdAt"
-        />
       </div>
     </ChatContainer>
   </template>
@@ -107,7 +111,6 @@
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import { parseError } from 'evlog'
 
 interface SharedChatMessage {
   id: string
@@ -117,11 +120,18 @@ interface SharedChatMessage {
   createdAt?: string | number
 }
 
+interface SharedChatAuthor {
+  name: string | null
+  image: string | null
+}
+
 interface SharedChatResponse {
   title: string
   indexable: boolean
   showFiles: boolean
   showMetadata: boolean
+  showAuthorAvatar: boolean
+  author: SharedChatAuthor | null
   messages: SharedChatMessage[]
 }
 
@@ -131,12 +141,14 @@ definePageMeta({
 
 const route = useRoute()
 
+const shareSlug = computed<string>(() => route.params.slug as string)
+
 const key = computed<string>(() => {
-  return `shared-${route.params.slug}`
+  return `shared-${shareSlug.value}`
 })
 
 const { data, error } = await useFetch<SharedChatResponse>(
-  () => `/api/v1/shared/${route.params.slug}`,
+  () => `/api/v1/shared/${shareSlug.value}`,
   { key },
 )
 
@@ -155,35 +167,12 @@ useHead({
   link: [
     {
       rel: 'canonical',
-      href: () => `${baseUrl}/shared/${route.params.slug}`,
+      href: () => `${baseUrl}/shared/${shareSlug.value}`,
     },
   ],
 })
 
 const { components, getUnwrap } = useChatFormat()
 const { loggedIn } = useAuth()
-
-const isForking = shallowRef<boolean>(false)
-
-async function forkChat() {
-  isForking.value = true
-
-  try {
-    const response = await $fetch<{ slug: string }>(
-      `/api/v1/chats/shares/${route.params.slug}/fork`,
-      { method: 'POST' },
-    )
-
-    await navigateTo(`/chats/${response.slug}`)
-  } catch (exception) {
-    const parsedException = parseError(exception)
-
-    useErrorMessage(
-      parsedException.message || 'Failed to add chat to your chats',
-      parsedException.why,
-    )
-  } finally {
-    isForking.value = false
-  }
-}
+const { isBranching, branchSharedChat } = useChatShare()
 </script>

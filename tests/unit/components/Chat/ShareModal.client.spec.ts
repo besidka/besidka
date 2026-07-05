@@ -8,22 +8,13 @@ function resetChatShareState() {
     closeShareModal,
     isLoading,
     isSaving,
-    isForking,
+    isBranching,
   } = useChatShare()
 
   closeShareModal()
   isLoading.value = false
   isSaving.value = false
-  isForking.value = false
-}
-
-function findButtonByText(
-  wrapper: Awaited<ReturnType<typeof mountSuspended>>,
-  text: string,
-) {
-  return wrapper.findAll('button').find((button) => {
-    return button.text() === text
-  })
+  isBranching.value = false
 }
 
 describe('Chat/ShareModal.client', () => {
@@ -89,14 +80,23 @@ describe('Chat/ShareModal.client', () => {
       .toBe(false)
   })
 
-  it('generates a share link and renders it in the link input', async () => {
+  it('defaults the author avatar toggle to on', async () => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    const authorToggle = wrapper.find('[data-testid="share-toggle-author"]')
+
+    expect((authorToggle.element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('generates a share link, auto-copies it, and shows the Copied state', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       slug: 'share-1',
-      url: 'https://example.com/shared/share-1',
+      url: 'https://old-preview-host.example/shared/share-1',
       expiresAt: null,
       indexable: true,
       showFiles: true,
       showMetadata: true,
+      showAuthorAvatar: true,
     })
     vi.stubGlobal('$fetch', fetchMock)
 
@@ -104,6 +104,7 @@ describe('Chat/ShareModal.client', () => {
 
     await wrapper.find('[data-testid="share-generate-button"]')
       .trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
     await new Promise(resolve => setTimeout(resolve))
     await wrapper.vm.$nextTick()
 
@@ -114,6 +115,7 @@ describe('Chat/ShareModal.client', () => {
         indexable: true,
         showFiles: true,
         showMetadata: true,
+        showAuthorAvatar: true,
       },
     })
 
@@ -121,33 +123,47 @@ describe('Chat/ShareModal.client', () => {
 
     expect(linkInput.exists()).toBe(true)
     expect((linkInput.element as HTMLInputElement).value).toBe(
-      'https://example.com/shared/share-1',
+      'http://localhost:3000/shared/share-1',
     )
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      'http://localhost:3000/shared/share-1',
+    )
+
+    const copyButton = wrapper.find('[data-testid="share-copy-button"]')
+
+    expect(copyButton.text()).toContain('Copied!')
   })
 
-  it('copies the share link to the clipboard', async () => {
+  it('copies the share link to the clipboard on demand', async () => {
     const { share } = useChatShare()
 
     share.value = {
       slug: 'share-1',
-      url: 'https://example.com/shared/share-1',
+      url: 'http://localhost:3000/shared/share-1',
       expiresAt: null,
       indexable: true,
       showFiles: true,
       showMetadata: true,
+      showAuthorAvatar: true,
     }
 
     const wrapper = await mountSuspended(ShareModal)
-    const copyButton = findButtonByText(wrapper, 'Copy')
 
-    expect(copyButton).toBeDefined()
+    expect(wrapper.find('[data-testid="share-copy-button"]').text())
+      .toContain('Copy')
 
-    await copyButton!.trigger('click')
+    await wrapper.find('[data-testid="share-copy-button"]')
+      .trigger('click')
     await new Promise(resolve => setTimeout(resolve))
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      'https://example.com/shared/share-1',
+      'http://localhost:3000/shared/share-1',
     )
+    expect(wrapper.find('[data-testid="share-copy-button"]').text())
+      .toContain('Copied!')
   })
 
   it('stops sharing and removes the active share', async () => {
@@ -158,11 +174,12 @@ describe('Chat/ShareModal.client', () => {
 
     share.value = {
       slug: 'share-1',
-      url: 'https://example.com/shared/share-1',
+      url: 'http://localhost:3000/shared/share-1',
       expiresAt: null,
       indexable: true,
       showFiles: true,
       showMetadata: true,
+      showAuthorAvatar: true,
     }
 
     const wrapper = await mountSuspended(ShareModal)

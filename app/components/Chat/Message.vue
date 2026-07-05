@@ -23,10 +23,11 @@
         }"
       >
         <div
+          v-if="role !== 'user' || !hideUserAvatar"
           class="chat-image avatar rounded-full"
           :class="{
             'avatar-placeholder':
-              role === 'assistant' || !user?.image,
+              role === 'assistant' || !resolvedUserImage,
               'max-sm:hidden': hideAssistantAvatarOnMobile
                 && role === 'assistant',
           }"
@@ -39,9 +40,9 @@
             />
             <template v-else>
               <img
-                v-if="user?.image"
-                :alt="user.name"
-                :src="user.image"
+                v-if="resolvedUserImage"
+                :alt="resolvedUserName"
+                :src="resolvedUserImage"
               >
               <Icon v-else name="lucide:user-round" />
             </template>
@@ -64,11 +65,17 @@ const props = withDefaults(defineProps<{
   messageId?: string
   isSelected?: boolean
   anySelected?: boolean
+  authorName?: string | null
+  authorImage?: string | null
+  hideUserAvatar?: boolean
 }>(), {
   hideAssistantAvatarOnMobile: true,
   messageId: undefined,
   isSelected: false,
   anySelected: false,
+  authorName: undefined,
+  authorImage: undefined,
+  hideUserAvatar: false,
 })
 
 const emit = defineEmits<{
@@ -77,6 +84,22 @@ const emit = defineEmits<{
 
 const { user } = useAuth()
 const element = useTemplateRef<HTMLDivElement>('element')
+
+const resolvedUserImage = computed<string | undefined>(() => {
+  if (props.authorImage !== undefined) {
+    return props.authorImage ?? undefined
+  }
+
+  return user.value?.image ?? undefined
+})
+
+const resolvedUserName = computed<string | undefined>(() => {
+  if (props.authorName !== undefined) {
+    return props.authorName ?? undefined
+  }
+
+  return user.value?.name ?? undefined
+})
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
 let pointerStartX = 0

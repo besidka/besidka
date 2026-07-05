@@ -86,11 +86,11 @@
         <li>
           <button
             type="button"
-            data-testid="chat-action-fork"
-            @click="onFork"
+            data-testid="chat-action-branch"
+            @click="onBranch"
           >
             <Icon name="lucide:git-branch-plus" size="14" />
-            Fork
+            Branch
           </button>
         </li>
         <li v-if="chat.shared">
@@ -190,9 +190,9 @@ function onShare() {
   useChatShare().openShareModal(props.chat.slug)
 }
 
-function onFork() {
+function onBranch() {
   closeDropdown()
-  useChatShare().forkOwnedChat(props.chat.slug)
+  useChatShare().branchOwnedChat(props.chat.slug)
 }
 
 function onCancelSharing() {

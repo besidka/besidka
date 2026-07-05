@@ -26,6 +26,7 @@ export interface HistoryResponse {
 type SharedChatRow = HistoryChatRow & {
   shareSlug: typeof schema.chatShares.$inferSelect['slug']
   expiresAt: typeof schema.chatShares.$inferSelect['expiresAt']
+  showAuthorAvatar: typeof schema.chatShares.$inferSelect['showAuthorAvatar']
 }
 
 export type SharedChat = Serialize<SharedChatRow>

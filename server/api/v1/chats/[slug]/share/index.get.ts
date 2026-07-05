@@ -72,6 +72,7 @@ export default defineEventHandler(async (event) => {
       indexable: share.indexable,
       showFiles: share.showFiles,
       showMetadata: share.showMetadata,
+      showAuthorAvatar: share.showAuthorAvatar,
     },
   }
 })

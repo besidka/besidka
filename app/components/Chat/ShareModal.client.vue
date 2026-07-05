@@ -11,7 +11,9 @@
           Share chat
         </h3>
 
-        <div class="flex-1 min-h-0 overflow-y-auto mt-4 space-y-4">
+        <div
+          class="flex-1 min-h-0 overflow-y-auto mt-2.5 py-1.5 -mx-1.5 px-1.5 space-y-4"
+        >
           <div>
             <label class="label" for="chat-share-duration">
               <span class="label-text">Link expires</span>
@@ -71,6 +73,20 @@
             </label>
           </div>
 
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-3">
+              <input
+                v-model="showAuthorAvatar"
+                type="checkbox"
+                data-testid="share-toggle-author"
+                class="toggle toggle-sm"
+              >
+              <span class="label-text">
+                Show author's picture
+              </span>
+            </label>
+          </div>
+
           <div
             v-if="targetHasFiles && showFiles"
             data-testid="share-files-warning"
@@ -102,10 +118,18 @@
               >
               <button
                 type="button"
-                class="btn join-item"
+                data-testid="share-copy-button"
+                class="btn join-item gap-1.5"
                 @click="onCopyLink"
               >
-                Copy
+                <Icon
+                  :name="justCopied ? 'lucide:check' : 'lucide:copy'"
+                  size="14"
+                  class="transition-transform duration-200"
+                />
+                <span class="transition-opacity duration-200">
+                  {{ justCopied ? 'Copied!' : 'Copy' }}
+                </span>
               </button>
             </div>
             <a
@@ -179,6 +203,10 @@ const duration = shallowRef<ChatShareDuration>('forever')
 const indexable = shallowRef<boolean>(true)
 const showFiles = shallowRef<boolean>(true)
 const showMetadata = shallowRef<boolean>(true)
+const showAuthorAvatar = shallowRef<boolean>(true)
+const justCopied = shallowRef<boolean>(false)
+
+let copiedTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 function inferDurationFromExpiresAt(
   expiresAt: string | null,
@@ -203,12 +231,23 @@ function inferDurationFromExpiresAt(
   return 'year'
 }
 
+function resetCopiedState() {
+  justCopied.value = false
+
+  if (copiedTimeoutId) {
+    clearTimeout(copiedTimeoutId)
+    copiedTimeoutId = null
+  }
+}
+
 watch(share, (nextShare) => {
   if (!nextShare) {
     duration.value = 'forever'
     indexable.value = true
     showFiles.value = true
     showMetadata.value = true
+    showAuthorAvatar.value = true
+    resetCopiedState()
 
     return
   }
@@ -217,6 +256,7 @@ watch(share, (nextShare) => {
   indexable.value = nextShare.indexable
   showFiles.value = nextShare.showFiles
   showMetadata.value = nextShare.showMetadata
+  showAuthorAvatar.value = nextShare.showAuthorAvatar
 }, { immediate: true })
 
 watch(isModalOpen, (open) => {
@@ -241,17 +281,31 @@ function onModalClosed() {
   closeShareModal()
 }
 
+async function copyLinkToClipboard(url: string) {
+  try {
+    await navigator.clipboard.writeText(url)
+
+    justCopied.value = true
+
+    if (copiedTimeoutId) {
+      clearTimeout(copiedTimeoutId)
+    }
+
+    copiedTimeoutId = setTimeout(() => {
+      justCopied.value = false
+      copiedTimeoutId = null
+    }, 2000)
+  } catch {
+    useErrorMessage('Failed to copy link')
+  }
+}
+
 async function onCopyLink() {
   if (!share.value?.url) {
     return
   }
 
-  try {
-    await navigator.clipboard.writeText(share.value.url)
-    useSuccessMessage('Link copied to clipboard')
-  } catch {
-    useErrorMessage('Failed to copy link')
-  }
+  await copyLinkToClipboard(share.value.url)
 }
 
 async function onGenerate() {
@@ -259,12 +313,19 @@ async function onGenerate() {
     return
   }
 
-  await createOrUpdateShare(targetChatSlug.value, {
+  const url = await createOrUpdateShare(targetChatSlug.value, {
     duration: duration.value,
     indexable: indexable.value,
     showFiles: showFiles.value,
     showMetadata: showMetadata.value,
+    showAuthorAvatar: showAuthorAvatar.value,
   })
+
+  if (!url) {
+    return
+  }
+
+  await copyLinkToClipboard(url)
 }
 
 async function onRevoke() {
@@ -274,4 +335,10 @@ async function onRevoke() {
 
   await revokeShare(targetChatSlug.value)
 }
+
+onBeforeUnmount(() => {
+  if (copiedTimeoutId) {
+    clearTimeout(copiedTimeoutId)
+  }
+})
 </script>

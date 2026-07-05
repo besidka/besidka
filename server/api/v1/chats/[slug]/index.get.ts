@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
       slug: true,
       title: true,
       projectId: true,
-      forkedFromShareSlug: true,
+      branchedFromShareSlug: true,
     },
     with: {
       messages: {
@@ -65,8 +65,8 @@ export default defineEventHandler(async (event) => {
       id: message.publicId ?? message.id,
     }))
 
-  const sourceShare = chat.forkedFromShareSlug
-    ? await resolveActiveShareBySlug(chat.forkedFromShareSlug, event)
+  const sourceShare = chat.branchedFromShareSlug
+    ? await resolveActiveShareBySlug(chat.branchedFromShareSlug, event)
     : null
 
   const resolvedMessages = sourceShare

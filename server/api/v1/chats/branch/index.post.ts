@@ -84,10 +84,9 @@ export default defineEventHandler(async (event) => {
     messagesToCopy = persistedMessages.slice(0, branchIndex + 1)
   }
 
-  const titlePrefix = body.data.messageId ? 'Branch' : 'Fork'
   const title = chat.title
-    ? `${titlePrefix}: ${chat.title.replace(/(Branch|Fork): /g, '')}`
-    : titlePrefix
+    ? `Branch: ${chat.title.replace(/Branch: /g, '')}`
+    : 'Branch'
 
   const newChat = await db
     .insert(schema.chats)

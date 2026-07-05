@@ -31,6 +31,9 @@ export const chatShares = snakeCase.table(
     showMetadata: integer({ mode: 'boolean' })
       .notNull()
       .default(true),
+    showAuthorAvatar: integer({ mode: 'boolean' })
+      .notNull()
+      .default(true),
   },
   table => [
     uniqueIndex('uq_chat_share_chat').on(table.chatId, table.id),

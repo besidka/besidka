@@ -13,13 +13,13 @@ function resetChatShareState() {
     closeShareModal,
     isLoading,
     isSaving,
-    isForking,
+    isBranching,
   } = useChatShare()
 
   closeShareModal()
   isLoading.value = false
   isSaving.value = false
-  isForking.value = false
+  isBranching.value = false
 }
 
 describe('useChatShare', () => {
@@ -42,6 +42,7 @@ describe('useChatShare', () => {
         indexable: true,
         showFiles: true,
         showMetadata: true,
+        showAuthorAvatar: true,
       },
       hasFiles: true,
     }))
@@ -80,15 +81,16 @@ describe('useChatShare', () => {
     expect(targetHasFiles.value).toBe(false)
   })
 
-  it('loads an active share row', async () => {
+  it('loads an active share row using the current origin', async () => {
     vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({
       share: {
         slug: 'abc123',
-        url: 'https://example.com/shared/abc123',
+        url: 'https://old-preview-host.example/shared/abc123',
         expiresAt: null,
         indexable: true,
         showFiles: true,
         showMetadata: false,
+        showAuthorAvatar: true,
       },
       hasFiles: false,
     }))
@@ -100,11 +102,12 @@ describe('useChatShare', () => {
 
     expect(share.value).toEqual({
       slug: 'abc123',
-      url: 'https://example.com/shared/abc123',
+      url: 'http://localhost:3000/shared/abc123',
       expiresAt: null,
       indexable: true,
       showFiles: true,
       showMetadata: false,
+      showAuthorAvatar: true,
     })
   })
 
@@ -124,14 +127,15 @@ describe('useChatShare', () => {
     expect(targetHasFiles.value).toBe(true)
   })
 
-  it('creates a share and stores it, returning the share url', async () => {
+  it('creates a share and stores it using the current origin', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       slug: 'new-slug',
-      url: 'https://example.com/shared/new-slug',
+      url: 'https://old-preview-host.example/shared/new-slug',
       expiresAt: null,
       indexable: true,
       showFiles: false,
       showMetadata: true,
+      showAuthorAvatar: false,
     })
     vi.stubGlobal('$fetch', fetchMock)
 
@@ -142,6 +146,7 @@ describe('useChatShare', () => {
       indexable: true,
       showFiles: false,
       showMetadata: true,
+      showAuthorAvatar: false,
     })
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/share', {
@@ -151,16 +156,18 @@ describe('useChatShare', () => {
         indexable: true,
         showFiles: false,
         showMetadata: true,
+        showAuthorAvatar: false,
       },
     })
-    expect(url).toBe('https://example.com/shared/new-slug')
+    expect(url).toBe('http://localhost:3000/shared/new-slug')
     expect(share.value).toEqual({
       slug: 'new-slug',
-      url: 'https://example.com/shared/new-slug',
+      url: 'http://localhost:3000/shared/new-slug',
       expiresAt: null,
       indexable: true,
       showFiles: false,
       showMetadata: true,
+      showAuthorAvatar: false,
     })
   })
 
@@ -172,11 +179,12 @@ describe('useChatShare', () => {
 
     share.value = {
       slug: 'abc123',
-      url: 'https://example.com/shared/abc123',
+      url: 'http://localhost:3000/shared/abc123',
       expiresAt: null,
       indexable: true,
       showFiles: true,
       showMetadata: true,
+      showAuthorAvatar: true,
     }
 
     await revokeShare('chat-1')
@@ -188,18 +196,33 @@ describe('useChatShare', () => {
     expect(share.value).toBeNull()
   })
 
-  it('forks an owned chat and navigates to the new chat', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ slug: 'forked-chat' })
+  it('branches an owned chat and navigates to the new chat', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ slug: 'branched-chat' })
     vi.stubGlobal('$fetch', fetchMock)
 
-    const { forkOwnedChat } = useChatShare()
+    const { branchOwnedChat } = useChatShare()
 
-    await forkOwnedChat('chat-1')
+    await branchOwnedChat('chat-1')
 
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/branch', {
       method: 'POST',
       body: { chatSlug: 'chat-1' },
     })
-    expect(navigateToMock).toHaveBeenCalledWith('/chats/forked-chat')
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/branched-chat')
+  })
+
+  it('branches a shared chat and navigates to the new chat', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ slug: 'branched-chat' })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { branchSharedChat } = useChatShare()
+
+    await branchSharedChat('share-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/chats/shares/share-1/branch',
+      { method: 'POST' },
+    )
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/branched-chat')
   })
 })

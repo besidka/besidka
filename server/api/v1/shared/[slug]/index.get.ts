@@ -37,6 +37,12 @@ export default defineEventHandler(async (event) => {
       title: true,
     },
     with: {
+      user: {
+        columns: {
+          name: true,
+          image: true,
+        },
+      },
       messages: {
         columns: {
           id: true,
@@ -85,11 +91,17 @@ export default defineEventHandler(async (event) => {
     }
   })
 
+  const author = share.showAuthorAvatar
+    ? { name: chat.user.name, image: chat.user.image }
+    : null
+
   return {
     title: chat.title,
     indexable: share.indexable,
     showFiles: share.showFiles,
     showMetadata: share.showMetadata,
+    showAuthorAvatar: share.showAuthorAvatar,
+    author,
     messages,
   }
 })
