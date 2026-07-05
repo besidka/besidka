@@ -123,7 +123,6 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-shares-handoff.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
-    'tests/unit/utils/shared-link.spec.ts',
     'tests/unit/composables/ios-in-app-browser.spec.ts',
   ]
 
@@ -230,7 +229,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|shared\/utils\/shared-link\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue)$/,
+        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue)$/,
       tests: chatShareTests,
     },
     {
