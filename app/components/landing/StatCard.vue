@@ -37,8 +37,7 @@
 
 <script setup lang="ts">
 import type { InjectedStats } from './StatGrid.vue'
-
-type StatMetric = 'users' | 'chats' | 'messages' | 'files'
+import type { StatMetric } from '#shared/types/landing.d'
 
 const props = withDefaults(defineProps<{
   metric: StatMetric

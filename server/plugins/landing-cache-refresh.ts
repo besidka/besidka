@@ -56,7 +56,7 @@ export async function runLandingCacheRefreshJob(
   const cache = useStorage('cache')
 
   await Promise.allSettled([
-    cache.removeItem('landing:landing-stats:global.json'),
+    cache.removeItem('landing:landing-stats-v2:global.json'),
     cache.removeItem(
       'landing:landing-github-stars:besidka/besidka.json',
     ),

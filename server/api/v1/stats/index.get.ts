@@ -13,6 +13,7 @@ import { cachedStats } from '~~/server/utils/landing/stats'
  *   chats: number
  *   messages: number
  *   files: number
+ *   sharedChats: number
  *   updatedAt: string   // ISO8601 — when the D1 counts were last fetched
  *   source: 'cache' | 'fresh' | 'fallback'
  * }
@@ -27,6 +28,7 @@ export default defineEventHandler(async (event) => {
     chats: 0,
     messages: 0,
     files: 0,
+    sharedChats: 0,
     updatedAt: new Date(0).toISOString(),
     source: 'fallback' as const,
   }

@@ -1,8 +1,14 @@
 <template>
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+  <div
+    class="
+      grid grid-cols-2 gap-4
+      md:grid-cols-none md:grid-flow-col md:auto-cols-fr
+    "
+  >
     <LandingStatCard
       v-for="(item, index) in metrics"
       :key="index"
+      :class="{ 'max-md:col-span-2': isFullWidthCard(index) }"
       :metric="item.metric"
       :label="item.label"
       :icon="item.icon"
@@ -13,15 +19,14 @@
 
 <script setup lang="ts">
 import type { AsyncData } from 'nuxt/app'
+import type { StatMetric } from '#shared/types/landing.d'
 
 export type InjectedStats = {
   data: AsyncData<unknown, unknown>['data']
   pending: AsyncData<unknown, unknown>['pending']
 }
 
-type StatMetric = 'users' | 'chats' | 'messages' | 'files'
-
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   metrics: {
     metric: StatMetric
     label: string
@@ -29,6 +34,11 @@ withDefaults(defineProps<{
     format?: 'compact' | 'full'
   }[]
 }>(), {})
+
+function isFullWidthCard(index: number): boolean {
+  return index === props.metrics.length - 1
+    && props.metrics.length % 2 === 1
+}
 
 const { data, pending } = await useLazyFetch('/api/v1/stats')
 
