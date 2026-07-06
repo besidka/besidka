@@ -269,6 +269,7 @@ export function usePushNotifications() {
     isSupported,
     permission,
     isSubscribed,
+    refreshState,
     subscribe,
     unsubscribe,
   }
