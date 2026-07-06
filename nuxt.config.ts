@@ -525,8 +525,11 @@ export default defineNuxtConfig({
       // listeners — importScripts is the only way to add them without
       // switching to injectManifest (which would mean owning the entire SW
       // source, caching strategy included). sw-push.js lives in public/ and
-      // is concatenated into the generated worker as-is.
-      importScripts: ['/sw-push.js'],
+      // is concatenated into the generated worker as-is. The buildId query
+      // busts HTTP caching of the imported script: registration
+      // updateViaCache defaults to 'imports', so without it a new worker
+      // shell could keep executing a stale cached sw-push.js after deploy.
+      importScripts: [`/sw-push.js?v=${buildId}`],
     },
     client: {
       installPrompt: true,

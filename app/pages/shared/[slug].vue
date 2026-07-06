@@ -280,7 +280,7 @@ const {
 
 const isSettingsExpanded = shallowRef<boolean>(false)
 const showOpenInSafariHint = shallowRef<boolean>(false)
-const isIosExternal = shallowRef<boolean>(false)
+const isExternalBrowser = shallowRef<boolean>(false)
 
 const {
   data: pushStatus,
@@ -291,16 +291,16 @@ const {
 })
 
 const showOpenInApp = computed<boolean>(() => {
-  return isIosExternal.value
+  return isExternalBrowser.value
     && loggedIn.value
     && Boolean(pushStatus.value?.subscribed)
 })
 
 onMounted(async () => {
   showOpenInSafariHint.value = isIosInAppBrowser()
-  isIosExternal.value = isIosExternalBrowser()
+  isExternalBrowser.value = isExternalBrowserContext()
 
-  if (isIosExternal.value && loggedIn.value) {
+  if (isExternalBrowser.value && loggedIn.value) {
     await fetchPushStatus()
   }
 })

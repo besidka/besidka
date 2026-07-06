@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  isExternalBrowserContext,
   isIosExternalBrowser,
   isIosInAppBrowser,
 } from '../../../app/composables/ios-in-app-browser'
@@ -87,5 +88,41 @@ describe('ios-in-app-browser', () => {
     })
 
     expect(isIosExternalBrowser()).toBe(true)
+  })
+
+  it('treats iPhone Safari as an external browser context', () => {
+    stubBrowser({ userAgent: IPHONE_SAFARI_UA })
+
+    expect(isExternalBrowserContext()).toBe(true)
+  })
+
+  it('treats desktop Chrome as an external browser context', () => {
+    stubBrowser({
+      userAgent: DESKTOP_CHROME_UA,
+      platform: 'MacIntel',
+      maxTouchPoints: 0,
+    })
+
+    expect(isExternalBrowserContext()).toBe(true)
+  })
+
+  it('returns false for external browser context in standalone mode', () => {
+    stubBrowser({
+      userAgent: DESKTOP_CHROME_UA,
+      platform: 'MacIntel',
+      maxTouchPoints: 0,
+      displayModeStandalone: true,
+    })
+
+    expect(isExternalBrowserContext()).toBe(false)
+  })
+
+  it('returns false for external browser context with navigator.standalone', () => {
+    stubBrowser({
+      userAgent: IPHONE_SAFARI_UA,
+      navigatorStandalone: true,
+    })
+
+    expect(isExternalBrowserContext()).toBe(false)
   })
 })

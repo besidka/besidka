@@ -36,6 +36,27 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer | null): string {
     .replace(/=+$/, '')
 }
 
+// After a VAPID key rotation, a browser's existing PushManager subscription
+// stays bound to the applicationServerKey it was created with, so it must be
+// unsubscribed and recreated with the current key before it can be used again.
+function isApplicationServerKeyStale(
+  applicationServerKey: ArrayBuffer | null | undefined,
+  vapidPublicKey: string,
+): boolean {
+  if (!applicationServerKey) {
+    return false
+  }
+
+  const configuredKey = urlBase64ToUint8Array(vapidPublicKey)
+  const currentKey = new Uint8Array(applicationServerKey)
+
+  if (configuredKey.length !== currentKey.length) {
+    return true
+  }
+
+  return configuredKey.some((byte, index) => byte !== currentKey[index])
+}
+
 export function usePushNotifications() {
   const { public: { vapidPublicKey } } = useRuntimeConfig()
   const permission = shallowRef<NotificationPermission>('default')
@@ -62,6 +83,46 @@ export function usePushNotifications() {
     try {
       const registration = await navigator.serviceWorker.ready
       const subscription = await registration.pushManager.getSubscription()
+      const isStale = subscription !== null
+        && isApplicationServerKeyStale(
+          subscription.options?.applicationServerKey,
+          vapidPublicKey,
+        )
+
+      if (isStale && Notification.permission === 'granted') {
+        try {
+          await subscription.unsubscribe()
+
+          const freshSubscription
+            = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(
+                vapidPublicKey,
+              ) as BufferSource,
+            })
+
+          await $fetch('/api/v1/push/subscribe', {
+            method: 'POST',
+            body: {
+              endpoint: freshSubscription.endpoint,
+              keys: {
+                p256dh: arrayBufferToBase64Url(
+                  freshSubscription.getKey('p256dh'),
+                ),
+                auth: arrayBufferToBase64Url(
+                  freshSubscription.getKey('auth'),
+                ),
+              },
+            },
+          })
+
+          isSubscribed.value = true
+
+          return
+        } catch (exception) {
+          void exception
+        }
+      }
 
       isSubscribed.value = subscription !== null
 
@@ -110,8 +171,19 @@ export function usePushNotifications() {
       const registration = await navigator.serviceWorker.ready
       const existingSubscription
         = await registration.pushManager.getSubscription()
-      const subscription = existingSubscription
-        || await registration.pushManager.subscribe({
+      const isStale = existingSubscription !== null
+        && isApplicationServerKeyStale(
+          existingSubscription.options?.applicationServerKey,
+          vapidPublicKey,
+        )
+
+      if (isStale) {
+        await existingSubscription.unsubscribe()
+      }
+
+      const subscription = (existingSubscription && !isStale)
+        ? existingSubscription
+        : await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(
             vapidPublicKey,

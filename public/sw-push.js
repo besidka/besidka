@@ -22,13 +22,28 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: '/web-app-manifest-192x192.png',
-      badge: '/favicon-96x96.png',
-      data: { url: payload.url },
-      tag: 'besidka-response-ready',
-    }),
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .catch(() => [])
+      .then((clients) => {
+        const hasFocusedClient = clients.some((client) => client.focused)
+
+        // The user is already looking at the app — a banner would be pure
+        // noise, and browsers waive the user-visible-only requirement while
+        // a window of the origin is focused. Matters mostly on desktop,
+        // where windows stay open (and pushes fire on every completion).
+        if (hasFocusedClient) {
+          return undefined
+        }
+
+        return self.registration.showNotification(payload.title, {
+          body: payload.body,
+          icon: '/web-app-manifest-192x192.png',
+          badge: '/favicon-96x96.png',
+          data: { url: payload.url },
+          tag: 'besidka-response-ready',
+        })
+      }),
   )
 })
 
@@ -104,12 +119,23 @@ self.addEventListener('notificationclick', (event) => {
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clients) => {
         const existingClient = clients.find((client) => {
-          return new URL(client.url).pathname === targetUrl
-            && 'focus' in client
-        })
+          return client.focused
+        }) || clients[0]
 
+        // A running window navigates itself via this message
+        // (app/plugins/push-navigation.client.ts): openWindow on iOS merely
+        // refocuses the running PWA without honoring the URL, and the
+        // IndexedDB fallback depends on storage access inside a
+        // briefly-woken service worker — a direct postMessage does not.
         if (existingClient) {
-          return existingClient.focus()
+          existingClient.postMessage({
+            type: 'besidka:push-navigate',
+            url: targetUrl,
+          })
+
+          return existingClient.focus().catch((exception) => {
+            void exception
+          })
         }
 
         if (self.clients.openWindow) {

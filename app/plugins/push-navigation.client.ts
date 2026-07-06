@@ -71,14 +71,30 @@ function readAndClearPendingNavigation(): Promise<PendingNavigation | null> {
   })
 }
 
-async function consumePendingNavigation(): Promise<void> {
-  const pending = await readAndClearPendingNavigation()
+function isInternalPath(url: unknown): url is string {
+  return typeof url === 'string'
+    && url.startsWith('/')
+    && !url.startsWith('//')
+}
 
-  if (!pending || typeof pending.url !== 'string') {
+async function navigateToPushTarget(url: string): Promise<void> {
+  const router = useRouter()
+
+  if (router.currentRoute.value.fullPath === url) {
     return
   }
 
-  if (!pending.url.startsWith('/') || pending.url.startsWith('//')) {
+  try {
+    await navigateTo(url)
+  } catch (exception) {
+    void exception
+  }
+}
+
+async function consumePendingNavigation(): Promise<void> {
+  const pending = await readAndClearPendingNavigation()
+
+  if (!pending || !isInternalPath(pending.url)) {
     return
   }
 
@@ -86,17 +102,7 @@ async function consumePendingNavigation(): Promise<void> {
     return
   }
 
-  const router = useRouter()
-
-  if (router.currentRoute.value.fullPath === pending.url) {
-    return
-  }
-
-  try {
-    await navigateTo(pending.url)
-  } catch (exception) {
-    void exception
-  }
+  await navigateToPushTarget(pending.url)
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -129,4 +135,25 @@ export default defineNuxtPlugin((nuxtApp) => {
   window.addEventListener('focus', () => {
     triggerConsumePendingNavigation()
   })
+
+  // The deterministic path for a tap while the app is already running: the
+  // service worker posts the target directly to this window instead of
+  // relying on IndexedDB plus a refocus event (public/sw-push.js).
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const data = event.data as { type?: string, url?: unknown } | null
+
+      if (data?.type !== 'besidka:push-navigate') {
+        return
+      }
+
+      if (!isInternalPath(data.url)) {
+        return
+      }
+
+      const url = data.url
+
+      nuxtApp.runWithContext(() => navigateToPushTarget(url))
+    })
+  }
 })

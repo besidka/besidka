@@ -5,6 +5,9 @@
   "lang": "en",
   "scope": "/",
   "start_url": "/chats/new",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

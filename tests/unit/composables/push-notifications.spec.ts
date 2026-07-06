@@ -15,8 +15,9 @@ mockNuxtImport('useRuntimeConfig', () => {
 })
 
 async function flushPromises() {
-  await Promise.resolve()
-  await Promise.resolve()
+  for (let tick = 0; tick < 6; tick += 1) {
+    await Promise.resolve()
+  }
 }
 
 describe('usePushNotifications', () => {
@@ -183,6 +184,123 @@ describe('usePushNotifications', () => {
 
     await flushPromises()
 
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
+  it('replaces a stale-key subscription on refresh when granted', async () => {
+    Object.defineProperty(globalThis, 'Notification', {
+      configurable: true,
+      value: {
+        permission: 'granted',
+        requestPermission: requestPermissionMock,
+      },
+    })
+
+    const unsubscribeMock = vi.fn(async () => true)
+
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/stale',
+      options: {
+        applicationServerKey: new TextEncoder().encode('stale-key').buffer,
+      },
+      getKey: () => new TextEncoder().encode('key-bytes').buffer,
+      unsubscribe: unsubscribeMock,
+    })
+
+    const composable = usePushNotifications()
+
+    await flushPromises()
+
+    expect(unsubscribeMock).toHaveBeenCalledTimes(1)
+    expect(subscribeMock).toHaveBeenCalledWith(expect.objectContaining({
+      userVisibleOnly: true,
+    }))
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/push/subscribe', {
+      method: 'POST',
+      body: {
+        endpoint: 'https://push.example.com/sub-1',
+        keys: {
+          p256dh: expect.any(String),
+          auth: expect.any(String),
+        },
+      },
+    })
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
+  it('leaves a matching-key subscription untouched on refresh', async () => {
+    Object.defineProperty(globalThis, 'Notification', {
+      configurable: true,
+      value: {
+        permission: 'granted',
+        requestPermission: requestPermissionMock,
+      },
+    })
+
+    const unsubscribeMock = vi.fn(async () => true)
+
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/existing',
+      options: {
+        applicationServerKey: new TextEncoder().encode('ABCD').buffer,
+      },
+      getKey: (name: string) => {
+        return name === 'p256dh'
+          ? new TextEncoder().encode('p256dh-bytes').buffer
+          : new TextEncoder().encode('auth-bytes').buffer
+      },
+      unsubscribe: unsubscribeMock,
+    })
+
+    const composable = usePushNotifications()
+
+    await flushPromises()
+
+    expect(unsubscribeMock).not.toHaveBeenCalled()
+    expect(subscribeMock).not.toHaveBeenCalled()
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/push/subscribe', {
+      method: 'POST',
+      body: {
+        endpoint: 'https://push.example.com/existing',
+        keys: {
+          p256dh: expect.any(String),
+          auth: expect.any(String),
+        },
+      },
+    })
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
+  it('replaces a stale-key subscription before subscribing', async () => {
+    const unsubscribeMock = vi.fn(async () => true)
+
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/stale',
+      options: {
+        applicationServerKey: new TextEncoder().encode('stale-key').buffer,
+      },
+      getKey: () => new TextEncoder().encode('key-bytes').buffer,
+      unsubscribe: unsubscribeMock,
+    })
+
+    const composable = usePushNotifications()
+    const result = await composable.subscribe()
+
+    expect(result).toBe(true)
+    expect(unsubscribeMock).toHaveBeenCalledTimes(1)
+    expect(subscribeMock).toHaveBeenCalledWith(expect.objectContaining({
+      userVisibleOnly: true,
+    }))
+    expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/push/subscribe', {
+      method: 'POST',
+      body: {
+        endpoint: 'https://push.example.com/sub-1',
+        keys: {
+          p256dh: expect.any(String),
+          auth: expect.any(String),
+        },
+      },
+    })
     expect(composable.isSubscribed.value).toBe(true)
   })
 

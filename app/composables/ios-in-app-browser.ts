@@ -53,3 +53,11 @@ export function isIosExternalBrowser(): boolean {
 
   return !isStandaloneDisplay()
 }
+
+export function isExternalBrowserContext(): boolean {
+  if (!import.meta.client) {
+    return false
+  }
+
+  return !isStandaloneDisplay()
+}
