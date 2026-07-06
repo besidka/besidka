@@ -148,6 +148,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   components, Studio local-vs-preview-vs-prod flow, deploy runbook
 - `docs/landing-production-todo.md` - Owner checklist of remaining manual steps
   to make the landing page production-ready (D1/R2/secrets per environment)
+- `docs/push-notifications.md` - Web Push: in-house RFC 8291/8292 WebCrypto
+  protocol, VAPID key management/rotation, subscription lifecycle, service
+  worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
+- `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
+  installed PWA (push handoff + cold-start tap navigation)
 
 ### Tech Stack
 
