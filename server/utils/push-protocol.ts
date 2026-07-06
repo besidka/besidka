@@ -249,18 +249,29 @@ export async function buildVapidAuthorization(
     throw new Error('VAPID public key is not a P-256 point')
   }
 
-  const signingKey = await crypto.subtle.importKey(
-    'jwk',
-    {
-      kty: 'EC',
-      crv: 'P-256',
-      d: vapid.privateKey,
-      ...publicKeyJwkCoordinates(publicKeyBytes),
-    },
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign'],
-  )
+  let signingKey: CryptoKey
+
+  try {
+    signingKey = await crypto.subtle.importKey(
+      'jwk',
+      {
+        kty: 'EC',
+        crv: 'P-256',
+        d: vapid.privateKey,
+        ...publicKeyJwkCoordinates(publicKeyBytes),
+      },
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['sign'],
+    )
+  } catch (exception) {
+    throw new Error(
+      'VAPID public/private keys are not a valid P-256 pair — regenerate '
+      + 'both together with scripts/generate-vapid-keys.mjs and deploy them '
+      + 'in the same release',
+      { cause: exception },
+    )
+  }
 
   const header = bytesToBase64Url(
     encoder.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })),

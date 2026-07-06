@@ -50,12 +50,10 @@ STUDIO_GITHUB_CLIENT_ID=
 STUDIO_GITHUB_CLIENT_SECRET=
 
 # Web Push — "your response is ready" notifications.
-# Generate a keypair once with: npx web-push generate-vapid-keys
-# (the Worker sends via web-push's generateRequestDetails() + its own
-# fetch() — not sendNotification(), which uses Node's https module directly
-# and hasn't been verified to work on Workers. generateRequestDetails()
-# only needs node:crypto for ECDH/HMAC/AES-GCM, which Cloudflare Workers'
-# nodejs_compat has genuinely supported since workerd PR #3688, merged
-# 2025-03-10 — verify your compatibility_date in wrangler.jsonc predates
-# that if pushes ever stop encrypting correctly)
+# Generate a keypair once with: node scripts/generate-vapid-keys.mjs
+# The matching public key goes into wrangler.jsonc
+# (NUXT_PUBLIC_VAPID_PUBLIC_KEY) and MUST come from the same run — the
+# Worker validates the pair on every send and rejects mismatches. Requests
+# are built by server/utils/push-protocol.ts (in-house WebCrypto RFC
+# 8291/8292; no Web Push library survives workerd against Apple).
 NUXT_VAPID_PRIVATE_KEY=
