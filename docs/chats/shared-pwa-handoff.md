@@ -1,5 +1,9 @@
 # Opening shared chats inside the installed PWA (iOS)
 
+For the full push stack (protocol, VAPID keys, subscription lifecycle,
+service worker, platform notes, troubleshooting) see
+[../push-notifications.md](../push-notifications.md).
+
 iOS (through iOS/Safari 26) has no link capturing for home-screen web apps:
 an `https` link tapped in a messenger or Safari always opens in a browser,
 never in the installed PWA. Universal Links are native-app-only, and WebKit
