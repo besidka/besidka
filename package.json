@@ -108,7 +108,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260702.1",
+		"@cloudflare/workers-types": "^5.20260705.1",
 		"@commitlint/cli": "^21.2.0",
 		"@commitlint/config-conventional": "^21.2.0",
 		"@commitlint/format": "^21.2.0",
