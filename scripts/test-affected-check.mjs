@@ -168,7 +168,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts)$/,
+        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts)$/,
       tests: pushNotificationTests,
     },
     {
