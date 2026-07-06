@@ -106,6 +106,9 @@ export function useChatShare() {
         allowBranch: response.allowBranch,
       }
 
+      setHistoryChatSharedBySlug(slug, true)
+      setProjectChatSharedBySlug(slug, true)
+
       nuxtApp.runWithContext(() => {
         useSuccessMessage('Share link ready')
       })
@@ -136,6 +139,10 @@ export function useChatShare() {
       })
 
       share.value = null
+
+      setHistoryChatSharedBySlug(slug, false)
+      setProjectChatSharedBySlug(slug, false)
+      removeSharedChatBySlug(slug)
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage('Sharing stopped')

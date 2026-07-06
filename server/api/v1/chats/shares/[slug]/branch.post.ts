@@ -1,12 +1,18 @@
-import type { BatchItem } from 'drizzle-orm/batch'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { createError, useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import {
+  buildBranchTitle,
+  insertBranchedMessages,
+} from '~~/server/utils/chats/branch'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { stripFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 
 const paramsRules = z.object({
   slug: z.string().nonempty(),
 })
+
+const BRANCH_COOLDOWN_MS = 30_000
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -44,6 +50,22 @@ export default defineEventHandler(async (event) => {
 
   logger.set({ userId, shareSlug: params.data.slug })
 
+  const kv = useKV()
+  const cooldownKey = `chat-share-branch:${userId}:${params.data.slug}`
+  const cooldownValue = await kv.get(cooldownKey)
+  const cooldownTimestamp = Number(cooldownValue)
+  const cooldownActive = Number.isFinite(cooldownTimestamp)
+    && Date.now() - cooldownTimestamp < BRANCH_COOLDOWN_MS
+
+  if (cooldownActive) {
+    throw createError({
+      message: 'You are branching too quickly',
+      status: 429,
+      why: 'A branch from this shared chat was created less than 30 seconds ago',
+      fix: 'Wait a few seconds, then try again',
+    })
+  }
+
   const share = await resolveActiveShareBySlug(
     params.data.slug,
     event,
@@ -77,8 +99,6 @@ export default defineEventHandler(async (event) => {
         columns: {
           role: true,
           parts: true,
-          tools: true,
-          reasoning: true,
         },
       },
     },
@@ -95,9 +115,11 @@ export default defineEventHandler(async (event) => {
     return isPersistedMessageRole(message.role)
   })
 
-  const title = sourceChat.title
-    ? `Branch: ${sourceChat.title.replace(/Branch: /g, '')}`
-    : 'Branch'
+  const sharedMessages = share.showFiles
+    ? persistedMessages
+    : stripFileParts(persistedMessages)
+
+  const title = buildBranchTitle(sourceChat.title)
 
   const newChat = await db
     .insert(schema.chats)
@@ -112,21 +134,18 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
-  if (persistedMessages.length > 0) {
-    const messageInserts = persistedMessages.map((message) => {
-      return db
-        .insert(schema.messages)
-        .values({
-          chatId: newChat.id,
-          role: message.role,
-          parts: message.parts,
-          tools: message.tools,
-          reasoning: message.reasoning,
-        })
-    }) as unknown as [BatchItem<'sqlite'>]
+  await insertBranchedMessages(
+    db,
+    newChat.id,
+    sharedMessages.map((message) => {
+      return {
+        role: message.role,
+        parts: message.parts,
+      }
+    }),
+  )
 
-    await db.batch(messageInserts)
-  }
+  await kv.put(cooldownKey, String(Date.now()), { expirationTtl: 60 })
 
   type WaitUntilCtx = {
     cloudflare?: {

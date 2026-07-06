@@ -93,6 +93,7 @@ export default defineEventHandler(async (event) => {
     .onConflictDoUpdate({
       target: schema.chatShares.chatId,
       set: {
+        revoked: false,
         indexable: body.data.indexable,
         showFiles: body.data.showFiles,
         showMetadata: body.data.showMetadata,

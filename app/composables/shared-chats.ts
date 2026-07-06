@@ -11,6 +11,36 @@ interface SharedChatsCacheEntry {
   lastFetchedAt: number | null
 }
 
+export function removeSharedChatBySlug(slug: string) {
+  const chats = useState<SharedChat[]>('shared-chats:chats', () => [])
+  const cache = useState<SharedChatsCacheEntry | null>(
+    'shared-chats:cache',
+    () => null,
+  )
+  const nextCursor = useState<string | null>(
+    'shared-chats:cursor',
+    () => null,
+  )
+
+  const chatToRemove = chats.value.find(chat => chat.slug === slug)
+
+  if (!chatToRemove) {
+    return
+  }
+
+  const updatedChats = chats.value.filter((chat) => {
+    return chat.id !== chatToRemove.id
+  })
+
+  chats.value = updatedChats
+  cache.value = {
+    chats: updatedChats,
+    nextCursor: nextCursor.value,
+    hasLoaded: true,
+    lastFetchedAt: Date.now(),
+  }
+}
+
 export function useSharedChats() {
   const nuxtApp = useNuxtApp()
   const cache = useState<SharedChatsCacheEntry | null>(
@@ -256,16 +286,17 @@ export function useSharedChats() {
       chunks.push(chatIds.slice(index, index + 90))
     }
 
+    const succeededChatIds: string[] = []
+
     try {
       for (const chunk of chunks) {
         await $fetch('/api/v1/chats/shared/revoke', {
           method: 'POST',
           body: { chatIds: chunk },
         })
-      }
 
-      removeChats(chatIds)
-      clearCompletedSelection(chatIds)
+        succeededChatIds.push(...chunk)
+      }
 
       nuxtApp.runWithContext(() => {
         useSuccessMessage(
@@ -282,6 +313,11 @@ export function useSharedChats() {
           parsedException.why,
         )
       })
+    } finally {
+      if (succeededChatIds.length > 0) {
+        removeChats(succeededChatIds)
+        clearCompletedSelection(succeededChatIds)
+      }
     }
   }
 

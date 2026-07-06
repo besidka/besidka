@@ -101,7 +101,7 @@ async function verifyFileAccessToken(
     event,
   )
 
-  if (providedSignature !== expectedSignature) {
+  if (!timingSafeEqual(providedSignature, expectedSignature)) {
     return null
   }
 
@@ -172,6 +172,24 @@ function base64UrlEncode(bytes: Uint8Array): string {
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '')
+}
+
+function timingSafeEqual(
+  providedValue: string,
+  expectedValue: string,
+): boolean {
+  if (providedValue.length !== expectedValue.length) {
+    return false
+  }
+
+  let mismatch = 0
+
+  for (let index = 0; index < providedValue.length; index++) {
+    mismatch |= providedValue.charCodeAt(index)
+      ^ expectedValue.charCodeAt(index)
+  }
+
+  return mismatch === 0
 }
 
 function base64UrlDecode(value: string): Uint8Array {

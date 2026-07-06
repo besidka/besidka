@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import type { BatchItem } from 'drizzle-orm/batch'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
@@ -9,6 +9,18 @@ import {
 } from '~~/server/utils/files/file-governance'
 
 export const SHARE_FILE_TOKEN_TTL_SECONDS = 3600
+
+const MAX_BATCH_QUERY_PARAMS = 90
+
+function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  const chunks: T[][] = []
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize))
+  }
+
+  return chunks
+}
 
 export type ChatShareDuration
   = | 'day'
@@ -133,7 +145,7 @@ export async function enumerateChatFileIds(
     }
   }
 
-  const ownedFiles = await getOwnedFilesByStorageKeys(
+  const ownedFiles = await getOwnedFilesByStorageKeysInChunks(
     ownerUserId,
     Array.from(storageKeys),
   )
@@ -153,6 +165,31 @@ export async function enumerateChatFileIds(
   })
 
   return references
+}
+
+type OwnedFilesMap = Awaited<ReturnType<typeof getOwnedFilesByStorageKeys>>
+
+async function getOwnedFilesByStorageKeysInChunks(
+  ownerUserId: number,
+  storageKeys: string[],
+): Promise<OwnedFilesMap> {
+  const chunks = chunkArray(storageKeys, MAX_BATCH_QUERY_PARAMS)
+
+  if (chunks.length === 0) {
+    return getOwnedFilesByStorageKeys(ownerUserId, [])
+  }
+
+  const merged: OwnedFilesMap = new Map()
+
+  for (const chunk of chunks) {
+    const chunkResult = await getOwnedFilesByStorageKeys(ownerUserId, chunk)
+
+    for (const [storageKey, file] of chunkResult) {
+      merged.set(storageKey, file)
+    }
+  }
+
+  return merged
 }
 
 export async function syncChatShareFiles(
@@ -184,10 +221,34 @@ export async function syncChatShareFiles(
     event,
   )
 
+  const currentFileIds = new Set(
+    fileReferences.map(reference => reference.fileId),
+  )
+
+  const existingGrants = await db.query.chatShareFiles.findMany({
+    where: { chatShareId },
+    columns: {
+      fileId: true,
+    },
+  })
+
+  const staleFileIds = existingGrants
+    .map(grant => grant.fileId)
+    .filter(fileId => !currentFileIds.has(fileId))
+
+  for (const chunk of chunkArray(staleFileIds, MAX_BATCH_QUERY_PARAMS)) {
+    await db.delete(schema.chatShareFiles)
+      .where(and(
+        eq(schema.chatShareFiles.chatShareId, chatShareId),
+        inArray(schema.chatShareFiles.fileId, chunk),
+      ))
+  }
+
   useLogger(event).set({
     chatShareFileSync: {
       chatShareId,
       fileCount: fileReferences.length,
+      staleFileCount: staleFileIds.length,
     },
   })
 

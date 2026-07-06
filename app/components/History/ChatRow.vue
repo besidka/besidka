@@ -131,7 +131,17 @@ function onRemoveFromProject() {
   emit('removeFromProject', props.chat.id, props.chat.slug)
 }
 
-function onCancelSharing() {
+async function onCancelSharing() {
+  const result = await useConfirm({
+    text: 'Cancel sharing for this chat?',
+    alert: true,
+    actions: ['Cancel sharing'],
+  })
+
+  if (!result) {
+    return
+  }
+
   emit('cancelSharing', props.chat.id, props.chat.slug)
 }
 </script>

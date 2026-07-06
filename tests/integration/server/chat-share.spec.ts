@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   chatSharesFindFirst: vi.fn(),
   messagesFindMany: vi.fn(),
+  chatShareFilesFindMany: vi.fn(),
   getOwnedFilesByStorageKeys: vi.fn(),
   insertValues: vi.fn(),
   insertOnConflictDoNothing: vi.fn(),
@@ -51,6 +52,9 @@ function createDb(overrides: Record<string, unknown> = {}) {
       },
       messages: {
         findMany: mocks.messagesFindMany,
+      },
+      chatShareFiles: {
+        findMany: mocks.chatShareFilesFindMany,
       },
     },
     insert: vi.fn(() => {
@@ -279,6 +283,7 @@ describe('syncChatShareFiles', () => {
       ['first.png', { id: 'file-1', storageKey: 'first.png', size: 1 }],
       ['second.png', { id: 'file-2', storageKey: 'second.png', size: 2 }],
     ]))
+    mocks.chatShareFilesFindMany.mockResolvedValue([])
     mocks.dbBatch.mockResolvedValue(undefined)
 
     const db = createDb()
@@ -296,6 +301,7 @@ describe('syncChatShareFiles', () => {
     })
     expect(mocks.dbBatch).toHaveBeenCalledTimes(1)
     expect(mocks.dbBatch.mock.calls[0]?.[0]).toHaveLength(2)
+    expect(mocks.dbDelete).not.toHaveBeenCalled()
   })
 
   it('skips the batch call entirely when the chat has no files', async () => {
@@ -303,6 +309,7 @@ describe('syncChatShareFiles', () => {
       { parts: [{ type: 'text', text: 'hello' }] },
     ])
     mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map())
+    mocks.chatShareFilesFindMany.mockResolvedValue([])
 
     const db = createDb()
     vi.stubGlobal('useDb', () => db)
@@ -310,6 +317,33 @@ describe('syncChatShareFiles', () => {
     await syncChatShareFiles('share-1', 'chat-1', 42, true)
 
     expect(mocks.dbBatch).not.toHaveBeenCalled()
+  })
+
+  it('removes grants for files no longer referenced by the chat', async () => {
+    mocks.messagesFindMany.mockResolvedValue([
+      { parts: [{ type: 'file', url: '/files/first.png' }] },
+    ])
+    mocks.getOwnedFilesByStorageKeys.mockResolvedValue(new Map([
+      ['first.png', { id: 'file-1', storageKey: 'first.png', size: 1 }],
+    ]))
+    mocks.chatShareFilesFindMany.mockResolvedValue([
+      { fileId: 'file-1' },
+      { fileId: 'file-stale' },
+    ])
+    mocks.deleteWhere.mockResolvedValue(undefined)
+    mocks.dbBatch.mockResolvedValue(undefined)
+
+    const db = createDb()
+    vi.stubGlobal('useDb', () => db)
+
+    await syncChatShareFiles('share-1', 'chat-1', 42, true)
+
+    expect(mocks.dbDelete).toHaveBeenCalledTimes(1)
+    expect(mocks.deleteWhere).toHaveBeenCalledTimes(1)
+    expect(mocks.insertValues).toHaveBeenCalledWith({
+      chatShareId: 'share-1',
+      fileId: 'file-1',
+    })
   })
 
   it('deletes all grants and skips insert when showFiles is false', async () => {

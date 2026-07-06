@@ -119,6 +119,10 @@ describe('shared chat branch API', () => {
     vi.stubGlobal('useUnauthorizedError', vi.fn(() => {
       throw new Error('Unauthorized')
     }))
+    vi.stubGlobal('useKV', vi.fn(() => ({
+      get: vi.fn(async () => null),
+      put: vi.fn(async () => undefined),
+    })))
     vi.stubGlobal('buildVapidSubject', vi.fn((subject: string) => {
       return subject ? `mailto:${subject}` : undefined
     }))
@@ -214,5 +218,95 @@ describe('shared chat branch API', () => {
 
     await expect(handler(event as never)).rejects.toThrow()
     expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
+  })
+
+  it('strips file parts from branched messages when the share hides files', async () => {
+    mocks.resolveActiveShareBySlug.mockResolvedValue({
+      chatId: 'chat-1',
+      allowBranch: true,
+      showFiles: false,
+    })
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb({
+      messages: [{
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Hello' },
+          { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+        ],
+      }],
+    })
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler(event as never)
+
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    })
+  })
+
+  it('keeps file parts in branched messages when the share allows files', async () => {
+    mocks.resolveActiveShareBySlug.mockResolvedValue({
+      chatId: 'chat-1',
+      allowBranch: true,
+      showFiles: true,
+    })
+
+    const filePart = {
+      type: 'file',
+      url: '/files/a.png',
+      mediaType: 'image/png',
+    }
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb({
+      messages: [{
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }, filePart],
+      }],
+    })
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler(event as never)
+
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }, filePart],
+    })
+  })
+
+  it('never forwards the source tools or reasoning to branched messages', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler(event as never)
+
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    })
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Hi there' }],
+    })
   })
 })

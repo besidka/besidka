@@ -121,6 +121,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/rewrite-share-file-urls.spec.ts',
     'tests/integration/api/chats-shares-branch.spec.ts',
     'tests/integration/api/chats-shares-handoff.spec.ts',
+    'tests/integration/api/chats-share-create.spec.ts',
+    'tests/integration/api/chats-share-revoke.spec.ts',
+    'tests/integration/api/shared-chat-view.spec.ts',
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/composables/ios-in-app-browser.spec.ts',
@@ -236,6 +239,22 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/api\/v1\/chats\/shares\/.*\.ts$/,
       tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/\[slug\]\/share\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/shared\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/shared\/\[slug\]\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/branch\.ts$/,
+      tests: [...chatShareTests, ...chatStreamBranchTests],
     },
     {
       pattern:

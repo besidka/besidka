@@ -1,8 +1,16 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ShareModal from '../../../../app/components/Chat/ShareModal.client.vue'
 import { useChatShare } from '../../../../app/composables/chat-share'
 import * as messagesComposable from '../../../../app/composables/messages'
+
+const useConfirmMock = vi.hoisted(() => {
+  return vi.fn<() => Promise<boolean | null>>(async () => true)
+})
+
+mockNuxtImport('useConfirm', () => {
+  return useConfirmMock
+})
 
 function resetChatShareState() {
   const {
@@ -269,6 +277,8 @@ describe('Chat/ShareModal.client', () => {
   })
 
   it('stops sharing and removes the active share', async () => {
+    useConfirmMock.mockResolvedValue(true)
+
     const fetchMock = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('$fetch', fetchMock)
 
@@ -299,5 +309,79 @@ describe('Chat/ShareModal.client', () => {
     expect(share.value).toBeNull()
     expect(wrapper.find('[data-testid="share-revoke-button"]').exists())
       .toBe(false)
+  })
+
+  it('does not stop sharing when confirmation is declined', async () => {
+    useConfirmMock.mockResolvedValue(null)
+
+    const fetchMock = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { share } = useChatShare()
+
+    share.value = {
+      slug: 'share-1',
+      url: 'http://localhost:3000/shared/share-1',
+      expiresAt: null,
+      indexable: true,
+      showFiles: true,
+      showMetadata: true,
+      showAuthorAvatar: true,
+      allowBranch: true,
+    }
+
+    const wrapper = await mountSuspended(ShareModal)
+
+    await wrapper.find('[data-testid="share-revoke-button"]')
+      .trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(share.value).not.toBeNull()
+  })
+
+  it('disables the submit buttons while loading share settings', async () => {
+    const { isLoading } = useChatShare()
+
+    isLoading.value = true
+
+    const wrapper = await mountSuspended(ShareModal)
+
+    expect(
+      wrapper.find('[data-testid="share-form-skeleton"]').exists(),
+    ).toBe(true)
+    expect(
+      (
+        wrapper.find('[data-testid="share-generate-button"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+  })
+
+  it('resets stale toggle state when the target chat changes', async () => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    await wrapper.find('[data-testid="share-toggle-indexable"]')
+      .setValue(false)
+
+    expect(
+      (
+        wrapper.find('[data-testid="share-toggle-indexable"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(false)
+
+    const { targetChatSlug } = useChatShare()
+
+    targetChatSlug.value = 'chat-2'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      (
+        wrapper.find('[data-testid="share-toggle-indexable"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(true)
   })
 })

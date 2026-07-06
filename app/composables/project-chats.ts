@@ -11,6 +11,54 @@ interface ProjectChatsCacheEntry {
   lastFetchedAt: number | null
 }
 
+export function setProjectChatSharedBySlug(slug: string, shared: boolean) {
+  const project = useState<Project | null>('project-chats:project', () => null)
+  const pinned = useState<HistoryChat[]>('project-chats:pinned', () => [])
+  const chats = useState<HistoryChat[]>('project-chats:chats', () => [])
+  const nextCursor = useState<string | null>('project-chats:cursor', () => null)
+  const cache = useState<Record<string, ProjectChatsCacheEntry>>(
+    'project-chats:cache',
+    () => ({}),
+  )
+
+  const existingChat = [...pinned.value, ...chats.value].find((chat) => {
+    return chat.slug === slug
+  })
+
+  if (!existingChat || !project.value) {
+    return
+  }
+
+  const updatedChat = { ...existingChat, shared }
+  const updatedPinned = existingChat.pinnedAt
+    ? pinned.value.map((chat) => {
+      return chat.slug === slug ? updatedChat : chat
+    })
+    : pinned.value
+  const updatedChats = existingChat.pinnedAt
+    ? chats.value
+    : chats.value.map((chat) => {
+      return chat.slug === slug ? updatedChat : chat
+    })
+
+  pinned.value = updatedPinned
+  chats.value = updatedChats
+
+  const activeCacheKey = `project:${project.value.id}`
+
+  cache.value = {
+    ...cache.value,
+    [activeCacheKey]: {
+      project: project.value,
+      pinned: updatedPinned,
+      chats: updatedChats,
+      nextCursor: nextCursor.value,
+      hasLoaded: true,
+      lastFetchedAt: Date.now(),
+    },
+  }
+}
+
 export function useProjectChats(projectId: MaybeRefOrGetter<string>) {
   const nuxtApp = useNuxtApp()
   const resolvedProjectId = computed(() => toValue(projectId))

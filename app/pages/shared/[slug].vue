@@ -153,6 +153,13 @@
           :author-name="data.author?.name ?? null"
           :author-image="data.author?.image ?? null"
         >
+          <div
+            v-if="m.createdAt"
+            data-testid="shared-message-datetime"
+            class="mb-1 text-xs text-base-content/50"
+          >
+            {{ formatMessageMeta(m.createdAt) }}
+          </div>
           <ChatFiles :message="m" />
           <ChatReasoning
             :message="m"
@@ -201,6 +208,7 @@
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { formatMessageDateTime } from '#shared/utils/message-format'
 
 interface SharedChatMessage {
   id: string
@@ -307,6 +315,18 @@ onMounted(async () => {
 
 function dismissOpenInSafariHint(): void {
   showOpenInSafariHint.value = false
+}
+
+function formatMessageMeta(
+  createdAt: string | number | undefined,
+): string {
+  const { date, time } = formatMessageDateTime(createdAt)
+
+  if (!date) {
+    return ''
+  }
+
+  return `${date} · ${time}`
 }
 
 const shareSettings = computed<ShareSettingRow[]>(() => {

@@ -1,6 +1,9 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
+import {
+  buildBranchTitle,
+  insertBranchedMessages,
+} from '~~/server/utils/chats/branch'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
@@ -84,9 +87,7 @@ export default defineEventHandler(async (event) => {
     messagesToCopy = persistedMessages.slice(0, branchIndex + 1)
   }
 
-  const title = chat.title
-    ? `Branch: ${chat.title.replace(/Branch: /g, '')}`
-    : 'Branch'
+  const title = buildBranchTitle(chat.title)
 
   const newChat = await db
     .insert(schema.chats)
@@ -101,23 +102,20 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
-  if (messagesToCopy.length) {
-    const messageInserts = messagesToCopy.map((message) => {
-      return db
-        .insert(schema.messages)
-        .values({
-          chatId: newChat.id,
-          role: message.role,
-          parts: message.parts,
-          tools: message.tools,
-          reasoning: message.reasoning,
-          usage: message.usage,
-          createdAt: message.createdAt,
-        })
-    }) as unknown as [BatchItem<'sqlite'>]
-
-    await db.batch(messageInserts)
-  }
+  await insertBranchedMessages(
+    db,
+    newChat.id,
+    messagesToCopy.map((message) => {
+      return {
+        role: message.role,
+        parts: message.parts,
+        tools: message.tools,
+        reasoning: message.reasoning,
+        usage: message.usage,
+        createdAt: message.createdAt,
+      }
+    }),
+  )
 
   await refreshProjectActivityAt([chat.projectId], userId, db)
   await markProjectsMemoryStale([chat.projectId], userId, db)

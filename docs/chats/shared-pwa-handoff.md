@@ -32,7 +32,7 @@ The send is awaited, not fire-and-forget, so the response reflects reality:
   retry after re-subscribing gets a clean slate).
 
 The endpoint is guarded by a `sec-fetch-site` cross-site check and a
-KV-backed 60-second per-user cooldown.
+KV-backed 10-second per-user cooldown.
 
 The existing branch flow (`POST /api/v1/chats/shares/:slug/branch`) keeps
 its own fire-and-forget push that deep-links to the new `/chats/<slug>`

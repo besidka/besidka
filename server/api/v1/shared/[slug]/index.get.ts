@@ -1,8 +1,12 @@
 import type { UIMessage } from 'ai'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { isReasoningUIPart, isToolUIPart } from 'ai'
 import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
-import { rewriteShareFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
+import {
+  rewriteShareFileParts,
+  stripFileParts,
+} from '~~/server/utils/files/rewrite-share-file-urls'
 
 const paramsRules = z.object({
   slug: z.string().nonempty(),
@@ -77,9 +81,14 @@ export default defineEventHandler(async (event) => {
       }
     })
 
+  const publicMessages = filterPublicParts(
+    persistedMessages,
+    share.showMetadata,
+  )
+
   const messagesWithResolvedFiles = share.showFiles
-    ? await rewriteShareFileParts(persistedMessages, share.id, event)
-    : stripFileParts(persistedMessages)
+    ? await rewriteShareFileParts(publicMessages, share.id, event)
+    : stripFileParts(publicMessages)
 
   const messages = messagesWithResolvedFiles.map((message) => {
     return {
@@ -107,14 +116,23 @@ export default defineEventHandler(async (event) => {
   }
 })
 
-function stripFileParts<TMessage extends { parts: UIMessage['parts'] }>(
+function filterPublicParts<TMessage extends { parts: UIMessage['parts'] }>(
   messages: TMessage[],
+  showMetadata: boolean,
 ): TMessage[] {
   return messages.map((message) => {
     return {
       ...message,
       parts: message.parts.filter((part) => {
-        return part.type !== 'file'
+        if (isToolUIPart(part)) {
+          return false
+        }
+
+        if (isReasoningUIPart(part)) {
+          return showMetadata
+        }
+
+        return true
       }),
     }
   })
