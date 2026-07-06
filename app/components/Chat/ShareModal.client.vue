@@ -318,7 +318,10 @@ function onModalClosed() {
   closeShareModal()
 }
 
-async function copyLinkToClipboard(url: string) {
+async function copyLinkToClipboard(
+  url: string,
+  options: { silent?: boolean } = {},
+) {
   try {
     await navigator.clipboard.writeText(url)
 
@@ -333,6 +336,10 @@ async function copyLinkToClipboard(url: string) {
       copiedTimeoutId = null
     }, 2000)
   } catch {
+    if (options.silent) {
+      return
+    }
+
     useErrorMessage('Failed to copy link')
   }
 }
@@ -363,7 +370,7 @@ async function onGenerate() {
     return
   }
 
-  await copyLinkToClipboard(url)
+  await copyLinkToClipboard(url, { silent: true })
 }
 
 async function onRevoke() {

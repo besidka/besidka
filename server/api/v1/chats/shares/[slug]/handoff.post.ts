@@ -5,6 +5,8 @@ const paramsRules = z.object({
   slug: z.string().nonempty(),
 })
 
+const HANDOFF_COOLDOWN_MS = 10_000
+
 /**
  * POST /chats/shares/:slug/handoff
  *
@@ -54,14 +56,17 @@ export default defineEventHandler(async (event) => {
 
   const kv = useKV()
   const cooldownKey = `chat-share-handoff:${userId}`
-  const cooldownActive = await kv.get(cooldownKey)
+  const cooldownValue = await kv.get(cooldownKey)
+  const cooldownTimestamp = Number(cooldownValue)
+  const cooldownActive = Number.isFinite(cooldownTimestamp)
+    && Date.now() - cooldownTimestamp < HANDOFF_COOLDOWN_MS
 
   if (cooldownActive) {
     throw createError({
       message: 'Notification already sent',
       status: 429,
-      why: 'A handoff notification was requested less than a minute ago',
-      fix: 'Wait a minute, then try again',
+      why: 'A handoff notification was requested less than 10 seconds ago',
+      fix: 'Wait a few seconds, then try again',
     })
   }
 
@@ -132,7 +137,13 @@ export default defineEventHandler(async (event) => {
     waitUntil,
   )
 
-  const sent = (outcomes?.sent ?? 0) > 0
+  if (!outcomes) {
+    logger.set({ handoff: { sent: false, reason: 'not-configured' } })
+
+    return { sent: false, reason: 'not-configured' as const }
+  }
+
+  const sent = outcomes.sent > 0
 
   logger.set({ handoff: { sent, outcomes } })
 
@@ -140,11 +151,11 @@ export default defineEventHandler(async (event) => {
     return {
       sent: false,
       reason: 'delivery-failed' as const,
-      failures: outcomes?.failures ?? [],
+      failures: outcomes.failures,
     }
   }
 
-  await kv.put(cooldownKey, '1', { expirationTtl: 60 })
+  await kv.put(cooldownKey, String(Date.now()), { expirationTtl: 60 })
 
   return { sent: true, reason: null }
 })

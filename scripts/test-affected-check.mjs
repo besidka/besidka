@@ -156,6 +156,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/push.spec.ts',
     'tests/unit/utils/push-encryption.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
+    'tests/integration/api/push-status.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/layouts/chat.spec.ts',

@@ -100,13 +100,33 @@ async function consumePendingNavigation(): Promise<void> {
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
+  let recheckTimeoutId: ReturnType<typeof setTimeout> | undefined
+
+  function triggerConsumePendingNavigation() {
+    nuxtApp.runWithContext(consumePendingNavigation)
+
+    if (recheckTimeoutId) {
+      clearTimeout(recheckTimeoutId)
+    }
+
+    // iOS can refocus the running window before the SW's notificationclick
+    // handler finishes its IndexedDB write, so the first read finds nothing.
+    recheckTimeoutId = setTimeout(() => {
+      nuxtApp.runWithContext(consumePendingNavigation)
+    }, 1500)
+  }
+
   nuxtApp.hook('app:mounted', async () => {
     await nuxtApp.runWithContext(consumePendingNavigation)
   })
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      nuxtApp.runWithContext(consumePendingNavigation)
+      triggerConsumePendingNavigation()
     }
+  })
+
+  window.addEventListener('focus', () => {
+    triggerConsumePendingNavigation()
   })
 })

@@ -2,6 +2,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ShareModal from '../../../../app/components/Chat/ShareModal.client.vue'
 import { useChatShare } from '../../../../app/composables/chat-share'
+import * as messagesComposable from '../../../../app/composables/messages'
 
 function resetChatShareState() {
   const {
@@ -163,6 +164,76 @@ describe('Chat/ShareModal.client', () => {
     const copyButton = wrapper.find('[data-testid="share-copy-button"]')
 
     expect(copyButton.text()).toContain('Copied!')
+  })
+
+  it('does not show an error when auto-copy fails after generating', async () => {
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockRejectedValue(new Error('denied')),
+      },
+    })
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      slug: 'share-1',
+      url: 'https://old-preview-host.example/shared/share-1',
+      expiresAt: null,
+      indexable: true,
+      showFiles: true,
+      showMetadata: true,
+      showAuthorAvatar: true,
+      allowBranch: true,
+    })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const wrapper = await mountSuspended(ShareModal)
+
+    await wrapper.find('[data-testid="share-generate-button"]')
+      .trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      'http://localhost:3000/shared/share-1',
+    )
+    expect(useErrorMessage).not.toHaveBeenCalled()
+  })
+
+  it('shows an error when the explicit copy button fails', async () => {
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: vi.fn().mockRejectedValue(new Error('denied')),
+      },
+    })
+
+    const { share } = useChatShare()
+
+    share.value = {
+      slug: 'share-1',
+      url: 'http://localhost:3000/shared/share-1',
+      expiresAt: null,
+      indexable: true,
+      showFiles: true,
+      showMetadata: true,
+      showAuthorAvatar: true,
+      allowBranch: true,
+    }
+
+    const wrapper = await mountSuspended(ShareModal)
+
+    await wrapper.find('[data-testid="share-copy-button"]')
+      .trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
+
+    expect(useErrorMessage).toHaveBeenCalledWith('Failed to copy link')
   })
 
   it('copies the share link to the clipboard on demand', async () => {

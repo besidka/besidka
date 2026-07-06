@@ -149,7 +149,7 @@ describe('shared chat handoff API', () => {
     )
     expect(kvPutMock).toHaveBeenCalledWith(
       'chat-share-handoff:1',
-      '1',
+      expect.any(String),
       { expirationTtl: 60 },
     )
   })
@@ -221,7 +221,7 @@ describe('shared chat handoff API', () => {
   })
 
   it('throws 429 while the per-user cooldown is active', async () => {
-    kvGetMock.mockResolvedValue('1')
+    kvGetMock.mockResolvedValue(String(Date.now()))
 
     const handler = await getHandler()
     const db = createDb()
@@ -236,6 +236,23 @@ describe('shared chat handoff API', () => {
     )
     expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
     expect(kvPutMock).not.toHaveBeenCalled()
+  })
+
+  it('sends again once the cooldown timestamp is stale', async () => {
+    kvGetMock.mockResolvedValue(String(Date.now() - 11_000))
+
+    const handler = await getHandler()
+    const db = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as never)
+
+    expect(response).toEqual({ sent: true, reason: null })
+    expect(sendPushNotificationToUserMock).toHaveBeenCalled()
   })
 
   it('reports not sent when the user has no push subscriptions', async () => {

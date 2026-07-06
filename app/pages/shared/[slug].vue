@@ -66,7 +66,7 @@
               "
             >
               <UiButton
-                v-if="showOpenInApp && loggedIn"
+                v-if="showOpenInApp"
                 data-testid="shared-open-in-app"
                 ghost
                 text="Open in the app"
@@ -280,11 +280,29 @@ const {
 
 const isSettingsExpanded = shallowRef<boolean>(false)
 const showOpenInSafariHint = shallowRef<boolean>(false)
-const showOpenInApp = shallowRef<boolean>(false)
+const isIosExternal = shallowRef<boolean>(false)
 
-onMounted(() => {
+const {
+  data: pushStatus,
+  execute: fetchPushStatus,
+} = useLazyFetch('/api/v1/push/status', {
+  server: false,
+  immediate: false,
+})
+
+const showOpenInApp = computed<boolean>(() => {
+  return isIosExternal.value
+    && loggedIn.value
+    && Boolean(pushStatus.value?.subscribed)
+})
+
+onMounted(async () => {
   showOpenInSafariHint.value = isIosInAppBrowser()
-  showOpenInApp.value = isIosExternalBrowser()
+  isIosExternal.value = isIosExternalBrowser()
+
+  if (isIosExternal.value && loggedIn.value) {
+    await fetchPushStatus()
+  }
 })
 
 function dismissOpenInSafariHint(): void {
