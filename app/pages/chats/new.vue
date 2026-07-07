@@ -8,12 +8,22 @@
       :memory="projectMemoryText"
     />
     <ChatMessage
+      v-if="!pendingClarification && !isClarifying"
       role="assistant"
       :hide-assistant-avatar-on-mobile="false"
     >
       How can I assist you today?
     </ChatMessage>
     <LazyBackgroundLogo />
+    <ChatMessage
+      v-if="pendingClarification || isClarifying"
+      role="user"
+      data-testid="research-clarify-topic"
+    >
+      <p class="chat-markdown">
+        {{ pendingResearchQuery }}
+      </p>
+    </ChatMessage>
     <ChatDeepResearchClarify
       v-if="pendingClarification || isClarifying"
       :clarification="pendingClarification"
@@ -22,6 +32,11 @@
       @skip="() => submitResearchClarification([])"
     />
   </ChatContainer>
+  <div
+    v-if="pendingClarification || isClarifying"
+    class="hidden max-sm:block"
+    :style="{ height: `${clarifyInputHeight}px` }"
+  />
   <ChatInput
     v-model:message="message"
     v-model:files="files"
@@ -71,6 +86,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 const prefStorage = usePreferenceStorage()
+const nuxtApp = useNuxtApp()
 const message = customRef<string>((track, trigger) => ({
   get() {
     track()
@@ -89,6 +105,17 @@ const isClarifying = shallowRef<boolean>(false)
 const pendingClarification = shallowRef<ResearchClarificationResponse | null>(
   null,
 )
+const pendingResearchQuery = shallowRef<string>('')
+const clarifyInputHeight = shallowRef<number>(0)
+
+// new.vue has no chat-scroll-spacer (that composable measures message DOM
+// dimensions, and there are no messages here yet) — the fixed ChatInput's
+// own reported height is the most direct way to reserve enough room for the
+// clarify form's buttons to clear it on mobile.
+nuxtApp.hook('chat-input:height', (height: number) => {
+  clarifyInputHeight.value = height
+})
+
 const { userModel } = useUserModel()
 const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
   get() {
@@ -445,6 +472,7 @@ function submitResearchClarification(answers: ResearchAnswer[]): void {
 
   deferredResearchDraft = null
   pendingClarification.value = null
+  pendingResearchQuery.value = ''
 
   if (!deferred) {
     useErrorMessage(
@@ -467,6 +495,7 @@ async function requestResearchClarification(
   draftFiles: FileMetadata[],
 ): Promise<void> {
   isClarifying.value = true
+  pendingResearchQuery.value = draft
 
   try {
     const response = await $fetch<ResearchClarificationResponse>(

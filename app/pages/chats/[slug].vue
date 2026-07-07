@@ -112,6 +112,15 @@
           />
         </ChatMessage>
       </div>
+      <ChatMessage
+        v-if="pendingClarification"
+        role="user"
+        data-testid="research-clarify-topic"
+      >
+        <p class="chat-markdown">
+          {{ pendingResearchTopic }}
+        </p>
+      </ChatMessage>
       <ChatDeepResearchClarify
         v-if="pendingClarification"
         :clarification="pendingClarification"
@@ -291,6 +300,7 @@ const {
   files,
   currentTurnStartedAt,
   pendingClarification,
+  pendingResearchTopic,
   isClarifying,
   submitResearchClarification,
 } = useChat(toValue(chat.value))
@@ -464,12 +474,30 @@ if (import.meta.client) {
   })
 }
 
-const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
+const {
+  spacerHeight,
+  waitingForDimensions,
+  reserveSpaceForClarify,
+} = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
   messagesDomRefs,
   chatSdk,
 })
+
+if (import.meta.client) {
+  watch(
+    [pendingClarification, isClarifying],
+    async ([clarification, clarifying]) => {
+      if (!clarification && !clarifying) {
+        return
+      }
+
+      await nextTick()
+      reserveSpaceForClarify()
+    },
+  )
+}
 
 function openProjectPicker() {
   projectPickerRef.value?.open(projectId.value)

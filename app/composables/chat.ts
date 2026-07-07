@@ -633,8 +633,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     null,
   )
   const isClarifying = shallowRef<boolean>(false)
+  const pendingResearchTopic = shallowRef<string>('')
   let deferredResearchParts: any[] = []
-  let deferredResearchTopic = ''
   let deferredResearchAnswers: ResearchAnswer[] | undefined
   const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
   const wakeLock = useWakeLock()
@@ -1112,16 +1112,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // normally guaranteed non-empty here (submit() only ever routes into the
   // clarify flow once the original topic already passed a .trim() check),
   // but if it were ever lost — e.g. a caller re-invoking this after it
-  // already ran once — falling back to deferredResearchTopic (still just
+  // already ran once — falling back to pendingResearchTopic (still just
   // plain text, not files) keeps the turn recoverable instead of the form
   // silently closing with the user's answers thrown away.
   function submitResearchClarification(answers: ResearchAnswer[]): void {
     const parts = deferredResearchParts.length
       ? deferredResearchParts
-      : buildTextOnlyParts(deferredResearchTopic)
+      : buildTextOnlyParts(pendingResearchTopic.value)
 
     deferredResearchParts = []
-    deferredResearchTopic = ''
+    pendingResearchTopic.value = ''
     deferredResearchAnswers = answers
     pendingClarification.value = null
 
@@ -1141,7 +1141,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   async function requestResearchClarification(topic: string): Promise<void> {
     try {
       deferredResearchParts = await buildUserMessageParts(topic)
-      deferredResearchTopic = topic
+      pendingResearchTopic.value = topic
     } catch (exception) {
       const parsedException = parseError(exception)
 
@@ -1328,6 +1328,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     reasoning,
     researchDepth,
     pendingClarification,
+    pendingResearchTopic,
     isClarifying,
     submitResearchClarification,
     getMessageReasoning,

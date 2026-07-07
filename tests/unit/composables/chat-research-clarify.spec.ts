@@ -226,6 +226,27 @@ describe('useChat research clarification flow', () => {
     expect(chat.chatSdk.messages).toEqual([])
   })
 
+  it('exposes the pending research topic while clarification is in flight, then clears it once submitted', async () => {
+    vi.stubGlobal('$fetch', vi.fn(async () => ({
+      questions: [],
+      note: undefined,
+    })))
+
+    const chat = useChat(createChatFixture())
+
+    expect(chat.pendingResearchTopic.value).toBe('')
+
+    await triggerClarification(chat, 'the future of remote work')
+
+    expect(chat.pendingResearchTopic.value).toBe(
+      'the future of remote work',
+    )
+
+    chat.submitResearchClarification([])
+
+    expect(chat.pendingResearchTopic.value).toBe('')
+  })
+
   it('clears the pending clarification and sends the deferred message with the given answers', async () => {
     vi.stubGlobal('$fetch', vi.fn(async () => ({
       questions: [],
