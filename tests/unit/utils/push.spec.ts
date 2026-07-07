@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  generateRequestDetails: vi.fn((subscription: { endpoint: string }) => ({
-    endpoint: subscription.endpoint,
-    method: 'POST' as const,
-    headers: { Authorization: 'vapid t=...' },
+  buildPushRequest: vi.fn(async () => ({
+    headers: { authorization: 'vapid t=...' },
     body: new Uint8Array([1, 2, 3]),
   })),
   loggerSet: vi.fn(),
@@ -13,9 +11,16 @@ const mocks = vi.hoisted(() => ({
   shipWideEventToAxiom: vi.fn(async () => undefined),
 }))
 
-vi.mock('web-push', () => ({
-  generateRequestDetails: mocks.generateRequestDetails,
-}))
+vi.mock('../../../server/utils/push-protocol', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../server/utils/push-protocol')
+  >()
+
+  return {
+    ...actual,
+    buildPushRequest: mocks.buildPushRequest,
+  }
+})
 
 vi.mock('evlog', () => ({
   createRequestLogger: mocks.createRequestLogger,
@@ -25,9 +30,14 @@ vi.mock('../../../server/utils/evlog-drains', () => ({
   shipWideEventToAxiom: mocks.shipWideEventToAxiom,
 }))
 
+const validRawPublicKey = Buffer.concat([
+  Buffer.from([4]),
+  Buffer.alloc(64, 7),
+]).toString('base64url')
+
 const configuredVapid = {
   subject: 'mailto:test@example.com' as string | undefined,
-  publicKey: 'public-key' as string | undefined,
+  publicKey: validRawPublicKey as string | undefined,
   privateKey: 'private-key' as string | undefined,
 }
 
@@ -79,7 +89,7 @@ describe('push utils', () => {
   let waitUntilMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    mocks.generateRequestDetails.mockClear()
+    mocks.buildPushRequest.mockClear()
     mocks.loggerSet.mockClear()
     mocks.loggerEmit.mockClear()
     mocks.shipWideEventToAxiom.mockClear()
@@ -254,7 +264,7 @@ describe('push utils', () => {
     }))
   })
 
-  it('requests aes128gcm with a 5-minute TTL, not the library defaults', async () => {
+  it('requests a 5-minute TTL with normal urgency and the VAPID pair', async () => {
     const { sendPushNotificationToUser } = await importPushUtils()
     const { db } = createDb([createSubscription()])
 
@@ -266,15 +276,34 @@ describe('push utils', () => {
       waitUntilMock,
     )
 
-    expect(mocks.generateRequestDetails).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
+    expect(mocks.buildPushRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        TTL: 300,
+        payload: JSON.stringify({ title: 't', body: 'b', url: '/chats/1' }),
+        ttl: 300,
         urgency: 'normal',
-        contentEncoding: 'aes128gcm',
+        vapid: {
+          publicKey: configuredVapid.publicKey,
+          privateKey: configuredVapid.privateKey,
+          subject: 'mailto:test@example.com',
+        },
       }),
     )
+  })
+
+  it('reports unconfigured when the public key is not a raw EC point', async () => {
+    const { sendPushNotificationToUser } = await importPushUtils()
+    const { db } = createDb([createSubscription()])
+
+    const result = await sendPushNotificationToUser(
+      db as any,
+      1,
+      { title: 't', body: 'b', url: '/chats/1' },
+      { ...configuredVapid, publicKey: 'not-a-point' },
+      waitUntilMock,
+    )
+
+    expect(result).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('deletes the subscription when the push service reports it gone (410)', async () => {
@@ -351,7 +380,17 @@ describe('push utils', () => {
       { title: 't', body: 'b', url: '/chats/1' },
       configuredVapid,
       waitUntilMock,
-    )).resolves.toBeUndefined()
+    )).resolves.toEqual({
+      sent: 0,
+      staleRemoved: 0,
+      rejected: 0,
+      failed: 1,
+      failures: [{
+        host: 'fcm.googleapis.com',
+        status: 0,
+        reason: 'network down',
+      }],
+    })
 
     expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
       push: expect.objectContaining({ failed: 1 }),

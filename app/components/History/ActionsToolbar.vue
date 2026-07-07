@@ -24,6 +24,7 @@
       </div>
       <div class="grid grid-cols-2 max-sm:w-full sm:flex gap-3">
         <button
+          v-if="showMoveToProject"
           type="button"
           class="btn btn-sm btn-ghost max-sm:btn-block"
           @click="onMoveToProject"
@@ -32,6 +33,17 @@
           Move to project
         </button>
         <button
+          v-if="showCancelSharing"
+          type="button"
+          data-testid="bulk-cancel-sharing"
+          class="btn btn-sm btn-warning btn-outline max-sm:btn-block"
+          @click="onCancelSharing"
+        >
+          <Icon name="lucide:link-2-off" size="14" />
+          Cancel sharing ({{ selectedCount }})
+        </button>
+        <button
+          v-if="showDelete"
           type="button"
           class="btn btn-sm btn-error btn-outline max-sm:btn-block"
           :disabled="isDeleting"
@@ -51,16 +63,27 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  selectedCount: number
-  visible: boolean
-  isDeleting: boolean
-}>()
+withDefaults(
+  defineProps<{
+    selectedCount: number
+    visible: boolean
+    isDeleting: boolean
+    showMoveToProject?: boolean
+    showDelete?: boolean
+    showCancelSharing?: boolean
+  }>(),
+  {
+    showMoveToProject: true,
+    showDelete: true,
+    showCancelSharing: false,
+  },
+)
 
 const emit = defineEmits<{
   deselect: []
   delete: []
   moveToProject: []
+  cancelSharing: []
 }>()
 
 function onDeselect() {
@@ -73,5 +96,9 @@ function onDelete() {
 
 function onMoveToProject() {
   emit('moveToProject')
+}
+
+function onCancelSharing() {
+  emit('cancelSharing')
 }
 </script>

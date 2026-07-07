@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `uq_chat_share_chat_id` ON `chat_shares` (`chat_id`);

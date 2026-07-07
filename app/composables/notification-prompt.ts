@@ -42,6 +42,10 @@ export function useNotificationPrompt() {
     'notification-prompt:hook-registered',
     () => false,
   )
+  const hasReconciledSubscription = useState<boolean>(
+    'notification-prompt:reconciled',
+    () => false,
+  )
   const nuxtApp = useNuxtApp()
 
   function canShow(): boolean {
@@ -49,8 +53,36 @@ export function useNotificationPrompt() {
       && pushNotifications.permission.value === 'default'
   }
 
+  // A browser where Notification.permission is already 'granted' (via Chrome
+  // site settings, or a fresh desktop PWA install) but has no PushManager
+  // subscription yet can never reach the banner above — canShow() requires
+  // permission === 'default' — so that browser would stay unsubscribed
+  // forever unless it's reconciled silently here instead.
+  async function reconcileGrantedSubscription(): Promise<void> {
+    try {
+      await pushNotifications.refreshState()
+
+      if (pushNotifications.permission.value !== 'granted') {
+        return
+      }
+
+      if (pushNotifications.isSubscribed.value) {
+        return
+      }
+
+      await pushNotifications.subscribe()
+    } catch (exception) {
+      void exception
+    }
+  }
+
   function maybeShowProactively(): void {
-    if (!canShow()) {
+    // Unlike canShow() above, this only gates on support — permission
+    // 'granted' must still reach the watcher below so a browser stuck
+    // granted-but-unsubscribed (see reconcileGrantedSubscription()) gets
+    // reconciled; the permission === 'default' requirement for actually
+    // showing the banner is preserved further down instead.
+    if (!pushNotifications.isSupported.value) {
       return
     }
 
@@ -77,7 +109,27 @@ export function useNotificationPrompt() {
 
         stopWatchingSettingsLoad?.()
 
-        if (settings.state !== null) {
+        if (settings.state === true && !hasReconciledSubscription.value) {
+          hasReconciledSubscription.value = true
+          reconcileGrantedSubscription()
+        }
+
+        if (
+          settings.state === null
+          && pushNotifications.permission.value !== 'default'
+        ) {
+          return
+        }
+
+        // notificationPromptState is account-level, but the browser
+        // permission and push subscription are per-install: a fresh PWA
+        // install starts back at permission 'default' with no subscription,
+        // so a user who already opted in on another install must be
+        // re-prompted here — otherwise the new install can never subscribe.
+        const enabledOnAnotherInstall = settings.state === true
+          && pushNotifications.permission.value === 'default'
+
+        if (settings.state !== null && !enabledOnAnotherInstall) {
           return
         }
 

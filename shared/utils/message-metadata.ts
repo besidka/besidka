@@ -10,7 +10,8 @@ export type MessageMenuInfo = {
   tokens?: number
   reasoningTokens?: number
   cost?: number
-  turnTotalCost?: number
+  costToMessage?: number
+  chatTotalCost?: number
 }
 
 type MenuMessage = {
@@ -52,6 +53,63 @@ export function getMessageUsedTools(
   return hasWebSearchPart ? ['web_search'] : []
 }
 
+function getFollowingAssistantUsage(
+  messages: MenuMessage[],
+  messageIndex: number,
+) {
+  const nextMessage = messages
+    .slice(messageIndex + 1)
+    .find((candidate) => {
+      return candidate.role === 'user' || candidate.role === 'assistant'
+    })
+
+  return nextMessage?.role === 'assistant'
+    ? getMessageMetadata(nextMessage).usage
+    : undefined
+}
+
+function getPerMessageCost(
+  messages: MenuMessage[],
+  messageIndex: number,
+): number | undefined {
+  const message = messages[messageIndex]
+
+  if (!message) {
+    return undefined
+  }
+
+  if (message.role === 'assistant') {
+    return getMessageMetadata(message).usage?.outputCost
+  }
+
+  if (message.role !== 'user') {
+    return undefined
+  }
+
+  return getFollowingAssistantUsage(messages, messageIndex)?.inputCost
+}
+
+function sumMessageCosts(
+  messages: MenuMessage[],
+  endIndex: number,
+): number | undefined {
+  let total = 0
+  let hasCost = false
+
+  for (let index = 0; index <= endIndex; index += 1) {
+    const cost = getPerMessageCost(messages, index)
+
+    if (cost === undefined) {
+      continue
+    }
+
+    hasCost = true
+    total += cost
+  }
+
+  return hasCost ? total : undefined
+}
+
 export function resolveMessageMenuInfo(
   messages: MenuMessage[],
   selectedMessageId: string | null,
@@ -71,13 +129,12 @@ export function resolveMessageMenuInfo(
   }
 
   const metadata = getMessageMetadata(message)
+  const cost = getPerMessageCost(messages, messageIndex)
+  const costToMessage = sumMessageCosts(messages, messageIndex)
+  const chatTotalCost = sumMessageCosts(messages, messages.length - 1)
 
   if (message.role === 'assistant') {
     const usage = metadata.usage
-    const turnTotalCost
-      = usage?.inputCost !== undefined && usage?.outputCost !== undefined
-        ? usage.inputCost + usage.outputCost
-        : undefined
 
     return {
       role: 'assistant',
@@ -87,25 +144,20 @@ export function resolveMessageMenuInfo(
       reasoning: message.reasoning,
       tokens: usage?.outputTokens,
       reasoningTokens: usage?.reasoningTokens,
-      cost: usage?.outputCost,
-      turnTotalCost,
+      cost,
+      costToMessage,
+      chatTotalCost,
     }
   }
 
-  const nextMessage = messages
-    .slice(messageIndex + 1)
-    .find((candidate) => {
-      return candidate.role === 'user' || candidate.role === 'assistant'
-    })
-
-  const followingUsage = nextMessage?.role === 'assistant'
-    ? getMessageMetadata(nextMessage).usage
-    : undefined
+  const followingUsage = getFollowingAssistantUsage(messages, messageIndex)
 
   return {
     role: 'user',
     createdAt: metadata.createdAt,
     tokens: followingUsage?.inputTokens,
-    cost: followingUsage?.inputCost,
+    cost,
+    costToMessage,
+    chatTotalCost,
   }
 }

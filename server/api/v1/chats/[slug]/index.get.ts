@@ -1,4 +1,6 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { rewriteBranchedChatFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -19,16 +21,19 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
+  const userId = parseInt(session.user.id)
+
   const chat = await useDb().query.chats.findFirst({
     where: {
       slug: params.data.slug,
-      userId: parseInt(session.user.id),
+      userId,
     },
     columns: {
       id: true,
       slug: true,
       title: true,
       projectId: true,
+      branchedFromShareSlug: true,
     },
     with: {
       messages: {
@@ -53,15 +58,30 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const messages = chat.messages
+    .filter((message) => {
+      return isPersistedMessageRole(message.role)
+    })
+    .map(message => ({
+      ...message,
+      id: message.publicId ?? message.id,
+    }))
+
+  const sourceShare = chat.branchedFromShareSlug
+    ? await resolveActiveShareBySlug(chat.branchedFromShareSlug, event)
+    : null
+
+  const resolvedMessages = chat.branchedFromShareSlug
+    ? await rewriteBranchedChatFileParts(
+      messages,
+      userId,
+      sourceShare?.id ?? null,
+      event,
+    )
+    : messages
+
   return {
     ...chat,
-    messages: chat.messages
-      .filter((message) => {
-        return isPersistedMessageRole(message.role)
-      })
-      .map(message => ({
-        ...message,
-        id: message.publicId ?? message.id,
-      })),
+    messages: resolvedMessages,
   }
 })

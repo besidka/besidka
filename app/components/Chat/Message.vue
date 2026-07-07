@@ -26,7 +26,7 @@
           class="chat-image avatar rounded-full"
           :class="{
             'avatar-placeholder':
-              role === 'assistant' || !user?.image,
+              role === 'assistant' || !resolvedUserImage,
               'max-sm:hidden': hideAssistantAvatarOnMobile
                 && role === 'assistant',
           }"
@@ -39,9 +39,9 @@
             />
             <template v-else>
               <img
-                v-if="user?.image"
-                :alt="user.name"
-                :src="user.image"
+                v-if="resolvedUserImage"
+                :alt="resolvedUserName"
+                :src="resolvedUserImage"
               >
               <Icon v-else name="lucide:user-round" />
             </template>
@@ -64,19 +64,39 @@ const props = withDefaults(defineProps<{
   messageId?: string
   isSelected?: boolean
   anySelected?: boolean
+  authorName?: string | null
+  authorImage?: string | null
 }>(), {
   hideAssistantAvatarOnMobile: true,
   messageId: undefined,
   isSelected: false,
   anySelected: false,
+  authorName: undefined,
+  authorImage: undefined,
 })
 
 const emit = defineEmits<{
-  select: [messageId: string]
+  select: [messageId: string, pointer: { x: number, y: number }]
 }>()
 
 const { user } = useAuth()
 const element = useTemplateRef<HTMLDivElement>('element')
+
+const resolvedUserImage = computed<string | undefined>(() => {
+  if (props.authorImage !== undefined) {
+    return props.authorImage ?? undefined
+  }
+
+  return user.value?.image ?? undefined
+})
+
+const resolvedUserName = computed<string | undefined>(() => {
+  if (props.authorName !== undefined) {
+    return props.authorName ?? undefined
+  }
+
+  return user.value?.name ?? undefined
+})
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
 let pointerStartX = 0
@@ -89,7 +109,10 @@ function onContextMenu(event: MouseEvent) {
 
   if (props.anySelected) {
     event.preventDefault()
-    emit('select', props.messageId)
+    emit('select', props.messageId, {
+      x: event.clientX,
+      y: event.clientY,
+    })
 
     return
   }
@@ -103,7 +126,10 @@ function onContextMenu(event: MouseEvent) {
   if (selection && selection.toString().length > 0) return
 
   event.preventDefault()
-  emit('select', props.messageId)
+  emit('select', props.messageId, {
+    x: event.clientX,
+    y: event.clientY,
+  })
 }
 
 function onPointerDown(event: PointerEvent) {
@@ -115,7 +141,7 @@ function onPointerDown(event: PointerEvent) {
   pointerStartX = event.clientX
   pointerStartY = event.clientY
   longPressTimer = setTimeout(() => {
-    emit('select', messageId)
+    emit('select', messageId, { x: pointerStartX, y: pointerStartY })
   }, 500)
 }
 

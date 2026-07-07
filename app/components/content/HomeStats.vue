@@ -3,14 +3,16 @@
 </template>
 
 <script setup lang="ts">
-type StatMetric = {
-  metric: 'users' | 'chats' | 'messages' | 'files'
+import type { StatMetric } from '#shared/types/landing.d'
+
+type HomeStatCard = {
+  metric: StatMetric
   label: string
   icon?: string
 }
 
 withDefaults(defineProps<{
-  metrics?: StatMetric[]
+  metrics?: HomeStatCard[]
 }>(), {
   metrics: () => [
     {
@@ -32,6 +34,11 @@ withDefaults(defineProps<{
       metric: 'files',
       label: 'Files attached',
       icon: 'lucide:paperclip',
+    },
+    {
+      metric: 'sharedChats',
+      label: 'Conversations shared',
+      icon: 'lucide:share-2',
     },
   ],
 })

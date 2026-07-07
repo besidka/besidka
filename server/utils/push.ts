@@ -2,6 +2,7 @@ import { createRequestLogger } from 'evlog'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { shipWideEventToAxiom } from './evlog-drains'
+import { buildPushRequest, isValidVapidPublicKey } from './push-protocol'
 
 // Push payloads transit third-party infrastructure (Google/Mozilla/Apple's
 // own push services) and can render on a lock screen — never put generated
@@ -28,6 +29,35 @@ interface StoredPushSubscription {
 }
 
 type SendOutcome = 'sent' | 'staleRemoved' | 'rejected' | 'failed'
+
+export interface PushFailureDetail {
+  host: string
+  status: number
+  reason: string
+}
+
+export interface PushSendOutcomes {
+  sent: number
+  staleRemoved: number
+  rejected: number
+  failed: number
+  failures: PushFailureDetail[]
+}
+
+interface SendResult {
+  outcome: SendOutcome
+  failure?: PushFailureDetail
+}
+
+function getEndpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host
+  } catch (exception) {
+    void exception
+
+    return 'invalid-endpoint'
+  }
+}
 
 // Without this, a client could subscribe with any URL as the "endpoint" and
 // the server would fetch() it on every future generation via waitUntil — an
@@ -94,79 +124,105 @@ export function buildVapidSubject(
 // dropped it (uninstalled, cleared site data, etc.), so this is the only
 // place that ever finds out and is the right place to clean it up.
 //
-// generateRequestDetails() only builds the request (encryption + VAPID
-// headers) — it never touches Node's https module, unlike sendNotification()
-// on this same package, which does. Sending via fetch() ourselves is what
-// keeps this Workers-compatible: web-push's crypto path only needs
-// node:crypto (ECDH/HMAC/AES-GCM), which Cloudflare Workers' nodejs_compat
-// has genuinely supported since workerd PR #3688 (2025-03-10) — its HTTP
-// client path does not need to work here, and hasn't been verified to.
+// The request is built by server/utils/push-protocol.ts, a dependency-free
+// WebCrypto implementation of RFC 8291/8292 — see its file-top doc for the
+// postmortem on why no evaluated Web Push library works on workerd against
+// Apple's push service.
 //
 // Never pass subscription.endpoint/p256dhKey/authKey to the wide event built
 // in sendPushNotificationToUser below — the endpoint is a capability URL
 // (anyone who has it can trigger a push to that browser) and the keys let
 // anyone decrypt payloads sent to it; both are spec-treated as secrets, not
 // just identifiers. Only aggregate outcome counts are ever logged.
-//
-// The `web-push` import below is dynamic, not static, so Nitro's dev server
-// never needs to resolve its dependency graph (jws/asn1.js/https-proxy-agent)
-// at startup — a static top-level import here made the Playwright webServer
-// hang indefinitely in CI (Linux runners only; unreproducible on macOS),
-// with no failure past `nuxt dev`'s first log line. The production Workers
-// build was never affected; only Nitro's own dev-server bundling was.
 async function sendToSubscription(
   db: ReturnType<typeof useDb>,
   subscription: StoredPushSubscription,
-  payloadJson: string,
+  payload: PushNotificationPayload,
   vapid: Required<VapidKeys>,
-): Promise<SendOutcome> {
+): Promise<SendResult> {
+  const host = getEndpointHost(subscription.endpoint)
+
   if (!isAllowedPushServiceEndpoint(subscription.endpoint)) {
-    return 'rejected'
+    return {
+      outcome: 'rejected',
+      failure: {
+        host,
+        status: 0,
+        reason: 'push service host is not allowed',
+      },
+    }
   }
 
   try {
-    const { generateRequestDetails } = await import('web-push')
-    const requestDetails = generateRequestDetails(
-      {
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: subscription.p256dhKey,
-          auth: subscription.authKey,
-        },
+    const request = await buildPushRequest({
+      endpoint: subscription.endpoint,
+      p256dhKey: subscription.p256dhKey,
+      authKey: subscription.authKey,
+      payload: JSON.stringify(payload),
+      ttl: 300,
+      urgency: 'normal',
+      vapid: {
+        publicKey: vapid.publicKey,
+        privateKey: vapid.privateKey,
+        subject: vapid.subject,
       },
-      payloadJson,
-      {
-        vapidDetails: vapid,
-        TTL: 300,
-        urgency: 'normal',
-        contentEncoding: 'aes128gcm',
-      },
-    )
+    })
 
-    const response = await fetch(requestDetails.endpoint, {
-      method: requestDetails.method,
-      headers: requestDetails.headers,
-      // Buffer extends Uint8Array at runtime — a valid BodyInit — but its
-      // Node type doesn't structurally match fetch()'s DOM-lib signature.
-      body: requestDetails.body as BodyInit | null,
+    const response = await fetch(subscription.endpoint, {
+      method: 'POST',
+      headers: request.headers,
+      body: request.body as BodyInit,
     })
 
     if (response.status === 404 || response.status === 410) {
       await db.delete(schema.pushSubscriptions)
         .where(eq(schema.pushSubscriptions.id, subscription.id))
 
-      return 'staleRemoved'
+      return {
+        outcome: 'staleRemoved',
+        failure: {
+          host,
+          status: response.status,
+          reason: 'subscription expired at the push service — removed',
+        },
+      }
     }
 
     if (!response.ok) {
-      return 'failed'
+      let body = ''
+
+      try {
+        body = await response.text()
+      } catch (exception) {
+        void exception
+      }
+
+      return {
+        outcome: 'failed',
+        failure: {
+          host,
+          status: response.status,
+          reason: body.slice(0, 140)
+            || response.statusText
+            || 'rejected by the push service',
+        },
+      }
     }
 
-    return 'sent'
+    return { outcome: 'sent' }
   } catch (exception) {
-    void exception
+    const message = exception instanceof Error
+      ? exception.message
+      : String(exception)
 
-    return 'failed'
+    return {
+      outcome: 'failed',
+      failure: {
+        host,
+        status: 0,
+        reason: message.slice(0, 140),
+      },
+    }
   }
 }
 
@@ -189,9 +245,13 @@ export async function sendPushNotificationToUser(
   payload: PushNotificationPayload,
   vapid: VapidKeys,
   waitUntil?: (promise: Promise<unknown>) => void,
-): Promise<void> {
+): Promise<PushSendOutcomes | null> {
   if (!isPushConfigured(vapid)) {
-    return
+    return null
+  }
+
+  if (!isValidVapidPublicKey(vapid.publicKey as string)) {
+    return null
   }
 
   const subscriptions = await db.query.pushSubscriptions.findMany({
@@ -199,27 +259,30 @@ export async function sendPushNotificationToUser(
   })
 
   if (subscriptions.length === 0) {
-    return
+    return { sent: 0, staleRemoved: 0, rejected: 0, failed: 0, failures: [] }
   }
 
-  const payloadJson = JSON.stringify(payload)
-
-  const outcomes: Record<SendOutcome, number> = {
+  const outcomes: PushSendOutcomes = {
     sent: 0,
     staleRemoved: 0,
     rejected: 0,
     failed: 0,
+    failures: [],
   }
 
   for (const subscription of subscriptions) {
-    const outcome = await sendToSubscription(
+    const result = await sendToSubscription(
       db,
       subscription,
-      payloadJson,
+      payload,
       vapid as Required<VapidKeys>,
     )
 
-    outcomes[outcome] += 1
+    outcomes[result.outcome] += 1
+
+    if (result.failure) {
+      outcomes.failures.push(result.failure)
+    }
   }
 
   const logger = createRequestLogger({
@@ -245,4 +308,6 @@ export async function sendPushNotificationToUser(
   if (wideEvent && waitUntil) {
     waitUntil(shipWideEventToAxiom(wideEvent))
   }
+
+  return outcomes
 }

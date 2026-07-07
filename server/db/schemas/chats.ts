@@ -21,6 +21,7 @@ export const chats = snakeCase.table(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text().default(''),
     shared: integer({ mode: 'boolean' }),
+    branchedFromShareSlug: text(),
     pinnedAt: integer({ mode: 'timestamp' }),
     projectId: publicId().references(() => projects.id, { onDelete: 'set null' }),
     projectMemorySummary: text(),

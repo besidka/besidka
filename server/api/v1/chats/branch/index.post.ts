@@ -1,12 +1,15 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import type { BatchItem } from 'drizzle-orm/batch'
 import * as schema from '~~/server/db/schema'
+import {
+  buildBranchTitle,
+  insertBranchedMessages,
+} from '~~/server/utils/chats/branch'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 const rules = z.object({
   chatSlug: z.string().ulid(),
-  messageId: z.string().min(1),
+  messageId: z.string().min(1).max(64).optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -51,6 +54,7 @@ export default defineEventHandler(async (event) => {
           usage: true,
           createdAt: true,
         },
+        orderBy: { createdAt: 'asc' },
       },
     },
   })
@@ -65,23 +69,26 @@ export default defineEventHandler(async (event) => {
   const persistedMessages = chat.messages.filter((message) => {
     return isPersistedMessageRole(message.role)
   })
-  const branchIndex = persistedMessages.findIndex((message) => {
-    return message.publicId === body.data.messageId
-      || message.id === body.data.messageId
-  })
 
-  if (branchIndex === -1) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Message not found in this chat.',
+  let messagesToCopy = persistedMessages
+
+  if (body.data.messageId) {
+    const branchIndex = persistedMessages.findIndex((message) => {
+      return message.publicId === body.data.messageId
+        || message.id === body.data.messageId
     })
+
+    if (branchIndex === -1) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Message not found in this chat.',
+      })
+    }
+
+    messagesToCopy = persistedMessages.slice(0, branchIndex + 1)
   }
 
-  const messagesToCopy = persistedMessages.slice(0, branchIndex + 1)
-
-  const title = chat.title
-    ? `Branch: ${chat.title.replace(/Branch: /g, '')}`
-    : 'Branch'
+  const title = buildBranchTitle(chat.title)
 
   const newChat = await db
     .insert(schema.chats)
@@ -96,21 +103,20 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
-  const messageInserts = messagesToCopy.map((message) => {
-    return db
-      .insert(schema.messages)
-      .values({
-        chatId: newChat.id,
+  await insertBranchedMessages(
+    db,
+    newChat.id,
+    messagesToCopy.map((message) => {
+      return {
         role: message.role,
         parts: message.parts,
         tools: message.tools,
         reasoning: message.reasoning,
         usage: message.usage,
         createdAt: message.createdAt,
-      })
-  }) as unknown as [BatchItem<'sqlite'>]
-
-  await db.batch(messageInserts)
+      }
+    }),
+  )
 
   await refreshProjectActivityAt([chat.projectId], userId, db)
   await markProjectsMemoryStale([chat.projectId], userId, db)

@@ -1,0 +1,1 @@
+ALTER TABLE `chat_shares` ADD `allow_branch` integer DEFAULT true NOT NULL;

@@ -9,6 +9,48 @@ interface HistoryCacheEntry {
   lastFetchedAt: number | null
 }
 
+export function setHistoryChatSharedBySlug(slug: string, shared: boolean) {
+  const cache = useState<Record<string, HistoryCacheEntry>>(
+    'history:cache',
+    () => ({}),
+  )
+  const search = useState<string>('history:search', () => '')
+  const chats = useState<HistoryChat[]>('history:chats', () => [])
+  const pinned = useState<HistoryChat[]>('history:pinned', () => [])
+
+  const activeKey = `history:${search.value.trim().toLowerCase()}`
+  const nextCache: Record<string, HistoryCacheEntry> = {}
+
+  for (const [cacheKey, entry] of Object.entries(cache.value)) {
+    if (!entry.hasLoaded) {
+      nextCache[cacheKey] = entry
+
+      continue
+    }
+
+    nextCache[cacheKey] = {
+      ...entry,
+      chats: entry.chats.map((chat) => {
+        return chat.slug === slug ? { ...chat, shared } : chat
+      }),
+      pinned: entry.pinned.map((chat) => {
+        return chat.slug === slug ? { ...chat, shared } : chat
+      }),
+    }
+  }
+
+  cache.value = nextCache
+
+  const activeEntry = nextCache[activeKey]
+
+  if (!activeEntry) {
+    return
+  }
+
+  chats.value = activeEntry.chats
+  pinned.value = activeEntry.pinned
+}
+
 export function useHistory() {
   const nuxtApp = useNuxtApp()
   const cache = useState<Record<string, HistoryCacheEntry>>(
@@ -510,6 +552,61 @@ export function useHistory() {
     }
   }
 
+  async function cancelSharingSelected() {
+    if (selectedIds.value.size === 0) return
+
+    const chatIds = Array.from(selectedIds.value)
+    const selectedChatIds = new Set(chatIds)
+    const chunks = []
+
+    for (let index = 0; index < chatIds.length; index += 90) {
+      chunks.push(chatIds.slice(index, index + 90))
+    }
+
+    try {
+      for (const chunk of chunks) {
+        await $fetch('/api/v1/chats/shared/revoke', {
+          method: 'POST',
+          body: { chatIds: chunk },
+        })
+      }
+
+      updateEntries((entry) => {
+        return {
+          ...entry,
+          chats: entry.chats.map((chat) => {
+            return selectedChatIds.has(chat.id)
+              ? { ...chat, shared: false }
+              : chat
+          }),
+          pinned: entry.pinned.map((chat) => {
+            return selectedChatIds.has(chat.id)
+              ? { ...chat, shared: false }
+              : chat
+          }),
+        }
+      })
+
+      clearCompletedSelection(chatIds)
+
+      nuxtApp.runWithContext(() => {
+        useSuccessMessage(
+          `Sharing cancelled for ${chatIds.length} `
+          + `chat${chatIds.length === 1 ? '' : 's'}`,
+        )
+      })
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to cancel sharing',
+          parsedException.why,
+        )
+      })
+    }
+  }
+
   async function renameChat(chatId: string, slug: string, title: string) {
     try {
       await $fetch(`/api/v1/chats/${slug}/rename`, {
@@ -595,6 +692,40 @@ export function useHistory() {
       nuxtApp.runWithContext(() => {
         useErrorMessage(
           parsedException.message || 'Failed to delete chat',
+          parsedException.why,
+        )
+      })
+    }
+  }
+
+  async function cancelSharing(chatId: string) {
+    try {
+      await $fetch('/api/v1/chats/shared/revoke', {
+        method: 'POST',
+        body: { chatIds: [chatId] },
+      })
+
+      updateEntries((entry) => {
+        return {
+          ...entry,
+          chats: entry.chats.map((chat) => {
+            return chat.id === chatId ? { ...chat, shared: false } : chat
+          }),
+          pinned: entry.pinned.map((chat) => {
+            return chat.id === chatId ? { ...chat, shared: false } : chat
+          }),
+        }
+      })
+
+      nuxtApp.runWithContext(() => {
+        useSuccessMessage('Sharing cancelled')
+      })
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      nuxtApp.runWithContext(() => {
+        useErrorMessage(
+          parsedException.message || 'Failed to cancel sharing',
           parsedException.why,
         )
       })
@@ -754,6 +885,8 @@ export function useHistory() {
     deleteSelected,
     renameChat,
     deleteChat,
+    cancelSharing,
+    cancelSharingSelected,
     moveChatToProject,
     moveSelectedToProject,
   }

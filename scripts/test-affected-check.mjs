@@ -78,13 +78,13 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-test-endpoint.spec.ts',
   ]
   const historyProjectsTests = [
-    'tests/unit/components/HistoryPageShell.spec.ts',
+    'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ProjectActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/projects.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
-    'tests/unit/components/HistoryChatSections.spec.ts',
+    'tests/unit/components/History/ChatSections.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
     'tests/unit/utils/date-groups.spec.ts',
@@ -107,6 +107,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
+    'tests/unit/utils/markdown-plain.spec.ts',
   ]
 
   const messageUsageTests = [
@@ -114,6 +115,21 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-metadata.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
+    'tests/unit/utils/markdown-plain.spec.ts',
+  ]
+
+  const chatShareTests = [
+    'tests/integration/server/chat-share.spec.ts',
+    'tests/integration/server/rewrite-share-file-urls.spec.ts',
+    'tests/integration/api/chats-shares-branch.spec.ts',
+    'tests/integration/api/chats-shares-handoff.spec.ts',
+    'tests/integration/api/chats-share-create.spec.ts',
+    'tests/integration/api/chats-share-revoke.spec.ts',
+    'tests/integration/api/shared-chat-view.spec.ts',
+    'tests/unit/composables/chat-share.spec.ts',
+    'tests/unit/components/Chat/ShareModal.client.spec.ts',
+    'tests/unit/composables/ios-in-app-browser.spec.ts',
+    'tests/unit/utils/og-description.spec.ts',
   ]
 
   const cookieConsentTests = [
@@ -134,6 +150,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
+    'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
@@ -145,6 +162,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/push.spec.ts',
     'tests/unit/utils/push-encryption.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
+    'tests/integration/api/push-status.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
     'tests/unit/layouts/chat.spec.ts',
@@ -157,7 +175,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js)$/,
+        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts)$/,
       tests: pushNotificationTests,
     },
     {
@@ -205,6 +223,17 @@ export function getAffectedTests(changedFiles) {
       tests: contextMenuTests,
     },
     {
+      pattern: /^app\/composables\/message-copy\.ts$/,
+      tests: [
+        'tests/unit/composables/message-copy.spec.ts',
+        ...contextMenuTests,
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/markdown-plain\.ts$/,
+      tests: [...contextMenuTests, ...messageUsageTests],
+    },
+    {
       pattern:
         /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/message-usage\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
       tests: messageUsageTests,
@@ -215,6 +244,38 @@ export function getAffectedTests(changedFiles) {
         ...messageUsageTests,
         'tests/unit/composables/haptics.spec.ts',
       ],
+    },
+    {
+      pattern:
+        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^app\/pages\/shared\/\[slug\]\.vue$/,
+      tests: [
+        ...contextMenuTests,
+        'tests/unit/utils/message-metadata.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/shares\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/\[slug\]\/share\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/shared\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/shared\/\[slug\]\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/branch\.ts$/,
+      tests: [...chatShareTests, ...chatStreamBranchTests],
     },
     {
       pattern:
@@ -367,14 +428,19 @@ export function getAffectedTests(changedFiles) {
       tests: chatTestEndpointTests,
     },
     {
-      pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly|chat-shares)\.ts$/,
+      pattern: /^server\/db\/schemas\/(files|storages|image-transform-usage-monthly)\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern: /^server\/db\/schemas\/chat-shares\.ts$/,
+      tests: [...filesModuleTests, ...chatShareTests],
     },
     {
       pattern: /^server\/db\/schemas\/(chats|projects|messages)\.ts$/,
       tests: [
         ...historyProjectsTests,
         ...chatStreamBranchTests,
+        ...chatShareTests,
       ],
     },
     {

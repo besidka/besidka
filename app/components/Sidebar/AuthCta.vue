@@ -6,7 +6,7 @@
         icon-name="lucide:user-round"
         :icon-only="true"
         title="User Menu"
-        :tooltip="undefined"
+        :tooltip="null"
         circle
         tag="summary"
       />

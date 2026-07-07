@@ -5,8 +5,11 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1"
-      :class="{ invisible: !menuStyle }"
+      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none transition-[opacity,visibility] duration-200"
+      :class="{
+        invisible: !menuStyle || isTextSelecting,
+        'opacity-0': isTextSelecting,
+      }"
       :style="menuStyle"
       @pointerdown.stop
       @contextmenu.stop.prevent
@@ -41,14 +44,14 @@
             >
               <span class="shrink-0 font-normal text-base-content/50">Reasoning</span>
               <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
-                <component :is="reasoningIconName" class="size-3.5 shrink-0" />
-                <span class="capitalize">{{ info.reasoning }}</span>
                 <span
                   v-if="info.reasoningTokens !== undefined"
                   class="text-base-content/50"
                 >
                   ({{ formatTokenCount(info.reasoningTokens) }} tokens)
                 </span>
+                <component :is="reasoningIconName" class="size-3.5 shrink-0" />
+                <span class="capitalize">{{ info.reasoning }}</span>
               </span>
             </div>
             <div
@@ -75,51 +78,107 @@
               </span>
             </div>
             <div
-              v-if="info.cost !== undefined"
-              data-testid="message-menu-cost"
-              class="flex items-center justify-between gap-3 text-xs"
+              v-if="hasCostInfo"
+              class="flex flex-col gap-1"
             >
-              <span class="shrink-0 font-normal text-base-content/50">Cost</span>
-              <span class="min-w-0 truncate font-normal text-base-content">
-                {{ formatMessageCost(info.cost) }}
+              <span class="text-xs font-normal text-base-content/50">
+                Cost
               </span>
-            </div>
-            <div
-              v-if="info.turnTotalCost !== undefined"
-              data-testid="message-menu-turn-total"
-              class="flex items-center justify-between gap-3 text-xs"
-            >
-              <span class="shrink-0 font-normal text-base-content/50">
-                Turn total
-              </span>
-              <span class="min-w-0 truncate font-normal text-base-content">
-                {{ formatMessageCost(info.turnTotalCost) }}
-              </span>
+              <div
+                v-if="info.cost !== undefined"
+                data-testid="message-menu-cost-current"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Current message
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ formatMessageCost(info.cost) }}
+                </span>
+              </div>
+              <div
+                v-if="info.costToMessage !== undefined"
+                data-testid="message-menu-cost-to-message"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Up to this message
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ formatMessageCost(info.costToMessage) }}
+                </span>
+              </div>
+              <div
+                v-if="info.chatTotalCost !== undefined"
+                data-testid="message-menu-cost-chat-total"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Chat total
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ formatMessageCost(info.chatTotalCost) }}
+                </span>
+              </div>
             </div>
           </div>
         </li>
-        <li
-          aria-hidden="true"
-          class="pointer-events-none"
-        >
-          <hr class="my-1 border-base-200">
-        </li>
       </template>
-      <li>
+      <li
+        v-if="info && showBranch"
+        aria-hidden="true"
+        class="pointer-events-none"
+      >
+        <hr class="border-base-200 !p-0 mt-1 mb-2">
+      </li>
+      <li v-if="showBranch">
         <button
           type="button"
           @click="onBranch"
         >
           <Icon name="lucide:git-branch-plus" size="14" />
-          New chat from here
+          Branch chat from here
         </button>
       </li>
+      <li
+        v-if="hasCopyText && (info || showBranch)"
+        aria-hidden="true"
+        class="pointer-events-none"
+      >
+        <hr
+          class="border-base-200 !p-0"
+          :class="showBranch ? 'my-2' : 'mt-1 mb-2'"
+        >
+      </li>
+      <template v-if="hasCopyText">
+        <li>
+          <button
+            type="button"
+            data-testid="message-menu-copy"
+            @click="onCopy"
+          >
+            <Icon :name="copyIconName" size="14" />
+            {{ copyLabel }}
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            data-testid="message-menu-copy-markdown"
+            @click="onCopyMarkdown"
+          >
+            <Icon :name="copyMarkdownIconName" size="14" />
+            {{ copyMarkdownLabel }}
+          </button>
+        </li>
+      </template>
     </ul>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
+import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import {
   formatMessageCost,
   formatMessageDateTime,
@@ -130,11 +189,19 @@ const TOOL_LABELS: Record<'web_search', string> = {
   web_search: 'Web search',
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   messageId: string | null
   anchorEl: HTMLElement | null
   info?: MessageMenuInfo | null
-}>()
+  pointer?: { x: number, y: number } | null
+  showBranch?: boolean
+  copyText?: string | null
+}>(), {
+  info: null,
+  pointer: null,
+  showBranch: true,
+  copyText: null,
+})
 
 const emit = defineEmits<{
   branch: [messageId: string]
@@ -147,6 +214,7 @@ let pointerDownTime = 0
 const menuStyle = shallowRef<Record<string, string> | null>(
   null,
 )
+const isTextSelecting = shallowRef<boolean>(false)
 
 const dateTimeInfo = computed(() => {
   return formatMessageDateTime(props.info?.createdAt)
@@ -174,25 +242,138 @@ const tokensLabel = computed<string>(() => {
     : 'Tokens (output)'
 })
 
+const hasCostInfo = computed<boolean>(() => {
+  return (
+    props.info?.cost !== undefined
+    || props.info?.costToMessage !== undefined
+    || props.info?.chatTotalCost !== undefined
+  )
+})
+
+const bubbleEl = computed<HTMLElement | null>(() => {
+  if (!props.anchorEl) return null
+
+  return props.anchorEl.querySelector<HTMLElement>('.js-chat-bubble')
+    ?? props.anchorEl
+})
+
+const hasCopyText = computed<boolean>(() => {
+  return typeof props.copyText === 'string' && props.copyText.length > 0
+})
+
+function useCopiedState() {
+  const justCopied = shallowRef<boolean>(false)
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  function trigger() {
+    justCopied.value = true
+
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+
+    timeoutId = setTimeout(() => {
+      justCopied.value = false
+      timeoutId = null
+    }, 2000)
+  }
+
+  function reset() {
+    justCopied.value = false
+
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  return { justCopied, trigger, reset }
+}
+
+const richCopyState = useCopiedState()
+const markdownCopyState = useCopiedState()
+
+const copyIconName = computed<string>(() => {
+  return richCopyState.justCopied.value ? 'lucide:check' : 'lucide:copy'
+})
+
+const copyLabel = computed<string>(() => {
+  return richCopyState.justCopied.value ? 'Copied!' : 'Copy'
+})
+
+const copyMarkdownIconName = computed<string>(() => {
+  return markdownCopyState.justCopied.value
+    ? 'lucide:check'
+    : 'lucide:file-code'
+})
+
+const copyMarkdownLabel = computed<string>(() => {
+  return markdownCopyState.justCopied.value
+    ? 'Copied!'
+    : 'Copy as Markdown'
+})
+
+const { copyRich, copyPlain } = useMessageCopy()
+
+function extractRenderedHtml(): string {
+  const nodes = bubbleEl.value?.querySelectorAll<HTMLElement>(
+    '.js-message-text',
+  )
+
+  if (!nodes || nodes.length === 0) {
+    return ''
+  }
+
+  return Array.from(nodes).map(node => node.innerHTML).join('\n')
+}
+
+async function onCopy() {
+  if (!props.copyText) return
+
+  const succeeded = await copyRich({
+    html: extractRenderedHtml(),
+    text: markdownToPlainText(props.copyText),
+  })
+
+  if (!succeeded) {
+    useErrorMessage('Failed to copy message')
+
+    return
+  }
+
+  richCopyState.trigger()
+}
+
+async function onCopyMarkdown() {
+  if (!props.copyText) return
+
+  const succeeded = await copyPlain(props.copyText)
+
+  if (!succeeded) {
+    useErrorMessage('Failed to copy message')
+
+    return
+  }
+
+  markdownCopyState.trigger()
+}
+
 onMounted(async () => {
   await nextTick()
 
   if (!props.anchorEl || !menu.value) return
 
   const anchorRect = props.anchorEl.getBoundingClientRect()
-  const bubbleEl
-    = props.anchorEl.querySelector<HTMLElement>(
-      '.js-chat-bubble',
-    )
   const bubbleRect
-    = (bubbleEl ?? props.anchorEl).getBoundingClientRect()
+    = (bubbleEl.value ?? props.anchorEl).getBoundingClientRect()
   const menuHeight = menu.value.offsetHeight
   const gap = 4
+  const edgeMargin = 16
   const right = anchorRect.right - bubbleRect.right
   const spaceBelow
     = window.innerHeight - bubbleRect.bottom
 
-  if (spaceBelow >= menuHeight + gap + 16) {
+  if (spaceBelow >= menuHeight + gap + edgeMargin) {
     menuStyle.value = {
       top: `${bubbleRect.bottom - anchorRect.top + gap}px`,
       right: `${right}px`,
@@ -201,8 +382,42 @@ onMounted(async () => {
     return
   }
 
+  if (bubbleRect.top >= menuHeight + gap + edgeMargin) {
+    menuStyle.value = {
+      bottom: `${anchorRect.bottom - bubbleRect.top + gap}px`,
+      right: `${right}px`,
+    }
+
+    return
+  }
+
+  const desiredTop = props.pointer
+    ? props.pointer.y + gap
+    : window.innerHeight - menuHeight - edgeMargin
+  const clampedTop = Math.min(
+    Math.max(desiredTop, edgeMargin),
+    window.innerHeight - menuHeight - edgeMargin,
+  )
+  const menuWidth = menu.value.offsetWidth
+  const bubbleWidth = bubbleRect.right - bubbleRect.left
+
+  if (props.pointer && bubbleWidth >= menuWidth) {
+    const desiredLeft = props.pointer.x
+    const clampedLeft = Math.min(
+      Math.max(desiredLeft, bubbleRect.left),
+      bubbleRect.right - menuWidth,
+    )
+
+    menuStyle.value = {
+      top: `${clampedTop - anchorRect.top}px`,
+      left: `${clampedLeft - anchorRect.left}px`,
+    }
+
+    return
+  }
+
   menuStyle.value = {
-    bottom: `${anchorRect.bottom - bubbleRect.top + gap}px`,
+    top: `${clampedTop - anchorRect.top}px`,
     right: `${right}px`,
   }
 })
@@ -236,7 +451,7 @@ function onDocumentPointerUp(event: PointerEvent) {
   const target = event.target as HTMLElement
 
   if (menu.value?.contains(target)) return
-  if (props.anchorEl?.contains(target)) return
+  if (bubbleEl.value?.contains(target)) return
 
   event.preventDefault()
   event.stopImmediatePropagation()
@@ -263,9 +478,15 @@ function swallowNextClick() {
 function onDocumentContextMenu(event: Event) {
   const target = event.target as HTMLElement
 
-  if (props.anchorEl?.contains(target)) return
+  if (bubbleEl.value?.contains(target)) return
 
   dismiss()
+}
+
+function onSelectionChange() {
+  const selection = window.getSelection()
+
+  isTextSelecting.value = !!selection && !selection.isCollapsed
 }
 
 onMounted(() => {
@@ -273,6 +494,8 @@ onMounted(() => {
   document.addEventListener('pointerdown', onDocumentPointerDown)
   document.addEventListener('pointerup', onDocumentPointerUp)
   document.addEventListener('contextmenu', onDocumentContextMenu)
+  document.addEventListener('selectionchange', onSelectionChange)
+  onSelectionChange()
 })
 
 onUnmounted(() => {
@@ -280,5 +503,8 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown)
   document.removeEventListener('pointerup', onDocumentPointerUp)
   document.removeEventListener('contextmenu', onDocumentContextMenu)
+  document.removeEventListener('selectionchange', onSelectionChange)
+  richCopyState.reset()
+  markdownCopyState.reset()
 })
 </script>

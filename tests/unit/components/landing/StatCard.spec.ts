@@ -108,6 +108,20 @@ describe('StatCard.vue', () => {
     expect(span.text()).toBe('5.7K')
   })
 
+  it('renders the sharedChats metric from injected stats', async () => {
+    const injected = makeInjectedStats({ sharedChats: 50 })
+    const wrapper = await mountSuspended(StatCard, {
+      props: { metric: 'sharedChats', label: 'Conversations shared' },
+      global: {
+        provide: { 'stat-grid-data': injected },
+      },
+    })
+
+    const span = wrapper.find('span.tabular-nums')
+
+    expect(span.text()).toBe('50')
+  })
+
   it('formats full numbers correctly when format is full', async () => {
     const injected = makeInjectedStats({ messages: 12345 })
     const wrapper = await mountSuspended(StatCard, {

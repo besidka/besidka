@@ -9,6 +9,7 @@ import {
 } from 'drizzle-orm'
 import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { buildChatSharedColumn } from '~~/server/utils/chats/share'
 import {
   createHistoryCursor,
   parseHistoryCursor,
@@ -59,6 +60,7 @@ export default defineEventHandler(async (event) => {
     pinnedAt: schema.chats.pinnedAt,
     projectId: schema.chats.projectId,
     projectName: schema.projects.name,
+    shared: buildChatSharedColumn(),
   }
 
   const cursorFilter = parsedCursor

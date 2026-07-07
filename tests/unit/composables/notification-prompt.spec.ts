@@ -6,8 +6,16 @@ import { useNotificationPrompt } from '../../../app/composables/notification-pro
 const mocks = vi.hoisted(() => ({
   isSupported: true,
   permission: 'default' as NotificationPermission,
+  isSubscribed: false,
   subscribe: vi.fn(async () => true),
+  refreshState: vi.fn(async () => undefined),
 }))
+
+async function flushPromises() {
+  for (let tick = 0; tick < 6; tick += 1) {
+    await Promise.resolve()
+  }
+}
 
 // Not vi.hoisted(): its callback runs before regular imports (like vue's
 // shallowRef here) are initialized. mockNuxtImport's factory below is only
@@ -40,9 +48,14 @@ mockNuxtImport('usePushNotifications', () => {
         return mocks.permission
       },
     },
-    isSubscribed: { value: false },
+    isSubscribed: {
+      get value() {
+        return mocks.isSubscribed
+      },
+    },
     subscribe: mocks.subscribe,
     unsubscribe: vi.fn(),
+    refreshState: mocks.refreshState,
   })
 })
 
@@ -63,11 +76,16 @@ describe('useNotificationPrompt', () => {
   beforeEach(() => {
     mocks.isSupported = true
     mocks.permission = 'default'
+    mocks.isSubscribed = false
     mocks.subscribe.mockClear()
+    mocks.refreshState.mockClear()
     userSettingMocks.activeUserId.value = null
     userSettingMocks.isLoadingSettings.value = false
     userSettingMocks.notificationPromptState.value = null
     userSettingMocks.setNotificationPromptState.mockClear()
+
+    useState<boolean>('notification-prompt:reconciled', () => false)
+      .value = false
 
     const { isVisible } = useNotificationPrompt()
 
@@ -160,9 +178,35 @@ describe('useNotificationPrompt', () => {
 
       expect(prompt.isVisible.value).toBe(false)
 
-      userSettingMocks.notificationPromptState.value = true
+      userSettingMocks.notificationPromptState.value = false
       userSettingMocks.isLoadingSettings.value = false
       await nextTick()
+
+      expect(prompt.isVisible.value).toBe(false)
+    })
+
+    it('re-shows for a user who enabled on another install', async () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'default'
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
+      await flushPromises()
+
+      expect(prompt.isVisible.value).toBe(true)
+      expect(mocks.subscribe).not.toHaveBeenCalled()
+    })
+
+    it('does not re-show when this install already has permission', () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'granted'
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
 
       expect(prompt.isVisible.value).toBe(false)
     })
@@ -175,6 +219,58 @@ describe('useNotificationPrompt', () => {
       prompt.maybeShowProactively()
 
       expect(prompt.isVisible.value).toBe(false)
+    })
+  })
+
+  describe('reconcileGrantedSubscription (granted, unsubscribed browser)', () => {
+    it('refreshes state and subscribes silently, keeping the banner hidden', async () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'granted'
+      mocks.isSubscribed = false
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
+      await flushPromises()
+
+      expect(mocks.refreshState).toHaveBeenCalledTimes(1)
+      expect(mocks.subscribe).toHaveBeenCalledTimes(1)
+      expect(prompt.isVisible.value).toBe(false)
+    })
+
+    it('does not subscribe again when already subscribed', async () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'granted'
+      mocks.isSubscribed = true
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
+      await flushPromises()
+
+      expect(mocks.refreshState).toHaveBeenCalledTimes(1)
+      expect(mocks.subscribe).not.toHaveBeenCalled()
+    })
+
+    it('reconciles the subscription only once per session', async () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = true
+      mocks.permission = 'granted'
+      mocks.isSubscribed = false
+
+      const firstPrompt = useNotificationPrompt()
+
+      firstPrompt.maybeShowProactively()
+
+      const secondPrompt = useNotificationPrompt()
+
+      secondPrompt.maybeShowProactively()
+
+      await flushPromises()
+
+      expect(mocks.subscribe).toHaveBeenCalledTimes(1)
     })
   })
 

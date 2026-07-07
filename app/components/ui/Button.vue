@@ -83,7 +83,7 @@ const hasCustomIcon = computed<boolean>(() => {
 })
 
 const showTooltip = computed<boolean>(() => {
-  if (props.disabled && props.tooltip === null) {
+  if (props.tooltip === null) {
     return false
   }
 
@@ -268,7 +268,7 @@ const containerClasses = computed<Partial<Record<string, boolean>>>(() => {
     ...tooltipClasses.value,
     ...(isTagSummary.value
       ? {
-        'z-[2]': true,
+        'relative z-[2]': true,
         ...buttonStyleClasses.value,
       }
       : {}),

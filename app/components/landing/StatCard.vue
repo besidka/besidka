@@ -5,12 +5,12 @@
   >
     <div
       v-if="icon"
-      class="w-9 h-9 rounded-xl bg-base-200 grid place-items-center
-        text-accent mb-1"
+      class="size-9 rounded-xl bg-base-200 grid place-items-center
+        text-accent mb-2"
     >
       <Icon
         :name="icon"
-        class="w-5 h-5"
+        class="size-5"
         aria-hidden="true"
       />
     </div>
@@ -21,7 +21,7 @@
     />
     <span
       v-else
-      class="text-2xl sm:text-3xl font-bold text-base-content
+      class="text-xl sm:text-2xl font-bold text-base-content
         tabular-nums leading-none"
       :aria-label="displayValue !== '—'
         ? `${displayValue} ${label}`
@@ -37,8 +37,7 @@
 
 <script setup lang="ts">
 import type { InjectedStats } from './StatGrid.vue'
-
-type StatMetric = 'users' | 'chats' | 'messages' | 'files'
+import type { StatMetric } from '#shared/types/landing.d'
 
 const props = withDefaults(defineProps<{
   metric: StatMetric
@@ -54,7 +53,10 @@ const injectedStats = inject<InjectedStats | null>('stat-grid-data', null)
 
 const { data: ownData, pending: ownPending } = await useLazyFetch(
   '/api/v1/stats',
-  { immediate: !injectedStats },
+  {
+    immediate: !injectedStats,
+    query: { v: 2 },
+  },
 )
 
 const isLoading = computed<boolean>(() => {
