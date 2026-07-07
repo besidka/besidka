@@ -5,10 +5,10 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none transition-opacity duration-200"
+      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none transition-[opacity,visibility] duration-200"
       :class="{
-        invisible: !menuStyle,
-        'opacity-25 pointer-events-none': isTextSelecting,
+        invisible: !menuStyle || isTextSelecting,
+        'opacity-0': isTextSelecting,
       }"
       :style="menuStyle"
       @pointerdown.stop
@@ -44,14 +44,14 @@
             >
               <span class="shrink-0 font-normal text-base-content/50">Reasoning</span>
               <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
-                <component :is="reasoningIconName" class="size-3.5 shrink-0" />
-                <span class="capitalize">{{ info.reasoning }}</span>
                 <span
                   v-if="info.reasoningTokens !== undefined"
                   class="text-base-content/50"
                 >
                   ({{ formatTokenCount(info.reasoningTokens) }} tokens)
                 </span>
+                <component :is="reasoningIconName" class="size-3.5 shrink-0" />
+                <span class="capitalize">{{ info.reasoning }}</span>
               </span>
             </div>
             <div
@@ -78,26 +78,48 @@
               </span>
             </div>
             <div
-              v-if="info.cost !== undefined"
-              data-testid="message-menu-cost"
-              class="flex items-center justify-between gap-3 text-xs"
+              v-if="hasCostInfo"
+              class="flex flex-col gap-1"
             >
-              <span class="shrink-0 font-normal text-base-content/50">Cost</span>
-              <span class="min-w-0 truncate font-normal text-base-content">
-                {{ formatMessageCost(info.cost) }}
+              <span class="text-xs font-normal text-base-content/50">
+                Cost
               </span>
-            </div>
-            <div
-              v-if="info.turnTotalCost !== undefined"
-              data-testid="message-menu-turn-total"
-              class="flex items-center justify-between gap-3 text-xs"
-            >
-              <span class="shrink-0 font-normal text-base-content/50">
-                Turn total
-              </span>
-              <span class="min-w-0 truncate font-normal text-base-content">
-                {{ formatMessageCost(info.turnTotalCost) }}
-              </span>
+              <div
+                v-if="info.cost !== undefined"
+                data-testid="message-menu-cost-current"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Current message
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ formatMessageCost(info.cost) }}
+                </span>
+              </div>
+              <div
+                v-if="info.costToMessage !== undefined"
+                data-testid="message-menu-cost-to-message"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Up to this message
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ formatMessageCost(info.costToMessage) }}
+                </span>
+              </div>
+              <div
+                v-if="info.chatTotalCost !== undefined"
+                data-testid="message-menu-cost-chat-total"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Chat total
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ formatMessageCost(info.chatTotalCost) }}
+                </span>
+              </div>
             </div>
           </div>
         </li>
@@ -107,7 +129,7 @@
         aria-hidden="true"
         class="pointer-events-none"
       >
-        <hr class="my-1 border-base-200">
+        <hr class="border-base-200 !p-0 mt-1 mb-2">
       </li>
       <li v-if="showBranch">
         <button
@@ -123,7 +145,10 @@
         aria-hidden="true"
         class="pointer-events-none"
       >
-        <hr class="my-1 border-base-200">
+        <hr
+          class="border-base-200 !p-0"
+          :class="showBranch ? 'my-2' : 'mt-1 mb-2'"
+        >
       </li>
       <template v-if="hasCopyText">
         <li>
@@ -153,6 +178,7 @@
 
 <script setup lang="ts">
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
+import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import {
   formatMessageCost,
   formatMessageDateTime,
@@ -214,6 +240,14 @@ const tokensLabel = computed<string>(() => {
   return props.info?.role === 'user'
     ? 'Tokens (input)'
     : 'Tokens (output)'
+})
+
+const hasCostInfo = computed<boolean>(() => {
+  return (
+    props.info?.cost !== undefined
+    || props.info?.costToMessage !== undefined
+    || props.info?.chatTotalCost !== undefined
+  )
 })
 
 const bubbleEl = computed<HTMLElement | null>(() => {
@@ -298,7 +332,7 @@ async function onCopy() {
 
   const succeeded = await copyRich({
     html: extractRenderedHtml(),
-    text: props.copyText,
+    text: markdownToPlainText(props.copyText),
   })
 
   if (!succeeded) {

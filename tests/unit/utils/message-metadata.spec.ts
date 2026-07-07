@@ -113,7 +113,8 @@ describe('resolveMessageMenuInfo', () => {
       tokens: 1180,
       reasoningTokens: 320,
       cost: 0.0177,
-      turnTotalCost: 0.0131 + 0.0177,
+      costToMessage: 0.0177,
+      chatTotalCost: 0.0177,
     })
   })
 
@@ -139,6 +140,8 @@ describe('resolveMessageMenuInfo', () => {
       createdAt: 'sent',
       tokens: 5240,
       cost: 0.0131,
+      costToMessage: 0.0131,
+      chatTotalCost: 0.0131 + 0.0177,
     })
   })
 
@@ -154,6 +157,8 @@ describe('resolveMessageMenuInfo', () => {
       createdAt: 'first',
       tokens: undefined,
       cost: undefined,
+      costToMessage: undefined,
+      chatTotalCost: 0.0131 + 0.0177,
     })
   })
 
@@ -163,11 +168,77 @@ describe('resolveMessageMenuInfo', () => {
       { id: 'u1', role: 'user', metadata: { createdAt: 'last' } },
     ]
 
-    expect(resolveMessageMenuInfo(messages, 'u1')).toEqual({
+    const info = resolveMessageMenuInfo(messages, 'u1')
+
+    expect(info).toEqual({
       role: 'user',
       createdAt: 'last',
       tokens: undefined,
       cost: undefined,
+      costToMessage: 0.0177,
+      chatTotalCost: 0.0177,
     })
+    expect(info?.costToMessage).toBe(info?.chatTotalCost)
+  })
+})
+
+describe('resolveMessageMenuInfo cumulative cost totals', () => {
+  function buildUsage(inputCost: number, outputCost: number) {
+    return {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost,
+      outputCost,
+    }
+  }
+
+  const usage1 = buildUsage(0.01, 0.02)
+  const usage2 = buildUsage(0.03, 0.04)
+  const usage3 = buildUsage(0.05, 0.06)
+
+  const messages = [
+    { id: 'u1', role: 'user', metadata: { createdAt: 'turn-1-user' } },
+    { id: 'a1', role: 'assistant', metadata: { usage: usage1 } },
+    { id: 'u2', role: 'user', metadata: { createdAt: 'turn-2-user' } },
+    { id: 'a2', role: 'assistant', metadata: { usage: usage2 } },
+    { id: 'u3', role: 'user', metadata: { createdAt: 'turn-3-user' } },
+    { id: 'a3', role: 'assistant', metadata: { usage: usage3 } },
+  ]
+
+  const chatTotal = 0.01 + 0.02 + 0.03 + 0.04 + 0.05 + 0.06
+
+  it('accumulates a running total up to each assistant message', () => {
+    expect(resolveMessageMenuInfo(messages, 'a1')?.costToMessage)
+      .toBe(0.01 + 0.02)
+    expect(resolveMessageMenuInfo(messages, 'a2')?.costToMessage)
+      .toBe(0.01 + 0.02 + 0.03 + 0.04)
+    expect(resolveMessageMenuInfo(messages, 'a3')?.costToMessage)
+      .toBe(chatTotal)
+  })
+
+  it('includes a user message\'s own turn input in its cumulative total', () => {
+    const info = resolveMessageMenuInfo(messages, 'u2')
+
+    expect(info?.cost).toBe(0.03)
+    expect(info?.costToMessage).toBe(0.01 + 0.02 + 0.03)
+  })
+
+  it('reports the same chat total regardless of the selected message', () => {
+    expect(resolveMessageMenuInfo(messages, 'u1')?.chatTotalCost)
+      .toBe(chatTotal)
+    expect(resolveMessageMenuInfo(messages, 'a2')?.chatTotalCost)
+      .toBe(chatTotal)
+    expect(resolveMessageMenuInfo(messages, 'u3')?.chatTotalCost)
+      .toBe(chatTotal)
+  })
+
+  it('makes the last message\'s cumulative total equal the chat total', () => {
+    const info = resolveMessageMenuInfo(messages, 'a3')
+
+    expect(info?.costToMessage).toBe(info?.chatTotalCost)
+    expect(info?.costToMessage).toBe(chatTotal)
   })
 })

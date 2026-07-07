@@ -2,6 +2,7 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
+import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import ContextMenu from '../../../../app/components/Chat/ContextMenu.client.vue'
 import * as messagesComposable from '../../../../app/composables/messages'
 
@@ -394,7 +395,7 @@ describe('Chat/ContextMenu.client', () => {
   })
 
   describe('text selection fade', () => {
-    it('fades and disables pointer events while text is being selected', async () => {
+    it('fades out and hides the menu while text is being selected', async () => {
       vi.spyOn(window, 'getSelection').mockReturnValue({
         isCollapsed: false,
       } as Selection)
@@ -412,8 +413,10 @@ describe('Chat/ContextMenu.client', () => {
 
       const classes = wrapper.find('ul').classes()
 
-      expect(classes).toContain('opacity-25')
-      expect(classes).toContain('pointer-events-none')
+      expect(classes).toContain('opacity-0')
+      expect(classes).toContain('invisible')
+      expect(classes).not.toContain('opacity-25')
+      expect(classes).not.toContain('pointer-events-none')
     })
 
     it('restores full opacity once the selection is cleared', async () => {
@@ -441,6 +444,8 @@ describe('Chat/ContextMenu.client', () => {
 
       const classes = wrapper.find('ul').classes()
 
+      expect(classes).not.toContain('opacity-0')
+      expect(classes).not.toContain('invisible')
       expect(classes).not.toContain('opacity-25')
       expect(classes).not.toContain('pointer-events-none')
     })
@@ -509,7 +514,8 @@ describe('Chat/ContextMenu.client', () => {
         tokens: 1180,
         reasoningTokens: 320,
         cost: 0.0047,
-        turnTotalCost: 0.0178,
+        costToMessage: 0.0131,
+        chatTotalCost: 0.0178,
       }
 
       const wrapper = await mountSuspended(ContextMenu, {
@@ -540,22 +546,27 @@ describe('Chat/ContextMenu.client', () => {
         wrapper.find('[data-testid="message-menu-tokens"]').text(),
       ).toContain('1,180')
       expect(
-        wrapper.find('[data-testid="message-menu-cost"]').text(),
+        wrapper.find('[data-testid="message-menu-cost-current"]').text(),
       ).toContain('$0.0047')
       expect(
-        wrapper.find('[data-testid="message-menu-turn-total"]').text(),
+        wrapper.find('[data-testid="message-menu-cost-to-message"]').text(),
+      ).toContain('$0.0131')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-chat-total"]').text(),
       ).toContain('$0.0178')
       expect(
         wrapper.find('[data-testid="message-menu-datetime"]').exists(),
       ).toBe(true)
     })
 
-    it('renders user usage info without model, tools, or turn total', async () => {
+    it('renders user usage info without model or tools', async () => {
       const info: MessageMenuInfo = {
         role: 'user',
         createdAt: '2026-01-15T10:30:00.000Z',
         tokens: 5240,
         cost: 0.0131,
+        costToMessage: 0.0131,
+        chatTotalCost: 0.0308,
       }
 
       const wrapper = await mountSuspended(ContextMenu, {
@@ -574,16 +585,19 @@ describe('Chat/ContextMenu.client', () => {
         wrapper.find('[data-testid="message-menu-tokens"]').text(),
       ).toContain('5,240')
       expect(
-        wrapper.find('[data-testid="message-menu-cost"]').text(),
+        wrapper.find('[data-testid="message-menu-cost-current"]').text(),
       ).toContain('$0.0131')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-to-message"]').text(),
+      ).toContain('$0.0131')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-chat-total"]').text(),
+      ).toContain('$0.0308')
       expect(
         wrapper.find('[data-testid="message-menu-model"]').exists(),
       ).toBe(false)
       expect(
         wrapper.find('[data-testid="message-menu-tools"]').exists(),
-      ).toBe(false)
-      expect(
-        wrapper.find('[data-testid="message-menu-turn-total"]').exists(),
       ).toBe(false)
     })
 
@@ -624,7 +638,15 @@ describe('Chat/ContextMenu.client', () => {
         wrapper.find('[data-testid="message-menu-tokens"]').exists(),
       ).toBe(false)
       expect(
-        wrapper.find('[data-testid="message-menu-cost"]').exists(),
+        wrapper.find('[data-testid="message-menu-cost-current"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-to-message"]')
+          .exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-chat-total"]')
+          .exists(),
       ).toBe(false)
       expect(
         wrapper.find('[data-testid="message-menu-datetime"]').exists(),
@@ -632,6 +654,36 @@ describe('Chat/ContextMenu.client', () => {
       expect(
         wrapper.find('[data-testid="message-menu-tools"]').text(),
       ).toContain('Web search')
+    })
+
+    it('shows only the cost sub-rows that have a value', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        cost: undefined,
+        costToMessage: 0.02,
+        chatTotalCost: undefined,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-current"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-to-message"]').text(),
+      ).toContain('$0.02')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-chat-total"]')
+          .exists(),
+      ).toBe(false)
     })
   })
 
@@ -721,6 +773,29 @@ describe('Chat/ContextMenu.client', () => {
       await wrapper.vm.$nextTick()
 
       expect(findCopyButton(wrapper).text()).toBe('Copy')
+    })
+
+    it('writes the plain-text flavor as transformed markdown', async () => {
+      const copyText = '# Hello\n\nThis is **bold** text.'
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          copyText,
+        },
+        attachTo: document.body,
+      })
+
+      await findCopyButton(wrapper).trigger('click')
+      await flushPromises()
+
+      const [items] = vi.mocked(navigator.clipboard.write).mock.calls[0]
+      const [item] = items as unknown as { items: Record<string, Blob> }[]
+      const plainText = await item.items['text/plain'].text()
+
+      expect(plainText).toBe(markdownToPlainText(copyText))
+      expect(plainText).toBe('Hello\n\nThis is bold text.')
     })
 
     it('copies markdown content and reverts the Copied! state after 2s', async () => {

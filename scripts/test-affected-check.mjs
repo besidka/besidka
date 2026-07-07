@@ -107,6 +107,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
+    'tests/unit/utils/markdown-plain.spec.ts',
   ]
 
   const messageUsageTests = [
@@ -114,6 +115,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-metadata.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
+    'tests/unit/utils/markdown-plain.spec.ts',
   ]
 
   const chatShareTests = [
@@ -226,6 +228,10 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/message-copy.spec.ts',
         ...contextMenuTests,
       ],
+    },
+    {
+      pattern: /^shared\/utils\/markdown-plain\.ts$/,
+      tests: [...contextMenuTests, ...messageUsageTests],
     },
     {
       pattern:

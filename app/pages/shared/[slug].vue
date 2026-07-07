@@ -21,7 +21,7 @@
     />
   </div>
   <template v-else-if="data">
-    <ChatContainer class="!gap-0 pb-2">
+    <ChatContainer class="!gap-0 pb-16">
       <div class="w-screen sm:w-4xl sm:max-w-screen mx-auto px-4 sm:px-24">
         <div
           v-if="showOpenInSafariHint"
@@ -153,7 +153,7 @@
       >
         <ChatMessage
           :role="m.role"
-          :message-id="contextMenuEnabled ? m.id : undefined"
+          :message-id="m.id"
           :is-selected="selectedMessageId === m.id"
           :any-selected="selectedMessageId !== null"
           :author-name="data.author?.name ?? null"
@@ -224,6 +224,7 @@
 import type { TextUIPart, UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { buildShareDescription } from '#shared/utils/og-description'
 
@@ -279,6 +280,18 @@ const isNotFound = computed<boolean>(() => {
   return Boolean(error.value) || !data.value
 })
 
+if (import.meta.server && data.value) {
+  const event = useRequestEvent()
+
+  if (event) {
+    setResponseHeader(
+      event,
+      'X-Robots-Tag',
+      data.value.indexable ? 'index, follow' : 'noindex, nofollow',
+    )
+  }
+}
+
 const { baseUrl } = useRuntimeConfig().public
 
 const description = computed<string>(() => {
@@ -327,10 +340,6 @@ const { hapticRigid, hapticSoft } = useHaptics()
 const nuxtApp = useNuxtApp()
 
 const messagesDomRefs = useTemplateRef<HTMLDivElement[]>('messagesDomRefs')
-
-const contextMenuEnabled = computed<boolean>(() => {
-  return Boolean(data.value?.showMetadata || data.value?.allowBranch)
-})
 
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
