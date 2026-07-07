@@ -76,7 +76,7 @@ test.describe('chat context menu selection state', () => {
     await longPress(assistantMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
   })
 
@@ -90,7 +90,7 @@ test.describe('chat context menu selection state', () => {
     await longPress(assistantMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
 
     const userMessage = page.locator('[data-role="user"]').first()
@@ -98,7 +98,7 @@ test.describe('chat context menu selection state', () => {
     await quickTap(userMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeHidden()
   })
 
@@ -112,13 +112,13 @@ test.describe('chat context menu selection state', () => {
     await longPress(assistantMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
 
     await quickTap(assistantMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
   })
 
@@ -132,13 +132,13 @@ test.describe('chat context menu selection state', () => {
     await longPress(assistantMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
 
     await longPress(assistantMessage)
 
     await expect(
-      page.getByRole('button', { name: 'New chat from here' }),
+      page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
   })
 })

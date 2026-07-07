@@ -76,7 +76,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  select: [messageId: string]
+  select: [messageId: string, pointer: { x: number, y: number }]
 }>()
 
 const { user } = useAuth()
@@ -109,7 +109,10 @@ function onContextMenu(event: MouseEvent) {
 
   if (props.anySelected) {
     event.preventDefault()
-    emit('select', props.messageId)
+    emit('select', props.messageId, {
+      x: event.clientX,
+      y: event.clientY,
+    })
 
     return
   }
@@ -123,7 +126,10 @@ function onContextMenu(event: MouseEvent) {
   if (selection && selection.toString().length > 0) return
 
   event.preventDefault()
-  emit('select', props.messageId)
+  emit('select', props.messageId, {
+    x: event.clientX,
+    y: event.clientY,
+  })
 }
 
 function onPointerDown(event: PointerEvent) {
@@ -135,7 +141,7 @@ function onPointerDown(event: PointerEvent) {
   pointerStartX = event.clientX
   pointerStartY = event.clientY
   longPressTimer = setTimeout(() => {
-    emit('select', messageId)
+    emit('select', messageId, { x: pointerStartX, y: pointerStartY })
   }, 500)
 }
 

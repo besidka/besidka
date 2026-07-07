@@ -105,6 +105,16 @@ describe('Chat/ShareModal.client', () => {
     expect((branchToggle.element as HTMLInputElement).checked).toBe(true)
   })
 
+  it('labels the metadata toggle "Show message details"', async () => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    const toggleInput = wrapper.find('[data-testid="share-toggle-metadata"]')
+    const toggleRow = toggleInput.element.closest('label')
+
+    expect(toggleRow?.querySelector('span')?.textContent?.trim())
+      .toBe('Show message details')
+  })
+
   it('renders each toggle row with the label before the toggle', async () => {
     const wrapper = await mountSuspended(ShareModal)
 

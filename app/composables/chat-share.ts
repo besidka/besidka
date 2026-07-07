@@ -189,13 +189,16 @@ export function useChatShare() {
     }
   }
 
-  async function branchSharedChat(shareSlug: string) {
+  async function branchSharedChat(shareSlug: string, messageId?: string) {
     isBranching.value = true
 
     try {
       const response = await $fetch(
         `/api/v1/chats/shares/${shareSlug}/branch`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          ...(messageId ? { body: { messageId } } : {}),
+        },
       )
 
       nuxtApp.runWithContext(() => {

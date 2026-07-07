@@ -1,10 +1,14 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
 import ContextMenu from '../../../../app/components/Chat/ContextMenu.client.vue'
 
+enableAutoUnmount(afterEach)
+
 describe('Chat/ContextMenu.client', () => {
   let anchorEl: HTMLDivElement
+  let bubbleEl: HTMLDivElement
   let outsideEl: HTMLDivElement
   let originalOffsetHeight: PropertyDescriptor | undefined
 
@@ -14,7 +18,7 @@ describe('Chat/ContextMenu.client', () => {
     anchorEl = document.createElement('div')
     outsideEl = document.createElement('div')
 
-    const bubbleEl = document.createElement('div')
+    bubbleEl = document.createElement('div')
 
     bubbleEl.className = 'js-chat-bubble'
     anchorEl.appendChild(bubbleEl)
@@ -112,7 +116,27 @@ describe('Chat/ContextMenu.client', () => {
     expect(wrapper.emitted('close')).toBeUndefined()
   })
 
-  it('does not emit close when the quick tap happens on the anchor', async () => {
+  it('does not emit close when the quick tap happens on the bubble', async () => {
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+    }))
+    vi.advanceTimersByTime(100)
+    bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+    }))
+
+    expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('emits close when the quick tap happens on the anchor row outside the bubble', async () => {
     const wrapper = await mountSuspended(ContextMenu, {
       props: {
         messageId: 'msg-1',
@@ -129,7 +153,192 @@ describe('Chat/ContextMenu.client', () => {
       bubbles: true,
     }))
 
-    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  describe('positioning', () => {
+    let originalInnerHeight: number
+
+    beforeEach(() => {
+      originalInnerHeight = window.innerHeight
+    })
+
+    afterEach(() => {
+      window.innerHeight = originalInnerHeight
+    })
+
+    function setAnchorRect(rect: Partial<DOMRect>) {
+      anchorEl.getBoundingClientRect = vi.fn(() => ({
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 80,
+        top: 0,
+        right: 320,
+        bottom: 80,
+        left: 0,
+        toJSON: () => ({}),
+        ...rect,
+      } as DOMRect))
+    }
+
+    function setBubbleRect(rect: Partial<DOMRect>) {
+      bubbleEl.getBoundingClientRect = vi.fn(() => ({
+        x: 24,
+        y: 16,
+        width: 240,
+        height: 48,
+        top: 16,
+        right: 264,
+        bottom: 64,
+        left: 24,
+        toJSON: () => ({}),
+        ...rect,
+      } as DOMRect))
+    }
+
+    it('anchors below the bubble when there is enough space below', async () => {
+      window.innerHeight = 800
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('top: 68px')
+      expect(style).toContain('right: 56px')
+    })
+
+    it('anchors above the bubble when space below is insufficient but space above fits', async () => {
+      setAnchorRect({ bottom: 200 })
+      setBubbleRect({ top: 120, bottom: 180 })
+      window.innerHeight = 200
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('bottom: 84px')
+      expect(style).toContain('right: 56px')
+      expect(style).not.toContain('top:')
+    })
+
+    it('anchors near the pointer when neither side fits', async () => {
+      setBubbleRect({ top: -50, bottom: 700 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          pointer: { x: 100, y: 300 },
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('top: 304px')
+      expect(style).toContain('right: 56px')
+    })
+
+    it('clamps the pointer-anchored position near the bottom of the viewport', async () => {
+      setBubbleRect({ top: -50, bottom: 700 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          pointer: { x: 100, y: 590 },
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('top: 536px')
+    })
+
+    it('anchors to the bottom edge when neither side fits and there is no pointer', async () => {
+      setBubbleRect({ top: -50, bottom: 700 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('top: 536px')
+    })
+  })
+
+  describe('branch gating', () => {
+    it('hides the branch button and divider when showBranch is false', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          showBranch: false,
+        },
+        attachTo: document.body,
+      })
+
+      expect(wrapper.text()).not.toContain('Branch chat from here')
+      expect(wrapper.find('hr').exists()).toBe(false)
+    })
+
+    it('shows the branch button when showBranch is omitted', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      expect(wrapper.text()).toContain('Branch chat from here')
+    })
+
+    it('renders info rows without the divider when showBranch is false', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+          showBranch: false,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-info"]').exists(),
+      ).toBe(true)
+      expect(wrapper.find('hr').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Branch chat from here')
+    })
   })
 
   describe('usage info rendering', () => {
@@ -233,7 +442,7 @@ describe('Chat/ContextMenu.client', () => {
       expect(
         wrapper.find('[data-testid="message-menu-info"]').exists(),
       ).toBe(false)
-      expect(wrapper.text()).toContain('New chat from here')
+      expect(wrapper.text()).toContain('Branch chat from here')
     })
 
     it('hides tokens and cost rows when they are unavailable', async () => {

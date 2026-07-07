@@ -32,7 +32,9 @@ describe('Chat/Message', () => {
 
       vi.advanceTimersByTime(500)
 
-      expect(wrapper.emitted('select')).toEqual([['msg-1']])
+      expect(wrapper.emitted('select')).toEqual([
+        ['msg-1', { x: 100, y: 100 }],
+      ])
     })
 
     it('emits select after long-press when anySelected is true but isSelected is false', async () => {
@@ -53,7 +55,9 @@ describe('Chat/Message', () => {
 
       vi.advanceTimersByTime(600)
 
-      expect(wrapper.emitted('select')).toEqual([['msg-1']])
+      expect(wrapper.emitted('select')).toEqual([
+        ['msg-1', { x: 100, y: 100 }],
+      ])
     })
 
     it('does not emit select for mouse pointer type', async () => {
@@ -122,7 +126,33 @@ describe('Chat/Message', () => {
 
       await wrapper.trigger('contextmenu')
 
-      expect(wrapper.emitted('select')).toEqual([['msg-1']])
+      expect(wrapper.emitted('select')).toEqual([
+        ['msg-1', { x: 0, y: 0 }],
+      ])
+    })
+
+    it('emits select with the exact pointer coordinates from the event', async () => {
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        toString: () => '',
+      } as Selection)
+
+      const wrapper = await mountSuspended(Message, {
+        props: {
+          role: 'assistant',
+          messageId: 'msg-1',
+          isSelected: false,
+          anySelected: false,
+        },
+      })
+
+      await wrapper.trigger('contextmenu', {
+        clientX: 123,
+        clientY: 456,
+      })
+
+      expect(wrapper.emitted('select')).toEqual([
+        ['msg-1', { x: 123, y: 456 }],
+      ])
     })
 
     it('does not emit select when isSelected is true', async () => {
@@ -156,7 +186,9 @@ describe('Chat/Message', () => {
       wrapper.element.dispatchEvent(event)
 
       expect(preventDefaultSpy).toHaveBeenCalled()
-      expect(wrapper.emitted('select')).toEqual([['msg-1']])
+      expect(wrapper.emitted('select')).toEqual([
+        ['msg-1', { x: 0, y: 0 }],
+      ])
     })
 
     it('does not emit select when clicking on an anchor element', async () => {

@@ -134,9 +134,11 @@
   <ClientOnly>
     <LazyChatContextMenu
       v-if="selectedMessageId"
+      :key="selectedMessageId"
       :message-id="selectedMessageId"
       :anchor-el="selectedAnchorEl"
       :info="selectedMessageInfo"
+      :pointer="selectedPointer"
       @branch="branchFromMessage"
       @close="clearMessageSelection"
     />
@@ -501,13 +503,18 @@ const { hapticRigid, hapticSoft } = useHaptics()
 
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
+const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 
-function onMessageSelect(messageId: string) {
+function onMessageSelect(
+  messageId: string,
+  pointer?: { x: number, y: number },
+) {
   if (selectedMessageId.value === messageId) return
 
   hapticRigid()
 
   selectedMessageId.value = messageId
+  selectedPointer.value = pointer ?? null
 
   nuxtApp.callHook('chat:message-selected', messageId)
 
@@ -516,14 +523,27 @@ function onMessageSelect(messageId: string) {
   selectedAnchorEl.value = messagesDomRefs.value?.[messageIndex] ?? null
 }
 
-function clearMessageSelection() {
-  hapticSoft()
-
+function resetMessageSelection() {
   selectedMessageId.value = null
   selectedAnchorEl.value = null
+  selectedPointer.value = null
 
   nuxtApp.callHook('chat:message-selected', null)
 }
+
+function clearMessageSelection() {
+  hapticSoft()
+
+  resetMessageSelection()
+}
+
+watch(() => route.params.slug, () => {
+  if (!selectedMessageId.value) {
+    return
+  }
+
+  resetMessageSelection()
+})
 
 const selectedMessageInfo = computed(() => {
   return resolveMessageMenuInfo(chatSdk.messages, selectedMessageId.value)

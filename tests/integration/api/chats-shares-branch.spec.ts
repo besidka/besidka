@@ -37,12 +37,16 @@ async function getHandler() {
 function createMessages() {
   return [
     {
+      id: 'msg-1',
+      publicId: null,
       role: 'user',
       parts: [{ type: 'text', text: 'Hello' }],
       tools: [],
       reasoning: 'off',
     },
     {
+      id: 'msg-2',
+      publicId: null,
       role: 'assistant',
       parts: [{ type: 'text', text: 'Hi there' }],
       tools: [],
@@ -112,6 +116,12 @@ describe('shared chat branch API', () => {
       parser: (params: unknown) => unknown,
     ) => {
       return parser(event.params)
+    })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body?: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
@@ -308,5 +318,78 @@ describe('shared chat branch API', () => {
       role: 'assistant',
       parts: [{ type: 'text', text: 'Hi there' }],
     })
+  })
+
+  it('branches only messages up to and including the selected messageId', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb({
+      messages: [
+        {
+          id: 'msg-1',
+          publicId: 'pub-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'First' }],
+          tools: [],
+          reasoning: 'off',
+        },
+        {
+          id: 'msg-2',
+          publicId: 'pub-2',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Second' }],
+          tools: [],
+          reasoning: 'off',
+        },
+        {
+          id: 'msg-3',
+          publicId: 'pub-3',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Third' }],
+          tools: [],
+          reasoning: 'off',
+        },
+      ],
+    })
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+      body: { messageId: 'pub-2' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler(event as never)
+
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'user',
+      parts: [{ type: 'text', text: 'First' }],
+    })
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Second' }],
+    })
+    expect(insertValues).not.toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Third' }],
+    })
+  })
+
+  it('returns 404 and creates no chat when messageId does not match any message', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+      body: { messageId: 'unknown-message-id' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler(event as never)).rejects.toThrow(
+      'Message not found in this shared chat',
+    )
+    expect(insertValues).not.toHaveBeenCalled()
+    expect(sendPushNotificationToUserMock).not.toHaveBeenCalled()
   })
 })

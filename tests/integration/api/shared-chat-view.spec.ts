@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MessageUsage } from '#shared/types/message-usage.d'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -103,6 +104,7 @@ interface MessageFixture {
   parts: unknown[]
   reasoning: string | null
   createdAt: Date
+  usage: MessageUsage | null
 }
 
 function createMessageFixture(
@@ -115,6 +117,7 @@ function createMessageFixture(
     parts: [{ type: 'text', text: 'Hello' }],
     reasoning: 'off',
     createdAt: new Date('2026-07-01T00:00:00.000Z'),
+    usage: null,
     ...overrides,
   }
 }
@@ -257,7 +260,7 @@ describe('public shared chat view API', () => {
     ])
   })
 
-  it('strips reasoning parts and createdAt when showMetadata is false', async () => {
+  it('strips reasoning parts, createdAt, and usage when showMetadata is false', async () => {
     const handler = await getHandler()
     const { db } = createDb({
       shares: [createShareFixture({
@@ -272,6 +275,13 @@ describe('public shared chat view API', () => {
             { type: 'text', text: 'Hello' },
             { type: 'reasoning', text: 'internal thought' },
           ],
+          usage: {
+            model: 'gpt-5.4',
+            provider: 'openai',
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
+          },
         })],
       },
     })
@@ -286,6 +296,34 @@ describe('public shared chat view API', () => {
       { type: 'text', text: 'Hello' },
     ])
     expect(response.messages[0]).not.toHaveProperty('createdAt')
+    expect(response.messages[0]).not.toHaveProperty('usage')
+  })
+
+  it('includes usage on messages when showMetadata is true', async () => {
+    const handler = await getHandler()
+    const usage: MessageUsage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    }
+    const { db } = createDb({
+      shares: [createShareFixture({ slug: 'metadata-on' })],
+      chat: {
+        title: 'Chat title',
+        user: { name: 'Owner', image: null },
+        messages: [createMessageFixture({ usage })],
+      },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: 'metadata-on' },
+    } as never)
+
+    expect(response.messages[0]).toHaveProperty('usage', usage)
   })
 
   it('always strips tool parts even with every option enabled', async () => {

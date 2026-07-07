@@ -86,7 +86,7 @@
                   justify-between gap-3"
               >
                 <span class="label-text flex-1 min-w-0 text-start">
-                  Show message details (date & time)
+                  Show message details
                 </span>
                 <input
                   v-model="showMetadata"

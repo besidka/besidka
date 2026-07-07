@@ -12,6 +12,10 @@ const paramsRules = z.object({
   slug: z.string().nonempty(),
 })
 
+const bodyRules = z.object({
+  messageId: z.string().min(1).max(64).optional(),
+}).optional()
+
 const BRANCH_COOLDOWN_MS = 30_000
 
 export default defineEventHandler(async (event) => {
@@ -37,6 +41,16 @@ export default defineEventHandler(async (event) => {
       message: 'Invalid request parameters',
       status: 400,
       why: params.error.message,
+    })
+  }
+
+  const body = await readValidatedBody(event, bodyRules.safeParse)
+
+  if (body.error) {
+    throw createError({
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -97,9 +111,12 @@ export default defineEventHandler(async (event) => {
     with: {
       messages: {
         columns: {
+          id: true,
+          publicId: true,
           role: true,
           parts: true,
         },
+        orderBy: { createdAt: 'asc' },
       },
     },
   })
@@ -115,9 +132,28 @@ export default defineEventHandler(async (event) => {
     return isPersistedMessageRole(message.role)
   })
 
+  const messageId = body.data?.messageId
+
+  let messagesToBranch = persistedMessages
+
+  if (messageId) {
+    const branchIndex = persistedMessages.findIndex((message) => {
+      return message.publicId === messageId || message.id === messageId
+    })
+
+    if (branchIndex === -1) {
+      throw createError({
+        message: 'Message not found in this shared chat',
+        status: 404,
+      })
+    }
+
+    messagesToBranch = persistedMessages.slice(0, branchIndex + 1)
+  }
+
   const sharedMessages = share.showFiles
-    ? persistedMessages
-    : stripFileParts(persistedMessages)
+    ? messagesToBranch
+    : stripFileParts(messagesToBranch)
 
   const title = buildBranchTitle(sourceChat.title)
 

@@ -237,6 +237,13 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
+      pattern: /^app\/pages\/shared\/\[slug\]\.vue$/,
+      tests: [
+        ...contextMenuTests,
+        'tests/unit/utils/message-metadata.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/api\/v1\/chats\/shares\/.*\.ts$/,
       tests: chatShareTests,
     },

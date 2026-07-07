@@ -55,7 +55,9 @@ export default defineEventHandler(async (event) => {
           parts: true,
           reasoning: true,
           createdAt: true,
+          usage: true,
         },
+        orderBy: { createdAt: 'asc' },
       },
     },
   })
@@ -78,6 +80,7 @@ export default defineEventHandler(async (event) => {
         parts: message.parts,
         reasoning: message.reasoning,
         createdAt: message.createdAt,
+        usage: message.usage,
       }
     })
 
@@ -96,7 +99,12 @@ export default defineEventHandler(async (event) => {
       role: message.role,
       parts: message.parts,
       reasoning: message.reasoning,
-      ...(share.showMetadata ? { createdAt: message.createdAt } : {}),
+      ...(share.showMetadata
+        ? {
+          createdAt: message.createdAt,
+          usage: message.usage ?? undefined,
+        }
+        : {}),
     }
   })
 

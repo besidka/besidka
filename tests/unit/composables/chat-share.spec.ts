@@ -236,6 +236,21 @@ describe('useChatShare', () => {
     expect(navigateToMock).toHaveBeenCalledWith('/chats/branched-chat')
   })
 
+  it('branches a shared chat from a specific message and navigates to the new chat', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ slug: 'branched-chat' })
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { branchSharedChat } = useChatShare()
+
+    await branchSharedChat('share-1', 'msg-2')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/chats/shares/share-1/branch',
+      { method: 'POST', body: { messageId: 'msg-2' } },
+    )
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/branched-chat')
+  })
+
   it('requests a push handoff for the shared chat', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ sent: true })
     vi.stubGlobal('$fetch', fetchMock)

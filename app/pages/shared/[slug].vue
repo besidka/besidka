@@ -145,21 +145,18 @@
       <div
         v-for="m in data.messages"
         :key="`message-${m.id}`"
-        class="mt-3 first:mt-0"
+        ref="messagesDomRefs"
+        class="relative mt-3 first:mt-0"
       >
         <ChatMessage
           :role="m.role"
-          :message-id="m.id"
+          :message-id="contextMenuEnabled ? m.id : undefined"
+          :is-selected="selectedMessageId === m.id"
+          :any-selected="selectedMessageId !== null"
           :author-name="data.author?.name ?? null"
           :author-image="data.author?.image ?? null"
+          @select="onMessageSelect"
         >
-          <div
-            v-if="m.createdAt"
-            data-testid="shared-message-datetime"
-            class="mb-1 text-xs text-base-content/50"
-          >
-            {{ formatMessageMeta(m.createdAt) }}
-          </div>
           <ChatFiles :message="m" />
           <ChatReasoning
             :message="m"
@@ -202,13 +199,28 @@
         </ChatMessage>
       </div>
     </ChatContainer>
+
+    <ClientOnly>
+      <LazyChatContextMenu
+        v-if="selectedMessageId"
+        :key="selectedMessageId"
+        :message-id="selectedMessageId"
+        :anchor-el="selectedAnchorEl"
+        :info="selectedMessageInfo"
+        :pointer="selectedPointer"
+        :show-branch="data.allowBranch"
+        @branch="onBranchFromMessage"
+        @close="clearMessageSelection"
+      />
+    </ClientOnly>
   </template>
 </template>
 
 <script setup lang="ts">
 import type { UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import { formatMessageDateTime } from '#shared/utils/message-format'
+import type { MessageUsage } from '#shared/types/message-usage.d'
+import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 
 interface SharedChatMessage {
   id: string
@@ -216,6 +228,7 @@ interface SharedChatMessage {
   parts: UIMessage['parts']
   reasoning: ReasoningLevel
   createdAt?: string | number
+  usage?: MessageUsage
 }
 
 interface SharedChatAuthor {
@@ -286,6 +299,88 @@ const {
   sendSharedChatToApp,
 } = useChatShare()
 
+const { hapticRigid, hapticSoft } = useHaptics()
+
+const messagesDomRefs = useTemplateRef<HTMLDivElement[]>('messagesDomRefs')
+
+const contextMenuEnabled = computed<boolean>(() => {
+  return Boolean(data.value?.showMetadata || data.value?.allowBranch)
+})
+
+const selectedMessageId = shallowRef<string | null>(null)
+const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
+const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
+
+function onMessageSelect(
+  messageId: string,
+  pointer?: { x: number, y: number },
+) {
+  if (selectedMessageId.value === messageId) return
+
+  hapticRigid()
+
+  selectedMessageId.value = messageId
+  selectedPointer.value = pointer ?? null
+
+  const messageIndex = data.value?.messages.findIndex((message) => {
+    return message.id === messageId
+  }) ?? -1
+
+  selectedAnchorEl.value = messagesDomRefs.value?.[messageIndex] ?? null
+}
+
+function resetMessageSelection() {
+  selectedMessageId.value = null
+  selectedAnchorEl.value = null
+  selectedPointer.value = null
+}
+
+function clearMessageSelection() {
+  hapticSoft()
+
+  resetMessageSelection()
+}
+
+watch(shareSlug, () => {
+  if (!selectedMessageId.value) {
+    return
+  }
+
+  resetMessageSelection()
+})
+
+const selectedMessageInfo = computed(() => {
+  if (!data.value?.showMetadata) {
+    return null
+  }
+
+  const menuMessages = data.value.messages.map((message) => {
+    return {
+      id: message.id,
+      role: message.role,
+      parts: message.parts,
+      reasoning: message.reasoning,
+      createdAt: message.createdAt,
+      metadata: {
+        usage: message.usage,
+        createdAt: message.createdAt,
+      },
+    }
+  })
+
+  return resolveMessageMenuInfo(menuMessages, selectedMessageId.value)
+})
+
+async function onBranchFromMessage(messageId: string) {
+  if (!loggedIn.value) {
+    await navigateTo('/signin')
+
+    return
+  }
+
+  await branchSharedChat(shareSlug.value, messageId)
+}
+
 const isSettingsExpanded = shallowRef<boolean>(false)
 const showOpenInSafariHint = shallowRef<boolean>(false)
 const isExternalBrowser = shallowRef<boolean>(false)
@@ -315,18 +410,6 @@ onMounted(async () => {
 
 function dismissOpenInSafariHint(): void {
   showOpenInSafariHint.value = false
-}
-
-function formatMessageMeta(
-  createdAt: string | number | undefined,
-): string {
-  const { date, time } = formatMessageDateTime(createdAt)
-
-  if (!date) {
-    return ''
-  }
-
-  return `${date} · ${time}`
 }
 
 const shareSettings = computed<ShareSettingRow[]>(() => {

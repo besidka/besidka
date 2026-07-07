@@ -98,20 +98,21 @@
             </div>
           </div>
         </li>
-        <li
-          aria-hidden="true"
-          class="pointer-events-none"
-        >
-          <hr class="my-1 border-base-200">
-        </li>
       </template>
-      <li>
+      <li
+        v-if="info && showBranch"
+        aria-hidden="true"
+        class="pointer-events-none"
+      >
+        <hr class="my-1 border-base-200">
+      </li>
+      <li v-if="showBranch">
         <button
           type="button"
           @click="onBranch"
         >
           <Icon name="lucide:git-branch-plus" size="14" />
-          New chat from here
+          Branch chat from here
         </button>
       </li>
     </ul>
@@ -130,11 +131,17 @@ const TOOL_LABELS: Record<'web_search', string> = {
   web_search: 'Web search',
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   messageId: string | null
   anchorEl: HTMLElement | null
   info?: MessageMenuInfo | null
-}>()
+  pointer?: { x: number, y: number } | null
+  showBranch?: boolean
+}>(), {
+  info: null,
+  pointer: null,
+  showBranch: true,
+})
 
 const emit = defineEmits<{
   branch: [messageId: string]
@@ -174,25 +181,29 @@ const tokensLabel = computed<string>(() => {
     : 'Tokens (output)'
 })
 
+const bubbleEl = computed<HTMLElement | null>(() => {
+  if (!props.anchorEl) return null
+
+  return props.anchorEl.querySelector<HTMLElement>('.js-chat-bubble')
+    ?? props.anchorEl
+})
+
 onMounted(async () => {
   await nextTick()
 
   if (!props.anchorEl || !menu.value) return
 
   const anchorRect = props.anchorEl.getBoundingClientRect()
-  const bubbleEl
-    = props.anchorEl.querySelector<HTMLElement>(
-      '.js-chat-bubble',
-    )
   const bubbleRect
-    = (bubbleEl ?? props.anchorEl).getBoundingClientRect()
+    = (bubbleEl.value ?? props.anchorEl).getBoundingClientRect()
   const menuHeight = menu.value.offsetHeight
   const gap = 4
+  const edgeMargin = 16
   const right = anchorRect.right - bubbleRect.right
   const spaceBelow
     = window.innerHeight - bubbleRect.bottom
 
-  if (spaceBelow >= menuHeight + gap + 16) {
+  if (spaceBelow >= menuHeight + gap + edgeMargin) {
     menuStyle.value = {
       top: `${bubbleRect.bottom - anchorRect.top + gap}px`,
       right: `${right}px`,
@@ -201,8 +212,25 @@ onMounted(async () => {
     return
   }
 
+  if (bubbleRect.top >= menuHeight + gap + edgeMargin) {
+    menuStyle.value = {
+      bottom: `${anchorRect.bottom - bubbleRect.top + gap}px`,
+      right: `${right}px`,
+    }
+
+    return
+  }
+
+  const desiredTop = props.pointer
+    ? props.pointer.y + gap
+    : window.innerHeight - menuHeight - edgeMargin
+  const clampedTop = Math.min(
+    Math.max(desiredTop, edgeMargin),
+    window.innerHeight - menuHeight - edgeMargin,
+  )
+
   menuStyle.value = {
-    bottom: `${anchorRect.bottom - bubbleRect.top + gap}px`,
+    top: `${clampedTop - anchorRect.top}px`,
     right: `${right}px`,
   }
 })
@@ -236,7 +264,7 @@ function onDocumentPointerUp(event: PointerEvent) {
   const target = event.target as HTMLElement
 
   if (menu.value?.contains(target)) return
-  if (props.anchorEl?.contains(target)) return
+  if (bubbleEl.value?.contains(target)) return
 
   event.preventDefault()
   event.stopImmediatePropagation()
@@ -263,7 +291,7 @@ function swallowNextClick() {
 function onDocumentContextMenu(event: Event) {
   const target = event.target as HTMLElement
 
-  if (props.anchorEl?.contains(target)) return
+  if (bubbleEl.value?.contains(target)) return
 
   dismiss()
 }

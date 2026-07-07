@@ -9,7 +9,7 @@ import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 const rules = z.object({
   chatSlug: z.string().ulid(),
-  messageId: z.string().min(1).optional(),
+  messageId: z.string().min(1).max(64).optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
           usage: true,
           createdAt: true,
         },
+        orderBy: { createdAt: 'asc' },
       },
     },
   })
