@@ -1,7 +1,7 @@
 <template>
   <div
     class="
-      grid grid-cols-2 gap-4
+      grid grid-cols-2 gap-2
       md:grid-cols-none md:grid-flow-col md:auto-cols-fr
     "
   >

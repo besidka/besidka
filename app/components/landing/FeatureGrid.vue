@@ -14,12 +14,12 @@
         bg-base-100/50 dark:bg-base-content/5"
     >
       <div
-        class="w-9 h-9 rounded-xl bg-base-200 grid place-items-center
+        class="size-9 rounded-xl bg-base-200 grid place-items-center
           text-accent"
       >
         <Icon
           :name="feature.icon"
-          class="w-5 h-5"
+          class="size-5"
           aria-hidden="true"
         />
       </div>

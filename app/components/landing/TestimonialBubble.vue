@@ -7,7 +7,7 @@
       <div class="flex items-center gap-2">
         <Icon
           :name="icon"
-          class="w-5 h-5 text-accent shrink-0"
+          class="size-5 text-accent shrink-0"
           aria-hidden="true"
         />
         <p class="font-semibold text-sm text-base-content">{{ persona }}</p>
