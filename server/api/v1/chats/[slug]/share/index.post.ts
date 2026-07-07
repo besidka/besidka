@@ -11,7 +11,7 @@ const paramsRules = z.object({
 })
 
 const bodyRules = z.object({
-  duration: z.enum(['day', 'week', 'month', 'year', 'never']),
+  duration: z.enum(['hour', 'day', 'week', 'month', 'year', 'never']),
   indexable: z.boolean(),
   showFiles: z.boolean(),
   showMetadata: z.boolean(),

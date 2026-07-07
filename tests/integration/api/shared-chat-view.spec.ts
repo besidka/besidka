@@ -260,7 +260,7 @@ describe('public shared chat view API', () => {
     ])
   })
 
-  it('strips reasoning parts, createdAt, and usage when showMetadata is false', async () => {
+  it('keeps reasoning parts but strips createdAt and usage when showMetadata is false', async () => {
     const handler = await getHandler()
     const { db } = createDb({
       shares: [createShareFixture({
@@ -294,6 +294,7 @@ describe('public shared chat view API', () => {
 
     expect(response.messages[0]?.parts).toEqual([
       { type: 'text', text: 'Hello' },
+      { type: 'reasoning', text: 'internal thought' },
     ])
     expect(response.messages[0]).not.toHaveProperty('createdAt')
     expect(response.messages[0]).not.toHaveProperty('usage')

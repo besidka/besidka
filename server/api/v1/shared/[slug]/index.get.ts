@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { isReasoningUIPart, isToolUIPart } from 'ai'
+import { isToolUIPart } from 'ai'
 import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import {
@@ -84,10 +84,7 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-  const publicMessages = filterPublicParts(
-    persistedMessages,
-    share.showMetadata,
-  )
+  const publicMessages = filterPublicParts(persistedMessages)
 
   const messagesWithResolvedFiles = share.showFiles
     ? await rewriteShareFileParts(publicMessages, share.id, event)
@@ -126,21 +123,12 @@ export default defineEventHandler(async (event) => {
 
 function filterPublicParts<TMessage extends { parts: UIMessage['parts'] }>(
   messages: TMessage[],
-  showMetadata: boolean,
 ): TMessage[] {
   return messages.map((message) => {
     return {
       ...message,
       parts: message.parts.filter((part) => {
-        if (isToolUIPart(part)) {
-          return false
-        }
-
-        if (isReasoningUIPart(part)) {
-          return showMetadata
-        }
-
-        return true
+        return !isToolUIPart(part)
       }),
     }
   })

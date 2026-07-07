@@ -15,6 +15,7 @@ function resetChatShareState() {
     isSaving,
     isBranching,
     isSendingToApp,
+    sharedBranchTarget,
   } = useChatShare()
 
   closeShareModal()
@@ -22,6 +23,7 @@ function resetChatShareState() {
   isSaving.value = false
   isBranching.value = false
   isSendingToApp.value = false
+  sharedBranchTarget.value = null
 }
 
 describe('useChatShare', () => {
@@ -275,5 +277,18 @@ describe('useChatShare', () => {
     await sendSharedChatToApp('share-1')
 
     expect(isSendingToApp.value).toBe(false)
+  })
+
+  it('defaults sharedBranchTarget to null and allows setting it', () => {
+    const { sharedBranchTarget } = useChatShare()
+
+    expect(sharedBranchTarget.value).toBeNull()
+
+    sharedBranchTarget.value = { slug: 'share-1', allowBranch: true }
+
+    expect(sharedBranchTarget.value).toEqual({
+      slug: 'share-1',
+      allowBranch: true,
+    })
   })
 })

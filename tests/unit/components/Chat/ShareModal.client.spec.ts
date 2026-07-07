@@ -135,6 +135,38 @@ describe('Chat/ShareModal.client', () => {
     })
   })
 
+  it('renders 1 hour as the first duration option', async () => {
+    const wrapper = await mountSuspended(ShareModal)
+
+    const options = wrapper.findAll(
+      '[data-testid="share-duration-select"] option',
+    )
+
+    expect(options[0]?.attributes('value')).toBe('hour')
+    expect(options[0]?.text()).toBe('1 hour')
+  })
+
+  it('infers the hour duration when the share expires soon', async () => {
+    const { share } = useChatShare()
+
+    share.value = {
+      slug: 'share-1',
+      url: 'http://localhost:3000/shared/share-1',
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      indexable: true,
+      showFiles: true,
+      showMetadata: true,
+      showAuthorAvatar: true,
+      allowBranch: true,
+    }
+
+    const wrapper = await mountSuspended(ShareModal)
+
+    const select = wrapper.find('[data-testid="share-duration-select"]')
+
+    expect((select.element as HTMLSelectElement).value).toBe('hour')
+  })
+
   it('generates a share link, auto-copies it, and shows the Copied state', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       slug: 'share-1',

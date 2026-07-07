@@ -44,7 +44,10 @@
             @click="dismissOpenInSafariHint"
           />
         </div>
-        <UiBubble class="!block shadow-none">
+        <UiBubble
+          class="!block shadow-none transition-opacity"
+          :class="{ 'opacity-90 blur-md': selectedMessageId !== null }"
+        >
           <div
             class="
               flex flex-col gap-3
@@ -191,7 +194,7 @@
               :cache-key="`mdc-${m.id}-part-${index}`"
               :components="components"
               :parser-options="{ highlight: false }"
-              class="chat-markdown"
+              class="chat-markdown js-message-text"
               :unwrap="getUnwrap(m.role)"
             />
           </div>
@@ -209,6 +212,7 @@
         :info="selectedMessageInfo"
         :pointer="selectedPointer"
         :show-branch="data.allowBranch"
+        :copy-text="selectedMessageCopyText"
         @branch="onBranchFromMessage"
         @close="clearMessageSelection"
       />
@@ -217,10 +221,11 @@
 </template>
 
 <script setup lang="ts">
-import type { UIMessage } from 'ai'
+import type { TextUIPart, UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
+import { buildShareDescription } from '#shared/utils/og-description'
 
 interface SharedChatMessage {
   id: string
@@ -274,12 +279,30 @@ const isNotFound = computed<boolean>(() => {
   return Boolean(error.value) || !data.value
 })
 
-useSeoMeta({
-  title: () => data.value?.title || 'Shared chat',
-  robots: () => data.value?.indexable ? 'index, follow' : 'noindex, nofollow',
+const { baseUrl } = useRuntimeConfig().public
+
+const description = computed<string>(() => {
+  const firstUserMessage = data.value?.messages.find((message) => {
+    return message.role === 'user'
+  })
+
+  return (
+    buildShareDescription(firstUserMessage?.parts)
+    || 'A conversation shared from Besidka.'
+  )
 })
 
-const { baseUrl } = useRuntimeConfig().public
+useSeoMeta({
+  title: () => data.value?.title || 'Shared chat',
+  description: () => description.value,
+  robots: () => data.value?.indexable ? 'index, follow' : 'noindex, nofollow',
+  ogTitle: () => data.value?.title || 'Shared chat',
+  ogDescription: () => description.value,
+  ogUrl: () => `${baseUrl}/shared/${shareSlug.value}`,
+  twitterCard: 'summary_large_image',
+  twitterTitle: () => data.value?.title || 'Shared chat',
+  twitterDescription: () => description.value,
+})
 
 useHead({
   link: [
@@ -295,11 +318,13 @@ const { loggedIn } = useAuth()
 const {
   isBranching,
   isSendingToApp,
+  sharedBranchTarget,
   branchSharedChat,
   sendSharedChatToApp,
 } = useChatShare()
 
 const { hapticRigid, hapticSoft } = useHaptics()
+const nuxtApp = useNuxtApp()
 
 const messagesDomRefs = useTemplateRef<HTMLDivElement[]>('messagesDomRefs')
 
@@ -310,6 +335,26 @@ const contextMenuEnabled = computed<boolean>(() => {
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
+
+function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
+  return part.type === 'text'
+    && !isChatErrorTextPart(part)
+    && part.text.trim().length > 0
+}
+
+const selectedMessageCopyText = computed<string | null>(() => {
+  const selectedMessage = data.value?.messages.find((message) => {
+    return message.id === selectedMessageId.value
+  })
+
+  const textParts = selectedMessage?.parts.filter(isTextUIPart) ?? []
+
+  if (textParts.length === 0) {
+    return null
+  }
+
+  return textParts.map(part => part.text).join('\n\n')
+})
 
 function onMessageSelect(
   messageId: string,
@@ -322,6 +367,8 @@ function onMessageSelect(
   selectedMessageId.value = messageId
   selectedPointer.value = pointer ?? null
 
+  nuxtApp.callHook('chat:message-selected', messageId)
+
   const messageIndex = data.value?.messages.findIndex((message) => {
     return message.id === messageId
   }) ?? -1
@@ -333,6 +380,8 @@ function resetMessageSelection() {
   selectedMessageId.value = null
   selectedAnchorEl.value = null
   selectedPointer.value = null
+
+  nuxtApp.callHook('chat:message-selected', null)
 }
 
 function clearMessageSelection() {
@@ -347,6 +396,23 @@ watch(shareSlug, () => {
   }
 
   resetMessageSelection()
+})
+
+watch([data, shareSlug], ([nextData, nextShareSlug]) => {
+  if (!nextData) {
+    sharedBranchTarget.value = null
+
+    return
+  }
+
+  sharedBranchTarget.value = {
+    slug: nextShareSlug,
+    allowBranch: nextData.allowBranch,
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  sharedBranchTarget.value = null
 })
 
 const selectedMessageInfo = computed(() => {

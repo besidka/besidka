@@ -23,6 +23,7 @@
       @click="setSidebarPinned(!sidebarPinned)"
     />
     <UiButton
+      v-if="isChatLayout"
       ghost
       icon-name="lucide:cookie"
       :icon-only="true"
@@ -54,6 +55,17 @@
       data-testid="sidebar-share"
       @click="onShare"
     />
+    <UiButton
+      v-if="canBranchSharedChat"
+      ghost
+      icon-name="lucide:git-branch-plus"
+      :icon-only="true"
+      title="Branch"
+      circle
+      tooltip-position="bottom"
+      data-testid="sidebar-branch-shared"
+      @click="onBranchSharedChat"
+    />
   </LazySidebarSubmenu>
 </template>
 
@@ -63,7 +75,12 @@ const ui = useCookieConsentUi()
 const { isDesktop } = useDevice()
 const reducedMotion = usePreferredReducedMotion()
 const { sidebarPinned, setSidebarPinned } = useUserSetting()
-const { openShareModal, branchOwnedChat } = useChatShare()
+const {
+  openShareModal,
+  branchOwnedChat,
+  branchSharedChat,
+  sharedBranchTarget,
+} = useChatShare()
 
 const showPinToggle = computed<boolean>(() => {
   return isDesktop && reducedMotion.value !== 'reduce'
@@ -73,6 +90,20 @@ const isOwnedChatPage = computed<boolean>(() => {
   return route.path.startsWith('/chats/')
     && !!route.params.slug
     && route.path !== '/chats/new'
+})
+
+const isChatLayout = computed<boolean>(() => {
+  return route.meta.layout === 'chat'
+})
+
+const isSharedChatPage = computed<boolean>(() => {
+  return route.path.startsWith('/shared/') && !!route.params.slug
+})
+
+const canBranchSharedChat = computed<boolean>(() => {
+  return isSharedChatPage.value
+    && !!sharedBranchTarget.value?.allowBranch
+    && sharedBranchTarget.value?.slug === route.params.slug
 })
 
 function closeSubmenu(event: MouseEvent): void {
@@ -97,5 +128,10 @@ function onShare(event: MouseEvent): void {
 function onBranch(event: MouseEvent): void {
   closeSubmenu(event)
   branchOwnedChat(route.params.slug as string)
+}
+
+function onBranchSharedChat(event: MouseEvent): void {
+  closeSubmenu(event)
+  branchSharedChat(route.params.slug as string)
 }
 </script>

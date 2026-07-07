@@ -127,6 +127,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/chat-share.spec.ts',
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/composables/ios-in-app-browser.spec.ts',
+    'tests/unit/utils/og-description.spec.ts',
   ]
 
   const cookieConsentTests = [
@@ -220,6 +221,13 @@ export function getAffectedTests(changedFiles) {
       tests: contextMenuTests,
     },
     {
+      pattern: /^app\/composables\/message-copy\.ts$/,
+      tests: [
+        'tests/unit/composables/message-copy.spec.ts',
+        ...contextMenuTests,
+      ],
+    },
+    {
       pattern:
         /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/message-usage\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
       tests: messageUsageTests,
@@ -233,7 +241,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue)$/,
+        /^(server\/utils\/chats\/share\.ts|server\/utils\/files\/rewrite-share-file-urls\.ts|app\/composables\/chat-share\.ts|app\/components\/Chat\/ShareModal\.client\.vue|app\/types\/chat-share\.d\.ts|app\/composables\/ios-in-app-browser\.ts|app\/pages\/shared\/\[slug\]\.vue|shared\/utils\/og-description\.ts)$/,
       tests: chatShareTests,
     },
     {

@@ -1,5 +1,6 @@
 export type ChatShareDuration
-  = | 'day'
+  = | 'hour'
+    | 'day'
     | 'week'
     | 'month'
     | 'year'

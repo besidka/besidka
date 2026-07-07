@@ -33,6 +33,9 @@ export function useChatShare() {
     'chat-share:is-sending-to-app',
     () => false,
   )
+  const sharedBranchTarget = useState<
+    { slug: string, allowBranch: boolean } | null
+  >('chat-share:shared-branch-target', () => null)
 
   async function loadShare(slug: string) {
     isLoading.value = true
@@ -291,6 +294,7 @@ export function useChatShare() {
     isSaving,
     isBranching,
     isSendingToApp,
+    sharedBranchTarget,
     openShareModal,
     closeShareModal,
     loadShare,

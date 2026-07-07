@@ -94,7 +94,7 @@
               "
               :components="components"
               :parser-options="{ highlight: false }"
-              class="chat-markdown"
+              class="chat-markdown js-message-text"
               :unwrap="getUnwrap(m.role)"
             />
           </div>
@@ -139,12 +139,14 @@
       :anchor-el="selectedAnchorEl"
       :info="selectedMessageInfo"
       :pointer="selectedPointer"
+      :copy-text="selectedMessageCopyText"
       @branch="branchFromMessage"
       @close="clearMessageSelection"
     />
   </ClientOnly>
 </template>
 <script setup lang="ts">
+import type { TextUIPart, UIMessage } from 'ai'
 import { parseError } from 'evlog'
 import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
@@ -504,6 +506,26 @@ const { hapticRigid, hapticSoft } = useHaptics()
 const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
+
+function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
+  return part.type === 'text'
+    && part.text.trim().length > 0
+    && !isChatErrorTextPart(part)
+}
+
+const selectedMessageCopyText = computed<string | null>(() => {
+  const selectedMessage = chatSdk.messages.find((message) => {
+    return message.id === selectedMessageId.value
+  })
+
+  const textParts = selectedMessage?.parts.filter(isTextUIPart) ?? []
+
+  if (textParts.length === 0) {
+    return null
+  }
+
+  return textParts.map(part => part.text).join('\n\n')
+})
 
 function onMessageSelect(
   messageId: string,

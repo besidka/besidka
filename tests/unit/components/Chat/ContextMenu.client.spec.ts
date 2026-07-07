@@ -1,10 +1,17 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
 import ContextMenu from '../../../../app/components/Chat/ContextMenu.client.vue'
+import * as messagesComposable from '../../../../app/composables/messages'
 
 enableAutoUnmount(afterEach)
+
+async function flushPromises() {
+  for (let tick = 0; tick < 6; tick += 1) {
+    await Promise.resolve()
+  }
+}
 
 describe('Chat/ContextMenu.client', () => {
   let anchorEl: HTMLDivElement
@@ -61,6 +68,7 @@ describe('Chat/ContextMenu.client', () => {
   })
 
   afterEach(() => {
+    vi.runOnlyPendingTimers()
     vi.useRealTimers()
     anchorEl.remove()
     outsideEl.remove()
@@ -158,13 +166,35 @@ describe('Chat/ContextMenu.client', () => {
 
   describe('positioning', () => {
     let originalInnerHeight: number
+    let originalOffsetWidth: PropertyDescriptor | undefined
 
     beforeEach(() => {
       originalInnerHeight = window.innerHeight
+
+      originalOffsetWidth = Object.getOwnPropertyDescriptor(
+        HTMLElement.prototype,
+        'offsetWidth',
+      )
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        get() {
+          return 256
+        },
+      })
     })
 
     afterEach(() => {
       window.innerHeight = originalInnerHeight
+
+      if (originalOffsetWidth) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'offsetWidth',
+          originalOffsetWidth,
+        )
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth
+      }
     })
 
     function setAnchorRect(rect: Partial<DOMRect>) {
@@ -286,6 +316,133 @@ describe('Chat/ContextMenu.client', () => {
       const style = wrapper.find('ul').attributes('style')
 
       expect(style).toContain('top: 536px')
+    })
+
+    it('falls back to right alignment when the bubble is narrower than the menu', async () => {
+      setBubbleRect({ top: -50, bottom: 700 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          pointer: { x: 100, y: 300 },
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('right: 56px')
+      expect(style).not.toContain('left:')
+    })
+
+    it('follows the pointer horizontally when the bubble is wide enough', async () => {
+      setBubbleRect({ top: -50, bottom: 700, left: 0, right: 400 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          pointer: { x: 100, y: 300 },
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('left: 100px')
+      expect(style).not.toContain('right:')
+    })
+
+    it('clamps the pointer near the bubble\'s right edge', async () => {
+      setBubbleRect({ top: -50, bottom: 700, left: 0, right: 400 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          pointer: { x: 390, y: 300 },
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('left: 144px')
+    })
+
+    it('clamps the pointer left of the bubble', async () => {
+      setBubbleRect({ top: -50, bottom: 700, left: 0, right: 400 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          pointer: { x: -50, y: 300 },
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('left: 0px')
+    })
+  })
+
+  describe('text selection fade', () => {
+    it('fades and disables pointer events while text is being selected', async () => {
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: false,
+      } as Selection)
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      document.dispatchEvent(new Event('selectionchange'))
+      await wrapper.vm.$nextTick()
+
+      const classes = wrapper.find('ul').classes()
+
+      expect(classes).toContain('opacity-25')
+      expect(classes).toContain('pointer-events-none')
+    })
+
+    it('restores full opacity once the selection is cleared', async () => {
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: false,
+      } as Selection)
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      document.dispatchEvent(new Event('selectionchange'))
+      await wrapper.vm.$nextTick()
+
+      vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: true,
+      } as Selection)
+
+      document.dispatchEvent(new Event('selectionchange'))
+      await wrapper.vm.$nextTick()
+
+      const classes = wrapper.find('ul').classes()
+
+      expect(classes).not.toContain('opacity-25')
+      expect(classes).not.toContain('pointer-events-none')
     })
   })
 
@@ -475,6 +632,143 @@ describe('Chat/ContextMenu.client', () => {
       expect(
         wrapper.find('[data-testid="message-menu-tools"]').text(),
       ).toContain('Web search')
+    })
+  })
+
+  describe('copy actions', () => {
+    let originalExecCommand: typeof document.execCommand
+
+    beforeEach(() => {
+      Object.defineProperty(window, 'isSecureContext', {
+        configurable: true,
+        value: true,
+      })
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          write: vi.fn().mockResolvedValue(undefined),
+          writeText: vi.fn().mockResolvedValue(undefined),
+        },
+      })
+      vi.stubGlobal('ClipboardItem', class {
+        items: Record<string, Blob>
+
+        constructor(items: Record<string, Blob>) {
+          this.items = items
+        }
+      })
+      originalExecCommand = document.execCommand
+      document.execCommand = vi.fn().mockReturnValue(false)
+    })
+
+    afterEach(() => {
+      document.execCommand = originalExecCommand
+      vi.unstubAllGlobals()
+    })
+
+    function findCopyButton(wrapper: VueWrapper) {
+      return wrapper.find('[data-testid="message-menu-copy"]')
+    }
+
+    function findCopyMarkdownButton(wrapper: VueWrapper) {
+      return wrapper.find('[data-testid="message-menu-copy-markdown"]')
+    }
+
+    it('hides the copy items when copyText is absent', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      expect(findCopyButton(wrapper).exists()).toBe(false)
+      expect(findCopyMarkdownButton(wrapper).exists()).toBe(false)
+    })
+
+    it('shows the copy items when copyText is provided', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          copyText: '# Hello',
+        },
+        attachTo: document.body,
+      })
+
+      expect(findCopyButton(wrapper).exists()).toBe(true)
+      expect(findCopyMarkdownButton(wrapper).exists()).toBe(true)
+    })
+
+    it('copies rich content and reverts the Copied! state after 2s', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          copyText: '# Hello',
+        },
+        attachTo: document.body,
+      })
+
+      await findCopyButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(navigator.clipboard.write).toHaveBeenCalledTimes(1)
+      expect(findCopyButton(wrapper).text()).toContain('Copied!')
+
+      vi.advanceTimersByTime(2000)
+      await wrapper.vm.$nextTick()
+
+      expect(findCopyButton(wrapper).text()).toBe('Copy')
+    })
+
+    it('copies markdown content and reverts the Copied! state after 2s', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          copyText: '# Hello',
+        },
+        attachTo: document.body,
+      })
+
+      await findCopyMarkdownButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('# Hello')
+      expect(findCopyMarkdownButton(wrapper).text()).toContain('Copied!')
+
+      vi.advanceTimersByTime(2000)
+      await wrapper.vm.$nextTick()
+
+      expect(findCopyMarkdownButton(wrapper).text())
+        .toContain('Copy as Markdown')
+    })
+
+    it('shows an error message when every copy fallback fails', async () => {
+      const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+      vi.mocked(navigator.clipboard.write).mockRejectedValue(
+        new Error('denied'),
+      )
+      vi.mocked(navigator.clipboard.writeText).mockRejectedValue(
+        new Error('denied'),
+      )
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          copyText: '# Hello',
+        },
+        attachTo: document.body,
+      })
+
+      await findCopyButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(useErrorMessage).toHaveBeenCalledWith('Failed to copy message')
     })
   })
 })

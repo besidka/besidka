@@ -5,8 +5,11 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1"
-      :class="{ invisible: !menuStyle }"
+      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none transition-opacity duration-200"
+      :class="{
+        invisible: !menuStyle,
+        'opacity-25 pointer-events-none': isTextSelecting,
+      }"
       :style="menuStyle"
       @pointerdown.stop
       @contextmenu.stop.prevent
@@ -115,6 +118,35 @@
           Branch chat from here
         </button>
       </li>
+      <li
+        v-if="hasCopyText && (info || showBranch)"
+        aria-hidden="true"
+        class="pointer-events-none"
+      >
+        <hr class="my-1 border-base-200">
+      </li>
+      <template v-if="hasCopyText">
+        <li>
+          <button
+            type="button"
+            data-testid="message-menu-copy"
+            @click="onCopy"
+          >
+            <Icon :name="copyIconName" size="14" />
+            {{ copyLabel }}
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            data-testid="message-menu-copy-markdown"
+            @click="onCopyMarkdown"
+          >
+            <Icon :name="copyMarkdownIconName" size="14" />
+            {{ copyMarkdownLabel }}
+          </button>
+        </li>
+      </template>
     </ul>
   </Teleport>
 </template>
@@ -137,10 +169,12 @@ const props = withDefaults(defineProps<{
   info?: MessageMenuInfo | null
   pointer?: { x: number, y: number } | null
   showBranch?: boolean
+  copyText?: string | null
 }>(), {
   info: null,
   pointer: null,
   showBranch: true,
+  copyText: null,
 })
 
 const emit = defineEmits<{
@@ -154,6 +188,7 @@ let pointerDownTime = 0
 const menuStyle = shallowRef<Record<string, string> | null>(
   null,
 )
+const isTextSelecting = shallowRef<boolean>(false)
 
 const dateTimeInfo = computed(() => {
   return formatMessageDateTime(props.info?.createdAt)
@@ -187,6 +222,107 @@ const bubbleEl = computed<HTMLElement | null>(() => {
   return props.anchorEl.querySelector<HTMLElement>('.js-chat-bubble')
     ?? props.anchorEl
 })
+
+const hasCopyText = computed<boolean>(() => {
+  return typeof props.copyText === 'string' && props.copyText.length > 0
+})
+
+function useCopiedState() {
+  const justCopied = shallowRef<boolean>(false)
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  function trigger() {
+    justCopied.value = true
+
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+
+    timeoutId = setTimeout(() => {
+      justCopied.value = false
+      timeoutId = null
+    }, 2000)
+  }
+
+  function reset() {
+    justCopied.value = false
+
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  return { justCopied, trigger, reset }
+}
+
+const richCopyState = useCopiedState()
+const markdownCopyState = useCopiedState()
+
+const copyIconName = computed<string>(() => {
+  return richCopyState.justCopied.value ? 'lucide:check' : 'lucide:copy'
+})
+
+const copyLabel = computed<string>(() => {
+  return richCopyState.justCopied.value ? 'Copied!' : 'Copy'
+})
+
+const copyMarkdownIconName = computed<string>(() => {
+  return markdownCopyState.justCopied.value
+    ? 'lucide:check'
+    : 'lucide:file-code'
+})
+
+const copyMarkdownLabel = computed<string>(() => {
+  return markdownCopyState.justCopied.value
+    ? 'Copied!'
+    : 'Copy as Markdown'
+})
+
+const { copyRich, copyPlain } = useMessageCopy()
+
+function extractRenderedHtml(): string {
+  const nodes = bubbleEl.value?.querySelectorAll<HTMLElement>(
+    '.js-message-text',
+  )
+
+  if (!nodes || nodes.length === 0) {
+    return ''
+  }
+
+  return Array.from(nodes).map(node => node.innerHTML).join('\n')
+}
+
+async function onCopy() {
+  if (!props.copyText) return
+
+  const succeeded = await copyRich({
+    html: extractRenderedHtml(),
+    text: props.copyText,
+  })
+
+  if (!succeeded) {
+    useErrorMessage('Failed to copy message')
+
+    return
+  }
+
+  richCopyState.trigger()
+}
+
+async function onCopyMarkdown() {
+  if (!props.copyText) return
+
+  const succeeded = await copyPlain(props.copyText)
+
+  if (!succeeded) {
+    useErrorMessage('Failed to copy message')
+
+    return
+  }
+
+  markdownCopyState.trigger()
+}
 
 onMounted(async () => {
   await nextTick()
@@ -228,6 +364,23 @@ onMounted(async () => {
     Math.max(desiredTop, edgeMargin),
     window.innerHeight - menuHeight - edgeMargin,
   )
+  const menuWidth = menu.value.offsetWidth
+  const bubbleWidth = bubbleRect.right - bubbleRect.left
+
+  if (props.pointer && bubbleWidth >= menuWidth) {
+    const desiredLeft = props.pointer.x
+    const clampedLeft = Math.min(
+      Math.max(desiredLeft, bubbleRect.left),
+      bubbleRect.right - menuWidth,
+    )
+
+    menuStyle.value = {
+      top: `${clampedTop - anchorRect.top}px`,
+      left: `${clampedLeft - anchorRect.left}px`,
+    }
+
+    return
+  }
 
   menuStyle.value = {
     top: `${clampedTop - anchorRect.top}px`,
@@ -296,11 +449,19 @@ function onDocumentContextMenu(event: Event) {
   dismiss()
 }
 
+function onSelectionChange() {
+  const selection = window.getSelection()
+
+  isTextSelecting.value = !!selection && !selection.isCollapsed
+}
+
 onMounted(() => {
   document.addEventListener('keydown', onKeyDown)
   document.addEventListener('pointerdown', onDocumentPointerDown)
   document.addEventListener('pointerup', onDocumentPointerUp)
   document.addEventListener('contextmenu', onDocumentContextMenu)
+  document.addEventListener('selectionchange', onSelectionChange)
+  onSelectionChange()
 })
 
 onUnmounted(() => {
@@ -308,5 +469,8 @@ onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown)
   document.removeEventListener('pointerup', onDocumentPointerUp)
   document.removeEventListener('contextmenu', onDocumentContextMenu)
+  document.removeEventListener('selectionchange', onSelectionChange)
+  richCopyState.reset()
+  markdownCopyState.reset()
 })
 </script>

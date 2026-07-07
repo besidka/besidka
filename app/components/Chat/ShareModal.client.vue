@@ -38,6 +38,7 @@
                 data-testid="share-duration-select"
                 class="select select-bordered select-sm w-full"
               >
+                <option value="hour">1 hour</option>
                 <option value="day">1 day</option>
                 <option value="week">1 week</option>
                 <option value="month">1 month</option>
@@ -266,6 +267,10 @@ function inferDurationFromExpiresAt(
   const daysRemaining = Math.round(
     (new Date(expiresAt).getTime() - Date.now()) / millisecondsPerDay,
   )
+
+  if (daysRemaining <= 0.5) {
+    return 'hour'
+  }
 
   if (daysRemaining <= 2) {
     return 'day'

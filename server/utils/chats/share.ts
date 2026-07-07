@@ -23,7 +23,8 @@ function chunkArray<T>(items: T[], chunkSize: number): T[][] {
 }
 
 export type ChatShareDuration
-  = | 'day'
+  = | 'hour'
+    | 'day'
     | 'week'
     | 'month'
     | 'year'
@@ -34,11 +35,12 @@ export interface ChatFileReference {
   storageKey: string
 }
 
-const DURATION_DAYS: Record<Exclude<ChatShareDuration, 'never'>, number> = {
-  day: 1,
-  week: 7,
-  month: 30,
-  year: 365,
+const DURATION_HOURS: Record<Exclude<ChatShareDuration, 'never'>, number> = {
+  hour: 1,
+  day: 24,
+  week: 168,
+  month: 720,
+  year: 8760,
 }
 
 const ACTIVE_SHARE_COLUMNS = {
@@ -62,9 +64,9 @@ export function durationToExpiresAt(
     return null
   }
 
-  const days = DURATION_DAYS[duration]
+  const hours = DURATION_HOURS[duration]
 
-  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+  return new Date(now.getTime() + hours * 60 * 60 * 1000)
 }
 
 export async function resolveActiveShareBySlug(
