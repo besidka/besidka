@@ -1,13 +1,13 @@
 import type { ChatStatus, UIMessage } from 'ai'
-import { ref, shallowRef } from 'vue'
+import { defineComponent, h, ref, shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mockNuxtImport } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import type { Chat } from '#shared/types/chats.d'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
 } from '#shared/types/research.d'
-import { useChat } from '../../../app/composables/chat'
+import { stashResearchAnswersForNewChat, useChat } from '../../../app/composables/chat'
 
 // This is a sibling of chat.spec.ts rather than an extension of it: it
 // instantiates the full useChat() composable (not just its exported pure
@@ -44,9 +44,14 @@ vi.mock('ai', async (importOriginal) => {
 
 const userModelRef = shallowRef<string>('gpt-5')
 const preferenceStore = new Map<string, string>()
+const routeParams: { slug?: string } = {}
 
 mockNuxtImport('useUserModel', () => {
   return () => ({ userModel: userModelRef })
+})
+
+mockNuxtImport('useRoute', () => {
+  return () => ({ params: routeParams })
 })
 
 mockNuxtImport('usePreferenceStorage', () => {
@@ -135,10 +140,27 @@ async function triggerClarification(
   await chat.submit()
 }
 
+function mountChatHost(chat: Chat) {
+  let exposedChat!: ReturnType<typeof useChat>
+
+  const Host = defineComponent({
+    setup() {
+      exposedChat = useChat(chat)
+
+      return () => h('div')
+    },
+  })
+
+  return mountSuspended(Host).then((wrapper) => {
+    return { chat: exposedChat, wrapper }
+  })
+}
+
 describe('useChat research clarification flow', () => {
   beforeEach(() => {
     preferenceStore.clear()
     userModelRef.value = 'gpt-5'
+    delete routeParams.slug
     mocks.transportOptions = []
     mocks.sdkMessages = ref<UIMessage[]>([])
     mocks.sdkStatus = ref<ChatStatus>('ready')
@@ -382,5 +404,92 @@ describe('useChat research clarification flow', () => {
     expect(lastMessage?.parts).toEqual([
       { type: 'text', text: 'first topic' },
     ])
+  })
+
+  it('surfaces an error and never sends when there are no deferred parts to recover', () => {
+    const fetchMock = vi.fn()
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const chat = useChat(createChatFixture())
+
+    chat.submitResearchClarification([
+      { id: 'audience', question: 'Who is this for?', answer: 'Engineers' },
+    ])
+
+    expect(mocks.errorMessage).toHaveBeenCalledWith(
+      'Failed to start research',
+      'Your message could not be recovered. Please try again.',
+    )
+    expect(mocks.sdkRegenerate).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(chat.chatSdk.messages).toEqual([])
+    expect(chat.pendingClarification.value).toBeNull()
+  })
+
+  it('seeds deferredResearchAnswers from the sessionStorage handoff and sends them on the first new-chat generation', async () => {
+    const answers: ResearchAnswer[] = [
+      { id: 'audience', question: 'Who is this for?', answer: 'Engineers' },
+    ]
+
+    stashResearchAnswersForNewChat('chat-1', answers)
+    routeParams.slug = 'chat-1'
+
+    const chatFixture = createChatFixture({
+      id: 'chat-1',
+      slug: 'chat-1',
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'the future of remote work' }],
+        },
+      ],
+    })
+
+    const { wrapper } = await mountChatHost(chatFixture)
+
+    expect(mocks.sdkRegenerate).toHaveBeenCalledTimes(1)
+    expect(
+      sessionStorage.getItem('research-answers:chat-1'),
+    ).toBeNull()
+
+    const { body } = getLatestTransportOptions()({
+      messages: chatFixture.messages as UIMessage[],
+    })
+
+    expect(body).toEqual(expect.objectContaining({
+      researchAnswers: answers,
+    }))
+
+    wrapper.unmount()
+  })
+
+  it('does not seed deferredResearchAnswers when nothing was stashed for this chat', async () => {
+    routeParams.slug = 'chat-2'
+
+    const chatFixture = createChatFixture({
+      id: 'chat-2',
+      slug: 'chat-2',
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'another topic' }],
+        },
+      ],
+    })
+
+    const { wrapper } = await mountChatHost(chatFixture)
+
+    expect(mocks.sdkRegenerate).toHaveBeenCalledTimes(1)
+
+    const { body } = getLatestTransportOptions()({
+      messages: chatFixture.messages as UIMessage[],
+    })
+
+    expect(body).not.toHaveProperty('researchAnswers')
+
+    wrapper.unmount()
   })
 })

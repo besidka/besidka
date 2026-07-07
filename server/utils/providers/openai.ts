@@ -85,8 +85,8 @@ export async function useOpenAI(
 
   const { model: modelData } = getModel(model)
   const effectiveReasoning: ReasoningLevel
-    = isDeepResearchActive(researchDepth) && requestedReasoning === 'off'
-      ? 'medium'
+    = isDeepResearchActive(researchDepth)
+      ? getResearchReasoningLevel(researchDepth)
       : requestedReasoning
   const reasoningLevel = resolveReasoningLevelForModel(
     modelData,

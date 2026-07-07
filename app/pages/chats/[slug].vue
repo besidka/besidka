@@ -53,14 +53,17 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
-          <ChatReasoning
+          <ChatDeepResearchProgress
+            v-if="isResearchMessage(m)"
             :message="m"
-            :reasoning-level="getMessageReasoning(m, messageIndex)"
             :status="chatSdk.status"
             :turn-started-at="currentTurnStartedAt"
+            :reasoning-level="getMessageReasoning(m, messageIndex)"
           />
-          <ChatDeepResearchProgress
+          <ChatReasoning
+            v-else
             :message="m"
+            :reasoning-level="getMessageReasoning(m, messageIndex)"
             :status="chatSdk.status"
             :turn-started-at="currentTurnStartedAt"
           />
@@ -103,7 +106,10 @@
               :unwrap="getUnwrap(m.role)"
             />
           </div>
-          <ChatUrlSources :message="m" />
+          <ChatUrlSources
+            v-if="!isResearchMessage(m)"
+            :message="m"
+          />
         </ChatMessage>
       </div>
       <ChatDeepResearchClarify
@@ -112,7 +118,7 @@
         @submit="submitResearchClarification"
         @skip="() => submitResearchClarification([])"
       />
-      <LazyChatLoader :show="isLoading" />
+      <LazyChatLoader :show="isLoading || isClarifying" />
       <div ref="messagesEndRef" />
     </ChatContainer>
     <div :style="{ height: `${spacerHeight}px` }" />
@@ -124,6 +130,7 @@
     v-model:reasoning="reasoning"
     v-model:research-depth="researchDepth"
     display-project-picker
+    :is-clarifying="isClarifying"
     :project-context="projectContext"
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
@@ -284,6 +291,7 @@ const {
   files,
   currentTurnStartedAt,
   pendingClarification,
+  isClarifying,
   submitResearchClarification,
 } = useChat(toValue(chat.value))
 
@@ -526,6 +534,13 @@ function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
   return part.type === 'text'
     && part.text.trim().length > 0
     && !isChatErrorTextPart(part)
+}
+
+function isResearchMessage(message: UIMessage): boolean {
+  return message.parts.some((part) => {
+    return part.type === 'data-research-brief'
+      || part.type === 'data-research-step'
+  })
 }
 
 const selectedMessageCopyText = computed<string | null>(() => {

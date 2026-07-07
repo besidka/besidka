@@ -127,4 +127,40 @@ describe('Chat/Reasoning', () => {
 
     expect(timerLabel(wrapper)).toBe('(10s)')
   })
+
+  it('drops the outer collapse chrome when embedded, keeping the step list', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: 'Thinking about the request.' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        embedded: true,
+      },
+    })
+
+    expect(wrapper.find('details.group.collapse').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="reasoning-timer-label"]').exists())
+      .toBe(false)
+    expect(wrapper.findAll('ul.timeline > li')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Thinking about the request')
+  })
+
+  it('keeps the outer collapse chrome by default (non-embedded)', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: 'Thinking about the request.' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+      },
+    })
+
+    expect(wrapper.find('details.group.collapse').exists()).toBe(true)
+    expect(wrapper.findAll('ul.timeline > li')).toHaveLength(1)
+  })
 })

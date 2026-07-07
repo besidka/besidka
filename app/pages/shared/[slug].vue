@@ -161,7 +161,14 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDeepResearchProgress
+            v-if="isResearchTurn(m)"
+            :message="m"
+            status="ready"
+            :turn-started-at="0"
+          />
           <ChatReasoning
+            v-else
             :message="m"
             :reasoning-level="m.reasoning"
             status="ready"
@@ -198,7 +205,7 @@
               :unwrap="getUnwrap(m.role)"
             />
           </div>
-          <ChatUrlSources :message="m" />
+          <ChatUrlSources v-if="!isResearchTurn(m)" :message="m" />
         </ChatMessage>
       </div>
     </ChatContainer>
@@ -224,6 +231,7 @@
 import type { TextUIPart, UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { ResearchDepth } from '#shared/types/research.d'
 import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { buildShareDescription } from '#shared/utils/og-description'
@@ -233,6 +241,7 @@ interface SharedChatMessage {
   role: UIMessage['role']
   parts: UIMessage['parts']
   reasoning: ReasoningLevel
+  researchDepth: ResearchDepth | null
   createdAt?: string | number
   usage?: MessageUsage
 }
@@ -349,6 +358,13 @@ function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
   return part.type === 'text'
     && !isChatErrorTextPart(part)
     && part.text.trim().length > 0
+}
+
+function isResearchTurn(message: SharedChatMessage): boolean {
+  return message.parts.some((part) => {
+    return part.type === 'data-research-brief'
+      || part.type === 'data-research-step'
+  })
 }
 
 const selectedMessageCopyText = computed<string | null>(() => {

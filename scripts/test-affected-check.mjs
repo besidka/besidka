@@ -87,6 +87,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
     'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
     'tests/unit/components/ChatInput/DeepResearchMenuItems.spec.ts',
+    'tests/unit/pages/shared/[slug].spec.ts',
     'tests/integration/api/chats-research-clarify.spec.ts',
     'tests/integration/api/chats-test-endpoint.spec.ts',
   ]
@@ -143,6 +144,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/composables/ios-in-app-browser.spec.ts',
     'tests/unit/utils/og-description.spec.ts',
+    'tests/unit/pages/shared/[slug].spec.ts',
   ]
 
   const cookieConsentTests = [

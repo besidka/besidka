@@ -14,6 +14,13 @@
       How can I assist you today?
     </ChatMessage>
     <LazyBackgroundLogo />
+    <ChatDeepResearchClarify
+      v-if="pendingClarification || isClarifying"
+      :clarification="pendingClarification"
+      :loading="isClarifying"
+      @submit="submitResearchClarification"
+      @skip="() => submitResearchClarification([])"
+    />
   </ChatContainer>
   <ChatInput
     v-model:message="message"
@@ -24,6 +31,7 @@
     display-project-picker
     :project-context="projectContext"
     :messages-length="0"
+    :is-clarifying="isClarifying"
     :stop="() => {}"
     :regenerate="() => {}"
     @clear-project-context="clearProject"
@@ -42,7 +50,11 @@ import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import type { ResearchDepthSetting } from '#shared/types/research.d'
+import type {
+  ResearchAnswer,
+  ResearchClarificationResponse,
+  ResearchDepthSetting,
+} from '#shared/types/research.d'
 
 definePageMeta({
   layout: 'chat',
@@ -73,6 +85,11 @@ const message = customRef<string>((track, trigger) => ({
 const files = ref<FileMetadata[]>([])
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
+const isClarifying = shallowRef<boolean>(false)
+const pendingClarification = shallowRef<ResearchClarificationResponse | null>(
+  null,
+)
+const { userModel } = useUserModel()
 const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
   get() {
     track()
@@ -342,8 +359,146 @@ function onProjectPickerSubmit(payload: {
   updateProjectQuery(payload.projectId)
 }
 
+interface DeferredResearchDraft {
+  draft: string
+  draftFiles: FileMetadata[]
+}
+
+let deferredResearchDraft: DeferredResearchDraft | null = null
+
+async function createResearchChat(
+  draft: string,
+  draftFiles: FileMetadata[],
+  researchAnswers: ResearchAnswer[],
+): Promise<void> {
+  const draftBackup = useChatDraftBackup()
+
+  pending.value = true
+
+  try {
+    const response = await $fetch('/api/v1/chats/new', {
+      method: 'put',
+      body: {
+        parts: [
+          {
+            type: 'text',
+            text: draft,
+          } as TextUIPart,
+          ...(draftFiles.length
+            ? draftFiles.map((file): FileUIPart => ({
+              type: 'file',
+              mediaType: file.type,
+              filename: file.name,
+              url: getFileUrl(file.storageKey),
+            }))
+            : []
+          ),
+        ] as (TextUIPart | FileUIPart)[],
+        tools: tools.value,
+        reasoning: reasoning.value,
+        researchDepth: researchDepth.value,
+        researchAnswers,
+        ...(projectId.value ? { projectId: projectId.value } : {}),
+      },
+      cache: 'no-cache',
+    })
+
+    if (!response?.slug) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to create a new chat.',
+      })
+    }
+
+    stashResearchAnswersForNewChat(response.slug, researchAnswers)
+    draftBackup.clear()
+    await navigateTo(`/chats/${response.slug}`)
+  } catch (exception) {
+    draftBackup.save(draft)
+    message.value = draft
+    files.value = draftFiles
+
+    const parsedException = parseError(exception)
+
+    if (parsedException.status === 401) {
+      await auth.fetchSession({ disableCookieCache: true })
+
+      if (!auth.session.value) {
+        await navigateTo('/signin')
+
+        return
+      }
+    }
+
+    useErrorMessage(
+      parsedException.message
+      || 'An error occurred while sending the message.',
+      parsedException.why,
+    )
+  } finally {
+    pending.value = false
+  }
+}
+
+function submitResearchClarification(answers: ResearchAnswer[]): void {
+  const deferred = deferredResearchDraft
+
+  deferredResearchDraft = null
+  pendingClarification.value = null
+
+  if (!deferred) {
+    useErrorMessage(
+      'Failed to start research',
+      'Your message could not be recovered. Please try again.',
+    )
+
+    return
+  }
+
+  createResearchChat(deferred.draft, deferred.draftFiles, answers)
+}
+
+// Mirrors useChat()'s requestResearchClarification: on a clarify-fetch
+// failure, fall back to starting the research anyway with no answers rather
+// than stranding the user on a page that already optimistically cleared
+// their draft.
+async function requestResearchClarification(
+  draft: string,
+  draftFiles: FileMetadata[],
+): Promise<void> {
+  isClarifying.value = true
+
+  try {
+    const response = await $fetch<ResearchClarificationResponse>(
+      '/api/v1/chats/research/clarify',
+      {
+        method: 'POST',
+        body: {
+          model: userModel.value,
+          topic: draft,
+        },
+      },
+    )
+
+    deferredResearchDraft = { draft, draftFiles }
+    pendingClarification.value = response
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to prepare research questions',
+      parsedException.why,
+    )
+
+    deferredResearchDraft = { draft, draftFiles }
+    submitResearchClarification([])
+  } finally {
+    isClarifying.value = false
+  }
+}
+
 async function onSubmit() {
-  if (pending.value) {
+  if (pending.value || isClarifying.value) {
     return
   }
 
@@ -353,6 +508,16 @@ async function onSubmit() {
   const draft = message.value
   const draftFiles = [...files.value]
   const draftBackup = useChatDraftBackup()
+
+  if (
+    isDeepResearchActive(researchDepth.value)
+    && !pendingClarification.value
+    && draft.trim()
+  ) {
+    await requestResearchClarification(draft, draftFiles)
+
+    return
+  }
 
   pending.value = true
 

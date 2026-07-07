@@ -139,39 +139,41 @@
                   }"
                   @click="toggleWebSearch"
                 />
-                <LazyChatInputReasoningTrigger
-                  v-if="isReasoningSupported && reasoningMode === 'levels'"
-                  v-model:reasoning="reasoning"
-                  :is-web-search-enabled="isWebSearchEnabled"
-                  :levels="reasoningCapability?.mode === 'levels'
-                    ? reasoningCapability.levels
-                    : []
-                  "
-                />
-                <UiButton
-                  v-else-if="isReasoningSupported"
-                  mode="accent"
-                  :ghost="isReasoningActive ? undefined : true"
-                  :circle="!isReasoningActive"
-                  :icon-only="!isReasoningActive"
-                  text="Reasoning"
-                  :icon-size="16"
-                  :title="isReasoningActive
-                    ? 'Disable reasoning'
-                    : 'Enable reasoning'
-                  "
-                  tooltip-position="top"
-                  size="xs"
-                  class="rounded-full pl-[5px]"
-                  :class="{
-                    'btn-active': isReasoningActive,
-                  }"
-                  @click="toggleReasoning"
-                >
-                  <template #icon>
-                    <SvgoThinkMedium class="size-4 text-current" />
-                  </template>
-                </UiButton>
+                <template v-if="!isResearchActive">
+                  <LazyChatInputReasoningTrigger
+                    v-if="isReasoningSupported && reasoningMode === 'levels'"
+                    v-model:reasoning="reasoning"
+                    :is-web-search-enabled="isWebSearchEnabled"
+                    :levels="reasoningCapability?.mode === 'levels'
+                      ? reasoningCapability.levels
+                      : []
+                    "
+                  />
+                  <UiButton
+                    v-else-if="isReasoningSupported"
+                    mode="accent"
+                    :ghost="isReasoningActive ? undefined : true"
+                    :circle="!isReasoningActive"
+                    :icon-only="!isReasoningActive"
+                    text="Reasoning"
+                    :icon-size="16"
+                    :title="isReasoningActive
+                      ? 'Disable reasoning'
+                      : 'Enable reasoning'
+                    "
+                    tooltip-position="top"
+                    size="xs"
+                    class="rounded-full pl-[5px]"
+                    :class="{
+                      'btn-active': isReasoningActive,
+                    }"
+                    @click="toggleReasoning"
+                  >
+                    <template #icon>
+                      <SvgoThinkMedium class="size-4 text-current" />
+                    </template>
+                  </UiButton>
+                </template>
                 <LazyChatInputDeepResearchTrigger
                   v-if="isDeepResearchSupported"
                   v-model:research-depth="researchDepth"
@@ -234,7 +236,7 @@
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage"
+                :disabled="!hasMessage || isClarifying"
                 :title="hasMessage ? 'Send Message' : 'Message is required'"
                 icon-name="lucide:arrow-up"
                 icon-only
@@ -272,6 +274,7 @@ const props = defineProps<{
   regenerate: () => void
   displayRegenerate?: boolean
   displayStop?: boolean
+  isClarifying?: boolean
   status?: ChatStatus
   projectContext?: {
     id: string
@@ -567,6 +570,12 @@ function handleEnter(event: KeyboardEvent) {
 function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
+  }
+
+  if (props.isClarifying) {
+    return useWarningMessage(
+      'Please wait for the research questions to finish loading.',
+    )
   }
 
   const text = message.value

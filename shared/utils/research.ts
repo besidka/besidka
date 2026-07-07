@@ -1,6 +1,7 @@
 import type {
   ResearchDepth, ResearchBudget, ResearchDepthSetting,
 } from '#shared/types/research.d'
+import type { ReasoningEnabledLevel } from '#shared/types/reasoning.d'
 
 export const researchDepths: ResearchDepth[] = [
   'quick', 'standard', 'thorough',
@@ -29,10 +30,33 @@ export function normalizeResearchDepthSetting(
 export function getResearchBudget(depth: ResearchDepth): ResearchBudget {
   switch (depth) {
     case 'quick':
-      return { maxSteps: 5, maxSearches: 3, label: 'Quick' }
+      return {
+        maxSteps: 6,
+        maxSearches: 4,
+        targetSources: 10,
+        label: 'Quick',
+      }
     case 'standard':
-      return { maxSteps: 9, maxSearches: 6, label: 'Standard' }
+      return {
+        maxSteps: 12,
+        maxSearches: 8,
+        targetSources: 30,
+        label: 'Standard',
+      }
     case 'thorough':
-      return { maxSteps: 14, maxSearches: 10, label: 'Thorough' }
+      return {
+        maxSteps: 20,
+        maxSearches: 14,
+        targetSources: 55,
+        label: 'Thorough',
+      }
   }
+}
+
+export function getResearchReasoningLevel(
+  depth: ResearchDepth,
+): ReasoningEnabledLevel {
+  return depth === 'thorough'
+    ? 'high'
+    : 'medium'
 }

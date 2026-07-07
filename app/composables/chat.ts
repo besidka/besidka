@@ -513,8 +513,65 @@ function getMaxGenerationRetryAttempts(
   )
 }
 
+const NEW_CHAT_RESEARCH_ANSWERS_STORAGE_PREFIX = 'research-answers:'
+
+// Bridges research clarification answers across the /chats/new -> /chats/
+// [slug] navigation. new.vue collects the answers before the chat row (and
+// therefore any slug) exists, and the PUT that creates the chat only
+// persists researchDepth/tools on the user message, not the answers
+// themselves. useChat()'s onMounted auto-regenerate (the same mechanism that
+// already produces the assistant's first reply for every brand-new chat) is
+// the only remaining place that can still attach researchAnswers to that
+// first generation request, so the handoff rides in sessionStorage keyed by
+// the slug both sides agree on from the URL.
+export function stashResearchAnswersForNewChat(
+  chatSlug: string,
+  answers: ResearchAnswer[],
+): void {
+  if (!import.meta.client || !answers.length) {
+    return
+  }
+
+  try {
+    sessionStorage.setItem(
+      `${NEW_CHAT_RESEARCH_ANSWERS_STORAGE_PREFIX}${chatSlug}`,
+      JSON.stringify(answers),
+    )
+  } catch (exception) {
+    void exception
+  }
+}
+
+function consumeResearchAnswersForNewChat(
+  chatSlug: string,
+): ResearchAnswer[] | undefined {
+  if (!import.meta.client) {
+    return undefined
+  }
+
+  const storageKey
+    = `${NEW_CHAT_RESEARCH_ANSWERS_STORAGE_PREFIX}${chatSlug}`
+
+  try {
+    const raw = sessionStorage.getItem(storageKey)
+
+    if (!raw) {
+      return undefined
+    }
+
+    sessionStorage.removeItem(storageKey)
+
+    return JSON.parse(raw) as ResearchAnswer[]
+  } catch (exception) {
+    void exception
+
+    return undefined
+  }
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
+  const route = useRoute()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   const input = customRef<string>((track, trigger) => ({
@@ -577,6 +634,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   )
   const isClarifying = shallowRef<boolean>(false)
   let deferredResearchParts: any[] = []
+  let deferredResearchTopic = ''
   let deferredResearchAnswers: ResearchAnswer[] | undefined
   const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
   const wakeLock = useWakeLock()
@@ -956,6 +1014,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   onMounted(() => {
+    const chatSlug = route.params.slug
+
+    if (typeof chatSlug === 'string') {
+      const handoffAnswers = consumeResearchAnswersForNewChat(chatSlug)
+
+      if (handoffAnswers) {
+        deferredResearchAnswers = handoffAnswers
+      }
+    }
+
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
       && shouldAutoRegenerate.value
@@ -1029,14 +1097,40 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     chatSdk.regenerate()
   }
 
+  function buildTextOnlyParts(text: string): any[] {
+    if (!text.trim()) {
+      return []
+    }
+
+    return [{
+      type: 'text',
+      text,
+    }]
+  }
+
+  // The clarify form's answers must never disappear into a no-op: parts is
+  // normally guaranteed non-empty here (submit() only ever routes into the
+  // clarify flow once the original topic already passed a .trim() check),
+  // but if it were ever lost — e.g. a caller re-invoking this after it
+  // already ran once — falling back to deferredResearchTopic (still just
+  // plain text, not files) keeps the turn recoverable instead of the form
+  // silently closing with the user's answers thrown away.
   function submitResearchClarification(answers: ResearchAnswer[]): void {
-    const parts = deferredResearchParts
+    const parts = deferredResearchParts.length
+      ? deferredResearchParts
+      : buildTextOnlyParts(deferredResearchTopic)
 
     deferredResearchParts = []
+    deferredResearchTopic = ''
     deferredResearchAnswers = answers
     pendingClarification.value = null
 
     if (!parts.length) {
+      useErrorMessage(
+        'Failed to start research',
+        'Your message could not be recovered. Please try again.',
+      )
+
       return
     }
 
@@ -1047,6 +1141,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   async function requestResearchClarification(topic: string): Promise<void> {
     try {
       deferredResearchParts = await buildUserMessageParts(topic)
+      deferredResearchTopic = topic
     } catch (exception) {
       const parsedException = parseError(exception)
 

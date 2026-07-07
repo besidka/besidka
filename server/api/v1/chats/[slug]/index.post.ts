@@ -22,6 +22,7 @@ import {
   streamText,
   smoothStream,
   stepCountIs,
+  pruneMessages,
   convertToModelMessages,
   readUIMessageStream,
   toUIMessageStream,
@@ -30,10 +31,16 @@ import * as schema from '~~/server/db/schema'
 import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import {
+  buildInitialResearchPlanningMilestone,
+  buildResearchStepInstructions,
   buildResearchSystemPrompt,
   createResearchMilestoneState,
+  createResearchSourceRegistry,
   getUserMessageText,
   mapStepToResearchMilestones,
+  registerResearchSourcesFromSteps,
+  shouldForceResearchSearch,
+  shouldStopResearch,
 } from '~~/server/utils/chats/deep-research'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
@@ -609,6 +616,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // The provider modules expose the native web-search tool under a key whose
+  // name contains "search" (OpenAI `web_search`, Google `web_search`). Deriving
+  // it here keeps the loop-control code provider-agnostic: prepareStep pins
+  // `toolChoice` to this tool to force another search step.
+  const researchSearchToolName = isResearch
+    ? Object.keys(parsedTools.tools ?? {}).find((name) => {
+      return name.toLowerCase().includes('search')
+    })
+    : undefined
+
   const stream = createUIMessageStream({
     onError(error) {
       return JSON.stringify(normalizeChatError({
@@ -663,6 +680,24 @@ export default defineEventHandler(async (event) => {
 
         let result: ReturnType<typeof streamText>
         const researchMilestoneState = createResearchMilestoneState()
+        const researchSourceRegistry = createResearchSourceRegistry()
+
+        // Emit an immediate planning milestone before the first provider step
+        // so the client starts its elapsed timer and shows progress right away
+        // instead of waiting on the first `onStepFinish` (the run previously
+        // looked stuck for the whole first provider round-trip).
+        if (isResearch && researchBudget) {
+          const planningMilestone = buildInitialResearchPlanningMilestone({
+            state: researchMilestoneState,
+            budget: researchBudget,
+          })
+
+          writer.write({
+            type: 'data-research-step',
+            id: `research-step-${planningMilestone.phase}`,
+            data: planningMilestone,
+          })
+        }
 
         try {
           // No abortSignal here: the cloudflare_module preset (Nitro 2.13 /
@@ -679,7 +714,74 @@ export default defineEventHandler(async (event) => {
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
             stopWhen: isResearch && researchBudget
-              ? stepCountIs(researchBudget.maxSteps)
+              ? [
+                stepCountIs(researchBudget.maxSteps),
+                ({ steps }) => {
+                  if (!researchBudget) {
+                    return false
+                  }
+
+                  registerResearchSourcesFromSteps(
+                    researchSourceRegistry,
+                    steps,
+                  )
+
+                  const lastStep = steps[steps.length - 1]
+
+                  return shouldStopResearch({
+                    sourceCount: researchSourceRegistry.uniqueUrls.size,
+                    targetSources: researchBudget.targetSources,
+                    lastStepToolCallCount: lastStep?.toolCalls.length ?? 0,
+                  })
+                },
+              ]
+              : undefined,
+            // The loop's core fix. Provider-native web search returns a
+            // finished grounded answer in one step, so without forcing the
+            // model stops after ~1 search. While below the source target and
+            // not on the final step, pin `toolChoice` to the search tool so the
+            // model MUST search again (finishReason 'tool-calls' keeps the loop
+            // going); once the target is reached or the budget is nearly spent
+            // release to 'auto' so it synthesizes. `pruneMessages` drops stale
+            // reasoning/tool results between steps so many sources don't blow
+            // the context window (SDK helper, verified against ai@7.0.14).
+            prepareStep: isResearch
+              ? ({ stepNumber, steps, messages }) => {
+                if (!researchBudget) {
+                  return undefined
+                }
+
+                registerResearchSourcesFromSteps(
+                  researchSourceRegistry,
+                  steps,
+                )
+
+                const sourceCount = researchSourceRegistry.uniqueUrls.size
+                const forceSearch = shouldForceResearchSearch({
+                  stepNumber,
+                  maxSteps: researchBudget.maxSteps,
+                  sourceCount,
+                  targetSources: researchBudget.targetSources,
+                })
+
+                return {
+                  messages: pruneMessages({
+                    messages,
+                    reasoning: 'before-last-message',
+                    toolCalls: 'before-last-2-messages',
+                  }),
+                  instructions: buildResearchStepInstructions({
+                    baseInstructions:
+                      streamInstructions ?? researchSystemPrompt,
+                    budget: researchBudget,
+                    sourceCount,
+                    forceSearch,
+                  }),
+                  toolChoice: forceSearch && researchSearchToolName
+                    ? { type: 'tool', toolName: researchSearchToolName }
+                    : 'auto',
+                }
+              }
               : undefined,
             onStepFinish: isResearch
               ? (step) => {
@@ -691,6 +793,7 @@ export default defineEventHandler(async (event) => {
                   step,
                   state: researchMilestoneState,
                   budget: researchBudget,
+                  registry: researchSourceRegistry,
                 })
 
                 for (const data of milestones) {

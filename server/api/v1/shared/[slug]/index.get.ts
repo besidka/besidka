@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
           role: true,
           parts: true,
           reasoning: true,
+          researchDepth: true,
           createdAt: true,
           usage: true,
         },
@@ -79,6 +80,7 @@ export default defineEventHandler(async (event) => {
         role: message.role,
         parts: message.parts,
         reasoning: message.reasoning,
+        researchDepth: message.researchDepth,
         createdAt: message.createdAt,
         usage: message.usage,
       }
@@ -96,6 +98,7 @@ export default defineEventHandler(async (event) => {
       role: message.role,
       parts: message.parts,
       reasoning: message.reasoning,
+      researchDepth: message.researchDepth,
       ...(share.showMetadata
         ? {
           createdAt: message.createdAt,

@@ -24,6 +24,9 @@
 	"placement": {
 		"mode": "smart"
 	},
+	"limits": {
+		"cpu_ms": 300000
+	},
 	"vars": {
 		"NUXT_PUBLIC_BASE_URL": "https://besidka-preview.chernenko.workers.dev",
 		"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
@@ -130,6 +133,9 @@
 					"enabled": true,
 					"head_sampling_rate": 0.1
 				}
+			},
+			"limits": {
+				"cpu_ms": 300000
 			},
 			"vars": {
 				"NUXT_PUBLIC_BASE_URL": "https://www.besidka.com",

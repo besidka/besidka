@@ -5,6 +5,7 @@ export type ResearchDepthSetting = 'off' | ResearchDepth
 export interface ResearchBudget {
   maxSteps: number
   maxSearches: number
+  targetSources: number
   label: string
 }
 

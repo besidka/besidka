@@ -218,4 +218,118 @@ describe('Chat/DeepResearchProgress', () => {
 
     expect(timerLabel(wrapper)).toBe('(10s)')
   })
+
+  it('starts the elapsed timer once a research-brief part lands, before any step milestone', async () => {
+    const turnStartedAt = Date.now()
+    const wrapper = await mountSuspended(DeepResearchProgress, {
+      props: {
+        message: createMessage([]),
+        status: 'streaming',
+        turnStartedAt,
+      },
+    })
+
+    expect(wrapper.find('.collapse').exists()).toBe(false)
+
+    await wrapper.setProps({
+      message: createMessage([
+        {
+          type: 'data-research-brief',
+          data: {
+            topic: 'renewable energy adoption',
+            depth: 'quick',
+            answers: [],
+          },
+        },
+      ]),
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(1s)')
+  })
+
+  it('renders an expandable row with a details element for a step that has a detail', async () => {
+    const wrapper = await mountSuspended(DeepResearchProgress, {
+      props: {
+        message: createMessage([
+          researchStepPart('planning', { status: 'done' }),
+          researchStepPart('searching', {
+            label: 'Searching the web',
+            detail: 'ai trends',
+          }),
+        ]),
+        status: 'streaming',
+        turnStartedAt: Date.now(),
+      },
+    })
+
+    const milestoneItems = wrapper.findAll('ul.timeline > li')
+    const searchingItem = milestoneItems.find((item) => {
+      return item.text().includes('Searching the web')
+    })
+
+    expect(searchingItem?.find('details').exists()).toBe(true)
+    expect(searchingItem?.find('.collapse-title').exists()).toBe(true)
+  })
+
+  it('renders a flat row with no details/chevron for a step with no detail', async () => {
+    const wrapper = await mountSuspended(DeepResearchProgress, {
+      props: {
+        message: createMessage([
+          researchStepPart('planning', { status: 'done' }),
+          researchStepPart('analyzing', {
+            label: 'Analyzing the findings',
+          }),
+        ]),
+        status: 'streaming',
+        turnStartedAt: Date.now(),
+      },
+    })
+
+    const milestoneItems = wrapper.findAll('ul.timeline > li')
+    const analyzingItem = milestoneItems.find((item) => {
+      return item.text().includes('Analyzing the findings')
+    })
+
+    expect(analyzingItem?.find('details').exists()).toBe(false)
+  })
+
+  it('renders the nested Thinking section with reasoning parts when present', async () => {
+    const wrapper = await mountSuspended(DeepResearchProgress, {
+      props: {
+        message: createMessage([
+          researchStepPart('planning', {
+            label: 'Planned the approach',
+            status: 'done',
+          }),
+          { type: 'reasoning', text: 'Weighing which sources to trust.' },
+        ]),
+        status: 'streaming',
+        turnStartedAt: Date.now(),
+        reasoningLevel: 'medium',
+      },
+    })
+
+    expect(wrapper.text()).toContain('Thinking')
+    expect(wrapper.text()).toContain('Weighing which sources to trust')
+    expect(wrapper.findAll('ul.timeline')).toHaveLength(2)
+  })
+
+  it('does not render a Thinking section when there are no reasoning parts', async () => {
+    const wrapper = await mountSuspended(DeepResearchProgress, {
+      props: {
+        message: createMessage([
+          researchStepPart('planning', {
+            label: 'Planned the approach',
+            status: 'done',
+          }),
+        ]),
+        status: 'streaming',
+        turnStartedAt: Date.now(),
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Thinking')
+    expect(wrapper.findAll('ul.timeline')).toHaveLength(1)
+  })
 })

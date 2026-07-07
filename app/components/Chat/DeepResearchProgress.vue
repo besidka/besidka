@@ -10,7 +10,7 @@
       <summary
         :id="`research-${message.id}-label`"
         :aria-controls="`research-${message.id}-content`"
-        class="collapse-title flex items-center gap-1 p-0"
+        class="collapse-title flex flex-wrap items-center gap-1 p-0"
         @click.prevent="toggleMain"
       >
         <Icon
@@ -27,26 +27,29 @@
           </span>
         </span>
         <span
-          v-if="queriesRunCount > 0"
-          class="flex items-center gap-1 text-base-content/70"
+          v-if="researchBrief"
+          class="badge badge-soft badge-xs capitalize"
         >
-          <Icon name="lucide:search" class="size-3" />
-          <span class="badge badge-soft badge-xs">
-            {{ queriesRunCount }}
-          </span>
+          {{ researchBrief.depth }}
         </span>
         <span
-          v-if="sourcesReadCount > 0"
-          class="flex items-center gap-1 text-base-content/70"
+          v-if="isResearchActive"
+          class="text-xs text-base-content/50"
         >
-          <Icon name="lucide:book" class="size-3" />
-          <span class="badge badge-soft badge-xs">
-            {{ sourcesReadCount }}
-          </span>
+          researching…
+        </span>
+        <span
+          v-if="countersLabel.length > 0"
+          class="text-xs text-base-content/60"
+        >
+          {{ countersLabel }}
         </span>
         <Icon
           name="lucide:chevron-right"
-          class="size-4 text-base-content/60 transition-transform group-open:rotate-90"
+          class="
+            ml-auto size-4 text-base-content/60 transition-transform
+            group-open:rotate-90
+          "
         />
       </summary>
       <div
@@ -55,14 +58,19 @@
       >
         <div
           v-if="researchBrief"
-          class="flex flex-wrap items-center gap-2 mb-3 text-xs text-base-content/70"
+          class="
+            flex flex-wrap items-center gap-2 mb-2 text-xs text-base-content/70
+          "
         >
           <Icon name="lucide:target" class="size-3" />
           <span class="truncate">{{ researchBrief.topic }}</span>
-          <span class="badge badge-soft badge-xs capitalize">
-            {{ researchBrief.depth }}
-          </span>
         </div>
+        <p
+          v-if="isResearchActive"
+          class="mb-3 text-xs text-base-content/50"
+        >
+          Deep research usually takes a few minutes.
+        </p>
         <ul
           v-if="researchMilestones.length > 0"
           class="
@@ -95,7 +103,33 @@
                 />
               </span>
             </div>
+            <div
+              v-if="!milestone.detail"
+              class="timeline-end my-2.5 mx-2 w-full text-xs"
+            >
+              <Icon
+                :name="getPhaseIcon(milestone.phase)"
+                class="mr-1 inline-block size-3.5 align-middle"
+              />
+              <span
+                class="align-middle"
+                :class="[
+                  milestone.status === 'active'
+                    ? 'skeleton skeleton-text research-main-title-skeleton'
+                    : undefined,
+                ]"
+              >
+                {{ milestone.label }}
+              </span>
+              <span
+                v-if="milestone.count"
+                class="ml-1 badge badge-soft badge-xs"
+              >
+                {{ milestone.count }}
+              </span>
+            </div>
             <details
+              v-else
               :open="expandedPhase === milestone.phase"
               class="group/point timeline-end collapse my-2.5 mx-2 w-full"
             >
@@ -133,7 +167,6 @@
                 />
               </summary>
               <div
-                v-if="milestone.detail"
                 :id="getMilestoneContentId(milestone.phase)"
                 class="collapse-content mt-2 pb-0 px-0"
               >
@@ -148,6 +181,42 @@
             >
           </li>
         </ul>
+        <details
+          v-if="hasReasoningContent"
+          class="group/thinking collapse mt-3"
+        >
+          <summary
+            :id="`research-${message.id}-thinking-label`"
+            :aria-controls="`research-${message.id}-thinking-content`"
+            class="collapse-title flex items-center gap-1 p-0 text-xs"
+          >
+            <Icon
+              name="lucide:lightbulb"
+              class="size-3.5 text-base-content/70"
+            />
+            <span class="text-base-content/80">Thinking</span>
+            <Icon
+              name="lucide:chevron-right"
+              class="
+                size-4 text-base-content/50 transition-transform
+                group-open/thinking:rotate-90
+              "
+            />
+          </summary>
+          <div
+            :id="`research-${message.id}-thinking-content`"
+            class="collapse-content mt-2 pb-0 px-0"
+          >
+            <ChatReasoning
+              :message="message"
+              :status="status"
+              :reasoning-level="reasoningLevel"
+              :turn-started-at="turnStartedAt"
+              embedded
+            />
+          </div>
+        </details>
+        <ChatUrlSources :message="message" />
       </div>
     </details>
   </div>
@@ -160,12 +229,16 @@ import type {
   ResearchStepPhase,
   ResearchBriefData,
 } from '#shared/types/research.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   message: UIMessage
   status: ChatStatus
   turnStartedAt: number
-}>()
+  reasoningLevel?: ReasoningLevel
+}>(), {
+  reasoningLevel: 'off',
+})
 
 interface ResearchStepUIPart {
   type: 'data-research-step'
@@ -237,20 +310,34 @@ const hasResearchContent = computed<boolean>(() => {
   return researchMilestones.value.length > 0 || Boolean(researchBrief.value)
 })
 
-const queriesRunCount = computed<number>(() => {
-  const searchingMilestone = researchMilestones.value.find((milestone) => {
-    return milestone.phase === 'searching'
-  })
-
-  return searchingMilestone?.count ?? 0
+const sourceUrlCount = computed<number>(() => {
+  return props.message.parts.filter((part) => {
+    return part.type === 'source-url'
+  }).length
 })
 
-const sourcesReadCount = computed<number>(() => {
-  const readingMilestone = researchMilestones.value.find((milestone) => {
-    return milestone.phase === 'reading'
-  })
+const countersLabel = computed<string>(() => {
+  const segments: string[] = []
 
-  return readingMilestone?.count ?? 0
+  if (sourceUrlCount.value > 0) {
+    const noun = sourceUrlCount.value === 1 ? 'source' : 'sources'
+
+    segments.push(`${sourceUrlCount.value} ${noun}`)
+  }
+
+  if (researchMilestones.value.length > 0) {
+    const noun = researchMilestones.value.length === 1 ? 'step' : 'steps'
+
+    segments.push(`${researchMilestones.value.length} ${noun}`)
+  }
+
+  return segments.join(' · ')
+})
+
+const hasReasoningContent = computed<boolean>(() => {
+  return props.message.parts.some((part) => {
+    return part.type === 'reasoning' && Boolean(part.text?.length)
+  })
 })
 
 const activePhase = computed<ResearchStepPhase | ''>(() => {
@@ -276,7 +363,7 @@ const isResearchActive = computed<boolean>(() => {
     return false
   }
 
-  return researchMilestones.value.length > 0
+  return hasResearchContent.value
 })
 
 const researchSeconds = shallowRef<number>(0)

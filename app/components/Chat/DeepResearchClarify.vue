@@ -1,6 +1,15 @@
 <template>
   <ChatMessage role="assistant">
+    <div
+      v-if="showLoading && !clarification"
+      data-testid="research-clarify-loading"
+      class="flex items-center gap-2 text-xs font-medium text-base-content/70"
+    >
+      <SvgoLoader class="size-3.5" />
+      <span>Preparing research questions…</span>
+    </div>
     <form
+      v-else-if="clarification"
       data-testid="research-clarify-form"
       class="flex flex-col gap-4"
       @submit.prevent="onSubmit"
@@ -89,7 +98,8 @@ import type {
 } from '#shared/types/research.d'
 
 const props = defineProps<{
-  clarification: ResearchClarificationResponse
+  clarification?: ResearchClarificationResponse | null
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -99,6 +109,31 @@ const emit = defineEmits<{
 
 const answers = reactive<Record<string, string>>({})
 const isSubmitting = shallowRef<boolean>(false)
+const showLoading = shallowRef<boolean>(false)
+let loadingDelayTimeoutId: ReturnType<typeof setTimeout> | undefined
+
+watch(() => props.loading, (loading) => {
+  if (loadingDelayTimeoutId !== undefined) {
+    clearTimeout(loadingDelayTimeoutId)
+    loadingDelayTimeoutId = undefined
+  }
+
+  if (!loading) {
+    showLoading.value = false
+
+    return
+  }
+
+  loadingDelayTimeoutId = setTimeout(() => {
+    showLoading.value = true
+  }, 300)
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (loadingDelayTimeoutId !== undefined) {
+    clearTimeout(loadingDelayTimeoutId)
+  }
+})
 
 function selectChoice(questionId: string, option: string) {
   answers[questionId] = option
@@ -111,6 +146,10 @@ function onTextInput(questionId: string, event: Event) {
 }
 
 function buildAnswers(): ResearchAnswer[] {
+  if (!props.clarification) {
+    return []
+  }
+
   return props.clarification.questions
     .filter((question) => {
       return Boolean(answers[question.id]?.trim().length)
