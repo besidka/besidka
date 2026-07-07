@@ -3,7 +3,10 @@ import { ref, shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import type { Chat } from '#shared/types/chats.d'
-import type { ResearchAnswer } from '#shared/types/research.d'
+import type {
+  ResearchAnswer,
+  ResearchClarificationResponse,
+} from '#shared/types/research.d'
 import { useChat } from '../../../app/composables/chat'
 
 // This is a sibling of chat.spec.ts rather than an extension of it: it
@@ -100,6 +103,18 @@ function createChatFixture(overrides: Record<string, unknown> = {}): Chat {
     messages: [],
     ...overrides,
   } as unknown as Chat
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+
+  return {
+    promise,
+    resolve,
+  }
 }
 
 function getLatestTransportOptions() {
@@ -330,5 +345,42 @@ describe('useChat research clarification flow', () => {
       researchDepth: 'off',
     }))
     expect(body).not.toHaveProperty('researchAnswers')
+  })
+
+  it('ignores a duplicate submit while a clarification request is in flight', async () => {
+    const clarifyDeferred = createDeferred<ResearchClarificationResponse>()
+    const fetchMock = vi.fn(() => clarifyDeferred.promise)
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const chat = useChat(createChatFixture())
+
+    chat.researchDepth.value = 'standard'
+    chat.input.value = 'first topic'
+
+    const firstSubmit = chat.submit()
+
+    await vi.waitFor(() => {
+      expect(chat.isClarifying.value).toBe(true)
+    })
+
+    chat.input.value = 'second topic'
+    await chat.submit()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(chat.pendingClarification.value).toBeNull()
+
+    clarifyDeferred.resolve({ questions: [], note: undefined })
+    await firstSubmit
+
+    expect(chat.isClarifying.value).toBe(false)
+
+    chat.submitResearchClarification([])
+
+    const lastMessage = chat.chatSdk.messages.at(-1)
+
+    expect(lastMessage?.parts).toEqual([
+      { type: 'text', text: 'first topic' },
+    ])
   })
 })

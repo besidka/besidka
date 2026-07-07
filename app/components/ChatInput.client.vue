@@ -408,6 +408,15 @@ watch(
   },
 )
 
+watch(isDeepResearchSupported, (supported) => {
+  if (!supported) {
+    researchDepth.value = 'off'
+  }
+}, {
+  immediate: true,
+  flush: 'post',
+})
+
 watch(researchDepth, (depth) => {
   const isActive = isDeepResearchActive(depth)
 

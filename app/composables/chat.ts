@@ -361,6 +361,28 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
   })
 }
 
+// A deep-research turn streams `data-research-step`/`data-research-brief`
+// parts well before any reasoning or report text lands, so gating display on
+// text/reasoning content alone (as this used to) left the progress timeline
+// hidden behind [data-hide-content=true] for most of the run. Non-research
+// messages never carry these part types, so they fall through unaffected.
+export function shouldDisplayMessageContent(
+  message: UIMessage | undefined,
+): boolean {
+  if (!message) {
+    return false
+  } else if (message.role === 'user') {
+    return true
+  }
+
+  return message.parts?.some((part) => {
+    return (part.type === 'reasoning' && part.text?.length)
+      || (part.type === 'text' && part.text?.length)
+      || part.type === 'data-research-step'
+      || part.type === 'data-research-brief'
+  }) || false
+}
+
 export function applyChatErrorToMessages(
   messages: UIMessage[],
   error: ChatErrorPayload,
@@ -466,9 +488,30 @@ function reportChatClientError(payload: ChatClientErrorReport) {
 // from the bug report with margin, and roughly matching the server's KV ttl
 // on the in-flight generation flag (server/api/v1/chats/[slug]/index.post.ts)
 // — once that expires a retry just starts a fresh generation instead, which
-// is an acceptable fallback.
+// is an acceptable fallback. Deep research turns run far longer than that
+// budget assumes, so getMaxGenerationRetryAttempts() derives a depth-aware
+// cap from the same Math.max(900, maxSteps * 120) formula the server uses
+// for its own ttl, instead of this flat constant.
 const MAX_GENERATION_RETRY_ATTEMPTS = 150
 const GENERATION_RETRY_DELAY_MS = 4_000
+const MIN_RESEARCH_GENERATION_TTL_SECONDS = 900
+
+function getMaxGenerationRetryAttempts(
+  depth: ResearchDepthSetting,
+): number {
+  if (!isDeepResearchActive(depth)) {
+    return MAX_GENERATION_RETRY_ATTEMPTS
+  }
+
+  const researchGenerationTtlSeconds = Math.max(
+    MIN_RESEARCH_GENERATION_TTL_SECONDS,
+    getResearchBudget(depth).maxSteps * 120,
+  )
+
+  return Math.ceil(
+    (researchGenerationTtlSeconds * 1000) / GENERATION_RETRY_DELAY_MS,
+  )
+}
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
@@ -836,7 +879,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   function attemptGenerationRecovery(options: { immediate: boolean }): void {
     isAwaitingGeneration.value = true
 
-    if (pendingRetryAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
+    const maxRetryAttempts = getMaxGenerationRetryAttempts(
+      researchDepth.value,
+    )
+
+    if (pendingRetryAttempts >= maxRetryAttempts) {
       isAwaitingGeneration.value = false
       isStopped.value = true
       wakeLock.release()
@@ -1043,6 +1090,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   async function submit() {
+    if (isClarifying.value) {
+      return
+    }
+
     deferredResearchAnswers = undefined
 
     const topic = input.value
@@ -1113,16 +1164,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       candidate => candidate.id === id,
     )
 
-    if (!message) {
-      return false
-    } else if (message.role === 'user') {
-      return true
-    }
-
-    return message.parts?.some((part) => {
-      return (part.type === 'reasoning' && part.text?.length)
-        || (part.type === 'text' && part.text?.length)
-    }) || false
+    return shouldDisplayMessageContent(message)
   }
 
   function getMessageReasoning(

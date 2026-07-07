@@ -7,6 +7,7 @@ import {
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
+  shouldDisplayMessageContent,
   shouldForceGenericLoadingIndicator,
   shouldNotifyGenerationReadyWhileHidden,
   shouldRecoverInterruptedGeneration,
@@ -609,5 +610,59 @@ describe('chat error helpers', () => {
       providerId: 'openai',
       providerRequestId: 'req_123',
     })
+  })
+})
+
+describe('shouldDisplayMessageContent', () => {
+  it('displays a research message with only a research-step part', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{
+        type: 'data-research-step',
+        id: 'research-step-searching',
+        data: { phase: 'searching', label: 'Searching the web', status: 'active' },
+      }],
+    } as UIMessage
+
+    expect(shouldDisplayMessageContent(message)).toBe(true)
+  })
+
+  it('displays a research message with only a research-brief part', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{
+        type: 'data-research-brief',
+        id: 'research-brief',
+        data: { topic: 'AI trends', depth: 'standard', answers: [] },
+      }],
+    } as UIMessage
+
+    expect(shouldDisplayMessageContent(message)).toBe(true)
+  })
+
+  it('hides an assistant message with no reasoning, text, or research parts', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [],
+    } as UIMessage
+
+    expect(shouldDisplayMessageContent(message)).toBe(false)
+  })
+
+  it('always displays user messages', () => {
+    const message: UIMessage = {
+      id: 'user-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    } as UIMessage
+
+    expect(shouldDisplayMessageContent(message)).toBe(true)
+  })
+
+  it('displays nothing for a missing message', () => {
+    expect(shouldDisplayMessageContent(undefined)).toBe(false)
   })
 })
