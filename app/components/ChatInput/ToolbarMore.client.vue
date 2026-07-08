@@ -16,7 +16,12 @@
     <div class="dropdown-content z-50 w-56 pb-2">
       <div class="bg-base-100 rounded-box w-full shadow-sm">
         <ul class="menu menu-xs w-full">
-          <template v-if="isReasoningSupported && reasoningMode === 'toggle'">
+          <template
+            v-if="isReasoningSupported
+              && reasoningMode === 'toggle'
+              && !isResearchActive
+            "
+          >
             <li>
               <label class="flex items-center gap-2 cursor-pointer">
                 <SvgoThinkMedium class="size-4 text-current" />
@@ -30,11 +35,23 @@
               </label>
             </li>
           </template>
-          <template v-if="isReasoningSupported && reasoningMode === 'levels'">
+          <template
+            v-if="isReasoningSupported
+              && reasoningMode === 'levels'
+              && !isResearchActive
+            "
+          >
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
               :levels="levels ?? []"
               @select-level="emit('select-reasoning-level', $event)"
+            />
+          </template>
+          <template v-if="isDeepResearchSupported && !researchJobActive">
+            <ChatInputDeepResearchMenuItems
+              :research-level="researchLevel ?? 'off'"
+              :capability="researchCapability ?? null"
+              @select-research-level="emit('select-research-level', $event)"
             />
           </template>
           <li>
@@ -78,7 +95,7 @@
               </span>
             </button>
           </li>
-          <li v-if="isWebSearchSupported">
+          <li v-if="isWebSearchSupported && !isResearchActive">
             <label class="flex items-center gap-2 cursor-pointer">
               <Icon name="lucide:globe" size="16" />
               <span class="grow">Web search</span>
@@ -101,6 +118,10 @@ import type {
   ReasoningLevel,
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
+import type {
+  ProviderResearchCapability,
+  ResearchLevelSetting,
+} from '#shared/types/research.d'
 
 const props = defineProps<{
   isWebSearchSupported?: boolean
@@ -110,6 +131,10 @@ const props = defineProps<{
   reasoningMode?: 'none' | 'toggle' | 'levels'
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
+  isDeepResearchSupported?: boolean
+  researchLevel?: ResearchLevelSetting
+  researchCapability?: ProviderResearchCapability | null
+  researchJobActive?: boolean
   displayProjectPicker?: boolean
   projectContext?: {
     id: string
@@ -126,6 +151,7 @@ const emit = defineEmits<{
   'open-files-upload': []
   'select-reasoning-level': [level: ReasoningLevel]
   'toggle-reasoning': []
+  'select-research-level': [level: ResearchLevelSetting]
 }>()
 
 const { isIos, isAndroid } = useDevice()
@@ -133,10 +159,15 @@ const { isIos, isAndroid } = useDevice()
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 const isDropdownHovered = useElementHover(dropdown)
 
+const isResearchActive = computed<boolean>(() => {
+  return isDeepResearchActive(props.researchLevel ?? 'off')
+})
+
 const isAnyFeatureActive = computed<boolean>(() => {
   return !!(
     props.isWebSearchEnabled
     || props.isReasoningActive
+    || isResearchActive.value
     || (props.filesCount ?? 0) > 0
     || props.projectContext
   )

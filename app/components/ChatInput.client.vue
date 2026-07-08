@@ -119,7 +119,7 @@
                   @open="openFilesModal"
                 />
                 <UiButton
-                  v-if="isWebSearchSupported"
+                  v-if="isWebSearchSupported && !isResearchActive"
                   mode="accent"
                   :ghost="isWebSearchEnabled ? undefined : true"
                   :circle="!isWebSearchEnabled"
@@ -139,39 +139,48 @@
                   }"
                   @click="toggleWebSearch"
                 />
-                <LazyChatInputReasoningTrigger
-                  v-if="isReasoningSupported && reasoningMode === 'levels'"
-                  v-model:reasoning="reasoning"
+                <template v-if="!isResearchActive">
+                  <LazyChatInputReasoningTrigger
+                    v-if="isReasoningSupported && reasoningMode === 'levels'"
+                    v-model:reasoning="reasoning"
+                    :is-web-search-enabled="isWebSearchEnabled"
+                    :levels="reasoningCapability?.mode === 'levels'
+                      ? reasoningCapability.levels
+                      : []
+                    "
+                  />
+                  <UiButton
+                    v-else-if="isReasoningSupported"
+                    mode="accent"
+                    :ghost="isReasoningActive ? undefined : true"
+                    :circle="!isReasoningActive"
+                    :icon-only="!isReasoningActive"
+                    text="Reasoning"
+                    :icon-size="16"
+                    :title="isReasoningActive
+                      ? 'Disable reasoning'
+                      : 'Enable reasoning'
+                    "
+                    tooltip-position="top"
+                    size="xs"
+                    class="rounded-full pl-[5px]"
+                    :class="{
+                      'btn-active': isReasoningActive,
+                    }"
+                    @click="toggleReasoning"
+                  >
+                    <template #icon>
+                      <SvgoThinkMedium class="size-4 text-current" />
+                    </template>
+                  </UiButton>
+                </template>
+                <LazyChatInputDeepResearchTrigger
+                  v-if="isDeepResearchSupported"
+                  v-model:research-level="researchLevel"
                   :is-web-search-enabled="isWebSearchEnabled"
-                  :levels="reasoningCapability?.mode === 'levels'
-                    ? reasoningCapability.levels
-                    : []
-                  "
+                  :capability="researchCapability"
+                  :disabled="researchJobActive"
                 />
-                <UiButton
-                  v-else-if="isReasoningSupported"
-                  mode="accent"
-                  :ghost="isReasoningActive ? undefined : true"
-                  :circle="!isReasoningActive"
-                  :icon-only="!isReasoningActive"
-                  text="Reasoning"
-                  :icon-size="16"
-                  :title="isReasoningActive
-                    ? 'Disable reasoning'
-                    : 'Enable reasoning'
-                  "
-                  tooltip-position="top"
-                  size="xs"
-                  class="rounded-full pl-[5px]"
-                  :class="{
-                    'btn-active': isReasoningActive,
-                  }"
-                  @click="toggleReasoning"
-                >
-                  <template #icon>
-                    <SvgoThinkMedium class="size-4 text-current" />
-                  </template>
-                </UiButton>
               </div>
               <LazyChatInputToolbarMore
                 hydrate-on-idle
@@ -185,6 +194,10 @@
                   ? reasoningCapability.levels
                   : []
                 "
+                :is-deep-research-supported="isDeepResearchSupported"
+                :research-level="researchLevel"
+                :research-capability="researchCapability"
+                :research-job-active="researchJobActive"
                 :display-project-picker="shouldDisplayProjectPicker"
                 :project-context="projectContext"
                 :files-count="files.length"
@@ -195,6 +208,7 @@
                 @open-files-upload="openFilesModal('upload')"
                 @select-reasoning-level="reasoning = $event"
                 @toggle-reasoning="toggleReasoning"
+                @select-research-level="researchLevel = $event"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -226,8 +240,8 @@
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage"
-                :title="hasMessage ? 'Send Message' : 'Message is required'"
+                :disabled="!hasMessage || isClarifying || researchJobActive"
+                :title="sendButtonTitle"
                 icon-name="lucide:arrow-up"
                 icon-only
                 tooltip-position="left"
@@ -254,6 +268,7 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ResearchLevelSetting } from '#shared/types/research.d'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -263,6 +278,8 @@ const props = defineProps<{
   regenerate: () => void
   displayRegenerate?: boolean
   displayStop?: boolean
+  isClarifying?: boolean
+  researchJobActive?: boolean
   status?: ChatStatus
   projectContext?: {
     id: string
@@ -285,6 +302,8 @@ const {
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
+  isDeepResearchSupported,
+  researchCapability,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -306,8 +325,37 @@ const reasoning = defineModel<ReasoningLevel>('reasoning', {
   default: 'off',
 })
 
+const researchLevel = defineModel<ResearchLevelSetting>('researchLevel', {
+  default: 'off',
+})
+
 const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
+})
+
+const isResearchActive = computed<boolean>(() => {
+  return isDeepResearchActive(researchLevel.value)
+})
+
+const sendButtonTitle = computed<string>(() => {
+  if (props.researchJobActive) {
+    return 'Research in progress — please wait'
+  }
+
+  if (props.isClarifying) {
+    return 'Please wait for the research questions to finish loading'
+  }
+
+  return hasMessage.value ? 'Send Message' : 'Message is required'
+})
+
+watch(isDeepResearchSupported, (supported) => {
+  if (!supported) {
+    researchLevel.value = 'off'
+  }
+}, {
+  immediate: true,
+  flush: 'post',
 })
 
 const isKeyboardVisible = shallowRef<boolean>(false)
@@ -521,6 +569,16 @@ function handleEnter(event: KeyboardEvent) {
 function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
+  }
+
+  if (props.isClarifying) {
+    return useWarningMessage(
+      'Please wait for the research questions to finish loading.',
+    )
+  }
+
+  if (props.researchJobActive) {
+    return useWarningMessage('Research in progress — please wait.')
   }
 
   const text = message.value

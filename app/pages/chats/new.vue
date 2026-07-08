@@ -8,21 +8,45 @@
       :memory="projectMemoryText"
     />
     <ChatMessage
+      v-if="!pendingClarification && !isClarifying"
       role="assistant"
       :hide-assistant-avatar-on-mobile="false"
     >
       How can I assist you today?
     </ChatMessage>
     <LazyBackgroundLogo />
+    <ChatMessage
+      v-if="pendingClarification || isClarifying"
+      role="user"
+      data-testid="research-clarify-topic"
+    >
+      <p class="chat-markdown">
+        {{ pendingResearchQuery }}
+      </p>
+    </ChatMessage>
+    <ChatDeepResearchClarify
+      v-if="pendingClarification || isClarifying"
+      :clarification="pendingClarification"
+      :loading="isClarifying"
+      @submit="submitResearchClarification"
+      @skip="() => submitResearchClarification([])"
+    />
   </ChatContainer>
+  <div
+    v-if="pendingClarification || isClarifying"
+    class="hidden max-sm:block"
+    :style="{ height: `${clarifyInputHeight}px` }"
+  />
   <ChatInput
     v-model:message="message"
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    v-model:research-level="researchLevel"
     display-project-picker
     :project-context="projectContext"
     :messages-length="0"
+    :is-clarifying="isClarifying"
     :stop="() => {}"
     :regenerate="() => {}"
     @clear-project-context="clearProject"
@@ -41,6 +65,11 @@ import type { TextUIPart, FileUIPart } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type {
+  ResearchAnswer,
+  ResearchClarificationResponse,
+  ResearchLevelSetting,
+} from '#shared/types/research.d'
 
 definePageMeta({
   layout: 'chat',
@@ -57,6 +86,8 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 const prefStorage = usePreferenceStorage()
+const nuxtApp = useNuxtApp()
+const { userModel } = useUserModel()
 const message = customRef<string>((track, trigger) => ({
   get() {
     track()
@@ -71,6 +102,34 @@ const message = customRef<string>((track, trigger) => ({
 const files = ref<FileMetadata[]>([])
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
+const isClarifying = shallowRef<boolean>(false)
+const pendingClarification = shallowRef<
+  ResearchClarificationResponse | null
+>(null)
+const pendingResearchQuery = shallowRef<string>('')
+const clarifyInputHeight = shallowRef<number>(0)
+
+// new.vue has no chat-scroll-spacer (that composable measures message DOM
+// dimensions, and there are no messages here yet) — the fixed ChatInput's own
+// reported height is the most direct way to reserve enough room for the
+// clarify form's buttons to clear it on mobile.
+nuxtApp.hook('chat-input:height', (height: number) => {
+  clarifyInputHeight.value = height
+})
+
+const researchLevel = customRef<ResearchLevelSetting>((track, trigger) => ({
+  get() {
+    track()
+
+    return normalizeResearchLevelSetting(
+      prefStorage.getItem('settings_research_level'),
+    )
+  },
+  set(value) {
+    prefStorage.setItem('settings_research_level', value)
+    trigger()
+  },
+}))
 const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
   get() {
     track()
@@ -327,8 +386,148 @@ function onProjectPickerSubmit(payload: {
   updateProjectQuery(payload.projectId)
 }
 
+interface DeferredResearchDraft {
+  draft: string
+  draftFiles: FileMetadata[]
+}
+
+let deferredResearchDraft: DeferredResearchDraft | null = null
+
+async function createResearchChat(
+  draft: string,
+  draftFiles: FileMetadata[],
+  answers: ResearchAnswer[],
+): Promise<void> {
+  const draftBackup = useChatDraftBackup()
+
+  pending.value = true
+
+  try {
+    const response = await $fetch('/api/v1/chats/new', {
+      method: 'put',
+      body: {
+        parts: [
+          {
+            type: 'text',
+            text: draft,
+          } as TextUIPart,
+          ...(draftFiles.length
+            ? draftFiles.map((file): FileUIPart => ({
+              type: 'file',
+              mediaType: file.type,
+              filename: file.name,
+              url: getFileUrl(file.storageKey),
+            }))
+            : []
+          ),
+        ] as (TextUIPart | FileUIPart)[],
+        tools: tools.value,
+        reasoning: reasoning.value,
+        research: {
+          level: researchLevel.value,
+          answers,
+        },
+        ...(projectId.value ? { projectId: projectId.value } : {}),
+      },
+      cache: 'no-cache',
+    })
+
+    if (!response?.slug) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Failed to create a new chat.',
+      })
+    }
+
+    draftBackup.clear()
+    await navigateTo(`/chats/${response.slug}`)
+  } catch (exception) {
+    draftBackup.save(draft)
+    message.value = draft
+    files.value = draftFiles
+
+    const parsedException = parseError(exception)
+
+    if (parsedException.status === 401) {
+      await auth.fetchSession({ disableCookieCache: true })
+
+      if (!auth.session.value) {
+        await navigateTo('/signin')
+
+        return
+      }
+    }
+
+    useErrorMessage(
+      parsedException.message
+      || 'An error occurred while starting research.',
+      parsedException.why,
+    )
+  } finally {
+    pending.value = false
+  }
+}
+
+function submitResearchClarification(answers: ResearchAnswer[]): void {
+  const deferred = deferredResearchDraft
+
+  deferredResearchDraft = null
+  pendingClarification.value = null
+  pendingResearchQuery.value = ''
+
+  if (!deferred) {
+    useErrorMessage(
+      'Failed to start research',
+      'Your message could not be recovered. Please try again.',
+    )
+
+    return
+  }
+
+  createResearchChat(deferred.draft, deferred.draftFiles, answers)
+}
+
+// Mirrors useChat()'s requestResearchClarification: on a clarify-fetch
+// failure, fall back to starting the research anyway with no answers rather
+// than stranding the user on a page that already optimistically cleared
+// their draft.
+async function requestResearchClarification(
+  draft: string,
+  draftFiles: FileMetadata[],
+): Promise<void> {
+  isClarifying.value = true
+  pendingResearchQuery.value = draft
+  deferredResearchDraft = { draft, draftFiles }
+
+  try {
+    const response = await $fetch<ResearchClarificationResponse>(
+      '/api/v1/chats/research/clarify',
+      {
+        method: 'POST',
+        body: {
+          model: userModel.value,
+          topic: draft,
+        },
+      },
+    )
+
+    pendingClarification.value = response
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to prepare research questions',
+      parsedException.why,
+    )
+
+    submitResearchClarification([])
+  } finally {
+    isClarifying.value = false
+  }
+}
+
 async function onSubmit() {
-  if (pending.value) {
+  if (pending.value || isClarifying.value) {
     return
   }
 
@@ -338,6 +537,16 @@ async function onSubmit() {
   const draft = message.value
   const draftFiles = [...files.value]
   const draftBackup = useChatDraftBackup()
+
+  if (
+    isDeepResearchActive(researchLevel.value)
+    && !pendingClarification.value
+    && draft.trim()
+  ) {
+    await requestResearchClarification(draft, draftFiles)
+
+    return
+  }
 
   pending.value = true
 

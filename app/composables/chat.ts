@@ -10,6 +10,11 @@ import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type {
+  ResearchAnswer,
+  ResearchClarificationResponse,
+  ResearchLevelSetting,
+} from '#shared/types/research.d'
 import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
@@ -505,6 +510,30 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
   )
+  const savedResearchLevel = customRef<ResearchLevelSetting>(
+    (track, trigger) => ({
+      get() {
+        track()
+
+        return normalizeResearchLevelSetting(
+          prefStorage.getItem('settings_research_level'),
+        )
+      },
+      set(value) {
+        prefStorage.setItem('settings_research_level', value)
+        trigger()
+      },
+    }),
+  )
+  const researchLevel = shallowRef<ResearchLevelSetting>(
+    savedResearchLevel.value,
+  )
+  const pendingClarification = shallowRef<
+    ResearchClarificationResponse | null
+  >(null)
+  const isClarifying = shallowRef<boolean>(false)
+  const pendingResearchTopic = shallowRef<string>('')
+  let deferredResearchParts: UIMessage['parts'] = []
   const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
   const wakeLock = useWakeLock()
   // True for the whole span of an auto-recovery attempt, including the idle
@@ -740,6 +769,20 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     clearError: sdkClearError,
   }
 
+  const {
+    researchJob,
+    researchElapsedMs,
+    isResearchJobActive,
+    startResearchJob,
+    cancelResearchJob,
+    seedActiveResearchJob,
+    dismissResearchJob,
+    dispose: disposeChatResearch,
+  } = useChatResearch({
+    chatSlug: chat.slug,
+    chatSdk,
+  })
+
   const lastMessage = computed<UIMessage | undefined>(() => {
     return chatSdk.messages.at(-1)
   })
@@ -853,6 +896,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    if (isResearchJobActive.value) {
+      return
+    }
+
     if (isStopped.value) {
       return
     }
@@ -878,6 +925,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
       && shouldAutoRegenerate.value
+      && !isResearchJobActive.value
     ) {
       // A reply-less last message on a freshly loaded chat (issue #275) means
       // the previous attempt never persisted before this load — could still
@@ -897,6 +945,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
+    disposeChatResearch()
     wakeLock.release()
   })
 
@@ -904,21 +953,15 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const nuxtApp = useNuxtApp()
 
-  async function submit() {
-    isStopped.value = false
-    isAwaitingGeneration.value = false
-    hadInterruptionThisTurn = false
-    pendingRetryAttempts = 0
-    currentTurnStartedAt.value = Date.now()
-    clearScheduledGenerationRetry()
-    wakeLock.acquire()
-
+  async function buildUserMessageParts(
+    text: string,
+  ): Promise<UIMessage['parts']> {
     const parts: any[] = []
 
-    if (input.value.trim()) {
+    if (text.trim()) {
       parts.push({
         type: 'text',
-        text: input.value,
+        text,
       })
     }
 
@@ -927,6 +970,140 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       parts.push(...fileParts)
     }
+
+    return parts
+  }
+
+  function buildTextOnlyParts(text: string): UIMessage['parts'] {
+    if (!text.trim()) {
+      return []
+    }
+
+    return [{
+      type: 'text',
+      text,
+    }] as unknown as UIMessage['parts']
+  }
+
+  async function requestResearchClarification(topic: string): Promise<void> {
+    try {
+      deferredResearchParts = await buildUserMessageParts(topic)
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to prepare your message',
+        parsedException.why,
+      )
+
+      return
+    }
+
+    pendingResearchTopic.value = topic
+    isClarifying.value = true
+
+    try {
+      const response = await $fetch<ResearchClarificationResponse>(
+        '/api/v1/chats/research/clarify',
+        {
+          method: 'POST',
+          body: {
+            model: userModel.value,
+            topic,
+          },
+        },
+      )
+
+      pendingClarification.value = response
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to prepare research questions',
+        parsedException.why,
+      )
+
+      await submitResearchClarification([])
+    } finally {
+      isClarifying.value = false
+    }
+  }
+
+  async function submitResearchClarification(
+    answers: ResearchAnswer[],
+  ): Promise<void> {
+    const parts = deferredResearchParts.length
+      ? deferredResearchParts
+      : buildTextOnlyParts(pendingResearchTopic.value)
+
+    deferredResearchParts = []
+    pendingClarification.value = null
+    pendingResearchTopic.value = ''
+
+    if (!parts.length) {
+      useErrorMessage(
+        'Failed to start research',
+        'Your message could not be recovered. Please try again.',
+      )
+
+      return
+    }
+
+    const level = researchLevel.value
+
+    if (!isDeepResearchActive(level)) {
+      useErrorMessage(
+        'Failed to start research',
+        'Research mode is no longer active for this model.',
+      )
+
+      return
+    }
+
+    const started = await startResearchJob({
+      userMessage: { id: ulid(), parts },
+      level,
+      answers,
+    })
+
+    if (started) {
+      input.value = ''
+      files.value = []
+    }
+  }
+
+  async function submit() {
+    if (isClarifying.value) {
+      return
+    }
+
+    if (isResearchJobActive.value) {
+      useWarningMessage('Research in progress — please wait.')
+
+      return
+    }
+
+    const topic = input.value
+
+    if (
+      isDeepResearchActive(researchLevel.value)
+      && !pendingClarification.value
+      && topic.trim()
+    ) {
+      await requestResearchClarification(topic)
+
+      return
+    }
+
+    isStopped.value = false
+    isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
+    pendingRetryAttempts = 0
+    currentTurnStartedAt.value = Date.now()
+    clearScheduledGenerationRetry()
+    wakeLock.acquire()
+
+    const parts = await buildUserMessageParts(topic)
 
     chatSdk.messages = [
       ...chatSdk.messages,
@@ -1045,6 +1222,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     flush: 'post',
   })
 
+  watch(researchLevel, (level) => {
+    savedResearchLevel.value = level
+  }, {
+    immediate: true,
+    flush: 'post',
+  })
+
   return {
     chatSdk,
     input,
@@ -1063,5 +1247,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     shouldDisplayMessage,
     files,
     currentTurnStartedAt,
+    researchLevel,
+    pendingClarification,
+    pendingResearchTopic,
+    isClarifying,
+    submitResearchClarification,
+    researchJob,
+    researchElapsedMs,
+    isResearchJobActive,
+    cancelResearchJob,
+    seedActiveResearchJob,
+    dismissResearchJob,
   }
 }

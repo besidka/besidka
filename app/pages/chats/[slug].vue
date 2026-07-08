@@ -53,6 +53,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDeepResearchMeta
+            v-if="hasResearchMetaPart(m)"
+            :message="m"
+          />
           <ChatReasoning
             :message="m"
             :reasoning-level="getMessageReasoning(m, messageIndex)"
@@ -101,7 +105,30 @@
           <ChatUrlSources :message="m" />
         </ChatMessage>
       </div>
-      <LazyChatLoader :show="isLoading" />
+      <ChatMessage
+        v-if="pendingClarification"
+        role="user"
+        data-testid="research-clarify-topic"
+      >
+        <p class="chat-markdown">
+          {{ pendingResearchTopic }}
+        </p>
+      </ChatMessage>
+      <ChatDeepResearchClarify
+        v-if="pendingClarification"
+        :clarification="pendingClarification"
+        @submit="submitResearchClarification"
+        @skip="() => submitResearchClarification([])"
+      />
+      <ChatDeepResearchPending
+        v-if="researchJob && researchJob.status !== 'completed'"
+        :job="researchJob"
+        :elapsed-ms="researchElapsedMs"
+        @cancel="cancelResearchJob"
+        @retry="onResearchRetry"
+        @dismiss="dismissResearchJob"
+      />
+      <LazyChatLoader :show="isLoading || isClarifying" />
       <div ref="messagesEndRef" />
     </ChatContainer>
     <div :style="{ height: `${spacerHeight}px` }" />
@@ -111,7 +138,10 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
+    v-model:research-level="researchLevel"
     display-project-picker
+    :is-clarifying="isClarifying"
+    :research-job-active="isResearchJobActive"
     :project-context="projectContext"
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
@@ -270,7 +300,37 @@ const {
   shouldDisplayMessage,
   files,
   currentTurnStartedAt,
+  researchLevel,
+  pendingClarification,
+  pendingResearchTopic,
+  isClarifying,
+  submitResearchClarification,
+  researchJob,
+  researchElapsedMs,
+  isResearchJobActive,
+  cancelResearchJob,
+  seedActiveResearchJob,
+  dismissResearchJob,
 } = useChat(toValue(chat.value))
+
+seedActiveResearchJob(
+  chat.value.activeResearchJob ?? null,
+)
+
+function onResearchRetry(): void {
+  const lastUserMessage = [...chatSdk.messages].reverse().find((entry) => {
+    return entry.role === 'user'
+  })
+  const textPart = lastUserMessage?.parts.find((part) => {
+    return part.type === 'text'
+  }) as TextUIPart | undefined
+
+  dismissResearchJob()
+
+  if (textPart?.text) {
+    input.value = textPart.text
+  }
+}
 
 const { components, getUnwrap } = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
@@ -441,12 +501,30 @@ if (import.meta.client) {
   })
 }
 
-const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
+const {
+  spacerHeight,
+  waitingForDimensions,
+  reserveSpaceForClarify,
+} = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
   messagesDomRefs,
   chatSdk,
 })
+
+if (import.meta.client) {
+  watch(
+    [pendingClarification, isClarifying, researchJob],
+    async ([clarification, clarifying, job]) => {
+      if (!clarification && !clarifying && !job) {
+        return
+      }
+
+      await nextTick()
+      reserveSpaceForClarify()
+    },
+  )
+}
 
 function openProjectPicker() {
   projectPickerRef.value?.open(projectId.value)

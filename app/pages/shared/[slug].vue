@@ -161,6 +161,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDeepResearchMeta
+            v-if="hasResearchMetaPart(m)"
+            :message="m"
+          />
           <ChatReasoning
             :message="m"
             :reasoning-level="m.reasoning"

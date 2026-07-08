@@ -100,6 +100,25 @@ function createSendStubs() {
   }
 }
 
+function createResearchStubs() {
+  const { chatInputStub, stubs } = createSendStubs()
+  const clarifyStub = defineComponent({
+    name: 'ChatDeepResearchClarify',
+    props: ['clarification', 'loading'],
+    emits: ['submit', 'skip'],
+    template: '<div data-testid="clarify-stub" />',
+  })
+
+  return {
+    chatInputStub,
+    clarifyStub,
+    stubs: {
+      ...stubs,
+      ChatDeepResearchClarify: clarifyStub,
+    },
+  }
+}
+
 describe('chats new page', () => {
   const route = reactive({
     query: reactive({} as Record<string, unknown>),
@@ -460,5 +479,129 @@ describe('chats new page', () => {
     expect(
       wrapper.findComponent(chatInputStub).props('message'),
     ).toBe('recovered after relaunch')
+  })
+
+  it('routes into the clarify flow and starts research with the answers', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('settings_research_level', 'quick')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({
+          questions: [],
+          note: 'Scope check',
+        })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.resolve({ slug: 'research-chat' })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    expect(clarifyComponent.exists()).toBe(true)
+    expect(clarifyComponent.props('clarification')).toEqual({
+      questions: [],
+      note: 'Scope check',
+    })
+
+    clarifyComponent.vm.$emit('submit', [
+      { id: 'audience', question: 'Who is this for?', answer: 'Engineers' },
+    ])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
+
+    const createCall = fetchMock.mock.calls.find(([url]) => {
+      return url === '/api/v1/chats/new'
+    })
+    const createCallOptions = createCall?.[1] as {
+      body: { research: { level: string, answers: unknown[] } }
+    } | undefined
+
+    expect(createCallOptions?.body.research).toEqual({
+      level: 'quick',
+      answers: [
+        {
+          id: 'audience',
+          question: 'Who is this for?',
+          answer: 'Engineers',
+        },
+      ],
+    })
+  })
+
+  it('falls back to starting research with no answers when the clarify request fails', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('settings_research_level', 'thorough')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.reject(new Error('clarify unavailable'))
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.resolve({ slug: 'fallback-chat' })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/fallback-chat')
+
+    const createCall = fetchMock.mock.calls.find(([url]) => {
+      return url === '/api/v1/chats/new'
+    })
+    const createCallOptions = createCall?.[1] as {
+      body: { research: { level: string, answers: unknown[] } }
+    } | undefined
+
+    expect(createCallOptions?.body.research).toEqual({
+      level: 'thorough',
+      answers: [],
+    })
   })
 })

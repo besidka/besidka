@@ -15,7 +15,7 @@ export interface ChatScrollSpacerOptions {
 }
 
 const INITIAL_SPACER_HEIGHT: number = 500
-const INITIAL_SPACER_PADDING: number = 12
+export const INITIAL_SPACER_PADDING: number = 12
 const MESSAGES_GRID_CONTAINER_GAP_BETWEEN_MESSAGES: number = 12
 const MESSAGE_3_LINES_HEIGHT: number = 100
 
@@ -300,6 +300,24 @@ export function useChatScrollSpacer(
     nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
   }
 
+  // The clarify form and the research pending block are rendered as siblings
+  // of the message list, not messages themselves, so
+  // captureMessageDimensions() never measures them and the fixed ChatInput
+  // ends up overlapping their buttons on mobile. Borrows
+  // pushUserMessageToTop()'s spacerComputedByPush guard so the
+  // chat-input:height hook doesn't clobber this reserved height while either
+  // is showing.
+  async function reserveSpaceForClarify(): Promise<void> {
+    spacerComputedByPush.value = true
+    spacerHeight.value = inputHeight.value + INITIAL_SPACER_PADDING
+
+    nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
+
+    await nextTick()
+
+    messagesEndRef?.value?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   function shouldResetSpacerOnScrollToBottom(): boolean {
     const container = scrollContainerRef.value
     const userMessage = userMessageData.value
@@ -379,5 +397,6 @@ export function useChatScrollSpacer(
     spacerHeight,
     pushUserMessageToTop,
     waitingForDimensions,
+    reserveSpaceForClarify,
   }
 }
