@@ -625,6 +625,92 @@ describe('chats new page', () => {
     expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
   })
 
+  it('spaces the topic bubble and clarify form using only the container gap', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    // ChatContainer applies a gap between its direct children by default, so
+    // the topic bubble and clarify form must not also carry their own mt-3 —
+    // that would double the gap between them relative to two normal message
+    // bubbles.
+    expect(
+      wrapper.get('[data-testid="research-clarify-topic"]').classes(),
+    ).not.toContain('mt-3')
+    expect(
+      wrapper.get('[data-testid="clarify-stub"]').classes(),
+    ).not.toContain('mt-3')
+  })
+
+  it('reserves clarify-input clearance at every breakpoint, sized to the input height plus a margin', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    await useNuxtApp().callHook('chat-input:height', 140)
+    await nextTick()
+
+    const spacer = wrapper.get('[data-testid="clarify-input-spacer"]')
+
+    // Reserved height must clear the fixed ChatInput's own height (140) plus
+    // a small margin (12, matching INITIAL_SPACER_PADDING) — and, unlike the
+    // mobile-only spacer this replaced, it must not be gated to a breakpoint,
+    // since a long clarify form can outgrow the viewport on desktop too.
+    expect(spacer.attributes('style')).toContain('152px')
+    expect(spacer.classes()).not.toContain('hidden')
+    expect(spacer.classes()).not.toContain('max-sm:block')
+  })
+
   it('clears the pending research block and restores the draft on a failed create request', async () => {
     const storage = createStorageShim()
 

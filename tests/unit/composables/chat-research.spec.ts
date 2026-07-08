@@ -237,6 +237,59 @@ describe('useChatResearch', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('maps the persisted usage column into metadata.usage when appending the completed message', async () => {
+    const chatSdk = createChatSdk()
+    const reportMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [],
+      createdAt: '2026-07-01T00:00:00.000Z',
+      usage: {
+        model: 'o4-mini-deep-research',
+        provider: 'openai',
+        inputTokens: 49052,
+        outputTokens: 35610,
+        totalTokens: 84662,
+        inputCost: 0.098104,
+        outputCost: 0.28488,
+      },
+    } as unknown as UIMessage
+
+    fetchMock.mockResolvedValueOnce({
+      job: createJob({ status: 'running' }),
+    })
+
+    const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+    await research.startResearchJob({
+      userMessage: { id: 'user-msg-1', parts: [] },
+    })
+
+    fetchMock.mockResolvedValueOnce({
+      job: createJob({ status: 'completed' }),
+      message: reportMessage,
+    })
+
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    const appended = chatSdk.messages.find((message) => {
+      return message.id === 'assistant-1'
+    })
+
+    expect(appended?.metadata).toEqual({
+      usage: {
+        model: 'o4-mini-deep-research',
+        provider: 'openai',
+        inputTokens: 49052,
+        outputTokens: 35610,
+        totalTokens: 84662,
+        inputCost: 0.098104,
+        outputCost: 0.28488,
+      },
+      createdAt: '2026-07-01T00:00:00.000Z',
+    })
+  })
+
   it('dedupes the completed message against one already appended', async () => {
     const chatSdk = createChatSdk()
     const reportMessage = {

@@ -1,4 +1,7 @@
-import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
+import type {
+  ChatMessageMetadata,
+  MessageUsage,
+} from '#shared/types/message-usage.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 
 export type MessageMenuInfo = {
@@ -32,6 +35,67 @@ export function getMessageMetadata(
     usage: metadata.usage,
     createdAt: metadata.createdAt ?? message.createdAt,
   }
+}
+
+/**
+ * Wraps a raw persisted message (DB row shape, with a flat `usage` column)
+ * into the `metadata.usage`/`metadata.createdAt` shape the rest of this file
+ * and ContextMenu.client.vue read from. Both the full chat hydration
+ * (app/composables/chat.ts) and the live research-completion append path
+ * (app/composables/chat-research.ts) must call this on every server-sourced
+ * message — skipping it is what left research messages without a model,
+ * token, or price row in the context menu until a full page reload.
+ */
+export function hydrateMessageUsage<
+  T extends {
+    usage?: MessageUsage | null
+    createdAt?: string | number | Date | null
+  },
+>(message: T): T & { metadata: ChatMessageMetadata } {
+  return {
+    ...message,
+    metadata: {
+      usage: message.usage ?? undefined,
+      createdAt: message.createdAt ?? undefined,
+    },
+  }
+}
+
+// A provider that omits the input/output split (observed post-deploy from
+// Google's deep research API, which can return only a total token count)
+// still flows through buildMessageUsage()'s `?? 0` defaulting, so the usage
+// ends up with inputTokens=0 and outputTokens=0 alongside a positive
+// totalTokens. A real, complete generation can't produce that combination —
+// zero tokens on both sides while the total is nonzero only happens when the
+// split was never reported — so it's a reliable signal to fall back to the
+// total instead of displaying a misleading "0", and to treat any cost
+// computed from that zeroed split as unknown rather than a real $0.00.
+function hasUnknownTokenSplit(usage: MessageUsage): boolean {
+  return usage.inputTokens === 0
+    && usage.outputTokens === 0
+    && usage.totalTokens > 0
+}
+
+function resolveDisplayTokens(
+  usage: MessageUsage | undefined,
+  splitTokens: number | undefined,
+): number | undefined {
+  if (!usage) {
+    return undefined
+  }
+
+  return hasUnknownTokenSplit(usage) ? usage.totalTokens : splitTokens
+}
+
+function resolveDisplayCost(
+  usage: MessageUsage | undefined,
+  cost: number | undefined,
+): number | undefined {
+  if (usage && hasUnknownTokenSplit(usage)) {
+    return undefined
+  }
+
+  return cost
 }
 
 export function getMessageUsedTools(
@@ -92,14 +156,18 @@ function getPerMessageCost(
   }
 
   if (message.role === 'assistant') {
-    return getMessageMetadata(message).usage?.outputCost
+    const usage = getMessageMetadata(message).usage
+
+    return resolveDisplayCost(usage, usage?.outputCost)
   }
 
   if (message.role !== 'user') {
     return undefined
   }
 
-  return getFollowingAssistantUsage(messages, messageIndex)?.inputCost
+  const usage = getFollowingAssistantUsage(messages, messageIndex)
+
+  return resolveDisplayCost(usage, usage?.inputCost)
 }
 
 function sumMessageCosts(
@@ -155,7 +223,7 @@ export function resolveMessageMenuInfo(
       model: usage?.model,
       usedTools: getMessageUsedTools(message),
       reasoning: message.reasoning,
-      tokens: usage?.outputTokens,
+      tokens: resolveDisplayTokens(usage, usage?.outputTokens),
       reasoningTokens: usage?.reasoningTokens,
       cost,
       costToMessage,
@@ -168,7 +236,7 @@ export function resolveMessageMenuInfo(
   return {
     role: 'user',
     createdAt: metadata.createdAt,
-    tokens: followingUsage?.inputTokens,
+    tokens: resolveDisplayTokens(followingUsage, followingUsage?.inputTokens),
     cost,
     costToMessage,
     chatTotalCost,

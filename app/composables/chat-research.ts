@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import type { Chat } from '#shared/types/chats.d'
+import type { MessageUsage } from '#shared/types/message-usage.d'
 import type {
   ResearchAnswer,
   ResearchJobStatus,
@@ -7,9 +8,19 @@ import type {
   ResearchProviderId,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
+import { hydrateMessageUsage } from '#shared/utils/message-metadata'
 
 export interface UseChatResearchChatSdk {
   messages: UIMessage[]
+}
+
+// The `/research` poll and full-chat GET endpoints return the raw persisted
+// message row (a flat `usage` column, per server/db/schemas/chats.ts), not a
+// UIMessage with `metadata.usage` already attached — appendMessageDeduped()
+// below hydrates it via the same helper the initial chat load uses.
+type RawResearchMessage = UIMessage & {
+  usage?: MessageUsage | null
+  createdAt?: string | number | Date | null
 }
 
 export interface UseChatResearchOptions {
@@ -176,7 +187,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     attachVisibilityListeners()
   }
 
-  function appendMessageDeduped(message: UIMessage): void {
+  function appendMessageDeduped(message: RawResearchMessage): void {
     const alreadyAppended = options.chatSdk.messages.some((existing) => {
       return existing.id === message.id
     })
@@ -185,7 +196,10 @@ export function useChatResearch(options: UseChatResearchOptions) {
       return
     }
 
-    options.chatSdk.messages = [...options.chatSdk.messages, message]
+    options.chatSdk.messages = [
+      ...options.chatSdk.messages,
+      hydrateMessageUsage(message),
+    ]
 
     nuxtApp.callHook('chat:scroll-to-bottom')
   }
@@ -200,7 +214,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
       })
 
       if (resultMessage) {
-        appendMessageDeduped(resultMessage as unknown as UIMessage)
+        appendMessageDeduped(resultMessage as unknown as RawResearchMessage)
       }
     } catch (exception) {
       const parsedException = parseError(exception)
@@ -214,7 +228,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
 
   function applyJobUpdate(
     job: ResearchJobView | null,
-    message?: UIMessage,
+    message?: RawResearchMessage,
   ): void {
     researchJob.value = job
     syncLoops()
@@ -244,7 +258,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     try {
       const response = await $fetch<{
         job: ResearchJobView
-        message?: UIMessage
+        message?: RawResearchMessage
       }>(`/api/v1/chats/${options.chatSlug}/research`)
 
       applyJobUpdate(response.job, response.message)

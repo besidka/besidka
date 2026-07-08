@@ -19,7 +19,6 @@
       v-if="pendingClarification || isClarifying || startingResearchJob"
       role="user"
       data-testid="research-clarify-topic"
-      class="mt-3"
     >
       <p class="chat-markdown">
         {{ pendingResearchQuery }}
@@ -27,7 +26,6 @@
     </ChatMessage>
     <ChatDeepResearchClarify
       v-if="pendingClarification || isClarifying"
-      class="mt-3"
       :clarification="pendingClarification"
       :loading="isClarifying"
       @submit="submitResearchClarification"
@@ -35,15 +33,17 @@
     />
     <ChatDeepResearchPending
       v-if="startingResearchJob"
-      class="mt-3"
       :job="startingResearchJob"
       :elapsed-ms="0"
     />
+    <div ref="messagesEndRef" />
   </ChatContainer>
   <div
-    v-if="pendingClarification || isClarifying"
-    class="hidden max-sm:block"
-    :style="{ height: `${clarifyInputHeight}px` }"
+    v-if="pendingClarification || isClarifying || startingResearchJob"
+    data-testid="clarify-input-spacer"
+    :style="{
+      height: `${clarifyInputHeight + INITIAL_SPACER_PADDING}px`,
+    }"
   />
   <ChatInput
     v-model:message="message"
@@ -116,6 +116,7 @@ const pendingClarification = shallowRef<
 >(null)
 const pendingResearchQuery = shallowRef<string>('')
 const clarifyInputHeight = shallowRef<number>(0)
+const messagesEndRef = ref<HTMLDivElement | null>(null)
 
 // Issue #1 (round-3): while the research PUT is in flight, render the same
 // synthetic pending job used by useChatResearch() on the existing-chat path
@@ -136,10 +137,28 @@ const startingResearchJob = computed<ResearchJobView | null>(() => {
 // new.vue has no chat-scroll-spacer (that composable measures message DOM
 // dimensions, and there are no messages here yet) — the fixed ChatInput's own
 // reported height is the most direct way to reserve enough room for the
-// clarify form's buttons to clear it on mobile.
+// clarify form's controls to clear it. INITIAL_SPACER_PADDING mirrors the
+// margin useChatScrollSpacer()'s reserveSpaceForClarify() adds on the
+// existing-chat page, and — unlike the mobile-only spacer this replaced — the
+// reservation now applies at every breakpoint, since a long clarify form can
+// grow taller than the viewport on desktop too.
 nuxtApp.hook('chat-input:height', (height: number) => {
   clarifyInputHeight.value = height
 })
+
+if (import.meta.client) {
+  watch(
+    [pendingClarification, isClarifying, startingResearchJob],
+    async ([clarification, clarifying, job]) => {
+      if (!clarification && !clarifying && !job) {
+        return
+      }
+
+      await nextTick()
+      messagesEndRef.value?.scrollIntoView({ behavior: 'smooth' })
+    },
+  )
+}
 
 const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
   get() {

@@ -84,6 +84,29 @@ describe('Chat/DeepResearchPending', () => {
     expect(progress.attributes('value')).toBeUndefined()
   })
 
+  it('shows a static telescope icon next to the status instead of a spinner', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    const statusRow = wrapper.get('[data-testid="research-pending-status"]')
+      .element.parentElement
+
+    expect(statusRow?.querySelector('svg')).toBeNull()
+
+    const icon = statusRow?.querySelector('.iconify')
+
+    expect(icon).not.toBeNull()
+    expect(icon?.className).toContain('i-lucide:telescope')
+    expect(icon?.className).toContain('size-4')
+    expect(
+      wrapper.find('[data-testid="research-pending-progress"]').exists(),
+    ).toBe(true)
+  })
+
   it('does not render the progress bar in a terminal state', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {

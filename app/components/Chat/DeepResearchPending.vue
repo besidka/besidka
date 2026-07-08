@@ -3,7 +3,7 @@
     <div class="flex flex-col gap-3 text-sm">
       <template v-if="!isTerminal">
         <div class="flex items-center gap-1">
-          <SvgoLoader class="size-4" />
+          <Icon name="lucide:telescope" class="size-4" />
           <span
             data-testid="research-pending-status"
             class="text-xs font-medium text-base-content/90"
