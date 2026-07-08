@@ -62,6 +62,8 @@ const LONG_TEXT: string[] = [
   + 'nihil impedit quo minus id quod maxime placeat.',
 ]
 
+const RESEARCH_MESSAGE_ID: string = 'test-message-deep-research'
+
 const RESEARCH_TOPIC: string
   = 'the impact of remote work on team productivity'
 
@@ -315,7 +317,9 @@ function getChunksForScenario(
       return chunks
     }
     case 'deep-research': {
-      const chunks: UIMessageChunk[] = []
+      const chunks: UIMessageChunk[] = [
+        { type: 'start', messageId: RESEARCH_MESSAGE_ID },
+      ]
 
       chunks.push(...buildResearchStepChunks(depth))
       chunks.push(buildResearchBriefChunk(depth))

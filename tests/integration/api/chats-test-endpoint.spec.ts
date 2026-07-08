@@ -333,6 +333,28 @@ describe('test chat endpoints', () => {
   })
 
   describe('deep-research scenario', () => {
+    it('emits a start chunk before any research data chunks', async () => {
+      const handler = await getPostHandler()
+
+      await handler(createEvent({
+        scenario: 'deep-research',
+        messages: '1',
+        depth: 'standard',
+      }) as any)
+
+      const capture = mocks.capturedChunks[0]!
+
+      await capture.ready
+
+      expect(capture.chunks[0]).toEqual(expect.objectContaining({
+        type: 'start',
+      }))
+      expect(capture.chunks.findIndex((chunk: any) => {
+        return chunk.type === 'data-research-step'
+          || chunk.type === 'data-research-brief'
+      })).toBeGreaterThan(0)
+    })
+
     it('streams bounded research step, source and brief chunks per depth', async () => {
       const handler = await getPostHandler()
 

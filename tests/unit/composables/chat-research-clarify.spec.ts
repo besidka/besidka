@@ -513,4 +513,80 @@ describe('useChat research clarification flow', () => {
 
     wrapper.unmount()
   })
+
+  it('stops forcing the generic loader once a research step streams', () => {
+    vi.stubGlobal('$fetch', vi.fn())
+
+    const chat = useChat(createChatFixture())
+
+    mocks.sdkStatus.value = 'streaming'
+    mocks.sdkMessages.value = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Research remote work' }],
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{
+          type: 'data-research-step',
+          id: 'research-step-searching',
+          data: { phase: 'searching', label: 'Searching', status: 'active' },
+        }],
+      },
+    ] as unknown as UIMessage[]
+
+    expect(chat.isLoading.value).toBe(false)
+  })
+
+  it('recovers instead of latching a stop when a research partial disconnects', () => {
+    vi.stubGlobal('$fetch', vi.fn())
+
+    const chat = useChat(createChatFixture())
+
+    chat.researchDepth.value = 'standard'
+
+    const messages = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Research remote work' }],
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'data-research-brief',
+            id: 'research-brief',
+            data: { topic: 'remote work', depth: 'standard', answers: [] },
+          },
+          {
+            type: 'data-research-step',
+            id: 'research-step-searching',
+            data: { phase: 'searching', label: 'Searching', status: 'active' },
+          },
+        ],
+      },
+    ] as unknown as UIMessage[]
+
+    mocks.sdkMessages.value = messages
+    mocks.sdkStatus.value = 'error'
+    mocks.sdkError.value = new Error('The network connection was lost.')
+
+    const onFinish = mocks.useChatSdk.mock.calls.at(-1)?.[0]?.onFinish
+
+    onFinish({
+      isAbort: false,
+      isDisconnect: false,
+      isError: true,
+      messages,
+    })
+
+    expect(chat.isStopped.value).toBe(false)
+    expect(mocks.errorMessage).not.toHaveBeenCalled()
+    expect(mocks.sdkClearError).toHaveBeenCalled()
+    expect(mocks.sdkRegenerate).toHaveBeenCalled()
+  })
 })

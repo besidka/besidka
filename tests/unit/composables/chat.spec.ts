@@ -6,6 +6,8 @@ import {
   buildChatErrorMessage,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
+  isCompletedAssistantReply,
+  isInterruptedResearchTurn,
   normalizeChatClientError,
   shouldDisplayMessageContent,
   shouldForceGenericLoadingIndicator,
@@ -664,5 +666,129 @@ describe('shouldDisplayMessageContent', () => {
 
   it('displays nothing for a missing message', () => {
     expect(shouldDisplayMessageContent(undefined)).toBe(false)
+  })
+})
+
+describe('research-aware recovery classification', () => {
+  const researchProgressParts = [
+    {
+      type: 'data-research-brief',
+      id: 'research-brief',
+      data: { topic: 'AI trends', depth: 'standard', answers: [] },
+    },
+    {
+      type: 'data-research-step',
+      id: 'research-step-searching',
+      data: { phase: 'searching', label: 'Searching the web', status: 'active' },
+    },
+  ]
+
+  it('does not treat a research-only partial as a completed reply', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: researchProgressParts,
+    } as unknown as UIMessage
+
+    expect(isCompletedAssistantReply(message)).toBe(false)
+  })
+
+  it('treats a research message with a final report as completed', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        ...researchProgressParts,
+        { type: 'text', text: '# Findings\n\nThe research report body.' },
+      ],
+    } as unknown as UIMessage
+
+    expect(isCompletedAssistantReply(message)).toBe(true)
+  })
+
+  it('keeps a plain text assistant reply completed and an empty one not', () => {
+    expect(isCompletedAssistantReply({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Answer' }],
+    } as UIMessage)).toBe(true)
+
+    expect(isCompletedAssistantReply({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [],
+    } as UIMessage)).toBe(false)
+  })
+
+  it('flags an in-flight research partial as an interrupted research turn', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: researchProgressParts,
+    } as unknown as UIMessage
+
+    expect(isInterruptedResearchTurn('standard', message)).toBe(true)
+  })
+
+  it('does not flag a completed research report as interrupted', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        ...researchProgressParts,
+        { type: 'text', text: '# Findings\n\nThe research report body.' },
+      ],
+    } as unknown as UIMessage
+
+    expect(isInterruptedResearchTurn('standard', message)).toBe(false)
+  })
+
+  it('never flags an interrupted research turn when research is off', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: researchProgressParts,
+    } as unknown as UIMessage
+
+    expect(isInterruptedResearchTurn('off', message)).toBe(false)
+  })
+
+  it('recovers a research turn cut off before its report landed', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Research AI trends' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: researchProgressParts,
+      } as unknown as UIMessage,
+    ]
+
+    expect(shouldRecoverInterruptedGeneration('error', messages)).toBe(true)
+    expect(shouldSurfaceEmptyAssistantResponse(messages)).toBe(true)
+  })
+
+  it('does not recover a research turn that already produced its report', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Research AI trends' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          ...researchProgressParts,
+          { type: 'text', text: '# Findings\n\nThe research report body.' },
+        ],
+      } as unknown as UIMessage,
+    ]
+
+    expect(shouldRecoverInterruptedGeneration('ready', messages)).toBe(false)
+    expect(shouldSurfaceEmptyAssistantResponse(messages)).toBe(false)
   })
 })

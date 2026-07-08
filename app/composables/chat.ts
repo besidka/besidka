@@ -235,7 +235,7 @@ export function shouldSurfaceEmptyAssistantResponse(
     return false
   }
 
-  return !hasMeaningfulAssistantParts(lastMessage)
+  return !isCompletedAssistantReply(lastMessage)
 }
 
 // Issue #275: iOS suspends the page on screen-lock or app-switch with no
@@ -359,6 +359,64 @@ export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
 
     return true
   })
+}
+
+// The recovery heuristics (shouldSurfaceEmptyAssistantResponse /
+// shouldRecoverInterruptedGeneration) must not mistake an in-flight deep-
+// research turn for a finished reply: such a turn streams only
+// data-research-step/brief progress parts for most of its run, with the
+// actual answer arriving last as a text part. hasMeaningfulAssistantParts'
+// catch-all (any non-text/reasoning part counts) would judge that progress-
+// only partial complete and skip recovery, so this variant excludes the
+// research progress parts and keys "completed" on real reply content
+// (text/reasoning with text). Display classification
+// (shouldDisplayMessageContent) is intentionally NOT routed through this —
+// the progress timeline must still render while the turn is in flight.
+export function isCompletedAssistantReply(
+  message: UIMessage | undefined,
+): boolean {
+  if (!message || message.role !== 'assistant') {
+    return false
+  }
+
+  if (!message.parts?.length) {
+    return false
+  }
+
+  return message.parts.some((part) => {
+    if (
+      part.type === 'data-research-step'
+      || part.type === 'data-research-brief'
+    ) {
+      return false
+    }
+
+    if (
+      part.type === 'text'
+      || part.type === 'reasoning'
+    ) {
+      return Boolean(part.text?.trim().length)
+    }
+
+    return true
+  })
+}
+
+// True when the current turn is a deep-research generation that has NOT yet
+// produced its final report (only progress parts so far, or nothing). Both
+// onFinish auto-recovery and the visibility/focus safety-net key on this to
+// keep polling the still-running server (issue #275) instead of latching a
+// false "Retry": Safari's iOS-suspend error string ("The network connection
+// was lost.") is absent from the transport-error allowlist, so the string-
+// based isAutoRecoverableTransportInterruption cannot catch this case alone.
+// Keyed on the ABSENCE of report content (isCompletedAssistantReply), never
+// on mere presence of research parts, so a finished report is still treated
+// as complete and never redundantly regenerated on return.
+export function isInterruptedResearchTurn(
+  depth: ResearchDepthSetting,
+  message: UIMessage | undefined,
+): boolean {
+  return isDeepResearchActive(depth) && !isCompletedAssistantReply(message)
 }
 
 // A deep-research turn streams `data-research-step`/`data-research-brief`
@@ -647,6 +705,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   let pendingRetryAttempts = 0
   let pendingRetryTimeoutId: ReturnType<typeof setTimeout> | undefined
   let hadInterruptionThisTurn = false
+  // Distinguishes a deliberate user Stop (must stay stopped) from a failure-
+  // latched stop (recoverable on return). Only set by stop(); cleared by any
+  // intentional fresh generation. recoverIfInterrupted() relies on it so a
+  // stopped research turn is re-verified against the server only when the
+  // stop was NOT the user's own choice.
+  let wasStoppedByUser = false
   // Anchors "how long has this turn been reasoning" to a timestamp owned by
   // this composable rather than any per-message component's local state.
   // The recovery-poll loop (attemptGenerationRecovery below) resends the
@@ -729,6 +793,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         parsedError,
         { isAbort, isDisconnect, isTestChat: isTestChat.value },
       )
+      const wasInterruptedResearchPartial = isError
+        && !isAbort
+        && !isTestChat.value
+        && isInterruptedResearchTurn(researchDepth.value, messages.at(-1))
 
       if (
         !parsedError
@@ -749,7 +817,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // The AI SDK never calls onError on the abort path (it returns before
       // reaching that call), so parsedError && isAbort can't co-occur here in
       // practice — the !isAbort guard is defensive, not load-bearing.
-      if (parsedError && !isAbort && !wasTransportInterruption) {
+      if (
+        parsedError
+        && !isAbort
+        && !wasTransportInterruption
+        && !wasInterruptedResearchPartial
+      ) {
         if (shouldSurfaceChatError(messages, parsedError)) {
           sdkMessages.value = showChatError(
             messages,
@@ -779,7 +852,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return
       }
 
-      if (wasTransportInterruption) {
+      if (wasTransportInterruption || wasInterruptedResearchPartial) {
         hadInterruptionThisTurn = true
         recoverFromTransportInterruption()
         return
@@ -898,6 +971,17 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     const result: boolean = true
 
     for (const part of lastMessage.value.parts) {
+      // A streaming research turn renders its own progress timeline
+      // (ChatDeepResearchProgress) from these parts, so the generic loader
+      // underneath is redundant the moment one lands — treat their presence
+      // as visible content, mirroring shouldDisplayMessageContent.
+      if (
+        part.type === 'data-research-step'
+        || part.type === 'data-research-brief'
+      ) {
+        return false
+      }
+
       if (!['reasoning', 'text'].includes(part.type)) {
         continue
       }
@@ -992,7 +1076,16 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
-    if (isStopped.value) {
+    // A failure-latched research turn (e.g. the retry cap was hit while the
+    // server kept running) must be re-verified against the server on return
+    // rather than trusted as terminal — the reply may have persisted since.
+    // A deliberate user Stop is exempt: it stays stopped.
+    const isResearchInFlight = isInterruptedResearchTurn(
+      researchDepth.value,
+      chatSdk.messages.at(-1),
+    )
+
+    if (isStopped.value && (wasStoppedByUser || !isResearchInFlight)) {
       return
     }
 
@@ -1001,6 +1094,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }
 
     clearScheduledGenerationRetry()
+    pendingRetryAttempts = 0
     isAwaitingGeneration.value = true
     isStopped.value = false
     wakeLock.acquire()
@@ -1055,6 +1149,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   function beginGenerationTurn(): void {
     isStopped.value = false
+    wasStoppedByUser = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
@@ -1212,6 +1307,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   function stop() {
     clearScheduledGenerationRetry()
+    wasStoppedByUser = true
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     currentTurnStartedAt.value = 0
@@ -1222,6 +1318,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   function regenerate() {
     isStopped.value = false
+    wasStoppedByUser = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0

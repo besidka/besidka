@@ -47,7 +47,7 @@
         <Icon
           name="lucide:chevron-right"
           class="
-            ml-auto size-4 text-base-content/60 transition-transform
+            size-4 text-base-content/60 transition-transform
             group-open:rotate-90
           "
         />

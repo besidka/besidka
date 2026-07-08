@@ -666,6 +666,18 @@ export default defineEventHandler(async (event) => {
       }
 
       try {
+        // Anchor the client message id to messagePublicId before any data
+        // part is written. Without this, a data part written ahead of the
+        // inner toUIMessageStream's own `start` chunk attaches to a
+        // client-generated id, then `start` switches to messagePublicId and
+        // the SDK's push-vs-replace logic sees two different ids and pushes
+        // a second assistant message instead of updating one. The inner
+        // stream's later `start` (same id) becomes a harmless no-op re-set.
+        writer.write({
+          type: 'start',
+          messageId: messagePublicId,
+        })
+
         if (missingFiles.length > 0) {
           writer.write({
             type: 'data-missing-files',
