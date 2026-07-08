@@ -1,6 +1,7 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import { rewriteBranchedChatFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
+import { toResearchJobView } from '~~/server/utils/research/job-view'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -22,8 +23,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
+  const db = useDb()
 
-  const chat = await useDb().query.chats.findFirst({
+  const chat = await db.query.chats.findFirst({
     where: {
       slug: params.data.slug,
       userId,
@@ -80,8 +82,17 @@ export default defineEventHandler(async (event) => {
     )
     : messages
 
+  const activeJob = await db.query.researchJobs.findFirst({
+    where: {
+      chatId: chat.id,
+      status: { in: ['pending', 'running'] },
+    },
+    orderBy: { id: 'desc' },
+  })
+
   return {
     ...chat,
     messages: resolvedMessages,
+    activeResearchJob: activeJob ? toResearchJobView(activeJob) : null,
   }
 })

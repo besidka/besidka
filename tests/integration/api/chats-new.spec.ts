@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({
   validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  startResearchJobForChat: vi.fn(async () => ({
+    jobId: 'job-1',
+    status: 'running',
+  })),
 }))
 
 vi.mock('~~/server/utils/files/file-governance', () => ({
@@ -12,6 +16,10 @@ vi.mock('~~/server/utils/files/file-governance', () => ({
 
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
+}))
+
+vi.mock('~~/server/utils/research/start', () => ({
+  startResearchJobForChat: mocks.startResearchJobForChat,
 }))
 
 vi.mock('evlog', () => ({
@@ -53,6 +61,11 @@ describe('new chat API', () => {
     mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
     mocks.loggerSet.mockReset()
     mocks.markProjectsMemoryStale.mockResolvedValue(undefined)
+    mocks.startResearchJobForChat.mockReset()
+    mocks.startResearchJobForChat.mockResolvedValue({
+      jobId: 'job-1',
+      status: 'running',
+    })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -93,7 +106,14 @@ describe('new chat API', () => {
         })),
       })),
     }))
-    const messagesInsertValues = vi.fn(async () => undefined)
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
     const projectUpdateWhere = vi.fn(async () => undefined)
     const projectUpdateSet = vi.fn(() => ({
       where: projectUpdateWhere,
@@ -146,5 +166,92 @@ describe('new chat API', () => {
       1,
       db,
     )
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('starts a research job when research is requested', async () => {
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-1',
+          slug: 'chat-1',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => null),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({
+          values: chatsInsertValues,
+        })
+        .mockReturnValueOnce({
+          values: messagesInsertValues,
+        }),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        model: 'gpt-5.4-nano',
+        research: {
+          level: 'quick',
+          answers: [{ id: 'q1', question: 'Scope?', answer: 'Global' }],
+        },
+      },
+    } as any)
+
+    expect(response).toEqual({ slug: 'chat-1' })
+    expect(mocks.startResearchJobForChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db,
+        userId: 1,
+        chat: { id: 'chat-1', slug: 'chat-1', projectId: null },
+        userMessage: expect.objectContaining({
+          id: expect.any(String),
+          parts: [{ type: 'text', text: 'Research this' }],
+        }),
+        model: 'gpt-5.4-nano',
+        level: 'quick',
+        answers: [{ id: 'q1', question: 'Scope?', answer: 'Global' }],
+      }),
+    )
+  })
+
+  it('rejects a research request without a model', async () => {
+    const handler = await getNewChatHandler()
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        research: { level: 'quick' },
+      },
+    } as any)).rejects.toThrow(
+      'A model is required to start deep research.',
+    )
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
   })
 })

@@ -11,7 +11,6 @@ import type { MessageUsage } from '#shared/types/message-usage.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
-import { eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
   createUIMessageStream,
@@ -22,17 +21,17 @@ import {
   readUIMessageStream,
   toUIMessageStream,
 } from 'ai'
-import * as schema from '~~/server/db/schema'
 import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
+import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
+import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
-import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -297,83 +296,25 @@ export default defineEventHandler(async (event) => {
     missingFilesCount: missingFiles.length,
   })
 
-  const lastPersistedMessage = previousMessages[previousMessages.length - 1]
-  const isDuplicateUserMessage = (
-    newMessage.role === 'user'
-    && lastPersistedMessage?.role === 'user'
-    && (
-      newMessage.id === lastPersistedMessage.id
-      || (
-        hasSameParts(
-          lastPersistedMessage.parts as UIMessage['parts'],
-          newMessage.parts as UIMessage['parts'],
-        )
-        && hasSameTools(
-          lastPersistedMessage.tools,
-          body.data.tools,
-        )
-        && lastPersistedMessage.reasoning
-        === body.data.reasoning
-      )
-    )
-  )
-
   if (newMessage.role === 'user') {
-    if (!isDuplicateUserMessage) {
-      const activityAt = new Date()
-
-      try {
-        await insertMessageWithPublicId({
-          db,
-          values: {
-            chatId: chat.id,
-            role: 'user',
-            parts: newMessage.parts,
-            tools: body.data.tools,
-            reasoning: body.data.reasoning,
-          },
-          publicId: newMessage.id,
-          ignoreConflict: true,
-        })
-
-        await db.update(schema.chats)
-          .set({ activityAt })
-          .where(eq(schema.chats.id, chat.id))
-
-        if (chat.projectId) {
-          await db.update(schema.projects)
-            .set({ activityAt })
-            .where(eq(schema.projects.id, chat.projectId))
-
-          await markProjectsMemoryStale([chat.projectId], userId, db)
-        }
-      } catch (exception) {
-        logger.set({
-          stage: 'persist-user-message',
-          errorCode: 'message-persist-failed',
-          errorMessage: exception instanceof Error
-            ? exception.message
-            : String(exception),
-        })
-
-        throw createError({
-          ...normalizeChatError({
-            error: exception,
-            event,
-            code: 'message-persist-failed',
-            message: 'The message could not be saved.',
-          }),
-        })
-      }
-    } else {
-      const lastMessage = chat.messages[chat.messages.length - 1]
-
-      if (lastMessage) {
-        await db.update(schema.messages)
-          .set({ publicId: newMessage.id })
-          .where(eq(schema.messages.id, lastMessage.id))
-      }
-    }
+    await persistUserMessage({
+      db,
+      event,
+      logger,
+      userId,
+      chat: {
+        id: chat.id,
+        projectId: chat.projectId,
+        messages: chat.messages,
+      },
+      previousMessages,
+      newMessage: {
+        id: newMessage.id,
+        parts: newMessage.parts as UIMessage['parts'],
+      },
+      tools: body.data.tools,
+      reasoning: body.data.reasoning,
+    })
   }
 
   const { provider, model } = useChatProvider(userModel)
@@ -811,49 +752,6 @@ function computeModelCost(
   return messageUsage.inputCost + (messageUsage.outputCost ?? 0)
 }
 
-// Returns the inserted { id, publicId } row, OR `undefined` when
-// `ignoreConflict` is set and the public_id already existed (ON CONFLICT DO
-// NOTHING inserts no row, so `.get()` yields undefined). Callers that pass
-// `ignoreConflict: true` must not assume a row came back.
-async function insertMessageWithPublicId(input: {
-  db: ReturnType<typeof useDb>
-  values: typeof schema.messages.$inferInsert
-  publicId: string
-  ignoreConflict?: boolean
-}) {
-  const insert = input.db
-    .insert(schema.messages)
-    .values({
-      ...input.values,
-      publicId: input.publicId,
-    })
-
-  // Belt-and-suspenders idempotency for issue #263. The in-memory duplicate
-  // scan reads a single chat snapshot, so two near-simultaneous retries of the
-  // same user message (before either commits, and before any assistant reply
-  // exists to replay) could both pass it. ON CONFLICT DO NOTHING keeps this a
-  // single atomic statement (preserving the #205/#207 fix — no insert-then-
-  // update) and guarantees a duplicate public_id can never again surface as a
-  // message-persist-failed 500. It does NOT serialize the racing requests: the
-  // losing one no-ops here and still streams its own assistant, so that rare
-  // window can leave a second assistant row (no error, no data loss) rather
-  // than a 500. Closing that fully would need a lock/transaction, which is not
-  // worth it for D1 at this probability. Scoped to the public_id target so an
-  // unrelated constraint still throws. Only the user-message insert opts in;
-  // the assistant insert keeps strict behavior so a genuine DB failure still
-  // surfaces loudly.
-  const statement = input.ignoreConflict
-    ? insert.onConflictDoNothing({ target: schema.messages.publicId })
-    : insert
-
-  return await statement
-    .returning({
-      id: schema.messages.id,
-      publicId: schema.messages.publicId,
-    })
-    .get()
-}
-
 // Rebuild a UI message stream from an already-persisted assistant message so a
 // disconnect retry (issue #263) replays the stored reply instead of erroring or
 // re-calling the model. Emits the same chunk vocabulary that
@@ -1060,20 +958,6 @@ function generationInProgressKvKey(
   userMessageId: string,
 ): string {
   return `chat-generating:${chatId}:${userMessageId}`
-}
-
-function hasSameParts(
-  leftParts: UIMessage['parts'],
-  rightParts: UIMessage['parts'],
-): boolean {
-  return JSON.stringify(leftParts || []) === JSON.stringify(rightParts || [])
-}
-
-function hasSameTools(
-  leftTools: Array<'web_search'>,
-  rightTools: Array<'web_search'>,
-): boolean {
-  return JSON.stringify(leftTools || []) === JSON.stringify(rightTools || [])
 }
 
 function toSupportedProviderId(
