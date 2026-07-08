@@ -89,6 +89,7 @@ function createJob(overrides: Partial<{
   resultMessageId: string | null
   startedAt: Date | null
   createdAt: Date
+  origin: string | null
 }> = {}) {
   return {
     id: 'job-1',
@@ -107,6 +108,7 @@ function createJob(overrides: Partial<{
     createdAt: new Date(Date.now() - 5 * 60 * 1000),
     completedAt: null,
     updatedAt: new Date(Date.now() - 5 * 60 * 1000),
+    origin: null,
     ...overrides,
   }
 }
@@ -480,10 +482,13 @@ describe('finalizeResearchJob', () => {
       claimedRow: { id: 'job-1' },
       chatSlug: 'chat-slug-1',
     })
+    const job = createJob({
+      origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+    })
 
     const outcome = await finalizeResearchJob({
       db: db as any,
-      job: createJob() as any,
+      job: job as any,
       vapid: { publicKey: 'pub', privateKey: 'priv', subject: 'mailto:a@b.c' },
       waitUntil,
       logger,
@@ -514,6 +519,15 @@ describe('finalizeResearchJob', () => {
         }),
       },
     ])
+    expect(insertedValues.values.usage).toEqual({
+      model: 'o4-mini-deep-research',
+      provider: 'openai',
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+      inputCost: 10 * 2 / 1_000_000,
+      outputCost: 20 * 8 / 1_000_000,
+    })
     expect(waitUntil).toHaveBeenCalledTimes(1)
     expect(sendPushNotificationToUser).toHaveBeenCalledWith(
       db,
@@ -525,7 +539,113 @@ describe('finalizeResearchJob', () => {
       }),
       expect.anything(),
       waitUntil,
+      'https://pr-292.besidka-preview.chernenko.workers.dev',
     )
+  })
+
+  it('passes undefined as the target origin when the job has no origin', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [],
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+
+    await finalizeResearchJob({
+      db: db as any,
+      job: createJob({ origin: null }) as any,
+      vapid: { publicKey: 'pub', privateKey: 'priv', subject: 'mailto:a@b.c' },
+      waitUntil,
+      logger,
+    })
+
+    expect(sendPushNotificationToUser).toHaveBeenCalledWith(
+      db,
+      1,
+      expect.anything(),
+      expect.anything(),
+      waitUntil,
+      undefined,
+    )
+  })
+
+  it('persists tokens without cost for a Google deep research report', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [],
+        usage: { totalTokens: 500 },
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+    const job = createJob({
+      provider: 'google',
+      modelId: 'deep-research-preview-04-2026',
+    })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: job as any,
+      vapid: {},
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('finalized')
+
+    const insertedValues = mocks.insertMessageWithPublicId.mock.calls[0][0]
+
+    expect(insertedValues.values.usage).toEqual({
+      model: 'deep-research-preview-04-2026',
+      provider: 'google',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 500,
+    })
+  })
+
+  it('persists a null message usage when the job never captured usage', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [],
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('finalized')
+
+    const insertedValues = mocks.insertMessageWithPublicId.mock.calls[0][0]
+
+    expect(insertedValues.values.usage).toBeNull()
   })
 
   it('reverts the completion claim when persisting the report message fails', async () => {

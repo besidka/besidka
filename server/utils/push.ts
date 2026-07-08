@@ -27,6 +27,7 @@ interface StoredPushSubscription {
   endpoint: string
   p256dhKey: string
   authKey: string
+  origin: string | null
 }
 
 type SendOutcome = 'sent' | 'staleRemoved' | 'rejected' | 'failed'
@@ -246,6 +247,7 @@ export async function sendPushNotificationToUser(
   payload: PushNotificationPayload,
   vapid: VapidKeys,
   waitUntil?: (promise: Promise<unknown>) => void,
+  targetOrigin?: string,
 ): Promise<PushSendOutcomes | null> {
   if (!isPushConfigured(vapid)) {
     return null
@@ -263,6 +265,20 @@ export async function sendPushNotificationToUser(
     return { sent: 0, staleRemoved: 0, rejected: 0, failed: 0, failures: [] }
   }
 
+  // Preview deployments all share one D1 database, so one user can carry a
+  // subscription per preview origin they visited (issue #3: 4 duplicate
+  // notifications, one per stale preview origin's own service worker). Scope
+  // delivery to the origin the caller cares about — but fall back to the
+  // full set whenever nothing matches (legacy rows with a null origin, or a
+  // caller/environment that never passes targetOrigin) so this can never
+  // silently drop a notification.
+  const originMatchedSubscriptions = targetOrigin
+    ? subscriptions.filter(subscription => subscription.origin === targetOrigin)
+    : []
+  const subscriptionsToNotify = originMatchedSubscriptions.length > 0
+    ? originMatchedSubscriptions
+    : subscriptions
+
   const outcomes: PushSendOutcomes = {
     sent: 0,
     staleRemoved: 0,
@@ -271,7 +287,7 @@ export async function sendPushNotificationToUser(
     failures: [],
   }
 
-  for (const subscription of subscriptions) {
+  for (const subscription of subscriptionsToNotify) {
     const result = await sendToSubscription(
       db,
       subscription,
@@ -296,7 +312,8 @@ export async function sendPushNotificationToUser(
     push: {
       operation: 'send',
       userId,
-      subscriptionCount: subscriptions.length,
+      subscriptionCount: subscriptionsToNotify.length,
+      totalSubscriptionCount: subscriptions.length,
       ...outcomes,
     },
   })

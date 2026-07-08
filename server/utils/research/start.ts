@@ -12,6 +12,7 @@ import { getModel } from '#shared/utils/model'
 import { getModelResearch } from '#shared/utils/research'
 import { createError } from 'evlog'
 import { and, count, eq, inArray } from 'drizzle-orm'
+import { getRequestURL } from 'h3'
 import * as schema from '~~/server/db/schema'
 import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
@@ -114,6 +115,8 @@ export async function resolveResearchStartContext(
 export async function startResearchJobForChat(
   input: StartResearchJobInput,
 ): Promise<StartResearchJobResult> {
+  input.logger.set({ feature: 'deep-research' })
+
   const {
     model, research, supportedProviderId, apiKey,
   } = await resolveResearchStartContext({
@@ -123,6 +126,21 @@ export async function startResearchJobForChat(
 
   await assertResearchJobCapacity(input.db, input.userId)
 
+  // Server-derived, never client input — captured at start (not from
+  // runtimeConfig.public.baseUrl) because every preview deployment shares
+  // one baseUrl while each PR is served on a distinct hostname; the cron
+  // sweep that finalizes this job later has no request context of its own,
+  // so this is the only reliable origin signal for push delivery scoping
+  // (issue #3). See server/utils/push.ts sendPushNotificationToUser.
+  let origin: string | undefined
+
+  try {
+    origin = getRequestURL(input.event).origin
+  } catch (exception) {
+    void exception
+    origin = undefined
+  }
+
   const job = await claimResearchJob(input.db, {
     chatId: input.chat.id,
     userId: input.userId,
@@ -130,6 +148,7 @@ export async function startResearchJobForChat(
     provider: supportedProviderId,
     level: research.tier,
     modelId: model.id,
+    origin,
   })
 
   const adapter = getResearchAdapter(supportedProviderId)
@@ -323,6 +342,7 @@ async function claimResearchJob(
     provider: ResearchProviderId
     level: ResearchLevel
     modelId: string
+    origin?: string
   },
 ): Promise<{ id: string }> {
   try {

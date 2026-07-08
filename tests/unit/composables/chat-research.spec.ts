@@ -107,6 +107,60 @@ describe('useChatResearch', () => {
     expect(research.researchJob.value?.status).toBe('running')
   })
 
+  it('seeds a synthetic local-pending job before the POST resolves', async () => {
+    const chatSdk = createChatSdk()
+    const { userModel } = useUserModel()
+
+    userModel.value = 'o4-mini-deep-research'
+
+    let resolveFetch!: (value: { job: ResearchJobView }) => void
+
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveFetch = resolve
+    }))
+
+    const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+    const startPromise = research.startResearchJob({
+      userMessage: { id: 'user-msg-1', parts: [] },
+    })
+
+    expect(research.researchJob.value).toEqual({
+      publicId: 'local-pending',
+      status: 'pending',
+      provider: 'openai',
+      level: 'quick',
+      modelId: 'o4-mini-deep-research',
+      startedAt: null,
+      error: null,
+      resultMessageId: null,
+    })
+
+    resolveFetch({ job: createJob({ status: 'pending', modelId: 'o4-mini-deep-research' }) })
+    await startPromise
+
+    expect(research.researchJob.value?.publicId).toBe('job-1')
+  })
+
+  it('reverts the synthetic pending job to null when starting a job fails', async () => {
+    const chatSdk = createChatSdk()
+    const { userModel } = useUserModel()
+
+    userModel.value = 'o4-mini-deep-research'
+
+    fetchMock.mockRejectedValueOnce(new Error('boom'))
+
+    const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+    const started = await research.startResearchJob({
+      userMessage: { id: 'user-msg-1', parts: [] },
+    })
+
+    expect(started).toBe(false)
+    expect(research.researchJob.value).toBeNull()
+    expect(research.isResearchJobActive.value).toBe(false)
+  })
+
   it('returns false and surfaces an error when starting a job fails', async () => {
     const chatSdk = createChatSdk()
 

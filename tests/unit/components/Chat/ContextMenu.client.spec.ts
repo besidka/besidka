@@ -687,6 +687,54 @@ describe('Chat/ContextMenu.client', () => {
     })
   })
 
+  describe('deep research tool label', () => {
+    it('shows the deep research label and telescope icon', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['deep_research'],
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+
+      expect(toolsRow.text()).toContain('Deep research')
+      expect(toolsRow.get('.iconify').classes()).toContain(
+        'i-lucide:telescope',
+      )
+    })
+
+    it('shows the globe icon for web_search', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['web_search'],
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+
+      expect(toolsRow.text()).toContain('Web search')
+      expect(toolsRow.get('.iconify').classes()).toContain('i-lucide:globe')
+    })
+  })
+
   describe('copy actions', () => {
     let originalExecCommand: typeof document.execCommand
 

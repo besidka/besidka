@@ -363,6 +363,7 @@ export default defineEventHandler(async (event) => {
   aiLogger.set({
     operation: 'ai-stream',
     service: 'app',
+    feature: 'chat',
     _parentRequestId: parentRequestId,
     chatId: chat.id,
     userId,

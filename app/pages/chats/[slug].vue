@@ -109,6 +109,7 @@
         v-if="pendingClarification"
         role="user"
         data-testid="research-clarify-topic"
+        class="mt-3"
       >
         <p class="chat-markdown">
           {{ pendingResearchTopic }}
@@ -116,12 +117,14 @@
       </ChatMessage>
       <ChatDeepResearchClarify
         v-if="pendingClarification"
+        class="mt-3"
         :clarification="pendingClarification"
         @submit="submitResearchClarification"
         @skip="() => submitResearchClarification([])"
       />
       <ChatDeepResearchPending
         v-if="researchJob && researchJob.status !== 'completed'"
+        class="mt-3"
         :job="researchJob"
         :elapsed-ms="researchElapsedMs"
         @cancel="cancelResearchJob"

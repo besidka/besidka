@@ -39,6 +39,7 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 - **Multiple AI Models** — Switch between the latest GPT and Gemini models in one place
 - **Web Search** — Ground AI answers with real-time web context
 - **Reasoning Mode** — Step-by-step thinking for complex questions
+- **Deep Research** — Dedicated research-agent models browse the web and write cited reports; runs asynchronously with a push notification when it's ready, billed per-task on your own API key
 - **File Attachments & File Manager** — Send images and PDFs, reuse files across chats
 - **Chat Branching** — Fork a conversation mid-thread to explore a different direction
 - **Shareable Chats** — Share a chat via a public, unguessable link that anyone can view without an account and branch into their own chats; control link expiry, search-engine indexing, and what's visible per share

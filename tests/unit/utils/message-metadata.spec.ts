@@ -73,6 +73,28 @@ describe('getMessageUsedTools', () => {
   it('returns an empty array when parts is not an array', () => {
     expect(getMessageUsedTools({ parts: 'not-an-array' })).toEqual([])
   })
+
+  it('returns deep_research when a data-research part is present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'Report' },
+        { type: 'data-research', data: {} },
+      ],
+    })
+
+    expect(result).toEqual(['deep_research'])
+  })
+
+  it('prefers deep_research over web_search when both parts are present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'data-research', data: {} },
+        { type: 'source-url' },
+      ],
+    })
+
+    expect(result).toEqual(['deep_research'])
+  })
 })
 
 describe('resolveMessageMenuInfo', () => {
@@ -116,6 +138,22 @@ describe('resolveMessageMenuInfo', () => {
       costToMessage: 0.0177,
       chatTotalCost: 0.0177,
     })
+  })
+
+  it('resolves deep_research usedTools for a research report message', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: assistantUsage, createdAt: 'when' },
+      parts: [
+        { type: 'data-research', data: { provider: 'openai' } },
+        { type: 'source-url' },
+      ],
+    }]
+
+    expect(resolveMessageMenuInfo(messages, 'a1')?.usedTools).toEqual(
+      ['deep_research'],
+    )
   })
 
   it('exposes the stored reasoning level for assistant messages', () => {

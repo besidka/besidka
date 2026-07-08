@@ -18,6 +18,7 @@ export const pushSubscriptions = snakeCase.table(
     endpoint: text().notNull(),
     p256dhKey: text().notNull(),
     authKey: text().notNull(),
+    origin: text(),
   },
   table => [
     uniqueIndex('uq_push_subscriptions_endpoint').on(table.endpoint),

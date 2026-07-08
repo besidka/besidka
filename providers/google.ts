@@ -3,6 +3,52 @@ export default {
   name: 'Google AI Studio',
   models: [
     {
+      id: 'deep-research-max-preview-04-2026',
+      name: 'Gemini Deep Research Max',
+      description: 'Autonomous agent for exhaustive, cross-checked web research and cited reports on deep or high-stakes topics, for $3–7 per task',
+      contextLength: 1_000_000,
+      maxOutputTokens: 65_536,
+      price: {
+        tokens: 1_000_000,
+        input: '$3–7 / task',
+        output: '',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+      research: {
+        tier: 'thorough',
+        assistModel: 'gemini-3.1-flash-lite-preview',
+        costEstimate: '$3–7 / task',
+        timeEstimate: 'up to 60 min',
+      },
+    },
+    {
+      id: 'deep-research-preview-04-2026',
+      name: 'Gemini Deep Research',
+      description: 'Autonomous agent that browses the web, cross-checks sources, and writes a cited research report for $1–3 per task',
+      contextLength: 1_000_000,
+      maxOutputTokens: 65_536,
+      price: {
+        tokens: 1_000_000,
+        input: '$1–3 / task',
+        output: '',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+      research: {
+        tier: 'quick',
+        assistModel: 'gemini-3.1-flash-lite-preview',
+        costEstimate: '$1–3 / task',
+        timeEstimate: 'under 20 min',
+      },
+    },
+    {
       id: 'gemini-3.1-pro-preview',
       name: 'Gemini 3.1 Pro',
       price: {
@@ -100,52 +146,6 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
-      },
-    },
-    {
-      id: 'deep-research-preview-04-2026',
-      name: 'Deep Research',
-      description: 'Autonomous agent that browses the web, cross-checks sources, and writes a cited research report for $1–3 per task',
-      contextLength: 1_000_000,
-      maxOutputTokens: 65_536,
-      price: {
-        tokens: 1_000_000,
-        input: '$1–3 / task',
-        output: '',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
-      },
-      tools: [],
-      research: {
-        tier: 'quick',
-        assistModel: 'gemini-3.1-flash-lite-preview',
-        costEstimate: '$1–3 / task',
-        timeEstimate: 'under 20 min',
-      },
-    },
-    {
-      id: 'deep-research-max-preview-04-2026',
-      name: 'Deep Research Max',
-      description: 'Autonomous agent for exhaustive, cross-checked web research and cited reports on deep or high-stakes topics, for $3–7 per task',
-      contextLength: 1_000_000,
-      maxOutputTokens: 65_536,
-      price: {
-        tokens: 1_000_000,
-        input: '$3–7 / task',
-        output: '',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
-      },
-      tools: [],
-      research: {
-        tier: 'thorough',
-        assistModel: 'gemini-3.1-flash-lite-preview',
-        costEstimate: '$3–7 / task',
-        timeEstimate: 'up to 60 min',
       },
     },
   ],

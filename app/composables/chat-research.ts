@@ -4,6 +4,7 @@ import type {
   ResearchAnswer,
   ResearchJobStatus,
   ResearchJobView,
+  ResearchProviderId,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
 
@@ -30,6 +31,36 @@ const ACTIVE_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
   'pending',
   'running',
 ]
+
+// Issue #1 (round-3): starting a research job has 10-15s of dead air between
+// the user answering the clarify form and the POST resolving (server does a
+// brief-rewrite via the assist model, then starts the provider job before
+// responding). This builds a client-only placeholder ResearchJobView so the
+// pending block can render instantly, before any server round trip — the
+// real job returned by the POST replaces it via applyJobUpdate(), and a
+// failed POST reverts to null. publicId 'local-pending' is never sent to or
+// read from the server; it only exists to satisfy ResearchJobView's shape.
+export function buildLocalPendingResearchJob(
+  modelId: string,
+): ResearchJobView | null {
+  const { model, provider } = getModel(modelId)
+  const research = getModelResearch(model)
+
+  if (!research || !provider) {
+    return null
+  }
+
+  return {
+    publicId: 'local-pending',
+    status: 'pending',
+    provider: provider.id as ResearchProviderId,
+    level: research.tier,
+    modelId,
+    startedAt: null,
+    error: null,
+    resultMessageId: null,
+  }
+}
 
 export function useChatResearch(options: UseChatResearchOptions) {
   const { userModel } = useUserModel()
@@ -237,6 +268,8 @@ export function useChatResearch(options: UseChatResearchOptions) {
       } as unknown as UIMessage,
     ]
 
+    applyJobUpdate(buildLocalPendingResearchJob(userModel.value))
+
     try {
       const response = await $fetch<{ job: ResearchJobView }>(
         `/api/v1/chats/${options.chatSlug}/research`,
@@ -254,6 +287,8 @@ export function useChatResearch(options: UseChatResearchOptions) {
 
       return true
     } catch (exception) {
+      applyJobUpdate(null)
+
       const parsedException = parseError(exception)
 
       useErrorMessage(

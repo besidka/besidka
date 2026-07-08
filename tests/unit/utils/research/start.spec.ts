@@ -162,12 +162,27 @@ function createDb(input: {
   }
 }
 
+function createRequestEvent(host = 'app.besidka.com') {
+  return {
+    node: {
+      req: {
+        headers: {
+          host,
+          'x-forwarded-proto': 'https',
+        },
+        originalUrl: '/api/v1/chats/chat-slug-1/research',
+      },
+    },
+  } as any
+}
+
 function createInput(overrides: Partial<{
   db: ReturnType<typeof createDb>['db']
+  event: any
 }> = {}) {
   return {
     db: overrides.db ?? createDb().db,
-    event: {} as any,
+    event: overrides.event ?? createRequestEvent(),
     logger: { set: vi.fn() },
     userId: 1,
     chat: {
@@ -232,6 +247,7 @@ describe('startResearchJobForChat', () => {
       level: 'quick',
       modelId: 'o4-mini-deep-research',
       status: 'pending',
+      origin: 'https://app.besidka.com',
     }))
     expect(mocks.rewriteResearchBrief).toHaveBeenCalledWith(
       expect.objectContaining({ topic: 'Research this' }),
@@ -239,6 +255,29 @@ describe('startResearchJobForChat', () => {
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
       providerJobId: 'resp_abc123',
       status: 'running',
+    }))
+  })
+
+  it('logs a deep-research feature discriminator at the start of the run', async () => {
+    const { db } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const input = createInput({ db })
+
+    await startResearchJobForChat(input)
+
+    expect(input.logger.set).toHaveBeenCalledWith({
+      feature: 'deep-research',
+    })
+  })
+
+  it('claims the job with an undefined origin when the request URL cannot be derived', async () => {
+    const { db, insertValues } = createDb()
+    const { startResearchJobForChat } = await importStart()
+
+    await startResearchJobForChat(createInput({ db, event: {} as any }))
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      origin: undefined,
     }))
   })
 

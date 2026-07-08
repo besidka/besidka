@@ -1,13 +1,15 @@
-import type { UIMessage } from 'ai'
+import type { LanguageModelUsage, UIMessage } from 'ai'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type {
   ResearchJobStatus,
   ResearchMetadata,
   ResearchProviderId,
+  ResearchUsage,
 } from '#shared/types/research.d'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
+import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
 import {
   mapResearchProviderError,
   normalizeChatError,
@@ -218,6 +220,11 @@ export async function finalizeResearchJob(
   }
 
   const parts = buildResearchAssistantParts({ result, job, durationMs })
+  const messageUsage = buildMessageUsage(
+    toLanguageModelUsage(result.usage),
+    job.modelId,
+    job.provider,
+  )
 
   try {
     await insertMessageWithPublicId({
@@ -228,7 +235,7 @@ export async function finalizeResearchJob(
         parts,
         tools: [],
         reasoning: 'off',
-        usage: null,
+        usage: messageUsage ?? null,
       },
       publicId: assistantPublicId,
     })
@@ -254,6 +261,7 @@ export async function finalizeResearchJob(
         },
         input.vapid,
         input.waitUntil,
+        job.origin ?? undefined,
       ))
     }
   } catch (exception) {
@@ -367,6 +375,28 @@ function buildResearchAssistantParts(input: {
     })),
     { type: 'data-research' as const, data: metadata },
   ] as UIMessage['parts']
+}
+
+// ResearchUsage only carries flat token totals (no provider token-detail
+// breakdown), so this fills in the shape buildMessageUsage() expects from a
+// normal streamText() usage object. Returns all-undefined when the job never
+// captured usage — buildMessageUsage() treats that as incomplete and omits
+// usage entirely, the same as an aborted normal-chat generation.
+function toLanguageModelUsage(usage?: ResearchUsage): LanguageModelUsage {
+  return {
+    inputTokens: usage?.inputTokens,
+    inputTokenDetails: {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokens: usage?.outputTokens,
+    outputTokenDetails: {
+      textTokens: undefined,
+      reasoningTokens: undefined,
+    },
+    totalTokens: usage?.totalTokens,
+  }
 }
 
 function isHttpUrl(value: string): boolean {

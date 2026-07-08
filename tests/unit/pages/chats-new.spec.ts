@@ -109,13 +109,22 @@ function createResearchStubs() {
     emits: ['submit', 'skip'],
     template: '<div data-testid="clarify-stub" />',
   })
+  const pendingStub = defineComponent({
+    name: 'ChatDeepResearchPending',
+    props: ['job', 'elapsedMs'],
+    template: `
+      <div data-testid="pending-stub">{{ job?.status }}|{{ job?.modelId }}</div>
+    `,
+  })
 
   return {
     chatInputStub,
     clarifyStub,
+    pendingStub,
     stubs: {
       ...stubs,
       ChatDeepResearchClarify: clarifyStub,
+      ChatDeepResearchPending: pendingStub,
     },
   }
 }
@@ -554,6 +563,120 @@ describe('chats new page', () => {
         },
       ],
     })
+  })
+
+  it('shows a synthetic pending research block while the create request is in flight', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const createRequest = createDeferred<{ slug: string }>()
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return createRequest.promise
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    clarifyComponent.vm.$emit('submit', [])
+    await nextTick()
+
+    // The greeting and the clarify form must not reappear while the PUT
+    // that creates the chat is still in flight (issue #1: 10-15s dead air).
+    expect(wrapper.text()).not.toContain('How can I assist you today?')
+    expect(wrapper.find('[data-testid="clarify-stub"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="research-clarify-topic"]').text())
+      .toBe('Research topic')
+
+    const pendingStub = wrapper.get('[data-testid="pending-stub"]')
+
+    expect(pendingStub.text()).toBe('pending|o4-mini-deep-research')
+
+    createRequest.resolve({ slug: 'research-chat' })
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
+  })
+
+  it('clears the pending research block and restores the draft on a failed create request', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.reject(
+          Object.assign(new Error('Server error'), {
+            statusCode: 500,
+            status: 500,
+          }),
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    clarifyComponent.vm.$emit('submit', [])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="pending-stub"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="research-clarify-topic"]').exists())
+      .toBe(false)
+    expect(wrapper.text()).toContain('How can I assist you today?')
+    expect(chatInput.props('message')).toBe('Research topic')
   })
 
   it('falls back to starting research with no answers when the clarify request fails', async () => {

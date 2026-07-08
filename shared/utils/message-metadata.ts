@@ -5,7 +5,7 @@ export type MessageMenuInfo = {
   role: 'user' | 'assistant'
   createdAt?: string | number | Date
   model?: string
-  usedTools?: Array<'web_search'>
+  usedTools?: Array<'web_search' | 'deep_research'>
   reasoning?: ReasoningLevel
   tokens?: number
   reasoningTokens?: number
@@ -36,9 +36,22 @@ export function getMessageMetadata(
 
 export function getMessageUsedTools(
   message: { parts?: unknown },
-): Array<'web_search'> {
+): Array<'web_search' | 'deep_research'> {
   if (!Array.isArray(message.parts)) {
     return []
+  }
+
+  const hasResearchPart = message.parts.some((part) => {
+    return (
+      typeof part === 'object'
+      && part !== null
+      && 'type' in part
+      && part.type === 'data-research'
+    )
+  })
+
+  if (hasResearchPart) {
+    return ['deep_research']
   }
 
   const hasWebSearchPart = message.parts.some((part) => {

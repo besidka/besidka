@@ -104,6 +104,54 @@ describe('push subscription API', () => {
       }))
     })
 
+    it('captures the request origin server-side, not from client input', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        node: {
+          req: {
+            headers: {
+              'host': 'pr-292.besidka-preview.chernenko.workers.dev',
+              'x-forwarded-proto': 'https',
+            },
+            originalUrl: '/api/v1/push/subscribe',
+          },
+        },
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          origin: 'https://attacker.example.com',
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+        origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+      }))
+    })
+
+    it('falls back to an undefined origin when the request URL cannot be derived', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+        origin: undefined,
+      }))
+    })
+
     it('re-associates an existing subscription endpoint with the current user', async () => {
       const { db, updateSet } = createDb({ id: 99, userId: 7 })
 
@@ -112,6 +160,12 @@ describe('push subscription API', () => {
       const handler = await getHandler()
 
       await handler({
+        node: {
+          req: {
+            headers: { 'host': 'app.besidka.com', 'x-forwarded-proto': 'https' },
+            originalUrl: '/api/v1/push/subscribe',
+          },
+        },
         body: {
           endpoint: 'https://push.example.com/sub-1',
           keys: { p256dh: 'new-p256dh', auth: 'new-auth' },
@@ -122,6 +176,7 @@ describe('push subscription API', () => {
         userId: 7,
         p256dhKey: 'new-p256dh',
         authKey: 'new-auth',
+        origin: 'https://app.besidka.com',
       }))
     })
 

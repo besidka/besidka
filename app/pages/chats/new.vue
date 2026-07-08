@@ -8,7 +8,7 @@
       :memory="projectMemoryText"
     />
     <ChatMessage
-      v-if="!pendingClarification && !isClarifying"
+      v-if="!pendingClarification && !isClarifying && !startingResearchJob"
       role="assistant"
       :hide-assistant-avatar-on-mobile="false"
     >
@@ -16,9 +16,10 @@
     </ChatMessage>
     <LazyBackgroundLogo />
     <ChatMessage
-      v-if="pendingClarification || isClarifying"
+      v-if="pendingClarification || isClarifying || startingResearchJob"
       role="user"
       data-testid="research-clarify-topic"
+      class="mt-3"
     >
       <p class="chat-markdown">
         {{ pendingResearchQuery }}
@@ -26,10 +27,17 @@
     </ChatMessage>
     <ChatDeepResearchClarify
       v-if="pendingClarification || isClarifying"
+      class="mt-3"
       :clarification="pendingClarification"
       :loading="isClarifying"
       @submit="submitResearchClarification"
       @skip="() => submitResearchClarification([])"
+    />
+    <ChatDeepResearchPending
+      v-if="startingResearchJob"
+      class="mt-3"
+      :job="startingResearchJob"
+      :elapsed-ms="0"
     />
   </ChatContainer>
   <div
@@ -67,6 +75,7 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
+  ResearchJobView,
 } from '#shared/types/research.d'
 
 definePageMeta({
@@ -101,11 +110,28 @@ const files = ref<FileMetadata[]>([])
 const tools = shallowRef<Tools>([])
 const pending = shallowRef<boolean>(false)
 const isClarifying = shallowRef<boolean>(false)
+const isCreatingResearchChat = shallowRef<boolean>(false)
 const pendingClarification = shallowRef<
   ResearchClarificationResponse | null
 >(null)
 const pendingResearchQuery = shallowRef<string>('')
 const clarifyInputHeight = shallowRef<number>(0)
+
+// Issue #1 (round-3): while the research PUT is in flight, render the same
+// synthetic pending job used by useChatResearch() on the existing-chat path
+// (see buildLocalPendingResearchJob in app/composables/chat-research.ts) so
+// there is instant visual feedback instead of 10-15s of dead air before
+// navigation. Only meaningful while isCreatingResearchChat is true — the
+// user's chosen model is guaranteed to be a research model at that point
+// (guarded by isDeepResearchModel() below), but buildLocalPendingResearchJob
+// still returns null defensively if that ever stops holding.
+const startingResearchJob = computed<ResearchJobView | null>(() => {
+  if (!isCreatingResearchChat.value) {
+    return null
+  }
+
+  return buildLocalPendingResearchJob(userModel.value)
+})
 
 // new.vue has no chat-scroll-spacer (that composable measures message DOM
 // dimensions, and there are no messages here yet) — the fixed ChatInput's own
@@ -386,6 +412,7 @@ async function createResearchChat(
   const draftBackup = useChatDraftBackup()
 
   pending.value = true
+  isCreatingResearchChat.value = true
 
   try {
     const response = await $fetch('/api/v1/chats/new', {
@@ -439,6 +466,7 @@ async function createResearchChat(
     draftBackup.save(draft)
     message.value = draft
     files.value = draftFiles
+    pendingResearchQuery.value = ''
 
     const parsedException = parseError(exception)
 
@@ -459,6 +487,7 @@ async function createResearchChat(
     )
   } finally {
     pending.value = false
+    isCreatingResearchChat.value = false
   }
 }
 
@@ -466,10 +495,16 @@ function submitResearchClarification(answers: ResearchAnswer[]): void {
   const deferred = deferredResearchDraft
 
   deferredResearchDraft = null
+  // pendingResearchQuery is intentionally kept — the topic bubble and the
+  // synthetic pending block below both stay visible for the duration of
+  // createResearchChat()'s PUT, instead of the old behavior where clearing
+  // it immediately here brought back the "How can I assist you today?"
+  // greeting for the 10-15s the request takes to resolve.
   pendingClarification.value = null
-  pendingResearchQuery.value = ''
 
   if (!deferred) {
+    pendingResearchQuery.value = ''
+
     useErrorMessage(
       'Failed to start research',
       'Your message could not be recovered. Please try again.',

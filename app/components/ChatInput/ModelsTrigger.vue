@@ -94,7 +94,7 @@
                       </span>
                       <span
                         v-if="model.research"
-                        class="shrink-0 flex items-center p-0.5 rounded-full bg-success-content"
+                        class="shrink-0 flex items-center p-0.5 rounded-full bg-success/15 text-success"
                         :class="{
                           'tooltip tooltip-success tooltip-top':
                             $device.isDesktop

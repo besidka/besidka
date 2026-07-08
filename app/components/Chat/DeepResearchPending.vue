@@ -2,21 +2,26 @@
   <ChatMessage role="assistant" data-testid="research-pending">
     <div class="flex flex-col gap-3 text-sm">
       <template v-if="!isTerminal">
-        <div class="flex items-center gap-2">
-          <SvgoLoader class="size-3.5" />
+        <div class="flex items-center gap-1">
+          <SvgoLoader class="size-4" />
           <span
             data-testid="research-pending-status"
-            class="font-medium text-base-content/90"
+            class="text-xs font-medium text-base-content/90"
           >
             {{ statusLabel }}
-          </span>
-          <span
-            data-testid="research-pending-timer"
-            class="text-base-content/60 tabular-nums"
-          >
-            {{ elapsedLabel }}
+            <span
+              v-if="showTimer"
+              data-testid="research-pending-timer"
+              class="text-base-content/60 tabular-nums"
+            >
+              ({{ elapsedLabel }})
+            </span>
           </span>
         </div>
+        <progress
+          data-testid="research-pending-progress"
+          class="progress progress-accent w-full h-1 mt-1"
+        />
         <div
           data-testid="research-pending-level"
           class="text-xs text-base-content/70"
@@ -74,7 +79,7 @@
           Retry
         </button>
         <button
-          v-if="!isTerminal"
+          v-if="!isTerminal && job.publicId !== 'local-pending'"
           type="button"
           data-testid="research-cancel"
           class="btn btn-ghost btn-sm"
@@ -113,6 +118,10 @@ const statusLabel = computed<string>(() => {
 
 const elapsedLabel = computed<string>(() => {
   return formatResearchElapsed(props.elapsedMs)
+})
+
+const showTimer = computed<boolean>(() => {
+  return props.job.startedAt !== null && props.elapsedMs > 0
 })
 
 const modelName = computed<string>(() => {

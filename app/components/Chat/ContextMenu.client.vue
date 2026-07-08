@@ -61,7 +61,7 @@
             >
               <span class="shrink-0 font-normal text-base-content/50">Tools</span>
               <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
-                <Icon name="lucide:globe" size="14" class="shrink-0" />
+                <Icon :name="toolsIconName" size="14" class="shrink-0" />
                 {{ toolsLabel }}
               </span>
             </div>
@@ -185,8 +185,9 @@ import {
   formatTokenCount,
 } from '#shared/utils/message-format'
 
-const TOOL_LABELS: Record<'web_search', string> = {
+const TOOL_LABELS: Record<'web_search' | 'deep_research', string> = {
   web_search: 'Web search',
+  deep_research: 'Deep research',
 }
 
 const props = withDefaults(defineProps<{
@@ -234,6 +235,12 @@ const toolsLabel = computed<string>(() => {
   return props.info.usedTools
     .map(tool => TOOL_LABELS[tool])
     .join(', ')
+})
+
+const toolsIconName = computed<string>(() => {
+  return props.info?.usedTools?.includes('deep_research')
+    ? 'lucide:telescope'
+    : 'lucide:globe'
 })
 
 const tokensLabel = computed<string>(() => {

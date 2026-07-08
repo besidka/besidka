@@ -149,11 +149,15 @@ export function getAffectedTests(changedFiles) {
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
+    'tests/unit/utils/landing/stats.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
+    'tests/unit/components/landing/FeatureGrid.spec.ts',
+    'tests/unit/components/content/HomeStats.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
+    'tests/integration/api/stats.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -220,6 +224,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/api\/v1\/events\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/api\/v1\/stats\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/plugins\/landing-cache-refresh\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^shared\/types\/landing\.d\.ts$/,
       tests: landingTests,
     },
     {
@@ -375,6 +391,10 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/db\/schemas\/research-jobs\.ts|server\/utils\/research\/.*\.ts|server\/plugins\/research-job-sweep\.ts|server\/api\/v1\/chats\/research\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/.*\.ts)$/,
       tests: deepResearchTests,
+    },
+    {
+      pattern: /^server\/db\/schemas\/research-jobs\.ts$/,
+      tests: landingTests,
     },
     {
       pattern:

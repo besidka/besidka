@@ -21,6 +21,7 @@ export const researchJobs = snakeCase.table(
     level: text({ enum: ['quick', 'thorough'] }).notNull(),
     modelId: text().notNull(),
     providerJobId: text(),
+    origin: text(),
     status: text({
       enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
     }).notNull(),

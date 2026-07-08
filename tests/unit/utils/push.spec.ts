@@ -52,12 +52,14 @@ function createSubscription(overrides: Partial<{
   endpoint: string
   p256dhKey: string
   authKey: string
+  origin: string | null
 }> = {}) {
   return {
     id: 1,
     endpoint: 'https://fcm.googleapis.com/fcm/send/sub-1',
     p256dhKey: 'p256dh-key',
     authKey: 'auth-key',
+    origin: null,
     ...overrides,
   }
 }
@@ -415,6 +417,105 @@ describe('push utils', () => {
 
     expect(waitUntilMock).toHaveBeenCalledTimes(1)
     expect(mocks.shipWideEventToAxiom).toHaveBeenCalledWith(wideEvent)
+  })
+
+  it('sends only to subscriptions matching the target origin', async () => {
+    const { sendPushNotificationToUser } = await importPushUtils()
+    const subscriptions = [
+      createSubscription({
+        id: 1,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/a',
+        origin: 'https://pr-291.besidka-preview.chernenko.workers.dev',
+      }),
+      createSubscription({
+        id: 2,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/b',
+        origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+      }),
+    ]
+    const { db } = createDb(subscriptions)
+
+    await sendPushNotificationToUser(
+      db as any,
+      1,
+      { title: 't', body: 'b', url: '/chats/1' },
+      configuredVapid,
+      waitUntilMock,
+      'https://pr-292.besidka-preview.chernenko.workers.dev',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://fcm.googleapis.com/fcm/send/b',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      push: expect.objectContaining({
+        subscriptionCount: 1,
+        totalSubscriptionCount: 2,
+      }),
+    }))
+  })
+
+  it('falls back to every subscription when none match the target origin', async () => {
+    const { sendPushNotificationToUser } = await importPushUtils()
+    const subscriptions = [
+      createSubscription({
+        id: 1,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/a',
+        origin: 'https://pr-291.besidka-preview.chernenko.workers.dev',
+      }),
+      createSubscription({
+        id: 2,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/b',
+        origin: null,
+      }),
+    ]
+    const { db } = createDb(subscriptions)
+
+    await sendPushNotificationToUser(
+      db as any,
+      1,
+      { title: 't', body: 'b', url: '/chats/1' },
+      configuredVapid,
+      waitUntilMock,
+      'https://pr-999.besidka-preview.chernenko.workers.dev',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      push: expect.objectContaining({
+        subscriptionCount: 2,
+        totalSubscriptionCount: 2,
+      }),
+    }))
+  })
+
+  it('sends to every subscription when no target origin is provided', async () => {
+    const { sendPushNotificationToUser } = await importPushUtils()
+    const subscriptions = [
+      createSubscription({
+        id: 1,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/a',
+        origin: 'https://pr-291.besidka-preview.chernenko.workers.dev',
+      }),
+      createSubscription({
+        id: 2,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/b',
+        origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+      }),
+    ]
+    const { db } = createDb(subscriptions)
+
+    await sendPushNotificationToUser(
+      db as any,
+      1,
+      { title: 't', body: 'b', url: '/chats/1' },
+      configuredVapid,
+      waitUntilMock,
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('never logs the subscription endpoint or encryption keys', async () => {

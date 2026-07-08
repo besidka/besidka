@@ -31,6 +31,22 @@ describe('Chat/DeepResearchPending', () => {
     expect(
       wrapper.get('[data-testid="research-pending-status"]').text(),
     ).toBe('Preparing your research…')
+    expect(
+      wrapper.find('[data-testid="research-pending-timer"]').exists(),
+    ).toBe(false)
+  })
+
+  it('hides the timer while the job has not started yet', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'pending', startedAt: null }),
+        elapsedMs: 0,
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="research-pending-timer"]').exists(),
+    ).toBe(false)
   })
 
   it('shows the running status, elapsed timer, and level + model', async () => {
@@ -43,16 +59,42 @@ describe('Chat/DeepResearchPending', () => {
 
     expect(
       wrapper.get('[data-testid="research-pending-status"]').text(),
-    ).toBe('Researching…')
+    ).toContain('Researching…')
     expect(
       wrapper.get('[data-testid="research-pending-timer"]').text(),
-    ).toBe('1:05')
+    ).toBe('(1:05)')
 
     const levelText = wrapper.get('[data-testid="research-pending-level"]')
       .text()
 
     expect(levelText).toContain('o4-mini Deep Research')
     expect(levelText).toContain('Quick')
+  })
+
+  it('renders an indeterminate progress bar while not terminal', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    const progress = wrapper.get('[data-testid="research-pending-progress"]')
+
+    expect(progress.attributes('value')).toBeUndefined()
+  })
+
+  it('does not render the progress bar in a terminal state', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'cancelled' }),
+        elapsedMs: 0,
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="research-pending-progress"]').exists(),
+    ).toBe(false)
   })
 
   it('shows the time estimate pulled from the model research config', async () => {

@@ -4,9 +4,16 @@
     data-testid="research-meta"
     class="flex items-center gap-2 text-xs font-medium text-base-content/70 mb-1"
   >
-    <Icon name="lucide:telescope" size="14" class="text-accent" />
+    <SvgoGeminiShort
+      v-if="metadata.provider === 'google'"
+      class="size-3.5 fill-base-content/70"
+    />
+    <SvgoOpenai
+      v-if="metadata.provider === 'openai'"
+      class="size-3.5 fill-base-content/70"
+    />
     <span>
-      Deep research · {{ modelName }} · {{ tierLabel }}
+      {{ modelName }} · {{ tierLabel }}
       <template v-if="durationLabel"> · {{ durationLabel }}</template>
     </span>
   </div>
