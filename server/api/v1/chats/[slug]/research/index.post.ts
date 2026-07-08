@@ -2,6 +2,7 @@ import type { UIMessage } from 'ai'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import { useLogger, createError } from 'evlog'
 import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
+import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { startResearchJobForChat } from '~~/server/utils/research/start'
 
 export default defineEventHandler(async (event) => {
@@ -26,7 +27,7 @@ export default defineEventHandler(async (event) => {
       parts: z.array(z.any()).min(1),
     }),
     answers: z.array(z.object({
-      id: z.string(),
+      id: z.string().max(200),
       question: z.string().max(500),
       answer: z.string().max(2000),
     })).max(12).optional(),
@@ -100,6 +101,11 @@ export default defineEventHandler(async (event) => {
       tools: message.tools,
       reasoning: message.reasoning,
     }))
+
+  await validateMessageFilePolicy(
+    userId,
+    body.data.userMessage.parts as UIMessage['parts'],
+  )
 
   await persistUserMessage({
     db,

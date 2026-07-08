@@ -56,27 +56,41 @@ function createJob(overrides: Partial<{
 }
 
 function createDb(input: {
+  chat?: { id: string } | null
   job?: ReturnType<typeof createJob> | null
-  updatedJob?: ReturnType<typeof createJob>
+  updatedJob?: ReturnType<typeof createJob> | null
+  refetchedJob?: ReturnType<typeof createJob>
 } = {}) {
   const returningGet = vi.fn(async () => (
-    input.updatedJob ?? { ...createJob(), status: 'cancelled' as const }
+    input.updatedJob === undefined
+      ? { ...createJob(), status: 'cancelled' as const }
+      : input.updatedJob
   ))
   const where = vi.fn(() => ({
     returning: vi.fn(() => ({ get: returningGet })),
   }))
   const set = vi.fn(() => ({ where }))
   const update = vi.fn(() => ({ set }))
+  const researchJobsFindFirstCalls: unknown[] = []
+  const researchJobsFindFirst = vi.fn(async (query: unknown) => {
+    researchJobsFindFirstCalls.push(query)
+
+    if (researchJobsFindFirstCalls.length === 1) {
+      return input.job === undefined ? createJob() : input.job
+    }
+
+    return input.refetchedJob ?? input.job ?? createJob()
+  })
 
   return {
     db: {
       query: {
-        chats: { findFirst: vi.fn(async () => ({ id: 'chat-1' })) },
-        researchJobs: {
+        chats: {
           findFirst: vi.fn(async () => (
-            input.job === undefined ? createJob() : input.job
+            input.chat === undefined ? { id: 'chat-1' } : input.chat
           )),
         },
+        researchJobs: { findFirst: researchJobsFindFirst },
       },
       update,
     },
@@ -84,6 +98,7 @@ function createDb(input: {
     set,
     where,
     returningGet,
+    researchJobsFindFirst,
   }
 }
 
@@ -201,5 +216,41 @@ describe('research cancel API', () => {
     await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     } as any)).rejects.toThrow('No research job found for this chat.')
+  })
+
+  it('404s when the chat belongs to another user', async () => {
+    const handler = await getCancelHandler()
+    const { db } = createDb({ chat: null })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)).rejects.toThrow('Chat not found.')
+  })
+
+  it('returns the re-fetched job state when the guarded cancel update is raced by a finalize', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      cancel: vi.fn(async () => undefined),
+    })
+
+    const handler = await getCancelHandler()
+    const { db } = createDb({
+      job: createJob({ status: 'running' }),
+      updatedJob: null,
+      refetchedJob: createJob({
+        status: 'completed',
+        resultMessageId: 'assistant-1',
+      }),
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response.job.status).toBe('completed')
+    expect(response.job.resultMessageId).toBe('assistant-1')
   })
 })

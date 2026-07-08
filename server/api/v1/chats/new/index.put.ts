@@ -7,7 +7,10 @@ import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { trackLandingEvent } from '~~/server/utils/landing/analytics-events'
-import { startResearchJobForChat } from '~~/server/utils/research/start'
+import {
+  resolveResearchStartContext,
+  startResearchJobForChat,
+} from '~~/server/utils/research/start'
 
 const textPart = z.object({
   type: z.literal('text'),
@@ -33,7 +36,7 @@ const rules = z.object({
   research: z.object({
     level: z.enum(['quick', 'thorough']),
     answers: z.array(z.object({
-      id: z.string(),
+      id: z.string().max(200),
       question: z.string().max(500),
       answer: z.string().max(2000),
     })).max(12).optional(),
@@ -81,6 +84,14 @@ export default defineEventHandler(async (event) => {
     userId,
     body.data.parts,
   )
+
+  if (body.data.research && body.data.model) {
+    await resolveResearchStartContext({
+      userId,
+      model: body.data.model,
+      level: body.data.research.level,
+    })
+  }
 
   const db = useDb()
   const activityAt = new Date()
@@ -142,27 +153,77 @@ export default defineEventHandler(async (event) => {
   trackLandingEvent('new_chat_created', undefined, event)
 
   if (body.data.research && body.data.model) {
-    await startResearchJobForChat({
-      db,
-      event,
-      logger,
-      userId,
-      chat: {
-        id: chat.id,
+    try {
+      await startResearchJobForChat({
+        db,
+        event,
+        logger,
+        userId,
+        chat: {
+          id: chat.id,
+          slug: chat.slug,
+          projectId: projectId ?? null,
+        },
+        userMessage: {
+          id: userMessagePublicId,
+          parts: body.data.parts as (TextUIPart | FileUIPart)[],
+        },
+        model: body.data.model,
+        level: body.data.research.level,
+        answers: body.data.research.answers,
+      })
+    } catch (exception) {
+      const researchFailure = extractResearchStartFailure(exception)
+
+      logger.set({
+        research: {
+          phase: 'start',
+          errorCode: researchFailure.code,
+          errorStatus: researchFailure.status,
+        },
+      })
+
+      return {
         slug: chat.slug,
-        projectId: projectId ?? null,
-      },
-      userMessage: {
-        id: userMessagePublicId,
-        parts: body.data.parts as (TextUIPart | FileUIPart)[],
-      },
-      model: body.data.model,
-      level: body.data.research.level,
-      answers: body.data.research.answers,
-    })
+        researchError: {
+          message: researchFailure.message,
+          why: researchFailure.why,
+          fix: researchFailure.fix,
+        },
+      }
+    }
   }
 
   return {
     slug: chat.slug,
   }
 })
+
+interface ResearchStartFailure {
+  message: string
+  why?: string
+  fix?: string
+  code?: string
+  status?: number
+}
+
+function extractResearchStartFailure(error: unknown): ResearchStartFailure {
+  if (error instanceof Error) {
+    const record = error as Error & {
+      code?: string
+      status?: number
+      why?: string
+      fix?: string
+    }
+
+    return {
+      message: record.message || 'Could not start the research job.',
+      why: record.why,
+      fix: record.fix,
+      code: record.code,
+      status: record.status,
+    }
+  }
+
+  return { message: 'Could not start the research job.' }
+}

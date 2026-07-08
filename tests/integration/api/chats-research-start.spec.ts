@@ -5,11 +5,16 @@ const mocks = vi.hoisted(() => ({
     jobId: 'job-1',
     status: 'running',
   })),
+  validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/research/start', () => ({
   startResearchJobForChat: mocks.startResearchJobForChat,
+}))
+
+vi.mock('~~/server/utils/files/file-governance', () => ({
+  validateMessageFilePolicy: mocks.validateMessageFilePolicy,
 }))
 
 vi.mock('evlog', () => ({
@@ -87,6 +92,7 @@ describe('research start API', () => {
       jobId: 'job-1',
       status: 'running',
     })
+    mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -208,6 +214,35 @@ describe('research start API', () => {
         },
       },
     } as any)).rejects.toThrow('Chat not found.')
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('propagates a file policy rejection before starting the research job', async () => {
+    mocks.validateMessageFilePolicy.mockRejectedValue(
+      Object.assign(new Error('You can attach a maximum of 5 files per message'), {
+        statusCode: 400,
+      }),
+    )
+
+    const handler = await getStartHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5.4',
+        level: 'quick',
+        userMessage: {
+          id: 'user-message-1',
+          parts: [{ type: 'text', text: 'Research this topic' }],
+        },
+      },
+    } as any)).rejects.toThrow(
+      'You can attach a maximum of 5 files per message',
+    )
+    expect(insertValues).not.toHaveBeenCalled()
     expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
   })
 

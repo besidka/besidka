@@ -175,6 +175,36 @@ describe('google research adapter', () => {
     })
   })
 
+  it('bounds recursion depth on a deeply nested source-candidate tree', async () => {
+    const deepestLevel = 200000
+    let node: Record<string, unknown> = {
+      uri: `https://example.com/level-${deepestLevel}`,
+    }
+
+    for (let level = deepestLevel - 1; level >= 0; level -= 1) {
+      node = { uri: `https://example.com/level-${level}`, nested: node }
+    }
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'completed',
+        steps: [node],
+      }),
+    })
+
+    const { googleResearchAdapter } = await importAdapter()
+
+    const result = await googleResearchAdapter.result(
+      'interaction-abc',
+      'goog-test-key',
+    )
+
+    expect(result.sources.length).toBe(9)
+    expect(result.sources[0]?.url).toBe('https://example.com/level-0')
+    expect(result.sources[8]?.url).toBe('https://example.com/level-8')
+  })
+
   it('cancels a job and tolerates an already-gone (404) response', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 404 }))
 

@@ -1,6 +1,7 @@
 import { defineComponent, nextTick, reactive } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as messagesComposable from '../../../app/composables/messages'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
 import {
   installMockNuxtState,
@@ -603,5 +604,62 @@ describe('chats new page', () => {
       level: 'thorough',
       answers: [],
     })
+  })
+
+  it('still navigates and shows a toast when starting research returns a soft failure', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('settings_research_level', 'quick')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.resolve({
+          slug: 'research-chat',
+          researchError: {
+            message: 'Could not start the research job.',
+            why: 'The research provider rejected the request.',
+          },
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    clarifyComponent.vm.$emit('submit', [])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
+    expect(useErrorMessage).toHaveBeenCalledWith(
+      'Could not start the research job.',
+      'The research provider rejected the request.',
+    )
+    expect(storage.getItem('chat_input_backup')).toBeNull()
   })
 })

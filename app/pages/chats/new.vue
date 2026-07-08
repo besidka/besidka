@@ -440,6 +440,15 @@ async function createResearchChat(
     }
 
     draftBackup.clear()
+
+    if ('researchError' in response && response.researchError) {
+      useErrorMessage(
+        response.researchError.message
+        || 'An error occurred while starting research.',
+        response.researchError.why,
+      )
+    }
+
     await navigateTo(`/chats/${response.slug}`)
   } catch (exception) {
     draftBackup.save(draft)

@@ -17,6 +17,8 @@ const GOOGLE_INTERACTIONS_URL
   = 'https://generativelanguage.googleapis.com/v1beta/interactions'
 const GOOGLE_JOB_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_GOOGLE_SOURCES = 200
+const MAX_GOOGLE_SOURCE_RECURSION_DEPTH = 8
+const MAX_GOOGLE_SOURCE_VISITED_NODES = 2000
 
 function validateGoogleJobId(providerJobId: string): void {
   if (!GOOGLE_JOB_ID_PATTERN.test(providerJobId)) {
@@ -136,14 +138,26 @@ function collectGoogleSourceCandidates(
   value: unknown,
   seenUrls: Set<string>,
   sources: ResearchSource[],
+  depth: number = 0,
+  visited: { count: number } = { count: 0 },
 ): void {
-  if (sources.length >= MAX_GOOGLE_SOURCES || !value || typeof value !== 'object') {
+  if (
+    sources.length >= MAX_GOOGLE_SOURCES
+    || depth > MAX_GOOGLE_SOURCE_RECURSION_DEPTH
+    || visited.count >= MAX_GOOGLE_SOURCE_VISITED_NODES
+    || !value
+    || typeof value !== 'object'
+  ) {
     return
   }
 
+  visited.count += 1
+
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectGoogleSourceCandidates(item, seenUrls, sources)
+      collectGoogleSourceCandidates(
+        item, seenUrls, sources, depth + 1, visited,
+      )
     }
 
     return
@@ -164,7 +178,9 @@ function collectGoogleSourceCandidates(
   }
 
   for (const nestedValue of Object.values(record)) {
-    collectGoogleSourceCandidates(nestedValue, seenUrls, sources)
+    collectGoogleSourceCandidates(
+      nestedValue, seenUrls, sources, depth + 1, visited,
+    )
   }
 }
 

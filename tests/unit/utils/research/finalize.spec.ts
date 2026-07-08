@@ -1,5 +1,56 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Walks a drizzle `SQL` expression's `queryChunks` tree collecting column
+// names and literal/param values as plain tokens, without ever invoking a
+// column's driver-value mapper. The `id` column uses a hashids-backed custom
+// type (see server/utils/custom-db-types.ts) that throws on a non-hashid
+// string like the "job-1" fixtures below, so rendering the real query text
+// via a dialect is not an option here — this stays purely structural.
+function collectSqlTokens(
+  node: unknown,
+  visited: Set<unknown> = new Set(),
+): string[] {
+  if (node === null || node === undefined || typeof node !== 'object') {
+    return node === null || node === undefined ? [] : [String(node)]
+  }
+
+  if (visited.has(node)) {
+    return []
+  }
+
+  visited.add(node)
+
+  if (Array.isArray(node)) {
+    return node.flatMap(item => collectSqlTokens(item, visited))
+  }
+
+  const record = node as Record<string, unknown>
+
+  if (Array.isArray(record.queryChunks)) {
+    return record.queryChunks.flatMap((chunk) => {
+      return collectSqlTokens(chunk, visited)
+    })
+  }
+
+  if (Array.isArray(record.value)) {
+    return record.value.map(String)
+  }
+
+  if (typeof record.name === 'string') {
+    return [record.name]
+  }
+
+  if ('value' in record) {
+    return [String(record.value)]
+  }
+
+  return []
+}
+
+function renderWhereTokens(whereArg: unknown): string {
+  return collectSqlTokens(whereArg).join(' ')
+}
+
 const mocks = vi.hoisted(() => ({
   getResearchAdapter: vi.fn(),
   getDecryptedProviderKey: vi.fn(async () => 'decrypted-api-key'),
@@ -418,5 +469,101 @@ describe('finalizeResearchJob', () => {
     expect(outcome).toBe('already-finalized')
     expect(mocks.insertMessageWithPublicId).not.toHaveBeenCalled()
     expect(sendPushNotificationToUser).not.toHaveBeenCalled()
+  })
+
+  it('does not finalize when the completion claim is raced by a concurrent cancellation', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [],
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, where } = createDb({ claimedRow: undefined })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('already-finalized')
+    expect(mocks.insertMessageWithPublicId).not.toHaveBeenCalled()
+    expect(sendPushNotificationToUser).not.toHaveBeenCalled()
+    const renderedWhere = renderWhereTokens(where.mock.calls[0][0])
+
+    expect(renderedWhere).toContain('status')
+    expect(renderedWhere).toContain('pending')
+    expect(renderedWhere).toContain('running')
+  })
+
+  it('guards markJobTerminal writes so an already-terminal row cannot be overwritten', async () => {
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, where } = createDb()
+    const job = createJob({ providerJobId: null })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: job as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(outcome).toBe('failed')
+    const renderedWhere = renderWhereTokens(where.mock.calls[0][0])
+
+    expect(renderedWhere).toContain('status')
+    expect(renderedWhere).toContain('pending')
+    expect(renderedWhere).toContain('running')
+  })
+
+  it('drops non-http(s) source URLs before persisting parts', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [
+          { sourceId: 'src-0', url: 'https://example.com/a', title: 'A' },
+          { sourceId: 'src-1', url: 'javascript:alert(1)', title: 'B' },
+          { sourceId: 'src-2', url: 'data:text/html,<script>', title: 'C' },
+        ],
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('finalized')
+
+    const insertedValues = mocks.insertMessageWithPublicId.mock.calls[0][0]
+
+    expect(insertedValues.values.parts).toEqual([
+      { type: 'text', text: 'The final report.' },
+      {
+        type: 'source-url',
+        sourceId: 'src-0',
+        url: 'https://example.com/a',
+        title: 'A',
+      },
+      {
+        type: 'data-research',
+        data: expect.objectContaining({ provider: 'openai' }),
+      },
+    ])
   })
 })

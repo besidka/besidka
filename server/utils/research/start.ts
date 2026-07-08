@@ -11,14 +11,20 @@ import {
   resolveResearchModel,
 } from '#shared/utils/research'
 import { createError } from 'evlog'
-import { eq } from 'drizzle-orm'
+import { and, count, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
-import { mapResearchProviderError } from '~~/server/utils/chats/errors'
+import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
 import { useChatProvider } from '~~/server/utils/chats/provider'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { rewriteResearchBrief } from '~~/server/utils/research/clarify'
+
+const MAX_ACTIVE_RESEARCH_JOBS_PER_USER = 3
+const ACTIVE_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
+  'pending',
+  'running',
+]
 
 export interface StartResearchJobInput {
   db: ReturnType<typeof useDb>
@@ -44,9 +50,23 @@ export interface StartResearchJobResult {
   status: ResearchJobStatus
 }
 
-export async function startResearchJobForChat(
-  input: StartResearchJobInput,
-): Promise<StartResearchJobResult> {
+export interface ResolveResearchStartContextInput {
+  userId: number
+  model: string
+  level: ResearchLevel
+}
+
+export interface ResearchStartContext {
+  provider: ReturnType<typeof useChatProvider>['provider']
+  research: NonNullable<ReturnType<typeof getProviderResearch>>
+  levelConfig: NonNullable<ReturnType<typeof resolveResearchModel>>
+  supportedProviderId: ResearchProviderId
+  apiKey: string
+}
+
+export async function resolveResearchStartContext(
+  input: ResolveResearchStartContextInput,
+): Promise<ResearchStartContext> {
   const { provider } = useChatProvider(input.model)
   const research = getProviderResearch(provider)
   const levelConfig = resolveResearchModel(provider, input.level)
@@ -75,17 +95,27 @@ export async function startResearchJobForChat(
     })
   }
 
-  const assistInstance = await buildResearchAssistModelInstance(
-    input.userId,
+  return {
+    provider,
+    research,
+    levelConfig,
     supportedProviderId,
-    research.assistModel,
-  )
-  const topic = getUserMessageText(input.userMessage.parts)
-  const brief = await rewriteResearchBrief({
-    instance: assistInstance,
-    topic,
-    answers: input.answers ?? [],
+    apiKey,
+  }
+}
+
+export async function startResearchJobForChat(
+  input: StartResearchJobInput,
+): Promise<StartResearchJobResult> {
+  const {
+    research, levelConfig, supportedProviderId, apiKey,
+  } = await resolveResearchStartContext({
+    userId: input.userId,
+    model: input.model,
+    level: input.level,
   })
+
+  await assertResearchJobCapacity(input.db, input.userId)
 
   const job = await claimResearchJob(input.db, {
     chatId: input.chat.id,
@@ -97,6 +127,18 @@ export async function startResearchJobForChat(
   })
 
   try {
+    const assistInstance = await buildResearchAssistModelInstance(
+      input.userId,
+      supportedProviderId,
+      research.assistModel,
+    )
+    const topic = getUserMessageText(input.userMessage.parts)
+    const brief = await rewriteResearchBrief({
+      instance: assistInstance,
+      topic,
+      answers: input.answers ?? [],
+    })
+
     const started = await getResearchAdapter(supportedProviderId).start({
       apiKey,
       modelId: levelConfig.modelId,
@@ -142,7 +184,10 @@ export async function startResearchJobForChat(
         error: chatError,
         completedAt: new Date(),
       })
-      .where(eq(schema.researchJobs.id, job.id))
+      .where(and(
+        eq(schema.researchJobs.id, job.id),
+        inArray(schema.researchJobs.status, ACTIVE_RESEARCH_JOB_STATUSES),
+      ))
 
     input.logger.set({
       research: {
@@ -154,6 +199,28 @@ export async function startResearchJobForChat(
     })
 
     throw createError({ ...chatError })
+  }
+}
+
+async function assertResearchJobCapacity(
+  db: ReturnType<typeof useDb>,
+  userId: number,
+): Promise<void> {
+  const [activeJobCount] = await db
+    .select({ total: count() })
+    .from(schema.researchJobs)
+    .where(and(
+      eq(schema.researchJobs.userId, userId),
+      inArray(schema.researchJobs.status, ACTIVE_RESEARCH_JOB_STATUSES),
+    ))
+
+  if ((activeJobCount?.total ?? 0) >= MAX_ACTIVE_RESEARCH_JOBS_PER_USER) {
+    throw createError({
+      message: 'Too many active research jobs.',
+      status: 429,
+      why: 'You can run up to 3 research jobs at the same time.',
+      fix: 'Wait for a running research job to finish or cancel one.',
+    })
   }
 }
 
@@ -186,7 +253,14 @@ async function claimResearchJob(
       })
     }
 
-    throw exception
+    throw createError({
+      ...normalizeChatError({
+        error: exception,
+        code: 'research-start-failed',
+        message: 'Could not start the research job.',
+        status: 500,
+      }),
+    })
   }
 }
 

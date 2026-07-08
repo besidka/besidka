@@ -180,6 +180,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/research/errors.spec.ts',
     'tests/unit/utils/research/finalize.spec.ts',
     'tests/unit/utils/research/sweep.spec.ts',
+    'tests/unit/utils/research/start.spec.ts',
     'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
     'tests/unit/components/Chat/DeepResearchMeta.spec.ts',
     'tests/unit/components/Chat/DeepResearchPending.spec.ts',

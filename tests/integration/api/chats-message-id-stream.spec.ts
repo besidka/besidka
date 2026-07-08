@@ -616,7 +616,7 @@ describe('chat stream message ids', () => {
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toEqual(expect.objectContaining({
       code: 'provider-auth',
-      message: 'Invalid OpenAI API key',
+      message: 'The provider rejected the API credentials.',
       providerRequestId: 'req_prestream_123',
       status: 401,
     }))

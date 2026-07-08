@@ -74,12 +74,10 @@ export default defineEventHandler(async (event) => {
     })
 
     logger.set({
-      message: chatError.message,
       stage: 'generate-clarifications',
       errorCode: chatError.code,
       providerStatus: chatError.status,
       providerRequestId: chatError.providerRequestId,
-      errorMessage: chatError.why,
     })
 
     throw createError({ ...chatError })

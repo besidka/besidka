@@ -5,12 +5,13 @@ import type {
   ResearchMetadata,
   ResearchProviderId,
 } from '#shared/types/research.d'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
+import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import type { ResearchFinalResult } from '~~/server/utils/research/types.d'
 import type { VapidKeys } from '~~/server/utils/push'
@@ -69,13 +70,14 @@ export async function finalizeResearchJob(
   try {
     statusResult = await adapter.status(job.providerJobId, apiKey)
   } catch (exception) {
+    const exceptionDetails = describeResearchAdapterException(exception)
+
     logger.set({
       research: {
         phase: 'poll',
         jobId: job.id,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+        errorStatus: exceptionDetails.status,
+        error: exceptionDetails.message,
       },
     })
 
@@ -89,13 +91,14 @@ export async function finalizeResearchJob(
       try {
         await adapter.cancel(job.providerJobId, apiKey)
       } catch (exception) {
+        const exceptionDetails = describeResearchAdapterException(exception)
+
         logger.set({
           research: {
             phase: 'timeout-cancel',
             jobId: job.id,
-            error: exception instanceof Error
-              ? exception.message
-              : String(exception),
+            errorStatus: exceptionDetails.status,
+            error: exceptionDetails.message,
           },
         })
       }
@@ -135,13 +138,14 @@ export async function finalizeResearchJob(
   try {
     result = await adapter.result(job.providerJobId, apiKey)
   } catch (exception) {
+    const exceptionDetails = describeResearchAdapterException(exception)
+
     logger.set({
       research: {
         phase: 'result',
         jobId: job.id,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+        errorStatus: exceptionDetails.status,
+        error: exceptionDetails.message,
       },
     })
 
@@ -164,6 +168,7 @@ export async function finalizeResearchJob(
     .where(and(
       eq(schema.researchJobs.id, job.id),
       isNull(schema.researchJobs.resultMessageId),
+      inArray(schema.researchJobs.status, ['pending', 'running']),
     ))
     .returning({ id: schema.researchJobs.id })
     .get()
@@ -235,7 +240,10 @@ async function markJobTerminal(
       error,
       completedAt: new Date(),
     })
-    .where(eq(schema.researchJobs.id, jobId))
+    .where(and(
+      eq(schema.researchJobs.id, jobId),
+      inArray(schema.researchJobs.status, ['pending', 'running']),
+    ))
 }
 
 function buildResearchAssistantParts(input: {
@@ -251,9 +259,13 @@ function buildResearchAssistantParts(input: {
     usage: input.result.usage,
   }
 
+  const safeSources = input.result.sources.filter((source) => {
+    return isHttpUrl(source.url)
+  })
+
   return [
     { type: 'text', text: input.result.reportText },
-    ...input.result.sources.map(source => ({
+    ...safeSources.map(source => ({
       type: 'source-url' as const,
       sourceId: source.sourceId,
       url: source.url,
@@ -261,6 +273,18 @@ function buildResearchAssistantParts(input: {
     })),
     { type: 'data-research' as const, data: metadata },
   ] as UIMessage['parts']
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch (exception) {
+    void exception
+
+    return false
+  }
 }
 
 function buildStartIncompleteError(): ChatErrorPayload {

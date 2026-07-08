@@ -4,6 +4,13 @@ const mocks = vi.hoisted(() => ({
   validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  resolveResearchStartContext: vi.fn(async () => ({
+    provider: { id: 'openai', name: 'OpenAI' },
+    research: { assistModel: 'gpt-5.4-nano' },
+    levelConfig: { modelId: 'o4-mini-deep-research' },
+    supportedProviderId: 'openai',
+    apiKey: 'decrypted-api-key',
+  })),
   startResearchJobForChat: vi.fn(async () => ({
     jobId: 'job-1',
     status: 'running',
@@ -19,6 +26,7 @@ vi.mock('~~/server/utils/projects/memory', () => ({
 }))
 
 vi.mock('~~/server/utils/research/start', () => ({
+  resolveResearchStartContext: mocks.resolveResearchStartContext,
   startResearchJobForChat: mocks.startResearchJobForChat,
 }))
 
@@ -61,6 +69,14 @@ describe('new chat API', () => {
     mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
     mocks.loggerSet.mockReset()
     mocks.markProjectsMemoryStale.mockResolvedValue(undefined)
+    mocks.resolveResearchStartContext.mockReset()
+    mocks.resolveResearchStartContext.mockResolvedValue({
+      provider: { id: 'openai', name: 'OpenAI' },
+      research: { assistModel: 'gpt-5.4-nano' },
+      levelConfig: { modelId: 'o4-mini-deep-research' },
+      supportedProviderId: 'openai',
+      apiKey: 'decrypted-api-key',
+    })
     mocks.startResearchJobForChat.mockReset()
     mocks.startResearchJobForChat.mockResolvedValue({
       jobId: 'job-1',
@@ -252,6 +268,110 @@ describe('new chat API', () => {
     } as any)).rejects.toThrow(
       'A model is required to start deep research.',
     )
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('returns a soft researchError without failing the request when starting research fails', async () => {
+    mocks.startResearchJobForChat.mockRejectedValue(
+      Object.assign(new Error('Could not start the research job.'), {
+        why: 'The research provider rejected the request.',
+        fix: 'Try a different research level.',
+      }),
+    )
+
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-1',
+          slug: 'chat-1',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => null),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({ values: chatsInsertValues })
+        .mockReturnValueOnce({ values: messagesInsertValues }),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        model: 'gpt-5.4-nano',
+        research: { level: 'quick' },
+      },
+    } as any)
+
+    expect(response).toEqual({
+      slug: 'chat-1',
+      researchError: {
+        message: 'Could not start the research job.',
+        why: 'The research provider rejected the request.',
+        fix: 'Try a different research level.',
+      },
+    })
+  })
+
+  it('propagates a resolveResearchStartContext failure without inserting a chat row', async () => {
+    mocks.resolveResearchStartContext.mockRejectedValue(
+      Object.assign(
+        new Error('This provider does not support deep research.'),
+        { statusCode: 400 },
+      ),
+    )
+
+    const handler = await getNewChatHandler()
+    const chatsInsert = vi.fn()
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => null),
+        },
+      },
+      insert: chatsInsert,
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        model: 'gpt-5.4-nano',
+        research: { level: 'quick' },
+      },
+    } as any)).rejects.toThrow(
+      'This provider does not support deep research.',
+    )
+    expect(chatsInsert).not.toHaveBeenCalled()
     expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
   })
 })

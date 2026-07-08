@@ -1,7 +1,8 @@
 import { useLogger, createError } from 'evlog'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
+import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
 
@@ -75,13 +76,14 @@ export default defineEventHandler(async (event) => {
           apiKey,
         )
       } catch (exception) {
+        const exceptionDetails = describeResearchAdapterException(exception)
+
         logger.set({
           research: {
             phase: 'cancel',
             jobId: job.id,
-            error: exception instanceof Error
-              ? exception.message
-              : String(exception),
+            errorStatus: exceptionDetails.status,
+            error: exceptionDetails.message,
           },
         })
       }
@@ -90,9 +92,20 @@ export default defineEventHandler(async (event) => {
 
   const updated = await db.update(schema.researchJobs)
     .set({ status: 'cancelled', completedAt: new Date() })
-    .where(eq(schema.researchJobs.id, job.id))
+    .where(and(
+      eq(schema.researchJobs.id, job.id),
+      inArray(schema.researchJobs.status, ['pending', 'running']),
+    ))
     .returning()
     .get()
 
-  return { job: toResearchJobView(updated ?? { ...job, status: 'cancelled' as const }) }
+  if (!updated) {
+    const refetched = await db.query.researchJobs.findFirst({
+      where: { id: job.id },
+    })
+
+    return { job: toResearchJobView(refetched ?? job) }
+  }
+
+  return { job: toResearchJobView(updated) }
 })

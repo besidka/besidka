@@ -262,6 +262,17 @@ describe('research status API', () => {
     } as any)).rejects.toThrow('No research job found for this chat.')
   })
 
+  it('404s when the chat belongs to another user', async () => {
+    const handler = await getStatusHandler()
+    const { db } = createDb({ chat: null })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)).rejects.toThrow('Chat not found.')
+  })
+
   it('does not throw when finalize errors, and returns the last known job', async () => {
     mocks.finalizeResearchJob.mockRejectedValue(new Error('network blip'))
 

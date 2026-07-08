@@ -86,13 +86,12 @@ function getPreferredChatMessage(input: {
   errorMessage: string | undefined
   status: number
 }): string | undefined {
-  if (!input.errorMessage) {
+  if (!input.errorMessage || input.code === 'provider-auth') {
     return undefined
   }
 
   if (
     input.code === 'chat-request-invalid'
-    || input.code === 'provider-auth'
     || input.code === 'unknown'
   ) {
     return input.errorMessage
