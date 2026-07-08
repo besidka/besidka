@@ -1,24 +1,25 @@
 import type { TextUIPart, UIMessage } from 'ai'
 import type { H3Event } from 'h3'
+import type { Model } from '#shared/types/providers.d'
 import type {
   ResearchAnswer,
   ResearchJobStatus,
+  ResearchJobView,
   ResearchLevel,
   ResearchProviderId,
 } from '#shared/types/research.d'
-import {
-  getProviderResearch,
-  resolveResearchModel,
-} from '#shared/utils/research'
+import { getModel } from '#shared/utils/model'
+import { getModelResearch } from '#shared/utils/research'
 import { createError } from 'evlog'
 import { and, count, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
-import { useChatProvider } from '~~/server/utils/chats/provider'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { rewriteResearchBrief } from '~~/server/utils/research/clarify'
+import { toResearchJobView } from '~~/server/utils/research/job-view'
+import type { ResearchAdapter } from '~~/server/utils/research/types.d'
 
 const MAX_ACTIVE_RESEARCH_JOBS_PER_USER = 3
 const ACTIVE_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
@@ -41,25 +42,22 @@ export interface StartResearchJobInput {
     parts: UIMessage['parts']
   }
   model: string
-  level: ResearchLevel
   answers?: ResearchAnswer[]
 }
 
 export interface StartResearchJobResult {
-  jobId: string
-  status: ResearchJobStatus
+  job: ResearchJobView
 }
 
 export interface ResolveResearchStartContextInput {
   userId: number
   model: string
-  level: ResearchLevel
 }
 
 export interface ResearchStartContext {
-  provider: ReturnType<typeof useChatProvider>['provider']
-  research: NonNullable<ReturnType<typeof getProviderResearch>>
-  levelConfig: NonNullable<ReturnType<typeof resolveResearchModel>>
+  provider: { id: string, name: string }
+  model: Model
+  research: NonNullable<ReturnType<typeof getModelResearch>>
   supportedProviderId: ResearchProviderId
   apiKey: string
 }
@@ -67,17 +65,26 @@ export interface ResearchStartContext {
 export async function resolveResearchStartContext(
   input: ResolveResearchStartContextInput,
 ): Promise<ResearchStartContext> {
-  const { provider } = useChatProvider(input.model)
-  const research = getProviderResearch(provider)
-  const levelConfig = resolveResearchModel(provider, input.level)
+  const { model, provider } = getModel(input.model)
+
+  if (!model || !provider) {
+    throw createError({
+      message: 'Please select a model to continue.',
+      status: 400,
+      why: 'The selected model is not supported by any provider.',
+      fix: 'Select a different model and try again.',
+    })
+  }
+
+  const research = getModelResearch(model)
   const supportedProviderId = toSupportedResearchProviderId(provider.id)
 
-  if (!research || !levelConfig || !supportedProviderId) {
+  if (!research || !supportedProviderId) {
     throw createError({
-      message: 'This provider does not support deep research.',
+      message: 'This model does not support deep research.',
       status: 400,
-      why: 'The selected model provider has no deep research capability.',
-      fix: 'Select a model from a provider that supports deep research.',
+      why: 'The selected model has no deep research capability.',
+      fix: 'Select one of the dedicated deep research models.',
     })
   }
 
@@ -97,8 +104,8 @@ export async function resolveResearchStartContext(
 
   return {
     provider,
+    model,
     research,
-    levelConfig,
     supportedProviderId,
     apiKey,
   }
@@ -108,11 +115,10 @@ export async function startResearchJobForChat(
   input: StartResearchJobInput,
 ): Promise<StartResearchJobResult> {
   const {
-    research, levelConfig, supportedProviderId, apiKey,
+    model, research, supportedProviderId, apiKey,
   } = await resolveResearchStartContext({
     userId: input.userId,
     model: input.model,
-    level: input.level,
   })
 
   await assertResearchJobCapacity(input.db, input.userId)
@@ -122,9 +128,11 @@ export async function startResearchJobForChat(
     userId: input.userId,
     userMessageId: input.userMessage.id,
     provider: supportedProviderId,
-    level: input.level,
-    modelId: levelConfig.modelId,
+    level: research.tier,
+    modelId: model.id,
   })
+
+  const adapter = getResearchAdapter(supportedProviderId)
 
   try {
     const assistInstance = await buildResearchAssistModelInstance(
@@ -139,35 +147,96 @@ export async function startResearchJobForChat(
       answers: input.answers ?? [],
     })
 
-    const started = await getResearchAdapter(supportedProviderId).start({
+    const started = await adapter.start({
       apiKey,
-      modelId: levelConfig.modelId,
-      level: input.level,
+      modelId: model.id,
+      tier: research.tier,
+      maxToolCalls: research.maxToolCalls,
       brief,
     })
+    const startedAt = new Date()
 
-    await input.db.update(schema.researchJobs)
-      .set({
-        providerJobId: started.providerJobId,
-        status: started.status,
-        startedAt: new Date(),
+    let claimed: { id: string } | undefined
+
+    try {
+      claimed = await input.db.update(schema.researchJobs)
+        .set({
+          providerJobId: started.providerJobId,
+          status: started.status,
+          startedAt,
+        })
+        .where(and(
+          eq(schema.researchJobs.id, job.id),
+          inArray(schema.researchJobs.status, ACTIVE_RESEARCH_JOB_STATUSES),
+        ))
+        .returning({ id: schema.researchJobs.id })
+        .get()
+    } catch (updateException) {
+      await cancelStartedProviderJobBestEffort(
+        adapter,
+        started.providerJobId,
+        apiKey,
+        input.logger,
+      )
+
+      throw updateException
+    }
+
+    if (!claimed) {
+      await cancelStartedProviderJobBestEffort(
+        adapter,
+        started.providerJobId,
+        apiKey,
+        input.logger,
+      )
+
+      const currentJob = await input.db.query.researchJobs.findFirst({
+        where: { id: job.id },
       })
-      .where(eq(schema.researchJobs.id, job.id))
+
+      if (!currentJob) {
+        throw createError({
+          message: 'The research job could not be found.',
+          status: 404,
+          why: 'The research job was removed before it could start.',
+        })
+      }
+
+      input.logger.set({
+        research: {
+          phase: 'start',
+          jobId: job.id,
+          status: currentJob.status,
+          note: 'job left the active state before the provider job'
+            + ' could be stored',
+        },
+      })
+
+      return { job: toResearchJobView(currentJob) }
+    }
 
     input.logger.set({
       research: {
         phase: 'start',
         jobId: job.id,
         provider: supportedProviderId,
-        level: input.level,
-        modelId: levelConfig.modelId,
+        level: research.tier,
+        modelId: model.id,
         status: started.status,
       },
     })
 
     return {
-      jobId: job.id,
-      status: started.status,
+      job: {
+        publicId: job.id,
+        status: started.status,
+        provider: supportedProviderId,
+        level: research.tier,
+        modelId: model.id,
+        startedAt: startedAt.getTime(),
+        error: null,
+        resultMessageId: null,
+      },
     }
   } catch (exception) {
     const chatError = mapResearchProviderError({
@@ -199,6 +268,27 @@ export async function startResearchJobForChat(
     })
 
     throw createError({ ...chatError })
+  }
+}
+
+async function cancelStartedProviderJobBestEffort(
+  adapter: ResearchAdapter,
+  providerJobId: string,
+  apiKey: string,
+  logger: StartResearchJobInput['logger'],
+): Promise<void> {
+  try {
+    await adapter.cancel(providerJobId, apiKey)
+  } catch (exception) {
+    logger.set({
+      research: {
+        phase: 'start-cancel',
+        providerJobId,
+        error: exception instanceof Error
+          ? exception.message
+          : String(exception),
+      },
+    })
   }
 }
 

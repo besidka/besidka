@@ -88,7 +88,6 @@ describe('useChatResearch', () => {
         id: 'user-msg-1',
         parts: [{ type: 'text', text: 'Topic' }],
       },
-      level: 'quick',
     })
 
     expect(started).toBe(true)
@@ -117,7 +116,6 @@ describe('useChatResearch', () => {
 
     const started = await research.startResearchJob({
       userMessage: { id: 'user-msg-1', parts: [] },
-      level: 'quick',
     })
 
     expect(started).toBe(false)
@@ -137,7 +135,6 @@ describe('useChatResearch', () => {
 
     await research.startResearchJob({
       userMessage: { id: 'user-msg-1', parts: [] },
-      level: 'quick',
     })
 
     fetchMock.mockResolvedValue({
@@ -165,7 +162,6 @@ describe('useChatResearch', () => {
 
     await research.startResearchJob({
       userMessage: { id: 'user-msg-1', parts: [] },
-      level: 'quick',
     })
 
     fetchMock.mockResolvedValueOnce({
@@ -205,7 +201,6 @@ describe('useChatResearch', () => {
 
     await research.startResearchJob({
       userMessage: { id: 'user-msg-1', parts: [] },
-      level: 'quick',
     })
 
     fetchMock.mockResolvedValueOnce({
@@ -231,7 +226,6 @@ describe('useChatResearch', () => {
 
     await research.startResearchJob({
       userMessage: { id: 'user-msg-1', parts: [] },
-      level: 'quick',
     })
 
     fetchMock.mockResolvedValueOnce({

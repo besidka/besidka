@@ -1,20 +1,20 @@
 export function useChatInput() {
   const { userModel } = useUserModel()
 
-  const researchCapability = computed(() => {
+  const researchConfig = computed(() => {
     const currentModel = toValue(userModel)
 
     if (!currentModel) {
       return null
     }
 
-    const { provider } = getModel(currentModel)
+    const { model } = getModel(currentModel)
 
-    return getProviderResearch(provider)
+    return getModelResearch(model)
   })
 
-  const isDeepResearchSupported = computed<boolean>(() => {
-    return !!researchCapability.value
+  const isDeepResearchModel = computed<boolean>(() => {
+    return !!researchConfig.value
   })
 
   const isWebSearchSupported = computed<boolean>(() => {
@@ -61,7 +61,7 @@ export function useChatInput() {
     reasoningMode,
     reasoningLevels,
     isReasoningSupported,
-    researchCapability,
-    isDeepResearchSupported,
+    researchConfig,
+    isDeepResearchModel,
   }
 }

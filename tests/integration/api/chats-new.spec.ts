@@ -6,14 +6,22 @@ const mocks = vi.hoisted(() => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
   resolveResearchStartContext: vi.fn(async () => ({
     provider: { id: 'openai', name: 'OpenAI' },
-    research: { assistModel: 'gpt-5.4-nano' },
-    levelConfig: { modelId: 'o4-mini-deep-research' },
+    model: { id: 'o4-mini-deep-research' },
+    research: { tier: 'quick', assistModel: 'gpt-5.4-nano' },
     supportedProviderId: 'openai',
     apiKey: 'decrypted-api-key',
   })),
   startResearchJobForChat: vi.fn(async () => ({
-    jobId: 'job-1',
-    status: 'running',
+    job: {
+      publicId: 'job-1',
+      status: 'running',
+      provider: 'openai',
+      level: 'quick',
+      modelId: 'o4-mini-deep-research',
+      startedAt: Date.now(),
+      error: null,
+      resultMessageId: null,
+    },
   })),
 }))
 
@@ -72,15 +80,23 @@ describe('new chat API', () => {
     mocks.resolveResearchStartContext.mockReset()
     mocks.resolveResearchStartContext.mockResolvedValue({
       provider: { id: 'openai', name: 'OpenAI' },
-      research: { assistModel: 'gpt-5.4-nano' },
-      levelConfig: { modelId: 'o4-mini-deep-research' },
+      model: { id: 'o4-mini-deep-research' },
+      research: { tier: 'quick', assistModel: 'gpt-5.4-nano' },
       supportedProviderId: 'openai',
       apiKey: 'decrypted-api-key',
     })
     mocks.startResearchJobForChat.mockReset()
     mocks.startResearchJobForChat.mockResolvedValue({
-      jobId: 'job-1',
-      status: 'running',
+      job: {
+        publicId: 'job-1',
+        status: 'running',
+        provider: 'openai',
+        level: 'quick',
+        modelId: 'o4-mini-deep-research',
+        startedAt: Date.now(),
+        error: null,
+        resultMessageId: null,
+      },
     })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -232,7 +248,6 @@ describe('new chat API', () => {
         reasoning: 'off',
         model: 'gpt-5.4-nano',
         research: {
-          level: 'quick',
           answers: [{ id: 'q1', question: 'Scope?', answer: 'Global' }],
         },
       },
@@ -249,7 +264,6 @@ describe('new chat API', () => {
           parts: [{ type: 'text', text: 'Research this' }],
         }),
         model: 'gpt-5.4-nano',
-        level: 'quick',
         answers: [{ id: 'q1', question: 'Scope?', answer: 'Global' }],
       }),
     )
@@ -263,7 +277,7 @@ describe('new chat API', () => {
         parts: [{ type: 'text', text: 'Research this' }],
         tools: [],
         reasoning: 'off',
-        research: { level: 'quick' },
+        research: {},
       },
     } as any)).rejects.toThrow(
       'A model is required to start deep research.',
@@ -320,7 +334,7 @@ describe('new chat API', () => {
         tools: [],
         reasoning: 'off',
         model: 'gpt-5.4-nano',
-        research: { level: 'quick' },
+        research: {},
       },
     } as any)
 
@@ -366,7 +380,7 @@ describe('new chat API', () => {
         tools: [],
         reasoning: 'off',
         model: 'gpt-5.4-nano',
-        research: { level: 'quick' },
+        research: {},
       },
     } as any)).rejects.toThrow(
       'This provider does not support deep research.',

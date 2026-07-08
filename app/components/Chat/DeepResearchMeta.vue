@@ -6,7 +6,7 @@
   >
     <Icon name="lucide:telescope" size="14" class="text-accent" />
     <span>
-      Deep research · {{ levelLabel }} · {{ metadata.modelId }}
+      Deep research · {{ modelName }} · {{ tierLabel }}
       <template v-if="durationLabel"> · {{ durationLabel }}</template>
     </span>
   </div>
@@ -32,17 +32,20 @@ const metadata = computed<ResearchMetadata | null>(() => {
   return (part as unknown as { data: ResearchMetadata }).data
 })
 
-const levelLabel = computed<string>(() => {
+const modelName = computed<string>(() => {
   if (!metadata.value) {
     return ''
   }
 
-  const config = getResearchProviderConfig(
-    metadata.value.provider,
-    metadata.value.level,
-  )
+  return getModelName(metadata.value.modelId)
+})
 
-  return config?.label ?? metadata.value.level
+const tierLabel = computed<string>(() => {
+  if (!metadata.value) {
+    return ''
+  }
+
+  return metadata.value.level === 'thorough' ? 'Thorough' : 'Quick'
 })
 
 const durationLabel = computed<string>(() => {

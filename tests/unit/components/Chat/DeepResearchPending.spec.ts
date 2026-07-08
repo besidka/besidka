@@ -47,9 +47,27 @@ describe('Chat/DeepResearchPending', () => {
     expect(
       wrapper.get('[data-testid="research-pending-timer"]').text(),
     ).toBe('1:05')
-    expect(
-      wrapper.get('[data-testid="research-pending-level"]').text(),
-    ).toContain('o4-mini-deep-research')
+
+    const levelText = wrapper.get('[data-testid="research-pending-level"]')
+      .text()
+
+    expect(levelText).toContain('o4-mini Deep Research')
+    expect(levelText).toContain('Quick')
+  })
+
+  it('shows the time estimate pulled from the model research config', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({
+          status: 'running',
+          modelId: 'o3-deep-research',
+          level: 'thorough',
+        }),
+        elapsedMs: 0,
+      },
+    })
+
+    expect(wrapper.text()).toContain('10–30 min')
   })
 
   it('emits cancel while running and never renders a step timeline', async () => {

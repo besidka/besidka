@@ -1,64 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
-import type { ProviderResearchCapability } from '#shared/types/research.d'
 import {
   formatResearchElapsed,
-  getResearchLevelEntries,
-  getResearchProviderConfig,
   hasResearchMetaPart,
 } from '../../../app/utils/research'
 
-const capability: ProviderResearchCapability = {
-  assistModel: 'gpt-5.4-nano',
-  levels: {
-    quick: {
-      modelId: 'o4-mini-deep-research',
-      label: 'Quick',
-      costEstimate: '~$1',
-      timeEstimate: '5-15 min',
-    },
-    thorough: {
-      modelId: 'o3-deep-research',
-      label: 'Thorough',
-      costEstimate: '~$10',
-      timeEstimate: '10-30 min',
-    },
-  },
-}
-
 describe('app/utils/research', () => {
-  describe('getResearchLevelEntries', () => {
-    it('returns an empty array for a null capability', () => {
-      expect(getResearchLevelEntries(null)).toEqual([])
-    })
-
-    it('returns entries ordered quick then thorough', () => {
-      const entries = getResearchLevelEntries(capability)
-
-      expect(entries.map(entry => entry.level)).toEqual([
-        'quick',
-        'thorough',
-      ])
-      expect(entries[0]?.config.modelId).toBe('o4-mini-deep-research')
-      expect(entries[1]?.config.modelId).toBe('o3-deep-research')
-    })
-  })
-
-  describe('getResearchProviderConfig', () => {
-    it('resolves the level config for a real provider', () => {
-      const config = getResearchProviderConfig('openai', 'quick')
-
-      expect(config?.label).toBe('Quick')
-      expect(config?.modelId).toBeTruthy()
-    })
-
-    it('resolves the level config for google too', () => {
-      const config = getResearchProviderConfig('google', 'thorough')
-
-      expect(config?.label).toBe('Thorough')
-    })
-  })
-
   describe('formatResearchElapsed', () => {
     it('formats zero as 0:00', () => {
       expect(formatResearchElapsed(0)).toBe('0:00')

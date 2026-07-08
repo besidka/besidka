@@ -1,5 +1,5 @@
 import type { LanguageModel } from 'ai'
-import { getProviderResearch } from '#shared/utils/research'
+import { getModelResearch } from '#shared/utils/research'
 import { useLogger, createError } from 'evlog'
 import { mapResearchProviderError } from '~~/server/utils/chats/errors'
 import { useChatProvider } from '~~/server/utils/chats/provider'
@@ -28,8 +28,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const userId = parseInt(session.user.id)
-  const { provider } = useChatProvider(body.data.model)
-  const research = getProviderResearch(provider)
+  const { provider, model } = useChatProvider(body.data.model)
+  const research = getModelResearch(model)
   const supportedProviderId = provider.id === 'openai' || provider.id === 'google'
     ? provider.id
     : undefined
@@ -38,8 +38,8 @@ export default defineEventHandler(async (event) => {
     throw createError({
       message: 'This model does not support deep research.',
       status: 400,
-      why: 'The selected model provider has no deep research capability.',
-      fix: 'Select a model from a provider that supports deep research.',
+      why: 'The selected model has no deep research capability.',
+      fix: 'Select one of the dedicated deep research models.',
     })
   }
 

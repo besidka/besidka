@@ -28,7 +28,7 @@ export async function sweepResearchJobs(
     where: {
       status: { in: ['pending', 'running'] },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { updatedAt: 'asc' },
     limit: Math.max(input.batchSize, 1),
   })
 

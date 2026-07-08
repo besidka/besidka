@@ -49,7 +49,7 @@ describe('sweepResearchJobs', () => {
     expect(db.query.researchJobs.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { status: { in: ['pending', 'running'] } },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { updatedAt: 'asc' },
         limit: 20,
       }),
     )

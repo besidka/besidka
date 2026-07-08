@@ -10,22 +10,37 @@ This is the v2 design. v1 tried to build an agentic loop over provider-executed
 web search and failed for structural reasons — see
 `docs/deep-research-failed-attempt.md` before changing the architecture.
 
-## Provider agents and levels
+## Deep research models
 
-Deep research is only possible with dedicated agent models, not with regular
-chat models. Each provider declares a `research` capability in `providers/*.ts`
-mapping the two UI levels to real billable models:
+Deep research is model-level, not a mode you toggle on top of a regular chat
+model. Each dedicated research model is a first-class entry in the model
+picker — chosen directly, badged with a telescope icon — and carries its own
+fixed `research: ModelResearchConfig` block (`tier`, `assistModel`,
+`costEstimate`, `timeEstimate`, `maxToolCalls?`) declared in `providers/*.ts`.
+There is no separate quick/thorough menu anymore: picking the model **is**
+picking the depth.
 
-| Provider | Quick | Thorough |
+| Model | Tier | Cost / time |
 |---|---|---|
-| OpenAI | `o4-mini-deep-research` (~$1, 5–15 min) | `o3-deep-research` (~$10, 10–30 min) |
-| Google | `deep-research-preview-04-2026` ($1–3, <20 min) | `deep-research-max-preview-04-2026` ($3–7, up to 60 min) |
+| `o4-mini-deep-research` (OpenAI) | quick | ~$1, 5–15 min |
+| `o3-deep-research` (OpenAI) | thorough | ~$10, 10–30 min |
+| `deep-research-preview-04-2026` (Google) | quick | $1–3, under 20 min |
+| `deep-research-max-preview-04-2026` (Google) | thorough | $3–7, up to 60 min |
 
-Cost/time estimates are shown in the level menu — runs are billed to the
-user's own key. `assistModel` in the same config block names the cheap chat
-model used for the two pre-calls (clarifying questions via `generateObject`,
-brief rewrite via `generateText`). Anthropic has no deep-research API, so no
-`research` block — the trigger is hidden for its models.
+`getModelResearch(model)` (`shared/utils/research.ts`) reads a model's
+`research` block; `isDeepResearchModel(model)` is just `!!getModelResearch(model)`.
+Runs are billed to the user's own key. `assistModel` in the same config block
+names the cheap chat model used for the two pre-calls (clarifying questions
+via `generateObject`, brief rewrite via `generateText`). Anthropic has no
+deep-research API, so none of its models declare a `research` block — the
+trigger never renders for them.
+
+Selecting a research model hides web search, reasoning controls, and file
+attachments in `ChatInput` — the agents do their own browsing, and attachments
+are rejected server-side (`server/api/v1/chats/[slug]/research/index.post.ts`
+returns 400 for any non-text message part). Deep research briefs are
+text-only in v2; passing files/images through to the provider's research
+agent is future work.
 
 Access gates (surfaced as structured errors with fix text, see
 `mapResearchProviderError` in `server/utils/chats/errors.ts`):
@@ -53,7 +68,7 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
   cascades via `chatId → chats`.
 - **Adapters** (`server/utils/research/adapters/`): raw-REST implementations of
   start/status/result/cancel for OpenAI (Responses API, `background: true` +
-  `store: true`, `web_search_preview` tool, `max_tool_calls` per level) and
+  `store: true`, `web_search_preview` tool, `max_tool_calls` per model) and
   Google (Interactions API, `background: true` + `store: true`,
   `agent_config.thinking_summaries`). The Vercel AI SDK cannot drive these
   jobs (no background-mode support for OpenAI; Google's `google.interactions()`
@@ -66,9 +81,10 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
   - `GET /api/v1/chats/[slug]/research` — poll; finalizes on terminal status
     and returns `{ job, message? }` (`message` only when completed).
   - `POST /api/v1/chats/[slug]/research/cancel` — cancel (idempotent).
-  - `PUT /api/v1/chats/new` accepts optional `research: { level, answers }` so
-    a research chat starts atomically — the target page discovers the job via
-    the chat GET's `activeResearchJob`; no client-side stash exists.
+  - `PUT /api/v1/chats/new` accepts optional `research: { answers }` (the
+    model itself already implies the tier) so a research chat starts
+    atomically — the target page discovers the job via the chat GET's
+    `activeResearchJob`; no client-side stash exists.
 - **Finalize** (`server/utils/research/finalize.ts`): shared by the GET poll
   and the cron sweep. Claim-lock idempotency via conditional
   `UPDATE … WHERE result_message_id IS NULL … RETURNING` — exactly one caller
@@ -81,10 +97,16 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
   still fires. Gated by `controller.cron`; the other scheduled plugins carry
   matching guards so multiple cron schedules don't cross-fire. Config via
   `researchSweep*` runtime keys (`NUXT_RESEARCH_SWEEP_ENABLED` etc. — see
-  `.dev.vars.example`); the sweep is disabled unless explicitly enabled.
+  `.dev.vars.example`). Enabled for preview and production via the `vars`
+  blocks in `wrangler.jsonc` (both the top-level preview block and
+  `env.production.vars`); local dev keeps the `nuxt.config.ts` default of
+  `false` — run the sweep manually or via `.dev.vars` if you need it locally.
 
 ## Frontend
 
+- `app/composables/chat-input.ts` — `useChatInput()`: resolves
+  `researchConfig`/`isDeepResearchModel` for the currently selected model via
+  `getModelResearch`/`isDeepResearchModel` (`shared/utils/research.ts`).
 - `app/composables/chat-research.ts` — `useChatResearch()`: the poll state
   machine (10s network poll + 1s local elapsed tick, immediate poll on
   `visibilitychange`/`focus`, dedupe-by-id message append on completion).
@@ -97,11 +119,17 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
   `data-research` part.
 - `app/components/Chat/DeepResearchClarify.vue` — clarifying-questions form
   (salvaged from v1).
-- `app/components/ChatInput/DeepResearch{Trigger,MenuItems}.vue` — the chat
-  input trigger; visible only when the selected model's provider has a
-  `research` capability. While research mode is active the web-search and
-  reasoning controls are hidden (the agents do both out of the box); while a
-  job is running, send and the research controls are disabled.
+- `app/components/ChatInput/ModelsTrigger.vue` — the model picker badges every
+  deep research model with a telescope icon and shows `costEstimate ·
+  timeEstimate` as its price tooltip instead of the regular per-token price.
+- `app/components/ChatInput/DeepResearchTrigger.vue` — once a research model
+  is selected there is no level menu to open; it renders as a static "Deep
+  research" pill (telescope icon, same cost/time estimate as a tooltip) —
+  the model choice already fixed the tier. `ChatInput.client.vue` hides the
+  web-search toggle, reasoning controls, and file-attachment trigger whenever
+  `isDeepResearchModel` is true (the agents browse on their own, and
+  attachments aren't supported yet — see above); while a job is running, send
+  and the cancel control are disabled/enabled accordingly.
 
 ## Live-spike checklist (before enabling in production)
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
 // Walks a drizzle `SQL` expression's `queryChunks` tree collecting column
 // names and literal/param values as plain tokens, without ever invoking a
@@ -258,7 +259,84 @@ describe('finalizeResearchJob', () => {
     })
 
     expect(outcome).toBe('still-running')
-    expect(set).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      updatedAt: expect.any(Date),
+    }))
+  })
+
+  it('marks the job failed immediately when the status poll fails with a 401', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => {
+        throw new ResearchAdapterError(401, { message: 'Invalid API key' })
+      }),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, set } = createDb()
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(outcome).toBe('failed')
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      error: expect.objectContaining({ code: 'provider-auth' }),
+    }))
+  })
+
+  it('marks the job failed immediately when the status poll fails with a 404', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => {
+        throw new ResearchAdapterError(404, { message: 'Not found' })
+      }),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, set } = createDb()
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(outcome).toBe('failed')
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      error: expect.objectContaining({ code: 'provider-unavailable' }),
+    }))
+  })
+
+  it('marks the job failed with a timeout when the status poll keeps failing past the overall cap', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => {
+        throw new Error('network blip')
+      }),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, set } = createDb()
+    const job = createJob({
+      startedAt: new Date(Date.now() - 91 * 60 * 1000),
+    })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: job as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(outcome).toBe('failed')
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'failed',
+      error: expect.objectContaining({ code: 'research-timeout' }),
+    }))
   })
 
   it('returns still-running while the provider job is in progress', async () => {
@@ -277,7 +355,9 @@ describe('finalizeResearchJob', () => {
     })
 
     expect(outcome).toBe('still-running')
-    expect(set).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      updatedAt: expect.any(Date),
+    }))
   })
 
   it('cancels and marks the job failed once it exceeds the 90-minute cap', async () => {
@@ -378,7 +458,9 @@ describe('finalizeResearchJob', () => {
     })
 
     expect(outcome).toBe('still-running')
-    expect(set).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      updatedAt: expect.any(Date),
+    }))
   })
 
   it('finalizes a completed job: persists parts, bumps chat activity, fires push once', async () => {
@@ -444,6 +526,46 @@ describe('finalizeResearchJob', () => {
       expect.anything(),
       waitUntil,
     )
+  })
+
+  it('reverts the completion claim when persisting the report message fails', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [],
+      })),
+    })
+    mocks.insertMessageWithPublicId.mockRejectedValue(
+      new Error('D1 write failed'),
+    )
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, set, where } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: { publicKey: 'pub', privateKey: 'priv', subject: 'mailto:a@b.c' },
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('still-running')
+    expect(sendPushNotificationToUser).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'running',
+      resultMessageId: null,
+      completedAt: null,
+    }))
+
+    const renderedRevertWhere = renderWhereTokens(where.mock.calls[1][0])
+
+    expect(renderedRevertWhere).toContain('status')
+    expect(renderedRevertWhere).toContain('completed')
   })
 
   it('does not double-insert or double-push when the claim lock is already taken', async () => {

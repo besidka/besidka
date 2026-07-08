@@ -34,7 +34,6 @@ const rules = z.object({
   projectId: z.string().nonempty().optional(),
   model: z.string().nonempty().optional(),
   research: z.object({
-    level: z.enum(['quick', 'thorough']),
     answers: z.array(z.object({
       id: z.string().max(200),
       question: z.string().max(500),
@@ -77,7 +76,7 @@ export default defineEventHandler(async (event) => {
     toolsCount: body.data.tools.length,
     reasoning: body.data.reasoning,
     requestedProjectId: body.data.projectId ?? null,
-    researchLevel: body.data.research?.level ?? null,
+    hasResearch: Boolean(body.data.research),
   })
 
   await validateMessageFilePolicy(
@@ -89,7 +88,6 @@ export default defineEventHandler(async (event) => {
     await resolveResearchStartContext({
       userId,
       model: body.data.model,
-      level: body.data.research.level,
     })
   }
 
@@ -169,7 +167,6 @@ export default defineEventHandler(async (event) => {
           parts: body.data.parts as (TextUIPart | FileUIPart)[],
         },
         model: body.data.model,
-        level: body.data.research.level,
         answers: body.data.research.answers,
       })
     } catch (exception) {

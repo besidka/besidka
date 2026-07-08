@@ -29,7 +29,7 @@ describe('google research adapter', () => {
     const result = await googleResearchAdapter.start({
       apiKey: 'goog-test-key',
       modelId: 'deep-research-preview-04-2026',
-      level: 'quick',
+      tier: 'quick',
       brief: 'Research the topic',
     })
 

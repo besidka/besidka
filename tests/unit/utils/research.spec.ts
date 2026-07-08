@@ -1,36 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import type { Provider } from '#shared/types/providers.d'
+import type { Model } from '#shared/types/providers.d'
 import {
-  getProviderResearch,
-  isDeepResearchActive,
+  getModelResearch,
+  isDeepResearchModel,
   isResearchLevel,
-  normalizeResearchLevelSetting,
   researchLevels,
-  resolveResearchModel,
 } from '../../../shared/utils/research'
 
-function createProvider(withResearch = true): Provider {
+function createModel(withResearch = true): Model {
   return {
-    id: 'openai',
-    name: 'OpenAI',
-    models: [],
+    id: 'o4-mini-deep-research',
+    name: 'o4-mini Deep Research',
+    description: 'Deep research model',
+    contextLength: 200_000,
+    maxOutputTokens: 100_000,
+    price: {
+      tokens: 1_000_000,
+      input: '$2.00',
+      output: '$8.00',
+    },
+    modalities: {
+      input: ['text'],
+      output: ['text'],
+    },
+    tools: [],
     research: withResearch
       ? {
+        tier: 'quick',
         assistModel: 'gpt-5.4-nano',
-        levels: {
-          quick: {
-            modelId: 'o4-mini-deep-research',
-            label: 'Quick',
-            costEstimate: '~$1',
-            timeEstimate: '5-15 min',
-          },
-          thorough: {
-            modelId: 'o3-deep-research',
-            label: 'Thorough',
-            costEstimate: '~$10',
-            timeEstimate: '10-30 min',
-          },
-        },
+        costEstimate: '~$1 / task',
+        timeEstimate: '5–15 min',
+        maxToolCalls: 30,
       }
       : undefined,
   }
@@ -56,77 +56,38 @@ describe('shared/utils/research', () => {
     })
   })
 
-  describe('isDeepResearchActive', () => {
-    it('is false for off', () => {
-      expect(isDeepResearchActive('off')).toBe(false)
+  describe('getModelResearch', () => {
+    it('returns null for a null/undefined model', () => {
+      expect(getModelResearch(null)).toBeNull()
+      expect(getModelResearch(undefined)).toBeNull()
     })
 
-    it('is true for quick and thorough', () => {
-      expect(isDeepResearchActive('quick')).toBe(true)
-      expect(isDeepResearchActive('thorough')).toBe(true)
-    })
-  })
-
-  describe('normalizeResearchLevelSetting', () => {
-    it('falls back to off for null/undefined/empty', () => {
-      expect(normalizeResearchLevelSetting(null)).toBe('off')
-      expect(normalizeResearchLevelSetting(undefined)).toBe('off')
-      expect(normalizeResearchLevelSetting('')).toBe('off')
+    it('returns null when the model has no research config', () => {
+      expect(getModelResearch(createModel(false))).toBeNull()
     })
 
-    it('falls back to off for an unknown value', () => {
-      expect(normalizeResearchLevelSetting('standard')).toBe('off')
-    })
+    it('returns the research config when present', () => {
+      const research = getModelResearch(createModel(true))
 
-    it('passes through valid levels', () => {
-      expect(normalizeResearchLevelSetting('quick')).toBe('quick')
-      expect(normalizeResearchLevelSetting('thorough')).toBe('thorough')
-    })
-
-    it('passes through off explicitly', () => {
-      expect(normalizeResearchLevelSetting('off')).toBe('off')
+      expect(research?.tier).toBe('quick')
+      expect(research?.assistModel).toBe('gpt-5.4-nano')
+      expect(research?.costEstimate).toBe('~$1 / task')
+      expect(research?.maxToolCalls).toBe(30)
     })
   })
 
-  describe('getProviderResearch', () => {
-    it('returns null for a null/undefined provider', () => {
-      expect(getProviderResearch(null)).toBeNull()
-      expect(getProviderResearch(undefined)).toBeNull()
+  describe('isDeepResearchModel', () => {
+    it('is false for a null/undefined model', () => {
+      expect(isDeepResearchModel(null)).toBe(false)
+      expect(isDeepResearchModel(undefined)).toBe(false)
     })
 
-    it('returns null when the provider has no research capability', () => {
-      expect(getProviderResearch(createProvider(false))).toBeNull()
+    it('is false for a model without research config', () => {
+      expect(isDeepResearchModel(createModel(false))).toBe(false)
     })
 
-    it('returns the capability when present', () => {
-      const capability = getProviderResearch(createProvider(true))
-
-      expect(capability?.assistModel).toBe('gpt-5.4-nano')
-      expect(capability?.levels.quick.modelId).toBe('o4-mini-deep-research')
-      expect(capability?.levels.thorough.modelId).toBe('o3-deep-research')
-    })
-  })
-
-  describe('resolveResearchModel', () => {
-    it('returns null when the setting is off', () => {
-      expect(resolveResearchModel(createProvider(true), 'off')).toBeNull()
-    })
-
-    it('returns null when the provider has no research capability', () => {
-      expect(
-        resolveResearchModel(createProvider(false), 'quick'),
-      ).toBeNull()
-    })
-
-    it('returns null for a null provider', () => {
-      expect(resolveResearchModel(null, 'quick')).toBeNull()
-    })
-
-    it('resolves the level config for an active level', () => {
-      const config = resolveResearchModel(createProvider(true), 'thorough')
-
-      expect(config?.modelId).toBe('o3-deep-research')
-      expect(config?.label).toBe('Thorough')
+    it('is true for a model with research config', () => {
+      expect(isDeepResearchModel(createModel(true))).toBe(true)
     })
   })
 })

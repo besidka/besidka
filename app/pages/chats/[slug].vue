@@ -138,7 +138,6 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
-    v-model:research-level="researchLevel"
     display-project-picker
     :is-clarifying="isClarifying"
     :research-job-active="isResearchJobActive"
@@ -300,7 +299,6 @@ const {
   shouldDisplayMessage,
   files,
   currentTurnStartedAt,
-  researchLevel,
   pendingClarification,
   pendingResearchTopic,
   isClarifying,

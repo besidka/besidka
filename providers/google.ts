@@ -102,22 +102,51 @@ export default {
         levels: ['low', 'medium', 'high'],
       },
     },
-  ],
-  research: {
-    assistModel: 'gemini-3.1-flash-lite-preview',
-    levels: {
-      quick: {
-        modelId: 'deep-research-preview-04-2026',
-        label: 'Quick',
-        costEstimate: '$1–3',
+    {
+      id: 'deep-research-preview-04-2026',
+      name: 'Deep Research',
+      description: 'Autonomous agent that browses the web, cross-checks sources, and writes a cited research report for $1–3 per task',
+      contextLength: 1_000_000,
+      maxOutputTokens: 65_536,
+      price: {
+        tokens: 1_000_000,
+        input: '$1–3 / task',
+        output: '',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+      research: {
+        tier: 'quick',
+        assistModel: 'gemini-3.1-flash-lite-preview',
+        costEstimate: '$1–3 / task',
         timeEstimate: 'under 20 min',
       },
-      thorough: {
-        modelId: 'deep-research-max-preview-04-2026',
-        label: 'Thorough',
-        costEstimate: '$3–7',
+    },
+    {
+      id: 'deep-research-max-preview-04-2026',
+      name: 'Deep Research Max',
+      description: 'Autonomous agent for exhaustive, cross-checked web research and cited reports on deep or high-stakes topics, for $3–7 per task',
+      contextLength: 1_000_000,
+      maxOutputTokens: 65_536,
+      price: {
+        tokens: 1_000_000,
+        input: '$3–7 / task',
+        output: '',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+      research: {
+        tier: 'thorough',
+        assistModel: 'gemini-3.1-flash-lite-preview',
+        costEstimate: '$3–7 / task',
         timeEstimate: 'up to 60 min',
       },
     },
-  },
+  ],
 }

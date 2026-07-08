@@ -13,7 +13,6 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
-  ResearchLevelSetting,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
@@ -509,24 +508,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }))
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
-  )
-  const savedResearchLevel = customRef<ResearchLevelSetting>(
-    (track, trigger) => ({
-      get() {
-        track()
-
-        return normalizeResearchLevelSetting(
-          prefStorage.getItem('settings_research_level'),
-        )
-      },
-      set(value) {
-        prefStorage.setItem('settings_research_level', value)
-        trigger()
-      },
-    }),
-  )
-  const researchLevel = shallowRef<ResearchLevelSetting>(
-    savedResearchLevel.value,
   )
   const pendingClarification = shallowRef<
     ResearchClarificationResponse | null
@@ -1049,9 +1030,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
-    const level = researchLevel.value
+    const { model } = getModel(userModel.value)
 
-    if (!isDeepResearchActive(level)) {
+    if (!isDeepResearchModel(model)) {
       useErrorMessage(
         'Failed to start research',
         'Research mode is no longer active for this model.',
@@ -1062,7 +1043,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
     const started = await startResearchJob({
       userMessage: { id: ulid(), parts },
-      level,
       answers,
     })
 
@@ -1084,9 +1064,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     }
 
     const topic = input.value
+    const { model } = getModel(userModel.value)
 
     if (
-      isDeepResearchActive(researchLevel.value)
+      isDeepResearchModel(model)
       && !pendingClarification.value
       && topic.trim()
     ) {
@@ -1222,13 +1203,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     flush: 'post',
   })
 
-  watch(researchLevel, (level) => {
-    savedResearchLevel.value = level
-  }, {
-    immediate: true,
-    flush: 'post',
-  })
-
   return {
     chatSdk,
     input,
@@ -1247,7 +1221,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     shouldDisplayMessage,
     files,
     currentTurnStartedAt,
-    researchLevel,
     pendingClarification,
     pendingResearchTopic,
     isClarifying,

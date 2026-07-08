@@ -29,8 +29,9 @@ describe('openai research adapter', () => {
     const result = await openAiResearchAdapter.start({
       apiKey: 'sk-test',
       modelId: 'o4-mini-deep-research',
-      level: 'quick',
+      tier: 'quick',
       brief: 'Research the topic',
+      maxToolCalls: 30,
     })
 
     expect(result).toEqual({ providerJobId: 'resp_abc123', status: 'running' })
@@ -50,7 +51,7 @@ describe('openai research adapter', () => {
     expect(body.model).toBe('o4-mini-deep-research')
     expect(body.background).toBe(true)
     expect(body.store).toBe(true)
-    expect(body.max_tool_calls).toBe(20)
+    expect(body.max_tool_calls).toBe(30)
     expect(body.reasoning).toEqual({ summary: 'auto' })
     expect(body.tools).toEqual([{ type: 'web_search_preview' }])
     expect(body.input[1]).toEqual({
@@ -60,7 +61,28 @@ describe('openai research adapter', () => {
     expect(JSON.stringify(init)).not.toContain('sk-test-leak')
   })
 
-  it('uses a higher tool-call budget for the thorough level', async () => {
+  it('falls back to a default of 30 max tool calls when none is provided', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      id: 'resp_abc123',
+      status: 'queued',
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    await openAiResearchAdapter.start({
+      apiKey: 'sk-test',
+      modelId: 'o4-mini-deep-research',
+      tier: 'quick',
+      brief: 'Research the topic',
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(init.body as string)
+
+    expect(body.max_tool_calls).toBe(30)
+  })
+
+  it('uses the max tool calls provided by the model research config', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
       id: 'resp_abc123',
       status: 'queued',
@@ -71,8 +93,9 @@ describe('openai research adapter', () => {
     await openAiResearchAdapter.start({
       apiKey: 'sk-test',
       modelId: 'o3-deep-research',
-      level: 'thorough',
+      tier: 'thorough',
       brief: 'Research the topic',
+      maxToolCalls: 60,
     })
 
     const [, init] = fetchMock.mock.calls[0]

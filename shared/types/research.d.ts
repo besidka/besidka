@@ -2,8 +2,6 @@ import type { ChatErrorPayload } from './chat-errors.d'
 
 export type ResearchLevel = 'quick' | 'thorough'
 
-export type ResearchLevelSetting = 'off' | ResearchLevel
-
 export type ResearchJobStatus
   = | 'pending'
     | 'running'
@@ -13,16 +11,12 @@ export type ResearchJobStatus
 
 export type ResearchProviderId = 'openai' | 'google'
 
-export interface ResearchLevelConfig {
-  modelId: string
-  label: string
+export interface ModelResearchConfig {
+  tier: ResearchLevel
+  assistModel: string
   costEstimate: string
   timeEstimate: string
-}
-
-export interface ProviderResearchCapability {
-  assistModel: string
-  levels: Record<ResearchLevel, ResearchLevelConfig>
+  maxToolCalls?: number
 }
 
 export interface ResearchClarificationQuestion {

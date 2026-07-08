@@ -1,7 +1,10 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import * as schema from '~~/server/db/schema'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import { rewriteBranchedChatFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
+
+const RECENTLY_FAILED_RESEARCH_JOB_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -82,17 +85,35 @@ export default defineEventHandler(async (event) => {
     )
     : messages
 
-  const activeJob = await db.query.researchJobs.findFirst({
-    where: {
-      chatId: chat.id,
-      status: { in: ['pending', 'running'] },
-    },
+  const latestResearchJob = await db.query.researchJobs.findFirst({
+    where: { chatId: chat.id },
     orderBy: { id: 'desc' },
   })
 
   return {
     ...chat,
     messages: resolvedMessages,
-    activeResearchJob: activeJob ? toResearchJobView(activeJob) : null,
+    activeResearchJob: isVisibleResearchJob(latestResearchJob)
+      ? toResearchJobView(latestResearchJob)
+      : null,
   }
 })
+
+function isVisibleResearchJob(
+  job: typeof schema.researchJobs.$inferSelect | undefined,
+): job is typeof schema.researchJobs.$inferSelect {
+  if (!job) {
+    return false
+  }
+
+  if (job.status === 'pending' || job.status === 'running') {
+    return true
+  }
+
+  if (job.status !== 'failed' || !job.completedAt) {
+    return false
+  }
+
+  return Date.now() - job.completedAt.getTime()
+    < RECENTLY_FAILED_RESEARCH_JOB_WINDOW_MS
+}

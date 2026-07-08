@@ -9,19 +9,19 @@ function createHost() {
       const chatInput = useChatInput()
 
       return () => h('div', [
-        h('span', { 'data-testid': 'is-research-supported' }, [
-          String(chatInput.isDeepResearchSupported.value),
+        h('span', { 'data-testid': 'is-deep-research-model' }, [
+          String(chatInput.isDeepResearchModel.value),
         ]),
-        h('span', { 'data-testid': 'research-quick-model' }, [
-          chatInput.researchCapability.value?.levels.quick.modelId ?? '',
+        h('span', { 'data-testid': 'research-assist-model' }, [
+          chatInput.researchConfig.value?.assistModel ?? '',
         ]),
       ])
     },
   })
 }
 
-describe('useChatInput research capability', () => {
-  it('reports research support and levels for an OpenAI model', async () => {
+describe('useChatInput research config', () => {
+  it('reports research config for a dedicated deep research model', async () => {
     const wrapper = await mountSuspended(createHost(), {
       global: {
         provide: {},
@@ -30,18 +30,34 @@ describe('useChatInput research capability', () => {
 
     const { userModel } = useUserModel()
 
+    userModel.value = 'o4-mini-deep-research'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-deep-research-model"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="research-assist-model"]').text(),
+    ).toBeTruthy()
+  })
+
+  it('reports no research config for a regular chat model', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
     userModel.value = 'gpt-5.4'
     await wrapper.vm.$nextTick()
 
     expect(
-      wrapper.get('[data-testid="is-research-supported"]').text(),
-    ).toBe('true')
+      wrapper.get('[data-testid="is-deep-research-model"]').text(),
+    ).toBe('false')
     expect(
-      wrapper.get('[data-testid="research-quick-model"]').text(),
-    ).toBeTruthy()
+      wrapper.get('[data-testid="research-assist-model"]').text(),
+    ).toBe('')
   })
 
-  it('reports no research support for an unknown model', async () => {
+  it('reports no research config for an unknown model', async () => {
     const wrapper = await mountSuspended(createHost())
 
     const { userModel } = useUserModel()
@@ -50,10 +66,10 @@ describe('useChatInput research capability', () => {
     await wrapper.vm.$nextTick()
 
     expect(
-      wrapper.get('[data-testid="is-research-supported"]').text(),
+      wrapper.get('[data-testid="is-deep-research-model"]').text(),
     ).toBe('false')
     expect(
-      wrapper.get('[data-testid="research-quick-model"]').text(),
+      wrapper.get('[data-testid="research-assist-model"]').text(),
     ).toBe('')
   })
 })

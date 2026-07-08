@@ -40,27 +40,16 @@ vi.mock('evlog', () => ({
   },
 }))
 
-function researchCapableProvider() {
+function researchCapableModel() {
   return {
-    id: 'openai',
-    name: 'OpenAI',
-    models: [],
+    id: 'o4-mini-deep-research',
+    name: 'o4-mini Deep Research',
     research: {
+      tier: 'quick' as const,
       assistModel: 'gpt-5.4-nano',
-      levels: {
-        quick: {
-          modelId: 'o4-mini-deep-research',
-          label: 'Quick',
-          costEstimate: '~$1',
-          timeEstimate: '5-15 min',
-        },
-        thorough: {
-          modelId: 'o3-deep-research',
-          label: 'Thorough',
-          costEstimate: '~$10',
-          timeEstimate: '10-30 min',
-        },
-      },
+      costEstimate: '~$1 / task',
+      timeEstimate: '5–15 min',
+      maxToolCalls: 30,
     },
   }
 }
@@ -84,8 +73,8 @@ describe('research clarify API', () => {
       ],
     })
     mocks.useChatProvider.mockReturnValue({
-      provider: researchCapableProvider(),
-      model: { id: 'gpt-5.4' },
+      provider: { id: 'openai', name: 'OpenAI', models: [] },
+      model: researchCapableModel(),
     })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
@@ -139,7 +128,7 @@ describe('research clarify API', () => {
     })
   })
 
-  it('rejects a model whose provider has no research capability', async () => {
+  it('rejects a model that is not a dedicated deep research model', async () => {
     mocks.useChatProvider.mockReturnValue({
       provider: { id: 'google', name: 'Google', models: [] },
       model: { id: 'gemini-2.5-flash' },

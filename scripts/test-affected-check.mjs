@@ -185,13 +185,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/DeepResearchMeta.spec.ts',
     'tests/unit/components/Chat/DeepResearchPending.spec.ts',
     'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
-    'tests/unit/components/ChatInput/DeepResearchMenuItems.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/composables/chat-research.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
     'tests/integration/api/chats-research-clarify.spec.ts',
     'tests/integration/api/chats-research-start.spec.ts',
     'tests/integration/api/chats-research-status.spec.ts',
     'tests/integration/api/chats-research-cancel.spec.ts',
+    'tests/integration/api/chats-detail.spec.ts',
     'tests/integration/server/research-job-sweep-plugin.spec.ts',
   ]
 
@@ -362,12 +363,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(providers\/(openai|google)\.ts|shared\/types\/research\.d\.ts|shared\/utils\/research\.ts|app\/utils\/research\.ts)$/,
+        /^(providers\/(openai|google)\.ts|shared\/types\/(research|providers)\.d\.ts|shared\/utils\/research\.ts|app\/utils\/research\.ts)$/,
       tests: deepResearchTests,
     },
     {
       pattern:
-        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/composables\/(chat-research|chat-input)\.ts)$/,
+        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/components\/ChatInput\/ModelsTrigger\.vue|app\/composables\/(chat-research|chat-input)\.ts)$/,
       tests: deepResearchTests,
     },
     {

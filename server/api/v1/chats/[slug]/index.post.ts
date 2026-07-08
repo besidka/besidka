@@ -319,6 +319,15 @@ export default defineEventHandler(async (event) => {
 
   const { provider, model } = useChatProvider(userModel)
 
+  if (model.research) {
+    throw createError({
+      message: 'This model only runs deep research.',
+      status: 400,
+      why: 'Deep research models cannot serve normal streaming chat.',
+      fix: 'Send this message through the deep research flow instead.',
+    })
+  }
+
   // Nuxt/Nitro emits the parent request wide event the moment this handler
   // returns the streaming Response — BEFORE the AI stream finishes — so the
   // `ai.{tokens, cost, ...}` we capture in streamText's `onEnd` would land on

@@ -21,13 +21,13 @@
           data-testid="research-pending-level"
           class="text-xs text-base-content/70"
         >
-          {{ levelConfig?.label ?? job.level }} · {{ job.modelId }}
+          {{ modelName }} · {{ tierLabel }}
         </div>
         <p
-          v-if="levelConfig?.timeEstimate"
+          v-if="timeEstimate"
           class="text-xs text-base-content/60"
         >
-          This can take {{ levelConfig.timeEstimate }} — you can leave; we'll
+          This can take {{ timeEstimate }} — you can leave; we'll
           notify you when it's ready.
         </p>
       </template>
@@ -88,10 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import type {
-  ResearchJobView,
-  ResearchLevelConfig,
-} from '#shared/types/research.d'
+import type { ResearchJobView } from '#shared/types/research.d'
 
 const props = defineProps<{
   job: ResearchJobView
@@ -118,7 +115,15 @@ const elapsedLabel = computed<string>(() => {
   return formatResearchElapsed(props.elapsedMs)
 })
 
-const levelConfig = computed<ResearchLevelConfig | null>(() => {
-  return getResearchProviderConfig(props.job.provider, props.job.level)
+const modelName = computed<string>(() => {
+  return getModelName(props.job.modelId)
+})
+
+const tierLabel = computed<string>(() => {
+  return props.job.level === 'thorough' ? 'Thorough' : 'Quick'
+})
+
+const timeEstimate = computed<string>(() => {
+  return getModel(props.job.modelId).model?.research?.timeEstimate ?? ''
 })
 </script>

@@ -7,8 +7,9 @@ import type {
 export interface ResearchStartInput {
   apiKey: string
   modelId: string
-  level: ResearchLevel
+  tier: ResearchLevel
   brief: string
+  maxToolCalls?: number
 }
 
 export interface ResearchStartResult {

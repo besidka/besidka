@@ -21,7 +21,6 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    level: z.enum(['quick', 'thorough']),
     userMessage: z.object({
       id: z.string().nonempty(),
       parts: z.array(z.any()).min(1),
@@ -38,6 +37,19 @@ export default defineEventHandler(async (event) => {
       message: 'Invalid request body',
       status: 400,
       why: body.error.message,
+    })
+  }
+
+  const nonTextPartsCount = body.data.userMessage.parts.filter((part) => {
+    return part?.type !== 'text'
+  }).length
+
+  if (nonTextPartsCount > 0) {
+    throw createError({
+      message: 'Deep research only supports text-only prompts for now.',
+      status: 400,
+      why: 'The message included attachments, which research models ignore.',
+      fix: 'Remove the attachments and resend your research request.',
     })
   }
 
@@ -86,7 +98,6 @@ export default defineEventHandler(async (event) => {
     userId,
     chatId: chat.id,
     operation: 'research-start',
-    level: body.data.level,
     hasAnswers: Boolean(body.data.answers?.length),
   })
 
@@ -141,11 +152,10 @@ export default defineEventHandler(async (event) => {
       parts: body.data.userMessage.parts as UIMessage['parts'],
     },
     model: body.data.model,
-    level: body.data.level,
     answers: body.data.answers,
   })
 
-  logger.set({ jobId: result.jobId, jobStatus: result.status })
+  logger.set({ jobId: result.job.publicId, jobStatus: result.job.status })
 
   return result
 })

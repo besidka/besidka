@@ -485,7 +485,7 @@ describe('chats new page', () => {
   it('routes into the clarify flow and starts research with the answers', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('settings_research_level', 'quick')
+    storage.setItem('model', 'o4-mini-deep-research')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
@@ -541,11 +541,11 @@ describe('chats new page', () => {
       return url === '/api/v1/chats/new'
     })
     const createCallOptions = createCall?.[1] as {
-      body: { research: { level: string, answers: unknown[] } }
+      body: { model: string, research: { answers: unknown[] } }
     } | undefined
 
+    expect(createCallOptions?.body.model).toBe('o4-mini-deep-research')
     expect(createCallOptions?.body.research).toEqual({
-      level: 'quick',
       answers: [
         {
           id: 'audience',
@@ -559,7 +559,7 @@ describe('chats new page', () => {
   it('falls back to starting research with no answers when the clarify request fails', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('settings_research_level', 'thorough')
+    storage.setItem('model', 'o3-deep-research')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
@@ -597,11 +597,11 @@ describe('chats new page', () => {
       return url === '/api/v1/chats/new'
     })
     const createCallOptions = createCall?.[1] as {
-      body: { research: { level: string, answers: unknown[] } }
+      body: { model: string, research: { answers: unknown[] } }
     } | undefined
 
+    expect(createCallOptions?.body.model).toBe('o3-deep-research')
     expect(createCallOptions?.body.research).toEqual({
-      level: 'thorough',
       answers: [],
     })
   })
@@ -609,7 +609,7 @@ describe('chats new page', () => {
   it('still navigates and shows a toast when starting research returns a soft failure', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('settings_research_level', 'quick')
+    storage.setItem('model', 'o4-mini-deep-research')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 

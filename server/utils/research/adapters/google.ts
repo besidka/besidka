@@ -71,7 +71,7 @@ async function requestGoogle(
 async function start(
   input: ResearchStartInput,
 ): Promise<ResearchStartResult> {
-  const developerPrompt = buildResearcherDeveloperPrompt(input.level)
+  const developerPrompt = buildResearcherDeveloperPrompt(input.tier)
   const body = await requestGoogle('', input.apiKey, {
     method: 'POST',
     body: {

@@ -8,7 +8,10 @@ import type {
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
-import { normalizeChatError } from '~~/server/utils/chats/errors'
+import {
+  mapResearchProviderError,
+  normalizeChatError,
+} from '~~/server/utils/chats/errors'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
 import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
@@ -81,13 +84,46 @@ export async function finalizeResearchJob(
       },
     })
 
+    if (exceptionDetails.status === 404) {
+      await markJobTerminal(
+        db,
+        job.id,
+        'failed',
+        buildProviderJobGoneError(job.provider),
+      )
+
+      return 'failed'
+    }
+
+    if (exceptionDetails.status === 401 || exceptionDetails.status === 403) {
+      await markJobTerminal(
+        db,
+        job.id,
+        'failed',
+        mapResearchProviderError({
+          error: exception,
+          providerId: job.provider,
+          code: 'provider-auth',
+          message: 'The research provider rejected access to this job.',
+        }),
+      )
+
+      return 'failed'
+    }
+
+    if (hasExceededOverallCap(job)) {
+      await markJobTerminal(db, job.id, 'failed', buildTimeoutError())
+
+      return 'failed'
+    }
+
+    await touchResearchJob(db, job.id)
+
     return 'still-running'
   }
 
   if (statusResult.status === 'running') {
-    const startedAt = job.startedAt?.getTime() ?? job.createdAt.getTime()
-
-    if (Date.now() - startedAt > OVERALL_CAP_MS) {
+    if (hasExceededOverallCap(job)) {
       try {
         await adapter.cancel(job.providerJobId, apiKey)
       } catch (exception) {
@@ -107,6 +143,8 @@ export async function finalizeResearchJob(
 
       return 'failed'
     }
+
+    await touchResearchJob(db, job.id)
 
     return 'still-running'
   }
@@ -149,6 +187,8 @@ export async function finalizeResearchJob(
       },
     })
 
+    await touchResearchJob(db, job.id)
+
     return 'still-running'
   }
 
@@ -179,41 +219,57 @@ export async function finalizeResearchJob(
 
   const parts = buildResearchAssistantParts({ result, job, durationMs })
 
-  await insertMessageWithPublicId({
-    db,
-    values: {
-      chatId: job.chatId,
-      role: 'assistant',
-      parts,
-      tools: [],
-      reasoning: 'off',
-      usage: null,
-    },
-    publicId: assistantPublicId,
-  })
-
-  await db.update(schema.chats)
-    .set({ activityAt: new Date() })
-    .where(eq(schema.chats.id, job.chatId))
-
-  const chat = await db.query.chats.findFirst({
-    where: { id: job.chatId },
-    columns: { slug: true },
-  })
-
-  if (chat && input.waitUntil && isPushConfigured(input.vapid)) {
-    input.waitUntil(sendPushNotificationToUser(
+  try {
+    await insertMessageWithPublicId({
       db,
-      job.userId,
-      {
-        title: 'Your research is ready',
-        body: 'Tap to view your report.',
-        url: `/chats/${chat.slug}`,
-        tag: 'besidka-research-ready',
+      values: {
+        chatId: job.chatId,
+        role: 'assistant',
+        parts,
+        tools: [],
+        reasoning: 'off',
+        usage: null,
       },
-      input.vapid,
-      input.waitUntil,
-    ))
+      publicId: assistantPublicId,
+    })
+
+    await db.update(schema.chats)
+      .set({ activityAt: new Date() })
+      .where(eq(schema.chats.id, job.chatId))
+
+    const chat = await db.query.chats.findFirst({
+      where: { id: job.chatId },
+      columns: { slug: true },
+    })
+
+    if (chat && input.waitUntil && isPushConfigured(input.vapid)) {
+      input.waitUntil(sendPushNotificationToUser(
+        db,
+        job.userId,
+        {
+          title: 'Your research is ready',
+          body: 'Tap to view your report.',
+          url: `/chats/${chat.slug}`,
+          tag: 'besidka-research-ready',
+        },
+        input.vapid,
+        input.waitUntil,
+      ))
+    }
+  } catch (exception) {
+    await revertResearchJobCompletionClaim(db, job.id, assistantPublicId)
+
+    logger.set({
+      research: {
+        phase: 'finalize-persist',
+        jobId: job.id,
+        error: exception instanceof Error
+          ? exception.message
+          : String(exception),
+      },
+    })
+
+    return 'still-running'
   }
 
   logger.set({
@@ -243,6 +299,44 @@ async function markJobTerminal(
     .where(and(
       eq(schema.researchJobs.id, jobId),
       inArray(schema.researchJobs.status, ['pending', 'running']),
+    ))
+}
+
+function hasExceededOverallCap(
+  job: typeof schema.researchJobs.$inferSelect,
+): boolean {
+  const startedAt = job.startedAt?.getTime() ?? job.createdAt.getTime()
+
+  return Date.now() - startedAt > OVERALL_CAP_MS
+}
+
+async function touchResearchJob(
+  db: ReturnType<typeof useDb>,
+  jobId: string,
+): Promise<void> {
+  await db.update(schema.researchJobs)
+    .set({ updatedAt: new Date() })
+    .where(and(
+      eq(schema.researchJobs.id, jobId),
+      inArray(schema.researchJobs.status, ['pending', 'running']),
+    ))
+}
+
+async function revertResearchJobCompletionClaim(
+  db: ReturnType<typeof useDb>,
+  jobId: string,
+  claimedResultMessageId: string,
+): Promise<void> {
+  await db.update(schema.researchJobs)
+    .set({
+      status: 'running',
+      resultMessageId: null,
+      completedAt: null,
+    })
+    .where(and(
+      eq(schema.researchJobs.id, jobId),
+      eq(schema.researchJobs.status, 'completed'),
+      eq(schema.researchJobs.resultMessageId, claimedResultMessageId),
     ))
 }
 
@@ -310,6 +404,17 @@ function buildTimeoutError(): ChatErrorPayload {
   return normalizeChatError({
     error: new Error('Research run exceeded the maximum allowed time'),
     code: 'research-timeout',
+  })
+}
+
+function buildProviderJobGoneError(
+  providerId: ResearchProviderId,
+): ChatErrorPayload {
+  return normalizeChatError({
+    error: new Error('The research job no longer exists at the provider'),
+    code: 'provider-unavailable',
+    providerId,
+    why: 'The research provider could not find this job anymore.',
   })
 }
 

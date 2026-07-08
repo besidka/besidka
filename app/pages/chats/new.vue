@@ -42,7 +42,6 @@
     v-model:files="files"
     v-model:tools="tools"
     v-model:reasoning="reasoning"
-    v-model:research-level="researchLevel"
     display-project-picker
     :project-context="projectContext"
     :messages-length="0"
@@ -68,7 +67,6 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
   ResearchAnswer,
   ResearchClarificationResponse,
-  ResearchLevelSetting,
 } from '#shared/types/research.d'
 
 definePageMeta({
@@ -117,19 +115,6 @@ nuxtApp.hook('chat-input:height', (height: number) => {
   clarifyInputHeight.value = height
 })
 
-const researchLevel = customRef<ResearchLevelSetting>((track, trigger) => ({
-  get() {
-    track()
-
-    return normalizeResearchLevelSetting(
-      prefStorage.getItem('settings_research_level'),
-    )
-  },
-  set(value) {
-    prefStorage.setItem('settings_research_level', value)
-    trigger()
-  },
-}))
 const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
   get() {
     track()
@@ -423,8 +408,8 @@ async function createResearchChat(
         ] as (TextUIPart | FileUIPart)[],
         tools: tools.value,
         reasoning: reasoning.value,
+        model: userModel.value,
         research: {
-          level: researchLevel.value,
           answers,
         },
         ...(projectId.value ? { projectId: projectId.value } : {}),
@@ -546,9 +531,10 @@ async function onSubmit() {
   const draft = message.value
   const draftFiles = [...files.value]
   const draftBackup = useChatDraftBackup()
+  const { model } = getModel(userModel.value)
 
   if (
-    isDeepResearchActive(researchLevel.value)
+    isDeepResearchModel(model)
     && !pendingClarification.value
     && draft.trim()
   ) {

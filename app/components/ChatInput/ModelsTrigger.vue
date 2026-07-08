@@ -58,10 +58,7 @@
                       'tooltip tooltip-right': $device.isDesktop
                     }"
                     :aria-label="`Choose ${model.name}`"
-                    :data-tip="model.price
-                      ? `${model.price.input} / ${model.price.output}`
-                      : undefined
-                    "
+                    :data-tip="getModelPriceTip(model)"
                     @click="selectModel(model.id)"
                   >
                     <span class="grow">{{ model.name }}</span>
@@ -95,6 +92,20 @@
                           class="text-info"
                         />
                       </span>
+                      <span
+                        v-if="model.research"
+                        class="shrink-0 flex items-center p-0.5 rounded-full bg-success-content"
+                        :class="{
+                          'tooltip tooltip-success tooltip-top':
+                            $device.isDesktop
+                        }"
+                        data-tip="Deep research"
+                      >
+                        <Icon
+                          name="lucide:telescope"
+                          class="text-success"
+                        />
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -108,6 +119,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Model } from '#shared/types/providers.d'
+
 defineProps<{
   isWebSearchEnabled: boolean
   isReasoningEnabled: boolean
@@ -116,6 +129,18 @@ defineProps<{
 const { userModel } = useUserModel()
 const { providers } = getProviders()
 const { isIos, isAndroid } = useDevice()
+
+function getModelPriceTip(model: Model): string | undefined {
+  if (model.research) {
+    return `${model.research.costEstimate} · ${model.research.timeEstimate}`
+  }
+
+  if (!model.price) {
+    return undefined
+  }
+
+  return `${model.price.input} / ${model.price.output}`
+}
 
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 const isDropdownHovered = useElementHover(dropdown)

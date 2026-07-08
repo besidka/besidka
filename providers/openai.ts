@@ -171,22 +171,53 @@ export default {
         levels: ['low', 'medium', 'high'],
       },
     },
-  ],
-  research: {
-    assistModel: 'gpt-5.4-nano',
-    levels: {
-      quick: {
-        modelId: 'o4-mini-deep-research',
-        label: 'Quick',
-        costEstimate: '~$1',
-        timeEstimate: '5–15 min',
+    {
+      id: 'o4-mini-deep-research',
+      name: 'o4-mini Deep Research',
+      description: 'Autonomous agent that browses the web, cross-checks sources, and writes a cited research report for around $1 per task',
+      contextLength: 200_000,
+      maxOutputTokens: 100_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$2.00',
+        output: '$8.00',
       },
-      thorough: {
-        modelId: 'o3-deep-research',
-        label: 'Thorough',
-        costEstimate: '~$10',
-        timeEstimate: '10–30 min',
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+      research: {
+        tier: 'quick',
+        assistModel: 'gpt-5.4-nano',
+        costEstimate: '~$1 / task',
+        timeEstimate: '5–15 min',
+        maxToolCalls: 30,
       },
     },
-  },
+    {
+      id: 'o3-deep-research',
+      name: 'o3 Deep Research',
+      description: 'Autonomous agent for exhaustive, cross-checked web research and cited reports on deep or high-stakes topics, around $10 per task',
+      contextLength: 200_000,
+      maxOutputTokens: 100_000,
+      price: {
+        tokens: 1_000_000,
+        input: '$10.00',
+        output: '$40.00',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text'],
+      },
+      tools: [],
+      research: {
+        tier: 'thorough',
+        assistModel: 'gpt-5.4-nano',
+        costEstimate: '~$10 / task',
+        timeEstimate: '10–30 min',
+        maxToolCalls: 60,
+      },
+    },
+  ],
 }

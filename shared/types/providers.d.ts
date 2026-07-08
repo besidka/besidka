@@ -1,5 +1,5 @@
 import type { ReasoningCapability } from './reasoning.d'
-import type { ProviderResearchCapability } from './research.d'
+import type { ModelResearchConfig } from './research.d'
 
 export interface Model {
   id: string
@@ -20,13 +20,13 @@ export interface Model {
   }
   tools: Array<'web_search'>
   reasoning?: ReasoningCapability
+  research?: ModelResearchConfig
 }
 
 export interface Provider {
   id: string
   name: string
   models: Model[]
-  research?: ProviderResearchCapability
 }
 
 export type Providers = Provider[]

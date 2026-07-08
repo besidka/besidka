@@ -47,7 +47,7 @@ describe('Chat/DeepResearchMeta', () => {
 
     expect(meta.text()).toContain('Deep research')
     expect(meta.text()).toContain('Thorough')
-    expect(meta.text()).toContain('o3-deep-research')
+    expect(meta.text()).toContain('o3 Deep Research')
     expect(meta.text()).toContain('2:05')
   })
 
@@ -69,7 +69,8 @@ describe('Chat/DeepResearchMeta', () => {
 
     const meta = wrapper.get('[data-testid="research-meta"]')
 
-    expect(meta.text()).toContain('deep-research-preview-04-2026')
+    expect(meta.text()).toContain('Deep Research')
+    expect(meta.text()).toContain('Quick')
     expect(meta.text()).not.toMatch(/\d+:\d{2}/)
   })
 })

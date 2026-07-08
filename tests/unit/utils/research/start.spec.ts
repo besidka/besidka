@@ -52,21 +52,16 @@ function renderWhereTokens(whereArg: unknown): string {
 }
 
 const mocks = vi.hoisted(() => ({
-  useChatProvider: vi.fn(() => ({
+  getModel: vi.fn(() => ({
+    model: { id: 'o4-mini-deep-research' },
     provider: { id: 'openai', name: 'OpenAI' },
   })),
-  getProviderResearch: vi.fn(() => ({
+  getModelResearch: vi.fn(() => ({
+    tier: 'quick',
     assistModel: 'gpt-5.4-nano',
-    levels: {
-      quick: { modelId: 'o4-mini-deep-research' },
-      thorough: { modelId: 'o4-mini-deep-research' },
-    },
-  })),
-  resolveResearchModel: vi.fn(() => ({
-    modelId: 'o4-mini-deep-research',
-    label: 'Quick',
-    costEstimate: '$',
-    timeEstimate: '5m',
+    costEstimate: '~$1 / task',
+    timeEstimate: '5–15 min',
+    maxToolCalls: 30,
   })),
   getDecryptedProviderKey: vi.fn(async () => 'decrypted-api-key'),
   buildResearchAssistModelInstance: vi.fn(async () => ({}) as any),
@@ -79,13 +74,12 @@ const mocks = vi.hoisted(() => ({
   })),
 }))
 
-vi.mock('~~/server/utils/chats/provider', () => ({
-  useChatProvider: mocks.useChatProvider,
+vi.mock('#shared/utils/model', () => ({
+  getModel: mocks.getModel,
 }))
 
 vi.mock('#shared/utils/research', () => ({
-  getProviderResearch: mocks.getProviderResearch,
-  resolveResearchModel: mocks.resolveResearchModel,
+  getModelResearch: mocks.getModelResearch,
 }))
 
 vi.mock('~~/server/utils/research/keys', () => ({
@@ -112,8 +106,19 @@ function createDb(input: {
   activeJobCount?: number
   insertError?: unknown
   claimedJob?: { id: string }
+  startUpdateReturnsUndefined?: boolean
+  startUpdateError?: unknown
+  currentJob?: Record<string, unknown> | null
 } = {}) {
-  const updateWhere = vi.fn(async () => undefined)
+  const startUpdateGet = input.startUpdateError
+    ? vi.fn(async () => {
+      throw input.startUpdateError
+    })
+    : vi.fn(async () => (
+      input.startUpdateReturnsUndefined ? undefined : { id: 'job-1' }
+    ))
+  const returning = vi.fn(() => ({ get: startUpdateGet }))
+  const updateWhere = vi.fn(() => ({ returning }))
   const updateSet = vi.fn(() => ({ where: updateWhere }))
   const update = vi.fn(() => ({ set: updateSet }))
   const insertGet = input.insertError
@@ -130,17 +135,30 @@ function createDb(input: {
   ])
   const selectFrom = vi.fn(() => ({ where: selectWhere }))
   const select = vi.fn(() => ({ from: selectFrom }))
+  const researchJobsFindFirst = vi.fn(async () => (
+    input.currentJob === undefined ? null : input.currentJob
+  ))
 
   return {
-    db: { select, insert, update },
+    db: {
+      select,
+      insert,
+      update,
+      query: {
+        researchJobs: { findFirst: researchJobsFindFirst },
+      },
+    },
     update,
     updateSet,
     updateWhere,
+    returning,
+    startUpdateGet,
     insert,
     insertValues,
     insertGet,
     select,
     selectWhere,
+    researchJobsFindFirst,
   }
 }
 
@@ -161,29 +179,23 @@ function createInput(overrides: Partial<{
       id: 'user-message-1',
       parts: [{ type: 'text', text: 'Research this' }] as UIMessage['parts'],
     },
-    model: 'gpt-5.4-nano',
-    level: 'quick' as const,
+    model: 'o4-mini-deep-research',
   }
 }
 
 describe('startResearchJobForChat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.useChatProvider.mockReturnValue({
+    mocks.getModel.mockReturnValue({
+      model: { id: 'o4-mini-deep-research' } as any,
       provider: { id: 'openai', name: 'OpenAI' } as any,
     })
-    mocks.getProviderResearch.mockReturnValue({
+    mocks.getModelResearch.mockReturnValue({
+      tier: 'quick',
       assistModel: 'gpt-5.4-nano',
-      levels: {
-        quick: { modelId: 'o4-mini-deep-research' },
-        thorough: { modelId: 'o4-mini-deep-research' },
-      },
-    } as any)
-    mocks.resolveResearchModel.mockReturnValue({
-      modelId: 'o4-mini-deep-research',
-      label: 'Quick',
-      costEstimate: '$',
-      timeEstimate: '5m',
+      costEstimate: '~$1 / task',
+      timeEstimate: '5–15 min',
+      maxToolCalls: 30,
     } as any)
     mocks.getDecryptedProviderKey.mockResolvedValue('decrypted-api-key')
     mocks.buildResearchAssistModelInstance.mockResolvedValue({} as any)
@@ -202,12 +214,23 @@ describe('startResearchJobForChat', () => {
 
     const result = await startResearchJobForChat(createInput({ db }))
 
-    expect(result).toEqual({ jobId: 'job-1', status: 'running' })
+    expect(result).toEqual({
+      job: expect.objectContaining({
+        publicId: 'job-1',
+        status: 'running',
+        provider: 'openai',
+        level: 'quick',
+        modelId: 'o4-mini-deep-research',
+        error: null,
+        resultMessageId: null,
+      }),
+    })
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
       chatId: 'chat-1',
       userId: 1,
       provider: 'openai',
       level: 'quick',
+      modelId: 'o4-mini-deep-research',
       status: 'pending',
     }))
     expect(mocks.rewriteResearchBrief).toHaveBeenCalledWith(
@@ -275,6 +298,75 @@ describe('startResearchJobForChat', () => {
     expect(renderedWhere).toContain('running')
   })
 
+  it('returns the job\'s real state and cancels the provider job when it was cancelled during start', async () => {
+    const cancel = vi.fn(async () => undefined)
+
+    mocks.getResearchAdapter.mockReturnValue({
+      start: vi.fn(async () => ({
+        providerJobId: 'resp_abc123',
+        status: 'running',
+      })),
+      cancel,
+    })
+
+    const { db, researchJobsFindFirst } = createDb({
+      startUpdateReturnsUndefined: true,
+      currentJob: {
+        id: 'job-1',
+        status: 'cancelled',
+        provider: 'openai',
+        level: 'quick',
+        modelId: 'o4-mini-deep-research',
+        startedAt: null,
+        error: null,
+        resultMessageId: null,
+      },
+    })
+    const { startResearchJobForChat } = await importStart()
+
+    const result = await startResearchJobForChat(createInput({ db }))
+
+    expect(result).toEqual({
+      job: expect.objectContaining({
+        publicId: 'job-1',
+        status: 'cancelled',
+      }),
+    })
+    expect(cancel).toHaveBeenCalledWith('resp_abc123', 'decrypted-api-key')
+    expect(researchJobsFindFirst).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels the provider job and marks the row failed when storing the provider job id throws', async () => {
+    const cancel = vi.fn(async () => undefined)
+
+    mocks.getResearchAdapter.mockReturnValue({
+      start: vi.fn(async () => ({
+        providerJobId: 'resp_abc123',
+        status: 'running',
+      })),
+      cancel,
+    })
+
+    const { db, updateWhere } = createDb({
+      startUpdateError: new Error('D1_ERROR: write failed'),
+    })
+    const { startResearchJobForChat } = await importStart()
+
+    await expect(startResearchJobForChat(createInput({ db })))
+      .rejects.toMatchObject({ status: 500 })
+
+    expect(cancel).toHaveBeenCalledWith('resp_abc123', 'decrypted-api-key')
+    expect(updateWhere).toHaveBeenCalledTimes(2)
+
+    const renderedFailureWhere = renderWhereTokens(
+      updateWhere.mock.calls[1][0],
+    )
+
+    expect(renderedFailureWhere).toContain('status')
+    expect(renderedFailureWhere).toContain('pending')
+    expect(renderedFailureWhere).toContain('running')
+  })
+
   it('rejects with 429 when the user already has 3 active research jobs', async () => {
     const { db, insert } = createDb({ activeJobCount: 3 })
     const { startResearchJobForChat } = await importStart()
@@ -305,34 +397,42 @@ describe('startResearchJobForChat', () => {
 describe('resolveResearchStartContext', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.useChatProvider.mockReturnValue({
+    mocks.getModel.mockReturnValue({
+      model: { id: 'o4-mini-deep-research' } as any,
       provider: { id: 'openai', name: 'OpenAI' } as any,
     })
-    mocks.getProviderResearch.mockReturnValue({
+    mocks.getModelResearch.mockReturnValue({
+      tier: 'quick',
       assistModel: 'gpt-5.4-nano',
-      levels: {
-        quick: { modelId: 'o4-mini-deep-research' },
-        thorough: { modelId: 'o4-mini-deep-research' },
-      },
-    } as any)
-    mocks.resolveResearchModel.mockReturnValue({
-      modelId: 'o4-mini-deep-research',
-      label: 'Quick',
-      costEstimate: '$',
-      timeEstimate: '5m',
+      costEstimate: '~$1 / task',
+      timeEstimate: '5–15 min',
+      maxToolCalls: 30,
     } as any)
     mocks.getDecryptedProviderKey.mockResolvedValue('decrypted-api-key')
   })
 
-  it('rejects with 400 when the provider has no research capability', async () => {
-    mocks.getProviderResearch.mockReturnValue(null)
+  it('rejects with 400 when the model is not found', async () => {
+    mocks.getModel.mockReturnValue({
+      model: null as any,
+      provider: null as any,
+    })
 
     const { resolveResearchStartContext } = await importStart()
 
     await expect(resolveResearchStartContext({
       userId: 1,
-      model: 'gpt-5.4-nano',
-      level: 'quick',
+      model: 'not-a-real-model',
+    })).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('rejects with 400 when the model has no research capability', async () => {
+    mocks.getModelResearch.mockReturnValue(null)
+
+    const { resolveResearchStartContext } = await importStart()
+
+    await expect(resolveResearchStartContext({
+      userId: 1,
+      model: 'gpt-5.4',
     })).rejects.toMatchObject({ status: 400 })
   })
 
@@ -343,22 +443,22 @@ describe('resolveResearchStartContext', () => {
 
     await expect(resolveResearchStartContext({
       userId: 1,
-      model: 'gpt-5.4-nano',
-      level: 'quick',
+      model: 'o4-mini-deep-research',
     })).rejects.toMatchObject({ status: 401 })
   })
 
-  it('resolves the provider, research, level config, and API key', async () => {
+  it('resolves the provider, model, research config, and API key', async () => {
     const { resolveResearchStartContext } = await importStart()
 
     const context = await resolveResearchStartContext({
       userId: 1,
-      model: 'gpt-5.4-nano',
-      level: 'quick',
+      model: 'o4-mini-deep-research',
     })
 
     expect(context.supportedProviderId).toBe('openai')
     expect(context.apiKey).toBe('decrypted-api-key')
-    expect(context.levelConfig.modelId).toBe('o4-mini-deep-research')
+    expect(context.model.id).toBe('o4-mini-deep-research')
+    expect(context.research.tier).toBe('quick')
+    expect(context.research.assistModel).toBe('gpt-5.4-nano')
   })
 })

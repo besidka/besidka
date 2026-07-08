@@ -4,7 +4,6 @@ import type {
   ResearchAnswer,
   ResearchJobStatus,
   ResearchJobView,
-  ResearchLevel,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
 
@@ -22,7 +21,6 @@ export interface StartResearchJobInput {
     id: string
     parts: UIMessage['parts']
   }
-  level: ResearchLevel
   answers?: ResearchAnswer[]
 }
 
@@ -246,7 +244,6 @@ export function useChatResearch(options: UseChatResearchOptions) {
           method: 'POST',
           body: {
             model: userModel.value,
-            level: input.level,
             userMessage: input.userMessage,
             answers: input.answers,
           },

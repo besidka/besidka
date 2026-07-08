@@ -32,7 +32,7 @@
     }"
   >
     <LazyChatInputFilesDropZone
-      v-if="$device.isDesktop"
+      v-if="$device.isDesktop && !isDeepResearchModel"
       @files-dropped="uploadFiles"
     />
     <LazyChatScroll v-show="isChatScrollButtonVisible" />
@@ -113,13 +113,14 @@
                   </button>
                 </div>
                 <LazyChatInputFilesTrigger
+                  v-if="!isDeepResearchModel"
                   hydrate-on-idle
                   :files="files"
                   @detach-all="files = []"
                   @open="openFilesModal"
                 />
                 <UiButton
-                  v-if="isWebSearchSupported && !isResearchActive"
+                  v-if="isWebSearchSupported && !isDeepResearchModel"
                   mode="accent"
                   :ghost="isWebSearchEnabled ? undefined : true"
                   :circle="!isWebSearchEnabled"
@@ -139,7 +140,7 @@
                   }"
                   @click="toggleWebSearch"
                 />
-                <template v-if="!isResearchActive">
+                <template v-if="!isDeepResearchModel">
                   <LazyChatInputReasoningTrigger
                     v-if="isReasoningSupported && reasoningMode === 'levels'"
                     v-model:reasoning="reasoning"
@@ -175,10 +176,8 @@
                   </UiButton>
                 </template>
                 <LazyChatInputDeepResearchTrigger
-                  v-if="isDeepResearchSupported"
-                  v-model:research-level="researchLevel"
-                  :is-web-search-enabled="isWebSearchEnabled"
-                  :capability="researchCapability"
+                  v-if="isDeepResearchModel"
+                  :research="researchConfig"
                   :disabled="researchJobActive"
                 />
               </div>
@@ -194,10 +193,8 @@
                   ? reasoningCapability.levels
                   : []
                 "
-                :is-deep-research-supported="isDeepResearchSupported"
-                :research-level="researchLevel"
-                :research-capability="researchCapability"
-                :research-job-active="researchJobActive"
+                :is-deep-research-model="isDeepResearchModel"
+                :research="researchConfig"
                 :display-project-picker="shouldDisplayProjectPicker"
                 :project-context="projectContext"
                 :files-count="files.length"
@@ -208,7 +205,6 @@
                 @open-files-upload="openFilesModal('upload')"
                 @select-reasoning-level="reasoning = $event"
                 @toggle-reasoning="toggleReasoning"
-                @select-research-level="researchLevel = $event"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -268,7 +264,6 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import type { ResearchLevelSetting } from '#shared/types/research.d'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -302,8 +297,8 @@ const {
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
-  isDeepResearchSupported,
-  researchCapability,
+  isDeepResearchModel,
+  researchConfig,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -325,16 +320,8 @@ const reasoning = defineModel<ReasoningLevel>('reasoning', {
   default: 'off',
 })
 
-const researchLevel = defineModel<ResearchLevelSetting>('researchLevel', {
-  default: 'off',
-})
-
 const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
-})
-
-const isResearchActive = computed<boolean>(() => {
-  return isDeepResearchActive(researchLevel.value)
 })
 
 const sendButtonTitle = computed<string>(() => {
@@ -347,15 +334,6 @@ const sendButtonTitle = computed<string>(() => {
   }
 
   return hasMessage.value ? 'Send Message' : 'Message is required'
-})
-
-watch(isDeepResearchSupported, (supported) => {
-  if (!supported) {
-    researchLevel.value = 'off'
-  }
-}, {
-  immediate: true,
-  flush: 'post',
 })
 
 const isKeyboardVisible = shallowRef<boolean>(false)

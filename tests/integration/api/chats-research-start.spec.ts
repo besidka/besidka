@@ -2,8 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   startResearchJobForChat: vi.fn(async () => ({
-    jobId: 'job-1',
-    status: 'running',
+    job: {
+      publicId: 'job-1',
+      status: 'running',
+      provider: 'openai',
+      level: 'quick',
+      modelId: 'o4-mini-deep-research',
+      startedAt: Date.now(),
+      error: null,
+      resultMessageId: null,
+    },
   })),
   validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
@@ -89,8 +97,16 @@ describe('research start API', () => {
     vi.resetModules()
     vi.clearAllMocks()
     mocks.startResearchJobForChat.mockResolvedValue({
-      jobId: 'job-1',
-      status: 'running',
+      job: {
+        publicId: 'job-1',
+        status: 'running',
+        provider: 'openai',
+        level: 'quick',
+        modelId: 'o4-mini-deep-research',
+        startedAt: Date.now(),
+        error: null,
+        resultMessageId: null,
+      },
     })
     mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
 
@@ -138,7 +154,6 @@ describe('research start API', () => {
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5.4',
-        level: 'quick',
         userMessage: {
           id: 'user-message-1',
           parts: [{ type: 'text', text: 'Research this topic' }],
@@ -146,7 +161,12 @@ describe('research start API', () => {
       },
     } as any)
 
-    expect(response).toEqual({ jobId: 'job-1', status: 'running' })
+    expect(response).toEqual({
+      job: expect.objectContaining({
+        publicId: 'job-1',
+        status: 'running',
+      }),
+    })
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
       role: 'user',
       parts: [{ type: 'text', text: 'Research this topic' }],
@@ -161,7 +181,6 @@ describe('research start API', () => {
           parts: [{ type: 'text', text: 'Research this topic' }],
         },
         model: 'gpt-5.4',
-        level: 'quick',
         answers: undefined,
       }),
     )
@@ -177,7 +196,6 @@ describe('research start API', () => {
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5.4',
-        level: 'thorough',
         userMessage: {
           id: 'user-message-1',
           parts: [{ type: 'text', text: 'Research this topic' }],
@@ -190,10 +208,38 @@ describe('research start API', () => {
 
     expect(mocks.startResearchJobForChat).toHaveBeenCalledWith(
       expect.objectContaining({
-        level: 'thorough',
         answers: [{ id: 'q1', question: 'Which region?', answer: 'Europe' }],
       }),
     )
+  })
+
+  it('rejects a non-text part in the user message', async () => {
+    const handler = await getStartHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5.4',
+        userMessage: {
+          id: 'user-message-1',
+          parts: [
+            { type: 'text', text: 'Research this topic' },
+            {
+              type: 'file',
+              mediaType: 'application/pdf',
+              url: 'https://example.com/file.pdf',
+            },
+          ],
+        },
+      },
+    } as any)).rejects.toThrow(
+      'Deep research only supports text-only prompts for now.',
+    )
+    expect(insertValues).not.toHaveBeenCalled()
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
   })
 
   it('404s when the chat does not belong to the user', async () => {
@@ -207,7 +253,6 @@ describe('research start API', () => {
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5.4',
-        level: 'quick',
         userMessage: {
           id: 'user-message-1',
           parts: [{ type: 'text', text: 'Research this topic' }],
@@ -233,7 +278,6 @@ describe('research start API', () => {
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5.4',
-        level: 'quick',
         userMessage: {
           id: 'user-message-1',
           parts: [{ type: 'text', text: 'Research this topic' }],
@@ -262,7 +306,6 @@ describe('research start API', () => {
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5.4',
-        level: 'quick',
         userMessage: {
           id: 'user-message-1',
           parts: [{ type: 'text', text: 'Research this topic' }],

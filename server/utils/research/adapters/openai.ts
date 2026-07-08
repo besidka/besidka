@@ -1,4 +1,4 @@
-import type { ResearchJobStatus, ResearchLevel } from '#shared/types/research.d'
+import type { ResearchJobStatus } from '#shared/types/research.d'
 import {
   ResearchAdapterError,
   readResearchAdapterErrorBody,
@@ -15,8 +15,7 @@ import type {
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
 const OPENAI_JOB_ID_PATTERN = /^resp_[A-Za-z0-9_-]{1,128}$/
-const QUICK_MAX_TOOL_CALLS = 20
-const THOROUGH_MAX_TOOL_CALLS = 60
+const DEFAULT_MAX_TOOL_CALLS = 30
 
 function validateOpenAiJobId(providerJobId: string): void {
   if (!OPENAI_JOB_ID_PATTERN.test(providerJobId)) {
@@ -39,10 +38,6 @@ function mapOpenAiStatus(status: string): ResearchJobStatus {
     default:
       return 'running'
   }
-}
-
-function getMaxToolCalls(level: ResearchLevel): number {
-  return level === 'quick' ? QUICK_MAX_TOOL_CALLS : THOROUGH_MAX_TOOL_CALLS
 }
 
 async function requestOpenAi(
@@ -78,7 +73,7 @@ async function start(
       model: input.modelId,
       background: true,
       store: true,
-      max_tool_calls: getMaxToolCalls(input.level),
+      max_tool_calls: input.maxToolCalls ?? DEFAULT_MAX_TOOL_CALLS,
       reasoning: { summary: 'auto' },
       tools: [{ type: 'web_search_preview' }],
       input: [
@@ -86,7 +81,7 @@ async function start(
           role: 'developer',
           content: [{
             type: 'input_text',
-            text: buildResearcherDeveloperPrompt(input.level),
+            text: buildResearcherDeveloperPrompt(input.tier),
           }],
         },
         {
