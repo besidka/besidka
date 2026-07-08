@@ -153,6 +153,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
 - `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
   installed PWA (push handoff + cold-start tap navigation)
+- `docs/deep-research.md` - Deep research: async provider-agent jobs
+  (OpenAI Responses background mode, Google Interactions API), job store,
+  finalize/cron sweep, UI, live-spike checklist
+- `docs/deep-research-failed-attempt.md` - Post-mortem of the abandoned v1
+  agentic-loop approach; read before changing the deep-research architecture
 
 ### Tech Stack
 

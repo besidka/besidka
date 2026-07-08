@@ -172,6 +172,28 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/email.spec.ts',
   ]
 
+  const deepResearchTests = [
+    'tests/unit/utils/research.spec.ts',
+    'tests/unit/utils/research-ui.spec.ts',
+    'tests/unit/utils/research/adapters/openai.spec.ts',
+    'tests/unit/utils/research/adapters/google.spec.ts',
+    'tests/unit/utils/research/errors.spec.ts',
+    'tests/unit/utils/research/finalize.spec.ts',
+    'tests/unit/utils/research/sweep.spec.ts',
+    'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
+    'tests/unit/components/Chat/DeepResearchMeta.spec.ts',
+    'tests/unit/components/Chat/DeepResearchPending.spec.ts',
+    'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
+    'tests/unit/components/ChatInput/DeepResearchMenuItems.spec.ts',
+    'tests/unit/composables/chat-research.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    'tests/integration/api/chats-research-clarify.spec.ts',
+    'tests/integration/api/chats-research-start.spec.ts',
+    'tests/integration/api/chats-research-status.spec.ts',
+    'tests/integration/api/chats-research-cancel.spec.ts',
+    'tests/integration/server/research-job-sweep-plugin.spec.ts',
+  ]
+
   const testMappings = [
     {
       pattern:
@@ -332,7 +354,30 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/errors\.ts$/,
-      tests: chatStreamBranchTests,
+      tests: [
+        ...chatStreamBranchTests,
+        'tests/unit/utils/research/errors.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(providers\/(openai|google)\.ts|shared\/types\/research\.d\.ts|shared\/utils\/research\.ts|app\/utils\/research\.ts)$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/composables\/(chat-research|chat-input)\.ts)$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^(server\/db\/schemas\/research-jobs\.ts|server\/utils\/research\/.*\.ts|server\/plugins\/research-job-sweep\.ts|server\/api\/v1\/chats\/research\/.*\.ts|server\/api\/v1\/chats\/\[slug\]\/research\/.*\.ts)$/,
+      tests: deepResearchTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/chats\/(insert-message|persist-user-message)\.ts$/,
+      tests: [...deepResearchTests, ...chatStreamBranchTests],
     },
     {
       pattern: /^server\/utils\/chats\/filter-ui-message-stream\.ts$/,
