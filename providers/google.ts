@@ -103,4 +103,21 @@ export default {
       },
     },
   ],
+  research: {
+    assistModel: 'gemini-3.1-flash-lite-preview',
+    levels: {
+      quick: {
+        modelId: 'deep-research-preview-04-2026',
+        label: 'Quick',
+        costEstimate: '$1–3',
+        timeEstimate: 'under 20 min',
+      },
+      thorough: {
+        modelId: 'deep-research-max-preview-04-2026',
+        label: 'Thorough',
+        costEstimate: '$3–7',
+        timeEstimate: 'up to 60 min',
+      },
+    },
+  },
 }

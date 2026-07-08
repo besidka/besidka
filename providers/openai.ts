@@ -172,4 +172,21 @@ export default {
       },
     },
   ],
+  research: {
+    assistModel: 'gpt-5.4-nano',
+    levels: {
+      quick: {
+        modelId: 'o4-mini-deep-research',
+        label: 'Quick',
+        costEstimate: '~$1',
+        timeEstimate: '5–15 min',
+      },
+      thorough: {
+        modelId: 'o3-deep-research',
+        label: 'Thorough',
+        costEstimate: '~$10',
+        timeEstimate: '10–30 min',
+      },
+    },
+  },
 }

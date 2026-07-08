@@ -1,4 +1,5 @@
 import type { ReasoningCapability } from './reasoning.d'
+import type { ProviderResearchCapability } from './research.d'
 
 export interface Model {
   id: string
@@ -25,6 +26,7 @@ export interface Provider {
   id: string
   name: string
   models: Model[]
+  research?: ProviderResearchCapability
 }
 
 export type Providers = Provider[]
