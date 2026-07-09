@@ -127,4 +127,39 @@ describe('Chat/Reasoning', () => {
 
     expect(timerLabel(wrapper)).toBe('(10s)')
   })
+
+  it('constrains the reasoning timeline to an inner max-height scroll wrapper', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: 'Thinking about the request.' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+      },
+    })
+
+    const timeline = wrapper.get('.timeline')
+    const scrollWrapper = timeline.element.parentElement
+
+    expect(scrollWrapper?.classList.contains('max-h-[360px]')).toBe(true)
+    expect(scrollWrapper?.classList.contains('overflow-y-auto')).toBe(true)
+    expect(scrollWrapper?.classList.contains('overscroll-contain')).toBe(true)
+  })
+
+  it('applies the min-h-0 padding treatment to the main summary', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: 'Thinking about the request.' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+      },
+    })
+
+    expect(wrapper.get('summary').classes()).toContain('min-h-0')
+  })
 })

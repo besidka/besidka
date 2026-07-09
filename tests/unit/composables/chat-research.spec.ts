@@ -570,4 +570,166 @@ describe('useChatResearch', () => {
       expect(research.researchCurrentStep.value).toBeNull()
     })
   })
+
+  describe('researchRecentSteps', () => {
+    it('appends a distinct step to the rolling window', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      expect(research.researchRecentSteps.value).toEqual([])
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchRecentSteps.value).toEqual([
+        { kind: 'search', text: 'best espresso machines 2026' },
+      ])
+    })
+
+    it('dedupes a consecutive identical kind+text step', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      const step = { kind: 'search', text: 'best espresso machines 2026' }
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: step,
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: step,
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchRecentSteps.value).toEqual([step])
+    })
+
+    it('drops the oldest step once a 4th distinct step arrives, capped at 3, order preserved', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      const steps = [
+        { kind: 'thought', text: 'Step one' },
+        { kind: 'search', text: 'Step two' },
+        { kind: 'read', text: 'https://example.com/step-three' },
+        { kind: 'thought', text: 'Step four' },
+      ] as const
+
+      for (const step of steps) {
+        fetchMock.mockResolvedValueOnce({
+          job: createJob({ status: 'running' }),
+          currentStep: step,
+        })
+
+        await vi.advanceTimersByTimeAsync(10_000)
+      }
+
+      expect(research.researchRecentSteps.value).toEqual(steps.slice(1))
+    })
+
+    it('clears the window once the job reaches a terminal status', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchRecentSteps.value).not.toEqual([])
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'completed' }),
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchRecentSteps.value).toEqual([])
+    })
+
+    it('is cleared by dismissResearchJob', () => {
+      const chatSdk = createChatSdk()
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      research.seedActiveResearchJob(createJob({ status: 'running' }))
+      research.dismissResearchJob()
+
+      expect(research.researchRecentSteps.value).toEqual([])
+    })
+
+    it('is cleared by dispose', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchRecentSteps.value).not.toEqual([])
+
+      research.dispose()
+
+      expect(research.researchRecentSteps.value).toEqual([])
+    })
+  })
 })

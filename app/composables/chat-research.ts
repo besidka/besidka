@@ -39,6 +39,7 @@ export interface StartResearchJobInput {
 
 const RESEARCH_POLL_INTERVAL_MS = 10_000
 const RESEARCH_ELAPSED_TICK_MS = 1_000
+const RESEARCH_RECENT_STEPS_MAX = 3
 const ACTIVE_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
   'pending',
   'running',
@@ -87,6 +88,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
   const researchElapsedMs = shallowRef<number>(0)
   const researchStatusChecking = shallowRef<boolean>(false)
   const researchCurrentStep = shallowRef<ResearchTraceEntry | null>(null)
+  const researchRecentSteps = shallowRef<ResearchTraceEntry[]>([])
 
   let pollIntervalId: ReturnType<typeof setInterval> | undefined
   let elapsedIntervalId: ReturnType<typeof setInterval> | undefined
@@ -234,6 +236,24 @@ export function useChatResearch(options: UseChatResearchOptions) {
     }
   }
 
+  // Round-8 issue #5: the pending block shows a rolling window of the last
+  // few distinct steps instead of only the single latest one, so the
+  // in-progress feel doesn't flicker down to nothing between polls whenever
+  // a step repeats. Consecutive identical kind+text pairs are deduped (the
+  // poll can return the same step across ticks while the provider is still
+  // working through it) and the window is capped so the pending block
+  // doesn't grow unbounded over a long-running job.
+  function pushRecentStep(step: ResearchTraceEntry): void {
+    const last = researchRecentSteps.value.at(-1)
+
+    if (last && last.kind === step.kind && last.text === step.text) {
+      return
+    }
+
+    researchRecentSteps.value = [...researchRecentSteps.value, step]
+      .slice(-RESEARCH_RECENT_STEPS_MAX)
+  }
+
   function applyJobUpdate(
     job: ResearchJobView | null,
     message?: RawResearchMessage,
@@ -243,6 +263,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
 
     if (!job || TERMINAL_RESEARCH_JOB_STATUSES.includes(job.status)) {
       researchCurrentStep.value = null
+      researchRecentSteps.value = []
     }
 
     if (job?.status !== 'completed') {
@@ -276,6 +297,10 @@ export function useChatResearch(options: UseChatResearchOptions) {
 
       applyJobUpdate(response.job, response.message)
       researchCurrentStep.value = response.currentStep ?? null
+
+      if (response.currentStep) {
+        pushRecentStep(response.currentStep)
+      }
     } catch (exception) {
       void exception
     } finally {
@@ -372,6 +397,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     researchElapsedMs.value = 0
     researchStatusChecking.value = false
     researchCurrentStep.value = null
+    researchRecentSteps.value = []
   }
 
   function dispose(): void {
@@ -379,6 +405,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     clearElapsedTimer()
     detachVisibilityListeners()
     researchCurrentStep.value = null
+    researchRecentSteps.value = []
   }
 
   return {
@@ -386,6 +413,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     researchElapsedMs,
     researchStatusChecking,
     researchCurrentStep,
+    researchRecentSteps,
     isResearchJobActive,
     startResearchJob,
     cancelResearchJob,

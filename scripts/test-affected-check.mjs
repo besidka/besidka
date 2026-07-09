@@ -193,6 +193,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/composables/chat-research.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/composables/research-links.spec.ts',
     'tests/integration/api/chats-research-clarify.spec.ts',
     'tests/integration/api/chats-research-start.spec.ts',
     'tests/integration/api/chats-research-status.spec.ts',
@@ -385,7 +386,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/components\/ChatInput\/ModelsTrigger\.vue|app\/composables\/(chat-research|chat-input)\.ts)$/,
+        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/components\/ChatInput\/ModelsTrigger\.vue|app\/composables\/(chat-research|chat-input|research-links)\.ts)$/,
       tests: deepResearchTests,
     },
     {

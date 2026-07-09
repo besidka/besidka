@@ -109,7 +109,7 @@
         v-if="pendingClarification"
         role="user"
         data-testid="research-clarify-topic"
-        class="mt-3"
+        class="mt-3 js-research-turn-anchor"
       >
         <p class="chat-markdown">
           {{ pendingResearchTopic }}
@@ -128,7 +128,7 @@
         :job="researchJob"
         :elapsed-ms="researchElapsedMs"
         :checking="researchStatusChecking"
-        :current-step="researchCurrentStep"
+        :recent-steps="researchRecentSteps"
         @cancel="cancelResearchJob"
         @retry="onResearchRetry"
         @dismiss="dismissResearchJob"
@@ -311,7 +311,7 @@ const {
   researchJob,
   researchElapsedMs,
   researchStatusChecking,
-  researchCurrentStep,
+  researchRecentSteps,
   isResearchJobActive,
   cancelResearchJob,
   seedActiveResearchJob,
@@ -519,9 +519,13 @@ const {
 
 if (import.meta.client) {
   watch(
-    [pendingClarification, isClarifying, researchJob],
-    async ([clarification, clarifying, job]) => {
-      if (!clarification && !clarifying && !job) {
+    [
+      pendingClarification,
+      isClarifying,
+      () => !!(researchJob.value && researchJob.value.status !== 'completed'),
+    ],
+    async ([clarification, clarifying, jobActive]) => {
+      if (!clarification && !clarifying && !jobActive) {
         return
       }
 

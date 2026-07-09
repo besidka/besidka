@@ -300,16 +300,67 @@ export function useChatScrollSpacer(
     nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
   }
 
-  // The clarify form and the research pending block are rendered as siblings
-  // of the message list, not messages themselves, so
-  // captureMessageDimensions() never measures them and the fixed ChatInput
-  // ends up overlapping their buttons on mobile. Borrows
-  // pushUserMessageToTop()'s spacerComputedByPush guard so the
-  // chat-input:height hook doesn't clobber this reserved height while either
-  // is showing.
+  // The clarify topic bubble and the research pending block are rendered as
+  // siblings of the message list, not messages themselves, so
+  // captureMessageDimensions() never measures them the way a regular user
+  // message is measured. getResearchTurnAnchorTop() finds whichever of the
+  // two research-turn entry points is currently rendered: the clarify topic
+  // bubble (tagged with .js-research-turn-anchor, see [slug].vue) for the
+  // clarify-question flow, or the last measured user message for the
+  // startResearchJob-after-answers flow. Both share the same offsetParent as
+  // messagesEndRef (Chat/Container.vue's single positioned root), so their
+  // offsetTop values are directly comparable.
+  function getResearchTurnAnchorTop(): number | null {
+    const container = scrollContainerRef.value
+
+    if (!container) {
+      return null
+    }
+
+    const clarifyTopic = container.querySelector<HTMLElement>(
+      '.js-research-turn-anchor',
+    )
+
+    if (clarifyTopic) {
+      return clarifyTopic.offsetTop
+    }
+
+    const last = messagesDomRefs.value?.at(-1)
+
+    if (last && last.dataset.role === 'user') {
+      return last.offsetTop
+    }
+
+    return null
+  }
+
+  // Round-8 issue #6: mirrors pushUserMessageToTop()'s pin-to-top math so a
+  // research turn in an existing chat behaves like a regular turn instead of
+  // collapsing back to the bottom — reusing spacerComputedByPush means the
+  // chat-input:height hook won't clobber this reserved height while either
+  // entry point is showing. When the anchor can't be measured yet (nothing
+  // rendered, or a turn taller than the viewport), this falls back to the
+  // round-4 input-clearance floor so the fixed ChatInput never overlaps the
+  // clarify form's or pending block's buttons on mobile.
   async function reserveSpaceForClarify(): Promise<void> {
     spacerComputedByPush.value = true
-    spacerHeight.value = inputHeight.value + INITIAL_SPACER_PADDING
+
+    const container = scrollContainerRef.value
+    const messagesEnd = messagesEndRef.value
+    const anchorTop = getResearchTurnAnchorTop()
+
+    if (!container || !messagesEnd || anchorTop === null) {
+      spacerHeight.value = inputHeight.value + INITIAL_SPACER_PADDING
+    } else {
+      const pinSpacer = anchorTop - messagesEnd.offsetTop
+        + container.clientHeight - INITIAL_SPACER_PADDING
+
+      spacerHeight.value = Math.max(
+        pinSpacer,
+        inputHeight.value + INITIAL_SPACER_PADDING,
+        0,
+      )
+    }
 
     nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
 

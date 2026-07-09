@@ -8,7 +8,7 @@
       v-if="entries.length === 0"
       class="
         flex items-center gap-2 text-xs font-medium text-base-content/70
-        mb-1
+        py-1.5
       "
     >
       <SvgoGeminiShort
@@ -34,7 +34,7 @@
         :id="`research-meta-${message.id}-label`"
         data-testid="research-trace-toggle"
         :aria-controls="`research-meta-${message.id}-content`"
-        class="collapse-title flex items-center gap-1 p-0"
+        class="collapse-title flex items-center gap-1 px-0 py-1.5 min-h-0"
         @click.prevent="toggleExpanded"
       >
         <SvgoGeminiShort
@@ -61,84 +61,88 @@
         :id="`research-meta-${message.id}-content`"
         class="collapse-content mt-3 pb-2 px-0"
       >
-        <ul
-          class="
-            timeline timeline-compact timeline-snap-icon timeline-vertical
-          "
-        >
-          <li
-            v-for="(entry, index) in parsedEntries"
-            :key="`research-trace-${message.id}-${index}`"
-            data-testid="research-trace-entry"
+        <div class="max-h-[360px] overflow-y-auto overscroll-contain pr-1">
+          <ul
+            class="
+              timeline timeline-compact timeline-snap-icon timeline-vertical
+            "
           >
-            <hr
-              v-if="index > 0"
-              class="bg-base-100"
+            <li
+              v-for="(entry, index) in parsedEntries"
+              :key="`research-trace-${message.id}-${index}`"
+              data-testid="research-trace-entry"
             >
-            <div class="timeline-middle">
-              <span
+              <hr
+                v-if="index > 0"
+                class="bg-base-100"
+              >
+              <div class="timeline-middle">
+                <span
+                  class="
+                    flex size-5 items-center justify-center rounded-full
+                    border border-base-100 bg-base-100
+                  "
+                >
+                  <Icon
+                    :name="iconForKind(entry.kind)"
+                    class="!size-3 text-accent"
+                  />
+                </span>
+              </div>
+              <button
+                v-if="entry.kind === 'read'"
+                type="button"
+                data-testid="research-trace-link"
                 class="
-                  flex size-5 items-center justify-center rounded-full
-                  border border-base-100 bg-base-100
+                  link badge badge-soft badge-sm gap-1 no-underline
+                  timeline-end my-2.5 mx-2
                 "
+                @click="openResearchLink(entry.url)"
               >
-                <Icon
-                  :name="iconForKind(entry.kind)"
-                  class="!size-3 text-accent"
-                />
-              </span>
-            </div>
-            <button
-              v-if="entry.kind === 'read'"
-              type="button"
-              data-testid="research-trace-link"
-              class="
-                link badge badge-soft badge-sm gap-1 no-underline
-                timeline-end my-2.5 mx-2
-              "
-              @click="openResearchLink(entry.url)"
-            >
-              <span class="max-w-40 truncate text-xs">{{ entry.title }}</span>
-            </button>
-            <details
-              v-else-if="entry.description.length > 0"
-              :open="expandedEntryIndex === index"
-              class="group/point timeline-end collapse my-2.5 mx-2 w-full"
-            >
-              <summary
-                data-testid="research-trace-entry-toggle"
-                class="collapse-title flex items-center gap-1 p-0 text-xs"
-                @click.prevent="toggleEntry(index)"
-              >
-                <span class="min-w-0 truncate text-base-content/80">
+                <span class="max-w-40 truncate text-xs">
                   {{ entry.title }}
                 </span>
-                <Icon
-                  name="lucide:chevron-right"
-                  class="
-                    size-4 shrink-0
-                    transition-transform group-open/point:rotate-90
-                  "
-                />
-              </summary>
-              <div class="collapse-content mt-2 pb-0 px-0">
-                <p class="text-xs text-base-content/80 whitespace-pre-wrap">
-                  {{ entry.description }}
-                </p>
+              </button>
+              <details
+                v-else-if="entry.description.length > 0"
+                :open="expandedEntryIndex === index"
+                class="group/point timeline-end collapse my-2.5 mx-2 w-full"
+              >
+                <summary
+                  data-testid="research-trace-entry-toggle"
+                  class="collapse-title flex items-center gap-1 p-0 text-xs"
+                  @click.prevent="toggleEntry(index)"
+                >
+                  <span class="min-w-0 truncate text-base-content/80">
+                    {{ entry.title }}
+                  </span>
+                  <Icon
+                    name="lucide:chevron-right"
+                    class="
+                      size-4 shrink-0
+                      transition-transform group-open/point:rotate-90
+                    "
+                  />
+                </summary>
+                <div class="collapse-content mt-2 pb-0 px-0">
+                  <p class="text-xs text-base-content/80 whitespace-pre-wrap">
+                    {{ entry.description }}
+                  </p>
+                </div>
+              </details>
+              <div
+                v-else
+                class="timeline-end my-2.5 mx-2 text-xs text-base-content/80"
+              >
+                {{ entry.title }}
               </div>
-            </details>
-            <div
-              v-else
-              class="timeline-end my-2.5 mx-2 text-xs text-base-content/80"
-            >
-              {{ entry.title }}
-            </div>
-            <hr
-              v-if="index < parsedEntries.length - 1"
-              class="bg-base-100"
-            >
-          </li>
-        </ul>
+              <hr
+                v-if="index < parsedEntries.length - 1"
+                class="bg-base-100"
+              >
+            </li>
+          </ul>
+        </div>
       </div>
     </details>
   </div>
@@ -169,11 +173,8 @@ const props = defineProps<{
   message: Pick<UIMessage, 'id' | 'parts'>
 }>()
 
-const {
-  reasoningExpanded,
-  allowExternalLinks,
-  setAllowExternalLinks,
-} = useUserSetting()
+const { reasoningExpanded } = useUserSetting()
+const { openResearchLink } = useResearchLink()
 
 const metadata = computed<ResearchMetadata | null>(() => {
   const part = props.message.parts.find((candidate) => {
@@ -262,38 +263,5 @@ function toggleEntry(index: number) {
 
 function iconForKind(kind: ResearchTraceKind): string {
   return KIND_ICONS[kind]
-}
-
-async function openResearchLink(url: string): Promise<void> {
-  if (allowExternalLinks.value) {
-    window.open(url, '_blank', 'noopener,noreferrer')
-
-    return
-  }
-
-  const label = formatResearchLinkLabel(url)
-  const result = await useConfirm({
-    text: `Open ${label}?`,
-    subtitle: 'You are about to leave and open an external website. Make sure you trust this source before continuing.',
-    actions: ['Open', 'Open always'],
-    labelDecline: 'Close',
-  })
-
-  if (!result) return
-
-  if (result.index === 1) {
-    const alsoConfirmed = await useConfirm({
-      text: 'Always open external links?',
-      subtitle: 'All future links will open without asking. You can reset this in Settings.',
-      actions: ['Yes, always'],
-      labelDecline: 'No, just this once',
-    })
-
-    if (alsoConfirmed) {
-      void setAllowExternalLinks(true)
-    }
-  }
-
-  window.open(url, '_blank', 'noopener,noreferrer')
 }
 </script>

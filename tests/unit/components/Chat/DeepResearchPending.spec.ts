@@ -1,7 +1,17 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { describe, expect, it, vi } from 'vitest'
 import type { ResearchJobView } from '#shared/types/research.d'
 import DeepResearchPending from '../../../../app/components/Chat/DeepResearchPending.vue'
+
+const useConfirmMock = vi.hoisted(() => {
+  return vi.fn<() => Promise<{ label: string, index: number } | null>>(
+    async () => null,
+  )
+})
+
+mockNuxtImport('useConfirm', () => {
+  return useConfirmMock
+})
 
 function createJob(
   overrides: Partial<ResearchJobView> = {},
@@ -143,11 +153,31 @@ describe('Chat/DeepResearchPending', () => {
     expect(wrapper.text()).toContain('10–30 min')
   })
 
-  it('emits cancel while running and hides the current-step section when no step is provided', async () => {
+  it('renders the alert-info expectation before the progress bar', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    const expectation = wrapper.get(
+      '[data-testid="research-pending-expectation"]',
+    )
+    const progress = wrapper.get('[data-testid="research-pending-progress"]')
+    const position = expectation.element.compareDocumentPosition(
+      progress.element,
+    )
+
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('emits cancel while running and hides the current-step section when no steps are provided', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
         elapsedMs: 1000,
+        recentSteps: [],
       },
     })
 
@@ -162,16 +192,18 @@ describe('Chat/DeepResearchPending', () => {
     expect(wrapper.emitted('cancel')).toHaveLength(1)
   })
 
-  it('shows the current research step with a parsed title and description', async () => {
+  it('shows the newest research step with a parsed title and description', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
         elapsedMs: 5_000,
-        currentStep: {
-          kind: 'thought',
-          text: '**Assessing options** Comparing the top candidates'
-            + ' in detail.',
-        },
+        recentSteps: [
+          {
+            kind: 'thought',
+            text: '**Assessing options** Comparing the top candidates'
+              + ' in detail.',
+          },
+        ],
       },
     })
 
@@ -182,12 +214,14 @@ describe('Chat/DeepResearchPending', () => {
     expect(step.get('.iconify').classes()).toContain('i-lucide:brain')
   })
 
-  it('applies the blinking skeleton treatment to the current step title', async () => {
+  it('applies the blinking skeleton treatment to the newest step title', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
         elapsedMs: 5_000,
-        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+        recentSteps: [
+          { kind: 'search', text: 'best espresso machines 2026' },
+        ],
       },
     })
 
@@ -197,22 +231,130 @@ describe('Chat/DeepResearchPending', () => {
     expect(step.get('.iconify').classes()).toContain('i-lucide:search')
   })
 
-  it('renders the read current step as a plain (non-clickable) label', async () => {
+  it('renders the rolling window oldest to newest, dimming older steps', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
         elapsedMs: 5_000,
-        currentStep: {
-          kind: 'read',
-          text: 'https://example.com/research/crdt-maturity',
-        },
+        recentSteps: [
+          { kind: 'thought', text: 'First thought.' },
+          { kind: 'search', text: 'second search query' },
+          { kind: 'thought', text: 'Newest thought.' },
+        ],
+      },
+    })
+
+    const rows = wrapper.findAll('[data-testid="research-recent-step"]')
+
+    expect(rows).toHaveLength(3)
+    expect(rows[0]?.text()).toContain('First thought.')
+    expect(rows[1]?.text()).toContain('second search query')
+    expect(rows[2]?.text()).toContain('Newest thought.')
+
+    expect(rows[0]?.get('div').classes()).toContain('opacity-50')
+    expect(rows[1]?.get('div').classes()).toContain('opacity-50')
+    expect(rows[2]?.get('div').classes()).not.toContain('opacity-50')
+
+    expect(rows[0]?.find('.research-step-title-skeleton').exists())
+      .toBe(false)
+    expect(rows[1]?.find('.research-step-title-skeleton').exists())
+      .toBe(false)
+    expect(rows[2]?.find('.research-step-title-skeleton').exists())
+      .toBe(true)
+  })
+
+  it('drops the oldest step from the window once a 4th distinct step arrives', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        recentSteps: [
+          { kind: 'search', text: 'second query' },
+          { kind: 'read', text: 'https://example.com/third' },
+          { kind: 'thought', text: 'Fourth thought.' },
+        ],
+      },
+    })
+
+    const rows = wrapper.findAll('[data-testid="research-recent-step"]')
+
+    expect(rows).toHaveLength(3)
+    expect(rows[0]?.text()).not.toContain('First thought.')
+    expect(rows[2]?.text()).toContain('Fourth thought.')
+  })
+
+  it('renders the newest read step as a clickable button that opens via the confirm flow', async () => {
+    useConfirmMock.mockReset().mockResolvedValue({ label: 'Open', index: 0 })
+
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        recentSteps: [
+          {
+            kind: 'read',
+            text: 'https://example.com/research/crdt-maturity',
+          },
+        ],
       },
     })
 
     const step = wrapper.get('[data-testid="research-current-step"]')
+    const link = step.get('[data-testid="research-current-step-link"]')
 
+    expect(link.element.tagName).toBe('BUTTON')
     expect(step.get('.iconify').classes()).toContain('i-lucide:link')
-    expect(step.find('button').exists()).toBe(false)
+    expect(link.text()).toBe('example.com')
+    expect(step.find('.research-step-title-skeleton').exists()).toBe(true)
+
+    await link.trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
+
+    expect(useConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: 'Open example.com?',
+    }))
+    expect(windowOpen).toHaveBeenCalledWith(
+      'https://example.com/research/crdt-maturity',
+      '_blank',
+      'noopener,noreferrer',
+    )
+
+    windowOpen.mockRestore()
+  })
+
+  it('dims an older read step but keeps it clickable', async () => {
+    useConfirmMock.mockReset().mockResolvedValue(null)
+
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        recentSteps: [
+          { kind: 'read', text: 'https://example.com/older-read' },
+          { kind: 'thought', text: 'Newest thought.' },
+        ],
+      },
+    })
+
+    const rows = wrapper.findAll('[data-testid="research-recent-step"]')
+    const olderRow = rows[0]?.get('div')
+    const olderLink = rows[0]?.get('[data-testid="research-current-step-link"]')
+
+    expect(olderRow?.classes()).toContain('opacity-50')
+    expect(olderRow?.classes()).toContain('hover:opacity-100')
+
+    await olderLink?.trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+
+    expect(useConfirmMock).toHaveBeenCalled()
+
+    windowOpen.mockRestore()
   })
 
   it('renders the error state with message, why, and fix', async () => {
@@ -262,7 +404,9 @@ describe('Chat/DeepResearchPending', () => {
         job: createJob({ status: 'running' }),
         elapsedMs: 65_000,
         checking: true,
-        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+        recentSteps: [
+          { kind: 'search', text: 'best espresso machines 2026' },
+        ],
       },
     })
 

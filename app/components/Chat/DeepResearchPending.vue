@@ -5,7 +5,7 @@
         <div
           class="
             flex items-center gap-2 text-xs font-medium text-base-content/70
-            mb-1
+            py-1.5
           "
         >
           <SvgoGeminiShort
@@ -27,11 +27,6 @@
             </span>
           </span>
         </div>
-        <progress
-          v-if="!checking"
-          data-testid="research-pending-progress"
-          class="progress progress-accent w-full h-1 mt-1"
-        />
         <div
           v-if="!checking && timeEstimate"
           data-testid="research-pending-expectation"
@@ -42,34 +37,72 @@
             notify you when it's ready.
           </span>
         </div>
+        <progress
+          v-if="!checking"
+          data-testid="research-pending-progress"
+          class="progress progress-accent w-full h-1 mt-1"
+        />
         <div
-          v-if="!checking && currentStep"
+          v-if="!checking && recentSteps.length"
           data-testid="research-current-step"
-          class="flex flex-col gap-0.5"
+          class="flex flex-col gap-1.5"
         >
-          <div class="flex items-center gap-1.5 text-xs">
-            <Icon
-              :name="iconForKind(currentStep.kind)"
-              class="!size-3 text-accent shrink-0"
-            />
-            <span
+          <div
+            v-for="(entry, index) in recentSteps"
+            :key="`research-step-${index}-${entry.kind}`"
+            data-testid="research-recent-step"
+            class="flex flex-col gap-0.5"
+          >
+            <div
+              class="flex items-center gap-1.5 text-xs"
+              :class="{
+                'opacity-50': index !== recentSteps.length - 1,
+                'hover:opacity-100 transition-opacity': entry.kind === 'read'
+                  && index !== recentSteps.length - 1,
+              }"
+            >
+              <Icon
+                :name="iconForKind(entry.kind)"
+                class="!size-3 text-accent shrink-0"
+              />
+              <button
+                v-if="entry.kind === 'read'"
+                type="button"
+                data-testid="research-current-step-link"
+                class="min-w-0 truncate text-left"
+                @click="openResearchLink(entry.text)"
+              >
+                <span
+                  class="min-w-0 truncate"
+                  :class="{
+                    'skeleton skeleton-text research-step-title-skeleton':
+                      index === recentSteps.length - 1,
+                  }"
+                >
+                  {{ stepTitle(entry) }}
+                </span>
+              </button>
+              <span
+                v-else
+                class="min-w-0 truncate"
+                :class="{
+                  'skeleton skeleton-text research-step-title-skeleton':
+                    index === recentSteps.length - 1,
+                }"
+              >
+                {{ stepTitle(entry) }}
+              </span>
+            </div>
+            <p
+              v-if="index === recentSteps.length - 1 && stepDescription(entry)"
               class="
-                min-w-0 truncate skeleton skeleton-text
-                research-step-title-skeleton
+                pl-[1.125rem] text-xs text-base-content/60 line-clamp-2
+                whitespace-pre-wrap
               "
             >
-              {{ parsedCurrentStep.title }}
-            </span>
+              {{ stepDescription(entry) }}
+            </p>
           </div>
-          <p
-            v-if="parsedCurrentStep.description"
-            class="
-              pl-[1.125rem] text-xs text-base-content/60 line-clamp-2
-              whitespace-pre-wrap
-            "
-          >
-            {{ parsedCurrentStep.description }}
-          </p>
         </div>
       </template>
       <div
@@ -145,18 +178,22 @@ const KIND_ICONS: Record<ResearchTraceKind, string> = {
   read: 'lucide:link',
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   job: ResearchJobView
   elapsedMs: number
   checking?: boolean
-  currentStep?: ResearchTraceEntry | null
-}>()
+  recentSteps?: ResearchTraceEntry[]
+}>(), {
+  recentSteps: () => [],
+})
 
 const emit = defineEmits<{
   cancel: []
   retry: []
   dismiss: []
 }>()
+
+const { openResearchLink } = useResearchLink()
 
 const isTerminal = computed<boolean>(() => {
   return props.job.status === 'failed' || props.job.status === 'cancelled'
@@ -194,12 +231,24 @@ const timeEstimate = computed<string>(() => {
   return getModel(props.job.modelId).model?.research?.timeEstimate ?? ''
 })
 
-const parsedCurrentStep = computed(() => {
-  return parseResearchStepText(props.currentStep?.text ?? '')
-})
-
 function iconForKind(kind: ResearchTraceKind): string {
   return KIND_ICONS[kind]
+}
+
+function stepTitle(entry: ResearchTraceEntry): string {
+  if (entry.kind === 'read') {
+    return formatResearchLinkLabel(entry.text)
+  }
+
+  return parseResearchStepText(entry.text).title
+}
+
+function stepDescription(entry: ResearchTraceEntry): string {
+  if (entry.kind === 'read') {
+    return ''
+  }
+
+  return parseResearchStepText(entry.text).description
 }
 </script>
 

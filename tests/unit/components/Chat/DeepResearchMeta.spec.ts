@@ -187,6 +187,32 @@ describe('Chat/DeepResearchMeta', () => {
     expect(toggle.text()).toContain('o3 Deep Research')
     expect(toggle.text()).toContain('2:05')
     expect(toggle.get('.iconify').classes()).toContain('i-lucide:chevron-right')
+    expect(toggle.classes()).toContain('min-h-0')
+  })
+
+  it('constrains the trace timeline to an inner max-height scroll wrapper', async () => {
+    const wrapper = await mountSuspended(DeepResearchMeta, {
+      props: {
+        message: createMessage([
+          createMetaPart({
+            provider: 'openai',
+            level: 'quick',
+            modelId: 'o4-mini-deep-research',
+          }),
+          createTracePart([
+            { kind: 'thought', text: 'Thinking.' },
+            { kind: 'search', text: 'Searching.' },
+          ]),
+        ]),
+      },
+    })
+
+    const timeline = wrapper.get('.timeline')
+    const scrollWrapper = timeline.element.parentElement
+
+    expect(scrollWrapper?.classList.contains('max-h-[360px]')).toBe(true)
+    expect(scrollWrapper?.classList.contains('overflow-y-auto')).toBe(true)
+    expect(scrollWrapper?.classList.contains('overscroll-contain')).toBe(true)
   })
 
   it('lists every trace entry with the icon matching its kind', async () => {
