@@ -44,7 +44,7 @@
         class="flex items-center gap-2 text-base-content/70"
       >
         <Icon name="lucide:circle-off" size="16" />
-        <span>Research cancelled</span>
+        <span>Research cancelled by user</span>
       </div>
       <div
         v-if="job.status === 'failed'"
@@ -61,9 +61,13 @@
           {{ job.error.fix }}
         </p>
       </div>
-      <div class="flex items-center justify-end gap-2">
+      <div
+        v-if="job.status === 'failed'
+          || (!isTerminal && !checking && job.publicId !== 'local-pending')"
+        class="flex items-center justify-end gap-2"
+      >
         <button
-          v-if="isTerminal"
+          v-if="job.status === 'failed'"
           type="button"
           data-testid="research-dismiss"
           class="btn btn-ghost btn-sm"

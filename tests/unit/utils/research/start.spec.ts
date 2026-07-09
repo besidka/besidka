@@ -469,6 +469,30 @@ describe('startResearchJobForChat', () => {
     expect(mocks.getResearchAdapter).not.toHaveBeenCalled()
   })
 
+  it('skips the assist-model brief rewrite and uses the raw topic as the brief in mock mode', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+
+    const { db } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const input = {
+      ...createInput({ db }),
+      userMessage: {
+        id: 'user-message-1',
+        parts: [
+          { type: 'text', text: 'mock: best espresso machines' },
+        ] as UIMessage['parts'],
+      },
+    }
+
+    await startResearchJobForChat(input)
+
+    expect(mocks.mockResearchAdapter.start).toHaveBeenCalledWith(
+      expect.objectContaining({ brief: 'mock: best espresso machines' }),
+    )
+    expect(mocks.buildResearchAssistModelInstance).not.toHaveBeenCalled()
+    expect(mocks.rewriteResearchBrief).not.toHaveBeenCalled()
+  })
+
   it('does not route to the mock adapter when the topic has no mock: prefix, even with mock mode enabled', async () => {
     useRuntimeConfig().researchMockEnabled = true
 

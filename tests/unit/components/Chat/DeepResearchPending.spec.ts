@@ -240,7 +240,7 @@ describe('Chat/DeepResearchPending', () => {
       .toBe(true)
   })
 
-  it('shows a dismiss affordance and emits dismiss on cancelled', async () => {
+  it('shows cancelled text with no buttons at all', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'cancelled' }),
@@ -248,11 +248,34 @@ describe('Chat/DeepResearchPending', () => {
       },
     })
 
-    expect(
-      wrapper.find('[data-testid="research-pending-cancelled"]').exists(),
-    ).toBe(true)
+    const cancelledBlock = wrapper.get(
+      '[data-testid="research-pending-cancelled"]',
+    )
+
+    expect(cancelledBlock.text()).toBe('Research cancelled by user')
     expect(wrapper.find('[data-testid="research-cancel"]').exists())
       .toBe(false)
+    expect(wrapper.find('[data-testid="research-dismiss"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="research-retry"]').exists())
+      .toBe(false)
+  })
+
+  it('keeps dismiss and retry on the failed state', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({
+          status: 'failed',
+          error: { code: 'unknown', message: 'Research failed' },
+        }),
+        elapsedMs: 0,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="research-dismiss"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-testid="research-retry"]').exists())
+      .toBe(true)
 
     await wrapper.get('[data-testid="research-dismiss"]').trigger('click')
 

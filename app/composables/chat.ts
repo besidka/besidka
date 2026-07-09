@@ -255,6 +255,23 @@ export function shouldRecoverInterruptedGeneration(
   return shouldSurfaceEmptyAssistantResponse(messages)
 }
 
+// Issue #263/#268 follow-up: recovery/regenerate of an unanswered last user
+// turn must never hit the streaming endpoint for a deep-research chat —
+// research turns are answered asynchronously by the poll loop, and the
+// streaming endpoint 400s for DR models. `userModel` is a global preference
+// (see useUserModel), decoupled from the chat it currently renders, so it can
+// drift after a mid-session model switch — the model check alone is not
+// robust. A present research job of ANY status (including a cancelled one
+// still held in memory this session) is a model-independent second signal,
+// so a present job or a DR model selected either one marks this a research
+// context that must not auto-regenerate through the normal chat endpoint.
+export function shouldBlockGenerationRecovery(
+  isDeepResearchModelSelected: boolean,
+  hasResearchJob: boolean,
+): boolean {
+  return isDeepResearchModelSelected || hasResearchJob
+}
+
 export function buildChatErrorLines(error: ChatErrorPayload): string[] {
   const lines = [error.message]
 
@@ -757,6 +774,19 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     chatSdk,
   })
 
+  const isResearchModelSelected = computed<boolean>(() => {
+    return isDeepResearchModel(getModel(userModel.value).model)
+  })
+
+  // Union gate (see shouldBlockGenerationRecovery above): blocks recovery
+  // whenever the globally-selected model is a DR model, OR this chat still
+  // holds a research job of any status (running, failed, or a cancelled job
+  // kept in memory for the rest of the session — see dismissResearchJob's
+  // callers, which intentionally never clear a cancelled job).
+  const shouldBlockGenerationRecovery = computed<boolean>(() => {
+    return isResearchModelSelected.value || researchJob.value !== null
+  })
+
   const lastMessage = computed<UIMessage | undefined>(() => {
     return chatSdk.messages.at(-1)
   })
@@ -800,7 +830,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const displayRegenerate = computed<boolean>(() => {
-    return isStopped.value || chatSdk.status === 'error'
+    return (isStopped.value || chatSdk.status === 'error')
+      && !isResearchModelSelected.value
   })
 
   function clearScheduledGenerationRetry(): void {
@@ -817,6 +848,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // just every "still generating" poll) is still bounded by the same cap,
   // instead of looping forever through the immediate-retry path.
   function attemptGenerationRecovery(options: { immediate: boolean }): void {
+    // Belt-and-suspenders: today only the mount auto-regenerate and
+    // recoverIfInterrupted() call into this, and both already gate on
+    // shouldBlockGenerationRecovery before calling — this guards any future
+    // onFinish-driven caller against firing while a DR model is selected.
+    if (isResearchModelSelected.value) {
+      return
+    }
+
     isAwaitingGeneration.value = true
 
     if (pendingRetryAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
@@ -870,7 +909,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
-    if (isResearchJobActive.value) {
+    if (shouldBlockGenerationRecovery.value) {
       return
     }
 
@@ -899,7 +938,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
       && shouldAutoRegenerate.value
-      && !isResearchJobActive.value
+      && !shouldBlockGenerationRecovery.value
     ) {
       // A reply-less last message on a freshly loaded chat (issue #275) means
       // the previous attempt never persisted before this load — could still
@@ -1104,6 +1143,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   function regenerate() {
+    // displayRegenerate already hides the button for a DR-selected model —
+    // this guards any other caller of regenerate() against streaming against
+    // a model that only accepts research turns through the async job flow.
+    if (isResearchModelSelected.value) {
+      return
+    }
+
     isStopped.value = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false

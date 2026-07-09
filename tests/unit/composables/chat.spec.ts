@@ -7,6 +7,7 @@ import {
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
+  shouldBlockGenerationRecovery,
   shouldForceGenericLoadingIndicator,
   shouldNotifyGenerationReadyWhileHidden,
   shouldRecoverInterruptedGeneration,
@@ -609,5 +610,24 @@ describe('chat error helpers', () => {
       providerId: 'openai',
       providerRequestId: 'req_123',
     })
+  })
+
+  it('blocks recovery when a deep-research model is selected and no job exists', () => {
+    expect(shouldBlockGenerationRecovery(true, false)).toBe(true)
+  })
+
+  it('blocks recovery when a research job exists, regardless of status, even on a normal model', () => {
+    // Model-independent: a running, failed, or cancelled job kept in memory
+    // this session all collapse to the same "a research job exists" signal
+    // at this predicate's boundary.
+    expect(shouldBlockGenerationRecovery(false, true)).toBe(true)
+  })
+
+  it('does not block a normal chat with no research job — regression guard', () => {
+    expect(shouldBlockGenerationRecovery(false, false)).toBe(false)
+  })
+
+  it('blocks recovery when both a deep-research model and a job are present', () => {
+    expect(shouldBlockGenerationRecovery(true, true)).toBe(true)
   })
 })

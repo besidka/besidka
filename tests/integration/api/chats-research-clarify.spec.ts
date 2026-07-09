@@ -103,6 +103,7 @@ describe('research clarify API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
+    useRuntimeConfig().researchMockEnabled = false
   })
 
   it('returns clarification questions for a research-capable model', async () => {
@@ -162,5 +163,60 @@ describe('research clarify API', () => {
     await expect(handler({
       body: { model: 'gpt-5.4', topic: 'Topic' },
     } as any)).rejects.toThrow('Could not prepare research questions.')
+  })
+
+  it('returns canned questions in mock mode without calling the model', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+
+    const handler = await getClarifyHandler()
+
+    const response = await handler({
+      body: { model: 'gpt-5.4', topic: 'mock: best espresso machines' },
+    } as any)
+
+    expect(response).toEqual({
+      questions: [
+        {
+          id: 'mock-scope',
+          question: 'How deep should the mock report go?',
+          kind: 'choice',
+          options: ['Quick overview', 'Standard depth', 'Exhaustive'],
+        },
+        {
+          id: 'mock-focus',
+          question: 'Any specific angle to emphasize? (optional)',
+          kind: 'text',
+          placeholder: 'e.g. cost, performance, adoption',
+        },
+      ],
+    })
+    expect(mocks.buildResearchAssistModelInstance).not.toHaveBeenCalled()
+    expect(mocks.generateResearchClarifications).not.toHaveBeenCalled()
+  })
+
+  it('does not use the mock path when the topic has no mock: prefix, even with mock mode enabled', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+
+    const handler = await getClarifyHandler()
+
+    await handler({
+      body: { model: 'gpt-5.4', topic: 'The future of renewable energy' },
+    } as any)
+
+    expect(mocks.buildResearchAssistModelInstance).toHaveBeenCalledTimes(1)
+    expect(mocks.generateResearchClarifications).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not use the mock path when mock mode is disabled, even with a mock: prefixed topic', async () => {
+    useRuntimeConfig().researchMockEnabled = false
+
+    const handler = await getClarifyHandler()
+
+    await handler({
+      body: { model: 'gpt-5.4', topic: 'mock: best espresso machines' },
+    } as any)
+
+    expect(mocks.buildResearchAssistModelInstance).toHaveBeenCalledTimes(1)
+    expect(mocks.generateResearchClarifications).toHaveBeenCalledTimes(1)
   })
 })

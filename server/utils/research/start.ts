@@ -161,16 +161,17 @@ export async function startResearchJobForChat(
     : getResearchAdapter(supportedProviderId)
 
   try {
-    const assistInstance = await buildResearchAssistModelInstance(
-      input.userId,
-      supportedProviderId,
-      research.assistModel,
-    )
-    const brief = await rewriteResearchBrief({
-      instance: assistInstance,
-      topic,
-      answers: input.answers ?? [],
-    })
+    const brief = useMockAdapter
+      ? topic
+      : await rewriteResearchBrief({
+        instance: await buildResearchAssistModelInstance(
+          input.userId,
+          supportedProviderId,
+          research.assistModel,
+        ),
+        topic,
+        answers: input.answers ?? [],
+      })
 
     const started = await adapter.start({
       apiKey,

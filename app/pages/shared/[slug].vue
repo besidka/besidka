@@ -165,7 +165,6 @@
             v-if="hasResearchMetaPart(m)"
             :message="m"
           />
-          <ChatDeepResearchTrace :message="m" />
           <ChatReasoning
             :message="m"
             :reasoning-level="m.reasoning"

@@ -189,7 +189,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/DeepResearchClarify.spec.ts',
     'tests/unit/components/Chat/DeepResearchMeta.spec.ts',
     'tests/unit/components/Chat/DeepResearchPending.spec.ts',
-    'tests/unit/components/Chat/DeepResearchTrace.spec.ts',
     'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/composables/chat-research.spec.ts',

@@ -1,10 +1,28 @@
 import type { LanguageModel } from 'ai'
+import type { ResearchClarificationResponse } from '#shared/types/research.d'
 import { getModelResearch } from '#shared/utils/research'
 import { useLogger, createError } from 'evlog'
 import { mapResearchProviderError } from '~~/server/utils/chats/errors'
 import { useChatProvider } from '~~/server/utils/chats/provider'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
 import { generateResearchClarifications } from '~~/server/utils/research/clarify'
+
+const MOCK_RESEARCH_CLARIFICATIONS: ResearchClarificationResponse = {
+  questions: [
+    {
+      id: 'mock-scope',
+      question: 'How deep should the mock report go?',
+      kind: 'choice',
+      options: ['Quick overview', 'Standard depth', 'Exhaustive'],
+    },
+    {
+      id: 'mock-focus',
+      question: 'Any specific angle to emphasize? (optional)',
+      kind: 'text',
+      placeholder: 'e.g. cost, performance, adoption',
+    },
+  ],
+}
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -49,6 +67,18 @@ export default defineEventHandler(async (event) => {
     model: body.data.model,
     operation: 'research-clarify',
   })
+
+  const runtimeConfig = useRuntimeConfig()
+  const useMock = runtimeConfig.researchMockEnabled
+    && body.data.topic.trim().toLowerCase().startsWith('mock:')
+
+  if (useMock) {
+    logger.set({
+      questionsCount: MOCK_RESEARCH_CLARIFICATIONS.questions.length,
+    })
+
+    return MOCK_RESEARCH_CLARIFICATIONS
+  }
 
   try {
     const instance: LanguageModel = await buildResearchAssistModelInstance(
