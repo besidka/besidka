@@ -251,9 +251,10 @@ describe('Chat/DeepResearchPending', () => {
     expect(rows[1]?.text()).toContain('second search query')
     expect(rows[2]?.text()).toContain('Newest thought.')
 
-    expect(rows[0]?.get('div').classes()).toContain('opacity-50')
-    expect(rows[1]?.get('div').classes()).toContain('opacity-50')
-    expect(rows[2]?.get('div').classes()).not.toContain('opacity-50')
+    expect(rows[0]?.get('.timeline-end').classes()).toContain('opacity-50')
+    expect(rows[1]?.get('.timeline-end').classes()).toContain('opacity-50')
+    expect(rows[2]?.get('.timeline-end').classes())
+      .not.toContain('opacity-50')
 
     expect(rows[0]?.find('.research-step-title-skeleton').exists())
       .toBe(false)
@@ -343,7 +344,7 @@ describe('Chat/DeepResearchPending', () => {
     })
 
     const rows = wrapper.findAll('[data-testid="research-recent-step"]')
-    const olderRow = rows[0]?.get('div')
+    const olderRow = rows[0]?.get('.timeline-end')
     const olderLink = rows[0]?.get('[data-testid="research-current-step-link"]')
 
     expect(olderRow?.classes()).toContain('opacity-50')

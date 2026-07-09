@@ -42,29 +42,44 @@
           data-testid="research-pending-progress"
           class="progress progress-accent w-full h-1 mt-1"
         />
-        <div
+        <ul
           v-if="!checking && recentSteps.length"
           data-testid="research-current-step"
-          class="flex flex-col gap-1.5"
+          class="timeline timeline-compact timeline-snap-icon timeline-vertical"
         >
-          <div
+          <li
             v-for="(entry, index) in recentSteps"
             :key="`research-step-${index}-${entry.kind}`"
             data-testid="research-recent-step"
-            class="flex flex-col gap-0.5"
           >
+            <hr
+              v-if="index > 0"
+              class="bg-base-100"
+            >
+            <div class="timeline-middle">
+              <span
+                class="
+                  flex size-5 items-center justify-center rounded-full
+                  border border-base-100 bg-base-100
+                "
+              >
+                <Icon
+                  :name="iconForKind(entry.kind)"
+                  class="!size-3 text-accent"
+                />
+              </span>
+            </div>
             <div
-              class="flex items-center gap-1.5 text-xs"
+              class="
+                timeline-end my-2.5 mx-2 flex w-full min-w-0 flex-col
+                gap-0.5 text-xs
+              "
               :class="{
                 'opacity-50': index !== recentSteps.length - 1,
                 'hover:opacity-100 transition-opacity': entry.kind === 'read'
                   && index !== recentSteps.length - 1,
               }"
             >
-              <Icon
-                :name="iconForKind(entry.kind)"
-                class="!size-3 text-accent shrink-0"
-              />
               <button
                 v-if="entry.kind === 'read'"
                 type="button"
@@ -92,18 +107,23 @@
               >
                 {{ stepTitle(entry) }}
               </span>
+              <p
+                v-if="index === recentSteps.length - 1
+                  && stepDescription(entry)"
+                class="
+                  text-xs text-base-content/60 line-clamp-2
+                  whitespace-pre-wrap
+                "
+              >
+                {{ stepDescription(entry) }}
+              </p>
             </div>
-            <p
-              v-if="index === recentSteps.length - 1 && stepDescription(entry)"
-              class="
-                pl-[1.125rem] text-xs text-base-content/60 line-clamp-2
-                whitespace-pre-wrap
-              "
+            <hr
+              v-if="index < recentSteps.length - 1"
+              class="bg-base-100"
             >
-              {{ stepDescription(entry) }}
-            </p>
-          </div>
-        </div>
+          </li>
+        </ul>
       </template>
       <div
         v-if="job.status === 'cancelled'"
