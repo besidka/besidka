@@ -35,6 +35,27 @@ const MOCK_SOURCES: ResearchSource[] = [
   },
 ]
 
+const MOCK_CURRENT_STEPS: ResearchTraceEntry[] = [
+  {
+    kind: 'thought',
+    text: '**Planning the research** Outlining the key questions before'
+      + ' searching.',
+  },
+  { kind: 'search', text: 'local-first web app 2026 CRDT adoption' },
+  { kind: 'read', text: 'https://example.com/research/crdt-maturity' },
+  {
+    kind: 'thought',
+    text: '**Assessing sync backends** Comparing managed sync engines for'
+      + ' offline-first apps.',
+  },
+  { kind: 'search', text: 'offline-first mobile retention data' },
+  {
+    kind: 'thought',
+    text: '**Synthesizing findings** Drafting the trade-offs and'
+      + ' recommendations.',
+  },
+]
+
 const MOCK_TRACE: ResearchTraceEntry[] = [
   {
     kind: 'thought',
@@ -123,10 +144,21 @@ async function start(): Promise<ResearchStartResult> {
 
 async function status(providerJobId: string): Promise<ResearchStatusResult> {
   const startMs = parseMockStartMs(providerJobId)
-  const isCompleted = Date.now() - startMs >= MOCK_COMPLETION_DELAY_MS
+  const elapsedMs = Date.now() - startMs
+
+  if (elapsedMs >= MOCK_COMPLETION_DELAY_MS) {
+    return { status: 'completed' }
+  }
+
+  const bucketMs = MOCK_COMPLETION_DELAY_MS / MOCK_CURRENT_STEPS.length
+  const stepIndex = Math.min(
+    MOCK_CURRENT_STEPS.length - 1,
+    Math.floor(elapsedMs / bucketMs),
+  )
 
   return {
-    status: isCompleted ? 'completed' : 'running',
+    status: 'running',
+    currentStep: MOCK_CURRENT_STEPS[stepIndex],
   }
 }
 

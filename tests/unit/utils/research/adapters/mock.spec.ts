@@ -47,6 +47,50 @@ describe('mock research adapter', () => {
       .rejects.toThrow('Invalid mock research job id')
   })
 
+  it('returns a rotating current step while running', async () => {
+    const { mockResearchAdapter } = await importAdapter()
+    const providerJobId = `mock_${Date.now()}_01ARZ3NDEKTSV4RRFFQ69G5FAV`
+
+    const result = await mockResearchAdapter.status(providerJobId, 'sk-test')
+
+    expect(result.status).toBe('running')
+    expect(result.currentStep).toBeDefined()
+    expect(['thought', 'search', 'read']).toContain(result.currentStep?.kind)
+  })
+
+  it('advances through the canned steps as elapsed time increases', async () => {
+    const { mockResearchAdapter } = await importAdapter()
+    const startMs = Date.now() - 40_000
+    const providerJobId = `mock_${startMs}_01ARZ3NDEKTSV4RRFFQ69G5FAV`
+
+    const result = await mockResearchAdapter.status(providerJobId, 'sk-test')
+
+    expect(result.status).toBe('running')
+    expect(result.currentStep?.text).toContain('Synthesizing findings')
+  })
+
+  it('caps the step index at the last canned step near the completion boundary', async () => {
+    const { mockResearchAdapter } = await importAdapter()
+    const startMs = Date.now() - 44_999
+    const providerJobId = `mock_${startMs}_01ARZ3NDEKTSV4RRFFQ69G5FAV`
+
+    const result = await mockResearchAdapter.status(providerJobId, 'sk-test')
+
+    expect(result.status).toBe('running')
+    expect(result.currentStep?.text).toContain('Synthesizing findings')
+  })
+
+  it('omits the current step once the job has completed', async () => {
+    const { mockResearchAdapter } = await importAdapter()
+    const startMs = Date.now() - 46_000
+    const providerJobId = `mock_${startMs}_01ARZ3NDEKTSV4RRFFQ69G5FAV`
+
+    const result = await mockResearchAdapter.status(providerJobId, 'sk-test')
+
+    expect(result.status).toBe('completed')
+    expect(result.currentStep).toBeUndefined()
+  })
+
   it('returns a canned report with the mock banner, citations, usage, and trace', async () => {
     const { mockResearchAdapter } = await importAdapter()
 

@@ -1,4 +1,7 @@
-import type { ResearchJobStatus } from '#shared/types/research.d'
+import type {
+  ResearchJobStatus,
+  ResearchTraceEntry,
+} from '#shared/types/research.d'
 import { useLogger, createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { finalizeResearchJob } from '~~/server/utils/research/finalize'
@@ -74,9 +77,10 @@ export default defineEventHandler(async (event) => {
 
   const cfCtx = (event.context as WaitUntilCtx | undefined)?.cloudflare?.context
   const runtimeConfig = useRuntimeConfig()
+  let currentStep: ResearchTraceEntry | undefined
 
   try {
-    await finalizeResearchJob({
+    const finalizeResult = await finalizeResearchJob({
       db,
       job,
       logger,
@@ -87,6 +91,8 @@ export default defineEventHandler(async (event) => {
         privateKey: runtimeConfig.vapidPrivateKey || undefined,
       },
     })
+
+    currentStep = finalizeResult.currentStep
   } catch (exception) {
     logger.set({
       research: {
@@ -102,8 +108,14 @@ export default defineEventHandler(async (event) => {
   const refreshedJob = await db.query.researchJobs.findFirst({
     where: { id: job.id },
   })
+  const targetJob = refreshedJob ?? job
+  const response = await buildResearchStatusResponse(db, targetJob)
 
-  return await buildResearchStatusResponse(db, refreshedJob ?? job)
+  if (!isTerminalResearchStatus(targetJob.status) && currentStep) {
+    return { ...response, currentStep }
+  }
+
+  return response
 })
 
 function isTerminalResearchStatus(status: ResearchJobStatus): boolean {

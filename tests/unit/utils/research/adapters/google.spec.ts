@@ -94,6 +94,44 @@ describe('google research adapter', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('surfaces the latest trace entry as currentStep while running', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'in_progress',
+      steps: [
+        { content: [{ text: 'Plan the research approach.' }] },
+        { grounding: { query: 'best espresso machines 2026' } },
+      ],
+    }), { status: 200 }))
+
+    const { googleResearchAdapter } = await importAdapter()
+
+    const result = await googleResearchAdapter.status(
+      'interaction-abc',
+      'goog-test-key',
+    )
+
+    expect(result.status).toBe('running')
+    expect(result.currentStep).toEqual({
+      kind: 'search',
+      text: 'best espresso machines 2026',
+    })
+  })
+
+  it('leaves currentStep undefined when the status body has no steps yet', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'in_progress',
+    }), { status: 200 }))
+
+    const { googleResearchAdapter } = await importAdapter()
+
+    const result = await googleResearchAdapter.status(
+      'interaction-abc',
+      'goog-test-key',
+    )
+
+    expect(result.currentStep).toBeUndefined()
+  })
+
   it('extracts the last step text and never throws on an unexpected shape', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
       status: 'completed',

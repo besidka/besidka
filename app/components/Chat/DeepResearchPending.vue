@@ -2,13 +2,22 @@
   <ChatMessage role="assistant" data-testid="research-pending">
     <div class="flex flex-col gap-3 text-sm">
       <template v-if="!isTerminal">
-        <div class="flex items-center gap-1">
-          <Icon name="lucide:telescope" class="size-4" />
-          <span
-            data-testid="research-pending-status"
-            class="text-xs font-medium text-base-content/90"
-          >
-            {{ statusLabel }}
+        <div
+          class="
+            flex items-center gap-2 text-xs font-medium text-base-content/70
+            mb-1
+          "
+        >
+          <SvgoGeminiShort
+            v-if="job.provider === 'google'"
+            class="size-3.5 fill-base-content/70"
+          />
+          <SvgoOpenai
+            v-if="job.provider === 'openai'"
+            class="size-3.5 fill-base-content/70"
+          />
+          <span data-testid="research-pending-status">
+            {{ headerLabel }}
             <span
               v-if="showTimer && !checking"
               data-testid="research-pending-timer"
@@ -24,19 +33,44 @@
           class="progress progress-accent w-full h-1 mt-1"
         />
         <div
-          v-if="!checking"
-          data-testid="research-pending-level"
-          class="text-xs text-base-content/70"
-        >
-          {{ modelName }} · {{ tierLabel }}
-        </div>
-        <p
           v-if="!checking && timeEstimate"
-          class="text-xs text-base-content/60"
+          data-testid="research-pending-expectation"
+          class="alert alert-info alert-soft text-xs"
         >
-          This can take {{ timeEstimate }} — you can leave; we'll
-          notify you when it's ready.
-        </p>
+          <span>
+            This can take {{ timeEstimate }} — you can leave; we'll
+            notify you when it's ready.
+          </span>
+        </div>
+        <div
+          v-if="!checking && currentStep"
+          data-testid="research-current-step"
+          class="flex flex-col gap-0.5"
+        >
+          <div class="flex items-center gap-1.5 text-xs">
+            <Icon
+              :name="iconForKind(currentStep.kind)"
+              class="!size-3 text-accent shrink-0"
+            />
+            <span
+              class="
+                min-w-0 truncate skeleton skeleton-text
+                research-step-title-skeleton
+              "
+            >
+              {{ parsedCurrentStep.title }}
+            </span>
+          </div>
+          <p
+            v-if="parsedCurrentStep.description"
+            class="
+              pl-[1.125rem] text-xs text-base-content/60 line-clamp-2
+              whitespace-pre-wrap
+            "
+          >
+            {{ parsedCurrentStep.description }}
+          </p>
+        </div>
       </template>
       <div
         v-if="job.status === 'cancelled'"
@@ -99,12 +133,23 @@
 </template>
 
 <script setup lang="ts">
-import type { ResearchJobView } from '#shared/types/research.d'
+import type {
+  ResearchJobView,
+  ResearchTraceEntry,
+  ResearchTraceKind,
+} from '#shared/types/research.d'
+
+const KIND_ICONS: Record<ResearchTraceKind, string> = {
+  thought: 'lucide:brain',
+  search: 'lucide:search',
+  read: 'lucide:link',
+}
 
 const props = defineProps<{
   job: ResearchJobView
   elapsedMs: number
   checking?: boolean
+  currentStep?: ResearchTraceEntry | null
 }>()
 
 const emit = defineEmits<{
@@ -117,14 +162,24 @@ const isTerminal = computed<boolean>(() => {
   return props.job.status === 'failed' || props.job.status === 'cancelled'
 })
 
-const statusLabel = computed<string>(() => {
+const modelName = computed<string>(() => {
+  return getModelName(props.job.modelId)
+})
+
+const tierLabel = computed<string>(() => {
+  return props.job.level === 'thorough' ? 'Thorough' : 'Quick'
+})
+
+const headerLabel = computed<string>(() => {
   if (props.checking) {
     return 'Checking research status…'
   }
 
-  return props.job.status === 'pending'
-    ? 'Preparing your research…'
-    : 'Researching…'
+  if (props.job.status === 'pending') {
+    return 'Preparing your research…'
+  }
+
+  return `Researching with ${modelName.value} · ${tierLabel.value}`
 })
 
 const elapsedLabel = computed<string>(() => {
@@ -135,15 +190,38 @@ const showTimer = computed<boolean>(() => {
   return props.job.startedAt !== null && props.elapsedMs > 0
 })
 
-const modelName = computed<string>(() => {
-  return getModelName(props.job.modelId)
-})
-
-const tierLabel = computed<string>(() => {
-  return props.job.level === 'thorough' ? 'Thorough' : 'Quick'
-})
-
 const timeEstimate = computed<string>(() => {
   return getModel(props.job.modelId).model?.research?.timeEstimate ?? ''
 })
+
+const parsedCurrentStep = computed(() => {
+  return parseResearchStepText(props.currentStep?.text ?? '')
+})
+
+function iconForKind(kind: ResearchTraceKind): string {
+  return KIND_ICONS[kind]
+}
 </script>
+
+<style scoped>
+.research-step-title-skeleton {
+  background-color: transparent !important;
+  border-radius: 0 !important;
+  display: inline-block;
+  background-image: linear-gradient(
+    105deg,
+    color-mix(in oklab, var(--color-base-content) 55%, transparent) 0% 40%,
+    color-mix(in oklab, var(--color-base-content) 95%, transparent) 50%,
+    color-mix(in oklab, var(--color-base-content) 55%, transparent) 60% 100%
+  );
+}
+
+:global([data-theme="dark"]) .research-step-title-skeleton {
+  background-image: linear-gradient(
+    105deg,
+    color-mix(in oklab, var(--color-base-content) 95%, transparent) 0% 40%,
+    color-mix(in oklab, var(--color-base-content) 45%, transparent) 50%,
+    color-mix(in oklab, var(--color-base-content) 95%, transparent) 60% 100%
+  );
+}
+</style>

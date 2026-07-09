@@ -79,7 +79,9 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
   - `POST /api/v1/chats/[slug]/research` — start (persists/reconciles the user
     message, rewrites the brief, inserts the job row, calls the provider).
   - `GET /api/v1/chats/[slug]/research` — poll; finalizes on terminal status
-    and returns `{ job, message? }` (`message` only when completed).
+    and returns `{ job, message?, currentStep? }` (`message` only when
+    completed; `currentStep` only while non-terminal and the adapter
+    surfaced a latest trace entry — see the live current-step note below).
   - `POST /api/v1/chats/[slug]/research/cancel` — cancel (idempotent).
   - `PUT /api/v1/chats/new` accepts optional `research: { answers }` (the
     model itself already implies the tier) so a research chat starts
@@ -110,11 +112,16 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
 - `app/composables/chat-research.ts` — `useChatResearch()`: the poll state
   machine (10s network poll + 1s local elapsed tick, immediate poll on
   `visibilitychange`/`focus`, dedupe-by-id message append on completion).
-- `app/components/Chat/DeepResearchPending.vue` — honest progress: status,
-  elapsed timer, level/model, expectation copy, cancel; error state renders the
-  structured `message`/`why`/`fix`; dismiss on terminal states. Deliberately no
-  step timeline — the providers expose no per-step progress via polling, and v1
-  died faking one.
+- `app/components/Chat/DeepResearchPending.vue` — honest progress: merged
+  header (provider logo + status + model/tier + elapsed), progress bar, an
+  `alert-info alert-soft` expectation box, and an optional live current-step
+  (kind icon + parsed title/description, blinking skeleton title) fed
+  defensively from the poll response's `currentStep`; cancel; error state
+  renders the structured `message`/`why`/`fix`; dismiss on terminal states.
+  The current-step section renders only when the provider/mock actually
+  surfaced one for that poll — see the live current-step note in the
+  live-spike section below; unlike v1's fabricated step timeline, absence is
+  the honest default.
 - `app/components/Chat/DeepResearchMeta.vue` — report header from the
   `data-research` part.
 - `app/components/Chat/DeepResearchClarify.vue` — clarifying-questions form
@@ -145,6 +152,25 @@ parsers are deliberately defensive. Verify against real paid keys once:
    error wording — confirm against a real constraint violation.
 
 Start with the cheap pair (o4-mini ≈ $1, Gemini standard ≈ $1–3).
+
+**Live current-step mid-run (round 7 research):** feasibility differs
+sharply by provider. OpenAI's background `GET /v1/responses/{id}` does
+**not** return partial `output` while the job is `in_progress` — item-level
+progress on the Responses API is a streaming-only feature, so the
+defensive trace extraction in `openai.ts`'s `status()` is a no-op against
+real OpenAI runs and the pending block's current-step section simply never
+appears (graceful absence, not a bug). Google's Interactions API looks more
+promising: production reports suggest `steps[]` accumulates as the
+interaction runs and is retrievable through the same polling `GET`
+(moderate confidence — evidence from third-party production reports, not
+yet verified against a live paid key), so real Gemini deep-research runs
+likely do surface a live current-step. The mock adapter always simulates
+step progression (`MOCK_CURRENT_STEPS`, six-step rotation over its 45s
+lifecycle), so the current-step UI is fully exercised on preview regardless
+of provider truth. Net effect: current-step lights up for mock always,
+Gemini likely, OpenAI not yet — closing the OpenAI gap needs a
+streaming-resume path (subscribing to the background response's event
+stream instead of polling `GET`), tracked as future work.
 
 ## Testing
 

@@ -498,4 +498,76 @@ describe('useChatResearch', () => {
       expect(research.researchStatusChecking.value).toBe(false)
     })
   })
+
+  describe('researchCurrentStep', () => {
+    it('is set from the poll response while the job is running', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      expect(research.researchCurrentStep.value).toBeNull()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchCurrentStep.value).toEqual({
+        kind: 'search',
+        text: 'best espresso machines 2026',
+      })
+    })
+
+    it('clears once the job reaches a terminal status', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchCurrentStep.value).not.toBeNull()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'completed' }),
+      })
+
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(research.researchCurrentStep.value).toBeNull()
+    })
+
+    it('is cleared by dismissResearchJob', () => {
+      const chatSdk = createChatSdk()
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      research.seedActiveResearchJob(createJob({ status: 'running' }))
+      research.dismissResearchJob()
+
+      expect(research.researchCurrentStep.value).toBeNull()
+    })
+  })
 })

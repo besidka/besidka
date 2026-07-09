@@ -29,9 +29,9 @@ describe('sweepResearchJobs', () => {
 
   it('finalizes every selected pending/running job sequentially', async () => {
     mocks.finalizeResearchJob
-      .mockResolvedValueOnce('finalized')
-      .mockResolvedValueOnce('still-running')
-      .mockResolvedValueOnce('failed')
+      .mockResolvedValueOnce({ outcome: 'finalized' })
+      .mockResolvedValueOnce({ outcome: 'still-running' })
+      .mockResolvedValueOnce({ outcome: 'failed' })
 
     const jobs = [{ id: 'job-1' }, { id: 'job-2' }, { id: 'job-3' }]
     const db = createDb(jobs)
@@ -66,7 +66,7 @@ describe('sweepResearchJobs', () => {
   it('counts a thrown finalize call as errored and continues the batch', async () => {
     mocks.finalizeResearchJob
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce('finalized')
+      .mockResolvedValueOnce({ outcome: 'finalized' })
 
     const jobs = [{ id: 'job-1' }, { id: 'job-2' }]
     const db = createDb(jobs)
@@ -96,7 +96,7 @@ describe('sweepResearchJobs', () => {
     mocks.finalizeResearchJob.mockImplementation(async () => {
       await new Promise(resolve => setTimeout(resolve, 30))
 
-      return 'still-running'
+      return { outcome: 'still-running' }
     })
 
     const jobs = [{ id: 'job-1' }, { id: 'job-2' }, { id: 'job-3' }]

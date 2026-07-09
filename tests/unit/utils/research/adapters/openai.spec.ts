@@ -136,6 +136,50 @@ describe('openai research adapter', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('surfaces the latest trace entry as currentStep while running', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'in_progress',
+      output: [
+        {
+          type: 'reasoning',
+          summary: [{ type: 'summary_text', text: 'Plan the approach.' }],
+        },
+        {
+          type: 'web_search_call',
+          action: { type: 'search', query: 'best espresso machines 2026' },
+        },
+      ],
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    const result = await openAiResearchAdapter.status(
+      'resp_abc123',
+      'sk-test',
+    )
+
+    expect(result.status).toBe('running')
+    expect(result.currentStep).toEqual({
+      kind: 'search',
+      text: 'best espresso machines 2026',
+    })
+  })
+
+  it('leaves currentStep undefined when the status body has no output yet', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'queued',
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    const result = await openAiResearchAdapter.status(
+      'resp_abc123',
+      'sk-test',
+    )
+
+    expect(result.currentStep).toBeUndefined()
+  })
+
   it('extracts report text, deduped sources, and usage from the result', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
       status: 'completed',

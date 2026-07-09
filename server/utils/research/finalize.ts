@@ -4,6 +4,7 @@ import type {
   ResearchJobStatus,
   ResearchMetadata,
   ResearchProviderId,
+  ResearchTraceEntry,
   ResearchUsage,
 } from '#shared/types/research.d'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
@@ -30,6 +31,11 @@ export type FinalizeResearchJobOutcome
     | 'still-running'
     | 'failed'
 
+export interface FinalizeResearchJobResult {
+  outcome: FinalizeResearchJobOutcome
+  currentStep?: ResearchTraceEntry
+}
+
 export interface FinalizeResearchJobInput {
   db: ReturnType<typeof useDb>
   job: typeof schema.researchJobs.$inferSelect
@@ -40,21 +46,21 @@ export interface FinalizeResearchJobInput {
 
 export async function finalizeResearchJob(
   input: FinalizeResearchJobInput,
-): Promise<FinalizeResearchJobOutcome> {
+): Promise<FinalizeResearchJobResult> {
   const { db, job, logger } = input
 
   if (job.status === 'completed' && job.resultMessageId) {
-    return 'already-finalized'
+    return { outcome: 'already-finalized' }
   }
 
   if (job.status === 'failed' || job.status === 'cancelled') {
-    return 'failed'
+    return { outcome: 'failed' }
   }
 
   if (!job.providerJobId) {
     await markJobTerminal(db, job.id, 'failed', buildStartIncompleteError())
 
-    return 'failed'
+    return { outcome: 'failed' }
   }
 
   const apiKey = await getDecryptedProviderKey(job.userId, job.provider)
@@ -67,7 +73,7 @@ export async function finalizeResearchJob(
       buildKeyMissingError(job.provider),
     )
 
-    return 'failed'
+    return { outcome: 'failed' }
   }
 
   const runtimeConfig = useRuntimeConfig()
@@ -100,7 +106,7 @@ export async function finalizeResearchJob(
         buildProviderJobGoneError(job.provider),
       )
 
-      return 'failed'
+      return { outcome: 'failed' }
     }
 
     if (exceptionDetails.status === 401 || exceptionDetails.status === 403) {
@@ -116,18 +122,18 @@ export async function finalizeResearchJob(
         }),
       )
 
-      return 'failed'
+      return { outcome: 'failed' }
     }
 
     if (hasExceededOverallCap(job)) {
       await markJobTerminal(db, job.id, 'failed', buildTimeoutError())
 
-      return 'failed'
+      return { outcome: 'failed' }
     }
 
     await touchResearchJob(db, job.id)
 
-    return 'still-running'
+    return { outcome: 'still-running' }
   }
 
   if (statusResult.status === 'running') {
@@ -149,12 +155,12 @@ export async function finalizeResearchJob(
 
       await markJobTerminal(db, job.id, 'failed', buildTimeoutError())
 
-      return 'failed'
+      return { outcome: 'failed' }
     }
 
     await touchResearchJob(db, job.id)
 
-    return 'still-running'
+    return { outcome: 'still-running', currentStep: statusResult.currentStep }
   }
 
   if (statusResult.status === 'cancelled') {
@@ -165,7 +171,7 @@ export async function finalizeResearchJob(
       buildProviderCancelledError(),
     )
 
-    return 'failed'
+    return { outcome: 'failed' }
   }
 
   if (statusResult.status !== 'completed') {
@@ -176,7 +182,7 @@ export async function finalizeResearchJob(
       buildProviderFailureError(job.provider, statusResult.raw),
     )
 
-    return 'failed'
+    return { outcome: 'failed' }
   }
 
   let result: ResearchFinalResult
@@ -197,7 +203,7 @@ export async function finalizeResearchJob(
 
     await touchResearchJob(db, job.id)
 
-    return 'still-running'
+    return { outcome: 'still-running' }
   }
 
   const assistantPublicId = ulid()
@@ -222,7 +228,7 @@ export async function finalizeResearchJob(
     .get()
 
   if (!claimed) {
-    return 'already-finalized'
+    return { outcome: 'already-finalized' }
   }
 
   const parts = buildResearchAssistantParts({ result, job, durationMs })
@@ -283,7 +289,7 @@ export async function finalizeResearchJob(
       },
     })
 
-    return 'still-running'
+    return { outcome: 'still-running' }
   }
 
   logger.set({
@@ -295,7 +301,7 @@ export async function finalizeResearchJob(
     },
   })
 
-  return 'finalized'
+  return { outcome: 'finalized' }
 }
 
 async function markJobTerminal(

@@ -6,6 +6,7 @@ import type {
   ResearchJobStatus,
   ResearchJobView,
   ResearchProviderId,
+  ResearchTraceEntry,
 } from '#shared/types/research.d'
 import { parseError } from 'evlog'
 import { hydrateMessageUsage } from '#shared/utils/message-metadata'
@@ -41,6 +42,11 @@ const RESEARCH_ELAPSED_TICK_MS = 1_000
 const ACTIVE_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
   'pending',
   'running',
+]
+const TERMINAL_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
+  'completed',
+  'failed',
+  'cancelled',
 ]
 
 // Issue #1 (round-3): starting a research job has 10-15s of dead air between
@@ -80,6 +86,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
   const researchJob = shallowRef<ResearchJobView | null>(null)
   const researchElapsedMs = shallowRef<number>(0)
   const researchStatusChecking = shallowRef<boolean>(false)
+  const researchCurrentStep = shallowRef<ResearchTraceEntry | null>(null)
 
   let pollIntervalId: ReturnType<typeof setInterval> | undefined
   let elapsedIntervalId: ReturnType<typeof setInterval> | undefined
@@ -234,6 +241,10 @@ export function useChatResearch(options: UseChatResearchOptions) {
     researchJob.value = job
     syncLoops()
 
+    if (!job || TERMINAL_RESEARCH_JOB_STATUSES.includes(job.status)) {
+      researchCurrentStep.value = null
+    }
+
     if (job?.status !== 'completed') {
       return
     }
@@ -260,9 +271,11 @@ export function useChatResearch(options: UseChatResearchOptions) {
       const response = await $fetch<{
         job: ResearchJobView
         message?: RawResearchMessage
+        currentStep?: ResearchTraceEntry
       }>(`/api/v1/chats/${options.chatSlug}/research`)
 
       applyJobUpdate(response.job, response.message)
+      researchCurrentStep.value = response.currentStep ?? null
     } catch (exception) {
       void exception
     } finally {
@@ -358,18 +371,21 @@ export function useChatResearch(options: UseChatResearchOptions) {
     researchJob.value = null
     researchElapsedMs.value = 0
     researchStatusChecking.value = false
+    researchCurrentStep.value = null
   }
 
   function dispose(): void {
     clearPollLoop()
     clearElapsedTimer()
     detachVisibilityListeners()
+    researchCurrentStep.value = null
   }
 
   return {
     researchJob,
     researchElapsedMs,
     researchStatusChecking,
+    researchCurrentStep,
     isResearchJobActive,
     startResearchJob,
     cancelResearchJob,

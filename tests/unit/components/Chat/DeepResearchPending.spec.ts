@@ -49,7 +49,7 @@ describe('Chat/DeepResearchPending', () => {
     ).toBe(false)
   })
 
-  it('shows the running status, elapsed timer, and level + model', async () => {
+  it('shows the running status, elapsed timer, and model + tier in the merged header', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
@@ -57,18 +57,14 @@ describe('Chat/DeepResearchPending', () => {
       },
     })
 
-    expect(
-      wrapper.get('[data-testid="research-pending-status"]').text(),
-    ).toContain('Researching…')
+    const status = wrapper.get('[data-testid="research-pending-status"]')
+
+    expect(status.text()).toContain('Researching with')
+    expect(status.text()).toContain('o4-mini Deep Research')
+    expect(status.text()).toContain('Quick')
     expect(
       wrapper.get('[data-testid="research-pending-timer"]').text(),
     ).toBe('(1:05)')
-
-    const levelText = wrapper.get('[data-testid="research-pending-level"]')
-      .text()
-
-    expect(levelText).toContain('o4-mini Deep Research')
-    expect(levelText).toContain('Quick')
   })
 
   it('renders an indeterminate progress bar while not terminal', async () => {
@@ -84,7 +80,7 @@ describe('Chat/DeepResearchPending', () => {
     expect(progress.attributes('value')).toBeUndefined()
   })
 
-  it('shows a static telescope icon next to the status instead of a spinner', async () => {
+  it('shows the OpenAI provider logo next to the status instead of a spinner', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
@@ -94,17 +90,29 @@ describe('Chat/DeepResearchPending', () => {
 
     const statusRow = wrapper.get('[data-testid="research-pending-status"]')
       .element.parentElement
+    const logo = statusRow?.querySelector('svg')
 
-    expect(statusRow?.querySelector('svg')).toBeNull()
-
-    const icon = statusRow?.querySelector('.iconify')
-
-    expect(icon).not.toBeNull()
-    expect(icon?.className).toContain('i-lucide:telescope')
-    expect(icon?.className).toContain('size-4')
+    expect(logo).not.toBeNull()
+    expect(logo?.getAttribute('viewBox')).toBe('0 0 256 260')
     expect(
       wrapper.find('[data-testid="research-pending-progress"]').exists(),
     ).toBe(true)
+  })
+
+  it('shows the Gemini provider logo for a google job', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running', provider: 'google' }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    const statusRow = wrapper.get('[data-testid="research-pending-status"]')
+      .element.parentElement
+    const logo = statusRow?.querySelector('svg')
+
+    expect(logo).not.toBeNull()
+    expect(logo?.getAttribute('viewBox')).toBe('0 0 50 50')
   })
 
   it('does not render the progress bar in a terminal state', async () => {
@@ -135,7 +143,7 @@ describe('Chat/DeepResearchPending', () => {
     expect(wrapper.text()).toContain('10–30 min')
   })
 
-  it('emits cancel while running and never renders a step timeline', async () => {
+  it('emits cancel while running and hides the current-step section when no step is provided', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
@@ -145,10 +153,66 @@ describe('Chat/DeepResearchPending', () => {
 
     expect(wrapper.text()).not.toContain('Step')
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
+    expect(
+      wrapper.find('[data-testid="research-current-step"]').exists(),
+    ).toBe(false)
 
     await wrapper.get('[data-testid="research-cancel"]').trigger('click')
 
     expect(wrapper.emitted('cancel')).toHaveLength(1)
+  })
+
+  it('shows the current research step with a parsed title and description', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        currentStep: {
+          kind: 'thought',
+          text: '**Assessing options** Comparing the top candidates'
+            + ' in detail.',
+        },
+      },
+    })
+
+    const step = wrapper.get('[data-testid="research-current-step"]')
+
+    expect(step.text()).toContain('Assessing options')
+    expect(step.text()).toContain('Comparing the top candidates in detail.')
+    expect(step.get('.iconify').classes()).toContain('i-lucide:brain')
+  })
+
+  it('applies the blinking skeleton treatment to the current step title', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      },
+    })
+
+    const step = wrapper.get('[data-testid="research-current-step"]')
+
+    expect(step.find('.research-step-title-skeleton').exists()).toBe(true)
+    expect(step.get('.iconify').classes()).toContain('i-lucide:search')
+  })
+
+  it('renders the read current step as a plain (non-clickable) label', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 5_000,
+        currentStep: {
+          kind: 'read',
+          text: 'https://example.com/research/crdt-maturity',
+        },
+      },
+    })
+
+    const step = wrapper.get('[data-testid="research-current-step"]')
+
+    expect(step.get('.iconify').classes()).toContain('i-lucide:link')
+    expect(step.find('button').exists()).toBe(false)
   })
 
   it('renders the error state with message, why, and fix', async () => {
@@ -192,12 +256,13 @@ describe('Chat/DeepResearchPending', () => {
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
 
-  it('shows a neutral checking status and hides progress, timer, level, and cancel', async () => {
+  it('shows a neutral checking status and hides progress, expectation, current step, and cancel', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
         elapsedMs: 65_000,
         checking: true,
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
       },
     })
 
@@ -211,14 +276,17 @@ describe('Chat/DeepResearchPending', () => {
       wrapper.find('[data-testid="research-pending-progress"]').exists(),
     ).toBe(false)
     expect(
-      wrapper.find('[data-testid="research-pending-level"]').exists(),
+      wrapper.find('[data-testid="research-pending-expectation"]').exists(),
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="research-current-step"]').exists(),
     ).toBe(false)
     expect(wrapper.find('[data-testid="research-cancel"]').exists())
       .toBe(false)
     expect(wrapper.text()).not.toContain('This can take')
   })
 
-  it('shows the normal running state once checking clears', async () => {
+  it('shows the merged header, progress, and expectation box once checking clears', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
@@ -227,15 +295,21 @@ describe('Chat/DeepResearchPending', () => {
       },
     })
 
-    expect(
-      wrapper.get('[data-testid="research-pending-status"]').text(),
-    ).toContain('Researching…')
+    const status = wrapper.get('[data-testid="research-pending-status"]')
+
+    expect(status.text()).toContain('Researching with')
+    expect(status.text()).toContain('o4-mini Deep Research')
+    expect(status.text()).toContain('Quick')
     expect(
       wrapper.find('[data-testid="research-pending-progress"]').exists(),
     ).toBe(true)
-    expect(
-      wrapper.find('[data-testid="research-pending-level"]').exists(),
-    ).toBe(true)
+
+    const expectation = wrapper.get(
+      '[data-testid="research-pending-expectation"]',
+    )
+
+    expect(expectation.classes()).toContain('alert-info')
+    expect(expectation.classes()).toContain('alert-soft')
     expect(wrapper.find('[data-testid="research-cancel"]').exists())
       .toBe(true)
   })

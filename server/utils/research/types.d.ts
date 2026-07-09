@@ -21,6 +21,7 @@ export interface ResearchStartResult {
 export interface ResearchStatusResult {
   status: ResearchJobStatus
   raw?: unknown
+  currentStep?: ResearchTraceEntry
 }
 
 export interface ResearchSource {

@@ -183,7 +183,7 @@ describe('finalizeResearchJob', () => {
     const { db } = createDb()
     const job = createJob({ status: 'completed', resultMessageId: 'msg-1' })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -198,13 +198,13 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db } = createDb()
 
-    const failedOutcome = await finalizeResearchJob({
+    const { outcome: failedOutcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob({ status: 'failed' }) as any,
       vapid: {},
       logger,
     })
-    const cancelledOutcome = await finalizeResearchJob({
+    const { outcome: cancelledOutcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob({ status: 'cancelled' }) as any,
       vapid: {},
@@ -220,7 +220,7 @@ describe('finalizeResearchJob', () => {
     const { db, set } = createDb()
     const job = createJob({ providerJobId: null })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -240,7 +240,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -264,7 +264,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -287,7 +287,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -311,7 +311,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -338,7 +338,7 @@ describe('finalizeResearchJob', () => {
       startedAt: new Date(Date.now() - 91 * 60 * 1000),
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -360,7 +360,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -371,6 +371,53 @@ describe('finalizeResearchJob', () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
       updatedAt: expect.any(Date),
     }))
+  })
+
+  it('forwards the currentStep from the status result while still running', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({
+        status: 'running',
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb()
+
+    const result = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(result.outcome).toBe('still-running')
+    expect(result.currentStep).toEqual({
+      kind: 'search',
+      text: 'best espresso machines 2026',
+    })
+  })
+
+  it('omits currentStep on every terminal or error outcome', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({
+        status: 'cancelled',
+        currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb()
+
+    const result = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(result.outcome).toBe('failed')
+    expect(result.currentStep).toBeUndefined()
   })
 
   it('cancels and marks the job failed once it exceeds the 90-minute cap', async () => {
@@ -387,7 +434,7 @@ describe('finalizeResearchJob', () => {
       startedAt: new Date(Date.now() - 91 * 60 * 1000),
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -410,7 +457,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -435,7 +482,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -463,7 +510,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, set } = createDb()
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -497,7 +544,7 @@ describe('finalizeResearchJob', () => {
       origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: { publicKey: 'pub', privateKey: 'priv', subject: 'mailto:a@b.c' },
@@ -608,7 +655,7 @@ describe('finalizeResearchJob', () => {
       modelId: 'deep-research-preview-04-2026',
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -644,7 +691,7 @@ describe('finalizeResearchJob', () => {
       chatSlug: 'chat-slug-1',
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -677,7 +724,7 @@ describe('finalizeResearchJob', () => {
       chatSlug: 'chat-slug-1',
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: { publicKey: 'pub', privateKey: 'priv', subject: 'mailto:a@b.c' },
@@ -711,7 +758,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db } = createDb({ claimedRow: undefined })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -736,7 +783,7 @@ describe('finalizeResearchJob', () => {
     const { finalizeResearchJob } = await importFinalize()
     const { db, where } = createDb({ claimedRow: undefined })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -759,7 +806,7 @@ describe('finalizeResearchJob', () => {
     const { db, where } = createDb()
     const job = createJob({ providerJobId: null })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -793,7 +840,7 @@ describe('finalizeResearchJob', () => {
       chatSlug: 'chat-slug-1',
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -839,7 +886,7 @@ describe('finalizeResearchJob', () => {
       chatSlug: 'chat-slug-1',
     })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: createJob() as any,
       vapid: {},
@@ -886,7 +933,7 @@ describe('finalizeResearchJob', () => {
     })
     const job = createJob({ providerJobId: 'mock_1234_ABCDEF' })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},
@@ -912,7 +959,7 @@ describe('finalizeResearchJob', () => {
     const { db, set } = createDb()
     const job = createJob({ providerJobId: 'mock_1234_ABCDEF' })
 
-    const outcome = await finalizeResearchJob({
+    const { outcome } = await finalizeResearchJob({
       db: db as any,
       job: job as any,
       vapid: {},

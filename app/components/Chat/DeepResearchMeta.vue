@@ -67,7 +67,7 @@
           "
         >
           <li
-            v-for="(entry, index) in entries"
+            v-for="(entry, index) in parsedEntries"
             :key="`research-trace-${message.id}-${index}`"
             data-testid="research-trace-entry"
           >
@@ -88,8 +88,20 @@
                 />
               </span>
             </div>
+            <button
+              v-if="entry.kind === 'read'"
+              type="button"
+              data-testid="research-trace-link"
+              class="
+                link badge badge-soft badge-sm gap-1 no-underline
+                timeline-end my-2.5 mx-2
+              "
+              @click="openResearchLink(entry.url)"
+            >
+              <span class="max-w-40 truncate text-xs">{{ entry.title }}</span>
+            </button>
             <details
-              v-if="isExpandableEntry(entry)"
+              v-else-if="entry.description.length > 0"
               :open="expandedEntryIndex === index"
               class="group/point timeline-end collapse my-2.5 mx-2 w-full"
             >
@@ -99,7 +111,7 @@
                 @click.prevent="toggleEntry(index)"
               >
                 <span class="min-w-0 truncate text-base-content/80">
-                  {{ entry.text }}
+                  {{ entry.title }}
                 </span>
                 <Icon
                   name="lucide:chevron-right"
@@ -111,7 +123,7 @@
               </summary>
               <div class="collapse-content mt-2 pb-0 px-0">
                 <p class="text-xs text-base-content/80 whitespace-pre-wrap">
-                  {{ entry.text }}
+                  {{ entry.description }}
                 </p>
               </div>
             </details>
@@ -119,10 +131,10 @@
               v-else
               class="timeline-end my-2.5 mx-2 text-xs text-base-content/80"
             >
-              {{ entry.text }}
+              {{ entry.title }}
             </div>
             <hr
-              v-if="index < entries.length - 1"
+              v-if="index < parsedEntries.length - 1"
               class="bg-base-100"
             >
           </li>
@@ -140,7 +152,12 @@ import type {
   ResearchTraceKind,
 } from '#shared/types/research.d'
 
-const EXPANDABLE_ENTRY_TEXT_THRESHOLD = 80
+interface ParsedResearchTraceEntry {
+  kind: ResearchTraceKind
+  title: string
+  description: string
+  url: string
+}
 
 const KIND_ICONS: Record<ResearchTraceKind, string> = {
   thought: 'lucide:brain',
@@ -152,7 +169,11 @@ const props = defineProps<{
   message: Pick<UIMessage, 'id' | 'parts'>
 }>()
 
-const { reasoningExpanded } = useUserSetting()
+const {
+  reasoningExpanded,
+  allowExternalLinks,
+  setAllowExternalLinks,
+} = useUserSetting()
 
 const metadata = computed<ResearchMetadata | null>(() => {
   const part = props.message.parts.find((candidate) => {
@@ -178,6 +199,28 @@ const entries = computed<ResearchTraceEntry[]>(() => {
   return (part as unknown as {
     data: { entries: ResearchTraceEntry[] }
   }).data.entries
+})
+
+const parsedEntries = computed<ParsedResearchTraceEntry[]>(() => {
+  return entries.value.map((entry) => {
+    if (entry.kind === 'read') {
+      return {
+        kind: entry.kind,
+        title: formatResearchLinkLabel(entry.text),
+        description: '',
+        url: entry.text,
+      }
+    }
+
+    const parsed = parseResearchStepText(entry.text)
+
+    return {
+      kind: entry.kind,
+      title: parsed.title,
+      description: parsed.description,
+      url: '',
+    }
+  })
 })
 
 const modelName = computed<string>(() => {
@@ -221,8 +264,36 @@ function iconForKind(kind: ResearchTraceKind): string {
   return KIND_ICONS[kind]
 }
 
-function isExpandableEntry(entry: ResearchTraceEntry): boolean {
-  return entry.kind === 'thought'
-    && entry.text.length > EXPANDABLE_ENTRY_TEXT_THRESHOLD
+async function openResearchLink(url: string): Promise<void> {
+  if (allowExternalLinks.value) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+
+    return
+  }
+
+  const label = formatResearchLinkLabel(url)
+  const result = await useConfirm({
+    text: `Open ${label}?`,
+    subtitle: 'You are about to leave and open an external website. Make sure you trust this source before continuing.',
+    actions: ['Open', 'Open always'],
+    labelDecline: 'Close',
+  })
+
+  if (!result) return
+
+  if (result.index === 1) {
+    const alsoConfirmed = await useConfirm({
+      text: 'Always open external links?',
+      subtitle: 'All future links will open without asking. You can reset this in Settings.',
+      actions: ['Yes, always'],
+      labelDecline: 'No, just this once',
+    })
+
+    if (alsoConfirmed) {
+      void setAllowExternalLinks(true)
+    }
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 </script>

@@ -128,6 +128,7 @@
         :job="researchJob"
         :elapsed-ms="researchElapsedMs"
         :checking="researchStatusChecking"
+        :current-step="researchCurrentStep"
         @cancel="cancelResearchJob"
         @retry="onResearchRetry"
         @dismiss="dismissResearchJob"
@@ -310,6 +311,7 @@ const {
   researchJob,
   researchElapsedMs,
   researchStatusChecking,
+  researchCurrentStep,
   isResearchJobActive,
   cancelResearchJob,
   seedActiveResearchJob,

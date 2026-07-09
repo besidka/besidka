@@ -45,7 +45,7 @@ export async function sweepResearchJobs(
     }
 
     try {
-      const outcome = await finalizeResearchJob({
+      const { outcome } = await finalizeResearchJob({
         db,
         job,
         vapid: input.vapid,

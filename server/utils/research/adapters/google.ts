@@ -109,10 +109,13 @@ async function status(
   const body = await requestGoogle(`/${providerJobId}`, apiKey, {
     method: 'GET',
   })
+  const steps = Array.isArray(body.steps) ? body.steps : []
+  const trace = clampResearchTrace(extractGoogleTrace(steps))
 
   return {
     status: mapGoogleStatus(String(body.status)),
     raw: body,
+    currentStep: trace.at(-1),
   }
 }
 

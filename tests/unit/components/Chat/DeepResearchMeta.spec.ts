@@ -1,7 +1,17 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import DeepResearchMeta from '../../../../app/components/Chat/DeepResearchMeta.vue'
+
+const useConfirmMock = vi.hoisted(() => {
+  return vi.fn<() => Promise<{ label: string, index: number } | null>>(
+    async () => null,
+  )
+})
+
+mockNuxtImport('useConfirm', () => {
+  return useConfirmMock
+})
 
 function createMessage(parts: UIMessage['parts']): UIMessage {
   return {
@@ -33,6 +43,7 @@ function createTracePart(entries: { kind: string, text: string }[]) {
 describe('Chat/DeepResearchMeta', () => {
   beforeEach(() => {
     localStorage.clear()
+    useConfirmMock.mockReset().mockResolvedValue(null)
   })
 
   it('renders nothing when there is no data-research part', async () => {
@@ -204,9 +215,7 @@ describe('Chat/DeepResearchMeta', () => {
     expect(entries[2]?.get('.iconify').classes()).toContain('i-lucide:link')
   })
 
-  it('makes a long thought entry expandable and other entries plain', async () => {
-    const longThought = 'This is a long research thought that describes '
-      + 'the reasoning process in enough detail to exceed eighty characters.'
+  it('makes an entry with a separable description expandable, others plain', async () => {
     const wrapper = await mountSuspended(DeepResearchMeta, {
       props: {
         message: createMessage([
@@ -216,7 +225,11 @@ describe('Chat/DeepResearchMeta', () => {
             modelId: 'o4-mini-deep-research',
           }),
           createTracePart([
-            { kind: 'thought', text: longThought },
+            {
+              kind: 'thought',
+              text: '**Assessing options** Comparing the top candidates'
+                + ' in detail.',
+            },
             { kind: 'thought', text: 'Short thought.' },
             { kind: 'search', text: 'best espresso machines 2026' },
             { kind: 'read', text: 'https://example.com/espresso' },
@@ -226,26 +239,35 @@ describe('Chat/DeepResearchMeta', () => {
     })
 
     const entries = wrapper.findAll('[data-testid="research-trace-entry"]')
+    const firstToggle = entries[0]?.get(
+      '[data-testid="research-trace-entry-toggle"]',
+    )
 
-    expect(
-      entries[0]?.find('[data-testid="research-trace-entry-toggle"]')
-        .exists(),
-    ).toBe(true)
-    expect(entries[0]?.text()).toContain(longThought)
+    expect(firstToggle?.text()).toContain('Assessing options')
+    expect(firstToggle?.text()).not.toContain('Comparing the top candidates')
+    expect(entries[0]?.text()).toContain('Comparing the top candidates')
 
-    for (const entry of entries.slice(1)) {
+    for (const entry of [entries[1], entries[2]]) {
       expect(
-        entry.find('[data-testid="research-trace-entry-toggle"]').exists(),
+        entry?.find('[data-testid="research-trace-entry-toggle"]').exists(),
       ).toBe(false)
     }
 
     expect(entries[1]?.text()).toContain('Short thought.')
     expect(entries[2]?.text()).toContain('best espresso machines 2026')
-    expect(entries[3]?.text()).toContain('https://example.com/espresso')
+
+    const linkEntry = entries[3]
+
+    expect(
+      linkEntry?.find('[data-testid="research-trace-entry-toggle"]').exists(),
+    ).toBe(false)
+    expect(
+      linkEntry?.find('[data-testid="research-trace-link"]').exists(),
+    ).toBe(true)
+    expect(linkEntry?.text()).toContain('example.com')
   })
 
-  it('toggles a long thought entry open and closed on click', async () => {
-    const longThought = 'x'.repeat(90)
+  it('toggles an entry with a separable description open and closed', async () => {
     const wrapper = await mountSuspended(DeepResearchMeta, {
       props: {
         message: createMessage([
@@ -254,7 +276,12 @@ describe('Chat/DeepResearchMeta', () => {
             level: 'quick',
             modelId: 'o4-mini-deep-research',
           }),
-          createTracePart([{ kind: 'thought', text: longThought }]),
+          createTracePart([
+            {
+              kind: 'thought',
+              text: '**Investigating options** '.concat('x'.repeat(90)),
+            },
+          ]),
         ]),
       },
     })
@@ -337,5 +364,96 @@ describe('Chat/DeepResearchMeta', () => {
       .trigger('click')
 
     expect(wrapper.find('details').attributes('open')).toBeUndefined()
+  })
+
+  it('renders a read entry as a clickable link badge with the hostname label', async () => {
+    const wrapper = await mountSuspended(DeepResearchMeta, {
+      props: {
+        message: createMessage([
+          createMetaPart({
+            provider: 'openai',
+            level: 'quick',
+            modelId: 'o4-mini-deep-research',
+          }),
+          createTracePart([
+            { kind: 'read', text: 'https://www.example.com/research/crdt' },
+          ]),
+        ]),
+      },
+    })
+
+    const link = wrapper.get('[data-testid="research-trace-link"]')
+
+    expect(link.text()).toBe('example.com')
+    expect(link.element.tagName).toBe('BUTTON')
+  })
+
+  it('opens a read link directly through the confirm dialog when accepted', async () => {
+    useConfirmMock.mockResolvedValue({ label: 'Open', index: 0 })
+
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    const wrapper = await mountSuspended(DeepResearchMeta, {
+      props: {
+        message: createMessage([
+          createMetaPart({
+            provider: 'openai',
+            level: 'quick',
+            modelId: 'o4-mini-deep-research',
+          }),
+          createTracePart([
+            { kind: 'read', text: 'https://example.com/research/crdt' },
+          ]),
+        ]),
+      },
+    })
+
+    await wrapper.get('[data-testid="research-trace-link"]')
+      .trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
+
+    expect(useConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      text: 'Open example.com?',
+    }))
+    expect(windowOpen).toHaveBeenCalledWith(
+      'https://example.com/research/crdt',
+      '_blank',
+      'noopener,noreferrer',
+    )
+
+    windowOpen.mockRestore()
+  })
+
+  it('does not open a read link when the confirm dialog is declined', async () => {
+    useConfirmMock.mockResolvedValue(null)
+
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    const wrapper = await mountSuspended(DeepResearchMeta, {
+      props: {
+        message: createMessage([
+          createMetaPart({
+            provider: 'openai',
+            level: 'quick',
+            modelId: 'o4-mini-deep-research',
+          }),
+          createTracePart([
+            { kind: 'read', text: 'https://example.com/research/crdt' },
+          ]),
+        ]),
+      },
+    })
+
+    await wrapper.get('[data-testid="research-trace-link"]')
+      .trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await new Promise(resolve => setTimeout(resolve))
+    await wrapper.vm.$nextTick()
+
+    expect(windowOpen).not.toHaveBeenCalled()
+
+    windowOpen.mockRestore()
   })
 })

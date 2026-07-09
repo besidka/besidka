@@ -111,10 +111,13 @@ async function status(
   const body = await requestOpenAi(`/${providerJobId}`, apiKey, {
     method: 'GET',
   })
+  const output = Array.isArray(body.output) ? body.output : []
+  const trace = clampResearchTrace(extractOpenAiTrace(output))
 
   return {
     status: mapOpenAiStatus(String(body.status)),
     raw: body,
+    currentStep: trace.at(-1),
   }
 }
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  finalizeResearchJob: vi.fn(async () => 'still-running'),
+  finalizeResearchJob: vi.fn(async () => ({ outcome: 'still-running' })),
   loggerSet: vi.fn(),
 }))
 
@@ -100,7 +100,7 @@ describe('research status API', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    mocks.finalizeResearchJob.mockResolvedValue('still-running')
+    mocks.finalizeResearchJob.mockResolvedValue({ outcome: 'still-running' })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -157,6 +157,54 @@ describe('research status API', () => {
     expect(response.message).toBeUndefined()
   })
 
+  it('forwards the currentStep in the response while the job is still running', async () => {
+    mocks.finalizeResearchJob.mockResolvedValue({
+      outcome: 'still-running',
+      currentStep: { kind: 'search', text: 'best espresso machines 2026' },
+    })
+
+    const handler = await getStatusHandler()
+    const { db } = createDb({
+      job: createJob({ status: 'running' }),
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response.currentStep).toEqual({
+      kind: 'search',
+      text: 'best espresso machines 2026',
+    })
+  })
+
+  it('omits currentStep once the job is already terminal', async () => {
+    const handler = await getStatusHandler()
+    const { db } = createDb({
+      job: createJob({ status: 'completed', resultMessageId: 'assistant-1' }),
+      message: {
+        id: 'db-id',
+        publicId: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Report' }],
+        tools: [],
+        reasoning: 'off',
+        createdAt: new Date(),
+        usage: null,
+      },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response.currentStep).toBeUndefined()
+  })
+
   it('returns immediately for an already-completed job without calling finalize', async () => {
     const handler = await getStatusHandler()
     const { db } = createDb({
@@ -189,7 +237,7 @@ describe('research status API', () => {
   })
 
   it('includes the assistant message once finalize completes the job', async () => {
-    mocks.finalizeResearchJob.mockResolvedValue('finalized')
+    mocks.finalizeResearchJob.mockResolvedValue({ outcome: 'finalized' })
 
     const handler = await getStatusHandler()
     const { db } = createDb({
