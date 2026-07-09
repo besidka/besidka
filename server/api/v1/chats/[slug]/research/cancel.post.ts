@@ -2,6 +2,7 @@ import { useLogger, createError } from 'evlog'
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
+import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
 import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
@@ -66,15 +67,20 @@ export default defineEventHandler(async (event) => {
     return { job: toResearchJobView(job) }
   }
 
+  const runtimeConfig = useRuntimeConfig()
+
   if (job.providerJobId) {
     const apiKey = await getDecryptedProviderKey(userId, job.provider)
 
     if (apiKey) {
+      const useMockAdapter = runtimeConfig.researchMockEnabled
+        && job.providerJobId.startsWith('mock_')
+      const adapter = useMockAdapter
+        ? mockResearchAdapter
+        : getResearchAdapter(job.provider)
+
       try {
-        await getResearchAdapter(job.provider).cancel(
-          job.providerJobId,
-          apiKey,
-        )
+        await adapter.cancel(job.providerJobId, apiKey)
       } catch (exception) {
         const exceptionDetails = describeResearchAdapterException(exception)
 

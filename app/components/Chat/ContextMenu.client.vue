@@ -33,8 +33,11 @@
               class="flex items-center justify-between gap-3 text-xs"
             >
               <span class="shrink-0 font-normal text-base-content/50">Model</span>
-              <span class="min-w-0 truncate font-normal text-base-content">
-                {{ info.model }}
+              <span
+                class="min-w-0 truncate font-normal text-base-content"
+                :title="info.model"
+              >
+                {{ modelDisplayName }}
               </span>
             </div>
             <div
@@ -219,6 +222,16 @@ const isTextSelecting = shallowRef<boolean>(false)
 
 const dateTimeInfo = computed(() => {
   return formatMessageDateTime(props.info?.createdAt)
+})
+
+const modelDisplayName = computed<string>(() => {
+  if (!props.info?.model) {
+    return ''
+  }
+
+  const { model } = getModel(props.info.model)
+
+  return model ? getModelName(props.info.model) : props.info.model
 })
 
 const reasoningIconName = computed<string>(() => {

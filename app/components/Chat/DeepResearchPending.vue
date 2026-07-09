@@ -10,7 +10,7 @@
           >
             {{ statusLabel }}
             <span
-              v-if="showTimer"
+              v-if="showTimer && !checking"
               data-testid="research-pending-timer"
               class="text-base-content/60 tabular-nums"
             >
@@ -19,17 +19,19 @@
           </span>
         </div>
         <progress
+          v-if="!checking"
           data-testid="research-pending-progress"
           class="progress progress-accent w-full h-1 mt-1"
         />
         <div
+          v-if="!checking"
           data-testid="research-pending-level"
           class="text-xs text-base-content/70"
         >
           {{ modelName }} · {{ tierLabel }}
         </div>
         <p
-          v-if="timeEstimate"
+          v-if="!checking && timeEstimate"
           class="text-xs text-base-content/60"
         >
           This can take {{ timeEstimate }} — you can leave; we'll
@@ -79,7 +81,7 @@
           Retry
         </button>
         <button
-          v-if="!isTerminal && job.publicId !== 'local-pending'"
+          v-if="!isTerminal && !checking && job.publicId !== 'local-pending'"
           type="button"
           data-testid="research-cancel"
           class="btn btn-ghost btn-sm"
@@ -98,6 +100,7 @@ import type { ResearchJobView } from '#shared/types/research.d'
 const props = defineProps<{
   job: ResearchJobView
   elapsedMs: number
+  checking?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -111,6 +114,10 @@ const isTerminal = computed<boolean>(() => {
 })
 
 const statusLabel = computed<string>(() => {
+  if (props.checking) {
+    return 'Checking research status…'
+  }
+
   return props.job.status === 'pending'
     ? 'Preparing your research…'
     : 'Researching…'

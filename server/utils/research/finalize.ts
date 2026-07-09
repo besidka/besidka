@@ -16,6 +16,7 @@ import {
 } from '~~/server/utils/chats/errors'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
+import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
 import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import type { ResearchFinalResult } from '~~/server/utils/research/types.d'
@@ -69,7 +70,12 @@ export async function finalizeResearchJob(
     return 'failed'
   }
 
-  const adapter = getResearchAdapter(job.provider)
+  const runtimeConfig = useRuntimeConfig()
+  const useMockAdapter = runtimeConfig.researchMockEnabled
+    && job.providerJobId.startsWith('mock_')
+  const adapter = useMockAdapter
+    ? mockResearchAdapter
+    : getResearchAdapter(job.provider)
   let statusResult
 
   try {
@@ -374,6 +380,12 @@ function buildResearchAssistantParts(input: {
       title: source.title,
     })),
     { type: 'data-research' as const, data: metadata },
+    ...(input.result.trace?.length
+      ? [{
+        type: 'data-research-trace' as const,
+        data: { entries: input.result.trace },
+      }]
+      : []),
   ] as UIMessage['parts']
 }
 

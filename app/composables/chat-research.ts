@@ -79,6 +79,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
 
   const researchJob = shallowRef<ResearchJobView | null>(null)
   const researchElapsedMs = shallowRef<number>(0)
+  const researchStatusChecking = shallowRef<boolean>(false)
 
   let pollIntervalId: ReturnType<typeof setInterval> | undefined
   let elapsedIntervalId: ReturnType<typeof setInterval> | undefined
@@ -266,6 +267,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
       void exception
     } finally {
       isPolling = false
+      researchStatusChecking.value = false
     }
   }
 
@@ -338,6 +340,15 @@ export function useChatResearch(options: UseChatResearchOptions) {
 
   function seedActiveResearchJob(job: ResearchJobView | null): void {
     applyJobUpdate(job)
+
+    if (
+      import.meta.client
+        && job
+        && ACTIVE_RESEARCH_JOB_STATUSES.includes(job.status)
+    ) {
+      researchStatusChecking.value = true
+      pollOnce()
+    }
   }
 
   function dismissResearchJob(): void {
@@ -346,6 +357,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
     detachVisibilityListeners()
     researchJob.value = null
     researchElapsedMs.value = 0
+    researchStatusChecking.value = false
   }
 
   function dispose(): void {
@@ -357,6 +369,7 @@ export function useChatResearch(options: UseChatResearchOptions) {
   return {
     researchJob,
     researchElapsedMs,
+    researchStatusChecking,
     isResearchJobActive,
     startResearchJob,
     cancelResearchJob,

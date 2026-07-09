@@ -159,6 +159,50 @@ describe('google research adapter', () => {
     expect(result.sources).toEqual([])
   })
 
+  it('extracts a defensive trace of thoughts, searches, and reads from all steps', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'completed',
+      steps: [
+        { content: [{ text: 'Plan the research approach.' }] },
+        {
+          content: [{ text: 'Report body' }],
+          grounding: { query: 'best espresso machines 2026' },
+          citations: [{ uri: 'https://example.com/reviews' }],
+        },
+      ],
+    }), { status: 200 }))
+
+    const { googleResearchAdapter } = await importAdapter()
+
+    const result = await googleResearchAdapter.result(
+      'interaction-abc',
+      'goog-test-key',
+    )
+
+    expect(result.trace).toEqual(expect.arrayContaining([
+      { kind: 'thought', text: 'Plan the research approach.' },
+      { kind: 'thought', text: 'Report body' },
+      { kind: 'search', text: 'best espresso machines 2026' },
+      { kind: 'read', text: 'https://example.com/reviews' },
+    ]))
+  })
+
+  it('returns an empty trace when steps have an unrecognized schema', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'completed',
+      steps: [{ unexpected: 'shape', nested: { deeper: null } }],
+    }), { status: 200 }))
+
+    const { googleResearchAdapter } = await importAdapter()
+
+    const result = await googleResearchAdapter.result(
+      'interaction-abc',
+      'goog-test-key',
+    )
+
+    expect(result.trace).toEqual([])
+  })
+
   it('throws a structured error carrying status and body on a non-2xx response', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
       error: { message: 'The caller does not have permission' },

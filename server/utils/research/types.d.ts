@@ -1,6 +1,7 @@
 import type {
   ResearchJobStatus,
   ResearchLevel,
+  ResearchTraceEntry,
   ResearchUsage,
 } from '#shared/types/research.d'
 
@@ -32,6 +33,7 @@ export interface ResearchFinalResult {
   reportText: string
   sources: ResearchSource[]
   usage?: ResearchUsage
+  trace?: ResearchTraceEntry[]
 }
 
 export interface ResearchAdapter {

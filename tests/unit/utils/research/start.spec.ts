@@ -72,6 +72,12 @@ const mocks = vi.hoisted(() => ({
       status: 'running',
     })),
   })),
+  mockResearchAdapter: {
+    start: vi.fn(async () => ({
+      providerJobId: 'mock_1234_ABCDEF',
+      status: 'running',
+    })),
+  },
 }))
 
 vi.mock('#shared/utils/model', () => ({
@@ -96,6 +102,10 @@ vi.mock('~~/server/utils/research/clarify', () => ({
 
 vi.mock('~~/server/utils/research/adapters', () => ({
   getResearchAdapter: mocks.getResearchAdapter,
+}))
+
+vi.mock('~~/server/utils/research/adapters/mock', () => ({
+  mockResearchAdapter: mocks.mockResearchAdapter,
 }))
 
 async function importStart() {
@@ -221,6 +231,11 @@ describe('startResearchJobForChat', () => {
         status: 'running',
       })),
     } as any)
+    mocks.mockResearchAdapter.start.mockResolvedValue({
+      providerJobId: 'mock_1234_ABCDEF',
+      status: 'running',
+    } as any)
+    useRuntimeConfig().researchMockEnabled = false
   })
 
   it('claims the job, rewrites the brief, and starts the provider job', async () => {
@@ -430,6 +445,61 @@ describe('startResearchJobForChat', () => {
       .rejects.toMatchObject({ status: 409 })
 
     expect(mocks.rewriteResearchBrief).not.toHaveBeenCalled()
+  })
+
+  it('routes to the mock adapter when mock mode is enabled and the topic is prefixed with mock:', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+
+    const { db } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const input = {
+      ...createInput({ db }),
+      userMessage: {
+        id: 'user-message-1',
+        parts: [
+          { type: 'text', text: 'mock: best espresso machines' },
+        ] as UIMessage['parts'],
+      },
+    }
+
+    const result = await startResearchJobForChat(input)
+
+    expect(result.job.status).toBe('running')
+    expect(mocks.mockResearchAdapter.start).toHaveBeenCalledTimes(1)
+    expect(mocks.getResearchAdapter).not.toHaveBeenCalled()
+  })
+
+  it('does not route to the mock adapter when the topic has no mock: prefix, even with mock mode enabled', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+
+    const { db } = createDb()
+    const { startResearchJobForChat } = await importStart()
+
+    await startResearchJobForChat(createInput({ db }))
+
+    expect(mocks.mockResearchAdapter.start).not.toHaveBeenCalled()
+    expect(mocks.getResearchAdapter).toHaveBeenCalledWith('openai')
+  })
+
+  it('does not route to the mock adapter when mock mode is disabled, even with a mock: prefixed topic', async () => {
+    useRuntimeConfig().researchMockEnabled = false
+
+    const { db } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const input = {
+      ...createInput({ db }),
+      userMessage: {
+        id: 'user-message-1',
+        parts: [
+          { type: 'text', text: 'mock: best espresso machines' },
+        ] as UIMessage['parts'],
+      },
+    }
+
+    await startResearchJobForChat(input)
+
+    expect(mocks.mockResearchAdapter.start).not.toHaveBeenCalled()
+    expect(mocks.getResearchAdapter).toHaveBeenCalledWith('openai')
   })
 })
 

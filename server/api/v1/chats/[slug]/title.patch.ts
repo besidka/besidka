@@ -1,3 +1,4 @@
+import { getModelResearch } from '#shared/utils/research'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
@@ -70,6 +71,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const { provider, model } = useChatProvider(body.data.model)
+  const research = getModelResearch(model)
+  const titleModelId = research ? research.assistModel : model.id
 
   const initialMessage = chat.messages[0]
 
@@ -85,7 +88,7 @@ export default defineEventHandler(async (event) => {
     case 'openai': {
       const { generateChatTitle } = await useOpenAI(
         session.user.id,
-        model.id,
+        titleModelId,
         [],
         'off',
       )
@@ -96,7 +99,7 @@ export default defineEventHandler(async (event) => {
     case 'google': {
       const { generateChatTitle } = await useGoogle(
         session.user.id,
-        model.id,
+        titleModelId,
         [],
         'off',
       )

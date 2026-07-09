@@ -45,6 +45,13 @@ export interface ResearchUsage {
   toolCalls?: number
 }
 
+export type ResearchTraceKind = 'thought' | 'search' | 'read'
+
+export interface ResearchTraceEntry {
+  kind: ResearchTraceKind
+  text: string
+}
+
 export interface ResearchMetadata {
   provider: ResearchProviderId
   level: ResearchLevel

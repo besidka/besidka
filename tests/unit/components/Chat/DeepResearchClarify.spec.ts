@@ -68,6 +68,66 @@ describe('Chat/DeepResearchClarify', () => {
     ]])
   })
 
+  it('marks a selected choice option with btn-primary', async () => {
+    const wrapper = await mountSuspended(DeepResearchClarify, {
+      props: { clarification },
+    })
+
+    const option = wrapper
+      .find('[data-testid="research-clarify-option-audience-Engineers"]')
+
+    expect(option.classes()).not.toContain('btn-primary')
+    expect(option.classes()).toContain('btn-outline')
+
+    await option.trigger('click')
+
+    expect(option.classes()).toContain('btn-primary')
+    expect(option.classes()).not.toContain('btn-outline')
+    expect(option.classes()).not.toContain('btn-accent')
+  })
+
+  it('toggles a choice option off on a second click', async () => {
+    const wrapper = await mountSuspended(DeepResearchClarify, {
+      props: { clarification },
+    })
+
+    const option = wrapper
+      .find('[data-testid="research-clarify-option-audience-Engineers"]')
+
+    await option.trigger('click')
+    expect(option.classes()).toContain('btn-primary')
+
+    await option.trigger('click')
+    expect(option.classes()).not.toContain('btn-primary')
+    expect(option.classes()).toContain('btn-outline')
+  })
+
+  it('emits submit with every selected choice joined by a comma', async () => {
+    const wrapper = await mountSuspended(DeepResearchClarify, {
+      props: { clarification },
+    })
+
+    await wrapper
+      .find('[data-testid="research-clarify-option-audience-Founders"]')
+      .trigger('click')
+    await wrapper
+      .find('[data-testid="research-clarify-option-audience-Engineers"]')
+      .trigger('click')
+    await wrapper
+      .find('[data-testid="research-clarify-form"]')
+      .trigger('submit')
+
+    expect(wrapper.emitted('submit')).toEqual([[
+      [
+        {
+          id: 'audience',
+          question: 'Who is this research for?',
+          answer: 'Founders, Engineers',
+        },
+      ],
+    ]])
+  })
+
   it('emits submit with a typed text answer', async () => {
     const wrapper = await mountSuspended(DeepResearchClarify, {
       props: { clarification },

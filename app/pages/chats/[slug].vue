@@ -57,6 +57,7 @@
             v-if="hasResearchMetaPart(m)"
             :message="m"
           />
+          <ChatDeepResearchTrace :message="m" />
           <ChatReasoning
             :message="m"
             :reasoning-level="getMessageReasoning(m, messageIndex)"
@@ -127,6 +128,7 @@
         class="mt-3"
         :job="researchJob"
         :elapsed-ms="researchElapsedMs"
+        :checking="researchStatusChecking"
         @cancel="cancelResearchJob"
         @retry="onResearchRetry"
         @dismiss="dismissResearchJob"
@@ -308,6 +310,7 @@ const {
   submitResearchClarification,
   researchJob,
   researchElapsedMs,
+  researchStatusChecking,
   isResearchJobActive,
   cancelResearchJob,
   seedActiveResearchJob,

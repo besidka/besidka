@@ -437,4 +437,65 @@ describe('useChatResearch', () => {
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  describe('researchStatusChecking', () => {
+    it('is set immediately when seeding an active job, then clears once the poll settles', async () => {
+      const chatSdk = createChatSdk()
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'running' }),
+      })
+
+      research.seedActiveResearchJob(createJob({ status: 'running' }))
+
+      expect(research.researchStatusChecking.value).toBe(true)
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/chat-1/research')
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(research.researchStatusChecking.value).toBe(false)
+    })
+
+    it('is not set when seeding a terminal job', () => {
+      const chatSdk = createChatSdk()
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      research.seedActiveResearchJob(createJob({ status: 'failed' }))
+
+      expect(research.researchStatusChecking.value).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('is not set when starting a fresh job', async () => {
+      const chatSdk = createChatSdk()
+
+      fetchMock.mockResolvedValueOnce({
+        job: createJob({ status: 'pending' }),
+      })
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      await research.startResearchJob({
+        userMessage: { id: 'user-msg-1', parts: [] },
+      })
+
+      expect(research.researchStatusChecking.value).toBe(false)
+    })
+
+    it('is cleared by dismissResearchJob', () => {
+      const chatSdk = createChatSdk()
+
+      const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+      research.seedActiveResearchJob(createJob({ status: 'running' }))
+      expect(research.researchStatusChecking.value).toBe(true)
+
+      research.dismissResearchJob()
+
+      expect(research.researchStatusChecking.value).toBe(false)
+    })
+  })
 })

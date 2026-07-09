@@ -192,6 +192,54 @@ describe('Chat/DeepResearchPending', () => {
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
 
+  it('shows a neutral checking status and hides progress, timer, level, and cancel', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 65_000,
+        checking: true,
+      },
+    })
+
+    expect(
+      wrapper.get('[data-testid="research-pending-status"]').text(),
+    ).toBe('Checking research status…')
+    expect(
+      wrapper.find('[data-testid="research-pending-timer"]').exists(),
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="research-pending-progress"]').exists(),
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="research-pending-level"]').exists(),
+    ).toBe(false)
+    expect(wrapper.find('[data-testid="research-cancel"]').exists())
+      .toBe(false)
+    expect(wrapper.text()).not.toContain('This can take')
+  })
+
+  it('shows the normal running state once checking clears', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running' }),
+        elapsedMs: 65_000,
+        checking: false,
+      },
+    })
+
+    expect(
+      wrapper.get('[data-testid="research-pending-status"]').text(),
+    ).toContain('Researching…')
+    expect(
+      wrapper.find('[data-testid="research-pending-progress"]').exists(),
+    ).toBe(true)
+    expect(
+      wrapper.find('[data-testid="research-pending-level"]').exists(),
+    ).toBe(true)
+    expect(wrapper.find('[data-testid="research-cancel"]').exists())
+      .toBe(true)
+  })
+
   it('shows a dismiss affordance and emits dismiss on cancelled', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {

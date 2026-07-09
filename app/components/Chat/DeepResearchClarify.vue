@@ -44,8 +44,8 @@
             :data-testid="`research-clarify-option-${question.id}-${option}`"
             class="btn btn-sm"
             :class="{
-              'btn-accent': answers[question.id] === option,
-              'btn-outline': answers[question.id] !== option,
+              'btn-primary': isChoiceSelected(question.id, option),
+              'btn-outline': !isChoiceSelected(question.id, option),
             }"
             :disabled="isSubmitting"
             @click="selectChoice(question.id, option)"
@@ -108,6 +108,7 @@ const emit = defineEmits<{
 }>()
 
 const answers = reactive<Record<string, string>>({})
+const choiceSelections = reactive<Record<string, string[]>>({})
 const isSubmitting = shallowRef<boolean>(false)
 const showLoading = shallowRef<boolean>(false)
 let loadingDelayTimeoutId: ReturnType<typeof setTimeout> | undefined
@@ -135,8 +136,16 @@ onUnmounted(() => {
   }
 })
 
+function isChoiceSelected(questionId: string, option: string): boolean {
+  return choiceSelections[questionId]?.includes(option) ?? false
+}
+
 function selectChoice(questionId: string, option: string) {
-  answers[questionId] = option
+  const selected = choiceSelections[questionId] ?? []
+
+  choiceSelections[questionId] = selected.includes(option)
+    ? selected.filter(existing => existing !== option)
+    : [...selected, option]
 }
 
 function onTextInput(questionId: string, event: Event) {
@@ -151,15 +160,19 @@ function buildAnswers(): ResearchAnswer[] {
   }
 
   return props.clarification.questions
-    .filter((question) => {
-      return Boolean(answers[question.id]?.trim().length)
-    })
     .map((question) => {
+      const answer = question.kind === 'choice'
+        ? (choiceSelections[question.id] ?? []).join(', ')
+        : answers[question.id]?.trim() || ''
+
       return {
         id: question.id,
         question: question.question,
-        answer: answers[question.id]?.trim() || '',
+        answer,
       }
+    })
+    .filter((answer) => {
+      return Boolean(answer.answer.length)
     })
 }
 

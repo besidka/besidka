@@ -1,9 +1,13 @@
-import type { ResearchJobStatus } from '#shared/types/research.d'
+import type {
+  ResearchJobStatus,
+  ResearchTraceEntry,
+} from '#shared/types/research.d'
 import {
   ResearchAdapterError,
   readResearchAdapterErrorBody,
 } from '~~/server/utils/research/adapter-error'
 import { buildResearcherDeveloperPrompt } from '~~/server/utils/research/prompts'
+import { clampResearchTrace } from '~~/server/utils/research/trace'
 import type {
   ResearchAdapter,
   ResearchFinalResult,
@@ -160,6 +164,44 @@ function toNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
+function extractOpenAiTrace(output: unknown[]): ResearchTraceEntry[] {
+  const entries: ResearchTraceEntry[] = []
+
+  for (const item of output) {
+    if (!isRecord(item)) {
+      continue
+    }
+
+    if (item.type === 'reasoning') {
+      const summaries = Array.isArray(item.summary) ? item.summary : []
+
+      for (const summary of summaries) {
+        if (
+          isRecord(summary)
+          && summary.type === 'summary_text'
+          && typeof summary.text === 'string'
+        ) {
+          entries.push({ kind: 'thought', text: summary.text })
+        }
+      }
+
+      continue
+    }
+
+    if (item.type === 'web_search_call' && isRecord(item.action)) {
+      const action = item.action
+
+      if (action.type === 'search' && typeof action.query === 'string') {
+        entries.push({ kind: 'search', text: action.query })
+      } else if (typeof action.url === 'string') {
+        entries.push({ kind: 'read', text: action.url })
+      }
+    }
+  }
+
+  return entries
+}
+
 async function result(
   providerJobId: string,
   apiKey: string,
@@ -192,6 +234,7 @@ async function result(
     return isRecord(item) && item.type === 'web_search_call'
   }).length
   const usageRecord = isRecord(body.usage) ? body.usage : undefined
+  const trace = clampResearchTrace(extractOpenAiTrace(output))
 
   return {
     reportText,
@@ -208,6 +251,7 @@ async function result(
         : undefined,
       toolCalls,
     },
+    trace,
   }
 }
 

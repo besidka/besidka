@@ -745,6 +745,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const {
     researchJob,
     researchElapsedMs,
+    researchStatusChecking,
     isResearchJobActive,
     startResearchJob,
     cancelResearchJob,
@@ -1219,6 +1220,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     submitResearchClarification,
     researchJob,
     researchElapsedMs,
+    researchStatusChecking,
     isResearchJobActive,
     cancelResearchJob,
     seedActiveResearchJob,

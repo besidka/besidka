@@ -2,12 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getResearchAdapter: vi.fn(),
+  mockResearchAdapter: { cancel: vi.fn(async () => undefined) },
   getDecryptedProviderKey: vi.fn(async () => 'decrypted-api-key'),
   loggerSet: vi.fn(),
 }))
 
 vi.mock('~~/server/utils/research/adapters', () => ({
   getResearchAdapter: mocks.getResearchAdapter,
+}))
+
+vi.mock('~~/server/utils/research/adapters/mock', () => ({
+  mockResearchAdapter: mocks.mockResearchAdapter,
 }))
 
 vi.mock('~~/server/utils/research/keys', () => ({
@@ -142,6 +147,7 @@ describe('research cancel API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
+    useRuntimeConfig().researchMockEnabled = false
   })
 
   it('cancels the provider job and marks it cancelled', async () => {
@@ -227,6 +233,58 @@ describe('research cancel API', () => {
     await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
     } as any)).rejects.toThrow('Chat not found.')
+  })
+
+  it('routes to the mock adapter when mock mode is enabled and the job carries the mock_ sentinel', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+    mocks.getResearchAdapter.mockReturnValue({
+      cancel: vi.fn(async () => undefined),
+    })
+
+    const handler = await getCancelHandler()
+    const { db } = createDb({
+      job: createJob({
+        status: 'running',
+        providerJobId: 'mock_1234_ABCDEF',
+      }),
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(mocks.mockResearchAdapter.cancel).toHaveBeenCalledWith(
+      'mock_1234_ABCDEF',
+      'decrypted-api-key',
+    )
+    expect(mocks.getResearchAdapter).not.toHaveBeenCalled()
+    expect(response.job.status).toBe('cancelled')
+  })
+
+  it('does not route to the mock adapter when mock mode is disabled, even for a mock_ sentinel job id', async () => {
+    useRuntimeConfig().researchMockEnabled = false
+    const cancel = vi.fn(async () => undefined)
+
+    mocks.getResearchAdapter.mockReturnValue({ cancel })
+
+    const handler = await getCancelHandler()
+    const { db } = createDb({
+      job: createJob({
+        status: 'running',
+        providerJobId: 'mock_1234_ABCDEF',
+      }),
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(cancel).toHaveBeenCalledWith('mock_1234_ABCDEF', 'decrypted-api-key')
+    expect(mocks.mockResearchAdapter.cancel).not.toHaveBeenCalled()
   })
 
   it('returns the re-fetched job state when the guarded cancel update is raced by a finalize', async () => {

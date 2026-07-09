@@ -191,6 +191,129 @@ describe('openai research adapter', () => {
     })
   })
 
+  it('extracts an ordered trace of thoughts, searches, and reads', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'completed',
+      output: [
+        {
+          type: 'reasoning',
+          summary: [
+            { type: 'summary_text', text: 'Plan the research approach.' },
+          ],
+        },
+        {
+          type: 'web_search_call',
+          action: { type: 'search', query: 'best espresso machines 2026' },
+        },
+        {
+          type: 'web_search_call',
+          action: { type: 'open_page', url: 'https://example.com/reviews' },
+        },
+        {
+          type: 'message',
+          content: [
+            { type: 'output_text', text: 'Final report.', annotations: [] },
+          ],
+        },
+      ],
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    const result = await openAiResearchAdapter.result(
+      'resp_abc123',
+      'sk-test',
+    )
+
+    expect(result.trace).toEqual([
+      { kind: 'thought', text: 'Plan the research approach.' },
+      { kind: 'search', text: 'best espresso machines 2026' },
+      { kind: 'read', text: 'https://example.com/reviews' },
+    ])
+  })
+
+  it('returns an empty trace when the output has no reasoning or search calls', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'completed',
+      output: [
+        {
+          type: 'message',
+          content: [
+            { type: 'output_text', text: 'Final report.', annotations: [] },
+          ],
+        },
+      ],
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    const result = await openAiResearchAdapter.result(
+      'resp_abc123',
+      'sk-test',
+    )
+
+    expect(result.trace).toEqual([])
+  })
+
+  it('caps the extracted trace at 100 entries', async () => {
+    const reasoningItems = Array.from({ length: 150 }, (_, index) => ({
+      type: 'reasoning',
+      summary: [{ type: 'summary_text', text: `Thought number ${index}` }],
+    }))
+
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'completed',
+      output: [
+        ...reasoningItems,
+        {
+          type: 'message',
+          content: [
+            { type: 'output_text', text: 'Final report.', annotations: [] },
+          ],
+        },
+      ],
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    const result = await openAiResearchAdapter.result(
+      'resp_abc123',
+      'sk-test',
+    )
+
+    expect(result.trace).toHaveLength(100)
+  })
+
+  it('truncates a trace entry to 500 characters and drops blank summaries', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'completed',
+      output: [
+        {
+          type: 'reasoning',
+          summary: [
+            { type: 'summary_text', text: 'x'.repeat(600) },
+            { type: 'summary_text', text: '   ' },
+          ],
+        },
+        {
+          type: 'message',
+          content: [
+            { type: 'output_text', text: 'Final report.', annotations: [] },
+          ],
+        },
+      ],
+    }), { status: 200 }))
+
+    const { openAiResearchAdapter } = await importAdapter()
+
+    const result = await openAiResearchAdapter.result(
+      'resp_abc123',
+      'sk-test',
+    )
+
+    expect(result.trace).toEqual([{ kind: 'thought', text: 'x'.repeat(500) }])
+  })
+
   it('throws a structured error carrying status and body on a non-2xx response', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({
       error: { message: 'Your organization must be verified to use this model.' },

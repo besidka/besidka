@@ -137,6 +137,7 @@ export default defineNuxtConfig({
     researchSweepEnabled: false,
     researchSweepBatchSize: 20,
     researchSweepMaxRuntimeMs: 20000,
+    researchMockEnabled: false,
     axiomDataset: '',
     axiomToken: '',
     axiomAuditDataset: '',

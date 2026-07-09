@@ -529,7 +529,7 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(
         wrapper.find('[data-testid="message-menu-model"]').text(),
-      ).toContain('gpt-5.4')
+      ).toContain('GPT-5.4')
       expect(
         wrapper.find('[data-testid="message-menu-tools"]').text(),
       ).toContain('Web search')
@@ -557,6 +557,51 @@ describe('Chat/ContextMenu.client', () => {
       expect(
         wrapper.find('[data-testid="message-menu-datetime"]').exists(),
       ).toBe(true)
+    })
+
+    it('shows the raw model id as a tooltip on the display name', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const modelRow = wrapper.get('[data-testid="message-menu-model"]')
+
+      expect(modelRow.text()).toContain('GPT-5.4')
+      expect(modelRow.get('span[title]').attributes('title')).toBe(
+        'gpt-5.4',
+      )
+    })
+
+    it('falls back to the raw id for an unknown model', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'totally-unknown-model-id',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-model"]').text(),
+      ).toContain('totally-unknown-model-id')
     })
 
     it('renders user usage info without model or tools', async () => {

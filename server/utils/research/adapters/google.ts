@@ -1,9 +1,13 @@
-import type { ResearchJobStatus } from '#shared/types/research.d'
+import type {
+  ResearchJobStatus,
+  ResearchTraceEntry,
+} from '#shared/types/research.d'
 import {
   ResearchAdapterError,
   readResearchAdapterErrorBody,
 } from '~~/server/utils/research/adapter-error'
 import { buildResearcherDeveloperPrompt } from '~~/server/utils/research/prompts'
+import { clampResearchTrace } from '~~/server/utils/research/trace'
 import type {
   ResearchAdapter,
   ResearchFinalResult,
@@ -19,6 +23,9 @@ const GOOGLE_JOB_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_GOOGLE_SOURCES = 200
 const MAX_GOOGLE_SOURCE_RECURSION_DEPTH = 8
 const MAX_GOOGLE_SOURCE_VISITED_NODES = 2000
+const MAX_GOOGLE_TRACE_ENTRIES = 100
+const MAX_GOOGLE_TRACE_RECURSION_DEPTH = 8
+const MAX_GOOGLE_TRACE_VISITED_NODES = 2000
 
 function validateGoogleJobId(providerJobId: string): void {
   if (!GOOGLE_JOB_ID_PATTERN.test(providerJobId)) {
@@ -203,6 +210,73 @@ function toNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
+function collectGoogleTraceCandidates(
+  value: unknown,
+  entries: ResearchTraceEntry[],
+  depth: number = 0,
+  visited: { count: number } = { count: 0 },
+): void {
+  if (
+    entries.length >= MAX_GOOGLE_TRACE_ENTRIES
+    || depth > MAX_GOOGLE_TRACE_RECURSION_DEPTH
+    || visited.count >= MAX_GOOGLE_TRACE_VISITED_NODES
+    || !value
+    || typeof value !== 'object'
+  ) {
+    return
+  }
+
+  visited.count += 1
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectGoogleTraceCandidates(item, entries, depth + 1, visited)
+    }
+
+    return
+  }
+
+  const record = value as Record<string, unknown>
+
+  if (typeof record.query === 'string' && record.query) {
+    entries.push({ kind: 'search', text: record.query })
+  }
+
+  const readUrl = typeof record.uri === 'string'
+    ? record.uri
+    : typeof record.url === 'string' ? record.url : undefined
+
+  if (readUrl) {
+    entries.push({ kind: 'read', text: readUrl })
+  }
+
+  for (const nestedValue of Object.values(record)) {
+    collectGoogleTraceCandidates(nestedValue, entries, depth + 1, visited)
+  }
+}
+
+function extractGoogleTrace(steps: unknown[]): ResearchTraceEntry[] {
+  const entries: ResearchTraceEntry[] = []
+
+  for (const step of steps) {
+    if (!isRecord(step)) {
+      continue
+    }
+
+    const contentItems = Array.isArray(step.content) ? step.content : []
+
+    for (const item of contentItems) {
+      if (isRecord(item) && typeof item.text === 'string' && item.text) {
+        entries.push({ kind: 'thought', text: item.text })
+      }
+    }
+
+    collectGoogleTraceCandidates(step, entries)
+  }
+
+  return entries
+}
+
 async function result(
   providerJobId: string,
   apiKey: string,
@@ -216,6 +290,7 @@ async function result(
   const reportText = extractGoogleReportText(steps)
   const sources = extractGoogleSources(steps)
   const usageRecord = isRecord(body.usage) ? body.usage : undefined
+  const trace = clampResearchTrace(extractGoogleTrace(steps))
 
   return {
     reportText,
@@ -233,6 +308,7 @@ async function result(
         ),
       }
       : undefined,
+    trace,
   }
 }
 

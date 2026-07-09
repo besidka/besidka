@@ -32,6 +32,12 @@ NUXT_RESEARCH_SWEEP_ENABLED=false
 NUXT_RESEARCH_SWEEP_BATCH_SIZE=20
 NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS=20000
 
+# Deep research mock/dry-run mode. When true, a topic prefixed with "mock:"
+# skips the real provider call and returns a canned report at zero cost.
+# Only ever set true on preview (wrangler.jsonc top-level vars) — never in
+# production — so the mock path cannot be selected on the live Worker.
+NUXT_RESEARCH_MOCK_ENABLED=false
+
 # Axiom observability (production only)
 NUXT_AXIOM_DATASET=
 NUXT_AXIOM_TOKEN=

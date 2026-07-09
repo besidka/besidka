@@ -54,6 +54,12 @@ function renderWhereTokens(whereArg: unknown): string {
 
 const mocks = vi.hoisted(() => ({
   getResearchAdapter: vi.fn(),
+  mockResearchAdapter: {
+    start: vi.fn(),
+    status: vi.fn(),
+    result: vi.fn(),
+    cancel: vi.fn(),
+  },
   getDecryptedProviderKey: vi.fn(async () => 'decrypted-api-key'),
   insertMessageWithPublicId: vi.fn(async () => ({
     id: 'message-db-id',
@@ -63,6 +69,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('~~/server/utils/research/adapters', () => ({
   getResearchAdapter: mocks.getResearchAdapter,
+}))
+
+vi.mock('~~/server/utils/research/adapters/mock', () => ({
+  mockResearchAdapter: mocks.mockResearchAdapter,
 }))
 
 vi.mock('~~/server/utils/research/keys', () => ({
@@ -165,6 +175,7 @@ describe('finalizeResearchJob', () => {
     isPushConfigured = vi.fn(() => true)
     vi.stubGlobal('sendPushNotificationToUser', sendPushNotificationToUser)
     vi.stubGlobal('isPushConfigured', isPushConfigured)
+    useRuntimeConfig().researchMockEnabled = false
   })
 
   it('is a no-op when the job already completed with a result message', async () => {
@@ -807,5 +818,112 @@ describe('finalizeResearchJob', () => {
         data: expect.objectContaining({ provider: 'openai' }),
       },
     ])
+  })
+
+  it('appends a data-research-trace part when the result includes a trace', async () => {
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'completed' })),
+      result: vi.fn(async () => ({
+        reportText: 'The final report.',
+        sources: [],
+        trace: [
+          { kind: 'thought', text: 'Plan the approach.' },
+          { kind: 'search', text: 'best espresso machines' },
+        ],
+      })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: createJob() as any,
+      vapid: {},
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('finalized')
+
+    const insertedValues = mocks.insertMessageWithPublicId.mock.calls[0][0]
+
+    expect(insertedValues.values.parts).toEqual([
+      { type: 'text', text: 'The final report.' },
+      {
+        type: 'data-research',
+        data: expect.objectContaining({ provider: 'openai' }),
+      },
+      {
+        type: 'data-research-trace',
+        data: {
+          entries: [
+            { kind: 'thought', text: 'Plan the approach.' },
+            { kind: 'search', text: 'best espresso machines' },
+          ],
+        },
+      },
+    ])
+  })
+
+  it('routes to the mock adapter when mock mode is enabled and the job carries the mock_ sentinel', async () => {
+    useRuntimeConfig().researchMockEnabled = true
+    mocks.mockResearchAdapter.status.mockResolvedValue({
+      status: 'completed',
+    })
+    mocks.mockResearchAdapter.result.mockResolvedValue({
+      reportText: 'Mock report.',
+      sources: [],
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db } = createDb({
+      claimedRow: { id: 'job-1' },
+      chatSlug: 'chat-slug-1',
+    })
+    const job = createJob({ providerJobId: 'mock_1234_ABCDEF' })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: job as any,
+      vapid: {},
+      waitUntil,
+      logger,
+    })
+
+    expect(outcome).toBe('finalized')
+    expect(mocks.mockResearchAdapter.status).toHaveBeenCalledWith(
+      'mock_1234_ABCDEF',
+      'decrypted-api-key',
+    )
+    expect(mocks.getResearchAdapter).not.toHaveBeenCalled()
+  })
+
+  it('does not route to the mock adapter when mock mode is disabled, even for a mock_ sentinel job id', async () => {
+    useRuntimeConfig().researchMockEnabled = false
+    mocks.getResearchAdapter.mockReturnValue({
+      status: vi.fn(async () => ({ status: 'running' })),
+    })
+
+    const { finalizeResearchJob } = await importFinalize()
+    const { db, set } = createDb()
+    const job = createJob({ providerJobId: 'mock_1234_ABCDEF' })
+
+    const outcome = await finalizeResearchJob({
+      db: db as any,
+      job: job as any,
+      vapid: {},
+      logger,
+    })
+
+    expect(outcome).toBe('still-running')
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
+      updatedAt: expect.any(Date),
+    }))
+    expect(mocks.mockResearchAdapter.status).not.toHaveBeenCalled()
+    expect(mocks.getResearchAdapter).toHaveBeenCalledWith('openai')
   })
 })

@@ -17,6 +17,7 @@ import * as schema from '~~/server/db/schema'
 import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
+import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { rewriteResearchBrief } from '~~/server/utils/research/clarify'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
@@ -151,7 +152,13 @@ export async function startResearchJobForChat(
     origin,
   })
 
-  const adapter = getResearchAdapter(supportedProviderId)
+  const topic = getUserMessageText(input.userMessage.parts)
+  const runtimeConfig = useRuntimeConfig()
+  const useMockAdapter = runtimeConfig.researchMockEnabled
+    && topic.trim().toLowerCase().startsWith('mock:')
+  const adapter = useMockAdapter
+    ? mockResearchAdapter
+    : getResearchAdapter(supportedProviderId)
 
   try {
     const assistInstance = await buildResearchAssistModelInstance(
@@ -159,7 +166,6 @@ export async function startResearchJobForChat(
       supportedProviderId,
       research.assistModel,
     )
-    const topic = getUserMessageText(input.userMessage.parts)
     const brief = await rewriteResearchBrief({
       instance: assistInstance,
       topic,
