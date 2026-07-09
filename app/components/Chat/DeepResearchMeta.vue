@@ -98,7 +98,7 @@
                 class="collapse-title flex items-center gap-1 p-0 text-xs"
                 @click.prevent="toggleEntry(index)"
               >
-                <span class="min-w-0 flex-1 truncate text-base-content/80">
+                <span class="min-w-0 truncate text-base-content/80">
                   {{ entry.text }}
                 </span>
                 <Icon
