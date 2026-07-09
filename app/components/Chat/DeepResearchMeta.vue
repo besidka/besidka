@@ -84,7 +84,7 @@
               >
                 <Icon
                   :name="iconForKind(entry.kind)"
-                  class="size-3 text-accent"
+                  class="!size-3 text-accent"
                 />
               </span>
             </div>
@@ -95,20 +95,16 @@
             >
               <summary
                 data-testid="research-trace-entry-toggle"
-                class="collapse-title p-0 text-xs"
+                class="collapse-title flex items-center gap-1 p-0 text-xs"
                 @click.prevent="toggleEntry(index)"
               >
-                <span
-                  class="
-                    align-middle line-clamp-1 text-base-content/80
-                  "
-                >
+                <span class="min-w-0 flex-1 truncate text-base-content/80">
                   {{ entry.text }}
                 </span>
                 <Icon
                   name="lucide:chevron-right"
                   class="
-                    ml-1 inline-block size-4 align-middle
+                    size-4 shrink-0
                     transition-transform group-open/point:rotate-90
                   "
                 />
