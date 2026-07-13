@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "@nuxt/kit": "^4.4.8",
-    "@nuxtjs/i18n": "^10.4.0"
+    "@nuxtjs/i18n": "^10.4.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -35,7 +35,7 @@
     "@nuxt/test-utils": "^4.0.3",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@typescript-eslint/parser": "^8.62.1",
-    "eslint": "^10.6.0",
+    "eslint": "^10.7.0",
     "happy-dom": "^20.10.6",
     "nuxt": "^4.4.8",
     "typescript": "^6.0.3",
