@@ -37,10 +37,43 @@ trigger never renders for them.
 
 Selecting a research model hides web search, reasoning controls, and file
 attachments in `ChatInput` — the agents do their own browsing, and attachments
-are rejected server-side (`server/api/v1/chats/[slug]/research/index.post.ts`
-returns 400 for any non-text message part). Deep research briefs are
-text-only in v2; passing files/images through to the provider's research
-agent is future work.
+are rejected server-side (see the dedicated section below).
+
+### File attachments (not supported — deliberate)
+
+Research briefs are **text-only in v2**. The brief sent to the provider's
+agent is assembled exclusively from the text parts of the user message (topic
++ clarify answers, optionally rewritten by the assist model into a research
+brief) — it is a plain string. If attachments were allowed, everything on
+Besidka's side would appear to work (upload, persistence, rendering in the
+chat), but the agent would never receive the file: the report would silently
+ignore the user's document while looking as if it had considered it. That
+silent-failure trap is strictly worse than a disabled control, which is why
+the attach button and drop-zone are hidden for research models and
+`server/api/v1/chats/[slug]/research/index.post.ts` rejects any non-text
+message part with a 400 as a backstop against direct API calls.
+
+Passing files through is real per-provider work, and the two providers are
+not symmetric:
+
+- **OpenAI** (`o4-mini-deep-research` / `o3-deep-research`): files cannot be
+  passed inline. The documented path for document-grounded research is the
+  `file_search` tool over **vector stores** — upload the file to OpenAI's
+  Files API on the user's key, create a vector store, attach the file, wait
+  for embedding/processing, then reference `vector_store_ids` in the research
+  call (max 2 stores). For a BYO-key app that means a per-user vector-store
+  subsystem: creation, processing polling before job start, storage billed to
+  the user's account, and cleanup lifecycle.
+- **Google** (Gemini Deep Research): the Interactions API accepts PDFs and
+  images as multimodal input directly — the agent "analyzes the provided
+  documents and conducts research grounded in their content." The remaining
+  work is on our side: fetch the bytes from R2, hand them to Google (upload
+  or inline), enforce size/type limits, and resolve the UX asymmetry against
+  OpenAI (attachments possible on one research model but not the other).
+
+Roadmap if file-grounded research is wanted: **Gemini-first** (modest,
+well-documented provider support), with OpenAI's vector-store path as a
+separate, substantially larger second step.
 
 Access gates (surfaced as structured errors with fix text, see
 `mapResearchProviderError` in `server/utils/chats/errors.ts`):
