@@ -33,6 +33,14 @@ updates:
       # Only allow minor/patch updates, prevent major version bumps
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # TypeScript 7 (native/Go compiler port) ships without a stable
+      # compiler API. vue-tsc (drives `pnpm run typecheck`) has no TS7
+      # support yet (vuejs/language-tools#5381) and typescript-eslint's
+      # peer range excludes it outright, crashing at runtime if forced
+      # (typescript-eslint/typescript-eslint#12518). Revisit once both
+      # ship support -- see PR #297 for the full research writeup.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
     commit-message:
