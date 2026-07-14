@@ -13,5 +13,6 @@ export function toResearchJobView(
     startedAt: job.startedAt ? job.startedAt.getTime() : null,
     error: job.error,
     resultMessageId: job.resultMessageId,
+    answers: job.answers ?? null,
   }
 }

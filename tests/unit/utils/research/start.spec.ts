@@ -189,6 +189,7 @@ function createRequestEvent(host = 'app.besidka.com') {
 function createInput(overrides: Partial<{
   db: ReturnType<typeof createDb>['db']
   event: any
+  answers: { id: string, question: string, answer: string }[]
 }> = {}) {
   return {
     db: overrides.db ?? createDb().db,
@@ -205,6 +206,7 @@ function createInput(overrides: Partial<{
       parts: [{ type: 'text', text: 'Research this' }] as UIMessage['parts'],
     },
     model: 'o4-mini-deep-research',
+    answers: overrides.answers,
   }
 }
 
@@ -271,6 +273,82 @@ describe('startResearchJobForChat', () => {
       providerJobId: 'resp_abc123',
       status: 'running',
     }))
+  })
+
+  it('persists the submitted clarify answers on the claim insert and returns them on the job', async () => {
+    const { db, insertValues } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const answers = [
+      { id: 'q1', question: 'What is your budget?', answer: 'Under $500' },
+      { id: 'q2', question: 'Preferred brand?', answer: 'No preference' },
+    ]
+
+    const result = await startResearchJobForChat(createInput({
+      db,
+      answers,
+    }))
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      answers,
+    }))
+    expect(result.job.answers).toEqual(answers)
+  })
+
+  it('stores null answers when no clarify answers are submitted', async () => {
+    const { db, insertValues } = createDb()
+    const { startResearchJobForChat } = await importStart()
+
+    const result = await startResearchJobForChat(createInput({ db }))
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      answers: null,
+    }))
+    expect(result.job.answers).toBeNull()
+  })
+
+  it('filters out empty-string answers before persisting and rewriting the brief', async () => {
+    const { db, insertValues } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const answers = [
+      { id: 'q1', question: 'What is your budget?', answer: 'Under $500' },
+      { id: 'q2', question: 'Preferred brand?', answer: '   ' },
+    ]
+
+    const result = await startResearchJobForChat(createInput({
+      db,
+      answers,
+    }))
+
+    const expectedAnswers = [
+      { id: 'q1', question: 'What is your budget?', answer: 'Under $500' },
+    ]
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      answers: expectedAnswers,
+    }))
+    expect(result.job.answers).toEqual(expectedAnswers)
+    expect(mocks.rewriteResearchBrief).toHaveBeenCalledWith(
+      expect.objectContaining({ answers: expectedAnswers }),
+    )
+  })
+
+  it('stores null answers when every submitted answer is blank', async () => {
+    const { db, insertValues } = createDb()
+    const { startResearchJobForChat } = await importStart()
+    const answers = [
+      { id: 'q1', question: 'What is your budget?', answer: '' },
+      { id: 'q2', question: 'Preferred brand?', answer: '   ' },
+    ]
+
+    const result = await startResearchJobForChat(createInput({
+      db,
+      answers,
+    }))
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      answers: null,
+    }))
+    expect(result.job.answers).toBeNull()
   })
 
   it('logs a deep-research feature discriminator at the start of the run', async () => {

@@ -41,16 +41,17 @@ describe('StatGrid.vue', () => {
     ])
   })
 
-  it('keeps a single row on md+ via column-flow auto placement', async () => {
+  it('arranges 3 per row on md+ and 2 columns on mobile', async () => {
     const wrapper = await mountSuspended(StatGrid, {
       props: { metrics: [...FIVE_METRICS] },
     })
 
     const grid = wrapper.find('div.grid')
 
-    expect(grid.classes()).toContain('md:grid-flow-col')
-    expect(grid.classes()).toContain('md:auto-cols-fr')
+    expect(grid.classes()).toContain('md:grid-cols-3')
     expect(grid.classes()).toContain('grid-cols-2')
+    expect(grid.classes()).not.toContain('md:grid-flow-col')
+    expect(grid.classes()).not.toContain('md:auto-cols-fr')
   })
 
   it('makes the last card full-width below md when count is odd', async () => {

@@ -1,5 +1,5 @@
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
-import type { ResearchUsage } from '#shared/types/research.d'
+import type { ResearchAnswer, ResearchUsage } from '#shared/types/research.d'
 import { sql } from 'drizzle-orm'
 import {
   snakeCase, text, integer, uniqueIndex, index,
@@ -22,6 +22,7 @@ export const researchJobs = snakeCase.table(
     modelId: text().notNull(),
     providerJobId: text(),
     origin: text(),
+    answers: text({ mode: 'json' }).$type<ResearchAnswer[]>(),
     status: text({
       enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
     }).notNull(),

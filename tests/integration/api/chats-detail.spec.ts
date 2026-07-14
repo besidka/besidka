@@ -37,6 +37,7 @@ function createJob(overrides: Partial<{
     resultMessageId: null,
     error: null,
     usage: null,
+    answers: null,
     userMessageId: 'user-message-1',
     startedAt: new Date(),
     createdAt: new Date(),

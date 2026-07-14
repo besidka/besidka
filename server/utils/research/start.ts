@@ -127,6 +127,8 @@ export async function startResearchJobForChat(
 
   await assertResearchJobCapacity(input.db, input.userId)
 
+  const answers = normalizeResearchAnswers(input.answers)
+
   // Server-derived, never client input — captured at start (not from
   // runtimeConfig.public.baseUrl) because every preview deployment shares
   // one baseUrl while each PR is served on a distinct hostname; the cron
@@ -150,6 +152,7 @@ export async function startResearchJobForChat(
     level: research.tier,
     modelId: model.id,
     origin,
+    answers,
   })
 
   const topic = getUserMessageText(input.userMessage.parts)
@@ -170,7 +173,7 @@ export async function startResearchJobForChat(
           research.assistModel,
         ),
         topic,
-        answers: input.answers ?? [],
+        answers: answers ?? [],
       })
 
     const started = await adapter.start({
@@ -262,6 +265,7 @@ export async function startResearchJobForChat(
         startedAt: startedAt.getTime(),
         error: null,
         resultMessageId: null,
+        answers,
       },
     }
   } catch (exception) {
@@ -350,6 +354,7 @@ async function claimResearchJob(
     level: ResearchLevel
     modelId: string
     origin?: string
+    answers: ResearchAnswer[] | null
   },
 ): Promise<{ id: string }> {
   try {
@@ -388,6 +393,20 @@ function isActiveResearchJobConflict(exception: unknown): boolean {
 
   return /unique constraint/i.test(exception.message)
     && exception.message.includes('research_jobs')
+}
+
+function normalizeResearchAnswers(
+  answers?: ResearchAnswer[],
+): ResearchAnswer[] | null {
+  if (!answers?.length) {
+    return null
+  }
+
+  const nonEmptyAnswers = answers.filter((answer) => {
+    return answer.answer.trim().length > 0
+  })
+
+  return nonEmptyAnswers.length ? nonEmptyAnswers : null
 }
 
 function getUserMessageText(parts: UIMessage['parts']): string {

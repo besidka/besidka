@@ -15,6 +15,7 @@ function createJob(
     startedAt: Date.now(),
     error: null,
     resultMessageId: null,
+    answers: null,
     ...overrides,
   }
 }
@@ -134,12 +135,42 @@ describe('useChatResearch', () => {
       startedAt: null,
       error: null,
       resultMessageId: null,
+      answers: null,
     })
 
     resolveFetch({ job: createJob({ status: 'pending', modelId: 'o4-mini-deep-research' }) })
     await startPromise
 
     expect(research.researchJob.value?.publicId).toBe('job-1')
+  })
+
+  it('carries the submitted answers into the synthetic local-pending job', async () => {
+    const chatSdk = createChatSdk()
+    const { userModel } = useUserModel()
+
+    userModel.value = 'o4-mini-deep-research'
+
+    let resolveFetch!: (value: { job: ResearchJobView }) => void
+
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveFetch = resolve
+    }))
+
+    const research = useChatResearch({ chatSlug: 'chat-1', chatSdk })
+
+    const startPromise = research.startResearchJob({
+      userMessage: { id: 'user-msg-1', parts: [] },
+      answers: [
+        { id: 'q1', question: 'What is your budget?', answer: '$500' },
+      ],
+    })
+
+    expect(research.researchJob.value?.answers).toEqual([
+      { id: 'q1', question: 'What is your budget?', answer: '$500' },
+    ])
+
+    resolveFetch({ job: createJob({ status: 'pending' }) })
+    await startPromise
   })
 
   it('reverts the synthetic pending job to null when starting a job fails', async () => {

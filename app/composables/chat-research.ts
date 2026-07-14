@@ -60,6 +60,7 @@ const TERMINAL_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
 // read from the server; it only exists to satisfy ResearchJobView's shape.
 export function buildLocalPendingResearchJob(
   modelId: string,
+  answers?: ResearchAnswer[],
 ): ResearchJobView | null {
   const { model, provider } = getModel(modelId)
   const research = getModelResearch(model)
@@ -77,6 +78,7 @@ export function buildLocalPendingResearchJob(
     startedAt: null,
     error: null,
     resultMessageId: null,
+    answers: answers?.length ? answers : null,
   }
 }
 
@@ -322,7 +324,9 @@ export function useChatResearch(options: UseChatResearchOptions) {
       } as unknown as UIMessage,
     ]
 
-    applyJobUpdate(buildLocalPendingResearchJob(userModel.value))
+    applyJobUpdate(
+      buildLocalPendingResearchJob(userModel.value, input.answers),
+    )
 
     try {
       const response = await $fetch<{ job: ResearchJobView }>(

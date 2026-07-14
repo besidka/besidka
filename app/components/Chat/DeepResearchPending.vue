@@ -37,6 +37,26 @@
             notify you when it's ready.
           </span>
         </div>
+        <div
+          v-if="!checking && job.answers?.length"
+          data-testid="research-pending-answers"
+          class="flex flex-col gap-1.5 text-xs"
+        >
+          <span class="font-medium text-base-content/70">
+            Your preferences
+          </span>
+          <div
+            v-for="answer in job.answers"
+            :key="answer.id"
+            data-testid="research-pending-answer"
+            class="flex flex-col gap-0.5"
+          >
+            <span class="text-base-content/60">{{ answer.question }}</span>
+            <span class="font-medium text-base-content/80">
+              {{ answer.answer }}
+            </span>
+          </div>
+        </div>
         <progress
           v-if="!checking"
           data-testid="research-pending-progress"

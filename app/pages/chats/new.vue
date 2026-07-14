@@ -126,12 +126,17 @@ const messagesEndRef = ref<HTMLDivElement | null>(null)
 // user's chosen model is guaranteed to be a research model at that point
 // (guarded by isDeepResearchModel() below), but buildLocalPendingResearchJob
 // still returns null defensively if that ever stops holding.
+const startingResearchAnswers = shallowRef<ResearchAnswer[]>([])
+
 const startingResearchJob = computed<ResearchJobView | null>(() => {
   if (!isCreatingResearchChat.value) {
     return null
   }
 
-  return buildLocalPendingResearchJob(userModel.value)
+  return buildLocalPendingResearchJob(
+    userModel.value,
+    startingResearchAnswers.value,
+  )
 })
 
 // new.vue has no chat-scroll-spacer (that composable measures message DOM
@@ -431,6 +436,7 @@ async function createResearchChat(
   const draftBackup = useChatDraftBackup()
 
   pending.value = true
+  startingResearchAnswers.value = answers
   isCreatingResearchChat.value = true
 
   try {

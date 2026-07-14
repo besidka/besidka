@@ -25,6 +25,7 @@ function createJob(
     startedAt: Date.now(),
     error: null,
     resultMessageId: null,
+    answers: null,
     ...overrides,
   }
 }
@@ -170,6 +171,98 @@ describe('Chat/DeepResearchPending', () => {
     )
 
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('renders the answers section between the expectation box and the progress bar', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({
+          status: 'running',
+          answers: [
+            {
+              id: 'q1',
+              question: 'What is your budget?',
+              answer: 'Under $500',
+            },
+            {
+              id: 'q2',
+              question: 'Preferred brand?',
+              answer: 'No preference',
+            },
+          ],
+        }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    const expectation = wrapper.get(
+      '[data-testid="research-pending-expectation"]',
+    )
+    const answers = wrapper.get('[data-testid="research-pending-answers"]')
+    const progress = wrapper.get('[data-testid="research-pending-progress"]')
+    const afterExpectation = expectation.element.compareDocumentPosition(
+      answers.element,
+    )
+    const beforeProgress = answers.element.compareDocumentPosition(
+      progress.element,
+    )
+
+    expect(afterExpectation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(beforeProgress & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(answers.text()).toContain('Your preferences')
+
+    const rows = answers.findAll('[data-testid="research-pending-answer"]')
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.text()).toContain('What is your budget?')
+    expect(rows[0]?.text()).toContain('Under $500')
+    expect(rows[1]?.text()).toContain('Preferred brand?')
+    expect(rows[1]?.text()).toContain('No preference')
+  })
+
+  it('hides the answers section when the job has no answers', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running', answers: null }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="research-pending-answers"]').exists(),
+    ).toBe(false)
+  })
+
+  it('hides the answers section when the job has an empty answers array', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({ status: 'running', answers: [] }),
+        elapsedMs: 65_000,
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="research-pending-answers"]').exists(),
+    ).toBe(false)
+  })
+
+  it('hides the answers section while checking, even with answers present', async () => {
+    const wrapper = await mountSuspended(DeepResearchPending, {
+      props: {
+        job: createJob({
+          status: 'running',
+          answers: [
+            { id: 'q1', question: 'What is your budget?', answer: '$500' },
+          ],
+        }),
+        elapsedMs: 65_000,
+        checking: true,
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="research-pending-answers"]').exists(),
+    ).toBe(false)
   })
 
   it('emits cancel while running and hides the current-step section when no steps are provided', async () => {

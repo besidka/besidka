@@ -69,4 +69,5 @@ export interface ResearchJobView {
   startedAt: number | null
   error: ChatErrorPayload | null
   resultMessageId: string | null
+  answers: ResearchAnswer[] | null
 }
