@@ -15,23 +15,23 @@ importers:
   .:
     dependencies:
       '@ai-sdk/google':
-        specifier: ^4.0.12
-        version: 4.0.12(zod@4.4.3)
+        specifier: ^4.0.14
+        version: 4.0.14(zod@4.4.3)
       '@ai-sdk/openai':
-        specifier: ^4.0.11
-        version: 4.0.11(zod@4.4.3)
+        specifier: ^4.0.13
+        version: 4.0.13(zod@4.4.3)
       '@ai-sdk/provider':
         specifier: ^4.0.3
         version: 4.0.3
       '@ai-sdk/vue':
-        specifier: ^4.0.22
-        version: 4.0.23(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)
+        specifier: ^4.0.25
+        version: 4.0.25(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)
       '@besidka/nuxt-cookie-consent':
         specifier: workspace:*
         version: link:modules/cookie-consent
       '@iconify-json/lucide':
-        specifier: ^1.2.116
-        version: 1.2.116
+        specifier: ^1.2.117
+        version: 1.2.117
       '@nuxt/content':
         specifier: ^3.15.0
         version: 3.15.0(@valibot/to-json-schema@1.7.1(valibot@1.4.2(typescript@6.0.3)))(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(esbuild@0.28.1)(magicast@0.5.3)(rollup@4.62.2)(valibot@1.4.2(typescript@6.0.3))(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))
@@ -81,8 +81,8 @@ importers:
         specifier: ^14.3.0
         version: 14.3.0(magicast@0.5.3)(nuxt@4.4.8(3cd03225829a76fa3b2e5d45a44e8105))(vue@3.5.39(typescript@6.0.3))
       ai:
-        specifier: ^7.0.22
-        version: 7.0.23(zod@4.4.3)
+        specifier: ^7.0.25
+        version: 7.0.25(zod@4.4.3)
       better-auth:
         specifier: ^1.6.23
         version: 1.6.23(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(better-sqlite3@12.11.1)(drizzle-kit@1.0.0-rc.4)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.10)(vue@3.5.39(typescript@6.0.3))
@@ -106,7 +106,7 @@ importers:
         version: 10.7.0(jiti@2.7.0)
       evlog:
         specifier: 2.20.0
-        version: 2.20.0(@nuxt/kit@4.4.8(magicast@0.5.3))(ai@7.0.23(zod@4.4.3))(h3@1.15.11)(nitropack@2.13.4(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(oxc-parser@0.133.0)(srvx@0.11.22)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)))(ofetch@1.5.1)(react@19.2.7)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))
+        version: 2.20.0(@nuxt/kit@4.4.8(magicast@0.5.3))(ai@7.0.25(zod@4.4.3))(h3@1.15.11)(nitropack@2.13.4(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(oxc-parser@0.133.0)(srvx@0.11.22)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)))(ofetch@1.5.1)(react@19.2.7)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))
       hashids:
         specifier: ^2.3.0
         version: 2.3.0
@@ -298,20 +298,26 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/gateway@4.0.17':
-    resolution: {integrity: sha512-HSuJ+nsSYT2hk+dM3JQwfXdIJkzc3x4EyI4spiUgFiDY9OkCfHMjpLzikFy04FROuGynUFUGb3ycPxqlNwCdXA==}
+  '@ai-sdk/gateway@3.0.149':
+    resolution: {integrity: sha512-+EVPEHqdJVJn0FZHBd6NyH4rvlTK7X79B6xFuW5bfZIP1G/7Y5OTEgxpL0hjOCAxDBG4ZFM6SZWnVBXxeR1x8w==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/gateway@4.0.19':
+    resolution: {integrity: sha512-pQ3UPO0tyLUuW751jdgWhvHmXmjvAFpyiTeZF6eSVHMYhH/dSH4FtSKGT2nOnvvpaRpU8ygsLV4ng2Mz0lcU/A==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/google@4.0.12':
-    resolution: {integrity: sha512-4Rw4viFwH2Wprx6OssZzhV/KgNWaA7qYr5Kg28AlZ7r3sEvyXH0kDZtZok7onPjr0RuFTg2EjCjTIeoCesg0Ww==}
+  '@ai-sdk/google@4.0.14':
+    resolution: {integrity: sha512-nkF+EqreJzBUuo8noDAKN2bN3WHFHXPHoL8BfrtCWRuMTrm9FIUFDUDu9ACjLJrvgRZb06M0vlMsOao84F+9fg==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/openai@4.0.11':
-    resolution: {integrity: sha512-2PLnVPBsdJusgquPVYgPWd3ox4lbUFkp7DVUSmM0lQ4VISQoNxdgo6TvFAHgwQn9wJ/ckVYVRLU7+BvHc7T8ww==}
+  '@ai-sdk/openai@4.0.13':
+    resolution: {integrity: sha512-7I2sx9NyT2XJ8YrpBr0twwASv6mgpI9Gu7mNxtevmdJ0n8UxUKtcG1NHNjaOEzN5pKzNAv3XcBOVom9DwJ2CpA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -322,8 +328,14 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@5.0.7':
-    resolution: {integrity: sha512-OSm5/5kdrHa11WIOo5LYgDKnxYWp5aB/wx5EXRHi0jpUGduMDeB6oht9U6p+UNNWIP3F/EqPpV8d7vdP/iRnqg==}
+  '@ai-sdk/provider-utils@4.0.38':
+    resolution: {integrity: sha512-/HHGmtKllqjg1OLc023v9w9kK3laW7Z6TzfZukYQWCsGBbzB9p60zTvvpXFVcs44NZBVXL3viOa1HRKUbeee8g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@5.0.9':
+    resolution: {integrity: sha512-BohlmQ62x+iIOawYCS2z5JzokMq5kZSoVhJawH41mlMdkb01xqhIMG8L0NAByneUFLpdUlSjJjF/bel5j3cGZA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -332,18 +344,22 @@ packages:
     resolution: {integrity: sha512-ZPtVYt5QIJzOta1kdUiDuCx4HhFkvNPv/rvmZ2b1iXwybYjJsCnNYR4PAw4kW7rgVfDARvHXcU64efWuqNp6bw==}
     engines: {node: '>=18'}
 
+  '@ai-sdk/provider@3.0.14':
+    resolution: {integrity: sha512-5X1k57JBJ4H7H1QjX7CnJYAB1I19r/trVZTMcSms7/kLNZ8RaU4Nt2agcwZzv82Hfx6Q7/TOLU7agAKeFfc8cA==}
+    engines: {node: '>=18'}
+
   '@ai-sdk/provider@4.0.3':
     resolution: {integrity: sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw==}
     engines: {node: '>=22'}
 
-  '@ai-sdk/vue@3.0.219':
-    resolution: {integrity: sha512-wqlywWoWckxQwWcKH04P2p6kXnHs/AuKjxMuaaWgLENH0skkglMq8xPJ+H47RzCFMJGe5lDkgx2emT79LT9BPQ==}
+  '@ai-sdk/vue@3.0.225':
+    resolution: {integrity: sha512-HZVokUQ+Y9ZoEO0CSM1IpRDno0CFsCkL0hHari4c7XPWYNo2CKSoUtB2vbAHmJEmEqSYrQtPXy182hmXyeDFcQ==}
     engines: {node: '>=18'}
     peerDependencies:
       vue: ^3.3.4
 
-  '@ai-sdk/vue@4.0.23':
-    resolution: {integrity: sha512-1wSHkWA77LY6NxYHFaY5+TNKP67V08eoH1drU9GVdSRneicM/KRTNCkt+Uadi52o2ywRYdZyOeQVAIsD0qmAHw==}
+  '@ai-sdk/vue@4.0.25':
+    resolution: {integrity: sha512-fZFzRQWoZZlIeKaPtqDigUXVYpLmQsJdhSZMMx4Fd9uIifN1Yok0/GFARE5fzdUX+p5rzymP6VYzWd6m299UTg==}
     engines: {node: '>=22'}
     peerDependencies:
       vue: ^3.3.4
@@ -1604,8 +1620,8 @@ packages:
     resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
     engines: {node: '>=18.18'}
 
-  '@iconify-json/lucide@1.2.116':
-    resolution: {integrity: sha512-mbwPmiUXaZyLMSeQOxiTqz2fmZikD9qiGnMBiev47UUNY9uGCEgMg9iUYwaJzCtJTDtAIyK4vokfIpqsVorgSw==}
+  '@iconify-json/lucide@1.2.117':
+    resolution: {integrity: sha512-7isYKJKWRZ8NfLNSY8pIYmRWiMBkopL4/X22gZfFmePFhc7az0hQ5biqBLG6vdDEvMctFu2suZB3yQ29RL+8tA==}
 
   '@iconify/collections@1.0.705':
     resolution: {integrity: sha512-JyUTM5/vqZfnUwtM18kh3nUB82A8QYHDLQj5zEZAvgR3hFdZvDhlH0LEdqOYKHWMTNW5l16EiiY2kstuw/EiTQ==}
@@ -4143,14 +4159,14 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  ai@6.0.219:
-    resolution: {integrity: sha512-rtTDz99Rc9HsstSJ7YdO8DX7DQwS442N2vQ5jOopXDdo4qfkLrtIRpORdztFMOZxX/XjBzHRlvqF6eMg3cpyLA==}
+  ai@6.0.225:
+    resolution: {integrity: sha512-TCkt/NxyZFyXyHeGO/4FMsdTIoCdwV/e78jG9iEHIjnwrAHYlqOwVj7WDFsNRqXUeoUefgbiOkNuE5k8jdpFRg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  ai@7.0.23:
-    resolution: {integrity: sha512-NKvz0zcuJ8Sb/ZP9E7q02pfXt4wMYvx5lQhZZa7NBCj0NPmNaFSKD8C8rezu21qHBnX/QkjcLbDmqTklh6nr0A==}
+  ai@7.0.25:
+    resolution: {integrity: sha512-LA9AwYRpXdQoQFBrBdvHltMz0Q6k/2Q7CtFJa0oIJPtGhuMWknHWiI45a60wFNZqP/jlQZhfRSh1ZFnpsVrgdg==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -9326,23 +9342,30 @@ snapshots:
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/gateway@4.0.17(zod@4.4.3)':
+  '@ai-sdk/gateway@3.0.149(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider': 4.0.3
-      '@ai-sdk/provider-utils': 5.0.7(zod@4.4.3)
+      '@ai-sdk/provider': 3.0.14
+      '@ai-sdk/provider-utils': 4.0.38(zod@4.4.3)
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/google@4.0.12(zod@4.4.3)':
+  '@ai-sdk/gateway@4.0.19(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.3
-      '@ai-sdk/provider-utils': 5.0.7(zod@4.4.3)
+      '@ai-sdk/provider-utils': 5.0.9(zod@4.4.3)
+      '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/openai@4.0.11(zod@4.4.3)':
+  '@ai-sdk/google@4.0.14(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.3
-      '@ai-sdk/provider-utils': 5.0.7(zod@4.4.3)
+      '@ai-sdk/provider-utils': 5.0.9(zod@4.4.3)
+      zod: 4.4.3
+
+  '@ai-sdk/openai@4.0.13(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.3
+      '@ai-sdk/provider-utils': 5.0.9(zod@4.4.3)
       zod: 4.4.3
 
   '@ai-sdk/provider-utils@4.0.35(zod@4.4.3)':
@@ -9352,7 +9375,14 @@ snapshots:
       eventsource-parser: 3.1.0
       zod: 4.4.3
 
-  '@ai-sdk/provider-utils@5.0.7(zod@4.4.3)':
+  '@ai-sdk/provider-utils@4.0.38(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.14
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.1.0
+      zod: 4.4.3
+
+  '@ai-sdk/provider-utils@5.0.9(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.3
       '@standard-schema/spec': 1.1.0
@@ -9364,23 +9394,27 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
+  '@ai-sdk/provider@3.0.14':
+    dependencies:
+      json-schema: 0.4.0
+
   '@ai-sdk/provider@4.0.3':
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/vue@3.0.219(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)':
+  '@ai-sdk/vue@3.0.225(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
-      ai: 6.0.219(zod@4.4.3)
+      '@ai-sdk/provider-utils': 4.0.38(zod@4.4.3)
+      ai: 6.0.225(zod@4.4.3)
       swrv: 1.2.0(vue@3.5.39(typescript@6.0.3))
       vue: 3.5.39(typescript@6.0.3)
     transitivePeerDependencies:
       - zod
 
-  '@ai-sdk/vue@4.0.23(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)':
+  '@ai-sdk/vue@4.0.25(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider-utils': 5.0.7(zod@4.4.3)
-      ai: 7.0.23(zod@4.4.3)
+      '@ai-sdk/provider-utils': 5.0.9(zod@4.4.3)
+      ai: 7.0.25(zod@4.4.3)
       swrv: 1.2.0(vue@3.5.39(typescript@6.0.3))
       vue: 3.5.39(typescript@6.0.3)
     transitivePeerDependencies:
@@ -10658,7 +10692,7 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
-  '@iconify-json/lucide@1.2.116':
+  '@iconify-json/lucide@1.2.117':
     dependencies:
       '@iconify/types': 2.0.0
 
@@ -12830,8 +12864,8 @@ snapshots:
 
   '@typescript-eslint/project-service@8.62.1(typescript@6.0.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.64.0(typescript@6.0.3)
-      '@typescript-eslint/types': 8.64.0
+      '@typescript-eslint/tsconfig-utils': 8.62.1(typescript@6.0.3)
+      '@typescript-eslint/types': 8.62.1
       debug: 4.4.3
       typescript: 6.0.3
     transitivePeerDependencies:
@@ -13375,19 +13409,19 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ai@6.0.219(zod@4.4.3):
+  ai@6.0.225(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 3.0.143(zod@4.4.3)
-      '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
+      '@ai-sdk/gateway': 3.0.149(zod@4.4.3)
+      '@ai-sdk/provider': 3.0.14
+      '@ai-sdk/provider-utils': 4.0.38(zod@4.4.3)
       '@opentelemetry/api': 1.9.1
       zod: 4.4.3
 
-  ai@7.0.23(zod@4.4.3):
+  ai@7.0.25(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 4.0.17(zod@4.4.3)
+      '@ai-sdk/gateway': 4.0.19(zod@4.4.3)
       '@ai-sdk/provider': 4.0.3
-      '@ai-sdk/provider-utils': 5.0.7(zod@4.4.3)
+      '@ai-sdk/provider-utils': 5.0.9(zod@4.4.3)
       zod: 4.4.3
 
   ajv@6.15.0:
@@ -14707,10 +14741,10 @@ snapshots:
 
   eventsource-parser@3.1.0: {}
 
-  evlog@2.20.0(@nuxt/kit@4.4.8(magicast@0.5.3))(ai@7.0.23(zod@4.4.3))(h3@1.15.11)(nitropack@2.13.4(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(oxc-parser@0.133.0)(srvx@0.11.22)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)))(ofetch@1.5.1)(react@19.2.7)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)):
+  evlog@2.20.0(@nuxt/kit@4.4.8(magicast@0.5.3))(ai@7.0.25(zod@4.4.3))(h3@1.15.11)(nitropack@2.13.4(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(oxc-parser@0.133.0)(srvx@0.11.22)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)))(ofetch@1.5.1)(react@19.2.7)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0)):
     optionalDependencies:
       '@nuxt/kit': 4.4.8(magicast@0.5.3)
-      ai: 7.0.23(zod@4.4.3)
+      ai: 7.0.25(zod@4.4.3)
       h3: 1.15.11
       nitropack: 2.13.4(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3))(oxc-parser@0.133.0)(srvx@0.11.22)(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))
       ofetch: 1.5.1
@@ -16661,11 +16695,11 @@ snapshots:
   nuxt-studio@1.7.0(db0@0.3.4(better-sqlite3@12.11.1)(drizzle-orm@1.0.0-rc.4(@cloudflare/workers-types@5.20260713.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)(valibot@1.4.2(typescript@6.0.3))(zod@4.4.3)))(ioredis@5.11.1)(magicast@0.5.3)(srvx@0.11.22)(vue@3.5.39(typescript@6.0.3)):
     dependencies:
       '@ai-sdk/gateway': 3.0.143(zod@4.4.3)
-      '@ai-sdk/vue': 3.0.219(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)
-      '@iconify-json/lucide': 1.2.116
+      '@ai-sdk/vue': 3.0.225(vue@3.5.39(typescript@6.0.3))(zod@4.4.3)
+      '@iconify-json/lucide': 1.2.117
       '@nuxtjs/mdc': 0.21.1(magicast@0.5.3)
       '@vueuse/core': 14.3.0(vue@3.5.39(typescript@6.0.3))
-      ai: 6.0.219(zod@4.4.3)
+      ai: 6.0.225(zod@4.4.3)
       defu: 6.1.7
       destr: 2.0.5
       js-yaml: 4.3.0
