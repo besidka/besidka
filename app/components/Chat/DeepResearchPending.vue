@@ -45,17 +45,20 @@
           <span class="font-medium text-base-content/70">
             Your preferences
           </span>
-          <div
-            v-for="answer in job.answers"
-            :key="answer.id"
-            data-testid="research-pending-answer"
-            class="flex flex-col gap-0.5"
-          >
-            <span class="text-base-content/60">{{ answer.question }}</span>
-            <span class="font-medium text-base-content/80">
-              {{ answer.answer }}
-            </span>
-          </div>
+          <ul class="flex list-disc flex-col gap-2 pl-4">
+            <li
+              v-for="answer in job.answers"
+              :key="answer.id"
+              data-testid="research-pending-answer"
+            >
+              <span class="block text-base-content/60">
+                {{ answer.question }}
+              </span>
+              <span class="block font-medium text-base-content/80">
+                {{ answer.answer }}
+              </span>
+            </li>
+          </ul>
         </div>
         <progress
           v-if="!checking"
