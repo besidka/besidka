@@ -96,7 +96,7 @@
                 ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
                 : `mdc-${m.id}-part-${index}`
               "
-              :components="components"
+              :components="messageComponents"
               :parser-options="{ highlight: false }"
               class="chat-markdown js-message-text"
               :unwrap="getUnwrap(m.role)"
@@ -337,7 +337,7 @@ function onResearchRetry(): void {
   }
 }
 
-const { components, getUnwrap } = useChatFormat()
+const { messageComponents, getUnwrap } = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
 
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
