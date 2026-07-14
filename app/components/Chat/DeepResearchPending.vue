@@ -40,12 +40,12 @@
         <div
           v-if="!checking && job.answers?.length"
           data-testid="research-pending-answers"
-          class="flex flex-col gap-1.5 text-xs"
+          class="my-2 flex flex-col gap-1.5 text-xs"
         >
           <span class="font-medium text-base-content/70">
             Your preferences
           </span>
-          <ul class="flex list-disc flex-col gap-2 pl-4">
+          <ul class="flex list-disc flex-col gap-2 pl-4 marker:text-accent">
             <li
               v-for="answer in job.answers"
               :key="answer.id"

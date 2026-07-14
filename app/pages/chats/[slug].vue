@@ -123,7 +123,9 @@
         @skip="() => submitResearchClarification([])"
       />
       <ChatDeepResearchPending
-        v-if="researchJob && researchJob.status !== 'completed'"
+        v-if="researchJob && researchJob.status !== 'completed'
+          && !(researchJob.status === 'cancelled'
+            && (pendingClarification || isClarifying))"
         class="mt-3"
         :job="researchJob"
         :elapsed-ms="researchElapsedMs"
