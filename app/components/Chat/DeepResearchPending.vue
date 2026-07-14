@@ -107,16 +107,6 @@
               >
                 {{ stepTitle(entry) }}
               </span>
-              <p
-                v-if="index === recentSteps.length - 1
-                  && stepDescription(entry)"
-                class="
-                  text-xs text-base-content/60 line-clamp-2
-                  whitespace-pre-wrap
-                "
-              >
-                {{ stepDescription(entry) }}
-              </p>
             </div>
             <hr
               v-if="index < recentSteps.length - 1"
@@ -261,14 +251,6 @@ function stepTitle(entry: ResearchTraceEntry): string {
   }
 
   return parseResearchStepText(entry.text).title
-}
-
-function stepDescription(entry: ResearchTraceEntry): string {
-  if (entry.kind === 'read') {
-    return ''
-  }
-
-  return parseResearchStepText(entry.text).description
 }
 </script>
 

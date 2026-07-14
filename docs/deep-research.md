@@ -104,6 +104,133 @@ client poll (10s, GET) ──── finalize ◄─── cron sweep (*/5, close
   `env.production.vars`); local dev keeps the `nuxt.config.ts` default of
   `false` — run the sweep manually or via `.dev.vars` if you need it locally.
 
+## Runtime model: how research differs from regular chats
+
+A regular chat turn and a research job both end up as an assistant message
+in the same chat, but they get there through opposite runtime shapes. A
+regular turn is a single held-open streaming request: the Worker sits
+between the browser and the provider for as long as the model is talking,
+relaying tokens as they arrive. A research job is the inverse — the Worker
+is never held open while the work happens. It makes a short request to
+start the job, then gets out of the way; the provider's agent runs
+unattended on its own infrastructure, and two independent, short-lived
+checkers (browser poll, cron sweep) come back later to collect the result.
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Worker
+    participant Provider
+
+    Browser->>Worker: POST /chats/:slug (stream request)
+    activate Worker
+    Worker->>Provider: streamText() request
+    activate Provider
+    loop while the model is generating
+        Provider-->>Worker: token chunk
+        Worker-->>Browser: relayed chunk
+    end
+    Provider-->>Worker: stream end
+    deactivate Provider
+    Worker-->>Browser: response closed
+    deactivate Worker
+
+    Note over Browser,Worker: If the browser disconnects mid-stream, the<br/>Worker keeps draining the provider stream and<br/>persists the message anyway — there is no<br/>client-reachable abort signal on this preset.<br/>A push notification fires once it's saved.
+```
+
+A research job never holds a Worker open across the run at all. Starting
+it is one short request; finding out it finished is two more independent
+short requests that repeat until a terminal status shows up:
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Worker
+    participant Provider
+    participant D1
+    participant Cron
+
+    Browser->>Worker: POST /research (start)
+    activate Worker
+    Worker->>Provider: start background job
+    Provider-->>Worker: job id
+    Worker->>D1: insert research_jobs row
+    Worker-->>Browser: 200 { job }
+    deactivate Worker
+
+    Note over Provider: Provider agent works alone for 5–60<br/>minutes. No Besidka Worker is running,<br/>held open, or billed during this window.
+
+    par every 10s while the chat is open
+        Browser->>Worker: GET /research (poll)
+        activate Worker
+        Worker->>D1: read job row
+        Worker->>Provider: GET job status
+        Provider-->>Worker: status (+ result if terminal)
+        Worker->>D1: claim-lock finalize (if terminal)
+        Worker-->>Browser: { job, message?, currentStep? }
+        deactivate Worker
+    and every 5 min regardless
+        Cron->>Worker: scheduled invocation
+        activate Worker
+        Worker->>D1: sweep due jobs (batched)
+        Worker->>Provider: GET job status
+        Provider-->>Worker: status (+ result if terminal)
+        Worker->>D1: claim-lock finalize (if terminal)
+        deactivate Worker
+    end
+
+    Note over D1: Claim-lock (conditional UPDATE … WHERE<br/>result_message_id IS NULL … RETURNING) means<br/>whichever checker gets there first — poll or<br/>cron — is the only one that persists the<br/>assistant message and fires the push.
+```
+
+### Cloudflare Workers limits — why polling is safe
+
+The concern this shape has to answer: Workers are billed and bounded by
+**CPU time**, not wall-clock time, so is it safe to leave a job running on
+someone else's infrastructure for up to an hour while our Worker does
+nothing? Yes, and the reason is that "our Worker does nothing" for that
+entire hour — literally no Besidka code is executing.
+
+- A streaming chat request can occupy the connection for minutes of
+  wall-clock time, but nearly all of that is spent waiting on network I/O
+  (reading provider chunks, writing them to the client) rather than
+  executing our code, so its actual CPU time is tiny. Cloudflare doesn't
+  meter wall-clock wait time against the CPU budget — only compute does.
+  Workers Paid's default CPU budget is 30 seconds per request (raisable up
+  to 5 minutes via `limits.cpu_ms` in `wrangler.jsonc`), and this project
+  doesn't need to touch that default for chat streaming to be safe.
+- Each research poll is a brand-new, independent request that lives for a
+  fraction of a second: session auth, two D1 queries (read the job, maybe
+  claim-lock finalize), and one provider status `GET`. It starts, finishes,
+  and the Worker moves on — there's nothing to hold open.
+- The cron sweep invocation is bounded the same way: it processes at most
+  `researchSweepBatchSize` jobs (20 by default) and gives up once
+  `researchSweepMaxRuntimeMs` (20 seconds by default) has elapsed, both
+  configurable via the `NUXT_RESEARCH_SWEEP_*` vars in `wrangler.jsonc`.
+- Across the 5–60 minutes the provider agent is actually working, there is
+  no Besidka Worker invocation in flight at all — not idling, not
+  polling internally, not paying CPU time. The job lives entirely on the
+  provider's side until a poll or the cron sweep asks about it.
+
+### Why polling and not webhooks
+
+Webhooks would be the more usual way to learn "a long job finished," but
+neither provider's webhook story fits a bring-your-own-key app:
+
+- OpenAI's `response.completed` webhooks are configured per-organization
+  in the OpenAI dashboard. In a BYO-key app, every user's own OpenAI
+  organization would have to be manually configured to call our endpoint
+  — there's no API to do this on the user's behalf, so it isn't viable
+  at any scale beyond a single hand-configured account.
+- Google's Interactions API has no webhook mechanism at all; the only way
+  to learn a job's status is to poll it.
+
+Polling with the user's own key, backstopped by the cron sweep for when
+the app is closed, gives equivalent delivery with a bounded worst-case
+lag: at most 10 seconds while the chat is open (the browser poll
+interval), and at most 5 minutes when it isn't (the cron sweep interval)
+— either way, comfortably inside what a multi-minute research job's user
+is already expecting to wait.
+
 ## Frontend
 
 - `app/composables/chat-input.ts` — `useChatInput()`: resolves

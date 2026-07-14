@@ -192,7 +192,7 @@ describe('Chat/DeepResearchPending', () => {
     expect(wrapper.emitted('cancel')).toHaveLength(1)
   })
 
-  it('shows the newest research step with a parsed title and description', async () => {
+  it('shows the newest research step with a parsed title', async () => {
     const wrapper = await mountSuspended(DeepResearchPending, {
       props: {
         job: createJob({ status: 'running' }),
@@ -210,7 +210,7 @@ describe('Chat/DeepResearchPending', () => {
     const step = wrapper.get('[data-testid="research-current-step"]')
 
     expect(step.text()).toContain('Assessing options')
-    expect(step.text()).toContain('Comparing the top candidates in detail.')
+    expect(step.text()).not.toContain('Comparing the top candidates')
     expect(step.get('.iconify').classes()).toContain('i-lucide:brain')
   })
 

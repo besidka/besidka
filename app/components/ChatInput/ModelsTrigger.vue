@@ -94,7 +94,7 @@
                       </span>
                       <span
                         v-if="model.research"
-                        class="shrink-0 flex items-center p-0.5 rounded-full bg-success/15 text-success"
+                        class="shrink-0 flex items-center p-0.5 rounded-full bg-[color-mix(in_oklab,var(--color-success)_15%,var(--color-base-100))] text-success"
                         :class="{
                           'tooltip tooltip-success tooltip-top':
                             $device.isDesktop

@@ -20,7 +20,8 @@ describe('ChatInput/ModelsTrigger', () => {
     const badge = researchButton?.find('[data-tip="Deep research"]')
 
     expect(badge?.exists()).toBe(true)
-    expect(badge?.classes()).toContain('bg-success/15')
+    expect(badge?.classes()).toContain('bg-[color-mix(in_oklab,var(--color-success)_15%,var(--color-base-100))]')
+    expect(badge?.classes()).not.toContain('bg-success/15')
     expect(badge?.classes()).not.toContain('bg-success-content')
     expect(researchButton?.attributes('data-tip')).toBe(
       '~$1 / task · 5–15 min',
