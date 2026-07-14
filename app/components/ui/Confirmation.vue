@@ -54,31 +54,37 @@
           <button
             type="button"
             data-testid="confirmation-action-0"
-            class="btn light:btn-primary dark:btn-secondary btn-sm join-item"
+            class="btn light:btn-primary dark:btn-secondary btn-sm join-item rounded-l-full rounded-r-none"
             @click="confirmAt(0)"
           >
             {{ actions[0] }}
           </button>
-          <details class="dropdown dropdown-top dropdown-end join-item">
-            <summary class="btn light:btn-primary dark:btn-secondary btn-sm join-item px-2">
+          <details
+            class="dropdown dropdown-top dropdown-end join-item border-0 rounded-l-none rounded-r-full"
+          >
+            <summary
+              class="btn light:btn-primary dark:btn-secondary btn-sm join-item px-2 rounded-l-none rounded-r-full"
+            >
               <Icon name="lucide:chevron-up" size="14" />
             </summary>
-            <div class="dropdown-content z-50 w-32 pb-2">
-              <ul class="grid gap-2 w-full bg-base-100 rounded-box w-full shadow-sm">
-                <li
-                  v-for="(action, index) in actions.slice(1)"
-                  :key="index"
-                >
-                  <button
-                    type="button"
-                    :data-testid="`confirmation-action-${index + 1}`"
-                    class="btn light:btn-primary dark:btn-secondary btn-sm btn-block"
-                    @click="confirmAt(index + 1)"
+            <div class="dropdown-content z-50 w-40 pb-2">
+              <div class="bg-base-100 rounded-box w-full shadow-sm">
+                <ul class="menu menu-sm w-full">
+                  <li
+                    v-for="(action, index) in actions.slice(1)"
+                    :key="index"
                   >
-                    {{ action }}
-                  </button>
-                </li>
-              </ul>
+                    <button
+                      type="button"
+                      :data-testid="`confirmation-action-${index + 1}`"
+                      class="w-full"
+                      @click="confirmAt(index + 1)"
+                    >
+                      {{ action }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
           </details>
         </div>
