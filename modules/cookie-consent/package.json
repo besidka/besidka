@@ -34,7 +34,7 @@
     "@nuxt/schema": "^4.4.8",
     "@nuxt/test-utils": "^4.0.3",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@typescript-eslint/parser": "^8.63.0",
+    "@typescript-eslint/parser": "^8.64.0",
     "eslint": "^10.7.0",
     "happy-dom": "^20.10.6",
     "nuxt": "^4.4.8",
