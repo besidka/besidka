@@ -1,4 +1,5 @@
 import type { ReasoningCapability } from './reasoning.d'
+import type { ModelResearchConfig } from './research.d'
 
 export type ModelTool = 'web_search' | 'image_generation'
 
@@ -27,6 +28,7 @@ export interface Model {
   tools: ModelTool[]
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  research?: ModelResearchConfig
 }
 
 export interface Provider {

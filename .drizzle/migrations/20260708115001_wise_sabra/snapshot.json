@@ -1,9 +1,11 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "f512013e-87d1-4d3d-aa69-f485c8677677",
+  "id": "d7bb2f7e-ef9f-4bfb-9585-96bdf3e29c1e",
   "prevIds": [
-    "b84c9749-98bb-44e2-ae95-0648d1baafbf"
+    "6de2c06a-ad24-4076-9f8a-82e40a5dc74d",
+    "a307bee0-2ca5-4432-9d93-7973b3d3a92e",
+    "f9a9d92a-2d67-443a-a25d-b10811182173"
   ],
   "ddl": [
     {
@@ -63,11 +65,11 @@
       "entityType": "tables"
     },
     {
-      "name": "image_generation_locks",
+      "name": "push_subscriptions",
       "entityType": "tables"
     },
     {
-      "name": "push_subscriptions",
+      "name": "research_jobs",
       "entityType": "tables"
     },
     {
@@ -1081,26 +1083,6 @@
       "table": "files"
     },
     {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "origin_model",
-      "entityType": "columns",
-      "table": "files"
-    },
-    {
-      "type": "real",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generation_cost",
-      "entityType": "columns",
-      "table": "files"
-    },
-    {
       "type": "integer",
       "notNull": false,
       "autoincrement": false,
@@ -1432,56 +1414,6 @@
     },
     {
       "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "table": "image_generation_locks"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "table": "image_generation_locks"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "user_id",
-      "entityType": "columns",
-      "table": "image_generation_locks"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "token",
-      "entityType": "columns",
-      "table": "image_generation_locks"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "expires_at",
-      "entityType": "columns",
-      "table": "image_generation_locks"
-    },
-    {
-      "type": "integer",
       "notNull": false,
       "autoincrement": true,
       "default": null,
@@ -1549,6 +1481,166 @@
       "name": "auth_key",
       "entityType": "columns",
       "table": "push_subscriptions"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "chat_id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_message_id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "provider",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "level",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "model_id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "provider_job_id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "usage",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "result_message_id",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "started_at",
+      "entityType": "columns",
+      "table": "research_jobs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "table": "research_jobs"
     },
     {
       "columns": [
@@ -1777,6 +1869,21 @@
     },
     {
       "columns": [
+        "chat_id"
+      ],
+      "tableTo": "chats",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_research_jobs_chat_id_chats_id_fk",
+      "entityType": "fks",
+      "table": "research_jobs"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -1903,11 +2010,11 @@
     },
     {
       "columns": [
-        "user_id"
+        "id"
       ],
       "nameExplicit": false,
-      "name": "image_generation_locks_pk",
-      "table": "image_generation_locks",
+      "name": "push_subscriptions_pk",
+      "table": "push_subscriptions",
       "entityType": "pks"
     },
     {
@@ -1915,8 +2022,8 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "push_subscriptions_pk",
-      "table": "push_subscriptions",
+      "name": "research_jobs_pk",
+      "table": "research_jobs",
       "entityType": "pks"
     },
     {
@@ -2262,6 +2369,52 @@
       "name": "idx_push_subscriptions_user_id",
       "entityType": "indexes",
       "table": "push_subscriptions"
+    },
+    {
+      "columns": [
+        {
+          "value": "chat_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "status in ('pending', 'running')",
+      "origin": "manual",
+      "name": "uq_research_jobs_chat_active",
+      "entityType": "indexes",
+      "table": "research_jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "status",
+          "isExpression": false
+        },
+        {
+          "value": "created_at",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_research_jobs_status_created",
+      "entityType": "indexes",
+      "table": "research_jobs"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_research_jobs_user",
+      "entityType": "indexes",
+      "table": "research_jobs"
     },
     {
       "columns": [

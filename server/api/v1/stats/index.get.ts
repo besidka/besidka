@@ -16,6 +16,7 @@ import { cachedStats } from '~~/server/utils/landing/stats'
  *   uploadedFiles: number
  *   generatedImages: number
  *   sharedChats: number
+ *   researches: number  // completed deep research jobs
  *   updatedAt: string   // ISO8601 — when the D1 counts were last fetched
  *   source: 'cache' | 'fresh' | 'fallback'
  * }
@@ -33,6 +34,7 @@ export default defineEventHandler(async (event) => {
     uploadedFiles: 0,
     generatedImages: 0,
     sharedChats: 0,
+    researches: 0,
     updatedAt: new Date(0).toISOString(),
     source: 'fallback' as const,
   }

@@ -7,6 +7,7 @@ import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
 import { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 
 const REFRESH_UTC_HOUR = 3
+const LANDING_CACHE_REFRESH_CRON = '0 * * * *'
 
 interface ScheduledControllerLike {
   cron: string
@@ -15,6 +16,10 @@ interface ScheduledControllerLike {
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('cloudflare:scheduled', async ({ controller }) => {
+    if (controller.cron !== LANDING_CACHE_REFRESH_CRON) {
+      return
+    }
+
     await runLandingCacheRefreshJob({
       controller: {
         cron: controller.cron,

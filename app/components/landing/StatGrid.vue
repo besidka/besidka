@@ -2,7 +2,7 @@
   <div
     class="
       grid grid-cols-2 gap-2
-      md:grid-cols-none md:grid-flow-col md:auto-cols-fr
+      md:grid-cols-3
     "
   >
     <LandingStatCard

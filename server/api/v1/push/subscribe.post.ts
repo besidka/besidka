@@ -1,5 +1,6 @@
 import { useLogger, createError } from 'evlog'
 import { eq } from 'drizzle-orm'
+import { getRequestURL } from 'h3'
 import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
@@ -40,6 +41,19 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
 
+  // Server-derived, never client input — see server/utils/push.ts for why
+  // (Preview D1 is shared by every preview deployment, so the origin the
+  // user is actually on right now is the only reliable signal for scoping
+  // notification delivery to the deployment they subscribed on).
+  let origin: string | undefined
+
+  try {
+    origin = getRequestURL(event).origin
+  } catch (exception) {
+    void exception
+    origin = undefined
+  }
+
   const existing = await db.query.pushSubscriptions.findFirst({
     where: { endpoint },
   })
@@ -71,6 +85,7 @@ export default defineEventHandler(async (event) => {
         userId,
         p256dhKey: keys.p256dh,
         authKey: keys.auth,
+        origin,
       })
       .where(eq(schema.pushSubscriptions.id, existing.id))
   } else {
@@ -86,6 +101,7 @@ export default defineEventHandler(async (event) => {
       endpoint,
       p256dhKey: keys.p256dh,
       authKey: keys.auth,
+      origin,
     })
   }
 

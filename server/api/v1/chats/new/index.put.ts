@@ -1,20 +1,34 @@
 import { useLogger, createError } from 'evlog'
 import type { FileUIPart, TextUIPart } from 'ai'
 import { and, eq } from 'drizzle-orm'
+import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
 import {
   chatToolSchema,
   userMessagePartsSchema,
 } from '~~/server/utils/chats/request-schema'
+import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { trackLandingEvent } from '~~/server/utils/landing/analytics-events'
+import {
+  resolveResearchStartContext,
+  startResearchJobForChat,
+} from '~~/server/utils/research/start'
 
 const rules = z.object({
   parts: userMessagePartsSchema,
   tools: z.array(chatToolSchema),
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   projectId: z.string().nonempty().optional(),
+  model: z.string().nonempty().optional(),
+  research: z.object({
+    answers: z.array(z.object({
+      id: z.string().max(200),
+      question: z.string().max(500),
+      answer: z.string().max(2000),
+    })).max(12).optional(),
+  }).optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -26,6 +40,14 @@ export default defineEventHandler(async (event) => {
       message: 'Invalid request body',
       status: 400,
       why: body.error.message,
+    })
+  }
+
+  if (body.data.research && !body.data.model) {
+    throw createError({
+      message: 'A model is required to start deep research.',
+      status: 400,
+      why: 'The research option was set without a model.',
     })
   }
 
@@ -43,12 +65,20 @@ export default defineEventHandler(async (event) => {
     toolsCount: body.data.tools.length,
     reasoning: body.data.reasoning,
     requestedProjectId: body.data.projectId ?? null,
+    hasResearch: Boolean(body.data.research),
   })
 
   await validateMessageFilePolicy(
     userId,
     body.data.parts,
   )
+
+  if (body.data.research && body.data.model) {
+    await resolveResearchStartContext({
+      userId,
+      model: body.data.model,
+    })
+  }
 
   const db = useDb()
   const activityAt = new Date()
@@ -82,15 +112,19 @@ export default defineEventHandler(async (event) => {
     })
     .get()
 
-  await db
-    .insert(schema.messages)
-    .values({
+  const userMessagePublicId = ulid()
+
+  await insertMessageWithPublicId({
+    db,
+    values: {
       chatId: chat.id,
       role: 'user',
       parts: body.data.parts as (TextUIPart | FileUIPart)[],
       tools: body.data.tools,
       reasoning: body.data.reasoning,
-    })
+    },
+    publicId: userMessagePublicId,
+  })
 
   if (projectId) {
     await db.update(schema.projects)
@@ -105,7 +139,77 @@ export default defineEventHandler(async (event) => {
 
   trackLandingEvent('new_chat_created', undefined, event)
 
+  if (body.data.research && body.data.model) {
+    try {
+      await startResearchJobForChat({
+        db,
+        event,
+        logger,
+        userId,
+        chat: {
+          id: chat.id,
+          slug: chat.slug,
+          projectId: projectId ?? null,
+        },
+        userMessage: {
+          id: userMessagePublicId,
+          parts: body.data.parts as (TextUIPart | FileUIPart)[],
+        },
+        model: body.data.model,
+        answers: body.data.research.answers,
+      })
+    } catch (exception) {
+      const researchFailure = extractResearchStartFailure(exception)
+
+      logger.set({
+        research: {
+          phase: 'start',
+          errorCode: researchFailure.code,
+          errorStatus: researchFailure.status,
+        },
+      })
+
+      return {
+        slug: chat.slug,
+        researchError: {
+          message: researchFailure.message,
+          why: researchFailure.why,
+          fix: researchFailure.fix,
+        },
+      }
+    }
+  }
+
   return {
     slug: chat.slug,
   }
 })
+
+interface ResearchStartFailure {
+  message: string
+  why?: string
+  fix?: string
+  code?: string
+  status?: number
+}
+
+function extractResearchStartFailure(error: unknown): ResearchStartFailure {
+  if (error instanceof Error) {
+    const record = error as Error & {
+      code?: string
+      status?: number
+      why?: string
+      fix?: string
+    }
+
+    return {
+      message: record.message || 'Could not start the research job.',
+      why: record.why,
+      fix: record.fix,
+      code: record.code,
+      status: record.status,
+    }
+  }
+
+  return { message: 'Could not start the research job.' }
+}

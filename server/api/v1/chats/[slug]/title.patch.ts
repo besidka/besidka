@@ -1,3 +1,4 @@
+import { getModelResearch } from '#shared/utils/research'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
@@ -70,6 +71,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const { provider, model } = useChatProvider(body.data.model)
+  const research = getModelResearch(model)
+  const titleModelId = research ? research.assistModel : model.id
 
   const initialMessage = chat.messages[0]
 
@@ -81,28 +84,37 @@ export default defineEventHandler(async (event) => {
   const initialMessages = initialMessage.parts?.[0]?.text as string
   let title = ''
 
-  switch (provider.id) {
-    case 'openai': {
-      const { generateChatTitle } = await useOpenAI(
-        session.user.id,
-        model.id,
-        [],
-        'off',
-      )
+  const runtimeConfig = useRuntimeConfig()
 
-      title = await generateChatTitle(initialMessages)
-      break
-    }
-    case 'google': {
-      const { generateChatTitle } = await useGoogle(
-        session.user.id,
-        model.id,
-        [],
-        'off',
-      )
+  if (
+    runtimeConfig.researchMockEnabled
+    && initialMessages?.trim().toLowerCase().startsWith('mock:')
+  ) {
+    title = buildMockChatTitle(initialMessages)
+  } else {
+    switch (provider.id) {
+      case 'openai': {
+        const { generateChatTitle } = await useOpenAI(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
 
-      title = await generateChatTitle(initialMessages)
-      break
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'google': {
+        const { generateChatTitle } = await useGoogle(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
     }
   }
 
@@ -116,3 +128,18 @@ export default defineEventHandler(async (event) => {
 
   return savedTitle
 })
+
+export function buildMockChatTitle(topic: string): string {
+  const withoutPrefix = topic.trim()
+    .replace(/^mock:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!withoutPrefix) {
+    return 'Mock research'
+  }
+
+  return withoutPrefix.length > 60
+    ? `${withoutPrefix.slice(0, 60).trimEnd()}…`
+    : withoutPrefix
+}

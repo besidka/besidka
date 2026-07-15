@@ -6,6 +6,7 @@ export type StatMetric
     | 'uploadedFiles'
     | 'generatedImages'
     | 'sharedChats'
+    | 'researches'
 
 export interface ComparisonRow {
   label: string

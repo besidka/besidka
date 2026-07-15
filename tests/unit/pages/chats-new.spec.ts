@@ -1,6 +1,7 @@
 import { defineComponent, nextTick, reactive } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as messagesComposable from '../../../app/composables/messages'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
 import {
   installMockNuxtState,
@@ -97,6 +98,34 @@ function createSendStubs() {
   return {
     chatInputStub,
     stubs,
+  }
+}
+
+function createResearchStubs() {
+  const { chatInputStub, stubs } = createSendStubs()
+  const clarifyStub = defineComponent({
+    name: 'ChatDeepResearchClarify',
+    props: ['clarification', 'loading'],
+    emits: ['submit', 'skip'],
+    template: '<div data-testid="clarify-stub" />',
+  })
+  const pendingStub = defineComponent({
+    name: 'ChatDeepResearchPending',
+    props: ['job', 'elapsedMs'],
+    template: `
+      <div data-testid="pending-stub">{{ job?.status }}|{{ job?.modelId }}</div>
+    `,
+  })
+
+  return {
+    chatInputStub,
+    clarifyStub,
+    pendingStub,
+    stubs: {
+      ...stubs,
+      ChatDeepResearchClarify: clarifyStub,
+      ChatDeepResearchPending: pendingStub,
+    },
   }
 }
 
@@ -460,5 +489,386 @@ describe('chats new page', () => {
     expect(
       wrapper.findComponent(chatInputStub).props('message'),
     ).toBe('recovered after relaunch')
+  })
+
+  it('routes into the clarify flow and starts research with the answers', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({
+          questions: [],
+          note: 'Scope check',
+        })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.resolve({ slug: 'research-chat' })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    expect(clarifyComponent.exists()).toBe(true)
+    expect(clarifyComponent.props('clarification')).toEqual({
+      questions: [],
+      note: 'Scope check',
+    })
+
+    clarifyComponent.vm.$emit('submit', [
+      { id: 'audience', question: 'Who is this for?', answer: 'Engineers' },
+    ])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
+
+    const createCall = fetchMock.mock.calls.find(([url]) => {
+      return url === '/api/v1/chats/new'
+    })
+    const createCallOptions = createCall?.[1] as {
+      body: { model: string, research: { answers: unknown[] } }
+    } | undefined
+
+    expect(createCallOptions?.body.model).toBe('o4-mini-deep-research')
+    expect(createCallOptions?.body.research).toEqual({
+      answers: [
+        {
+          id: 'audience',
+          question: 'Who is this for?',
+          answer: 'Engineers',
+        },
+      ],
+    })
+  })
+
+  it('shows a synthetic pending research block while the create request is in flight', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const createRequest = createDeferred<{ slug: string }>()
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return createRequest.promise
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    clarifyComponent.vm.$emit('submit', [])
+    await nextTick()
+
+    // The greeting and the clarify form must not reappear while the PUT
+    // that creates the chat is still in flight (issue #1: 10-15s dead air).
+    expect(wrapper.text()).not.toContain('How can I assist you today?')
+    expect(wrapper.find('[data-testid="clarify-stub"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="research-clarify-topic"]').text())
+      .toBe('Research topic')
+
+    const pendingStub = wrapper.get('[data-testid="pending-stub"]')
+
+    expect(pendingStub.text()).toBe('pending|o4-mini-deep-research')
+
+    createRequest.resolve({ slug: 'research-chat' })
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
+  })
+
+  it('spaces the topic bubble and clarify form using only the container gap', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    // ChatContainer applies a gap between its direct children by default, so
+    // the topic bubble and clarify form must not also carry their own mt-3 —
+    // that would double the gap between them relative to two normal message
+    // bubbles.
+    expect(
+      wrapper.get('[data-testid="research-clarify-topic"]').classes(),
+    ).not.toContain('mt-3')
+    expect(
+      wrapper.get('[data-testid="clarify-stub"]').classes(),
+    ).not.toContain('mt-3')
+  })
+
+  it('reserves clarify-input clearance at every breakpoint, sized to the input height plus a margin', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    await useNuxtApp().callHook('chat-input:height', 140)
+    await nextTick()
+
+    const spacer = wrapper.get('[data-testid="clarify-input-spacer"]')
+
+    // Reserved height must clear the fixed ChatInput's own height (140) plus
+    // a small margin (12, matching INITIAL_SPACER_PADDING) — and, unlike the
+    // mobile-only spacer this replaced, it must not be gated to a breakpoint,
+    // since a long clarify form can outgrow the viewport on desktop too.
+    expect(spacer.attributes('style')).toContain('152px')
+    expect(spacer.classes()).not.toContain('hidden')
+    expect(spacer.classes()).not.toContain('max-sm:block')
+  })
+
+  it('clears the pending research block and restores the draft on a failed create request', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.reject(
+          Object.assign(new Error('Server error'), {
+            statusCode: 500,
+            status: 500,
+          }),
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    clarifyComponent.vm.$emit('submit', [])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="pending-stub"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="research-clarify-topic"]').exists())
+      .toBe(false)
+    expect(wrapper.text()).toContain('How can I assist you today?')
+    expect(chatInput.props('message')).toBe('Research topic')
+  })
+
+  it('falls back to starting research with no answers when the clarify request fails', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o3-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.reject(new Error('clarify unavailable'))
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.resolve({ slug: 'fallback-chat' })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/fallback-chat')
+
+    const createCall = fetchMock.mock.calls.find(([url]) => {
+      return url === '/api/v1/chats/new'
+    })
+    const createCallOptions = createCall?.[1] as {
+      body: { model: string, research: { answers: unknown[] } }
+    } | undefined
+
+    expect(createCallOptions?.body.model).toBe('o3-deep-research')
+    expect(createCallOptions?.body.research).toEqual({
+      answers: [],
+    })
+  })
+
+  it('still navigates and shows a toast when starting research returns a soft failure', async () => {
+    const storage = createStorageShim()
+
+    storage.setItem('model', 'o4-mini-deep-research')
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/v1/chats/research/clarify') {
+        return Promise.resolve({ questions: [] })
+      }
+
+      if (url === '/api/v1/chats/new') {
+        return Promise.resolve({
+          slug: 'research-chat',
+          researchError: {
+            message: 'Could not start the research job.',
+            why: 'The research provider rejected the request.',
+          },
+        })
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    vi.stubGlobal('$fetch', fetchMock)
+
+    const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'Research topic')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const clarifyComponent = wrapper.findComponent(clarifyStub)
+
+    clarifyComponent.vm.$emit('submit', [])
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(navigateToMock).toHaveBeenCalledWith('/chats/research-chat')
+    expect(useErrorMessage).toHaveBeenCalledWith(
+      'Could not start the research job.',
+      'The research provider rejected the request.',
+    )
+    expect(storage.getItem('chat_input_backup')).toBeNull()
   })
 })

@@ -38,6 +38,7 @@ describe('landing stats API', () => {
       uploadedFiles: 205,
       generatedImages: 40,
       sharedChats: 5,
+      researches: 12,
       updatedAt: '2026-07-15T12:00:00.000Z',
     }
 
@@ -68,6 +69,7 @@ describe('landing stats API', () => {
       files: 0,
       uploadedFiles: 0,
       generatedImages: 0,
+      researches: 0,
       source: 'fallback',
     })
   })
@@ -91,4 +93,47 @@ describe('landing stats API', () => {
 
       expect(getSession).not.toHaveBeenCalled()
     })
+
+  it('returns the cached stats including the researches count', async () => {
+    mocks.cachedStats.mockResolvedValue({
+      users: 1,
+      chats: 2,
+      messages: 3,
+      files: 4,
+      sharedChats: 5,
+      researches: 6,
+      updatedAt: '2026-07-08T00:00:00.000Z',
+    })
+
+    const handler = await getHandler()
+    const result = await handler({} as any)
+
+    expect(result).toEqual({
+      users: 1,
+      chats: 2,
+      messages: 3,
+      files: 4,
+      sharedChats: 5,
+      researches: 6,
+      updatedAt: '2026-07-08T00:00:00.000Z',
+      source: 'cache',
+    })
+  })
+
+  it('falls back to a zeroed researches count when the cache read fails', async () => {
+    mocks.cachedStats.mockRejectedValue(new Error('D1 unavailable'))
+
+    const handler = await getHandler()
+    const result = await handler({} as any)
+
+    expect(result).toMatchObject({
+      users: 0,
+      chats: 0,
+      messages: 0,
+      files: 0,
+      sharedChats: 0,
+      researches: 0,
+      source: 'fallback',
+    })
+  })
 })

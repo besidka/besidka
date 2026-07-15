@@ -10,7 +10,7 @@
       <summary
         :id="`reasoning-${message.id}-label`"
         :aria-controls="`reasoning-${message.id}-content`"
-        class="collapse-title flex items-center gap-1 p-0"
+        class="collapse-title flex items-center gap-1 px-0 py-1.5 min-h-0"
         @click.prevent="toggleMain"
       >
         <component
@@ -48,84 +48,86 @@
         :id="`reasoning-${message.id}-content`"
         class="collapse-content mt-3 pb-2 px-0"
       >
-        <ul
-          class="
-            timeline timeline-compact timeline-snap-icon timeline-vertical
-          "
-        >
-          <li
-            v-for="(step, index) in reasoningSteps"
-            :key="step.id"
+        <div class="max-h-[360px] overflow-y-auto overscroll-contain pr-1">
+          <ul
+            class="
+              timeline timeline-compact timeline-snap-icon timeline-vertical
+            "
           >
-            <hr
-              v-if="index > 0"
-              class="bg-base-100"
+            <li
+              v-for="(step, index) in reasoningSteps"
+              :key="step.id"
             >
-            <div class="timeline-middle">
-              <span
-                class="
-                  flex size-5 items-center justify-center rounded-full
-                  border border-base-100 bg-base-100
-                "
+              <hr
+                v-if="index > 0"
+                class="bg-base-100"
               >
-                <SvgoLoader
-                  v-if="isStreamingStep(step.id)"
-                  class="size-3.5 text-accent"
-                />
+              <div class="timeline-middle">
                 <span
-                  v-else
-                  aria-hidden="true"
-                  class="reasoning-step-complete"
-                />
-              </span>
-            </div>
-            <details
-              :open="expandedStepId === step.id"
-              class="group/point timeline-end collapse my-2.5 mx-2 w-full"
-            >
-              <summary
-                :aria-controls="`reasoning-${message.id}-${step.id}-content`"
-                class="collapse-title p-0 text-xs"
-                @click.prevent="toggleStep(step.id)"
-              >
-                <span
-                  class="align-middle"
-                  :class="[
-                    isStreamingStep(step.id)
-                      ? 'skeleton skeleton-text reasoning-main-title-skeleton'
-                      : undefined,
-                  ]"
-                >
-                  {{ step.title }}
-                </span>
-                <Icon
-                  name="lucide:chevron-right"
                   class="
-                    ml-1 inline-block size-4 align-middle
-                    transition-transform group-open/point:rotate-90
+                    flex size-5 items-center justify-center rounded-full
+                    border border-base-100 bg-base-100
                   "
-                />
-              </summary>
-              <div
-                v-if="step.body.length > 0"
-                :id="`reasoning-${message.id}-${step.id}-content`"
-                class="collapse-content mt-2 pb-0 px-0"
-              >
-                <MDCCached
-                  :key="`reasoning-${message.id}-${step.id}-${status}`"
-                  :cache-key="`reasoning-${message.id}-${step.id}-${status}`"
-                  :value="step.body"
-                  :parser-options="{ highlight: false }"
-                  class="chat-markdown text-xs !text-text/80"
-                />
+                >
+                  <SvgoLoader
+                    v-if="isStreamingStep(step.id)"
+                    class="size-3.5 text-accent"
+                  />
+                  <span
+                    v-else
+                    aria-hidden="true"
+                    class="reasoning-step-complete"
+                  />
+                </span>
               </div>
-            </details>
-            <hr
-              v-if="index < reasoningSteps.length - 1"
-              class="bg-base-100"
-            >
-          </li>
-        </ul>
+              <details
+                :open="expandedStepId === step.id"
+                class="group/point timeline-end collapse my-2.5 mx-2 w-full"
+              >
+                <summary
+                  :aria-controls="`reasoning-${message.id}-${step.id}-content`"
+                  class="collapse-title p-0 text-xs"
+                  @click.prevent="toggleStep(step.id)"
+                >
+                  <span
+                    class="align-middle"
+                    :class="[
+                      isStreamingStep(step.id)
+                        ? 'skeleton skeleton-text reasoning-main-title-skeleton'
+                        : undefined,
+                    ]"
+                  >
+                    {{ step.title }}
+                  </span>
+                  <Icon
+                    name="lucide:chevron-right"
+                    class="
+                      ml-1 inline-block size-4 align-middle
+                      transition-transform group-open/point:rotate-90
+                    "
+                  />
+                </summary>
+                <div
+                  v-if="step.body.length > 0"
+                  :id="`reasoning-${message.id}-${step.id}-content`"
+                  class="collapse-content mt-2 pb-0 px-0"
+                >
+                  <MDCCached
+                    :key="`reasoning-${message.id}-${step.id}-${status}`"
+                    :cache-key="`reasoning-${message.id}-${step.id}-${status}`"
+                    :value="step.body"
+                    :parser-options="{ highlight: false }"
+                    class="chat-markdown text-xs !text-text/80"
+                  />
+                </div>
+              </details>
+              <hr
+                v-if="index < reasoningSteps.length - 1"
+                class="bg-base-100"
+              >
+            </li>
+          </ul>
+        </div>
       </div>
     </details>
   </div>

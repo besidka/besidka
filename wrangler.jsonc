@@ -32,7 +32,11 @@
 		"NUXT_PUBLIC_VAPID_PUBLIC_KEY": "BDHR5LHg7XCwXVhDv6YAJGDVen7Q1l6xbRBh1C_D2SAIVOnKcOfwzqOn5i7OSviC4Kb2gVd0ideWh-BeJFiaAbQ",
 		"NUXT_FILES_RETENTION_CLEANUP_ENABLED": true,
 		"NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE": 100,
-		"NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS": 20000
+		"NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS": 20000,
+		"NUXT_RESEARCH_SWEEP_ENABLED": true,
+		"NUXT_RESEARCH_SWEEP_BATCH_SIZE": 20,
+		"NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
+		"NUXT_RESEARCH_MOCK_ENABLED": true
 	},
 	"d1_databases": [
 		{
@@ -95,7 +99,8 @@
 	],
 	"triggers": {
 		"crons": [
-			"0 * * * *"
+			"0 * * * *",
+			"*/5 * * * *"
 		]
 	},
 	"env": {
@@ -120,7 +125,8 @@
 			],
 			"triggers": {
 				"crons": [
-					"0 * * * *"
+					"0 * * * *",
+					"*/5 * * * *"
 				]
 			},
 			"observability": {
@@ -140,6 +146,9 @@
 				"NUXT_FILES_RETENTION_CLEANUP_ENABLED": true,
 				"NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE": 100,
 				"NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS": 20000,
+				"NUXT_RESEARCH_SWEEP_ENABLED": true,
+				"NUXT_RESEARCH_SWEEP_BATCH_SIZE": 20,
+				"NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
 				"NUXT_AXIOM_DATASET": "besidka-prod",
 				"NUXT_AXIOM_AUDIT_DATASET": "besidka-audit-prod",
 				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod"

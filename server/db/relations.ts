@@ -82,10 +82,21 @@ export const relations = defineRelations(schema, r => ({
       to: r.projects.id,
       optional: true,
     }),
+    researchJobs: r.many.researchJobs({
+      from: r.chats.id,
+      to: r.researchJobs.chatId,
+    }),
   },
   messages: {
     chat: r.one.chats({
       from: r.messages.chatId,
+      to: r.chats.id,
+      optional: false,
+    }),
+  },
+  researchJobs: {
+    chat: r.one.chats({
+      from: r.researchJobs.chatId,
       to: r.chats.id,
       optional: false,
     }),

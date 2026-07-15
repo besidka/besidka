@@ -10,11 +10,11 @@ export interface LandingStats {
   uploadedFiles: number
   generatedImages: number
   sharedChats: number
+  researches: number
   updatedAt: string
 }
 
-export const LANDING_STATS_CACHE_NAME
-  = 'landing-stats-image-generation-v1'
+export const LANDING_STATS_CACHE_NAME = 'landing-stats-v4'
 
 export async function readStatsFromDb(): Promise<LandingStats> {
   const db = useDb()
@@ -27,6 +27,7 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     uploadedFiles: number
     generatedImages: number
     sharedChats: number
+    researches: number
   }>(sql`
     SELECT
       (SELECT count(*) FROM ${schema.users}) AS users,
@@ -42,7 +43,11 @@ export async function readStatsFromDb(): Promise<LandingStats> {
         WHERE ${schema.files.source} = 'assistant'
           AND ${schema.files.type} LIKE 'image/%'
       ) AS generatedImages,
-      (SELECT count(*) FROM ${schema.chatShares}) AS sharedChats
+      (SELECT count(*) FROM ${schema.chatShares}) AS sharedChats,
+      (
+        SELECT count(*) FROM ${schema.researchJobs}
+        WHERE ${schema.researchJobs.status} = 'completed'
+      ) AS researches
   `)
 
   return {
@@ -53,6 +58,7 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     uploadedFiles: counts?.uploadedFiles ?? 0,
     generatedImages: counts?.generatedImages ?? 0,
     sharedChats: counts?.sharedChats ?? 0,
+    researches: counts?.researches ?? 0,
     updatedAt: new Date().toISOString(),
   }
 }

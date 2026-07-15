@@ -2,10 +2,16 @@ import type { DefineComponent } from 'vue'
 import type { UIMessage } from 'ai'
 import ProseStreamPre from '~/components/prose/PreStream.vue'
 import Table from '~/components/prose/Table.vue'
+import A from '~/components/prose/A.vue'
 
 const components = {
   pre: ProseStreamPre as unknown as DefineComponent,
   table: Table as unknown as DefineComponent,
+}
+
+const messageComponents = {
+  ...components,
+  a: A as unknown as DefineComponent,
 }
 
 function getUnwrap(role: UIMessage['role']) {
@@ -23,6 +29,7 @@ function getUnwrap(role: UIMessage['role']) {
 export function useChatFormat() {
   return {
     components,
+    messageComponents,
     getUnwrap,
   }
 }

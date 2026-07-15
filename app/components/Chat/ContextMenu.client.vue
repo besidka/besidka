@@ -33,8 +33,11 @@
               class="flex items-center justify-between gap-3 text-xs"
             >
               <span class="shrink-0 font-normal text-base-content/50">Model</span>
-              <span class="min-w-0 truncate font-normal text-base-content">
-                {{ info.model }}
+              <span
+                class="min-w-0 truncate font-normal text-base-content"
+                :title="info.model"
+              >
+                {{ modelDisplayName }}
               </span>
             </div>
             <div
@@ -61,7 +64,7 @@
             >
               <span class="shrink-0 font-normal text-base-content/50">Tools</span>
               <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
-                <Icon name="lucide:globe" size="14" class="shrink-0" />
+                <Icon :name="toolsIconName" size="14" class="shrink-0" />
                 {{ toolsLabel }}
               </span>
             </div>
@@ -186,9 +189,10 @@ import {
   formatTokenCount,
 } from '#shared/utils/message-format'
 
-const TOOL_LABELS: Record<ModelTool, string> = {
+const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search: 'Web search',
   image_generation: 'Image generation',
+  deep_research: 'Deep research',
 }
 
 const props = withDefaults(defineProps<{
@@ -222,6 +226,16 @@ const dateTimeInfo = computed(() => {
   return formatMessageDateTime(props.info?.createdAt)
 })
 
+const modelDisplayName = computed<string>(() => {
+  if (!props.info?.model) {
+    return ''
+  }
+
+  const { model } = getModel(props.info.model)
+
+  return model ? getModelName(props.info.model) : props.info.model
+})
+
 const reasoningIconName = computed<string>(() => {
   const level = props.info?.reasoning ?? 'off'
 
@@ -236,6 +250,18 @@ const toolsLabel = computed<string>(() => {
   return props.info.usedTools
     .map(tool => TOOL_LABELS[tool])
     .join(', ')
+})
+
+const toolsIconName = computed<string>(() => {
+  if (props.info?.usedTools?.includes('deep_research')) {
+    return 'lucide:telescope'
+  }
+
+  if (props.info?.usedTools?.includes('image_generation')) {
+    return 'lucide:image-plus'
+  }
+
+  return 'lucide:globe'
 })
 
 const tokensLabel = computed<string>(() => {

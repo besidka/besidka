@@ -161,6 +161,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDeepResearchMeta
+            v-if="hasResearchMetaPart(m)"
+            :message="m"
+          />
           <ChatReasoning
             :message="m"
             :reasoning-level="m.reasoning"
@@ -197,7 +201,7 @@
                 : part.text
               "
               :cache-key="`mdc-${m.id}-part-${index}`"
-              :components="components"
+              :components="messageComponents"
               :parser-options="{ highlight: false }"
               class="chat-markdown js-message-text"
               :unwrap="getUnwrap(m.role)"
@@ -334,7 +338,7 @@ useHead({
   ],
 })
 
-const { components, getUnwrap } = useChatFormat()
+const { messageComponents, getUnwrap } = useChatFormat()
 const { loggedIn } = useAuth()
 const {
   isBranching,

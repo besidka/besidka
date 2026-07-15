@@ -11,6 +11,14 @@ export function useChatInput() {
     return model
   })
 
+  const researchConfig = computed(() => {
+    return getModelResearch(selectedModel.value)
+  })
+
+  const isDeepResearchModel = computed<boolean>(() => {
+    return !!researchConfig.value
+  })
+
   const isWebSearchSupported = computed<boolean>(() => {
     return !!selectedModel.value?.tools.includes('web_search')
   })
@@ -54,5 +62,7 @@ export function useChatInput() {
     reasoningMode,
     reasoningLevels,
     isReasoningSupported,
+    researchConfig,
+    isDeepResearchModel,
   }
 }

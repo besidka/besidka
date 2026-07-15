@@ -23,6 +23,10 @@ describe('landing statistics', () => {
         type text NOT NULL
       );
       CREATE TABLE chat_shares (id integer PRIMARY KEY);
+      CREATE TABLE research_jobs (
+        id integer PRIMARY KEY,
+        status text NOT NULL
+      );
 
       INSERT INTO users (id) VALUES (1), (2);
       INSERT INTO chats (id) VALUES (1);
@@ -33,6 +37,10 @@ describe('landing statistics', () => {
         (3, 'assistant', 'image/webp'),
         (4, 'assistant', 'application/pdf');
       INSERT INTO chat_shares (id) VALUES (1), (2);
+      INSERT INTO research_jobs (id, status) VALUES
+        (1, 'completed'),
+        (2, 'completed'),
+        (3, 'running');
     `)
 
     const database = drizzle({ client: sqlite })
@@ -60,11 +68,10 @@ describe('landing statistics', () => {
       uploadedFiles: 2,
       generatedImages: 1,
       sharedChats: 2,
+      researches: 2,
       updatedAt: expect.any(String),
     })
-    expect(LANDING_STATS_CACHE_NAME).toBe(
-      'landing-stats-image-generation-v1',
-    )
+    expect(LANDING_STATS_CACHE_NAME).toBe('landing-stats-v4')
     expect(defineCachedFunction).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ name: LANDING_STATS_CACHE_NAME }),

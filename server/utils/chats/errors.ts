@@ -1,6 +1,8 @@
 import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type { ResearchProviderId } from '#shared/types/research.d'
 import type { H3Event } from 'h3'
 import { getRequestHeader } from 'h3'
+import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
 const chatErrorCodes: ChatErrorCode[] = [
   'provider-rate-limit',
@@ -14,6 +16,13 @@ const chatErrorCodes: ChatErrorCode[] = [
   'image-save-failed',
   'message-persist-failed',
   'chat-request-invalid',
+  'research-tier-required',
+  'research-verification-required',
+  'research-paid-tier-required',
+  'research-timeout',
+  'research-cancelled',
+  'research-start-failed',
+  'clarification-failed',
   'unknown',
 ]
 
@@ -82,13 +91,12 @@ function getPreferredChatMessage(input: {
   errorMessage: string | undefined
   status: number
 }): string | undefined {
-  if (!input.errorMessage) {
+  if (!input.errorMessage || input.code === 'provider-auth') {
     return undefined
   }
 
   if (
     input.code === 'chat-request-invalid'
-    || input.code === 'provider-auth'
     || input.code === 'unknown'
   ) {
     return input.errorMessage
@@ -109,6 +117,77 @@ export function serializeChatError(
   input: NormalizeChatErrorInput,
 ): string {
   return JSON.stringify(normalizeChatError(input))
+}
+
+interface MapResearchProviderErrorInput {
+  error: unknown
+  providerId: ResearchProviderId
+  event?: H3Event
+  code?: ChatErrorCode
+  message?: string
+}
+
+export function mapResearchProviderError(
+  input: MapResearchProviderErrorInput,
+): ChatErrorPayload {
+  const classifiedCode = resolveResearchErrorCode(
+    input.providerId,
+    getResearchAdapterErrorStatus(input.error),
+    getResearchAdapterErrorText(input.error),
+  )
+
+  return normalizeChatError({
+    error: input.error,
+    event: input.event,
+    providerId: input.providerId,
+    code: classifiedCode || input.code,
+    message: classifiedCode ? undefined : input.message,
+  })
+}
+
+function resolveResearchErrorCode(
+  providerId: ResearchProviderId,
+  status: number | undefined,
+  bodyText: string,
+): ChatErrorCode | undefined {
+  const normalizedText = bodyText.toLowerCase()
+
+  if (providerId === 'openai') {
+    if (status === 403 && normalizedText.includes('verif')) {
+      return 'research-verification-required'
+    }
+
+    if (
+      status === 403
+      || normalizedText.includes('model_not_found')
+      || normalizedText.includes('tier')
+      || normalizedText.includes('free tier')
+    ) {
+      return 'research-tier-required'
+    }
+  }
+
+  if (
+    providerId === 'google'
+    && status === 403
+    && normalizedText.includes('permission')
+  ) {
+    return 'research-paid-tier-required'
+  }
+
+  if (status === 401) {
+    return 'provider-auth'
+  }
+
+  return undefined
+}
+
+function getResearchAdapterErrorStatus(error: unknown): number | undefined {
+  return error instanceof ResearchAdapterError ? error.status : undefined
+}
+
+function getResearchAdapterErrorText(error: unknown): string {
+  return error instanceof ResearchAdapterError ? error.message : ''
 }
 
 function resolveChatErrorCode(
@@ -169,6 +248,20 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
       return 'The message could not be saved.'
     case 'chat-request-invalid':
       return 'The chat request is invalid.'
+    case 'research-tier-required':
+      return 'Deep research requires a paid tier on your OpenAI account.'
+    case 'research-verification-required':
+      return 'Your OpenAI organization needs verification for deep research.'
+    case 'research-paid-tier-required':
+      return 'Deep research requires a paid Google AI Studio tier.'
+    case 'research-timeout':
+      return 'The research run timed out.'
+    case 'research-cancelled':
+      return 'The research run was cancelled.'
+    case 'research-start-failed':
+      return 'Could not start the research job.'
+    case 'clarification-failed':
+      return 'Could not prepare research questions.'
     default:
       return 'The chat request failed.'
   }
@@ -191,6 +284,21 @@ function getDefaultChatWhy(
       return 'The response could not be stored in the database.'
     case 'chat-request-invalid':
       return errorMessage
+    case 'research-tier-required':
+      return 'OpenAI rejected deep research access for this API key.'
+    case 'research-verification-required':
+      return 'OpenAI requires organization verification before granting'
+        + ' deep research agent access.'
+    case 'research-paid-tier-required':
+      return 'Google rejected deep research access for this API key.'
+    case 'research-timeout':
+      return 'The research run exceeded the maximum allowed time.'
+    case 'research-cancelled':
+      return 'The research job was cancelled before it finished.'
+    case 'research-start-failed':
+      return errorMessage
+    case 'clarification-failed':
+      return errorMessage
     default:
       return errorMessage
   }
@@ -208,6 +316,20 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
       return 'Update the provider API key in settings and try again.'
     case 'message-persist-failed':
       return 'Retry the message. If it keeps failing, contact support with the request ID.'
+    case 'research-tier-required':
+      return 'Add billing to your OpenAI account (Tier 1+ required) and try again.'
+    case 'research-verification-required':
+      return 'Verify your organization at platform.openai.com/settings/organization/general, then retry.'
+    case 'research-paid-tier-required':
+      return 'Enable billing on your Google AI Studio key to use Deep Research.'
+    case 'research-timeout':
+      return 'Try a narrower topic or the Quick level.'
+    case 'research-cancelled':
+      return 'Start a new research run if you still need this report.'
+    case 'research-start-failed':
+      return 'Retry the request, or try a different research level.'
+    case 'clarification-failed':
+      return 'Retry the request.'
     default:
       return 'Retry the message.'
   }
