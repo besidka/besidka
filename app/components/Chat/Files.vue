@@ -32,14 +32,22 @@
             {{ file.links ? 'Not found' : 'Unavailable' }}
           </span>
         </div>
-        <img
+        <button
           v-else-if="file.links && isImageFile(file.mediaType)"
-          :src="file.links.openUrl"
-          :alt="file.filename || 'Attached image'"
-          class="absolute z-20 inset-0 block size-full shrink-0 aspect-square object-cover"
-          loading="lazy"
-          @error="onImageError(file.links.openUrl)"
+          type="button"
+          class="absolute inset-0 z-20 block size-full cursor-zoom-in"
+          :aria-label="`Preview ${file.filename || 'attached image'}`"
+          data-testid="chat-file-preview-trigger"
+          @click="openImagePreview(file)"
         >
+          <img
+            :src="file.links.openUrl"
+            :alt="file.filename || 'Attached image'"
+            class="block size-full shrink-0 aspect-square object-cover"
+            loading="lazy"
+            @error="onImageError(file.links.openUrl)"
+          >
+        </button>
         <div
           v-if="file.links && !failedUrls[file.links.openUrl]"
           class="absolute z-30 top-2 right-2 flex gap-1"
@@ -50,7 +58,19 @@
             ]: $device.isDesktop,
           }"
         >
+          <button
+            v-if="isImageFile(file.mediaType)"
+            type="button"
+            data-testid="chat-file-open"
+            class="btn btn-circle btn-xs btn-soft"
+            :aria-label="`Preview ${file.filename || 'file'}`"
+            title="Preview"
+            @click="openImagePreview(file)"
+          >
+            <Icon name="lucide:maximize-2" size="12" />
+          </button>
           <a
+            v-else
             :href="file.links.openUrl"
             target="_blank"
             rel="noopener noreferrer"
@@ -87,6 +107,14 @@
         </div>
       </div>
     </div>
+    <LazyChatImagePreview
+      v-if="isImagePreviewOpen && previewFile?.links"
+      v-model:open="isImagePreviewOpen"
+      :src="previewFile.links.openUrl"
+      :download-url="previewFile.links.downloadUrl"
+      :alt="previewFile.filename || 'Attached image'"
+      :filename="previewFile.filename || 'Attached image'"
+    />
   </div>
 </template>
 
@@ -107,6 +135,8 @@ const props = defineProps<{
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 const failedUrls = reactive<Record<string, boolean>>({})
+const previewFile = shallowRef<DisplayFile | null>(null)
+const isImagePreviewOpen = shallowRef<boolean>(false)
 
 const parts = computed<DisplayFile[]>(() => {
   return props.message.parts.flatMap((part, index) => {
@@ -125,6 +155,19 @@ const parts = computed<DisplayFile[]>(() => {
 
 function onImageError(url: string) {
   failedUrls[url] = true
+
+  if (previewFile.value?.links?.openUrl === url) {
+    isImagePreviewOpen.value = false
+  }
+}
+
+function openImagePreview(file: DisplayFile) {
+  if (!file.links || !isImageFile(file.mediaType)) {
+    return
+  }
+
+  previewFile.value = file
+  isImagePreviewOpen.value = true
 }
 
 onMounted(() => {

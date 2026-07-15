@@ -31,9 +31,14 @@ withDefaults(defineProps<{
       icon: 'lucide:messages-square',
     },
     {
-      metric: 'files',
-      label: 'Files attached',
+      metric: 'uploadedFiles',
+      label: 'Files uploaded',
       icon: 'lucide:paperclip',
+    },
+    {
+      metric: 'generatedImages',
+      label: 'Images generated',
+      icon: 'lucide:image',
     },
     {
       metric: 'sharedChats',

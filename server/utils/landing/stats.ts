@@ -7,6 +7,8 @@ export interface LandingStats {
   chats: number
   messages: number
   files: number
+  uploadedFiles: number
+  generatedImages: number
   sharedChats: number
   updatedAt: string
 }
@@ -19,6 +21,8 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     chats: number
     messages: number
     files: number
+    uploadedFiles: number
+    generatedImages: number
     sharedChats: number
   }>(sql`
     SELECT
@@ -26,6 +30,15 @@ export async function readStatsFromDb(): Promise<LandingStats> {
       (SELECT count(*) FROM ${schema.chats}) AS chats,
       (SELECT count(*) FROM ${schema.messages}) AS messages,
       (SELECT count(*) FROM ${schema.files}) AS files,
+      (
+        SELECT count(*) FROM ${schema.files}
+        WHERE ${schema.files.source} = 'upload'
+      ) AS uploadedFiles,
+      (
+        SELECT count(*) FROM ${schema.files}
+        WHERE ${schema.files.source} = 'assistant'
+          AND ${schema.files.type} LIKE 'image/%'
+      ) AS generatedImages,
       (SELECT count(*) FROM ${schema.chatShares}) AS sharedChats
   `)
 
@@ -34,6 +47,8 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     chats: counts?.chats ?? 0,
     messages: counts?.messages ?? 0,
     files: counts?.files ?? 0,
+    uploadedFiles: counts?.uploadedFiles ?? 0,
+    generatedImages: counts?.generatedImages ?? 0,
     sharedChats: counts?.sharedChats ?? 0,
     updatedAt: new Date().toISOString(),
   }
@@ -44,7 +59,7 @@ export const cachedStats = defineCachedFunction(
     return readStatsFromDb()
   },
   {
-    name: 'landing-stats-v2',
+    name: 'landing-stats-v3',
     maxAge: 24 * 60 * 60,
     swr: true,
     staleMaxAge: 24 * 60 * 60,

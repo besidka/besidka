@@ -9,6 +9,8 @@ vi.stubGlobal('useLazyFetch', () => ({
     chats: 20,
     messages: 30,
     files: 40,
+    uploadedFiles: 35,
+    generatedImages: 5,
     sharedChats: 50,
   }),
   pending: ref(false),

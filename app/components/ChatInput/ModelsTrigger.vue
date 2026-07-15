@@ -5,6 +5,7 @@
   >
     <summary
       aria-label="Select model"
+      data-testid="current-model-trigger"
       class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200 max-xxs:max-w-40"
       :class="{ 'btn-active': isDropdownHovered }"
     >
@@ -19,12 +20,6 @@
       <span class="block truncate text-left min-w-0">
         {{ getModelName(toValue(userModel)) }}
       </span>
-      <Icon
-        v-if="isImageGenerationEnabled"
-        name="lucide:image-plus"
-        size="13"
-        class="text-accent shrink-0"
-      />
       <Icon
         name="lucide:chevron-down"
         size="14"
@@ -103,6 +98,7 @@
                       </span>
                       <span
                         v-if="model.tools.includes('image_generation')"
+                        data-testid="model-image-generation-capability"
                         class="shrink-0 flex items-center p-0.5 rounded-full bg-secondary-content"
                         :class="{
                           'tooltip tooltip-secondary tooltip-top':

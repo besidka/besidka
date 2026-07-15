@@ -1,6 +1,7 @@
 import { createRequestLogger } from 'evlog'
 import { cachedStats } from '~~/server/utils/landing/stats'
 import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
+import { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 
 const REFRESH_UTC_HOUR = 3
 
@@ -23,6 +24,7 @@ export default defineNitroPlugin((nitroApp) => {
 interface RunLandingCacheRefreshJobInput {
   controller: ScheduledControllerLike
   createLogger?: typeof createRequestLogger
+  shipWideEvent?: typeof shipWideEventToAxiom
 }
 
 export async function runLandingCacheRefreshJob(
@@ -56,7 +58,7 @@ export async function runLandingCacheRefreshJob(
   const cache = useStorage('cache')
 
   await Promise.allSettled([
-    cache.removeItem('landing:landing-stats-v2:global.json'),
+    cache.removeItem('landing:landing-stats-v3:global.json'),
     cache.removeItem(
       'landing:landing-github-stars:besidka/besidka.json',
     ),
@@ -69,7 +71,12 @@ export async function runLandingCacheRefreshJob(
 
   logger.set({
     stats: statsResult.status === 'fulfilled'
-      ? { updatedAt: statsResult.value.updatedAt }
+      ? {
+        updatedAt: statsResult.value.updatedAt,
+        files: statsResult.value.files,
+        uploadedFiles: statsResult.value.uploadedFiles,
+        generatedImages: statsResult.value.generatedImages,
+      }
       : {
         error: statsResult.reason instanceof Error
           ? statsResult.reason.message
@@ -89,5 +96,11 @@ export async function runLandingCacheRefreshJob(
     ? 200
     : 500
 
-  logger.emit({ status })
+  const wideEvent = logger.emit({ status })
+
+  if (wideEvent) {
+    const shipWideEvent = input.shipWideEvent || shipWideEventToAxiom
+
+    await shipWideEvent(wideEvent)
+  }
 }

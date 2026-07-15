@@ -50,6 +50,9 @@
           :message-id="m.id"
           :is-selected="selectedMessageId === m.id"
           :any-selected="selectedMessageId !== null"
+          :class="{
+            'chat-message--fit-content': shouldFitMessageContent(m),
+          }"
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
@@ -106,7 +109,9 @@
           <ChatUrlSources :message="m" />
         </ChatMessage>
       </div>
-      <LazyChatLoader :show="isLoading" />
+      <LazyChatLoader
+        :show="isLoading && !hasImageGenerationProgress"
+      />
       <div ref="messagesEndRef" />
     </ChatContainer>
     <div :style="{ height: `${spacerHeight}px` }" />
@@ -277,6 +282,11 @@ const {
   files,
   currentTurnStartedAt,
 } = useChat(toValue(chat.value))
+
+const {
+  hasImageGenerationProgress,
+  shouldFitMessageContent,
+} = useChatImageUi(() => chatSdk.messages)
 
 const { components, getUnwrap } = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
@@ -635,3 +645,10 @@ async function branchFromMessage(messageId: string) {
   }
 }
 </script>
+
+<style scoped>
+.chat-message--fit-content :deep(.js-chat-bubble) {
+  width: fit-content;
+  max-width: 100%;
+}
+</style>

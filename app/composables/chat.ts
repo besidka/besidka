@@ -14,7 +14,10 @@ import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
-import { isVisibleGenerateImageToolPart } from '~/utils/generated-images'
+import {
+  getGenerateImageToolPart,
+  isVisibleGenerateImageToolPart,
+} from '~/utils/generated-images'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -338,6 +341,61 @@ export function shouldForceGenericLoadingIndicator(
   lastMessage: UIMessage | undefined,
 ): boolean {
   return isAwaitingGeneration && !hasVisibleAssistantContent(lastMessage)
+}
+
+export function shouldShowGenericLoadingIndicator(
+  status: ChatStatus,
+  isAwaitingGeneration: boolean,
+  lastMessage: UIMessage | undefined,
+): boolean {
+  if (hasVisibleAssistantContent(lastMessage)) {
+    return false
+  }
+
+  if (shouldForceGenericLoadingIndicator(
+    isAwaitingGeneration,
+    lastMessage,
+  )) {
+    return true
+  }
+
+  if (status === 'submitted') {
+    return true
+  }
+
+  if (status !== 'streaming' || lastMessage?.role !== 'assistant') {
+    return false
+  }
+
+  return !hasVisibleAssistantContent(lastMessage)
+}
+
+export function getRenderableChatMessages(
+  messages: UIMessage[],
+): UIMessage[] {
+  const lastMessage = messages.at(-1)
+
+  if (!lastMessage || lastMessage.role !== 'assistant') {
+    return messages
+  }
+
+  const hasImageToolPart = lastMessage.parts.some((part) => {
+    return getGenerateImageToolPart(part) !== null
+  })
+
+  if (!hasImageToolPart) {
+    return messages
+  }
+
+  return [
+    ...messages.slice(0, -1),
+    {
+      ...lastMessage,
+      parts: lastMessage.parts.map((part) => {
+        return getGenerateImageToolPart(part) ? { ...part } : part
+      }),
+    } as UIMessage,
+  ]
 }
 
 export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
@@ -727,9 +785,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
+  const renderableMessages = computed<UIMessage[]>(() => {
+    return getRenderableChatMessages(sdkMessages.value)
+  })
+
   const chatSdk = {
     get messages() {
-      return sdkMessages.value
+      return renderableMessages.value
     },
     set messages(value: UIMessage[]) {
       sdkMessages.value = value
@@ -750,36 +812,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const isLoading = computed<boolean>(() => {
-    if (shouldForceGenericLoadingIndicator(
+    return shouldShowGenericLoadingIndicator(
+      chatSdk.status,
       isAwaitingGeneration.value,
       lastMessage.value,
-    )) {
-      return true
-    } else if (chatSdk.status === 'submitted') {
-      return true
-    } else if (chatSdk.status !== 'streaming') {
-      return false
-    } else if (lastMessage.value?.role !== 'assistant') {
-      return false
-    } else if (!lastMessage.value.parts?.length) {
-      return true
-    }
-
-    const result: boolean = true
-
-    for (const part of lastMessage.value.parts) {
-      if (!['reasoning', 'text'].includes(part.type)) {
-        continue
-      }
-
-      const p = part as TextUIPart | ReasoningUIPart
-
-      if (p.text?.length) {
-        return false
-      }
-    }
-
-    return result
+    )
   })
 
   const displayStop = computed<boolean>(() => {

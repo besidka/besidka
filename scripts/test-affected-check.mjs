@@ -50,6 +50,7 @@ export function getAffectedTests(changedFiles) {
   const affectedTests = new Set()
   const filesModuleTests = [
     'tests/unit/components/Chat/Files.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
@@ -160,11 +161,15 @@ export function getAffectedTests(changedFiles) {
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
+    'tests/unit/components/content/HomeStats.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
+    'tests/integration/api/stats.spec.ts',
+    'tests/integration/server/landing-cache-refresh.spec.ts',
+    'tests/integration/server/landing-stats.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -181,6 +186,10 @@ export function getAffectedTests(changedFiles) {
 
   const emailTests = [
     'tests/integration/server/email.spec.ts',
+  ]
+
+  const seoTests = [
+    'tests/unit/config/seo.spec.ts',
   ]
 
   const testMappings = [
@@ -201,6 +210,16 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/Chat/GeneratedImage.spec.ts'],
     },
     {
+      pattern: /^app\/components\/Chat\/ImagePreview\.client\.vue$/,
+      tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/ChatInput\/ModelsTrigger\.vue$/,
+      tests: [
+        'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/utils\/generated-images\.ts$/,
       tests: ['tests/unit/utils/generated-images.spec.ts'],
     },
@@ -212,6 +231,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/(email|auth)\.ts$/,
       tests: emailTests,
+    },
+    {
+      pattern: /^server\/routes\/sitemap\.xml\.ts$/,
+      tests: seoTests,
+    },
+    {
+      pattern: /^nuxt\.config\.ts$/,
+      tests: seoTests,
     },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,
@@ -226,7 +253,19 @@ export function getAffectedTests(changedFiles) {
       tests: landingTests,
     },
     {
-      pattern: /^server\/api\/v1\/events\/.*\.ts$/,
+      pattern: /^server\/api\/v1\/(events|stats)\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/plugins\/landing-cache-refresh\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/middleware\/evlog-auth\.ts$/,
+      tests: ['tests/integration/api/stats.spec.ts'],
+    },
+    {
+      pattern: /^shared\/types\/landing\.d\.ts$/,
       tests: landingTests,
     },
     {
@@ -273,6 +312,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,
       tests: [
         ...messageUsageTests,
+        'tests/unit/composables/chat-image-ui.spec.ts',
         'tests/unit/composables/haptics.spec.ts',
       ],
     },

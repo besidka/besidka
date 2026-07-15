@@ -1,4 +1,6 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { flushPromises } from '@vue/test-utils'
+import { defineAsyncComponent } from 'vue'
 import {
   afterEach,
   beforeEach,
@@ -8,11 +10,24 @@ import {
   vi,
 } from 'vitest'
 import Files from '../../../../app/components/Chat/Files.vue'
+import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
+
+const LazyImagePreview = defineAsyncComponent(() => {
+  return Promise.resolve(ImagePreview)
+})
 
 describe('Chat/Files', () => {
   beforeEach(() => {
     vi.spyOn(HTMLImageElement.prototype, 'complete', 'get')
       .mockReturnValue(false)
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal')
+      .mockImplementation(function () {
+        this.setAttribute('open', '')
+      })
+    vi.spyOn(HTMLDialogElement.prototype, 'close')
+      .mockImplementation(function () {
+        this.removeAttribute('open')
+      })
   })
 
   afterEach(() => {
@@ -34,16 +49,39 @@ describe('Chat/Files', () => {
           }],
         },
       },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
     })
 
     expect(wrapper.get('img').attributes('src'))
       .toBe('/files/shared.webp?token=header.payload.signature#preview')
-    expect(wrapper.get('[data-testid="chat-file-open"]').attributes('href'))
-      .toBe('/files/shared.webp?token=header.payload.signature#preview')
+    expect(wrapper.find('[data-testid="image-preview-modal"]').exists())
+      .toBe(false)
+    expect(wrapper.findAll('img')).toHaveLength(1)
+    const open = wrapper.get('[data-testid="chat-file-open"]')
+
+    expect(open.element.tagName).toBe('BUTTON')
+    expect(open.attributes('href')).toBeUndefined()
     expect(
       wrapper.get('[data-testid="chat-file-download"]').attributes('href'),
     ).toBe(
       '/files/shared.webp?token=header.payload.signature&download=1#preview',
+    )
+
+    await wrapper.get('[data-testid="chat-file-preview-trigger"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledOnce()
+    expect(wrapper.find('[data-testid="image-preview-modal"]').exists())
+      .toBe(true)
+    expect(wrapper.get('[data-testid="image-preview-image"]')
+      .attributes('src')).toBe(
+      '/files/shared.webp?token=header.payload.signature#preview',
     )
   })
 
