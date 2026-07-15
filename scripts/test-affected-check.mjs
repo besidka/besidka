@@ -75,6 +75,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/notification-prompt.spec.ts',
   ]
   const imageGenerationTests = [
+    'tests/unit/utils/model.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
@@ -195,7 +198,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google)\.ts|providers\/(openai|google)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google)\.ts|providers\/(openai|google)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/components\/ChatInput(\.client\.vue|\/ToolbarMore\.client\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {

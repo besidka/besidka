@@ -1,36 +1,33 @@
 export function useChatInput() {
   const { userModel } = useUserModel()
 
-  const isWebSearchSupported = computed<boolean>(() => {
+  const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
 
-    if (!currentModel) return false
+    if (!currentModel) return null
 
     const { model } = getModel(currentModel)
 
-    return !!model?.tools.includes('web_search')
+    return model
+  })
+
+  const isWebSearchSupported = computed<boolean>(() => {
+    return !!selectedModel.value?.tools.includes('web_search')
   })
 
   const isImageGenerationSupported = computed<boolean>(() => {
-    const currentModel = toValue(userModel)
+    return !!(
+      selectedModel.value?.tools.includes('image_generation')
+      || isImageGenerationModel(selectedModel.value)
+    )
+  })
 
-    if (!currentModel) return false
-
-    const { model } = getModel(currentModel)
-
-    return !!model?.tools.includes('image_generation')
+  const isImageGenerationRequired = computed<boolean>(() => {
+    return isImageGenerationModel(selectedModel.value)
   })
 
   const reasoningCapability = computed(() => {
-    const currentModel = toValue(userModel)
-
-    if (!currentModel) {
-      return null
-    }
-
-    const { model } = getModel(currentModel)
-
-    return getReasoningCapability(model)
+    return getReasoningCapability(selectedModel.value)
   })
 
   const isReasoningSupported = computed<boolean>(() => {
@@ -52,6 +49,7 @@ export function useChatInput() {
   return {
     isWebSearchSupported,
     isImageGenerationSupported,
+    isImageGenerationRequired,
     reasoningCapability,
     reasoningMode,
     reasoningLevels,

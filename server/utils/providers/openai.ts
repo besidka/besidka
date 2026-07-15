@@ -34,9 +34,23 @@ export async function useOpenAI(
   const openai = createOpenAI({
     apiKey: await useDecryptText(data.apiKey),
   })
+  const { model: modelData } = getModel(model)
+
+  if (!modelData) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Unsupported model.',
+    })
+  }
+
+  const controllerModelId = getControllerModelId(modelData)
+  const imageModelId = getImageGenerationModelId(
+    modelData,
+    'gpt-image-2',
+  )
 
   function getInstance() {
-    return openai.responses(model)
+    return openai.responses(controllerModelId)
   }
 
   function getImageModel() {
@@ -44,7 +58,7 @@ export async function useOpenAI(
       return undefined
     }
 
-    return openai.image('gpt-image-2')
+    return openai.image(imageModelId)
   }
 
   async function generateChatTitle(message: string) {
@@ -80,7 +94,6 @@ export async function useOpenAI(
     return result
   }
 
-  const { model: modelData } = getModel(model)
   const reasoningLevel = resolveReasoningLevelForModel(
     modelData,
     requestedReasoning,
@@ -108,7 +121,7 @@ export async function useOpenAI(
   return {
     instance: getInstance(),
     imageModel: getImageModel(),
-    imageModelId: 'gpt-image-2',
+    imageModelId,
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),

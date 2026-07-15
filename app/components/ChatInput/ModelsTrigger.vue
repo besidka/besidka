@@ -60,7 +60,8 @@
                     }"
                     :aria-label="`Choose ${model.name}`"
                     :data-tip="model.price
-                      ? `${model.price.input} / ${model.price.output}`
+                      ? model.price.display
+                        ?? `${model.price.input} / ${model.price.output}`
                       : undefined
                     "
                     @click="selectModel(model.id)"

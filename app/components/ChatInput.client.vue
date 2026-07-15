@@ -128,13 +128,16 @@
                   :icon-size="16"
                   :icon-only="!isImageGenerationEnabled"
                   :title="isImageGenerationEnabled
-                    ? 'Disable image creation'
+                    ? isImageGenerationRequired
+                      ? 'Image creation is required for this model'
+                      : 'Disable image creation'
                     : 'Create an image'
                   "
                   text="Create image"
                   tooltip-position="top"
                   size="xs"
                   class="rounded-full"
+                  :disabled="isImageGenerationRequired"
                   :class="{
                     'pl-[5px] btn-active': isImageGenerationEnabled,
                   }"
@@ -201,6 +204,7 @@
                 :is-web-search-enabled="isWebSearchEnabled"
                 :is-image-generation-supported="isImageGenerationSupported"
                 :is-image-generation-enabled="isImageGenerationEnabled"
+                :is-image-generation-required="isImageGenerationRequired"
                 :is-reasoning-supported="isReasoningSupported"
                 :is-reasoning-active="isReasoningActive"
                 :reasoning-mode="reasoningMode"
@@ -308,6 +312,7 @@ const { isDesktop } = useDevice()
 const {
   isWebSearchSupported,
   isImageGenerationSupported,
+  isImageGenerationRequired,
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
@@ -417,8 +422,32 @@ watch(
 )
 
 watch(
-  [isWebSearchSupported, isImageGenerationSupported],
-  ([webSearchSupported, imageGenerationSupported]) => {
+  [
+    isWebSearchSupported,
+    isImageGenerationSupported,
+    isImageGenerationRequired,
+  ],
+  ([
+    webSearchSupported,
+    imageGenerationSupported,
+    imageGenerationRequired,
+  ], [
+    ,
+    ,
+    wasImageGenerationRequired,
+  ] = [undefined, undefined, undefined]) => {
+    if (imageGenerationRequired) {
+      tools.value = ['image_generation']
+
+      return
+    }
+
+    if (wasImageGenerationRequired) {
+      tools.value = tools.value.filter((tool) => {
+        return tool !== 'image_generation'
+      })
+    }
+
     tools.value = tools.value.filter((tool) => {
       if (tool === 'web_search') {
         return webSearchSupported && !tools.value.includes('image_generation')
@@ -504,6 +533,10 @@ watchPostEffect(() => {
 })
 
 function toggleWebSearch() {
+  if (isImageGenerationRequired.value) {
+    return
+  }
+
   if (!isWebSearchEnabled.value) {
     tools.value = [
       ...tools.value.filter((tool) => {
@@ -521,6 +554,10 @@ function toggleWebSearch() {
 }
 
 function toggleImageGeneration() {
+  if (isImageGenerationRequired.value) {
+    return
+  }
+
   if (!isImageGenerationEnabled.value) {
     tools.value = [
       ...tools.value.filter((tool) => {

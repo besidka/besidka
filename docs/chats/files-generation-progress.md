@@ -298,12 +298,44 @@ commits. The final documentation commit records the release state.
 | 4 | `docs(chats): finalize image generation rollout` | Published | `5a1a94e` |
 | 5 | `fix(chats): stabilize image generation experience` | Published | `1b61a12` |
 | 6 | `fix(landing): isolate image stats cache` | Published | `1520473` |
-| 7 | `docs(chats): record image generation follow-up` | This commit | See PR history |
+| 7 | `docs(chats): record image generation follow-up` | Published | `be4b599` |
+| 8 | `feat(providers): add image generation models` | This commit | See PR history |
 
 GitHub's `main` advanced by five commits after this worktree branched. Those
 commits modify only package-management configuration and do not overlap this
 feature's files. GitHub reports pull request #300 as mergeable against the
 current `main`.
+
+## Purpose-built image model catalog
+
+The provider pickers now append current, non-deprecated image-generation
+models after the existing general-purpose models:
+
+- OpenAI: GPT Image 2.
+- Google: Gemini 3.1 Flash Image, Gemini 3.1 Flash Lite Image, Gemini 3 Pro
+  Image, and Gemini 2.5 Flash Image.
+
+Deprecated GPT Image aliases, deprecated Imagen 4 models, and all video models
+are intentionally excluded. Purpose-built image models declare `tools: []`, so
+the model menu does not show text, web-search, or generic tool badges for them.
+Their separate `imageGeneration` capability automatically enables the existing
+image-generation tool and prevents it from being disabled while the model is
+selected.
+
+The server never sends an image-only model to `streamText`. It uses a small
+same-provider controller model to make the forced tool call, then passes the
+selected image model to the AI SDK image API. Provider provenance records the
+selected image model. Pricing labels reflect the standard output size and
+quality currently requested by Besidka and note that provider input charges
+are additional. OpenAI does not publish a token context window for GPT Image 2,
+so its registry context and output-token values are zero rather than invented.
+
+An independent code review and security audit ran against this commit before
+merge. Both provider utilities now fail closed (400) instead of silently
+falling back to the raw model string when `getModel()` cannot resolve a
+catalog entry, and the chat input's `toggleWebSearch` guard now mirrors
+`toggleImageGeneration`'s required-model guard for defense in depth. Neither
+gap was reachable through any current call site; both are hardening only.
 
 ## Validation ledger
 
@@ -312,7 +344,8 @@ current `main`.
 | `pnpm run format` | Passed | Completed with no formatting errors |
 | `pnpm run typecheck` | Passed | Completed with no type errors |
 | Focused follow-up regressions | Passed | 15 files, 93 tests across chat UI, downloads, SEO, and landing metrics |
-| Full `pnpm vitest run` | Passed | 117 files, 937 tests |
+| Image model catalog regressions | Passed | 7 files, 67 tests across model catalog, chat input, and stream endpoint |
+| Full `pnpm vitest run` | Passed | 119 files, 950 tests |
 | `pnpm run build` | Passed | Cloudflare production build completed |
 | Migration clean tests | Passed | 3 tests |
 | Affected test selection | Passed | All suites selected because `nuxt.config.ts` changed |

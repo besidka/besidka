@@ -419,6 +419,91 @@ describe('chat stream message ids', () => {
     }))
   })
 
+  it('forces image generation for a purpose-built image model', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+    const useOpenAIMock = vi.fn(async () => ({
+      instance: {},
+      imageModel: {},
+      imageModelId: 'gpt-image-2',
+      tools: {},
+      providerOptions: {},
+    }))
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'gpt-image-2',
+        name: 'GPT Image 2',
+        tools: [],
+        imageGeneration: {
+          controllerModel: 'gpt-5-nano',
+        },
+      },
+      modelName: 'GPT Image 2',
+    })))
+    vi.stubGlobal('useOpenAI', useOpenAIMock)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-image-2',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(useOpenAIMock).toHaveBeenCalledWith(
+      '1',
+      'gpt-image-2',
+      ['image_generation'],
+      'off',
+    )
+    expect(insertValues.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      role: 'user',
+      tools: ['image_generation'],
+    }))
+    expect(mocks.streamTextOptions[0]?.tools).toEqual({
+      generate_image: expect.anything(),
+    })
+  })
+
+  it('rejects a tool the purpose-built image model does not support', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'gpt-image-2',
+        name: 'GPT Image 2',
+        tools: [],
+        imageGeneration: {
+          controllerModel: 'gpt-5-nano',
+        },
+      },
+    })))
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-image-2',
+        tools: ['web_search'],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)).rejects.toThrow(
+      'The selected model does not support the requested tool.',
+    )
+
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
   it('sends a push notification via waitUntil after a successful generation', async () => {
     const handler = await getHandler()
     const { db } = createDb()

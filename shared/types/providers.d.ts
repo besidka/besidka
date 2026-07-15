@@ -2,6 +2,10 @@ import type { ReasoningCapability } from './reasoning.d'
 
 export type ModelTool = 'web_search' | 'image_generation'
 
+export interface ModelImageGenerationCapability {
+  controllerModel: string
+}
+
 export interface Model {
   id: string
   name: string
@@ -14,12 +18,14 @@ export interface Model {
     tokens: number
     input: string
     output: string
+    display?: string
   }
   modalities: {
     input: string[]
     output: string[]
   }
   tools: ModelTool[]
+  imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
 }
 

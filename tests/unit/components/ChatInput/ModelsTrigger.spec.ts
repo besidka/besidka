@@ -77,4 +77,46 @@ describe('ChatInput/ModelsTrigger', () => {
       '[data-testid="model-image-generation-capability"]',
     )).toHaveLength(1)
   })
+
+  it('does not show tool icons for a purpose-built image model', async () => {
+    mocks.getProviders.mockReturnValue({
+      providers: [{
+        id: 'google',
+        name: 'Google AI Studio',
+        models: [{
+          id: 'image-model',
+          name: 'Image model',
+          tools: [],
+          reasoning: false,
+          imageGeneration: {
+            controllerModel: 'controller-model',
+          },
+          price: {
+            display: '$0.039 / image',
+          },
+        }],
+      }],
+    })
+
+    const wrapper = await mountSuspended(ModelsTrigger, {
+      props: {
+        isWebSearchEnabled: false,
+        isImageGenerationEnabled: true,
+        isReasoningEnabled: false,
+      },
+      global: {
+        stubs: {
+          ClientOnly: {
+            template: '<slot />',
+          },
+        },
+      },
+    })
+    const modelButton = wrapper.get('button[aria-label="Choose Image model"]')
+
+    expect(wrapper.find(
+      '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(false)
+    expect(modelButton.attributes('data-tip')).toBe('$0.039 / image')
+  })
 })

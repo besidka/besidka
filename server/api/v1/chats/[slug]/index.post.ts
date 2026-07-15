@@ -149,11 +149,13 @@ export default defineEventHandler(async (event) => {
   }
 
   const { provider, model } = useChatProvider(userModel)
-  const requestedTools = chat.messages.length === 1
+  const selectedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools
-  const unsupportedTool = requestedTools.find((requestedTool) => {
-    return !model.tools.includes(requestedTool)
+  const requiredTools = getRequiredModelTools(model)
+  const supportedTools = [...model.tools, ...requiredTools]
+  const unsupportedTool = selectedTools.find((selectedTool) => {
+    return !supportedTools.includes(selectedTool)
   })
 
   if (unsupportedTool) {
@@ -164,6 +166,13 @@ export default defineEventHandler(async (event) => {
       fix: 'Choose a supported model or turn off that tool.',
     })
   }
+
+  const requestedTools = [...new Set([
+    ...selectedTools,
+    ...requiredTools,
+  ])]
+
+  logger.set({ tools: requestedTools })
 
   const previousMessages = chat.messages
     .filter((message) => {
@@ -322,7 +331,7 @@ export default defineEventHandler(async (event) => {
         )
         && hasSameTools(
           lastPersistedMessage.tools,
-          body.data.tools,
+          requestedTools,
         )
         && lastPersistedMessage.reasoning
         === body.data.reasoning
@@ -341,7 +350,7 @@ export default defineEventHandler(async (event) => {
             chatId: chat.id,
             role: 'user',
             parts: newMessage.parts,
-            tools: body.data.tools,
+            tools: requestedTools,
             reasoning: body.data.reasoning,
           },
           publicId: newMessage.id,
@@ -429,7 +438,7 @@ export default defineEventHandler(async (event) => {
     modelId: model.id,
     providerId: provider.id,
     reasoning: body.data.reasoning,
-    tools: body.data.tools,
+    tools: requestedTools,
   })
 
   // Mirror Cloudflare edge metadata (colo, country, ASN, etc.) onto the
@@ -582,7 +591,7 @@ export default defineEventHandler(async (event) => {
       projectId: chat.projectId,
       modelId: model.id,
       reasoning: body.data.reasoning,
-      tools: body.data.tools,
+      tools: requestedTools,
     })
 
     return new Response(JSON.stringify(chatError), {
@@ -703,7 +712,7 @@ export default defineEventHandler(async (event) => {
             projectId: chat.projectId,
             modelId: model.id,
             reasoning: body.data.reasoning,
-            tools: body.data.tools,
+            tools: requestedTools,
           })
 
           throw chatError
@@ -755,7 +764,7 @@ export default defineEventHandler(async (event) => {
               projectId: chat.projectId,
               modelId: model.id,
               reasoning: body.data.reasoning,
-              tools: body.data.tools,
+              tools: requestedTools,
             })
 
             return JSON.stringify(chatError)
@@ -777,7 +786,7 @@ export default defineEventHandler(async (event) => {
           projectId: chat.projectId,
           modelId: model.id,
           reasoning: body.data.reasoning,
-          tools: body.data.tools,
+          tools: requestedTools,
           publicId: messagePublicId,
           logger,
         })

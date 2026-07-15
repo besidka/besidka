@@ -171,5 +171,26 @@ export default {
         levels: ['low', 'medium', 'high'],
       },
     },
+    {
+      id: 'gpt-image-2',
+      name: 'GPT Image 2',
+      description: 'State-of-the-art image generation and editing with flexible sizes and high-fidelity image inputs',
+      contextLength: 0,
+      maxOutputTokens: 0,
+      price: {
+        tokens: 1,
+        input: '',
+        output: '',
+        display: '$0.041–$0.053 / medium image, plus input',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['image'],
+      },
+      tools: [],
+      imageGeneration: {
+        controllerModel: 'gpt-5-nano',
+      },
+    },
   ],
 }

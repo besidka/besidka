@@ -34,9 +34,23 @@ export async function useGoogle(
   const google = createGoogleGenerativeAI({
     apiKey: await useDecryptText(data.apiKey),
   })
+  const { model: modelData } = getModel(model)
+
+  if (!modelData) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Unsupported model.',
+    })
+  }
+
+  const controllerModelId = getControllerModelId(modelData)
+  const imageModelId = getImageGenerationModelId(
+    modelData,
+    'gemini-3.1-flash-image',
+  )
 
   function getInstance() {
-    return google(model)
+    return google(controllerModelId)
   }
 
   function getImageModel() {
@@ -44,7 +58,7 @@ export async function useGoogle(
       return undefined
     }
 
-    return google.image('gemini-3.1-flash-image')
+    return google.image(imageModelId)
   }
 
   async function generateChatTitle(message: string) {
@@ -79,7 +93,6 @@ export async function useGoogle(
     return result
   }
 
-  const { model: modelData } = getModel(model)
   const reasoningLevel = resolveReasoningLevelForModel(
     modelData,
     requestedReasoning,
@@ -109,7 +122,7 @@ export async function useGoogle(
   return {
     instance: getInstance(),
     imageModel: getImageModel(),
-    imageModelId: 'gemini-3.1-flash-image',
+    imageModelId,
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),

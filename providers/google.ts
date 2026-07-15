@@ -102,5 +102,89 @@ export default {
         levels: ['low', 'medium', 'high'],
       },
     },
+    {
+      id: 'gemini-3.1-flash-image',
+      name: 'Gemini 3.1 Flash Image',
+      description: 'High-quality, low-latency image generation and editing for interactive and high-volume workflows',
+      contextLength: 131_072,
+      maxOutputTokens: 32_768,
+      price: {
+        tokens: 1,
+        input: '',
+        output: '',
+        display: '$0.067 / 1K image, plus input',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text', 'image'],
+      },
+      tools: [],
+      imageGeneration: {
+        controllerModel: 'gemini-2.5-flash-lite',
+      },
+    },
+    {
+      id: 'gemini-3.1-flash-lite-image',
+      name: 'Gemini 3.1 Flash Lite Image',
+      description: 'Ultra-low-latency, cost-efficient image generation and editing optimized for 1K output',
+      contextLength: 65_536,
+      maxOutputTokens: 4_096,
+      price: {
+        tokens: 1,
+        input: '',
+        output: '',
+        display: '$0.0336 / 1K image, plus input',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text', 'image'],
+      },
+      tools: [],
+      imageGeneration: {
+        controllerModel: 'gemini-2.5-flash-lite',
+      },
+    },
+    {
+      id: 'gemini-3-pro-image',
+      name: 'Gemini 3 Pro Image',
+      description: 'Professional-grade image generation and editing for complex design, mockups, and data visualization',
+      contextLength: 65_536,
+      maxOutputTokens: 32_768,
+      price: {
+        tokens: 1,
+        input: '',
+        output: '',
+        display: '$0.134 / 1K or 2K image, plus input',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text', 'image'],
+      },
+      tools: [],
+      imageGeneration: {
+        controllerModel: 'gemini-2.5-flash-lite',
+      },
+    },
+    {
+      id: 'gemini-2.5-flash-image',
+      name: 'Gemini 2.5 Flash Image',
+      description: 'Fast native image generation and conversational editing for high-volume creative workflows',
+      contextLength: 65_536,
+      maxOutputTokens: 32_768,
+      price: {
+        tokens: 1,
+        input: '',
+        output: '',
+        display: '$0.039 / 1K image, plus input',
+      },
+      modalities: {
+        input: ['text', 'image'],
+        output: ['text', 'image'],
+      },
+      tools: [],
+      imageGeneration: {
+        controllerModel: 'gemini-2.5-flash-lite',
+      },
+    },
   ],
 }
