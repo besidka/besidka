@@ -78,7 +78,7 @@ describe('ChatInput/ModelsTrigger', () => {
     )).toHaveLength(1)
   })
 
-  it('does not show tool icons for a purpose-built image model', async () => {
+  it('shows only the image generation icon for a purpose-built image model', async () => {
     mocks.getProviders.mockReturnValue({
       providers: [{
         id: 'google',
@@ -114,9 +114,11 @@ describe('ChatInput/ModelsTrigger', () => {
     })
     const modelButton = wrapper.get('button[aria-label="Choose Image model"]')
 
-    expect(wrapper.find(
+    expect(modelButton.find(
       '[data-testid="model-image-generation-capability"]',
-    ).exists()).toBe(false)
+    ).exists()).toBe(true)
+    expect(modelButton.find('[data-tip="Reasoning"]').exists()).toBe(false)
+    expect(modelButton.find('[data-tip="Web search"]').exists()).toBe(false)
     expect(modelButton.attributes('data-tip')).toBe('$0.039 / image')
   })
 })

@@ -81,10 +81,7 @@
           <li v-if="isImageGenerationSupported">
             <label
               class="flex items-center gap-2"
-              :class="{
-                'cursor-pointer': !isImageGenerationRequired,
-                'opacity-60': isImageGenerationRequired,
-              }"
+              :class="{ 'cursor-pointer': !isImageGenerationRequired }"
             >
               <Icon name="lucide:image-plus" size="16" />
               <span class="grow">Create image</span>
@@ -93,7 +90,10 @@
                 class="toggle toggle-xs toggle-accent"
                 :checked="isImageGenerationEnabled"
                 :disabled="isImageGenerationRequired"
-                aria-label="Create image"
+                :aria-label="isImageGenerationRequired
+                  ? 'Image creation is required for this model'
+                  : 'Create image'
+                "
                 @change="emit('toggle-image-generation')"
               >
             </label>

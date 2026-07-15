@@ -137,9 +137,10 @@
                   tooltip-position="top"
                   size="xs"
                   class="rounded-full"
-                  :disabled="isImageGenerationRequired"
+                  :aria-disabled="isImageGenerationRequired"
                   :class="{
                     'pl-[5px] btn-active': isImageGenerationEnabled,
+                    'pointer-events-none': isImageGenerationRequired,
                   }"
                   @click="toggleImageGeneration"
                 />
@@ -283,6 +284,7 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { FileSourceFilter } from '~/types/file-manager'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -659,8 +661,8 @@ const attachedIds = computed<Set<FileMetadata['id']>>(() => {
   return new Set(files.value.map(file => file.id))
 })
 
-function openFilesModal(tab: 'select' | 'upload') {
-  filesModalRef.value?.open(tab)
+function openFilesModal(tab: 'select' | 'upload', source?: FileSourceFilter) {
+  filesModalRef.value?.open(tab, source)
 }
 
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')

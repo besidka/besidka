@@ -98,9 +98,11 @@
                         />
                       </span>
                       <span
-                        v-if="model.tools.includes('image_generation')"
+                        v-if="model.tools.includes('image_generation')
+                          || isImageGenerationModel(model)
+                        "
                         data-testid="model-image-generation-capability"
-                        class="shrink-0 flex items-center p-0.5 rounded-full bg-secondary-content"
+                        class="shrink-0 flex items-center p-0.5 rounded-full bg-green-100 dark:bg-secondary-content"
                         :class="{
                           'tooltip tooltip-secondary tooltip-top':
                             $device.isDesktop
@@ -109,7 +111,7 @@
                       >
                         <Icon
                           name="lucide:image-plus"
-                          class="text-secondary"
+                          class="text-green-800 dark:text-secondary"
                         />
                       </span>
                     </span>
