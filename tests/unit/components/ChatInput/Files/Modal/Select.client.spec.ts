@@ -86,4 +86,21 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(source.value).toBe('assistant')
     expect(generatedInput.checked).toBe(true)
   })
+
+  it('applies the initialSource prop to the source filter', async () => {
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+        initialSource: 'assistant',
+      },
+      shallow: true,
+    })
+
+    const generatedTab = wrapper.get(
+      '[data-testid="files-source-assistant"]',
+    )
+
+    expect(source.value).toBe('assistant')
+    expect((generatedTab.element as HTMLInputElement).checked).toBe(true)
+  })
 })

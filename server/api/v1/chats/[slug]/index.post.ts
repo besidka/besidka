@@ -9,6 +9,7 @@ import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
+import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -24,7 +25,11 @@ import {
   toUIMessageStream,
 } from 'ai'
 import * as schema from '~~/server/db/schema'
-import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
+import {
+  buildMessageUsage,
+  addImageGenerationCostToUsage,
+} from '~~/server/utils/ai/message-usage'
+import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import {
@@ -39,6 +44,7 @@ import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   getGeneratedImageFileIds,
+  isKnownImageGenerationModel,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
@@ -458,6 +464,10 @@ export default defineEventHandler(async (event) => {
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
   const providerOptions: SharedV2ProviderOptions = {}
+  let generatedImage: {
+    modelId: string
+    aspectRatio: ImageGenerationAspectRatio
+  } | undefined
 
   try {
     switch (provider.id) {
@@ -497,6 +507,9 @@ export default defineEventHandler(async (event) => {
             model: openAiImageModelId,
             imageModel: openAiImageModel,
             logger: aiLogger,
+            onGenerated: ({ aspectRatio }) => {
+              generatedImage = { modelId: openAiImageModelId, aspectRatio }
+            },
           })
           parsedTools = {
             tools: {
@@ -547,6 +560,9 @@ export default defineEventHandler(async (event) => {
             model: googleImageModelId,
             imageModel: googleImageModel,
             logger: aiLogger,
+            onGenerated: ({ aspectRatio }) => {
+              generatedImage = { modelId: googleImageModelId, aspectRatio }
+            },
           })
           parsedTools = {
             tools: {
@@ -672,6 +688,14 @@ export default defineEventHandler(async (event) => {
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
             onEnd({ usage }) {
+              const textCost = computeModelCost(model.id, provider.id, usage)
+              const imageCost = generatedImage
+                ? getImageGenerationCost(
+                  generatedImage.modelId,
+                  generatedImage.aspectRatio,
+                )
+                : undefined
+
               aiLogger.set({
                 ai: {
                   tokens: {
@@ -681,7 +705,9 @@ export default defineEventHandler(async (event) => {
                     total: usage.totalTokens
                       ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
                   },
-                  cost: computeModelCost(model.id, provider.id, usage),
+                  cost: textCost !== undefined || imageCost !== undefined
+                    ? (textCost ?? 0) + (imageCost ?? 0)
+                    : undefined,
                 },
               })
             },
@@ -729,10 +755,20 @@ export default defineEventHandler(async (event) => {
               return undefined
             }
 
-            const usage = buildMessageUsage(
+            const baseUsage = buildMessageUsage(
               part.totalUsage,
               model.id,
               provider.id,
+            )
+            const imageGenerationCost = generatedImage
+              ? getImageGenerationCost(
+                generatedImage.modelId,
+                generatedImage.aspectRatio,
+              )
+              : undefined
+            const usage = addImageGenerationCostToUsage(
+              baseUsage,
+              imageGenerationCost,
             )
 
             return {
@@ -884,6 +920,62 @@ function computeModelCost(
   }
 
   return messageUsage.inputCost + (messageUsage.outputCost ?? 0)
+}
+
+// Dollar cost of the image this turn's `generate_image` tool call actually
+// produced, read from the persisted tool part: `output.model` is the exact
+// image model used, `input.aspectRatio` is the size it was generated at.
+// Returns undefined when no image was generated, the tool call failed, or
+// the model has no known price — never fabricated as 0.
+function getGeneratedImageCostFromParts(
+  parts: UIMessage['parts'],
+): number | undefined {
+  for (const part of parts) {
+    if (
+      part.type !== 'tool-generate_image'
+      || part.state !== 'output-available'
+    ) {
+      continue
+    }
+
+    const output = part.output
+
+    if (
+      typeof output !== 'object'
+      || output === null
+      || !('status' in output)
+      || output.status !== 'ready'
+      || !('provider' in output)
+      || (output.provider !== 'openai' && output.provider !== 'google')
+      || !('model' in output)
+      || typeof output.model !== 'string'
+      || !isKnownImageGenerationModel(output.model, output.provider)
+    ) {
+      continue
+    }
+
+    return getImageGenerationCost(
+      output.model,
+      getToolInputAspectRatio(part.input),
+    )
+  }
+
+  return undefined
+}
+
+function getToolInputAspectRatio(input: unknown): string {
+  const defaultAspectRatio = '1:1'
+
+  if (
+    typeof input !== 'object'
+    || input === null
+    || !('aspectRatio' in input)
+    || typeof input.aspectRatio !== 'string'
+  ) {
+    return defaultAspectRatio
+  }
+
+  return input.aspectRatio
 }
 
 // Returns the inserted { id, publicId } row, OR `undefined` when
@@ -1080,11 +1172,16 @@ async function persistAssistantMessageFromStream(input: {
     let usage: MessageUsage | undefined
 
     try {
-      usage = buildMessageUsage(
+      const baseUsage = buildMessageUsage(
         await input.result.usage,
         input.modelId,
         input.providerId,
       )
+      const imageGenerationCost = getGeneratedImageCostFromParts(
+        responseMessage.parts as UIMessage['parts'],
+      )
+
+      usage = addImageGenerationCostToUsage(baseUsage, imageGenerationCost)
     } catch (exception) {
       input.logger.set({
         usageCapture: {

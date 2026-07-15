@@ -10,6 +10,8 @@ export type FileManagerFile = Pick<
   | 'source'
   | 'expiresAt'
   | 'createdAt'
+  | 'originModel'
+  | 'generationCost'
 >
 
 export type ViewMode = 'grid' | 'list'

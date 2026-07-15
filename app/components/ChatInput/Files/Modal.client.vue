@@ -48,6 +48,7 @@
               v-if="activeTab === 'select'"
               ref="selectTabRef"
               :attached-ids="attachedIds"
+              :initial-source="selectSource"
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
@@ -72,7 +73,7 @@
 
 <script setup lang="ts">
 import type { FileMetadata } from '#shared/types/files.d'
-import type { FileManagerFile } from '~/types/file-manager'
+import type { FileManagerFile, FileSourceFilter } from '~/types/file-manager'
 
 type Tab = 'select' | 'upload'
 type SelectTabRef = {
@@ -96,6 +97,7 @@ const storageUsage = useTemplateRef('storageUsage')
 const selectTabRef = shallowRef<SelectTabRef | null>(null)
 
 const activeTab = shallowRef<Tab | null>(null)
+const selectSource = shallowRef<FileSourceFilter | undefined>(undefined)
 const shouldRefreshSelect = shallowRef<boolean>(false)
 
 async function refreshSelectTabIfNeeded() {
@@ -118,8 +120,9 @@ async function refreshSelectTabIfNeeded() {
   }
 }
 
-function open(tab: Tab): void {
+function open(tab: Tab, source?: FileSourceFilter): void {
   activeTab.value = tab
+  selectSource.value = tab === 'select' ? source ?? 'all' : undefined
 
   if (modal.value && !modal.value?.open) {
     modal.value.showModal()
@@ -138,7 +141,12 @@ function close(): void {
 }
 
 function onModalClosed(): void {
+  if (modal.value?.open) {
+    return
+  }
+
   activeTab.value = null
+  selectSource.value = undefined
   shouldRefreshSelect.value = true
   selectTabRef.value?.reset()
 }

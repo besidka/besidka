@@ -21,6 +21,7 @@ import {
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
 import { getSafeImageGenerationError } from '~~/server/utils/ai/image-generation-errors'
+import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
 import {
   acquireImageGenerationLease,
   releaseImageGenerationLease,
@@ -50,6 +51,9 @@ export interface CreateImageGenerationToolInput {
   model: string
   imageModel: ImageModel
   logger: LoggerLike
+  onGenerated?: (result: {
+    aspectRatio: ImageGenerationAspectRatio
+  }) => void
 }
 
 export function createImageGenerationTool(
@@ -118,6 +122,8 @@ export function createImageGenerationTool(
           fileData: validatedImage.data,
           source: 'assistant',
           originProvider: input.provider,
+          originModel: input.model,
+          generationCost: getImageGenerationCost(input.model, aspectRatio),
           logger: input.logger,
         })
         const url = `/files/${persistedFile.storageKey}`
@@ -134,6 +140,8 @@ export function createImageGenerationTool(
             usage: result.usage,
           },
         })
+
+        input.onGenerated?.({ aspectRatio })
 
         yield {
           status: 'ready',

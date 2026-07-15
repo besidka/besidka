@@ -317,10 +317,14 @@ models after the existing general-purpose models:
 
 Deprecated GPT Image aliases, deprecated Imagen 4 models, and all video models
 are intentionally excluded. Purpose-built image models declare `tools: []`, so
-the model menu does not show text, web-search, or generic tool badges for them.
-Their separate `imageGeneration` capability automatically enables the existing
-image-generation tool and prevents it from being disabled while the model is
-selected.
+the model menu does not show reasoning or web-search badges for them, but it
+still shows the image-generation badge — the picker checks the model's
+`imageGeneration` capability, not just its `tools` array, so the badge that
+already existed for general-purpose models also appears here. That capability
+automatically enables the existing image-generation tool and prevents it from
+being disabled while the model is selected; the "Create image" toggle renders
+in its normal active state rather than the browser's disabled/greyed style, so
+a required-on model still visually reads as on.
 
 The server never sends an image-only model to `streamText`. It uses a small
 same-provider controller model to make the forced tool call, then passes the

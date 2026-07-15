@@ -19,10 +19,6 @@ const generatedFilePrefix = 'Generated file saved in the user file library'
 const maxGeneratedImageBytes = 10 * 1024 * 1024
 const maxGeneratedImageFileNameLength = 120
 const safeGeneratedImageFileIdPattern = /^[A-Za-z0-9_-]{1,128}$/
-const generatedImageModels = {
-  openai: 'gpt-image-2',
-  google: 'gemini-3.1-flash-image',
-} as const
 const generatedImageMediaTypes = new Set([
   'image/jpeg',
   'image/png',
@@ -261,6 +257,15 @@ async function normalizeGeneratedImageToolParts(
   return normalizedParts
 }
 
+export function isKnownImageGenerationModel(
+  modelId: string,
+  providerId: string,
+): boolean {
+  const { model: modelData, provider: modelProvider } = getModel(modelId)
+
+  return isImageGenerationModel(modelData) && modelProvider?.id === providerId
+}
+
 function isImageGenerationReady(
   output: unknown,
   providerId?: string,
@@ -278,7 +283,8 @@ function isImageGenerationReady(
     || (output.provider !== 'openai' && output.provider !== 'google')
     || (providerId !== undefined && output.provider !== providerId)
     || !('model' in output)
-    || output.model !== generatedImageModels[output.provider]
+    || typeof output.model !== 'string'
+    || !isKnownImageGenerationModel(output.model, output.provider)
     || !('file' in output)
     || typeof output.file !== 'object'
   ) {

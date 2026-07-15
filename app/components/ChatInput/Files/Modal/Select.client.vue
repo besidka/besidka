@@ -145,10 +145,11 @@
 </template>
 
 <script setup lang="ts">
-import type { FileManagerFile } from '~/types/file-manager'
+import type { FileManagerFile, FileSourceFilter } from '~/types/file-manager'
 
 const props = defineProps<{
   attachedIds: Set<string>
+  initialSource?: FileSourceFilter
 }>()
 
 const emit = defineEmits<{
@@ -194,6 +195,14 @@ const {
   getSelectedForAttach,
   reset,
 } = useFileManager()
+
+watch(() => props.initialSource, (newSource) => {
+  if (!newSource) {
+    return
+  }
+
+  source.value = newSource
+}, { immediate: true })
 
 const emptyStateIcon = computed<string>(() => {
   if (source.value === 'assistant') {

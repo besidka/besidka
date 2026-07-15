@@ -425,6 +425,57 @@ describe('assistant files scaffolding', () => {
     expect(loggerSet).not.toHaveBeenCalled()
   })
 
+  it('normalizes a ready output from a non-default image model', async () => {
+    const loggerSet = vi.fn()
+
+    stubGeneratedImageFile(createGeneratedImageFileRow({
+      originProvider: 'google',
+    }))
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-2',
+        state: 'output-available',
+        input: { prompt: 'A quiet forest' },
+        output: {
+          status: 'ready',
+          file: {
+            id: 'file-1',
+            storageKey: 'generated.webp',
+            name: 'quiet-forest.webp',
+            size: 123,
+            type: 'image/webp',
+            source: 'assistant',
+            expiresAt: null,
+            url: 'javascript:alert(1)',
+            downloadUrl: 'https://attacker.example/steal',
+          },
+          provider: 'google',
+          model: 'gemini-3-pro-image',
+        },
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'google',
+      chatId: 'chat-4',
+      userId: 4,
+      logger: { set: loggerSet },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'quiet-forest.webp',
+        url: '/files/generated.webp',
+      },
+    ])
+    expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
+  })
+
   it.each([
     {
       name: 'unowned file ID',
@@ -452,6 +503,13 @@ describe('assistant files scaffolding', () => {
       name: 'wrong image model',
       change: (output: any) => {
         output.model = 'gpt-image-1'
+      },
+      row: createGeneratedImageFileRow(),
+    },
+    {
+      name: 'real image model claimed under the wrong provider',
+      change: (output: any) => {
+        output.model = 'gemini-3.1-flash-image'
       },
       row: createGeneratedImageFileRow(),
     },

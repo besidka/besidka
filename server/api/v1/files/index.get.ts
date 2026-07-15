@@ -48,6 +48,8 @@ export default defineEventHandler(async (event) => {
         source: schema.files.source,
         expiresAt: schema.files.expiresAt,
         createdAt: schema.files.createdAt,
+        originModel: schema.files.originModel,
+        generationCost: schema.files.generationCost,
       })
       .from(schema.files)
       .where(whereConditions)

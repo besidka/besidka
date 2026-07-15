@@ -82,7 +82,7 @@
         class="badge badge-secondary badge-xs absolute bottom-1 left-1 z-10"
       >
         <Icon name="lucide:sparkles" size="10" />
-        AI
+        {{ getAiBadgeLabel(file) }}
       </span>
 
       <!-- Hover/Focus Actions -->
@@ -132,6 +132,7 @@
 
 <script setup lang="ts">
 import type { FileManagerFile } from '~/types/file-manager'
+import { formatMessageCost } from '#shared/utils/message-format'
 
 defineProps<{
   files: FileManagerFile[]
@@ -150,6 +151,14 @@ const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 
 function onKeyboardSelect(file: FileManagerFile, index: number) {
   emit('file-click', new MouseEvent('click'), file, index)
+}
+
+function getAiBadgeLabel(file: FileManagerFile): string {
+  if (!file.generationCost) {
+    return 'AI'
+  }
+
+  return `AI · ${formatMessageCost(file.generationCost)}`
 }
 
 defineExpose({

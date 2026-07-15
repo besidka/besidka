@@ -26,6 +26,8 @@ export interface PersistFileInput {
   source?: FileSource
   originMessageId?: number | null
   originProvider?: string | null
+  originModel?: string | null
+  generationCost?: number | null
   logger?: LoggerLike
 }
 
@@ -127,6 +129,8 @@ export async function persistFile(
         expiresAt,
         originMessageId: input.originMessageId ?? null,
         originProvider: input.originProvider ?? null,
+        originModel: input.originModel ?? null,
+        generationCost: input.generationCost ?? null,
       })
       .returning({
         id: schema.files.id,
