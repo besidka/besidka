@@ -61,7 +61,7 @@
             ref="textarea"
             v-model="input"
             class="textarea p-4 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
-            placeholder="Type your message here..."
+            :placeholder="textareaPlaceholder"
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"
             @focus="onKeyboardFocus"
@@ -73,6 +73,7 @@
                 <LazyChatInputModelsTrigger
                   hydrate-on-idle
                   :is-web-search-enabled="isWebSearchEnabled"
+                  :is-image-generation-enabled="isImageGenerationEnabled"
                   :is-reasoning-enabled="isReasoningActive"
                 />
               </div>
@@ -117,6 +118,27 @@
                   :files="files"
                   @detach-all="files = []"
                   @open="openFilesModal"
+                />
+                <UiButton
+                  v-if="isImageGenerationSupported"
+                  mode="accent"
+                  :ghost="isImageGenerationEnabled ? undefined : true"
+                  :circle="!isImageGenerationEnabled"
+                  icon-name="lucide:image-plus"
+                  :icon-size="16"
+                  :icon-only="!isImageGenerationEnabled"
+                  :title="isImageGenerationEnabled
+                    ? 'Disable image creation'
+                    : 'Create an image'
+                  "
+                  text="Create image"
+                  tooltip-position="top"
+                  size="xs"
+                  class="rounded-full"
+                  :class="{
+                    'pl-[5px] btn-active': isImageGenerationEnabled,
+                  }"
+                  @click="toggleImageGeneration"
                 />
                 <UiButton
                   v-if="isWebSearchSupported"
@@ -177,6 +199,8 @@
                 hydrate-on-idle
                 :is-web-search-supported="isWebSearchSupported"
                 :is-web-search-enabled="isWebSearchEnabled"
+                :is-image-generation-supported="isImageGenerationSupported"
+                :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-reasoning-supported="isReasoningSupported"
                 :is-reasoning-active="isReasoningActive"
                 :reasoning-mode="reasoningMode"
@@ -189,6 +213,7 @@
                 :project-context="projectContext"
                 :files-count="files.length"
                 @toggle-web-search="toggleWebSearch"
+                @toggle-image-generation="toggleImageGeneration"
                 @open-project-picker="emit('open-project-picker')"
                 @clear-project-context="emit('clear-project-context')"
                 @open-files-select="openFilesModal('select')"
@@ -282,6 +307,7 @@ const route = useRoute()
 const { isDesktop } = useDevice()
 const {
   isWebSearchSupported,
+  isImageGenerationSupported,
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
@@ -390,6 +416,27 @@ watch(
   },
 )
 
+watch(
+  [isWebSearchSupported, isImageGenerationSupported],
+  ([webSearchSupported, imageGenerationSupported]) => {
+    tools.value = tools.value.filter((tool) => {
+      if (tool === 'web_search') {
+        return webSearchSupported && !tools.value.includes('image_generation')
+      }
+
+      if (tool === 'image_generation') {
+        return imageGenerationSupported
+      }
+
+      return true
+    })
+  },
+  {
+    immediate: true,
+    flush: 'post',
+  },
+)
+
 const { textarea, input } = useTextareaAutosize({
   input: message,
 })
@@ -404,6 +451,18 @@ const canShowRegenerate = computed<boolean>(() => {
 
 const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
+})
+
+const isImageGenerationEnabled = computed<boolean>(() => {
+  return tools.value.includes('image_generation')
+})
+
+const textareaPlaceholder = computed<string>(() => {
+  if (isImageGenerationEnabled.value) {
+    return 'Describe the image you want to create...'
+  }
+
+  return 'Type your message here...'
 })
 
 const shouldDisplayProjectPicker = computed<boolean>(() => {
@@ -446,13 +505,35 @@ watchPostEffect(() => {
 
 function toggleWebSearch() {
   if (!isWebSearchEnabled.value) {
-    tools.value = [...tools.value, 'web_search']
+    tools.value = [
+      ...tools.value.filter((tool) => {
+        return tool !== 'image_generation'
+      }),
+      'web_search',
+    ]
 
     return
   }
 
   tools.value = tools.value.filter((tool) => {
     return tool !== 'web_search'
+  })
+}
+
+function toggleImageGeneration() {
+  if (!isImageGenerationEnabled.value) {
+    tools.value = [
+      ...tools.value.filter((tool) => {
+        return tool !== 'web_search'
+      }),
+      'image_generation',
+    ]
+
+    return
+  }
+
+  tools.value = tools.value.filter((tool) => {
+    return tool !== 'image_generation'
   })
 }
 
@@ -471,6 +552,7 @@ onMounted(async () => {
 
   if (
     !isWebSearchEnabled.value
+    && !isImageGenerationEnabled.value
     && isWebSearchSupported.value
     && /https?:\/\//.test(input.value)
   ) {
@@ -481,6 +563,7 @@ onMounted(async () => {
 watch(input, (newValue) => {
   if (
     !isWebSearchEnabled.value
+    && !isImageGenerationEnabled.value
     && isWebSearchSupported.value
     && /https?:\/\//.test(newValue)
   ) {

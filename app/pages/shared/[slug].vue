@@ -171,8 +171,13 @@
             v-for="(part, index) in m.parts"
             :key="`message-${m.id}-part-${index}`"
           >
+            <ChatGeneratedImage
+              v-if="shouldRenderGenerateImageToolPart(m, part)"
+              :message-role="m.role"
+              :part="part"
+            />
             <div
-              v-if="isChatErrorTextPart(part)"
+              v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
             >
               <div class="alert alert-error alert-soft flex flex-col items-start gap-0 mt-2">
@@ -224,9 +229,11 @@
 import type { TextUIPart, UIMessage } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { ModelTool } from '#shared/types/providers.d'
 import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { buildShareDescription } from '#shared/utils/og-description'
+import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
 
 interface SharedChatMessage {
   id: string
@@ -235,6 +242,7 @@ interface SharedChatMessage {
   reasoning: ReasoningLevel
   createdAt?: string | number
   usage?: MessageUsage
+  tools?: ModelTool[]
 }
 
 interface SharedChatAuthor {
@@ -440,6 +448,7 @@ const selectedMessageInfo = computed(() => {
         usage: message.usage,
         createdAt: message.createdAt,
       },
+      tools: message.tools,
     }
   })
 

@@ -4,6 +4,7 @@ import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
+  hasVisibleAssistantContent,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
@@ -506,6 +507,43 @@ describe('chat error helpers', () => {
       true,
       streamingAssistantMessage,
     )).toBe(false)
+  })
+
+  it('treats image generation progress as visible assistant content', () => {
+    const generatingAssistantMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: { status: 'generating' },
+        },
+      ],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(generatingAssistantMessage)).toBe(true)
+    expect(shouldForceGenericLoadingIndicator(
+      true,
+      generatingAssistantMessage,
+    )).toBe(false)
+  })
+
+  it('treats a persisted file-only reply as visible assistant content', () => {
+    const fileAssistantMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: '/files/generated.webp',
+        },
+      ],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(fileAssistantMessage)).toBe(true)
   })
 
   it('never forces the loader once a generation is not being awaited', () => {

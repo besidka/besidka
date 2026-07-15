@@ -14,6 +14,7 @@ import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
+import { isVisibleGenerateImageToolPart } from '~/utils/generated-images'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -310,6 +311,10 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }
 
   return message.parts?.some((part) => {
+    if (part.type === 'file' || isVisibleGenerateImageToolPart(part)) {
+      return true
+    }
+
     if (
       part.type !== 'text'
       && part.type !== 'reasoning'
@@ -997,10 +1002,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return true
     }
 
-    return message.parts?.some((part) => {
-      return (part.type === 'reasoning' && part.text?.length)
-        || (part.type === 'text' && part.text?.length)
-    }) || false
+    return hasVisibleAssistantContent(message)
   }
 
   function getMessageReasoning(

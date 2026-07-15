@@ -49,14 +49,20 @@ export function getChangedFiles(base = 'HEAD') {
 export function getAffectedTests(changedFiles) {
   const affectedTests = new Set()
   const filesModuleTests = [
+    'tests/unit/components/Chat/Files.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/api/files-index.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
+    'tests/integration/server/file-download.spec.ts',
+    'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
@@ -66,6 +72,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
+  ]
+  const imageGenerationTests = [
+    'tests/integration/server/image-generation.spec.ts',
+    'tests/integration/server/image-generation-lock.spec.ts',
+    'tests/integration/server/assistant-files.spec.ts',
+    'tests/integration/api/chats-message-id-stream.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -80,7 +92,6 @@ export function getAffectedTests(changedFiles) {
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
-    'tests/unit/components/History/ProjectActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/projects.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
@@ -173,6 +184,26 @@ export function getAffectedTests(changedFiles) {
   ]
 
   const testMappings = [
+    {
+      pattern:
+        /^(server\/utils\/ai\/image-generation(-lock)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google)\.ts|providers\/(openai|google)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|server\/types\/tools\.d\.ts)$/,
+      tests: imageGenerationTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/request-schema\.ts$/,
+      tests: [
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-new.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/Chat\/GeneratedImage\.vue$/,
+      tests: ['tests/unit/components/Chat/GeneratedImage.spec.ts'],
+    },
+    {
+      pattern: /^app\/utils\/generated-images\.ts$/,
+      tests: ['tests/unit/utils/generated-images.spec.ts'],
+    },
     {
       pattern:
         /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts)$/,
@@ -344,6 +375,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/utils\/(files|upload-with-progress)\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^shared\/utils\/files\.ts$/,
       tests: filesModuleTests,
     },
     {

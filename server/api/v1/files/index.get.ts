@@ -6,6 +6,7 @@ const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
+  source: z.enum(['all', 'upload', 'assistant']).default('all'),
 })
 
 export default defineEventHandler(async (event) => {
@@ -26,16 +27,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { offset, limit, search } = query.data
+  const { offset, limit, search, source } = query.data
   const userId = parseInt(session.user.id)
   const db = useDb()
 
-  const whereConditions = search
-    ? and(
-      eq(schema.files.userId, userId),
-      like(schema.files.name, `%${search}%`),
-    )
-    : eq(schema.files.userId, userId)
+  const whereConditions = and(
+    eq(schema.files.userId, userId),
+    source === 'all' ? undefined : eq(schema.files.source, source),
+    search ? like(schema.files.name, `%${search}%`) : undefined,
+  )
 
   const [files, countResult] = await Promise.all([
     db

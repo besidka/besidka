@@ -58,6 +58,46 @@ describe('getMessageUsedTools', () => {
     expect(result).toEqual(['web_search'])
   })
 
+  it('returns image_generation when its tool part is present', () => {
+    const result = getMessageUsedTools({
+      parts: [{ type: 'tool-generate_image' }],
+    })
+
+    expect(result).toEqual(['image_generation'])
+  })
+
+  it('returns persisted image generation after tool parts are normalized', () => {
+    const result = getMessageUsedTools({
+      parts: [{ type: 'file', url: '/files/generated.webp' }],
+      tools: ['image_generation'],
+    })
+
+    expect(result).toEqual(['image_generation'])
+  })
+
+  it('allowlists and deduplicates persisted tools with live parts', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'source-url' },
+        { type: 'tool-generate_image' },
+      ],
+      tools: ['image_generation', 'unknown', 'image_generation'],
+    })
+
+    expect(result).toEqual(['web_search', 'image_generation'])
+  })
+
+  it('returns every tool represented in the message', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'source-url' },
+        { type: 'tool-generate_image' },
+      ],
+    })
+
+    expect(result).toEqual(['web_search', 'image_generation'])
+  })
+
   it('returns an empty array for text-only parts', () => {
     const result = getMessageUsedTools({
       parts: [{ type: 'text', text: 'hello' }],
@@ -68,6 +108,11 @@ describe('getMessageUsedTools', () => {
 
   it('returns an empty array when parts is missing', () => {
     expect(getMessageUsedTools({})).toEqual([])
+  })
+
+  it('reads persisted tools when parts is missing', () => {
+    expect(getMessageUsedTools({ tools: ['image_generation'] }))
+      .toEqual(['image_generation'])
   })
 
   it('returns an empty array when parts is not an array', () => {

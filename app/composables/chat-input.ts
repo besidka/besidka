@@ -11,6 +11,16 @@ export function useChatInput() {
     return !!model?.tools.includes('web_search')
   })
 
+  const isImageGenerationSupported = computed<boolean>(() => {
+    const currentModel = toValue(userModel)
+
+    if (!currentModel) return false
+
+    const { model } = getModel(currentModel)
+
+    return !!model?.tools.includes('image_generation')
+  })
+
   const reasoningCapability = computed(() => {
     const currentModel = toValue(userModel)
 
@@ -41,6 +51,7 @@ export function useChatInput() {
 
   return {
     isWebSearchSupported,
+    isImageGenerationSupported,
     reasoningCapability,
     reasoningMode,
     reasoningLevels,

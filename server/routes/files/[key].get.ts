@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
       id: true,
       userId: true,
       storageKey: true,
+      name: true,
       type: true,
       size: true,
     },
@@ -63,14 +64,46 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const query = getQuery(event)
+  const contentDisposition = query.download === '1'
+    ? buildAttachmentContentDisposition(file.name)
+    : 'inline'
+
   setResponseHeaders(event, {
     'Content-Type': file.type,
     'Content-Length': file.size.toString(),
     'Cache-Control': 'private, no-store, max-age=0',
-    'Content-Disposition': 'inline',
+    'Content-Disposition': contentDisposition,
     'X-Content-Type-Options': 'nosniff',
     'Vary': 'Cookie, x-file-access-token',
   })
 
   return storageObject.body
 })
+
+export function buildAttachmentContentDisposition(fileName: string): string {
+  const normalizedFileName = removeControlCharacters(fileName)
+    .trim()
+    .slice(0, 200)
+    || 'download'
+  const fallbackFileName = normalizedFileName
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7e]/g, '')
+    .replace(/["\\]/g, '_')
+    .trim()
+    || 'download'
+  const encodedFileName = encodeURIComponent(normalizedFileName)
+    .replace(/[!'()*]/g, (character) => {
+      return `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+    })
+
+  return `attachment; filename="${fallbackFileName}"; filename*=UTF-8''${encodedFileName}`
+}
+
+function removeControlCharacters(value: string): string {
+  return [...value].filter((character) => {
+    const codePoint = character.codePointAt(0) || 0
+
+    return codePoint >= 0x20 && codePoint !== 0x7f
+  }).join('')
+}

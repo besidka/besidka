@@ -1,11 +1,12 @@
 import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
+import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 
 export type MessageMenuInfo = {
   role: 'user' | 'assistant'
   createdAt?: string | number | Date
   model?: string
-  usedTools?: Array<'web_search'>
+  usedTools?: ModelTool[]
   reasoning?: ReasoningLevel
   tokens?: number
   reasoningTokens?: number
@@ -19,9 +20,15 @@ type MenuMessage = {
   role: string
   metadata?: unknown
   parts?: unknown
+  tools?: unknown
   reasoning?: ReasoningLevel
   createdAt?: string | number | Date
 }
+
+const persistedModelTools: ModelTool[] = [
+  'web_search',
+  'image_generation',
+]
 
 export function getMessageMetadata(
   message: { metadata?: unknown, createdAt?: string | number | Date },
@@ -35,13 +42,16 @@ export function getMessageMetadata(
 }
 
 export function getMessageUsedTools(
-  message: { parts?: unknown },
-): Array<'web_search'> {
-  if (!Array.isArray(message.parts)) {
-    return []
-  }
+  message: { parts?: unknown, tools?: unknown },
+): ModelTool[] {
+  const storedTools = Array.isArray(message.tools)
+    ? message.tools
+    : []
+  const parts = Array.isArray(message.parts)
+    ? message.parts
+    : []
 
-  const hasWebSearchPart = message.parts.some((part) => {
+  const hasWebSearchPart = parts.some((part) => {
     return (
       typeof part === 'object'
       && part !== null
@@ -49,8 +59,20 @@ export function getMessageUsedTools(
       && (part.type === 'source-url' || part.type === 'source-document')
     )
   })
+  const hasImageGenerationPart = parts.some((part) => {
+    return (
+      typeof part === 'object'
+      && part !== null
+      && 'type' in part
+      && part.type === 'tool-generate_image'
+    )
+  })
 
-  return hasWebSearchPart ? ['web_search'] : []
+  return persistedModelTools.filter((tool) => {
+    return storedTools.includes(tool)
+      || (tool === 'web_search' && hasWebSearchPart)
+      || (tool === 'image_generation' && hasImageGenerationPart)
+  })
 }
 
 function getFollowingAssistantUsage(

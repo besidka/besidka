@@ -1,10 +1,93 @@
 import type { FileUIPart } from 'ai'
 import type { FileMetadata } from '#shared/types/files.d'
+import { extractLocalFileStorageKey } from '#shared/utils/files'
+
+const FILE_URL_ORIGIN = 'https://besidka.local'
+
+export interface SafeFileLinks {
+  storageKey: string
+  openUrl: string
+  downloadUrl: string
+}
 
 export function getFileUrl(
   storageKey: FileMetadata['storageKey'],
 ): string {
   return `/files/${storageKey}`
+}
+
+export function addFileDownloadQuery(url: string): string {
+  const storageKey = extractLocalFileStorageKey(url)
+
+  if (!storageKey) {
+    return ''
+  }
+
+  return buildSafeFileUrl(
+    url,
+    getFileUrl(storageKey),
+    true,
+  ) || ''
+}
+
+export function getSafeFileLinks(url: string): SafeFileLinks | null {
+  const storageKey = extractLocalFileStorageKey(url)
+
+  if (!storageKey) {
+    return null
+  }
+
+  const openUrl = buildSafeFileUrl(
+    url,
+    getFileUrl(storageKey),
+    false,
+  )
+  const downloadUrl = buildSafeFileUrl(
+    url,
+    getFileDownloadUrl(storageKey),
+    true,
+  )
+
+  if (!openUrl || !downloadUrl) {
+    return null
+  }
+
+  return {
+    storageKey,
+    openUrl,
+    downloadUrl,
+  }
+}
+
+export function getFileDownloadUrl(
+  storageKey: FileMetadata['storageKey'],
+): string {
+  return addFileDownloadQuery(getFileUrl(storageKey))
+}
+
+function buildSafeFileUrl(
+  sourceUrl: string,
+  targetUrl: string,
+  download: boolean,
+): string | null {
+  try {
+    const parsedSourceUrl = new URL(sourceUrl, FILE_URL_ORIGIN)
+    const parsedTargetUrl = new URL(targetUrl, FILE_URL_ORIGIN)
+
+    parsedTargetUrl.search = parsedSourceUrl.search
+    parsedTargetUrl.hash = parsedSourceUrl.hash
+
+    if (download) {
+      parsedTargetUrl.searchParams.set('download', '1')
+    }
+
+    return (
+      `${parsedTargetUrl.pathname}`
+      + `${parsedTargetUrl.search}${parsedTargetUrl.hash}`
+    )
+  } catch {
+    return null
+  }
 }
 
 export function isImageFile(type: FileMetadata['type']): boolean {

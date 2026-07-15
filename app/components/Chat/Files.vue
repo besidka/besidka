@@ -9,8 +9,8 @@
     <div class="carousel flex gap-2 w-full rounded-box">
       <div
         v-for="file in parts"
-        :key="file.url"
-        :aria-label="`File ${file.filename}`"
+        :key="file.displayKey"
+        :aria-label="`File ${file.filename || 'attachment'}`"
         class="group carousel-item relative overflow-hidden flex items-center justify-center size-48 rounded-box aspect-square bg-base-300"
       >
         <Icon
@@ -19,7 +19,8 @@
           class="z-10 text-base-content/40"
         />
         <div
-          v-if="failedUrls[file.url]"
+          v-if="!file.links || failedUrls[file.links.openUrl]"
+          data-testid="chat-file-unavailable"
           class="absolute z-20 inset-0 flex flex-col items-center justify-center bg-base-300"
         >
           <Icon
@@ -27,16 +28,49 @@
             size="32"
             class="text-base-content/40"
           />
-          <span class="text-xs text-base-content/50 mt-2">Not found</span>
+          <span class="text-xs text-base-content/50 mt-2">
+            {{ file.links ? 'Not found' : 'Unavailable' }}
+          </span>
         </div>
         <img
-          v-else-if="isImageFile(file.mediaType)"
-          :src="file.url"
-          :alt="file.filename"
+          v-else-if="file.links && isImageFile(file.mediaType)"
+          :src="file.links.openUrl"
+          :alt="file.filename || 'Attached image'"
           class="absolute z-20 inset-0 block size-full shrink-0 aspect-square object-cover"
           loading="lazy"
-          @error="onImageError(file.url)"
+          @error="onImageError(file.links.openUrl)"
         >
+        <div
+          v-if="file.links && !failedUrls[file.links.openUrl]"
+          class="absolute z-30 top-2 right-2 flex gap-1"
+          :class="{
+            [
+              'md:opacity-0 md:group-hover:opacity-100 '
+              + 'md:focus-within:opacity-100 transition-opacity'
+            ]: $device.isDesktop,
+          }"
+        >
+          <a
+            :href="file.links.openUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="chat-file-open"
+            class="btn btn-circle btn-xs btn-soft"
+            :aria-label="`Open ${file.filename || 'file'}`"
+            title="Open"
+          >
+            <Icon name="lucide:external-link" size="12" />
+          </a>
+          <a
+            :href="file.links.downloadUrl"
+            data-testid="chat-file-download"
+            class="btn btn-circle btn-xs btn-soft"
+            :aria-label="`Download ${file.filename || 'file'}`"
+            title="Download"
+          >
+            <Icon name="lucide:download" size="12" />
+          </a>
+        </div>
         <div
           v-if="file.filename"
           :title="file.filename"
@@ -58,6 +92,14 @@
 
 <script setup lang="ts">
 import type { UIMessage, FileUIPart } from 'ai'
+import type { SafeFileLinks } from '~/utils/files'
+
+interface DisplayFile {
+  displayKey: string
+  filename?: string
+  mediaType: FileUIPart['mediaType']
+  links: SafeFileLinks | null
+}
 
 const props = defineProps<{
   message: UIMessage
@@ -66,9 +108,18 @@ const props = defineProps<{
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 const failedUrls = reactive<Record<string, boolean>>({})
 
-const parts = computed<FileUIPart[]>(() => {
-  return props.message.parts.filter((part) => {
-    return part.type === 'file'
+const parts = computed<DisplayFile[]>(() => {
+  return props.message.parts.flatMap((part, index) => {
+    if (part.type !== 'file') {
+      return []
+    }
+
+    return [{
+      displayKey: `${index}:${part.filename || 'file'}`,
+      filename: part.filename,
+      mediaType: part.mediaType,
+      links: getSafeFileLinks(part.url),
+    }]
   })
 })
 
@@ -84,9 +135,12 @@ onMounted(() => {
   const images = containerRef.value.querySelectorAll('img')
 
   images.forEach((img) => {
-    if (img.complete && img.naturalWidth === 0) {
-      const url = new URL(img.src)
-      failedUrls[url.pathname] = true
+    if (img.complete && img.currentSrc && img.naturalWidth === 0) {
+      const imageUrl = img.getAttribute('src')
+
+      if (imageUrl) {
+        failedUrls[imageUrl] = true
+      }
     }
   })
 })

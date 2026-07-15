@@ -78,6 +78,19 @@
               </span>
             </button>
           </li>
+          <li v-if="isImageGenerationSupported">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <Icon name="lucide:image-plus" size="16" />
+              <span class="grow">Create image</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-xs toggle-accent"
+                :checked="isImageGenerationEnabled"
+                aria-label="Create image"
+                @change="emit('toggle-image-generation')"
+              >
+            </label>
+          </li>
           <li v-if="isWebSearchSupported">
             <label class="flex items-center gap-2 cursor-pointer">
               <Icon name="lucide:globe" size="16" />
@@ -105,6 +118,8 @@ import type {
 const props = defineProps<{
   isWebSearchSupported?: boolean
   isWebSearchEnabled?: boolean
+  isImageGenerationSupported?: boolean
+  isImageGenerationEnabled?: boolean
   isReasoningSupported?: boolean
   isReasoningActive?: boolean
   reasoningMode?: 'none' | 'toggle' | 'levels'
@@ -120,6 +135,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'toggle-web-search': []
+  'toggle-image-generation': []
   'open-project-picker': []
   'clear-project-context': []
   'open-files-select': []
@@ -136,6 +152,7 @@ const isDropdownHovered = useElementHover(dropdown)
 const isAnyFeatureActive = computed<boolean>(() => {
   return !!(
     props.isWebSearchEnabled
+    || props.isImageGenerationEnabled
     || props.isReasoningActive
     || (props.filesCount ?? 0) > 0
     || props.projectContext

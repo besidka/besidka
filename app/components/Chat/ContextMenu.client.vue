@@ -178,6 +178,7 @@
 
 <script setup lang="ts">
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
+import type { ModelTool } from '#shared/types/providers.d'
 import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import {
   formatMessageCost,
@@ -185,8 +186,9 @@ import {
   formatTokenCount,
 } from '#shared/utils/message-format'
 
-const TOOL_LABELS: Record<'web_search', string> = {
+const TOOL_LABELS: Record<ModelTool, string> = {
   web_search: 'Web search',
+  image_generation: 'Image generation',
 }
 
 const props = withDefaults(defineProps<{

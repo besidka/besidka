@@ -13,3 +13,4 @@ export type FileManagerFile = Pick<
 >
 
 export type ViewMode = 'grid' | 'list'
+export type FileSourceFilter = 'all' | FileMetadata['source']

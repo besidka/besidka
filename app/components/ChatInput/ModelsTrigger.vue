@@ -20,6 +20,12 @@
         {{ getModelName(toValue(userModel)) }}
       </span>
       <Icon
+        v-if="isImageGenerationEnabled"
+        name="lucide:image-plus"
+        size="13"
+        class="text-accent shrink-0"
+      />
+      <Icon
         name="lucide:chevron-down"
         size="14"
         class="group-open:scale-y-[-1]"
@@ -95,6 +101,20 @@
                           class="text-info"
                         />
                       </span>
+                      <span
+                        v-if="model.tools.includes('image_generation')"
+                        class="shrink-0 flex items-center p-0.5 rounded-full bg-secondary-content"
+                        :class="{
+                          'tooltip tooltip-secondary tooltip-top':
+                            $device.isDesktop
+                        }"
+                        data-tip="Image generation"
+                      >
+                        <Icon
+                          name="lucide:image-plus"
+                          class="text-secondary"
+                        />
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -110,6 +130,7 @@
 <script setup lang="ts">
 defineProps<{
   isWebSearchEnabled: boolean
+  isImageGenerationEnabled: boolean
   isReasoningEnabled: boolean
 }>()
 
