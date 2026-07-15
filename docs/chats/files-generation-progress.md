@@ -1,15 +1,19 @@
 # AI image generation progress
 
-Status: Release gate approved; publishing and rollout pending
+Status: Draft PR published; provider smoke and rollout pending
 
 Branch: `files-generation`
+
+Pull request: [#300](https://github.com/besidka/besidka/pull/300)
 
 Last updated: 2026-07-15
 
 This ledger records implementation state for the
 [AI image and file generation plan](./files-generation-plan.md). The image MVP
-has passed final code and security review. Provider smoke tests, preview
-rollout, commits, and the draft pull request remain.
+has passed final code and security review. The four-part commit history is
+published in draft pull request #300, and its GitHub Preview Build and Preview
+Deploy checks are green. Provider smoke tests and the guarded preview D1 and
+production rollout remain.
 
 ## Current outcome
 
@@ -44,9 +48,9 @@ and list views.
 | Chat progress and result UI | Complete | IMG-007 |
 | File filtering, sharing, and download | Complete | IMG-008 |
 | Errors and observability | Complete for MVP | IMG-009 |
-| Automated verification | Complete | 108 files and 906 tests, typecheck, build, migration audit, affected tests, mapping audit, and diff check pass |
+| Automated verification | Complete | 108 files and 906 tests, typecheck, build, migration audit, affected tests, mapping audit, diff check, GitHub Preview Build, and Preview Deploy pass |
 | Final code and security reviews | Complete | Final reviewers approved the remediated implementation |
-| Commits and draft PR | Pending | IMG-010; commits, push, and PR remain |
+| Commits and draft PR | Complete | IMG-010; draft pull request #300 contains the reviewable commit series |
 | Provider smoke and preview rollout | Pending manual work | Requires maintainer keys, explicit spend, migrated preview D1, and preview bindings |
 
 ## Implemented decisions
@@ -186,14 +190,20 @@ and list views.
 
 ## Commit ledger
 
-The final hashes remain pending until the orchestrator creates the commits.
+The implementation is split into reviewable documentation, server, and client
+commits. The final documentation commit records the release state.
 
 | Order | Commit | Status | Hash |
 | --- | --- | --- | --- |
-| 1 | `docs(chats): plan AI image generation` | Pending commit | Pending |
-| 2 | `feat(chat): securely generate and persist images` | Pending commit | Pending |
-| 3 | `feat(files): surface generated image files` | Pending commit | Pending |
-| 4 | `docs(chats): finalize image generation rollout` | Pending commit | Pending |
+| 1 | `docs(chats): plan AI image generation` | Published | `33a18c1` |
+| 2 | `feat(chat): securely generate and persist images` | Published | `dfe9711` |
+| 3 | `feat(files): surface generated image files` | Published | `d590520` |
+| 4 | `docs(chats): finalize image generation rollout` | This commit | See PR history |
+
+GitHub's `main` advanced by five commits after this worktree branched. Those
+commits modify only package-management configuration and do not overlap this
+feature's files. GitHub reports pull request #300 as mergeable against the
+current `main`.
 
 ## Validation ledger
 
@@ -207,6 +217,8 @@ The final hashes remain pending until the orchestrator creates the commits.
 | Affected test selection | Passed | 78 tests |
 | Affected-test mapping audit | Passed | 98 mapped test files, 0 missing |
 | Diff check | Passed | No forbidden generated or unrelated diff found |
+| GitHub Preview Build | Passed | Run 310 completed lint, typecheck, affected unit, integration, E2E, migration, and build checks |
+| GitHub Preview Deploy | Passed | [PR preview](https://pr-300-besidka-preview.chernenko.workers.dev) published successfully |
 | OpenAI mocked integration | Passed | Provider call, persistence, quota, aspect ratio, and one-shot paths covered |
 | Google mocked integration | Passed | Provider call, persistence, quota, aspect ratio, and one-shot paths covered |
 | OpenAI opt-in live smoke test | Pending | Requires a maintainer key and explicit spend |
@@ -240,8 +252,9 @@ rebuild, or `DROP TABLE`, and it remains unapplied by this worktree.
 - [x] No provider key, prompt, base64, data URL, or generated content appears in
   committed fixtures or logs.
 - [x] New tests appear in `scripts/test-affected-check.mjs`.
-- [ ] The branch contains intentional, reviewable commits.
-- [ ] The branch is pushed and the draft PR is open.
+- [x] The branch contains intentional, reviewable commits.
+- [x] The branch is pushed and the draft PR is open.
+- [x] GitHub Preview Build and Preview Deploy checks pass.
 
 ## Manual rollout checklist
 
