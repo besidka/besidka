@@ -21,8 +21,14 @@ interface RunFileRetentionCleanupJobInput {
   runCleanup?: typeof cleanupExpiredFiles
 }
 
+const FILE_RETENTION_CLEANUP_CRON = '0 * * * *'
+
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('cloudflare:scheduled', async ({ controller }) => {
+    if (controller.cron !== FILE_RETENTION_CLEANUP_CRON) {
+      return
+    }
+
     const runtimeConfig = useRuntimeConfig()
 
     await runFileRetentionCleanupJob({

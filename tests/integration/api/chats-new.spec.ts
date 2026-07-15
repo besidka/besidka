@@ -4,6 +4,25 @@ const mocks = vi.hoisted(() => ({
   validateMessageFilePolicy: vi.fn(async () => undefined),
   loggerSet: vi.fn(),
   markProjectsMemoryStale: vi.fn(async () => undefined),
+  resolveResearchStartContext: vi.fn(async () => ({
+    provider: { id: 'openai', name: 'OpenAI' },
+    model: { id: 'o4-mini-deep-research' },
+    research: { tier: 'quick', assistModel: 'gpt-5.4-nano' },
+    supportedProviderId: 'openai',
+    apiKey: 'decrypted-api-key',
+  })),
+  startResearchJobForChat: vi.fn(async () => ({
+    job: {
+      publicId: 'job-1',
+      status: 'running',
+      provider: 'openai',
+      level: 'quick',
+      modelId: 'o4-mini-deep-research',
+      startedAt: Date.now(),
+      error: null,
+      resultMessageId: null,
+    },
+  })),
 }))
 
 vi.mock('~~/server/utils/files/file-governance', () => ({
@@ -12,6 +31,11 @@ vi.mock('~~/server/utils/files/file-governance', () => ({
 
 vi.mock('~~/server/utils/projects/memory', () => ({
   markProjectsMemoryStale: mocks.markProjectsMemoryStale,
+}))
+
+vi.mock('~~/server/utils/research/start', () => ({
+  resolveResearchStartContext: mocks.resolveResearchStartContext,
+  startResearchJobForChat: mocks.startResearchJobForChat,
 }))
 
 vi.mock('evlog', () => ({
@@ -53,6 +77,27 @@ describe('new chat API', () => {
     mocks.validateMessageFilePolicy.mockResolvedValue(undefined)
     mocks.loggerSet.mockReset()
     mocks.markProjectsMemoryStale.mockResolvedValue(undefined)
+    mocks.resolveResearchStartContext.mockReset()
+    mocks.resolveResearchStartContext.mockResolvedValue({
+      provider: { id: 'openai', name: 'OpenAI' },
+      model: { id: 'o4-mini-deep-research' },
+      research: { tier: 'quick', assistModel: 'gpt-5.4-nano' },
+      supportedProviderId: 'openai',
+      apiKey: 'decrypted-api-key',
+    })
+    mocks.startResearchJobForChat.mockReset()
+    mocks.startResearchJobForChat.mockResolvedValue({
+      job: {
+        publicId: 'job-1',
+        status: 'running',
+        provider: 'openai',
+        level: 'quick',
+        modelId: 'o4-mini-deep-research',
+        startedAt: Date.now(),
+        error: null,
+        resultMessageId: null,
+      },
+    })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -93,7 +138,14 @@ describe('new chat API', () => {
         })),
       })),
     }))
-    const messagesInsertValues = vi.fn(async () => undefined)
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
     const projectUpdateWhere = vi.fn(async () => undefined)
     const projectUpdateSet = vi.fn(() => ({
       where: projectUpdateWhere,
@@ -146,5 +198,194 @@ describe('new chat API', () => {
       1,
       db,
     )
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('starts a research job when research is requested', async () => {
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-1',
+          slug: 'chat-1',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => null),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({
+          values: chatsInsertValues,
+        })
+        .mockReturnValueOnce({
+          values: messagesInsertValues,
+        }),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        model: 'gpt-5.4-nano',
+        research: {
+          answers: [{ id: 'q1', question: 'Scope?', answer: 'Global' }],
+        },
+      },
+    } as any)
+
+    expect(response).toEqual({ slug: 'chat-1' })
+    expect(mocks.startResearchJobForChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db,
+        userId: 1,
+        chat: { id: 'chat-1', slug: 'chat-1', projectId: null },
+        userMessage: expect.objectContaining({
+          id: expect.any(String),
+          parts: [{ type: 'text', text: 'Research this' }],
+        }),
+        model: 'gpt-5.4-nano',
+        answers: [{ id: 'q1', question: 'Scope?', answer: 'Global' }],
+      }),
+    )
+  })
+
+  it('rejects a research request without a model', async () => {
+    const handler = await getNewChatHandler()
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        research: {},
+      },
+    } as any)).rejects.toThrow(
+      'A model is required to start deep research.',
+    )
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
+  })
+
+  it('returns a soft researchError without failing the request when starting research fails', async () => {
+    mocks.startResearchJobForChat.mockRejectedValue(
+      Object.assign(new Error('Could not start the research job.'), {
+        why: 'The research provider rejected the request.',
+        fix: 'Try a different research level.',
+      }),
+    )
+
+    const handler = await getNewChatHandler()
+    const chatsInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(() => ({
+          id: 'chat-1',
+          slug: 'chat-1',
+        })),
+      })),
+    }))
+    const messagesInsertValues = vi.fn(() => ({
+      returning: vi.fn(() => ({
+        get: vi.fn(async () => ({
+          id: 'message-db-id',
+          publicId: 'message-public-id',
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => null),
+        },
+      },
+      insert: vi.fn()
+        .mockReturnValueOnce({ values: chatsInsertValues })
+        .mockReturnValueOnce({ values: messagesInsertValues }),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        model: 'gpt-5.4-nano',
+        research: {},
+      },
+    } as any)
+
+    expect(response).toEqual({
+      slug: 'chat-1',
+      researchError: {
+        message: 'Could not start the research job.',
+        why: 'The research provider rejected the request.',
+        fix: 'Try a different research level.',
+      },
+    })
+  })
+
+  it('propagates a resolveResearchStartContext failure without inserting a chat row', async () => {
+    mocks.resolveResearchStartContext.mockRejectedValue(
+      Object.assign(
+        new Error('This provider does not support deep research.'),
+        { statusCode: 400 },
+      ),
+    )
+
+    const handler = await getNewChatHandler()
+    const chatsInsert = vi.fn()
+    const db = {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => null),
+        },
+      },
+      insert: chatsInsert,
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Research this' }],
+        tools: [],
+        reasoning: 'off',
+        model: 'gpt-5.4-nano',
+        research: {},
+      },
+    } as any)).rejects.toThrow(
+      'This provider does not support deep research.',
+    )
+    expect(chatsInsert).not.toHaveBeenCalled()
+    expect(mocks.startResearchJobForChat).not.toHaveBeenCalled()
   })
 })

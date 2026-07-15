@@ -16,7 +16,12 @@
     <div class="dropdown-content z-50 w-56 pb-2">
       <div class="bg-base-100 rounded-box w-full shadow-sm">
         <ul class="menu menu-xs w-full">
-          <template v-if="isReasoningSupported && reasoningMode === 'toggle'">
+          <template
+            v-if="isReasoningSupported
+              && reasoningMode === 'toggle'
+              && !isDeepResearchModel
+            "
+          >
             <li>
               <label class="flex items-center gap-2 cursor-pointer">
                 <SvgoThinkMedium class="size-4 text-current" />
@@ -30,13 +35,29 @@
               </label>
             </li>
           </template>
-          <template v-if="isReasoningSupported && reasoningMode === 'levels'">
+          <template
+            v-if="isReasoningSupported
+              && reasoningMode === 'levels'
+              && !isDeepResearchModel
+            "
+          >
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
               :levels="levels ?? []"
               @select-level="emit('select-reasoning-level', $event)"
             />
           </template>
+          <li v-if="isDeepResearchModel && research">
+            <div class="flex items-center gap-2 pointer-events-none">
+              <Icon name="lucide:telescope" size="16" class="text-accent" />
+              <span class="flex flex-col items-start">
+                <span>Deep research</span>
+                <span class="text-[.65rem] font-normal opacity-70">
+                  {{ research.costEstimate }} · {{ research.timeEstimate }}
+                </span>
+              </span>
+            </div>
+          </li>
           <li>
             <label class="menu-title text-xs">
               <span class="divider my-0"/>
@@ -62,7 +83,7 @@
               </button>
             </div>
           </li>
-          <li>
+          <li v-if="!isDeepResearchModel">
             <button
               type="button"
               class="flex items-center gap-2 w-full"
@@ -78,7 +99,7 @@
               </span>
             </button>
           </li>
-          <li v-if="isWebSearchSupported">
+          <li v-if="isWebSearchSupported && !isDeepResearchModel">
             <label class="flex items-center gap-2 cursor-pointer">
               <Icon name="lucide:globe" size="16" />
               <span class="grow">Web search</span>
@@ -101,6 +122,7 @@ import type {
   ReasoningLevel,
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
+import type { ModelResearchConfig } from '#shared/types/research.d'
 
 const props = defineProps<{
   isWebSearchSupported?: boolean
@@ -110,6 +132,8 @@ const props = defineProps<{
   reasoningMode?: 'none' | 'toggle' | 'levels'
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
+  isDeepResearchModel?: boolean
+  research?: ModelResearchConfig | null
   displayProjectPicker?: boolean
   projectContext?: {
     id: string
@@ -137,6 +161,7 @@ const isAnyFeatureActive = computed<boolean>(() => {
   return !!(
     props.isWebSearchEnabled
     || props.isReasoningActive
+    || props.isDeepResearchModel
     || (props.filesCount ?? 0) > 0
     || props.projectContext
   )

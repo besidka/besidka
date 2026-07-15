@@ -85,6 +85,20 @@ comparison:
         - no
         - no
         - Only for the most expensive models like Gpt 5.5 Pro ($30/$180)
+    - label: Deep research
+      values:
+        - yes
+        - yes
+        - yes
+        - yes
+        - no
+    - label: Per-message cost breakdown
+      values:
+        - yes
+        - no
+        - no
+        - no
+        - no
   note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup.
   priceDate: June 2026
 description: Your digital besidka for all AI chats. Bring your own API keys, pay only for what you use, and keep full control. No subscriptions, no markup, no lock-in.
@@ -101,6 +115,8 @@ faqs:
     answer: Chat history is stored in your own Cloudflare D1 database, scoped to your account. If you self-host, no third party has access. On the hosted version at besidka.com, only you can read your conversations.
   - question: Can I share a chat?
     answer: Yes. Any chat can be shared via a public, unguessable link — recipients view a read-only copy without needing an account, and can branch it into their own chats. You control per-share options like link expiry, search-engine indexing, and whether images, file names, message details, or your avatar are visible, and you can revoke a share at any time. Shared files are served through short-lived, revocable tokens rather than a public bucket.
+  - question: Does Besidka support deep research like ChatGPT?
+    answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key like every other model, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at their per-token rates. There is no monthly fee, no seat charge, and no markup. You only pay when you actually send a message.
   - question: What does "Besidka" mean?
@@ -134,6 +150,9 @@ features:
   - icon: lucide:folder-kanban
     title: Projects
     body: Group related chats under a project with shared instructions and memory so every conversation has context.
+  - icon: lucide:telescope
+    title: Deep research
+    body: Kick off an autonomous agent that browses the web, cross-checks sources, and writes a cited report while you do something else. Runs on your own key for roughly $1 to $10 per task, with a push notification when it's done.
 hero:
   eyebrow: OPEN SOURCE · BYOK · SELF-HOSTABLE
   headline: Open-source AI chat. Your keys, your costs.

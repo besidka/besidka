@@ -1,4 +1,5 @@
 import type { ReasoningCapability } from './reasoning.d'
+import type { ModelResearchConfig } from './research.d'
 
 export interface Model {
   id: string
@@ -19,6 +20,7 @@ export interface Model {
   }
   tools: Array<'web_search'>
   reasoning?: ReasoningCapability
+  research?: ModelResearchConfig
 }
 
 export interface Provider {

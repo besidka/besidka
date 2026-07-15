@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getMessageMetadata,
   getMessageUsedTools,
+  hydrateMessageUsage,
   resolveMessageMenuInfo,
 } from '../../../shared/utils/message-metadata'
 
@@ -35,6 +36,53 @@ describe('getMessageMetadata', () => {
     const result = getMessageMetadata({})
 
     expect(result).toEqual({ usage: undefined, createdAt: undefined })
+  })
+})
+
+describe('hydrateMessageUsage', () => {
+  it('wraps a raw persisted message\'s flat usage column into metadata', () => {
+    const usage = {
+      model: 'o4-mini-deep-research',
+      provider: 'openai',
+      inputTokens: 49052,
+      outputTokens: 35610,
+      totalTokens: 84662,
+      inputCost: 0.098104,
+      outputCost: 0.28488,
+    }
+
+    const result = hydrateMessageUsage({
+      id: 'a1',
+      role: 'assistant',
+      parts: [],
+      usage,
+      createdAt: '2026-07-01T00:00:00.000Z',
+    })
+
+    expect(result.metadata).toEqual({
+      usage,
+      createdAt: '2026-07-01T00:00:00.000Z',
+    })
+    expect(result.id).toBe('a1')
+  })
+
+  it('produces undefined metadata fields for a message with no usage', () => {
+    const result = hydrateMessageUsage({ id: 'u1', role: 'user' })
+
+    expect(result.metadata).toEqual({
+      usage: undefined,
+      createdAt: undefined,
+    })
+  })
+
+  it('treats a null usage column the same as a missing one', () => {
+    const result = hydrateMessageUsage({
+      id: 'u1',
+      role: 'user',
+      usage: null,
+    })
+
+    expect(result.metadata.usage).toBeUndefined()
   })
 })
 
@@ -72,6 +120,28 @@ describe('getMessageUsedTools', () => {
 
   it('returns an empty array when parts is not an array', () => {
     expect(getMessageUsedTools({ parts: 'not-an-array' })).toEqual([])
+  })
+
+  it('returns deep_research when a data-research part is present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'Report' },
+        { type: 'data-research', data: {} },
+      ],
+    })
+
+    expect(result).toEqual(['deep_research'])
+  })
+
+  it('prefers deep_research over web_search when both parts are present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'data-research', data: {} },
+        { type: 'source-url' },
+      ],
+    })
+
+    expect(result).toEqual(['deep_research'])
   })
 })
 
@@ -116,6 +186,22 @@ describe('resolveMessageMenuInfo', () => {
       costToMessage: 0.0177,
       chatTotalCost: 0.0177,
     })
+  })
+
+  it('resolves deep_research usedTools for a research report message', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: assistantUsage, createdAt: 'when' },
+      parts: [
+        { type: 'data-research', data: { provider: 'openai' } },
+        { type: 'source-url' },
+      ],
+    }]
+
+    expect(resolveMessageMenuInfo(messages, 'a1')?.usedTools).toEqual(
+      ['deep_research'],
+    )
   })
 
   it('exposes the stored reasoning level for assistant messages', () => {
@@ -179,6 +265,82 @@ describe('resolveMessageMenuInfo', () => {
       chatTotalCost: 0.0177,
     })
     expect(info?.costToMessage).toBe(info?.chatTotalCost)
+  })
+
+  it('renders model, tokens, and price for a research message (OpenAI)', () => {
+    const researchUsage = {
+      model: 'o4-mini-deep-research',
+      provider: 'openai',
+      inputTokens: 49052,
+      outputTokens: 35610,
+      totalTokens: 84662,
+      inputCost: 0.098104,
+      outputCost: 0.28488,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: researchUsage, createdAt: 'when' },
+      parts: [
+        { type: 'data-research', data: { provider: 'openai' } },
+      ],
+    }]
+
+    expect(resolveMessageMenuInfo(messages, 'a1')).toEqual({
+      role: 'assistant',
+      createdAt: 'when',
+      model: 'o4-mini-deep-research',
+      usedTools: ['deep_research'],
+      tokens: 35610,
+      reasoningTokens: undefined,
+      cost: 0.28488,
+      costToMessage: 0.28488,
+      chatTotalCost: 0.28488,
+    })
+  })
+
+  it('renders total tokens without a price row when the split is unknown (Google)', () => {
+    const googleUsage = {
+      model: 'gemini-3-pro-deep-research',
+      provider: 'google',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 84662,
+      inputCost: 0,
+      outputCost: 0,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: googleUsage, createdAt: 'when' },
+      parts: [
+        { type: 'data-research', data: { provider: 'google' } },
+      ],
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.tokens).toBe(84662)
+    expect(info?.cost).toBeUndefined()
+    expect(info?.costToMessage).toBeUndefined()
+    expect(info?.chatTotalCost).toBeUndefined()
+  })
+
+  it('still reports a genuine zero-token assistant reply without a fallback', () => {
+    const usage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 0,
+      totalTokens: 0,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    expect(resolveMessageMenuInfo(messages, 'a1')?.tokens).toBe(0)
   })
 })
 

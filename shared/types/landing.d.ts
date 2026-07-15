@@ -4,6 +4,7 @@ export type StatMetric
     | 'messages'
     | 'files'
     | 'sharedChats'
+    | 'researches'
 
 export interface ComparisonRow {
   label: string

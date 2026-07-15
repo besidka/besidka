@@ -8,12 +8,16 @@ import type {
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
-import type { ChatMessageMetadata } from '#shared/types/message-usage.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type {
+  ResearchAnswer,
+  ResearchClarificationResponse,
+} from '#shared/types/research.d'
 import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
+import { hydrateMessageUsage } from '#shared/utils/message-metadata'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -249,6 +253,23 @@ export function shouldRecoverInterruptedGeneration(
   }
 
   return shouldSurfaceEmptyAssistantResponse(messages)
+}
+
+// Issue #263/#268 follow-up: recovery/regenerate of an unanswered last user
+// turn must never hit the streaming endpoint for a deep-research chat —
+// research turns are answered asynchronously by the poll loop, and the
+// streaming endpoint 400s for DR models. `userModel` is a global preference
+// (see useUserModel), decoupled from the chat it currently renders, so it can
+// drift after a mid-session model switch — the model check alone is not
+// robust. A present research job of ANY status (including a cancelled one
+// still held in memory this session) is a model-independent second signal,
+// so a present job or a DR model selected either one marks this a research
+// context that must not auto-regenerate through the normal chat endpoint.
+export function shouldBlockGenerationRecovery(
+  isDeepResearchModelSelected: boolean,
+  hasResearchJob: boolean,
+): boolean {
+  return isDeepResearchModelSelected || hasResearchJob
 }
 
 export function buildChatErrorLines(error: ChatErrorPayload): string[] {
@@ -505,6 +526,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const reasoning = shallowRef<ReasoningLevel>(
     normalizeReasoningLevel(savedReasoningLevel.value),
   )
+  const pendingClarification = shallowRef<
+    ResearchClarificationResponse | null
+  >(null)
+  const isClarifying = shallowRef<boolean>(false)
+  const pendingResearchTopic = shallowRef<string>('')
+  let deferredResearchParts: UIMessage['parts'] = []
   const { api, shouldAutoRegenerate, isTestChat } = useChatTest(chat, reasoning)
   const wakeLock = useWakeLock()
   // True for the whole span of an auto-recovery attempt, including the idle
@@ -530,15 +557,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
 
-  const hydratedMessages = chat.messages.map((message) => {
-    return {
-      ...message,
-      metadata: {
-        usage: message.usage ?? undefined,
-        createdAt: message.createdAt,
-      } satisfies ChatMessageMetadata,
-    }
-  })
+  const hydratedMessages = chat.messages.map(hydrateMessageUsage)
 
   const {
     messages: sdkMessages,
@@ -740,6 +759,36 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     clearError: sdkClearError,
   }
 
+  const {
+    researchJob,
+    researchElapsedMs,
+    researchStatusChecking,
+    researchCurrentStep,
+    researchRecentSteps,
+    isResearchJobActive,
+    startResearchJob,
+    cancelResearchJob,
+    seedActiveResearchJob,
+    dismissResearchJob,
+    dispose: disposeChatResearch,
+  } = useChatResearch({
+    chatSlug: chat.slug,
+    chatSdk,
+  })
+
+  const isResearchModelSelected = computed<boolean>(() => {
+    return isDeepResearchModel(getModel(userModel.value).model)
+  })
+
+  // Union gate (see shouldBlockGenerationRecovery above): blocks recovery
+  // whenever the globally-selected model is a DR model, OR this chat still
+  // holds a research job of any status (running, failed, or a cancelled job
+  // kept in memory for the rest of the session — see dismissResearchJob's
+  // callers, which intentionally never clear a cancelled job).
+  const shouldBlockGenerationRecovery = computed<boolean>(() => {
+    return isResearchModelSelected.value || researchJob.value !== null
+  })
+
   const lastMessage = computed<UIMessage | undefined>(() => {
     return chatSdk.messages.at(-1)
   })
@@ -783,7 +832,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const displayRegenerate = computed<boolean>(() => {
-    return isStopped.value || chatSdk.status === 'error'
+    return (isStopped.value || chatSdk.status === 'error')
+      && !isResearchModelSelected.value
   })
 
   function clearScheduledGenerationRetry(): void {
@@ -800,6 +850,14 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // just every "still generating" poll) is still bounded by the same cap,
   // instead of looping forever through the immediate-retry path.
   function attemptGenerationRecovery(options: { immediate: boolean }): void {
+    // Belt-and-suspenders: today only the mount auto-regenerate and
+    // recoverIfInterrupted() call into this, and both already gate on
+    // shouldBlockGenerationRecovery before calling — this guards any future
+    // onFinish-driven caller against firing while a DR model is selected.
+    if (isResearchModelSelected.value) {
+      return
+    }
+
     isAwaitingGeneration.value = true
 
     if (pendingRetryAttempts >= MAX_GENERATION_RETRY_ATTEMPTS) {
@@ -853,6 +911,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return
     }
 
+    if (shouldBlockGenerationRecovery.value) {
+      return
+    }
+
     if (isStopped.value) {
       return
     }
@@ -878,6 +940,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     if (
       (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
       && shouldAutoRegenerate.value
+      && !shouldBlockGenerationRecovery.value
     ) {
       // A reply-less last message on a freshly loaded chat (issue #275) means
       // the previous attempt never persisted before this load — could still
@@ -897,6 +960,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
+    disposeChatResearch()
     wakeLock.release()
   })
 
@@ -904,21 +968,15 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   const nuxtApp = useNuxtApp()
 
-  async function submit() {
-    isStopped.value = false
-    isAwaitingGeneration.value = false
-    hadInterruptionThisTurn = false
-    pendingRetryAttempts = 0
-    currentTurnStartedAt.value = Date.now()
-    clearScheduledGenerationRetry()
-    wakeLock.acquire()
-
+  async function buildUserMessageParts(
+    text: string,
+  ): Promise<UIMessage['parts']> {
     const parts: any[] = []
 
-    if (input.value.trim()) {
+    if (text.trim()) {
       parts.push({
         type: 'text',
-        text: input.value,
+        text,
       })
     }
 
@@ -927,6 +985,140 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
       parts.push(...fileParts)
     }
+
+    return parts
+  }
+
+  function buildTextOnlyParts(text: string): UIMessage['parts'] {
+    if (!text.trim()) {
+      return []
+    }
+
+    return [{
+      type: 'text',
+      text,
+    }] as unknown as UIMessage['parts']
+  }
+
+  async function requestResearchClarification(topic: string): Promise<void> {
+    try {
+      deferredResearchParts = await buildUserMessageParts(topic)
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to prepare your message',
+        parsedException.why,
+      )
+
+      return
+    }
+
+    pendingResearchTopic.value = topic
+    isClarifying.value = true
+
+    try {
+      const response = await $fetch<ResearchClarificationResponse>(
+        '/api/v1/chats/research/clarify',
+        {
+          method: 'POST',
+          body: {
+            model: userModel.value,
+            topic,
+          },
+        },
+      )
+
+      pendingClarification.value = response
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to prepare research questions',
+        parsedException.why,
+      )
+
+      await submitResearchClarification([])
+    } finally {
+      isClarifying.value = false
+    }
+  }
+
+  async function submitResearchClarification(
+    answers: ResearchAnswer[],
+  ): Promise<void> {
+    const parts = deferredResearchParts.length
+      ? deferredResearchParts
+      : buildTextOnlyParts(pendingResearchTopic.value)
+
+    deferredResearchParts = []
+    pendingClarification.value = null
+    pendingResearchTopic.value = ''
+
+    if (!parts.length) {
+      useErrorMessage(
+        'Failed to start research',
+        'Your message could not be recovered. Please try again.',
+      )
+
+      return
+    }
+
+    const { model } = getModel(userModel.value)
+
+    if (!isDeepResearchModel(model)) {
+      useErrorMessage(
+        'Failed to start research',
+        'Research mode is no longer active for this model.',
+      )
+
+      return
+    }
+
+    const started = await startResearchJob({
+      userMessage: { id: ulid(), parts },
+      answers,
+    })
+
+    if (started) {
+      input.value = ''
+      files.value = []
+    }
+  }
+
+  async function submit() {
+    if (isClarifying.value) {
+      return
+    }
+
+    if (isResearchJobActive.value) {
+      useWarningMessage('Research in progress — please wait.')
+
+      return
+    }
+
+    const topic = input.value
+    const { model } = getModel(userModel.value)
+
+    if (
+      isDeepResearchModel(model)
+      && !pendingClarification.value
+      && topic.trim()
+    ) {
+      await requestResearchClarification(topic)
+
+      return
+    }
+
+    isStopped.value = false
+    isAwaitingGeneration.value = false
+    hadInterruptionThisTurn = false
+    pendingRetryAttempts = 0
+    currentTurnStartedAt.value = Date.now()
+    clearScheduledGenerationRetry()
+    wakeLock.acquire()
+
+    const parts = await buildUserMessageParts(topic)
 
     chatSdk.messages = [
       ...chatSdk.messages,
@@ -953,6 +1145,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   }
 
   function regenerate() {
+    // displayRegenerate already hides the button for a DR-selected model —
+    // this guards any other caller of regenerate() against streaming against
+    // a model that only accepts research turns through the async job flow.
+    if (isResearchModelSelected.value) {
+      return
+    }
+
     isStopped.value = false
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
@@ -1063,5 +1262,18 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     shouldDisplayMessage,
     files,
     currentTurnStartedAt,
+    pendingClarification,
+    pendingResearchTopic,
+    isClarifying,
+    submitResearchClarification,
+    researchJob,
+    researchElapsedMs,
+    researchStatusChecking,
+    researchCurrentStep,
+    researchRecentSteps,
+    isResearchJobActive,
+    cancelResearchJob,
+    seedActiveResearchJob,
+    dismissResearchJob,
   }
 }

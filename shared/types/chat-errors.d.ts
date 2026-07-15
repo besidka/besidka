@@ -5,6 +5,13 @@ export type ChatErrorCode
     | 'provider-auth'
     | 'message-persist-failed'
     | 'chat-request-invalid'
+    | 'research-tier-required'
+    | 'research-verification-required'
+    | 'research-paid-tier-required'
+    | 'research-timeout'
+    | 'research-cancelled'
+    | 'research-start-failed'
+    | 'clarification-failed'
     | 'unknown'
 
 export interface ChatErrorPayload {

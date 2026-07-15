@@ -347,6 +347,38 @@ describe('chat stream message ids', () => {
     }))
   })
 
+  it('rejects a deep research model with a 400', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'o3-deep-research',
+        research: {
+          tier: 'thorough',
+          assistModel: 'gpt-5.4-nano',
+          costEstimate: '~$10 / task',
+          timeEstimate: '10–30 min',
+        },
+      },
+      modelName: 'o3 Deep Research',
+    })))
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'o3-deep-research',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)).rejects.toThrow('This model only runs deep research.')
+
+    expect(mocks.generatedMessageIds).toHaveLength(0)
+  })
+
   it('sends a push notification via waitUntil after a successful generation', async () => {
     const handler = await getHandler()
     const { db } = createDb()
@@ -616,7 +648,7 @@ describe('chat stream message ids', () => {
     expect(response.status).toBe(401)
     await expect(response.json()).resolves.toEqual(expect.objectContaining({
       code: 'provider-auth',
-      message: 'Invalid OpenAI API key',
+      message: 'The provider rejected the API credentials.',
       providerRequestId: 'req_prestream_123',
       status: 401,
     }))

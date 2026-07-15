@@ -53,6 +53,10 @@
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
+          <ChatDeepResearchMeta
+            v-if="hasResearchMetaPart(m)"
+            :message="m"
+          />
           <ChatReasoning
             :message="m"
             :reasoning-level="getMessageReasoning(m, messageIndex)"
@@ -92,7 +96,7 @@
                 ? `mdc-${m.id}-part-${index}-${chatSdk.status}`
                 : `mdc-${m.id}-part-${index}`
               "
-              :components="components"
+              :components="messageComponents"
               :parser-options="{ highlight: false }"
               class="chat-markdown js-message-text"
               :unwrap="getUnwrap(m.role)"
@@ -101,7 +105,37 @@
           <ChatUrlSources :message="m" />
         </ChatMessage>
       </div>
-      <LazyChatLoader :show="isLoading" />
+      <ChatMessage
+        v-if="pendingClarification"
+        role="user"
+        data-testid="research-clarify-topic"
+        class="mt-3 js-research-turn-anchor"
+      >
+        <p class="chat-markdown">
+          {{ pendingResearchTopic }}
+        </p>
+      </ChatMessage>
+      <ChatDeepResearchClarify
+        v-if="pendingClarification"
+        class="mt-3"
+        :clarification="pendingClarification"
+        @submit="submitResearchClarification"
+        @skip="() => submitResearchClarification([])"
+      />
+      <ChatDeepResearchPending
+        v-if="researchJob && researchJob.status !== 'completed'
+          && !(researchJob.status === 'cancelled'
+            && (pendingClarification || isClarifying))"
+        class="mt-3"
+        :job="researchJob"
+        :elapsed-ms="researchElapsedMs"
+        :checking="researchStatusChecking"
+        :recent-steps="researchRecentSteps"
+        @cancel="cancelResearchJob"
+        @retry="onResearchRetry"
+        @dismiss="dismissResearchJob"
+      />
+      <LazyChatLoader :show="isLoading || isClarifying" />
       <div ref="messagesEndRef" />
     </ChatContainer>
     <div :style="{ height: `${spacerHeight}px` }" />
@@ -112,6 +146,8 @@
     v-model:tools="tools"
     v-model:reasoning="reasoning"
     display-project-picker
+    :is-clarifying="isClarifying"
+    :research-job-active="isResearchJobActive"
     :project-context="projectContext"
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
@@ -270,9 +306,40 @@ const {
   shouldDisplayMessage,
   files,
   currentTurnStartedAt,
+  pendingClarification,
+  pendingResearchTopic,
+  isClarifying,
+  submitResearchClarification,
+  researchJob,
+  researchElapsedMs,
+  researchStatusChecking,
+  researchRecentSteps,
+  isResearchJobActive,
+  cancelResearchJob,
+  seedActiveResearchJob,
+  dismissResearchJob,
 } = useChat(toValue(chat.value))
 
-const { components, getUnwrap } = useChatFormat()
+seedActiveResearchJob(
+  chat.value.activeResearchJob ?? null,
+)
+
+function onResearchRetry(): void {
+  const lastUserMessage = [...chatSdk.messages].reverse().find((entry) => {
+    return entry.role === 'user'
+  })
+  const textPart = lastUserMessage?.parts.find((part) => {
+    return part.type === 'text'
+  }) as TextUIPart | undefined
+
+  dismissResearchJob()
+
+  if (textPart?.text) {
+    input.value = textPart.text
+  }
+}
+
+const { messageComponents, getUnwrap } = useChatFormat()
 const hideMessages = shallowRef<boolean>(true)
 
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
@@ -441,12 +508,34 @@ if (import.meta.client) {
   })
 }
 
-const { spacerHeight, waitingForDimensions } = useChatScrollSpacer({
+const {
+  spacerHeight,
+  waitingForDimensions,
+  reserveSpaceForClarify,
+} = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
   messagesDomRefs,
   chatSdk,
 })
+
+if (import.meta.client) {
+  watch(
+    [
+      pendingClarification,
+      isClarifying,
+      () => !!(researchJob.value && researchJob.value.status !== 'completed'),
+    ],
+    async ([clarification, clarifying, jobActive]) => {
+      if (!clarification && !clarifying && !jobActive) {
+        return
+      }
+
+      await nextTick()
+      reserveSpaceForClarify()
+    },
+  )
+}
 
 function openProjectPicker() {
   projectPickerRef.value?.open(projectId.value)

@@ -40,6 +40,11 @@ withDefaults(defineProps<{
       label: 'Conversations shared',
       icon: 'lucide:share-2',
     },
+    {
+      metric: 'researches',
+      label: 'Research reports generated',
+      icon: 'lucide:telescope',
+    },
   ],
 })
 </script>
