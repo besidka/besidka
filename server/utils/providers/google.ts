@@ -39,6 +39,14 @@ export async function useGoogle(
     return google(model)
   }
 
+  function getImageModel() {
+    if (!requestedTools.includes('image_generation')) {
+      return undefined
+    }
+
+    return google.image('gemini-3.1-flash-image')
+  }
+
   async function generateChatTitle(message: string) {
     return await useChatTitle(
       getInstance(),
@@ -47,7 +55,10 @@ export async function useGoogle(
   }
 
   function getTools(): FormattedTools {
-    if (!requestedTools?.length) {
+    if (
+      !requestedTools?.length
+      || requestedTools.includes('image_generation')
+    ) {
       return {}
     }
 
@@ -97,6 +108,8 @@ export async function useGoogle(
 
   return {
     instance: getInstance(),
+    imageModel: getImageModel(),
+    imageModelId: 'gemini-3.1-flash-image',
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),

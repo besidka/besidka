@@ -2,9 +2,39 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import { convertToModelMessages } from 'ai'
 import {
+  getGeneratedImageFileIds,
   normalizeAssistantMessagePartsForPersistence,
   sanitizeMessagesForModelContext,
 } from '../../../server/utils/files/assistant-files'
+
+function createGeneratedImageFileRow(
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: 'file-1',
+    storageKey: 'generated.webp',
+    name: 'quiet-forest.webp',
+    size: 123,
+    type: 'image/webp',
+    source: 'assistant',
+    originProvider: 'openai',
+    ...overrides,
+  }
+}
+
+function stubGeneratedImageFile(
+  file: ReturnType<typeof createGeneratedImageFileRow> | undefined,
+) {
+  const findFirst = vi.fn(async () => file)
+
+  vi.stubGlobal('useDb', () => ({
+    query: {
+      files: { findFirst },
+    },
+  }))
+
+  return findFirst
+}
 
 describe('assistant files scaffolding', () => {
   afterEach(() => {
@@ -83,16 +113,26 @@ describe('assistant files scaffolding', () => {
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages)
 
-    expect(sanitizedMessages).toHaveLength(2)
+    expect(sanitizedMessages).toHaveLength(3)
     expect(sanitizedMessages[0]?.id).toBe('assistant-with-text-and-file')
     expect(sanitizedMessages[0]?.parts).toEqual([
       {
         type: 'text',
         text: 'summary',
       },
+      {
+        type: 'text',
+        text: 'Generated file saved in the user file library: report.pdf (application/pdf).',
+      },
     ])
-    expect(sanitizedMessages[1]?.id).toBe('user-file')
     expect(sanitizedMessages[1]?.parts).toEqual([
+      {
+        type: 'text',
+        text: 'Generated file saved in the user file library: chart.png (image/png).',
+      },
+    ])
+    expect(sanitizedMessages[2]?.id).toBe('user-file')
+    expect(sanitizedMessages[2]?.parts).toEqual([
       {
         type: 'text',
         text: 'please summarize this',
@@ -333,5 +373,303 @@ describe('assistant files scaffolding', () => {
 
     expect(normalizedParts).toEqual(parts)
     expect(loggerSet).not.toHaveBeenCalled()
+  })
+
+  it('normalizes a ready generated image tool to a private file part', async () => {
+    const loggerSet = vi.fn()
+
+    stubGeneratedImageFile(createGeneratedImageFileRow())
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-1',
+        state: 'output-available',
+        input: { prompt: 'A quiet forest' },
+        output: {
+          status: 'ready',
+          file: {
+            id: 'file-1',
+            storageKey: 'generated.webp',
+            name: 'quiet-forest.webp',
+            size: 123,
+            type: 'image/webp',
+            source: 'assistant',
+            expiresAt: null,
+            url: 'javascript:alert(1)',
+            downloadUrl: 'https://attacker.example/steal',
+          },
+          provider: 'openai',
+          model: 'gpt-image-2',
+        },
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'openai',
+      chatId: 'chat-3',
+      userId: 3,
+      logger: { set: loggerSet },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'quiet-forest.webp',
+        url: '/files/generated.webp',
+      },
+    ])
+    expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
+    expect(loggerSet).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      name: 'unowned file ID',
+      change: (output: any) => {
+        output.file.id = 'other-file'
+      },
+      row: undefined,
+    },
+    {
+      name: 'mismatched storage key',
+      change: (output: any) => {
+        output.file.storageKey = 'other.webp'
+      },
+      row: createGeneratedImageFileRow(),
+    },
+    {
+      name: 'wrong provider',
+      change: (output: any) => {
+        output.provider = 'google'
+        output.model = 'gemini-3.1-flash-image'
+      },
+      row: createGeneratedImageFileRow(),
+    },
+    {
+      name: 'wrong image model',
+      change: (output: any) => {
+        output.model = 'gpt-image-1'
+      },
+      row: createGeneratedImageFileRow(),
+    },
+    {
+      name: 'non-assistant source',
+      change: (output: any) => {
+        output.file.source = 'upload'
+      },
+      row: createGeneratedImageFileRow(),
+    },
+    {
+      name: 'invalid size',
+      change: (output: any) => {
+        output.file.size = 0
+      },
+      row: createGeneratedImageFileRow(),
+    },
+  ])('drops a ready output with $name', async ({ change, row }) => {
+    const output = {
+      status: 'ready',
+      file: {
+        id: 'file-1',
+        storageKey: 'generated.webp',
+        name: 'quiet-forest.webp',
+        size: 123,
+        type: 'image/webp',
+        source: 'assistant',
+        url: '/files/generated.webp',
+        downloadUrl: '/files/generated.webp?download=1',
+      },
+      provider: 'openai',
+      model: 'gpt-image-2',
+    }
+
+    change(output)
+    stubGeneratedImageFile(row)
+
+    const parts: UIMessage['parts'] = [{
+      type: 'tool-generate_image',
+      toolCallId: 'image-forged',
+      state: 'output-available',
+      input: { prompt: 'A quiet forest' },
+      output,
+    }] as any
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'openai',
+      chatId: 'chat-forged',
+      userId: 3,
+      logger: { set: vi.fn() },
+    })
+
+    expect(normalizedParts).toEqual([])
+    expect(getGeneratedImageFileIds(
+      parts,
+      'openai',
+      normalizedParts,
+    )).toEqual([])
+  })
+
+  it.each([
+    {
+      code: 'storage-quota',
+      expected: [
+        'Not enough storage space to generate an image.',
+        'Delete files in the file manager, then try again.',
+      ].join(' '),
+    },
+    {
+      code: 'provider-auth',
+      expected: [
+        'The image provider rejected the saved API key.',
+        'Update the provider key in settings, then try again.',
+      ].join(' '),
+    },
+    {
+      code: 'provider-quota-exceeded',
+      expected: [
+        'The image provider quota has been exceeded.',
+        'Check provider billing or use another saved provider key.',
+      ].join(' '),
+    },
+    {
+      code: 'provider-rate-limit',
+      expected: [
+        'Image generation is temporarily rate limited.',
+        'Wait a moment, then try again.',
+      ].join(' '),
+    },
+    {
+      code: 'provider-unavailable',
+      expected: [
+        'The image provider is temporarily unavailable.',
+        'Try again later or use a different provider.',
+      ].join(' '),
+    },
+    {
+      code: 'image-save-failed',
+      expected: [
+        'The generated image could not be saved.',
+        'Try again. If it keeps failing, contact support.',
+      ].join(' '),
+    },
+    {
+      code: 'provider-safety',
+      expected: [
+        'The provider could not generate this image because the request did',
+        'not pass its safety checks. Revise the prompt and try again.',
+      ].join(' '),
+    },
+  ])('persists actionable $code guidance from the safe error catalog', async ({
+    code,
+    expected,
+  }) => {
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-2',
+        state: 'output-error',
+        input: { prompt: 'A quiet forest' },
+        errorText: JSON.stringify({
+          code,
+          message: 'untrusted provider diagnostic',
+          why: 'sk-live-secret',
+          fix: 'javascript:alert(1)',
+        }),
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'google',
+      chatId: 'chat-4',
+      userId: 4,
+      logger: { set: vi.fn() },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'text',
+        text: expected,
+      },
+    ])
+    expect(JSON.stringify(normalizedParts)).not.toContain('sk-live-secret')
+    expect(JSON.stringify(normalizedParts)).not.toContain('javascript:')
+  })
+
+  it('allows an exact application-owned message without copying details', async () => {
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-3',
+        state: 'output-error',
+        input: { prompt: 'A quiet forest' },
+        errorText: JSON.stringify({
+          code: 'unknown-new-code',
+          message: 'Not enough storage space to generate an image.',
+          why: 'raw quota diagnostics sk-secret',
+        }),
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'openai',
+      chatId: 'chat-5',
+      userId: 5,
+      logger: { set: vi.fn() },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'text',
+        text: [
+          'Not enough storage space to generate an image.',
+          'Delete files in the file manager, then try again.',
+        ].join(' '),
+      },
+    ])
+    expect(JSON.stringify(normalizedParts)).not.toContain('sk-secret')
+  })
+
+  it.each([
+    'raw provider secret diagnostic sk-secret',
+    JSON.stringify({
+      code: 'untrusted-code',
+      message: 'raw provider secret diagnostic sk-secret',
+      why: 'javascript:alert(1)',
+    }),
+  ])('uses generic safe text for an untrusted tool error', async (errorText) => {
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-4',
+        state: 'output-error',
+        input: { prompt: 'A quiet forest' },
+        errorText,
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'google',
+      chatId: 'chat-6',
+      userId: 6,
+      logger: { set: vi.fn() },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'text',
+        text: [
+          'Image generation failed.',
+          'Revise the prompt or try a different provider.',
+        ].join(' '),
+      },
+    ])
+    expect(JSON.stringify(normalizedParts)).not.toContain('sk-secret')
+    expect(JSON.stringify(normalizedParts)).not.toContain('javascript:')
   })
 })

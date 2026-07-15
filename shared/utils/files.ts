@@ -6,6 +6,32 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 ** 3)).toFixed(1)} GB`
 }
 
+const safeStorageKeyPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,158}[A-Za-z0-9_-])?$/
+
+export function isSafeFileStorageKey(value: unknown): value is string {
+  return typeof value === 'string'
+    && !value.includes('..')
+    && safeStorageKeyPattern.test(value)
+}
+
+export function extractLocalFileStorageKey(url: string): string | null {
+  if (typeof url !== 'string' || !url.startsWith('/files/')) {
+    return null
+  }
+
+  const suffixIndex = url.search(/[?#]/)
+  const pathname = suffixIndex === -1
+    ? url
+    : url.slice(0, suffixIndex)
+  const storageKey = pathname.slice('/files/'.length)
+
+  if (!isSafeFileStorageKey(storageKey)) {
+    return null
+  }
+
+  return storageKey
+}
+
 const preferredExtensionByMediaType: Record<string, string> = {
   'image/jpeg': 'jpg',
   'text/plain': 'txt',

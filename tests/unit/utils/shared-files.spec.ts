@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  extractLocalFileStorageKey,
   getPreferredFileExtension,
   normalizeMediaType,
 } from '../../../shared/utils/files'
@@ -30,5 +31,35 @@ describe('shared files utils', () => {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ),
     ).toBe('bin')
+  })
+
+  it('extracts safe local keys from private and tokenized file URLs', () => {
+    expect(extractLocalFileStorageKey('/files/abc-123_file.webp'))
+      .toBe('abc-123_file.webp')
+    expect(extractLocalFileStorageKey(
+      '/files/abc-123_file.webp?token=header.payload.signature#preview',
+    )).toBe('abc-123_file.webp')
+  })
+
+  it.each([
+    '',
+    'abc.webp',
+    'javascript:alert(1)',
+    'data:image/png;base64,abc',
+    'https://besidka.com/files/abc.webp',
+    '//evil.example/files/abc.webp',
+    '/files/',
+    '/files/.',
+    '/files/..',
+    '/files/a..b.webp',
+    '/files/folder/abc.webp',
+    '/files/folder\\abc.webp',
+    '/files/%2Fetc%2Fpasswd',
+    '/files/%5cwindows',
+    '/files/%2e%2e%2fsecret',
+    '/files/abc.webp/extra',
+    '/files/abc:123.webp',
+  ])('rejects unsafe file URL %s', (url) => {
+    expect(extractLocalFileStorageKey(url)).toBeNull()
   })
 })

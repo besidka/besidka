@@ -8,10 +8,11 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { ModelTool } from '#shared/types/providers.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
   createUIMessageStream,
@@ -26,11 +27,21 @@ import * as schema from '~~/server/db/schema'
 import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
+import {
+  chatToolSchema,
+  incomingUserMessageSchema,
+} from '~~/server/utils/chats/request-schema'
+import {
+  getActiveShareForChat,
+  syncChatShareFiles,
+} from '~~/server/utils/chats/share'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
+  getGeneratedImageFileIds,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
+import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 
@@ -50,25 +61,9 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    tools: z.array(z.enum(['web_search'])),
+    tools: z.array(chatToolSchema),
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
-    messages: z.array(
-      z.object({
-        id: z.string().nonempty(),
-        role: z.enum(['user', 'assistant']),
-        createdAt: z.coerce.date().optional(),
-        annotations: z.array(z.string()).optional(),
-        parts: z.array(z.any()),
-        tools: z.array(z.any()).optional(),
-        experimental_attachments: z.array(
-          z.object({
-            name: z.string().optional(),
-            contentType: z.string().optional(),
-            url: z.string().nonempty(),
-          }),
-        ).optional(),
-      }),
-    ).min(1, 'At least one message is required'),
+    messages: z.array(incomingUserMessageSchema).length(1),
   }).safeParse)
 
   if (body.error) {
@@ -150,6 +145,23 @@ export default defineEventHandler(async (event) => {
     throw createError({
       message: 'No message provided',
       status: 400,
+    })
+  }
+
+  const { provider, model } = useChatProvider(userModel)
+  const requestedTools = chat.messages.length === 1
+    ? chat.messages[0]?.tools || []
+    : body.data.tools
+  const unsupportedTool = requestedTools.find((requestedTool) => {
+    return !model.tools.includes(requestedTool)
+  })
+
+  if (unsupportedTool) {
+    throw createError({
+      message: 'The selected model does not support the requested tool.',
+      status: 400,
+      why: `${model.name} does not advertise ${unsupportedTool}.`,
+      fix: 'Choose a supported model or turn off that tool.',
     })
   }
 
@@ -376,8 +388,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const { provider, model } = useChatProvider(userModel)
-
   // Nuxt/Nitro emits the parent request wide event the moment this handler
   // returns the streaming Response — BEFORE the AI stream finishes — so the
   // `ai.{tokens, cost, ...}` we capture in streamText's `onEnd` would land on
@@ -428,9 +438,6 @@ export default defineEventHandler(async (event) => {
   // standalone child loggers don't inherit so we attach explicitly.
   attachCloudflareMeta(aiLogger, event)
 
-  const requestedTools = chat.messages.length === 1
-    ? chat.messages[0]?.tools || []
-    : body.data.tools
   const providerId = toSupportedProviderId(provider.id)
 
   logger.set({
@@ -448,6 +455,8 @@ export default defineEventHandler(async (event) => {
       case 'openai': {
         const {
           instance: openAiInstance,
+          imageModel: openAiImageModel,
+          imageModelId: openAiImageModelId,
           tools: openAiTools,
           providerOptions: openAiProviderOptions,
           reasoning: openAiReasoning,
@@ -465,11 +474,39 @@ export default defineEventHandler(async (event) => {
           openai: openAiProviderOptions,
         })
 
+        if (requestedTools.includes('image_generation')) {
+          if (!openAiImageModel) {
+            throw createError({
+              message: 'Image generation is unavailable for this provider.',
+              status: 400,
+            })
+          }
+
+          const imageGenerationTool = createImageGenerationTool({
+            userId,
+            provider: 'openai',
+            model: openAiImageModelId,
+            imageModel: openAiImageModel,
+            logger: aiLogger,
+          })
+          parsedTools = {
+            tools: {
+              generate_image: imageGenerationTool,
+            },
+            toolChoice: {
+              type: 'tool',
+              toolName: 'generate_image',
+            },
+          }
+        }
+
         break
       }
       case 'google': {
         const {
           instance: googleInstance,
+          imageModel: googleImageModel,
+          imageModelId: googleImageModelId,
           tools: googleTools,
           providerOptions: googleProviderOptions,
           reasoning: googleReasoning,
@@ -486,6 +523,32 @@ export default defineEventHandler(async (event) => {
         Object.assign(providerOptions, {
           google: googleProviderOptions,
         })
+
+        if (requestedTools.includes('image_generation')) {
+          if (!googleImageModel) {
+            throw createError({
+              message: 'Image generation is unavailable for this provider.',
+              status: 400,
+            })
+          }
+
+          const imageGenerationTool = createImageGenerationTool({
+            userId,
+            provider: 'google',
+            model: googleImageModelId,
+            imageModel: googleImageModel,
+            logger: aiLogger,
+          })
+          parsedTools = {
+            tools: {
+              generate_image: imageGenerationTool,
+            },
+            toolChoice: {
+              type: 'tool',
+              toolName: 'generate_image',
+            },
+          }
+        }
 
         break
       }
@@ -592,7 +655,10 @@ export default defineEventHandler(async (event) => {
           // on abort, so there is no cost to recover here either.)
           result = streamText({
             model: instance,
-            instructions: projectSystemPrompt || undefined,
+            instructions: buildChatInstructions(
+              projectSystemPrompt,
+              requestedTools,
+            ),
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
@@ -989,6 +1055,18 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+    const generatedFileIds = getGeneratedImageFileIds(
+      responseMessage.parts as UIMessage['parts'],
+      input.providerId,
+      normalizedParts,
+    )
+    const usedImageGeneration = responseMessage.parts.some((part) => {
+      return part.type === 'tool-generate_image'
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+    })
 
     let usage: MessageUsage | undefined
 
@@ -1008,18 +1086,81 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
-    await insertMessageWithPublicId({
+    const assistantMessage = await insertMessageWithPublicId({
       db: input.db,
       values: {
         chatId: input.chatId,
         role: 'assistant',
         parts: normalizedParts,
-        tools: [],
+        tools: usedImageGeneration ? ['image_generation'] : [],
         reasoning: input.reasoning,
         usage: usage ?? null,
       },
       publicId: input.publicId,
     })
+
+    if (assistantMessage && generatedFileIds.length > 0) {
+      let filesLinked = false
+
+      try {
+        await input.db
+          .update(schema.files)
+          .set({
+            originMessageId: sql`(
+              select ${schema.messages.id}
+              from ${schema.messages}
+              where ${schema.messages.publicId} = ${input.publicId}
+            )`,
+          })
+          .where(and(
+            eq(schema.files.userId, input.userId),
+            eq(schema.files.source, 'assistant'),
+            eq(schema.files.originProvider, input.providerId),
+            inArray(schema.files.id, generatedFileIds),
+          ))
+
+        filesLinked = true
+      } catch {
+        input.logger.set({
+          assistantFiles: {
+            action: 'origin-link-failed',
+            count: generatedFileIds.length,
+            chatId: input.chatId,
+            userId: input.userId,
+            errorCode: 'assistant-file-link-failed',
+          },
+        })
+      }
+
+      if (filesLinked) {
+        try {
+          const activeShare = await getActiveShareForChat(
+            input.chatId,
+            input.event,
+          )
+
+          if (activeShare?.showFiles) {
+            await syncChatShareFiles(
+              activeShare.id,
+              input.chatId,
+              input.userId,
+              true,
+              input.event,
+            )
+          }
+        } catch {
+          input.logger.set({
+            assistantFiles: {
+              action: 'share-sync-failed',
+              count: generatedFileIds.length,
+              chatId: input.chatId,
+              userId: input.userId,
+              errorCode: 'assistant-file-share-sync-failed',
+            },
+          })
+        }
+      }
+    }
 
     return true
   } catch (exception) {
@@ -1070,10 +1211,28 @@ function hasSameParts(
 }
 
 function hasSameTools(
-  leftTools: Array<'web_search'>,
-  rightTools: Array<'web_search'>,
+  leftTools: ModelTool[],
+  rightTools: ModelTool[],
 ): boolean {
   return JSON.stringify(leftTools || []) === JSON.stringify(rightTools || [])
+}
+
+function buildChatInstructions(
+  projectSystemPrompt: string | null,
+  requestedTools: ModelTool[],
+): string | undefined {
+  const instructions = [projectSystemPrompt]
+
+  if (requestedTools.includes('image_generation')) {
+    instructions.push([
+      'Image generation mode is active. Call generate_image exactly once',
+      'with a complete visual prompt based on the user request. Do not',
+      'decline a valid image request or claim image generation is unavailable.',
+      'The tool saves the result in the user private file library.',
+    ].join(' '))
+  }
+
+  return instructions.filter(Boolean).join('\n\n') || undefined
 }
 
 function toSupportedProviderId(

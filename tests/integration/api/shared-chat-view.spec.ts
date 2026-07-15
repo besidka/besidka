@@ -105,6 +105,7 @@ interface MessageFixture {
   reasoning: string | null
   createdAt: Date
   usage: MessageUsage | null
+  tools: string[]
 }
 
 function createMessageFixture(
@@ -118,6 +119,7 @@ function createMessageFixture(
     reasoning: 'off',
     createdAt: new Date('2026-07-01T00:00:00.000Z'),
     usage: null,
+    tools: [],
     ...overrides,
   }
 }
@@ -325,6 +327,48 @@ describe('public shared chat view API', () => {
     } as never)
 
     expect(response.messages[0]).toHaveProperty('usage', usage)
+  })
+
+  it('exposes used tools only when message metadata is enabled', async () => {
+    const handler = await getHandler()
+    const createChat = () => ({
+      title: 'Chat title',
+      user: { name: 'Owner', image: null },
+      messages: [createMessageFixture({
+        tools: ['image_generation'],
+      })],
+    })
+    const metadataOn = createDb({
+      shares: [createShareFixture({ slug: 'metadata-tools-on' })],
+      chat: createChat(),
+    })
+
+    vi.stubGlobal('useDb', () => metadataOn.db)
+
+    const visibleResponse = await handler({
+      params: { slug: 'metadata-tools-on' },
+    } as never)
+
+    expect(visibleResponse.messages[0]).toHaveProperty(
+      'tools',
+      ['image_generation'],
+    )
+
+    const metadataOff = createDb({
+      shares: [createShareFixture({
+        slug: 'metadata-tools-off',
+        showMetadata: false,
+      })],
+      chat: createChat(),
+    })
+
+    vi.stubGlobal('useDb', () => metadataOff.db)
+
+    const hiddenResponse = await handler({
+      params: { slug: 'metadata-tools-off' },
+    } as never)
+
+    expect(hiddenResponse.messages[0]).not.toHaveProperty('tools')
   })
 
   it('always strips tool parts even with every option enabled', async () => {

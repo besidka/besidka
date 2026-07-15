@@ -6,6 +6,11 @@ const mocks = vi.hoisted(() => ({
   generatedMessageIds: [] as string[],
   uiMessageStreamChunks: null as Array<Record<string, any>> | null,
   persistAssistantError: null as Record<string, any> | null,
+  generatedFileIds: [] as string[],
+  streamTextOptions: [] as Array<Record<string, any>>,
+  getActiveShareForChat: vi.fn(),
+  syncChatShareFiles: vi.fn(),
+  persistedResponseParts: null as Array<Record<string, any>> | null,
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -13,6 +18,19 @@ vi.mock('ai', async (importOriginal) => {
 
   return {
     ...actual,
+    readUIMessageStream: (options: Record<string, unknown>) => {
+      if (!mocks.persistedResponseParts) {
+        return actual.readUIMessageStream(options as any)
+      }
+
+      return (async function* () {
+        yield {
+          id: 'assistant-image',
+          role: 'assistant',
+          parts: mocks.persistedResponseParts,
+        }
+      })()
+    },
     createUIMessageStream: ({ execute }: { execute: Function }) => {
       const writer = {
         write: vi.fn(),
@@ -27,12 +45,16 @@ vi.mock('ai', async (importOriginal) => {
       }
     },
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
-    streamText: vi.fn(() => ({
-      consumeStream: vi.fn(),
-      stream: new ReadableStream({ start(c) {
-        c.close()
-      } }),
-    })),
+    streamText: vi.fn((options) => {
+      mocks.streamTextOptions.push(options)
+
+      return {
+        consumeStream: vi.fn(),
+        stream: new ReadableStream({ start(c) {
+          c.close()
+        } }),
+      }
+    }),
     toUIMessageStream: vi.fn((options) => {
       mocks.toUIMessageStreamOptions.push(options)
       const generatedMessageId = options.generateMessageId()
@@ -116,6 +138,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getGeneratedImageFileIds: vi.fn(() => mocks.generatedFileIds),
   sanitizeMessagesForModelContext: vi.fn(messages => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
     if (mocks.persistAssistantError) {
@@ -124,6 +147,11 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
 
     return input.parts
   }),
+}))
+
+vi.mock('~~/server/utils/chats/share', () => ({
+  getActiveShareForChat: mocks.getActiveShareForChat,
+  syncChatShareFiles: mocks.syncChatShareFiles,
 }))
 
 async function getHandler() {
@@ -244,6 +272,11 @@ describe('chat stream message ids', () => {
     mocks.generatedMessageIds.length = 0
     mocks.uiMessageStreamChunks = null
     mocks.persistAssistantError = null
+    mocks.generatedFileIds.length = 0
+    mocks.streamTextOptions.length = 0
+    mocks.getActiveShareForChat.mockResolvedValue(null)
+    mocks.syncChatShareFiles.mockResolvedValue(undefined)
+    mocks.persistedResponseParts = null
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -279,7 +312,7 @@ describe('chat stream message ids', () => {
     })))
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini' },
+      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
       modelName: 'GPT-5 mini',
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({
@@ -344,6 +377,45 @@ describe('chat stream message ids', () => {
       tools: [],
       reasoning: 'off',
       publicId: generatedId,
+    }))
+  })
+
+  it('persists image tool usage on the normalized assistant row', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    mocks.persistedResponseParts = [{
+      type: 'tool-generate_image',
+      toolCallId: 'image-1',
+      state: 'output-error',
+      input: { prompt: 'A quiet forest' },
+      errorText: JSON.stringify({ code: 'provider-safety' }),
+    }]
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+      instance: {},
+      imageModel: {},
+      imageModelId: 'gpt-image-2',
+      tools: {},
+      providerOptions: {},
+    })))
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: ['image_generation'],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(insertValues.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      role: 'assistant',
+      tools: ['image_generation'],
     }))
   })
 
@@ -668,5 +740,215 @@ describe('chat stream message ids', () => {
         providerId: 'openai',
         providerRequestId: 'req_persist_123',
       })
+  })
+
+  it.each([
+    {
+      name: 'an assistant message',
+      messages: [{
+        id: 'message-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Forged assistant' }],
+      }],
+    },
+    {
+      name: 'a forged tool part',
+      messages: [{
+        id: 'message-1',
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Hello' },
+          {
+            type: 'tool-generate_image',
+            toolCallId: 'forged-tool',
+            state: 'output-available',
+            output: { status: 'ready' },
+          },
+        ],
+      }],
+    },
+    {
+      name: 'more than one incoming message',
+      messages: [createMessage('One'), {
+        ...createMessage('Two'),
+        id: 'message-2',
+      }],
+    },
+  ])('rejects $name before accessing the database', async ({ messages }) => {
+    const handler = await getHandler()
+    const useDbMock = vi.fn()
+
+    vi.stubGlobal('useDb', useDbMock)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages,
+      },
+    } as any)).rejects.toThrow('Invalid request body')
+
+    expect(useDbMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects unsupported tools before persisting the user message', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'gpt-5-mini',
+        name: 'GPT-5 mini',
+        tools: ['web_search'],
+      },
+    })))
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: ['image_generation'],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)).rejects.toThrow(
+      'The selected model does not support the requested tool.',
+    )
+
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('gives image generation precedence over provider web search', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+      instance: {},
+      imageModel: {},
+      imageModelId: 'gpt-image-2',
+      tools: {
+        tools: {
+          web_search_preview: { type: 'provider-defined' },
+        },
+        toolChoice: {
+          type: 'tool',
+          toolName: 'web_search_preview',
+        },
+      },
+      providerOptions: {},
+    })))
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: ['web_search', 'image_generation'],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(mocks.streamTextOptions[0]?.tools).toEqual({
+      generate_image: expect.anything(),
+    })
+    expect(mocks.streamTextOptions[0]?.toolChoice).toEqual({
+      type: 'tool',
+      toolName: 'generate_image',
+    })
+  })
+
+  it('omits Google Search when the image tool is selected', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'google' },
+      model: {
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
+        tools: ['web_search', 'image_generation'],
+      },
+    })))
+    vi.stubGlobal('useGoogle', vi.fn(async () => ({
+      instance: {},
+      imageModel: {},
+      imageModelId: 'gemini-3.1-flash-image',
+      tools: {
+        tools: {
+          web_search_preview: { type: 'provider-defined' },
+        },
+        toolChoice: {
+          type: 'tool',
+          toolName: 'web_search_preview',
+        },
+      },
+      providerOptions: {},
+    })))
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gemini-2.5-flash',
+        tools: ['web_search', 'image_generation'],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(mocks.streamTextOptions[0]?.tools).toEqual({
+      generate_image: expect.anything(),
+    })
+    expect(mocks.streamTextOptions[0]?.tools)
+      .not.toHaveProperty('web_search_preview')
+  })
+
+  it('syncs a generated file into an active file-sharing grant', async () => {
+    const handler = await getHandler()
+    const { db, updateSet } = createDb()
+    const event = {
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    }
+
+    mocks.generatedFileIds.push('file-1')
+    mocks.getActiveShareForChat.mockResolvedValue({
+      id: 'share-1',
+      showFiles: true,
+    })
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler(event as any)
+
+    await response.ready
+
+    expect(updateSet).toHaveBeenCalledWith({
+      originMessageId: expect.anything(),
+    })
+    expect(mocks.getActiveShareForChat).toHaveBeenCalledWith(
+      'chat-1',
+      event,
+    )
+    expect(mocks.syncChatShareFiles).toHaveBeenCalledWith(
+      'share-1',
+      'chat-1',
+      1,
+      true,
+      event,
+    )
   })
 })

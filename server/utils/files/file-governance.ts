@@ -1,7 +1,12 @@
 import type { UIMessage } from 'ai'
 import type { FilePolicy } from '#shared/types/files.d'
 import { and, eq, lt, sql } from 'drizzle-orm'
+import { extractLocalFileStorageKey } from '#shared/utils/files'
 import * as schema from '~~/server/db/schema'
+
+export function extractStorageKeyFromFileUrl(url: string): string | null {
+  return extractLocalFileStorageKey(url)
+}
 
 const DEFAULT_STORAGE_BYTES = 20 * 1024 * 1024 // 20MB
 const DEFAULT_MAX_FILES_PER_MESSAGE = 10
@@ -43,21 +48,6 @@ interface OwnedFile {
 
 export function getCurrentMonthKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 7)
-}
-
-export function extractStorageKeyFromFileUrl(url: string): string | null {
-  if (!url) {
-    return null
-  }
-
-  const [cleanedUrl] = url.split('?')
-  const cleaned = cleanedUrl?.replace(/^\/files\//, '')
-
-  if (cleaned && !cleaned.includes('/')) {
-    return cleaned
-  }
-
-  return null
 }
 
 export async function getOrCreateStoragePolicyRow(

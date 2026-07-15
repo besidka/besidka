@@ -39,6 +39,14 @@ export async function useOpenAI(
     return openai.responses(model)
   }
 
+  function getImageModel() {
+    if (!requestedTools.includes('image_generation')) {
+      return undefined
+    }
+
+    return openai.image('gpt-image-2')
+  }
+
   async function generateChatTitle(message: string) {
     return await useChatTitle(
       getInstance(),
@@ -47,7 +55,10 @@ export async function useOpenAI(
   }
 
   function getTools(): FormattedTools {
-    if (!requestedTools?.length) {
+    if (
+      !requestedTools?.length
+      || requestedTools.includes('image_generation')
+    ) {
       return {}
     }
 
@@ -96,6 +107,8 @@ export async function useOpenAI(
 
   return {
     instance: getInstance(),
+    imageModel: getImageModel(),
+    imageModelId: 'gpt-image-2',
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),

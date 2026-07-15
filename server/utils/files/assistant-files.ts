@@ -1,5 +1,10 @@
 import type { UIMessage } from 'ai'
+import type { ImageGenerationReady } from '#shared/types/image-generation.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { isSafeFileStorageKey } from '#shared/utils/files'
+import {
+  getPersistedImageGenerationFailureText,
+} from '~~/server/utils/ai/image-generation-errors'
 
 export interface NormalizeAssistantMessagePartsInput {
   parts: UIMessage['parts']
@@ -10,6 +15,19 @@ export interface NormalizeAssistantMessagePartsInput {
 }
 
 const omittedFilePrefix = 'Previously attached file omitted from model context'
+const generatedFilePrefix = 'Generated file saved in the user file library'
+const maxGeneratedImageBytes = 10 * 1024 * 1024
+const maxGeneratedImageFileNameLength = 120
+const safeGeneratedImageFileIdPattern = /^[A-Za-z0-9_-]{1,128}$/
+const generatedImageModels = {
+  openai: 'gpt-image-2',
+  google: 'gemini-3.1-flash-image',
+} as const
+const generatedImageMediaTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+])
 
 export function sanitizeMessagesForModelContext(
   messages: UIMessage[],
@@ -69,6 +87,14 @@ function sanitizeMessageParts(
       continue
     }
 
+    if (part.type === 'file' && message.role === 'assistant') {
+      sanitizedParts.push({
+        type: 'text',
+        text: getGeneratedFileText(part),
+      })
+      continue
+    }
+
     if (part.type !== 'file' || message.role !== 'user') {
       continue
     }
@@ -90,6 +116,20 @@ function sanitizeMessageParts(
   }
 
   return sanitizedParts
+}
+
+function getGeneratedFileText(part: UIMessage['parts'][number]): string {
+  if (part.type !== 'file') {
+    return `${generatedFilePrefix}.`
+  }
+
+  const filename = part.filename?.trim()
+
+  if (!filename) {
+    return `${generatedFilePrefix} (${part.mediaType}).`
+  }
+
+  return `${generatedFilePrefix}: ${filename} (${part.mediaType}).`
 }
 
 function getOmittedFileText(part: UIMessage['parts'][number]): string {
@@ -121,13 +161,13 @@ function getOmittedFileText(part: UIMessage['parts'][number]): string {
 export async function normalizeAssistantMessagePartsForPersistence(
   input: NormalizeAssistantMessagePartsInput,
 ): Promise<UIMessage['parts']> {
-  const parts = input.parts || []
-  const assistantFileParts = parts.filter((part) => {
-    return part.type === 'file'
+  const normalizedParts = await normalizeGeneratedImageToolParts(input)
+  const assistantFileParts = normalizedParts.filter((part) => {
+    return part.type === 'file' && !part.url.startsWith('/files/')
   })
 
   if (assistantFileParts.length === 0) {
-    return parts
+    return normalizedParts
   }
 
   const isPersistenceEnabled = useRuntimeConfig().enableAssistantFilePersistence
@@ -145,5 +185,189 @@ export async function normalizeAssistantMessagePartsForPersistence(
     },
   })
 
-  return parts
+  return normalizedParts
+}
+
+export function getGeneratedImageFileIds(
+  parts: UIMessage['parts'],
+  providerId?: string,
+  normalizedParts?: UIMessage['parts'],
+): string[] {
+  const fileIds = new Set<string>()
+
+  for (const part of parts) {
+    if (
+      part.type !== 'tool-generate_image'
+      || part.state !== 'output-available'
+      || !isImageGenerationReady(part.output, providerId)
+    ) {
+      continue
+    }
+
+    if (
+      normalizedParts
+      && !hasMatchingNormalizedFilePart(part.output, normalizedParts)
+    ) {
+      continue
+    }
+
+    fileIds.add(part.output.file.id)
+  }
+
+  return [...fileIds]
+}
+
+async function normalizeGeneratedImageToolParts(
+  input: NormalizeAssistantMessagePartsInput,
+): Promise<UIMessage['parts']> {
+  const normalizedParts: UIMessage['parts'] = []
+
+  for (const part of input.parts || []) {
+    if (part.type !== 'tool-generate_image') {
+      normalizedParts.push(part)
+      continue
+    }
+
+    if (
+      part.state === 'output-available'
+      && isImageGenerationReady(part.output, input.providerId)
+    ) {
+      const file = await getOwnedGeneratedImageFile(
+        part.output,
+        input.userId,
+      )
+
+      if (!file) {
+        continue
+      }
+
+      normalizedParts.push({
+        type: 'file',
+        mediaType: file.type,
+        filename: file.name,
+        url: `/files/${file.storageKey}`,
+      })
+      continue
+    }
+
+    if (part.state === 'output-error') {
+      normalizedParts.push({
+        type: 'text',
+        text: getPersistedImageGenerationFailureText(part.errorText),
+      })
+    }
+  }
+
+  return normalizedParts
+}
+
+function isImageGenerationReady(
+  output: unknown,
+  providerId?: string,
+): output is ImageGenerationReady {
+  if (typeof output !== 'object' || output === null) {
+    return false
+  }
+
+  if (!('status' in output) || output.status !== 'ready') {
+    return false
+  }
+
+  if (
+    !('provider' in output)
+    || (output.provider !== 'openai' && output.provider !== 'google')
+    || (providerId !== undefined && output.provider !== providerId)
+    || !('model' in output)
+    || output.model !== generatedImageModels[output.provider]
+    || !('file' in output)
+    || typeof output.file !== 'object'
+  ) {
+    return false
+  }
+
+  const file = output.file
+
+  return file !== null
+    && 'id' in file
+    && typeof file.id === 'string'
+    && safeGeneratedImageFileIdPattern.test(file.id)
+    && 'storageKey' in file
+    && isSafeFileStorageKey(file.storageKey)
+    && 'name' in file
+    && isSafeGeneratedImageFileName(file.name)
+    && 'size' in file
+    && typeof file.size === 'number'
+    && Number.isSafeInteger(file.size)
+    && file.size > 0
+    && file.size <= maxGeneratedImageBytes
+    && 'type' in file
+    && typeof file.type === 'string'
+    && generatedImageMediaTypes.has(file.type)
+    && 'source' in file
+    && file.source === 'assistant'
+}
+
+async function getOwnedGeneratedImageFile(
+  output: ImageGenerationReady,
+  userId: number,
+) {
+  const file = await useDb().query.files.findFirst({
+    where: {
+      id: output.file.id,
+      userId,
+    },
+    columns: {
+      id: true,
+      storageKey: true,
+      name: true,
+      size: true,
+      type: true,
+      source: true,
+      originProvider: true,
+    },
+  })
+
+  if (
+    !file
+    || file.storageKey !== output.file.storageKey
+    || file.name !== output.file.name
+    || file.size !== output.file.size
+    || file.type !== output.file.type
+    || file.source !== 'assistant'
+    || file.originProvider !== output.provider
+  ) {
+    return null
+  }
+
+  return file
+}
+
+function hasMatchingNormalizedFilePart(
+  output: ImageGenerationReady,
+  normalizedParts: UIMessage['parts'],
+): boolean {
+  return normalizedParts.some((part) => {
+    return part.type === 'file'
+      && part.mediaType === output.file.type
+      && part.filename === output.file.name
+      && part.url === `/files/${output.file.storageKey}`
+  })
+}
+
+function isSafeGeneratedImageFileName(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= maxGeneratedImageFileNameLength
+    && value.trim() === value
+    && !value.includes('/')
+    && !value.includes('\\')
+    && !hasControlCharacters(value)
+}
+
+function hasControlCharacters(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const characterCode = character.charCodeAt(0)
+
+    return characterCode <= 31 || characterCode === 127
+  })
 }
