@@ -6,9 +6,36 @@
 > [progress ledger](../chats/files-generation-progress.md).
 
 The original scaffolding guide predates the provider-neutral image-generation
-tool. The image MVP is now implemented and has passed automated validation;
-provider smoke tests, the additive D1 migration rollout, final reviews,
-commits, and the draft pull request remain.
+tool. The image MVP is implemented in draft pull request #300 and has passed
+automated validation. Production migration rollout and release remain
+operational steps.
+
+## Current capability report
+
+The implemented generation tool creates images only. Besidka can upload, store,
+share, and download several existing file types, but accepting an uploaded file
+does not mean the chat can generate that format.
+
+| Capability | Current status | Notes |
+| --- | --- | --- |
+| PNG, JPEG, or WebP generation | Implemented | OpenAI and Google models use the `generate_image` tool. |
+| PDF upload and model input | Implemented | Existing PDFs use the normal user-file path. |
+| PDF generation | Not implemented | DOC-001 and DOC-002 remain required. |
+| PPT or PPTX generation | Not implemented | DOC-001 and DOC-003 remain required. |
+| XLS or XLSX generation | Not implemented | DOC-001 and DOC-004 remain required. |
+| PPT, PPTX, XLS, or XLSX upload | Not enabled | The shared upload allowlist currently excludes these MIME types. |
+
+When **Create Image** is active, the server forces exactly one call to
+`generate_image`. A request such as “generate PDF, PPT, and XLSX examples” is
+therefore treated as an image prompt, so the result can be an illustration of
+document icons rather than real downloadable documents. The current tool
+contract has no PDF, presentation, or workbook output type and cannot create
+those files.
+
+The UI should not advertise general file generation until a document tool is
+available. A later implementation should disable image mode for document
+requests or explain the mismatch before spending provider credits. It should
+never relabel an image as a PDF, PPTX, or XLSX file.
 
 ## Implemented image path
 
@@ -39,9 +66,10 @@ commits, and the draft pull request remain.
 
 The image MVP adds `image_generation_locks` for cross-request serialization.
 The generated migration contains only `CREATE TABLE`, has no foreign key or
-cascade, and contains no table rebuild or `DROP TABLE`. It remains unapplied
-until maintainers take Time Travel bookmarks, apply it to `chat-preview`, and
-verify preview integrity before production.
+cascade, and contains no table rebuild or `DROP TABLE`. A read-only audit
+confirms it is applied to `chat-preview` and absent from production `chat`.
+Production still requires a Time Travel bookmark and integrity checks before
+the migration is applied.
 
 ## Foundations retained from the scaffolding
 
@@ -79,6 +107,13 @@ The active tickets define the sequence:
    protection.
 5. Add DOCX and other formats only after the shared job and renderer controls
    prove reliable.
+
+Each format should use a separate, explicit chat action and tool contract. The
+server should first generate a validated intermediate schema, then enqueue a
+durable rendering job, validate the rendered container, reserve quota, and
+persist the result through the existing private file path. Chat should resume
+job state after reload and show format-specific progress, preview, retry, and
+download actions.
 
 Every future format reuses the same private R2 storage, D1 ownership, quota,
 provenance, file-manager, authenticated download, sharing, and deletion paths.
