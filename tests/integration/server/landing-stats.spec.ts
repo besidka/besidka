@@ -2,12 +2,15 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const defineCachedFunction = vi.fn((handler: unknown) => handler)
+
 describe('landing statistics', () => {
   let sqlite: InstanceType<typeof Database>
 
   beforeEach(() => {
     vi.resetModules()
-    vi.stubGlobal('defineCachedFunction', (handler: unknown) => handler)
+    defineCachedFunction.mockClear()
+    vi.stubGlobal('defineCachedFunction', defineCachedFunction)
 
     sqlite = new Database(':memory:')
     sqlite.exec(`
@@ -43,7 +46,7 @@ describe('landing statistics', () => {
   })
 
   it('separates uploaded files from assistant-generated images', async () => {
-    const { readStatsFromDb } = await import(
+    const { LANDING_STATS_CACHE_NAME, readStatsFromDb } = await import(
       '../../../server/utils/landing/stats'
     )
 
@@ -59,5 +62,12 @@ describe('landing statistics', () => {
       sharedChats: 2,
       updatedAt: expect.any(String),
     })
+    expect(LANDING_STATS_CACHE_NAME).toBe(
+      'landing-stats-image-generation-v1',
+    )
+    expect(defineCachedFunction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ name: LANDING_STATS_CACHE_NAME }),
+    )
   })
 })

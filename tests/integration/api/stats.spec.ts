@@ -86,7 +86,7 @@ describe('landing stats API', () => {
         headers: new Headers({
           cookie: 'better-auth.session_token=secret',
         }),
-        path: '/api/v1/stats?v=3',
+        path: '/api/v1/stats?v=image-generation-1',
       } as never)
 
       expect(getSession).not.toHaveBeenCalled()

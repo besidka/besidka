@@ -1,20 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import StatGrid from '../../../../app/components/landing/StatGrid.vue'
 
-vi.stubGlobal('useLazyFetch', () => ({
-  data: ref({
-    users: 10,
-    chats: 20,
-    messages: 30,
-    files: 40,
-    uploadedFiles: 35,
-    generatedImages: 5,
-    sharedChats: 50,
-  }),
-  pending: ref(false),
+const mocks = vi.hoisted(() => ({
+  useLazyFetch: vi.fn(),
 }))
+
+mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 
 const FIVE_METRICS = [
   { metric: 'users', label: 'Users' },
@@ -25,6 +18,21 @@ const FIVE_METRICS = [
 ] as const
 
 describe('StatGrid.vue', () => {
+  beforeEach(() => {
+    mocks.useLazyFetch.mockReturnValue({
+      data: ref({
+        users: 10,
+        chats: 20,
+        messages: 30,
+        files: 40,
+        uploadedFiles: 35,
+        generatedImages: 5,
+        sharedChats: 50,
+      }),
+      pending: ref(false),
+    })
+  })
+
   it('renders one card per metric including sharedChats', async () => {
     const wrapper = await mountSuspended(StatGrid, {
       props: { metrics: [...FIVE_METRICS] },
@@ -41,6 +49,9 @@ describe('StatGrid.vue', () => {
       'Files',
       'Conversations shared',
     ])
+    expect(mocks.useLazyFetch).toHaveBeenCalledWith('/api/v1/stats', {
+      query: { v: 'image-generation-1' },
+    }, expect.any(String))
   })
 
   it('keeps a single row on md+ via column-flow auto placement', async () => {

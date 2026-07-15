@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import StatCard from '../../../../app/components/landing/StatCard.vue'
+
+const mocks = vi.hoisted(() => ({
+  useLazyFetch: vi.fn(),
+}))
+
+mockNuxtImport('useLazyFetch', () => mocks.useLazyFetch)
 
 function makeInjectedStats(
   data: Record<string, unknown> | null,
@@ -13,12 +19,14 @@ function makeInjectedStats(
   }
 }
 
-vi.stubGlobal('useLazyFetch', () => ({
-  data: ref(null),
-  pending: ref(false),
-}))
-
 describe('StatCard.vue', () => {
+  beforeEach(() => {
+    mocks.useLazyFetch.mockReturnValue({
+      data: ref(null),
+      pending: ref(false),
+    })
+  })
+
   it('renders the real value when injected stats provide it', async () => {
     const injected = makeInjectedStats({ users: 1234, chats: 56 })
     const wrapper = await mountSuspended(StatCard, {
@@ -137,6 +145,10 @@ describe('StatCard.vue', () => {
     const span = wrapper.find('span.tabular-nums')
 
     expect(span.text()).toBe('42')
+    expect(mocks.useLazyFetch).toHaveBeenCalledWith('/api/v1/stats', {
+      immediate: false,
+      query: { v: 'image-generation-1' },
+    }, expect.any(String))
   })
 
   it('formats full numbers correctly when format is full', async () => {

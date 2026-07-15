@@ -13,6 +13,9 @@ export interface LandingStats {
   updatedAt: string
 }
 
+export const LANDING_STATS_CACHE_NAME
+  = 'landing-stats-image-generation-v1'
+
 export async function readStatsFromDb(): Promise<LandingStats> {
   const db = useDb()
 
@@ -59,7 +62,7 @@ export const cachedStats = defineCachedFunction(
     return readStatsFromDb()
   },
   {
-    name: 'landing-stats-v3',
+    name: LANDING_STATS_CACHE_NAME,
     maxAge: 24 * 60 * 60,
     swr: true,
     staleMaxAge: 24 * 60 * 60,

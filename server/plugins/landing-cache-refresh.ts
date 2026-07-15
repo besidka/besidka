@@ -1,5 +1,8 @@
 import { createRequestLogger } from 'evlog'
-import { cachedStats } from '~~/server/utils/landing/stats'
+import {
+  cachedStats,
+  LANDING_STATS_CACHE_NAME,
+} from '~~/server/utils/landing/stats'
 import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
 import { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
 
@@ -58,7 +61,9 @@ export async function runLandingCacheRefreshJob(
   const cache = useStorage('cache')
 
   await Promise.allSettled([
-    cache.removeItem('landing:landing-stats-v3:global.json'),
+    cache.removeItem(
+      `landing:${LANDING_STATS_CACHE_NAME}:global.json`,
+    ),
     cache.removeItem(
       'landing:landing-github-stars:besidka/besidka.json',
     ),
