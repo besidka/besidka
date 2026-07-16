@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "76b55942-8c59-4123-acd5-bd13864f91e5",
+  "id": "581ece84-36ea-4edf-9815-57775dc6176b",
   "prevIds": [
     "de02b329-6a45-400a-a748-f8dc919f47af"
   ],
@@ -1081,26 +1081,6 @@
       "default": null,
       "generated": null,
       "name": "origin_provider",
-      "entityType": "columns",
-      "table": "files"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "origin_model",
-      "entityType": "columns",
-      "table": "files"
-    },
-    {
-      "type": "real",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "generation_cost",
       "entityType": "columns",
       "table": "files"
     },
