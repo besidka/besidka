@@ -25,12 +25,14 @@ const genericImageGenerationFailureText = [
   'The image provider could not generate this image.',
   'Revise the prompt or try a different provider.',
 ].join(' ')
+const safeFailureReferencePattern = /^[A-Za-z0-9_.:-]{1,128}$/
 const imageGenerationFailureTextByCode = new Map<ChatErrorCode, string>([
   [
     'generation-busy',
     [
-      'An image is already being generated.',
-      'Wait for the current image to finish, then try again.',
+      'Please wait a few seconds before generating another image.',
+      'Only one image generates at a time per account, with a short',
+      'cooldown between images.',
     ].join(' '),
   ],
   [
@@ -176,17 +178,32 @@ export function getImageGenerationFailureText(errorText: unknown): string {
       return genericImageGenerationFailureText
     }
 
-    const code = (parsedError as Record<string, unknown>).code
+    const record = parsedError as Record<string, unknown>
+    const code = record.code
+    const reference = getImageGenerationFailureReference(record)
 
     if (typeof code !== 'string') {
       return genericImageGenerationFailureText
     }
 
-    return imageGenerationFailureTextByCode.get(code as ChatErrorCode)
+    const text = imageGenerationFailureTextByCode.get(code as ChatErrorCode)
       || genericImageGenerationFailureText
+
+    return reference ? `${text} (ref: ${reference})` : text
   } catch {
     return genericImageGenerationFailureText
   }
+}
+
+function getImageGenerationFailureReference(
+  record: Record<string, unknown>,
+): string | undefined {
+  const reference = record.providerRequestId || record.requestId
+
+  return typeof reference === 'string'
+    && safeFailureReferencePattern.test(reference)
+    ? reference
+    : undefined
 }
 
 export function isVisibleGenerateImageToolPart(part: unknown): boolean {

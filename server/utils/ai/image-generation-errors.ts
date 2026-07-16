@@ -22,13 +22,16 @@ export interface SafeImageGenerationError
 const imageGenerationErrors = {
   generationBusy: {
     code: 'generation-busy',
-    message: 'An image is already being generated.',
-    why: 'Only one image generation can run at a time for this account.',
-    fix: 'Wait for the current image to finish, then try again.',
+    message: 'Please wait a few seconds before generating another image.',
+    why: 'The account-wide image generation lock is still cooling down '
+      + 'from the last request.',
+    fix: 'Only one image generates at a time per account, with a short '
+      + 'cooldown between images.',
     status: 429,
     persistenceText: [
-      'An image is already being generated.',
-      'Wait for the current image to finish, then try again.',
+      'Please wait a few seconds before generating another image.',
+      'Only one image generates at a time per account, with a short',
+      'cooldown between images.',
     ].join(' '),
   },
   storageQuota: {
@@ -210,11 +213,13 @@ export function getPersistedImageGenerationFailureText(
     return imageGenerationErrors.generic.persistenceText
   }
 
+  const reference = getFailureReference(parsedError)
+
   if (parsedError.code) {
     const persistedText = persistedErrorsByCode.get(parsedError.code)
 
     if (persistedText) {
-      return persistedText
+      return withFailureReference(persistedText, reference)
     }
   }
 
@@ -224,15 +229,42 @@ export function getPersistedImageGenerationFailureText(
     })
 
   if (matchedDefinition) {
-    return matchedDefinition.persistenceText
+    return withFailureReference(matchedDefinition.persistenceText, reference)
   }
 
-  return imageGenerationErrors.generic.persistenceText
+  return withFailureReference(
+    imageGenerationErrors.generic.persistenceText,
+    reference,
+  )
+}
+
+const safeFailureReferencePattern = /^[A-Za-z0-9_.:-]{1,128}$/
+
+function getFailureReference(
+  parsedError: { requestId?: string, providerRequestId?: string },
+): string | undefined {
+  const reference = parsedError.providerRequestId || parsedError.requestId
+
+  return reference && safeFailureReferencePattern.test(reference)
+    ? reference
+    : undefined
+}
+
+function withFailureReference(
+  text: string,
+  reference: string | undefined,
+): string {
+  return reference ? `${text} (ref: ${reference})` : text
 }
 
 function parseStreamError(
   errorText: unknown,
-): { code?: string, message?: string } | undefined {
+): {
+  code?: string
+  message?: string
+  requestId?: string
+  providerRequestId?: string
+} | undefined {
   if (typeof errorText !== 'string' || !errorText.trim().startsWith('{')) {
     return undefined
   }
@@ -250,6 +282,12 @@ function parseStreamError(
       code: typeof record.code === 'string' ? record.code : undefined,
       message: typeof record.message === 'string'
         ? record.message
+        : undefined,
+      requestId: typeof record.requestId === 'string'
+        ? record.requestId
+        : undefined,
+      providerRequestId: typeof record.providerRequestId === 'string'
+        ? record.providerRequestId
         : undefined,
     }
   } catch {

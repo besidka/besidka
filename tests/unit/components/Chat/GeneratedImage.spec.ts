@@ -263,6 +263,8 @@ describe('Chat/GeneratedImage', () => {
 
     const alert = wrapper.get('[data-testid="generated-image-error"]')
 
+    expect(wrapper.classes()).toContain('w-full')
+    expect(wrapper.classes()).not.toContain('w-80')
     expect(alert.attributes('role')).toBe('alert')
     expect(alert.text()).toContain(
       'The image provider rejected the saved API key.',

@@ -1,7 +1,8 @@
 <template>
   <section
     v-if="isRenderable"
-    class="mt-2 w-80 max-w-full"
+    class="mt-2 max-w-full"
+    :class="isFailure ? 'w-full' : 'w-80'"
     aria-live="polite"
     data-testid="generated-image"
   >

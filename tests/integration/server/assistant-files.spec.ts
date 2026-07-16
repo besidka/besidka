@@ -625,6 +625,14 @@ describe('assistant files scaffolding', () => {
         'not pass its safety checks. Revise the prompt and try again.',
       ].join(' '),
     },
+    {
+      code: 'generation-busy',
+      expected: [
+        'Please wait a few seconds before generating another image.',
+        'Only one image generates at a time per account, with a short',
+        'cooldown between images.',
+      ].join(' '),
+    },
   ])('persists actionable $code guidance from the safe error catalog', async ({
     code,
     expected,
@@ -660,6 +668,41 @@ describe('assistant files scaffolding', () => {
     ])
     expect(JSON.stringify(normalizedParts)).not.toContain('sk-live-secret')
     expect(JSON.stringify(normalizedParts)).not.toContain('javascript:')
+  })
+
+  it('appends a support reference when the error carries a request id', async () => {
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-2b',
+        state: 'output-error',
+        input: { prompt: 'A quiet forest' },
+        errorText: JSON.stringify({
+          code: 'provider-auth',
+          message: 'untrusted provider diagnostic',
+          requestId: 'cf-ray-abc123',
+        }),
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'google',
+      chatId: 'chat-4b',
+      userId: 4,
+      logger: { set: vi.fn() },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'text',
+        text: [
+          'The image provider rejected the saved API key.',
+          'Update the provider key in settings, then try again.',
+          '(ref: cf-ray-abc123)',
+        ].join(' '),
+      },
+    ])
   })
 
   it('allows an exact application-owned message without copying details', async () => {

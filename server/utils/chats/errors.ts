@@ -335,7 +335,7 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
   }
 }
 
-function getRequestId(event: H3Event): string | undefined {
+export function getRequestId(event: H3Event): string | undefined {
   try {
     return getRequestHeader(event, 'cf-ray')
       || getRequestHeader(event, 'x-request-id')

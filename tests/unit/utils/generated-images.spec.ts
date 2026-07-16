@@ -157,6 +157,45 @@ describe('generated image utils', () => {
     expect(failureText).not.toContain('sk-never-render-this')
   })
 
+  it('appends a support reference when the error carries a request id', () => {
+    const errorText = JSON.stringify({
+      code: 'provider-auth',
+      message: 'Untrusted provider text',
+      requestId: 'cf-ray-abc123',
+    })
+
+    const failureText = getImageGenerationFailureText(errorText)
+
+    expect(failureText).toContain(
+      'The image provider rejected the saved API key.',
+    )
+    expect(failureText).toMatch(/ \(ref: [\w.:-]+\)$/)
+    expect(failureText).toContain('(ref: cf-ray-abc123)')
+  })
+
+  it('prefers the provider request id over the platform request id', () => {
+    const errorText = JSON.stringify({
+      code: 'provider-auth',
+      requestId: 'cf-ray-abc123',
+      providerRequestId: 'openai-req-456',
+    })
+
+    expect(getImageGenerationFailureText(errorText))
+      .toContain('(ref: openai-req-456)')
+  })
+
+  it('ignores a malformed or oversized request id', () => {
+    const errorText = JSON.stringify({
+      code: 'provider-auth',
+      requestId: '<script>alert(1)</script>',
+    })
+
+    const failureText = getImageGenerationFailureText(errorText)
+
+    expect(failureText).not.toContain('ref:')
+    expect(failureText).not.toContain('<script>')
+  })
+
   it('fits an assistant bubble containing only an image file part', () => {
     const message = {
       id: 'assistant-1',

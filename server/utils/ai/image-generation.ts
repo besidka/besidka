@@ -51,6 +51,7 @@ export interface CreateImageGenerationToolInput {
   model: string
   imageModel: ImageModel
   logger: LoggerLike
+  requestId?: string
   onGenerated?: (result: {
     aspectRatio: ImageGenerationAspectRatio
   }) => void
@@ -173,6 +174,7 @@ export function createImageGenerationTool(
             errorCode: safeError.code,
             providerStatus: safeError.providerStatus,
             providerRequestId: safeError.providerRequestId,
+            requestId: input.requestId,
           },
         })
 

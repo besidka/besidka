@@ -30,7 +30,7 @@ import {
   addImageGenerationCostToUsage,
 } from '~~/server/utils/ai/message-usage'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
-import { normalizeChatError } from '~~/server/utils/chats/errors'
+import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
@@ -460,6 +460,7 @@ export default defineEventHandler(async (event) => {
             model: openAiImageModelId,
             imageModel: openAiImageModel,
             logger: aiLogger,
+            requestId: getRequestId(event),
             onGenerated: ({ aspectRatio }) => {
               generatedImage = { modelId: openAiImageModelId, aspectRatio }
             },
@@ -513,6 +514,7 @@ export default defineEventHandler(async (event) => {
             model: googleImageModelId,
             imageModel: googleImageModel,
             logger: aiLogger,
+            requestId: getRequestId(event),
             onGenerated: ({ aspectRatio }) => {
               generatedImage = { modelId: googleImageModelId, aspectRatio }
             },
