@@ -1,5 +1,6 @@
 import type { FileUIPart, UIMessage } from 'ai'
 import type { H3Event } from 'h3'
+import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
 import { SHARE_FILE_TOKEN_TTL_SECONDS } from '~~/server/utils/chats/share'
 import {
   extractStorageKeyFromFileUrl,
@@ -18,6 +19,32 @@ export function stripFileParts<
       }),
     }
   })
+}
+
+export function hideFileParts<
+  TMessage extends { parts: UIMessage['parts'] },
+>(messages: TMessage[]): TMessage[] {
+  return messages.map((message) => {
+    return {
+      ...message,
+      parts: message.parts.map((part) => {
+        if (part.type !== 'file') {
+          return part
+        }
+
+        return buildHiddenFilePart()
+      }),
+    }
+  })
+}
+
+function buildHiddenFilePart(): FileUIPart {
+  return {
+    type: 'file',
+    mediaType: HIDDEN_FILE_MEDIA_TYPE,
+    filename: undefined,
+    url: '',
+  }
 }
 
 export async function rewriteShareFileParts<

@@ -202,6 +202,48 @@ describe('Chat/GeneratedImage', () => {
     expect(image.classes()).toContain('generated-image--loaded')
   })
 
+  it('attaches the ready file for the next prompt via the shared hook', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: {
+            status: 'ready',
+            provider: 'openai',
+            model: 'gpt-image-2',
+            file: {
+              id: 'file-1',
+              storageKey: 'generated.webp',
+              name: 'sunset.webp',
+              size: 2048,
+              type: 'image/webp',
+              source: 'assistant',
+              url: '/files/generated.webp',
+              downloadUrl: '/files/generated.webp?download=1',
+            },
+          },
+        } as any,
+      },
+    })
+
+    const onAttachFile = vi.fn()
+
+    useNuxtApp().hook('chat:attach-file', onAttachFile)
+
+    await wrapper.get('[data-testid="generated-image-attach"]')
+      .trigger('click')
+
+    expect(onAttachFile).toHaveBeenCalledExactlyOnceWith({
+      id: 'file-1',
+      storageKey: 'generated.webp',
+      name: 'sunset.webp',
+      size: 2048,
+      type: 'image/webp',
+    })
+  })
+
   it('renders fixed actionable text for a structured failure', async () => {
     const wrapper = await mountSuspended(GeneratedImage, {
       props: {

@@ -1,9 +1,11 @@
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
+import { HIDDEN_FILE_MEDIA_TYPE } from '../../../shared/utils/files'
 import {
   getGenerateImageOutput,
   getImageGenerationFailureText,
   isVisibleGenerateImageToolPart,
+  shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '../../../app/utils/generated-images'
 
@@ -153,5 +155,100 @@ describe('generated image utils', () => {
       'Revise the prompt or try a different provider.',
     ].join(' '))
     expect(failureText).not.toContain('sk-never-render-this')
+  })
+
+  it('fits an assistant bubble containing only an image file part', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'step-start',
+        },
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: '/files/generated.webp',
+        },
+      ],
+    } as unknown as UIMessage
+
+    expect(shouldFitMessageBubble(message)).toBe(true)
+  })
+
+  it('keeps a bubble with text and an image at its normal width', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'text',
+          text: 'Here is your image',
+        },
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: '/files/generated.webp',
+        },
+      ],
+    } as unknown as UIMessage
+
+    expect(shouldFitMessageBubble(message)).toBe(false)
+  })
+
+  it('keeps text-only and non-image file bubbles at their normal width', () => {
+    const textMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{
+        type: 'text',
+        text: 'Here is your image',
+      }],
+    } as unknown as UIMessage
+    const fileMessage = {
+      id: 'assistant-2',
+      role: 'assistant',
+      parts: [{
+        type: 'file',
+        mediaType: 'application/pdf',
+        filename: 'report.pdf',
+        url: '/files/report.pdf',
+      }],
+    } as unknown as UIMessage
+
+    expect(shouldFitMessageBubble(textMessage)).toBe(false)
+    expect(shouldFitMessageBubble(fileMessage)).toBe(false)
+  })
+
+  it('fits an assistant bubble containing only a hidden-file placeholder', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      }],
+    } as unknown as UIMessage
+
+    expect(shouldFitMessageBubble(message)).toBe(true)
+  })
+
+  it('never fits a user message even if it only carries an image', () => {
+    const message = {
+      id: 'user-1',
+      role: 'user',
+      parts: [{
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'upload.webp',
+        url: '/files/upload.webp',
+      }],
+    } as unknown as UIMessage
+
+    expect(shouldFitMessageBubble(message)).toBe(false)
   })
 })

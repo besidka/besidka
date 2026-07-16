@@ -143,6 +143,16 @@
         @retry="onResearchRetry"
         @dismiss="dismissResearchJob"
       />
+      <ChatMessage
+        v-if="shouldRenderPendingImageGeneration"
+        role="assistant"
+        class="chat-message--fit-content mt-3"
+      >
+        <ChatGeneratedImage
+          message-role="assistant"
+          :part="pendingGenerateImagePart"
+        />
+      </ChatMessage>
       <LazyChatLoader
         :show="(isLoading && !hasImageGenerationProgress) || isClarifying"
       />
@@ -162,14 +172,14 @@
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
     :stop="stop"
-    :regenerate="regenerate"
+    :regenerate="onChatRegenerate"
     :display-regenerate="displayRegenerate"
     :display-stop="displayStop"
     :status="chatSdk.status"
     :any-messages-selected="selectedMessageId !== null"
     @clear-project-context="clearProjectContext"
     @open-project-picker="openProjectPicker"
-    @submit="submit"
+    @submit="onChatSubmit"
   />
 
   <LazyChatInputProjectPicker
@@ -331,10 +341,38 @@ const {
   dismissResearchJob,
 } = useChat(toValue(chat.value))
 
+const { isImageGenerationRequired } = useChatInput()
+
+const isImageGenerationTurnPending = shallowRef<boolean>(false)
+
+function captureImageGenerationTurnPending(): void {
+  isImageGenerationTurnPending.value = tools.value.includes(
+    'image_generation',
+  ) || isImageGenerationRequired.value
+}
+
+function onChatSubmit(): void {
+  captureImageGenerationTurnPending()
+  submit()
+}
+
+function onChatRegenerate(): void {
+  captureImageGenerationTurnPending()
+  regenerate()
+}
+
+watch(() => route.params.slug, () => {
+  isImageGenerationTurnPending.value = false
+})
+
 const {
   hasImageGenerationProgress,
+  shouldRenderPendingImageGeneration,
   shouldFitMessageContent,
-} = useChatImageUi(() => chatSdk.messages)
+} = useChatImageUi(() => chatSdk.messages, {
+  isImageGenerationTurnPending: () => isImageGenerationTurnPending.value,
+  isLoading: () => isLoading.value,
+})
 
 seedActiveResearchJob(
   chat.value.activeResearchJob ?? null,

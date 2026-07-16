@@ -84,19 +84,34 @@
         <template v-else>
           <button
             type="button"
-            class="btn btn-sm btn-circle btn-ghost hitslop"
+            class="btn btn-xs btn-circle btn-ghost hitslop"
+            :class="{ 'tooltip tooltip-top': $device.isDesktop }"
             :aria-label="`Preview ${readyFile.name}`"
+            data-tip="Preview"
             data-testid="generated-image-open"
             @click="openImagePreview"
           >
-            <Icon name="lucide:maximize-2" size="14" />
+            <Icon name="lucide:maximize-2" size="12" />
+          </button>
+          <button
+            type="button"
+            class="btn btn-xs btn-circle btn-ghost hitslop"
+            :class="{ 'tooltip tooltip-top': $device.isDesktop }"
+            :aria-label="`Attach ${readyFile.name} for next prompt`"
+            data-tip="Attach for next prompt"
+            data-testid="generated-image-attach"
+            @click="attachForNextPrompt"
+          >
+            <Icon name="lucide:paperclip" size="12" />
           </button>
           <a
             :href="downloadUrl"
-            class="btn btn-sm btn-circle btn-accent hitslop"
+            class="btn btn-xs btn-circle btn-accent hitslop"
+            :class="{ 'tooltip tooltip-top': $device.isDesktop }"
             :aria-label="`Download ${readyFile.name}`"
+            data-tip="Download"
           >
-            <Icon name="lucide:download" size="14" />
+            <Icon name="lucide:download" size="12" />
           </a>
         </template>
       </div>
@@ -269,6 +284,20 @@ function onImageError() {
 
 function openImagePreview() {
   isImagePreviewOpen.value = true
+}
+
+function attachForNextPrompt() {
+  if (!readyFile.value) {
+    return
+  }
+
+  useNuxtApp().callHook('chat:attach-file', {
+    id: readyFile.value.id,
+    storageKey: readyFile.value.storageKey,
+    name: readyFile.value.name,
+    size: readyFile.value.size,
+    type: readyFile.value.type,
+  })
 }
 
 watch(imageUrl, () => {

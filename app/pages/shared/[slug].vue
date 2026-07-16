@@ -158,6 +158,9 @@
           :any-selected="selectedMessageId !== null"
           :author-name="data.author?.name ?? null"
           :author-image="data.author?.image ?? null"
+          :class="{
+            'chat-message--fit-content': shouldFitMessageBubble(m),
+          }"
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
@@ -237,7 +240,10 @@ import type { ModelTool } from '#shared/types/providers.d'
 import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { buildShareDescription } from '#shared/utils/og-description'
-import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
+import {
+  shouldFitMessageBubble,
+  shouldRenderGenerateImageToolPart,
+} from '~/utils/generated-images'
 
 interface SharedChatMessage {
   id: string
@@ -525,3 +531,10 @@ const shareSettings = computed<ShareSettingRow[]>(() => {
   ]
 })
 </script>
+
+<style scoped>
+.chat-message--fit-content :deep(.js-chat-bubble) {
+  width: fit-content;
+  max-width: 100%;
+}
+</style>

@@ -9,6 +9,7 @@ import {
   it,
   vi,
 } from 'vitest'
+import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
 import Files from '../../../../app/components/Chat/Files.vue'
 import ImagePreview from '../../../../app/components/Chat/ImagePreview.client.vue'
 
@@ -152,5 +153,39 @@ describe('Chat/Files', () => {
       .toBe(false)
     expect(wrapper.find('[data-testid="chat-file-download"]').exists())
       .toBe(false)
+  })
+
+  it('renders a hidden placeholder without revealing any file info', async () => {
+    const wrapper = await mountSuspended(Files, {
+      props: {
+        message: {
+          id: 'message-1',
+          role: 'assistant',
+          parts: [
+            { type: 'text', text: 'Hello' },
+            {
+              type: 'file',
+              mediaType: HIDDEN_FILE_MEDIA_TYPE,
+              filename: undefined,
+              url: '',
+            },
+          ],
+        },
+      },
+    })
+
+    const hidden = wrapper.get('[data-testid="chat-file-hidden"]')
+
+    expect(hidden.text()).toContain('Hidden')
+    expect(wrapper.find('[data-testid="chat-file-unavailable"]').exists())
+      .toBe(false)
+    expect(wrapper.findAll('img')).toHaveLength(0)
+    expect(wrapper.find('[data-testid="chat-file-preview-trigger"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="chat-file-open"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="chat-file-download"]').exists())
+      .toBe(false)
+    expect(wrapper.html()).not.toContain(HIDDEN_FILE_MEDIA_TYPE)
   })
 })

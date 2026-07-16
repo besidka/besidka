@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
+import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
 import {
+  hideFileParts,
   rewriteBranchedChatFileParts,
   rewriteShareFileParts,
+  stripFileParts,
 } from '../../../server/utils/files/rewrite-share-file-urls'
 
 const mocks = vi.hoisted(() => ({
@@ -307,5 +310,104 @@ describe('rewriteShareFileParts', () => {
       mediaType: 'image/png',
     }])
     expect(mocks.createFileAccessToken).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('hideFileParts', () => {
+  it('replaces each file part with a hidden placeholder, 1:1', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Hello' },
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+        { type: 'file', url: '/files/b.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = hideFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Hello' },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+    ])
+  })
+
+  it('keeps a message non-empty when its only part was a file', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = hideFileParts(messages)
+
+    expect(result[0]?.parts).toHaveLength(1)
+    expect(result[0]?.parts[0]).toMatchObject({
+      type: 'file',
+      mediaType: HIDDEN_FILE_MEDIA_TYPE,
+    })
+  })
+
+  it('leaves non-file parts untouched', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'hello world' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = hideFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'hello world' },
+    ])
+  })
+})
+
+describe('stripFileParts', () => {
+  it('removes file parts entirely, leaving no placeholder', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Hello' },
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = stripFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Hello' },
+    ])
+  })
+
+  it('leaves a message with only a file part empty', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = stripFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([])
   })
 })

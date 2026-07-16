@@ -10,7 +10,11 @@
       <div
         v-for="file in parts"
         :key="file.displayKey"
-        :aria-label="`File ${file.filename || 'attachment'}`"
+        :aria-label="
+          file.isHidden
+            ? 'Hidden file'
+            : `File ${file.filename || 'attachment'}`
+        "
         class="group carousel-item relative overflow-hidden flex items-center justify-center size-48 rounded-box aspect-square bg-base-300"
       >
         <Icon
@@ -19,7 +23,21 @@
           class="z-10 text-base-content/40"
         />
         <div
-          v-if="!file.links || failedUrls[file.links.openUrl]"
+          v-if="file.isHidden"
+          data-testid="chat-file-hidden"
+          class="absolute z-20 inset-0 flex flex-col items-center justify-center bg-base-300"
+        >
+          <Icon
+            name="lucide:eye-off"
+            size="32"
+            class="text-base-content/40"
+          />
+          <span class="text-xs text-base-content/50 mt-2">
+            Hidden
+          </span>
+        </div>
+        <div
+          v-else-if="!file.links || failedUrls[file.links.openUrl]"
           data-testid="chat-file-unavailable"
           class="absolute z-20 inset-0 flex flex-col items-center justify-center bg-base-300"
         >
@@ -121,12 +139,14 @@
 <script setup lang="ts">
 import type { UIMessage, FileUIPart } from 'ai'
 import type { SafeFileLinks } from '~/utils/files'
+import { isHiddenFilePart } from '#shared/utils/files'
 
 interface DisplayFile {
   displayKey: string
   filename?: string
   mediaType: FileUIPart['mediaType']
   links: SafeFileLinks | null
+  isHidden: boolean
 }
 
 const props = defineProps<{
@@ -139,9 +159,19 @@ const previewFile = shallowRef<DisplayFile | null>(null)
 const isImagePreviewOpen = shallowRef<boolean>(false)
 
 const parts = computed<DisplayFile[]>(() => {
-  return props.message.parts.flatMap((part, index) => {
+  return props.message.parts.flatMap((part, index): DisplayFile[] => {
     if (part.type !== 'file') {
       return []
+    }
+
+    if (isHiddenFilePart(part)) {
+      return [{
+        displayKey: `${index}:hidden`,
+        filename: undefined,
+        mediaType: part.mediaType,
+        links: null,
+        isHidden: true,
+      }]
     }
 
     return [{
@@ -149,6 +179,7 @@ const parts = computed<DisplayFile[]>(() => {
       filename: part.filename,
       mediaType: part.mediaType,
       links: getSafeFileLinks(part.url),
+      isHidden: false,
     }]
   })
 })

@@ -4,6 +4,7 @@ import type {
   GeneratedImageFile,
   ImageGenerationToolOutput,
 } from '#shared/types/image-generation.d'
+import { isHiddenFilePart } from '#shared/utils/files'
 import {
   getFileDownloadUrl,
   getFileUrl,
@@ -238,6 +239,52 @@ export function shouldRenderGenerateImageToolPart(
 
     return candidateUrl === storageUrl
   })
+}
+
+export function shouldFitMessageBubble(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): boolean {
+  if (message.role !== 'assistant') {
+    return false
+  }
+
+  let hasImageContent = false
+
+  for (const part of message.parts) {
+    if (part.type === 'text') {
+      if (part.text.trim()) {
+        return false
+      }
+
+      continue
+    }
+
+    if (part.type === 'reasoning') {
+      if (part.text.trim()) {
+        return false
+      }
+
+      continue
+    }
+
+    if (part.type === 'step-start') {
+      continue
+    }
+
+    if (part.type === 'file') {
+      if (!part.mediaType.startsWith('image/') && !isHiddenFilePart(part)) {
+        return false
+      }
+
+      hasImageContent = true
+
+      continue
+    }
+
+    return false
+  }
+
+  return hasImageContent
 }
 
 function getValidatedGeneratedImageFile(

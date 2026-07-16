@@ -1,3 +1,11 @@
+export const HIDDEN_FILE_MEDIA_TYPE = 'application/x-besidka-hidden-file'
+
+export function isHiddenFilePart(
+  part: { type: string, mediaType?: string },
+): boolean {
+  return part.type === 'file' && part.mediaType === HIDDEN_FILE_MEDIA_TYPE
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`

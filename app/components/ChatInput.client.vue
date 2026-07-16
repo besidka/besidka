@@ -419,6 +419,8 @@ nuxtApp.hook('chat:rendered', (container) => {
 
 nuxtApp.hook('chat-spacer:changed', () => measure())
 
+nuxtApp.hook('chat:attach-file', file => onFilesAttached([file]))
+
 const {
   uploadFiles,
   uploadingFiles,

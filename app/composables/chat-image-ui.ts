@@ -1,13 +1,36 @@
 import type { UIMessage } from 'ai'
 import {
+  type GenerateImageToolPart,
   getGenerateImageOutput,
   getGenerateImageToolPart,
   isVisibleGenerateImageToolPart,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
 
-export function useChatImageUi(getMessages: () => UIMessage[]) {
-  const hasImageGenerationProgress = computed<boolean>(() => {
+// Fed to ChatGeneratedImage before the real tool-generate_image part exists,
+// so the same progress skeleton already covers the window between
+// submitting an image-generation turn and the model actually calling the
+// tool, instead of the generic loader disappearing with nothing to show.
+const pendingToolPart: GenerateImageToolPart = {
+  type: 'tool-generate_image',
+  state: 'input-streaming',
+}
+
+export const pendingGenerateImagePart
+  = pendingToolPart as unknown as UIMessage['parts'][number]
+
+export function useChatImageUi(
+  getMessages: () => UIMessage[],
+  options: {
+    isImageGenerationTurnPending?: () => boolean
+    isLoading?: () => boolean
+  } = {},
+) {
+  const isImageGenerationTurnPending
+    = options.isImageGenerationTurnPending ?? (() => false)
+  const isLoading = options.isLoading ?? (() => false)
+
+  const hasActiveImageGenerationToolPart = computed<boolean>(() => {
     const message = getMessages().at(-1)
 
     if (!message || message.role !== 'assistant') {
@@ -31,6 +54,17 @@ export function useChatImageUi(getMessages: () => UIMessage[]) {
 
       return output?.status === 'generating' || output?.status === 'saving'
     })
+  })
+
+  const shouldRenderPendingImageGeneration = computed<boolean>(() => {
+    return isImageGenerationTurnPending()
+      && isLoading()
+      && !hasActiveImageGenerationToolPart.value
+  })
+
+  const hasImageGenerationProgress = computed<boolean>(() => {
+    return hasActiveImageGenerationToolPart.value
+      || shouldRenderPendingImageGeneration.value
   })
 
   function shouldFitMessageContent(message: UIMessage): boolean {
@@ -85,6 +119,7 @@ export function useChatImageUi(getMessages: () => UIMessage[]) {
 
   return {
     hasImageGenerationProgress,
+    shouldRenderPendingImageGeneration,
     shouldFitMessageContent,
   }
 }

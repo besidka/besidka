@@ -1,7 +1,12 @@
+import type { FileMetadata } from '#shared/types/files.d'
+
 declare module '#app' {
   interface RuntimeNuxtHooks {
     'chat:rendered': (container: Ref<HTMLDivElement | null>) => void
     'chat:submit': (payload: { text: string }) => void
+    'chat:attach-file': (
+      file: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>,
+    ) => void
     'chat:stop': () => void
     'chat:regenerate': () => void
     'chat:generation-ready-while-hidden': () => void

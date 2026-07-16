@@ -98,4 +98,80 @@ describe('useChatImageUi', () => {
     expect(shouldFitMessageContent(textMessage)).toBe(false)
     expect(shouldFitMessageContent(fileMessage)).toBe(false)
   })
+
+  it('renders the pending image skeleton before any tool part exists', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([userMessage])
+    const isLoading = shallowRef<boolean>(true)
+    const {
+      hasImageGenerationProgress,
+      shouldRenderPendingImageGeneration,
+    } = useChatImageUi(() => messages.value, {
+      isImageGenerationTurnPending: () => true,
+      isLoading: () => isLoading.value,
+    })
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(true)
+    expect(hasImageGenerationProgress.value).toBe(true)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'tool-generate_image',
+        state: 'input-streaming',
+      }]),
+    ]
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(hasImageGenerationProgress.value).toBe(true)
+  })
+
+  it('does not render the pending skeleton for a non-image turn', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Tell me a joke',
+    }])
+    const {
+      hasImageGenerationProgress,
+      shouldRenderPendingImageGeneration,
+    } = useChatImageUi(() => [userMessage], {
+      isImageGenerationTurnPending: () => false,
+      isLoading: () => true,
+    })
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(hasImageGenerationProgress.value).toBe(false)
+  })
+
+  it('stops the pending skeleton once the turn resolves without a tool part', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([userMessage])
+    const isLoading = shallowRef<boolean>(true)
+    const { shouldRenderPendingImageGeneration } = useChatImageUi(
+      () => messages.value,
+      {
+        isImageGenerationTurnPending: () => true,
+        isLoading: () => isLoading.value,
+      },
+    )
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(true)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'text',
+        text: 'I cannot generate images right now.',
+      }]),
+    ]
+    isLoading.value = false
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+  })
 })

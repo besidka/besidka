@@ -4,8 +4,8 @@ import { isToolUIPart } from 'ai'
 import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import {
+  hideFileParts,
   rewriteShareFileParts,
-  stripFileParts,
 } from '~~/server/utils/files/rewrite-share-file-urls'
 
 const paramsRules = z.object({
@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
 
   const messagesWithResolvedFiles = share.showFiles
     ? await rewriteShareFileParts(publicMessages, share.id, event)
-    : stripFileParts(publicMessages)
+    : hideFileParts(publicMessages)
 
   const messages = messagesWithResolvedFiles.map((message) => {
     return {

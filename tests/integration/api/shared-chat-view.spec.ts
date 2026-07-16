@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -235,7 +236,7 @@ describe('public shared chat view API', () => {
     expect(response.title).toBe('Chat title')
   })
 
-  it('strips file parts when showFiles is false', async () => {
+  it('replaces file parts with hidden placeholders when showFiles is false', async () => {
     const handler = await getHandler()
     const { db } = createDb({
       shares: [createShareFixture({ slug: 'files-off', showFiles: false })],
@@ -246,6 +247,7 @@ describe('public shared chat view API', () => {
           parts: [
             { type: 'text', text: 'Hello' },
             { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+            { type: 'file', url: '/files/b.png', mediaType: 'image/png' },
           ],
         })],
       },
@@ -259,6 +261,53 @@ describe('public shared chat view API', () => {
 
     expect(response.messages[0]?.parts).toEqual([
       { type: 'text', text: 'Hello' },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+    ])
+  })
+
+  it('keeps an assistant message non-empty when its only content was a file and showFiles is false', async () => {
+    const handler = await getHandler()
+    const { db } = createDb({
+      shares: [createShareFixture({
+        slug: 'files-off-only-file',
+        showFiles: false,
+      })],
+      chat: {
+        title: 'Chat title',
+        user: { name: 'Owner', image: null },
+        messages: [createMessageFixture({
+          parts: [
+            { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+          ],
+        })],
+      },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: 'files-off-only-file' },
+    } as never)
+
+    expect(response.messages[0]?.parts).toHaveLength(1)
+    expect(response.messages[0]?.parts).toEqual([
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
     ])
   })
 
