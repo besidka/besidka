@@ -345,7 +345,7 @@ describe('AI image generation tool', () => {
         type: 'file',
         mediaType: 'image/webp',
         filename: 'quiet-forest.webp',
-        url: '/files/generated.webp',
+        url: '/files/generated.webp?generated=1',
       },
     ]))
     expect(normalizedParts.some((part) => {

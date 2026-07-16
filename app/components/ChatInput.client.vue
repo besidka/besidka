@@ -419,7 +419,10 @@ nuxtApp.hook('chat:rendered', (container) => {
 
 nuxtApp.hook('chat-spacer:changed', () => measure())
 
-nuxtApp.hook('chat:attach-file', file => onFilesAttached([file]))
+nuxtApp.hook('chat:attach-file', (file) => {
+  onFilesAttached([file])
+  nuxtApp.callHook('chat:scroll-to-bottom')
+})
 
 const {
   uploadFiles,

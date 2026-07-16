@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   extractLocalFileStorageKey,
   getPreferredFileExtension,
+  isGeneratedFilePart,
+  markUrlAsGeneratedFile,
   normalizeMediaType,
 } from '../../../shared/utils/files'
 
@@ -61,5 +63,32 @@ describe('shared files utils', () => {
     '/files/abc:123.webp',
   ])('rejects unsafe file URL %s', (url) => {
     expect(extractLocalFileStorageKey(url)).toBeNull()
+  })
+
+  it('marks and detects a generated file URL', () => {
+    const marked = markUrlAsGeneratedFile('/files/abc.webp')
+
+    expect(marked).toBe('/files/abc.webp?generated=1')
+    expect(isGeneratedFilePart({ type: 'file', url: marked })).toBe(true)
+  })
+
+  it('preserves existing query params and hash when marking a URL', () => {
+    const marked = markUrlAsGeneratedFile(
+      '/files/abc.webp?token=header.payload.signature#preview',
+    )
+
+    expect(marked).toBe(
+      '/files/abc.webp?token=header.payload.signature&generated=1#preview',
+    )
+    expect(isGeneratedFilePart({ type: 'file', url: marked })).toBe(true)
+  })
+
+  it('does not treat a plain uploaded file URL as generated', () => {
+    expect(isGeneratedFilePart({ type: 'file', url: '/files/abc.webp' }))
+      .toBe(false)
+    expect(isGeneratedFilePart({ type: 'text', url: '/files/abc.webp' }))
+      .toBe(false)
+    expect(isGeneratedFilePart({ type: 'file', url: undefined }))
+      .toBe(false)
   })
 })

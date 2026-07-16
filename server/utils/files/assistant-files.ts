@@ -1,7 +1,11 @@
 import type { UIMessage } from 'ai'
 import type { ImageGenerationReady } from '#shared/types/image-generation.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { isSafeFileStorageKey } from '#shared/utils/files'
+import {
+  extractLocalFileStorageKey,
+  isSafeFileStorageKey,
+  markUrlAsGeneratedFile,
+} from '#shared/utils/files'
 import {
   getPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
@@ -241,7 +245,7 @@ async function normalizeGeneratedImageToolParts(
         type: 'file',
         mediaType: file.type,
         filename: file.name,
-        url: `/files/${file.storageKey}`,
+        url: markUrlAsGeneratedFile(`/files/${file.storageKey}`),
       })
       continue
     }
@@ -356,7 +360,7 @@ function hasMatchingNormalizedFilePart(
     return part.type === 'file'
       && part.mediaType === output.file.type
       && part.filename === output.file.name
-      && part.url === `/files/${output.file.storageKey}`
+      && extractLocalFileStorageKey(part.url) === output.file.storageKey
   })
 }
 

@@ -79,7 +79,7 @@
 
       <span
         v-if="file.source === 'assistant'"
-        class="badge badge-secondary badge-xs absolute bottom-1 left-1 z-10"
+        class="badge badge-secondary badge-xs absolute bottom-1 left-1 z-10 text-2xs leading-none gap-0.5"
       >
         <Icon name="lucide:sparkles" size="10" />
         {{ getAiBadgeLabel(file) }}

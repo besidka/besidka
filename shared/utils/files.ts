@@ -6,6 +6,36 @@ export function isHiddenFilePart(
   return part.type === 'file' && part.mediaType === HIDDEN_FILE_MEDIA_TYPE
 }
 
+const GENERATED_FILE_QUERY_PARAM = 'generated'
+
+export function markUrlAsGeneratedFile(url: string): string {
+  try {
+    const target = new URL(url, 'https://besidka.local')
+
+    target.searchParams.set(GENERATED_FILE_QUERY_PARAM, '1')
+
+    return `${target.pathname}${target.search}${target.hash}`
+  } catch {
+    return url
+  }
+}
+
+export function isGeneratedFilePart(
+  part: { type: string, url?: string },
+): boolean {
+  if (part.type !== 'file' || typeof part.url !== 'string') {
+    return false
+  }
+
+  try {
+    const url = new URL(part.url, 'https://besidka.local')
+
+    return url.searchParams.get(GENERATED_FILE_QUERY_PARAM) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`

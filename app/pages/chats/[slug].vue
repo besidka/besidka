@@ -566,6 +566,7 @@ const {
   spacerHeight,
   waitingForDimensions,
   reserveSpaceForClarify,
+  pushUserMessageToTop,
 } = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
@@ -589,6 +590,26 @@ if (import.meta.client) {
       reserveSpaceForClarify()
     },
   )
+
+  // The pending image skeleton (a fixed 1:1 square) is rendered outside the
+  // messages v-for, so captureMessageDimensions() never tracks its height —
+  // when it's swapped for the real, differently-sized skeleton, the reserved
+  // spacer/scroll position is stale until adjustSpacerAfterResponse() runs at
+  // 'ready'. Re-pin immediately on that swap so the user message doesn't
+  // visibly retreat while the turn is still streaming.
+  watch(shouldRenderPendingImageGeneration, async (isPending, wasPending) => {
+    if (isPending || !wasPending) {
+      return
+    }
+
+    await nextTick()
+
+    if (!['submitted', 'streaming'].includes(chatSdk.status)) {
+      return
+    }
+
+    pushUserMessageToTop('instant')
+  })
 }
 
 function openProjectPicker() {

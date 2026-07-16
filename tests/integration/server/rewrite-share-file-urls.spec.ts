@@ -273,6 +273,36 @@ describe('rewriteShareFileParts', () => {
     expect(mocks.createFileAccessToken).not.toHaveBeenCalled()
   })
 
+  it('preserves the generated-file marker for an owned file while stripping a stale token', async () => {
+    mocks.filesFindMany.mockResolvedValue([{
+      id: 'file-1',
+      storageKey: 'owned.png',
+      size: 100,
+    }])
+
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [{
+        type: 'file',
+        url: '/files/owned.png?token=stale&generated=1',
+        mediaType: 'image/png',
+      }],
+    }] as unknown as UIMessage[]
+
+    const result = await rewriteBranchedChatFileParts(
+      messages,
+      2,
+      null,
+    )
+
+    expect(result[0]?.parts).toEqual([{
+      type: 'file',
+      url: '/files/owned.png?generated=1',
+      mediaType: 'image/png',
+    }])
+  })
+
   it('keeps only files granted by the current source share', async () => {
     mocks.chatShareFilesFindMany.mockResolvedValue([{
       fileId: 'file-1',

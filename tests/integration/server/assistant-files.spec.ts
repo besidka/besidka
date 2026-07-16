@@ -418,10 +418,15 @@ describe('assistant files scaffolding', () => {
         type: 'file',
         mediaType: 'image/webp',
         filename: 'quiet-forest.webp',
-        url: '/files/generated.webp',
+        url: '/files/generated.webp?generated=1',
       },
     ])
     expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
+    expect(getGeneratedImageFileIds(
+      parts,
+      'openai',
+      normalizedParts,
+    )).toEqual(['file-1'])
     expect(loggerSet).not.toHaveBeenCalled()
   })
 
@@ -470,7 +475,7 @@ describe('assistant files scaffolding', () => {
         type: 'file',
         mediaType: 'image/webp',
         filename: 'quiet-forest.webp',
-        url: '/files/generated.webp',
+        url: '/files/generated.webp?generated=1',
       },
     ])
     expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])

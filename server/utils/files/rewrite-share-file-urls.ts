@@ -1,6 +1,10 @@
 import type { FileUIPart, UIMessage } from 'ai'
 import type { H3Event } from 'h3'
-import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
+import {
+  HIDDEN_FILE_MEDIA_TYPE,
+  isGeneratedFilePart,
+  markUrlAsGeneratedFile,
+} from '#shared/utils/files'
 import { SHARE_FILE_TOKEN_TTL_SECONDS } from '~~/server/utils/chats/share'
 import {
   extractStorageKeyFromFileUrl,
@@ -131,7 +135,7 @@ export async function rewriteBranchedChatFileParts<
       if (ownedFiles.has(storageKey)) {
         rewrittenParts.push({
           ...part,
-          url: `/files/${storageKey}`,
+          url: buildOwnedFileUrl(part.url, storageKey),
         })
         continue
       }
@@ -234,6 +238,17 @@ async function tokenizeFilePart(
     ...part,
     url: buildTokenizedFileUrl(part.url, storageKey, token),
   }
+}
+
+function buildOwnedFileUrl(
+  sourceUrl: string,
+  storageKey: string,
+): string {
+  const canonicalUrl = `/files/${storageKey}`
+
+  return isGeneratedFilePart({ type: 'file', url: sourceUrl })
+    ? markUrlAsGeneratedFile(canonicalUrl)
+    : canonicalUrl
 }
 
 function buildTokenizedFileUrl(
