@@ -591,14 +591,44 @@ describe('chat error helpers', () => {
     expect(readyPart.output?.status).toBe('ready')
   })
 
-  it('preserves message identity when no streamed image tool is present', () => {
+  it('returns a fresh array without cloning messages for text replies', () => {
     const messages = [{
       id: 'assistant-1',
       role: 'assistant',
       parts: [{ type: 'text', text: 'Hello' }],
     }] as UIMessage[]
 
-    expect(getRenderableChatMessages(messages)).toBe(messages)
+    const result = getRenderableChatMessages(messages)
+
+    expect(result).not.toBe(messages)
+    expect(result[0]).toBe(messages[0])
+  })
+
+  it('propagates an in-place streamed text update to a computed consumer', () => {
+    const textPart = { type: 'text', text: '' }
+    const messages = [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [textPart],
+    }] as unknown as UIMessage[]
+    const sdkMessages = shallowRef<UIMessage[]>(messages)
+    const renderableMessages = computed<UIMessage[]>(() => {
+      return getRenderableChatMessages(sdkMessages.value)
+    })
+    const isAssistantVisible = computed<boolean>(() => {
+      const message = renderableMessages.value.find((candidate) => {
+        return candidate.id === 'assistant-1'
+      })
+
+      return hasVisibleAssistantContent(message)
+    })
+
+    expect(isAssistantVisible.value).toBe(false)
+
+    textPart.text = 'This is a streamed reply.'
+    triggerRef(sdkMessages)
+
+    expect(isAssistantVisible.value).toBe(true)
   })
 
   it('treats a persisted file-only reply as visible assistant content', () => {

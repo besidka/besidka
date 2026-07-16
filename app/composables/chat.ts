@@ -391,13 +391,24 @@ export function shouldShowGenericLoadingIndicator(
   return !hasVisibleAssistantContent(lastMessage)
 }
 
+// The AI SDK Vue adapter keeps `messages` in a shallowRef, mutates it in place
+// (push / element replace), and signals updates via triggerRef. Feeding that
+// same array reference straight through a computed is a trap: Vue 3.4+ compares
+// a computed's new result against its previous one and, when they are === (the
+// same array), suppresses the downstream notification entirely. Message-content
+// changes then never reach template bindings that depend only on the messages
+// (e.g. shouldDisplayMessage's data-hide-content), so a fully streamed reply
+// can stay display:hidden until an unrelated re-render reads the live array.
+// Returning a fresh array on every call gives the computed a new identity per
+// SDK trigger, so those bindings react. Do NOT change these to `return
+// messages`.
 export function getRenderableChatMessages(
   messages: UIMessage[],
 ): UIMessage[] {
   const lastMessage = messages.at(-1)
 
   if (!lastMessage || lastMessage.role !== 'assistant') {
-    return messages
+    return [...messages]
   }
 
   const hasImageToolPart = lastMessage.parts.some((part) => {
@@ -405,7 +416,7 @@ export function getRenderableChatMessages(
   })
 
   if (!hasImageToolPart) {
-    return messages
+    return [...messages]
   }
 
   return [
