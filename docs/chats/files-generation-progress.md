@@ -6,7 +6,7 @@ Branch: `files-generation`
 
 Pull request: [#300](https://github.com/besidka/besidka/pull/300)
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 This ledger records implementation state for the
 [AI image and file generation plan](./files-generation-plan.md). The image MVP
@@ -78,6 +78,40 @@ scheduled invalidation key. This prevents one PR preview from reading another
 feature preview's cached object. The redeployed endpoint and server-rendered
 home page then returned 27 retained files split into 23 uploads and 4 generated
 images at the verification timestamp.
+
+## Second regression: hidden replies and spacer jump (2026-07-17)
+
+The rendering-boundary fix above only snapshotted the trailing assistant
+message when it carried an image tool part. Plain text and reasoning replies
+still returned the same `messages` array reference, so the identity-check gap
+it described was still live for ordinary chat: once a reply finished
+streaming, the `data-hide-content` visibility binding could stay stale and
+leave a fully rendered assistant bubble at `display:none` until an unrelated
+re-render (typically submitting the next message) happened to read the live
+array. This reproduced from the first assistant turn in low-render-churn
+conditions and from the second turn onward in real usage.
+`getRenderableChatMessages()` now returns a fresh array on every call for both
+identity-passthrough branches, not only the image one.
+
+Separately, the pending image skeleton was gated on the generic loading
+indicator, which hides the instant any visible content appears - including
+streamed reasoning before the tool call starts. For a model that reasons
+first, this unmounted the skeleton into a genuinely empty window, shrinking
+the turn and letting the browser clamp scroll position, which visibly jumped
+the pinned user message until the turn finished. The skeleton is now gated on
+turn status plus content that actually replaces it (a renderable tool part,
+non-empty text, or a file), so reasoning alone no longer dismisses it.
+
+This round also added a sanitized `(ref: <id>)` suffix to persisted and live
+image-generation failure text, sourced from the same `providerRequestId` or
+`requestId` already carried on the error payload, and logged that same
+`requestId` on the failure record so a user-reported ref is directly
+greppable. The `generation-busy` message no longer claims an image is
+actively generating when the account-wide lock is only in its post-release
+cooldown - a chat that never itself started a generation could otherwise hit
+this exact message from a different chat's recent attempt and read it as a
+stuck, unexplained error. The failure alert also renders full width instead
+of a fixed narrow card that clipped longer messages.
 
 ## Landing metrics and discovery content
 
@@ -299,7 +333,10 @@ commits. The final documentation commit records the release state.
 | 5 | `fix(chats): stabilize image generation experience` | Published | `1b61a12` |
 | 6 | `fix(landing): isolate image stats cache` | Published | `1520473` |
 | 7 | `docs(chats): record image generation follow-up` | Published | `be4b599` |
-| 8 | `feat(providers): add image generation models` | This commit | See PR history |
+| 8 | `feat(providers): add image generation models` | Published | `5df962f` |
+| 9 | `fix(chat): stop assistant replies from staying hidden after streaming` | Published | `1cfb1f1` |
+| 10 | `fix(chat): remove spacer jump when reasoning precedes image generation` | Published | `b43d330` |
+| 11 | `fix(chat): support-reference image-generation failures, fix busy wording` | This commit | See PR history |
 
 GitHub's `main` advanced by five commits after this worktree branched. Those
 commits modify only package-management configuration and do not overlap this
