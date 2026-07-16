@@ -1,6 +1,9 @@
 import type { ReasoningUIPart, TextUIPart } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import { chatTestErrorIds } from '#shared/utils/chat-test-errors'
+import {
+  chatTestErrorIds,
+  chatTestScenarios,
+} from '#shared/utils/chat-test-errors'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
 
 const shortMessage = 'Test message'
@@ -23,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
   const query = await getValidatedQuery(event, z.object({
     scenario: z
-      .enum(['short', 'long', 'reasoning'])
+      .enum(chatTestScenarios)
       .default('short'),
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),

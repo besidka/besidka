@@ -419,8 +419,22 @@ nuxtApp.hook('chat:rendered', (container) => {
 
 nuxtApp.hook('chat-spacer:changed', () => measure())
 
-nuxtApp.hook('chat:attach-file', (file) => {
+nuxtApp.hook('chat:attach-file', async (file) => {
   onFilesAttached([file])
+  await nextTick()
+
+  const measuredHeight = chatInputRef.value?.offsetHeight
+
+  // chat-input:height's own watcher (below) suppresses re-emitting while
+  // the textarea has text, to avoid spamming the spacer on every keystroke
+  // — but that means it never reports a resize caused by attaching a file
+  // while a draft is already typed. Measure and report directly here
+  // instead of waiting on that watcher or a ResizeObserver, both of which
+  // can be delayed or throttled (e.g. a backgrounded tab).
+  if (measuredHeight) {
+    nuxtApp.callHook('chat-input:height', measuredHeight)
+  }
+
   nuxtApp.callHook('chat:scroll-to-bottom')
 })
 

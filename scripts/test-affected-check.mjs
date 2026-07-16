@@ -425,6 +425,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
     },
     {
+      pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
+      tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
+    },
+    {
       pattern: /^app\/components\/ChatInput\/Files\/.*\.vue$/,
       tests: filesModuleTests,
     },

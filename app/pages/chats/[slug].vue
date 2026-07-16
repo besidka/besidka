@@ -204,7 +204,10 @@
 <script setup lang="ts">
 import type { TextUIPart, UIMessage } from 'ai'
 import { parseError } from 'evlog'
-import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
+import {
+  isChatTestErrorId,
+  isChatTestScenario,
+} from '#shared/utils/chat-test-errors'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
 
@@ -253,7 +256,7 @@ const query = computed(() => {
     ? route.query.error
     : undefined
 
-  if (!['short', 'long', 'reasoning'].includes(scenario)) {
+  if (!isChatTestScenario(scenario)) {
     scenario = 'short'
   }
 
@@ -593,13 +596,23 @@ if (import.meta.client) {
   // Reserve the pinned space as soon as the pending image skeleton is about
   // to render, instead of waiting for captureMessageDimensions()'s own
   // 150ms-debounced pin. This closes the empty gap between the loader hiding
-  // and the skeleton settling into place. Re-run the same reservation on the
-  // phantom-to-real swap too: if the model streams visible reasoning before
-  // calling the tool, that reasoning grows the assistant message's height
-  // after the first reservation ran, and nothing else re-measures it before
-  // adjustSpacerAfterResponse() finally does at 'ready' — recomputing here
-  // keeps the anchor pinned without waiting for the whole turn to finish.
-  watch(shouldRenderPendingImageGeneration, async () => {
+  // and the skeleton settling into place.
+  //
+  // Deliberately rising-edge only — do NOT also re-run this on the
+  // phantom-to-real swap (falling edge). Measured empirically (see the
+  // scroll-spacer image e2e scenario): re-running reservePinnedSpace() at
+  // that swap calls messagesEndRef.scrollIntoView() while the real skeleton
+  // is still settling into the v-for, which can clamp scrollTop to 0 and
+  // visibly un-pin the conversation until adjustSpacerAfterResponse() fixes
+  // it again at 'ready' — actively worse than the brief staleness it was
+  // meant to correct for a model that streams reasoning before the tool
+  // call. adjustSpacerAfterResponse() still corrects that rarer case once
+  // the turn finishes.
+  watch(shouldRenderPendingImageGeneration, async (isPending) => {
+    if (!isPending) {
+      return
+    }
+
     await nextTick()
     reservePinnedSpace('instant')
   })
