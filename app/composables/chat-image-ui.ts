@@ -23,12 +23,12 @@ export function useChatImageUi(
   getMessages: () => UIMessage[],
   options: {
     isImageGenerationTurnPending?: () => boolean
-    isLoading?: () => boolean
+    isTurnActive?: () => boolean
   } = {},
 ) {
   const isImageGenerationTurnPending
     = options.isImageGenerationTurnPending ?? (() => false)
-  const isLoading = options.isLoading ?? (() => false)
+  const isTurnActive = options.isTurnActive ?? (() => false)
 
   const hasActiveImageGenerationToolPart = computed<boolean>(() => {
     const message = getMessages().at(-1)
@@ -56,10 +56,37 @@ export function useChatImageUi(
     })
   })
 
+  // Streamed reasoning must NOT dismiss the pending skeleton: models that
+  // reason before calling the tool would otherwise unmount it while no real
+  // tool part exists yet, shrinking the content below the pinned user
+  // message and letting the browser clamp scrollTop down (visible jump).
+  // Only content that visually replaces the skeleton dismisses it: a
+  // renderable image tool part (the real skeleton, result, or error card),
+  // non-empty text, or a file part.
+  const hasPendingImageDismissingContent = computed<boolean>(() => {
+    const message = getMessages().at(-1)
+
+    if (!message || message.role !== 'assistant') {
+      return false
+    }
+
+    return message.parts.some((part) => {
+      if (part.type === 'file') {
+        return true
+      }
+
+      if (part.type === 'text') {
+        return Boolean(part.text?.trim().length)
+      }
+
+      return isVisibleGenerateImageToolPart(part)
+    })
+  })
+
   const shouldRenderPendingImageGeneration = computed<boolean>(() => {
     return isImageGenerationTurnPending()
-      && isLoading()
-      && !hasActiveImageGenerationToolPart.value
+      && isTurnActive()
+      && !hasPendingImageDismissingContent.value
   })
 
   const hasImageGenerationProgress = computed<boolean>(() => {

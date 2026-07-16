@@ -374,7 +374,7 @@ const {
   shouldFitMessageContent,
 } = useChatImageUi(() => chatSdk.messages, {
   isImageGenerationTurnPending: () => isImageGenerationTurnPending.value,
-  isLoading: () => isLoading.value,
+  isTurnActive: () => ['submitted', 'streaming'].includes(chatSdk.status),
 })
 
 seedActiveResearchJob(
