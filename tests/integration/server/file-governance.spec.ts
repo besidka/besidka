@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { validateMessageFilePolicy } from '../../../server/utils/files/file-governance'
+import {
+  getOwnedGeneratedImageFilesByStorageKeys,
+  validateMessageFilePolicy,
+} from '../../../server/utils/files/file-governance'
 
 const mocks = vi.hoisted(() => ({
   storagesFindFirst: vi.fn(),
@@ -94,6 +97,100 @@ describe('validateMessageFilePolicy', () => {
       },
     ] as any)).rejects.toMatchObject({
       statusMessage: 'Attached files exceed the maximum total size per message',
+    })
+  })
+})
+
+describe('getOwnedGeneratedImageFilesByStorageKeys', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    vi.stubGlobal('useDb', () => ({
+      query: {
+        files: {
+          findMany: mocks.filesFindMany,
+        },
+      },
+    }))
+  })
+
+  it('returns an empty map without querying when given no storage keys', async () => {
+    const result = await getOwnedGeneratedImageFilesByStorageKeys(1, [])
+
+    expect(result.size).toBe(0)
+    expect(mocks.filesFindMany).not.toHaveBeenCalled()
+  })
+
+  it('queries deduplicated storage keys scoped to the owner and assistant source', async () => {
+    mocks.filesFindMany.mockResolvedValue([
+      {
+        id: 'file-1',
+        storageKey: 'generated.png',
+        name: 'generated.png',
+        size: 1_234,
+        type: 'image/png',
+        originProvider: 'openai',
+        originModel: 'gpt-image-1',
+      },
+    ])
+
+    const result = await getOwnedGeneratedImageFilesByStorageKeys(1, [
+      'generated.png',
+      'generated.png',
+    ])
+
+    expect(mocks.filesFindMany).toHaveBeenCalledWith({
+      where: {
+        userId: 1,
+        source: 'assistant',
+        storageKey: { in: ['generated.png'] },
+      },
+      columns: {
+        id: true,
+        storageKey: true,
+        name: true,
+        size: true,
+        type: true,
+        originProvider: true,
+        originModel: true,
+      },
+    })
+    expect(result.get('generated.png')).toEqual({
+      id: 'file-1',
+      storageKey: 'generated.png',
+      name: 'generated.png',
+      size: 1_234,
+      type: 'image/png',
+      originProvider: 'openai',
+      originModel: 'gpt-image-1',
+    })
+  })
+
+  it('keeps null provider/model for legacy rows instead of skipping them', async () => {
+    mocks.filesFindMany.mockResolvedValue([
+      {
+        id: 'file-2',
+        storageKey: 'legacy.png',
+        name: 'legacy.png',
+        size: 500,
+        type: 'image/png',
+        originProvider: null,
+        originModel: null,
+      },
+    ])
+
+    const result = await getOwnedGeneratedImageFilesByStorageKeys(1, [
+      'legacy.png',
+    ])
+
+    expect(result.get('legacy.png')).toEqual({
+      id: 'file-2',
+      storageKey: 'legacy.png',
+      name: 'legacy.png',
+      size: 500,
+      type: 'image/png',
+      originProvider: null,
+      originModel: null,
     })
   })
 })

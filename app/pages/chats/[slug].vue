@@ -565,8 +565,7 @@ if (import.meta.client) {
 const {
   spacerHeight,
   waitingForDimensions,
-  reserveSpaceForClarify,
-  pushUserMessageToTop,
+  reservePinnedSpace,
 } = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
@@ -587,28 +586,22 @@ if (import.meta.client) {
       }
 
       await nextTick()
-      reserveSpaceForClarify()
+      reservePinnedSpace()
     },
   )
 
-  // The pending image skeleton (a fixed 1:1 square) is rendered outside the
-  // messages v-for, so captureMessageDimensions() never tracks its height —
-  // when it's swapped for the real, differently-sized skeleton, the reserved
-  // spacer/scroll position is stale until adjustSpacerAfterResponse() runs at
-  // 'ready'. Re-pin immediately on that swap so the user message doesn't
-  // visibly retreat while the turn is still streaming.
-  watch(shouldRenderPendingImageGeneration, async (isPending, wasPending) => {
-    if (isPending || !wasPending) {
-      return
-    }
-
+  // Reserve the pinned space as soon as the pending image skeleton is about
+  // to render, instead of waiting for captureMessageDimensions()'s own
+  // 150ms-debounced pin. This closes the empty gap between the loader hiding
+  // and the skeleton settling into place. Re-run the same reservation on the
+  // phantom-to-real swap too: if the model streams visible reasoning before
+  // calling the tool, that reasoning grows the assistant message's height
+  // after the first reservation ran, and nothing else re-measures it before
+  // adjustSpacerAfterResponse() finally does at 'ready' — recomputing here
+  // keeps the anchor pinned without waiting for the whole turn to finish.
+  watch(shouldRenderPendingImageGeneration, async () => {
     await nextTick()
-
-    if (!['submitted', 'streaming'].includes(chatSdk.status)) {
-      return
-    }
-
-    pushUserMessageToTop('instant')
+    reservePinnedSpace('instant')
   })
 }
 

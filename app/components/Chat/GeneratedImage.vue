@@ -20,12 +20,12 @@
 
     <div
       v-else-if="readyFile"
-      class="overflow-hidden rounded-box border border-base-300 bg-base-200"
+      class="rounded-box border border-base-300 bg-base-200"
       data-testid="generated-image-ready"
     >
       <button
         type="button"
-        class="relative block w-full cursor-zoom-in overflow-hidden bg-base-300 disabled:cursor-default"
+        class="relative block w-full cursor-zoom-in overflow-hidden rounded-t-box bg-base-300 disabled:cursor-default"
         :style="{ aspectRatio: imageAspectRatio }"
         :disabled="hasImageLoadError"
         :aria-label="`Preview ${readyFile.name}`"

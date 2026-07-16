@@ -543,6 +543,7 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...chatTestEndpointTests,
         ...messageUsageTests,
+        'tests/integration/api/chats-detail.spec.ts',
       ],
     },
     {
@@ -560,6 +561,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/files\/.*\.ts$/,
       tests: filesModuleTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
+      tests: ['tests/integration/api/chats-detail.spec.ts'],
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,

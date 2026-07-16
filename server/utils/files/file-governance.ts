@@ -46,6 +46,16 @@ interface OwnedFile {
   size: number
 }
 
+export interface OwnedGeneratedImageFile {
+  id: string
+  storageKey: string
+  name: string
+  size: number
+  type: string
+  originProvider: string | null
+  originModel: string | null
+}
+
 export function getCurrentMonthKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 7)
 }
@@ -448,6 +458,41 @@ export async function getOwnedFilesByStorageKeys(
   })
 
   const map = new Map<string, OwnedFile>()
+
+  for (const file of files) {
+    map.set(file.storageKey, file)
+  }
+
+  return map
+}
+
+export async function getOwnedGeneratedImageFilesByStorageKeys(
+  userId: number,
+  storageKeys: string[],
+): Promise<Map<string, OwnedGeneratedImageFile>> {
+  if (storageKeys.length === 0) {
+    return new Map<string, OwnedGeneratedImageFile>()
+  }
+
+  const uniqueStorageKeys = Array.from(new Set(storageKeys))
+  const files = await useDb().query.files.findMany({
+    where: {
+      userId,
+      source: 'assistant',
+      storageKey: { in: uniqueStorageKeys },
+    },
+    columns: {
+      id: true,
+      storageKey: true,
+      name: true,
+      size: true,
+      type: true,
+      originProvider: true,
+      originModel: true,
+    },
+  })
+
+  const map = new Map<string, OwnedGeneratedImageFile>()
 
   for (const file of files) {
     map.set(file.storageKey, file)
