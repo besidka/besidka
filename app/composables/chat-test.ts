@@ -1,6 +1,9 @@
 import type { Chat } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
-import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
+import {
+  isChatTestErrorId,
+  isChatTestScenario,
+} from '#shared/utils/chat-test-errors'
 import type { Ref } from 'vue'
 
 export function useChatTest(
@@ -21,6 +24,7 @@ export function useChatTest(
         messages: undefined,
         effort: undefined,
         error: undefined,
+        imageReasoningFirst: undefined,
       }
     }
 
@@ -33,7 +37,7 @@ export function useChatTest(
       ? route.query.error
       : undefined
 
-    if (!['short', 'long', 'reasoning', 'image'].includes(scenario)) {
+    if (!isChatTestScenario(scenario)) {
       scenario = 'short'
     }
 
@@ -46,6 +50,7 @@ export function useChatTest(
       messages: route.query.messages as string || '1',
       effort,
       error,
+      imageReasoningFirst: 'imageReasoningFirst' in route.query,
     }
   })
 
@@ -65,6 +70,10 @@ export function useChatTest(
 
     if (query.value.error) {
       searchParams.set('error', query.value.error)
+    }
+
+    if (query.value.imageReasoningFirst) {
+      searchParams.set('imageReasoningFirst', 'true')
     }
 
     const paramsString = searchParams.toString()

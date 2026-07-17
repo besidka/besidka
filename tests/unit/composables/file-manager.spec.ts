@@ -8,6 +8,7 @@ const smallFileSet = [
     name: 'Screenshot 1.png',
     size: 12345,
     type: 'image/png',
+    source: 'upload' as const,
     createdAt: new Date('2024-01-01').toISOString(),
   },
   {
@@ -16,6 +17,7 @@ const smallFileSet = [
     name: 'Document.pdf',
     size: 45678,
     type: 'application/pdf',
+    source: 'assistant' as const,
     createdAt: new Date('2024-01-02').toISOString(),
   },
   {
@@ -24,6 +26,7 @@ const smallFileSet = [
     name: 'Notes.txt',
     size: 890,
     type: 'text/plain',
+    source: 'upload' as const,
     createdAt: new Date('2024-01-03').toISOString(),
   },
 ]
@@ -35,6 +38,8 @@ function generateFiles(count: number) {
     name: `File ${index + 1}.png`,
     size: 1000 + index,
     type: 'image/png',
+    source: (index % 2 === 0 ? 'upload' : 'assistant') as
+      'upload' | 'assistant',
     createdAt: new Date(2024, 0, index + 1).toISOString(),
   }))
 }
@@ -46,13 +51,17 @@ function createFetchMock(fileSet: typeof smallFileSet) {
   return vi.fn(async (url: string, options?: any) => {
     if (url === '/api/v1/files') {
       const search = options?.query?.search?.toLowerCase() || ''
+      const source = options?.query?.source || 'all'
       const offset = options?.query?.offset || 0
       const limit = options?.query?.limit || 20
+      const sourceFiles = source === 'all'
+        ? fileSet
+        : fileSet.filter(file => file.source === source)
       const filteredFiles = search
-        ? fileSet.filter((file) => {
+        ? sourceFiles.filter((file) => {
           return file.name.toLowerCase().includes(search)
         })
-        : fileSet
+        : sourceFiles
 
       return {
         files: filteredFiles.slice(offset, offset + limit),
@@ -102,6 +111,18 @@ async function flushPromises() {
   await Promise.resolve()
 }
 
+function createDeferred<T>() {
+  let resolvePromise!: (value: T) => void
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve
+  })
+
+  return {
+    promise,
+    resolve: resolvePromise,
+  }
+}
+
 describe('useFileManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -123,6 +144,117 @@ describe('useFileManager', () => {
     expect(manager.files.value).toHaveLength(3)
     expect(manager.pagination.total).toBe(3)
     expect(manager.hasMore.value).toBe(false)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/files', {
+      query: {
+        offset: 0,
+        limit: 20,
+        source: 'all',
+      },
+    })
+  })
+
+  it('filters by source and resets pagination and selection', async () => {
+    const manager = useFileManager()
+
+    await manager.fetchFiles(true)
+    manager.selectedIds.value = new Set(['file-1'])
+    manager.pagination.offset = 20
+    manager.source.value = 'assistant'
+
+    await vi.waitFor(() => {
+      expect(manager.files.value).toHaveLength(1)
+    })
+
+    expect(manager.files.value[0]?.id).toBe('file-2')
+    expect(manager.selectedIds.value.size).toBe(0)
+    expect(manager.pagination.offset).toBe(0)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/files', {
+      query: {
+        offset: 0,
+        limit: 20,
+        source: 'assistant',
+      },
+    })
+  })
+
+  it('ignores an older All response after switching source', async () => {
+    const allResponse = createDeferred<{
+      files: typeof smallFileSet
+      total: number
+      offset: number
+      limit: number
+    }>()
+    const assistantResponse = createDeferred<{
+      files: typeof smallFileSet
+      total: number
+      offset: number
+      limit: number
+    }>()
+    const raceFetchMock = vi.fn(
+      async (_url: string, options?: any) => {
+        if (options?.query?.source === 'assistant') {
+          return assistantResponse.promise
+        }
+
+        return allResponse.promise
+      },
+    )
+
+    vi.stubGlobal('$fetch', raceFetchMock)
+
+    const manager = useFileManager()
+    const initialRequest = manager.fetchFiles(true)
+
+    manager.source.value = 'assistant'
+    assistantResponse.resolve({
+      files: [smallFileSet[1]!],
+      total: 1,
+      offset: 0,
+      limit: 20,
+    })
+
+    await vi.waitFor(() => {
+      expect(manager.files.value[0]?.id).toBe('file-2')
+    })
+
+    allResponse.resolve({
+      files: smallFileSet,
+      total: smallFileSet.length,
+      offset: 0,
+      limit: 20,
+    })
+    await initialRequest
+
+    expect(manager.files.value.map(file => file.id)).toEqual(['file-2'])
+    expect(manager.pagination.total).toBe(1)
+    expect(manager.isLoading.value).toBe(false)
+  })
+
+  it('does not repopulate files after reset closes the view', async () => {
+    const pendingResponse = createDeferred<{
+      files: typeof smallFileSet
+      total: number
+      offset: number
+      limit: number
+    }>()
+
+    vi.stubGlobal('$fetch', vi.fn(async () => pendingResponse.promise))
+
+    const manager = useFileManager()
+    const pendingRequest = manager.fetchFiles(true)
+
+    manager.reset()
+    pendingResponse.resolve({
+      files: smallFileSet,
+      total: smallFileSet.length,
+      offset: 0,
+      limit: 20,
+    })
+    await pendingRequest
+
+    expect(manager.files.value).toEqual([])
+    expect(manager.pagination.total).toBe(0)
+    expect(manager.isLoading.value).toBe(false)
   })
 
   it('searches files with debounce', async () => {
@@ -168,6 +300,110 @@ describe('useFileManager', () => {
     )
     expect(manager.files.value).toHaveLength(1)
     expect(manager.files.value[0]?.id).toBe('file-3')
+  })
+
+  it('uses the selection snapshot when bulk delete resolves', async () => {
+    const deleteResponse = createDeferred<void>()
+    const baseFetchMock = fetchMock
+    const raceFetchMock = vi.fn(
+      async (url: string, options?: any) => {
+        if (url === '/api/v1/files/delete/bulk') {
+          await deleteResponse.promise
+
+          return { success: true }
+        }
+
+        return baseFetchMock(url, options)
+      },
+    )
+
+    vi.stubGlobal('$fetch', raceFetchMock)
+
+    const manager = useFileManager()
+
+    await manager.fetchFiles(true)
+    manager.selectedIds.value = new Set(['file-1', 'file-2'])
+
+    const deletePromise = manager.deleteSelected()
+
+    manager.selectedIds.value = new Set(['file-3'])
+    deleteResponse.resolve()
+
+    expect(await deletePromise).toBe(true)
+    expect(raceFetchMock).toHaveBeenCalledWith(
+      '/api/v1/files/delete/bulk',
+      {
+        method: 'POST',
+        body: { ids: ['file-1', 'file-2'] },
+      },
+    )
+    expect(manager.files.value.map(file => file.id)).toEqual(['file-3'])
+    expect([...manager.selectedIds.value]).toEqual(['file-3'])
+    expect(manager.pagination.total).toBe(1)
+  })
+
+  it('reconciles a delete after the source filter changes', async () => {
+    const deleteResponse = createDeferred<void>()
+    let hasDeletedAssistantFile = false
+    const raceFetchMock = vi.fn(
+      async (url: string, options?: any) => {
+        if (
+          url === '/api/v1/files/file-2'
+          && options?.method === 'DELETE'
+        ) {
+          await deleteResponse.promise
+          hasDeletedAssistantFile = true
+
+          return { success: true }
+        }
+
+        if (url === '/api/v1/files') {
+          let responseFiles = smallFileSet
+
+          if (options?.query?.source === 'assistant') {
+            responseFiles = hasDeletedAssistantFile
+              ? []
+              : [smallFileSet[1]!]
+          }
+
+          return {
+            files: responseFiles,
+            total: responseFiles.length,
+            offset: 0,
+            limit: 20,
+          }
+        }
+
+        throw new Error(`Unhandled $fetch call: ${url}`)
+      },
+    )
+
+    vi.stubGlobal('$fetch', raceFetchMock)
+
+    const manager = useFileManager()
+
+    await manager.fetchFiles(true)
+
+    const deletePromise = manager.deleteFile('file-2')
+
+    manager.source.value = 'assistant'
+
+    await vi.waitFor(() => {
+      expect(manager.files.value.map(file => file.id)).toEqual(['file-2'])
+    })
+
+    deleteResponse.resolve()
+
+    expect(await deletePromise).toBe(true)
+    expect(manager.files.value).toEqual([])
+    expect(manager.pagination.total).toBe(0)
+
+    const assistantFetches = raceFetchMock.mock.calls.filter((call) => {
+      return call[0] === '/api/v1/files'
+        && call[1]?.query?.source === 'assistant'
+    })
+
+    expect(assistantFetches).toHaveLength(2)
   })
 
   it('deletes file via single-file endpoint', async () => {

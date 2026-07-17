@@ -61,7 +61,7 @@
             ref="textarea"
             v-model="input"
             class="textarea p-4 textarea-ghost !bg-transparent w-lg max-w-full !w-full h-12 max-h-[50dvh] rounded-sm border-0 no-scrollbar resize-none !outline-none"
-            placeholder="Type your message here..."
+            :placeholder="textareaPlaceholder"
             :disabled="displayStop"
             @keydown.enter.exact="handleEnter"
             @focus="onKeyboardFocus"
@@ -73,6 +73,7 @@
                 <LazyChatInputModelsTrigger
                   hydrate-on-idle
                   :is-web-search-enabled="isWebSearchEnabled"
+                  :is-image-generation-enabled="isImageGenerationEnabled"
                   :is-reasoning-enabled="isReasoningActive"
                 />
               </div>
@@ -100,7 +101,12 @@
                         : 'lucide:folder'"
                       size="14"
                     />
-                    {{ projectContext ? projectContext.name : '' }}
+                    <span
+                      v-if="projectContext"
+                      class="truncate max-w-[100px]"
+                    >
+                      {{ projectContext.name }}
+                    </span>
                   </button>
                   <button
                     v-if="projectContext"
@@ -118,6 +124,31 @@
                   :files="files"
                   @detach-all="files = []"
                   @open="openFilesModal"
+                />
+                <UiButton
+                  v-if="isImageGenerationSupported && !isDeepResearchModel"
+                  mode="accent"
+                  :ghost="isImageGenerationEnabled ? undefined : true"
+                  :circle="!isImageGenerationEnabled"
+                  icon-name="lucide:image-plus"
+                  :icon-size="16"
+                  :icon-only="!isImageGenerationEnabled"
+                  :title="isImageGenerationEnabled
+                    ? isImageGenerationRequired
+                      ? 'Image creation is required for this model'
+                      : 'Disable image creation'
+                    : 'Create an image'
+                  "
+                  text="Create image"
+                  tooltip-position="top"
+                  size="xs"
+                  class="rounded-full"
+                  :aria-disabled="isImageGenerationRequired"
+                  :class="{
+                    'pl-[5px] btn-active': isImageGenerationEnabled,
+                    'pointer-events-none': isImageGenerationRequired,
+                  }"
+                  @click="toggleImageGeneration"
                 />
                 <UiButton
                   v-if="isWebSearchSupported && !isDeepResearchModel"
@@ -185,6 +216,9 @@
                 hydrate-on-idle
                 :is-web-search-supported="isWebSearchSupported"
                 :is-web-search-enabled="isWebSearchEnabled"
+                :is-image-generation-supported="isImageGenerationSupported"
+                :is-image-generation-enabled="isImageGenerationEnabled"
+                :is-image-generation-required="isImageGenerationRequired"
                 :is-reasoning-supported="isReasoningSupported"
                 :is-reasoning-active="isReasoningActive"
                 :reasoning-mode="reasoningMode"
@@ -199,6 +233,7 @@
                 :project-context="projectContext"
                 :files-count="files.length"
                 @toggle-web-search="toggleWebSearch"
+                @toggle-image-generation="toggleImageGeneration"
                 @open-project-picker="emit('open-project-picker')"
                 @clear-project-context="emit('clear-project-context')"
                 @open-files-select="openFilesModal('select')"
@@ -264,6 +299,7 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { FileSourceFilter } from '~/types/file-manager'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -294,6 +330,8 @@ const route = useRoute()
 const { isDesktop } = useDevice()
 const {
   isWebSearchSupported,
+  isImageGenerationSupported,
+  isImageGenerationRequired,
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
@@ -386,6 +424,25 @@ nuxtApp.hook('chat:rendered', (container) => {
 
 nuxtApp.hook('chat-spacer:changed', () => measure())
 
+nuxtApp.hook('chat:attach-file', async (file) => {
+  onFilesAttached([file])
+  await nextTick()
+
+  const measuredHeight = chatInputRef.value?.offsetHeight
+
+  // chat-input:height's own watcher (below) suppresses re-emitting while
+  // the textarea has text, to avoid spamming the spacer on every keystroke
+  // — but that means it never reports a resize caused by attaching a file
+  // while a draft is already typed. Measure and report directly here
+  // instead of waiting on that watcher or a ResizeObserver, both of which
+  // can be delayed or throttled (e.g. a backgrounded tab).
+  if (measuredHeight) {
+    nuxtApp.callHook('chat-input:height', measuredHeight)
+  }
+
+  nuxtApp.callHook('chat:scroll-to-bottom')
+})
+
 const {
   uploadFiles,
   uploadingFiles,
@@ -416,6 +473,51 @@ watch(
   },
 )
 
+watch(
+  [
+    isWebSearchSupported,
+    isImageGenerationSupported,
+    isImageGenerationRequired,
+  ],
+  ([
+    webSearchSupported,
+    imageGenerationSupported,
+    imageGenerationRequired,
+  ], [
+    ,
+    ,
+    wasImageGenerationRequired,
+  ] = [undefined, undefined, undefined]) => {
+    if (imageGenerationRequired) {
+      tools.value = ['image_generation']
+
+      return
+    }
+
+    if (wasImageGenerationRequired) {
+      tools.value = tools.value.filter((tool) => {
+        return tool !== 'image_generation'
+      })
+    }
+
+    tools.value = tools.value.filter((tool) => {
+      if (tool === 'web_search') {
+        return webSearchSupported && !tools.value.includes('image_generation')
+      }
+
+      if (tool === 'image_generation') {
+        return imageGenerationSupported
+      }
+
+      return true
+    })
+  },
+  {
+    immediate: true,
+    flush: 'post',
+  },
+)
+
 const { textarea, input } = useTextareaAutosize({
   input: message,
 })
@@ -430,6 +532,18 @@ const canShowRegenerate = computed<boolean>(() => {
 
 const isWebSearchEnabled = computed<boolean>(() => {
   return tools.value.includes('web_search')
+})
+
+const isImageGenerationEnabled = computed<boolean>(() => {
+  return tools.value.includes('image_generation')
+})
+
+const textareaPlaceholder = computed<string>(() => {
+  if (isImageGenerationEnabled.value) {
+    return 'Describe the image you want to create...'
+  }
+
+  return 'Type your message here...'
 })
 
 const shouldDisplayProjectPicker = computed<boolean>(() => {
@@ -471,14 +585,44 @@ watchPostEffect(() => {
 })
 
 function toggleWebSearch() {
+  if (isImageGenerationRequired.value) {
+    return
+  }
+
   if (!isWebSearchEnabled.value) {
-    tools.value = [...tools.value, 'web_search']
+    tools.value = [
+      ...tools.value.filter((tool) => {
+        return tool !== 'image_generation'
+      }),
+      'web_search',
+    ]
 
     return
   }
 
   tools.value = tools.value.filter((tool) => {
     return tool !== 'web_search'
+  })
+}
+
+function toggleImageGeneration() {
+  if (isImageGenerationRequired.value) {
+    return
+  }
+
+  if (!isImageGenerationEnabled.value) {
+    tools.value = [
+      ...tools.value.filter((tool) => {
+        return tool !== 'web_search'
+      }),
+      'image_generation',
+    ]
+
+    return
+  }
+
+  tools.value = tools.value.filter((tool) => {
+    return tool !== 'image_generation'
   })
 }
 
@@ -497,6 +641,7 @@ onMounted(async () => {
 
   if (
     !isWebSearchEnabled.value
+    && !isImageGenerationEnabled.value
     && isWebSearchSupported.value
     && /https?:\/\//.test(input.value)
   ) {
@@ -507,6 +652,7 @@ onMounted(async () => {
 watch(input, (newValue) => {
   if (
     !isWebSearchEnabled.value
+    && !isImageGenerationEnabled.value
     && isWebSearchSupported.value
     && /https?:\/\//.test(newValue)
   ) {
@@ -575,8 +721,8 @@ const attachedIds = computed<Set<FileMetadata['id']>>(() => {
   return new Set(files.value.map(file => file.id))
 })
 
-function openFilesModal(tab: 'select' | 'upload') {
-  filesModalRef.value?.open(tab)
+function openFilesModal(tab: 'select' | 'upload', source?: FileSourceFilter) {
+  filesModalRef.value?.open(tab, source)
 }
 
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')

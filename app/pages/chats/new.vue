@@ -143,7 +143,7 @@ const startingResearchJob = computed<ResearchJobView | null>(() => {
 // dimensions, and there are no messages here yet) — the fixed ChatInput's own
 // reported height is the most direct way to reserve enough room for the
 // clarify form's controls to clear it. INITIAL_SPACER_PADDING mirrors the
-// margin useChatScrollSpacer()'s reserveSpaceForClarify() adds on the
+// margin useChatScrollSpacer()'s reservePinnedSpace() adds on the
 // existing-chat page, and — unlike the mobile-only spacer this replaced — the
 // reservation now applies at every breakpoint, since a long clarify form can
 // grow taller than the viewport on desktop too.

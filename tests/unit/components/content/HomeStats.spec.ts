@@ -8,7 +8,7 @@ const mountOptions = {
       LandingStatGrid: {
         name: 'LandingStatGrid',
         props: ['metrics'],
-        template: '<div class="js-stat-grid" />',
+        template: '<div />',
       },
     },
   },
@@ -18,7 +18,7 @@ describe('HomeStats.vue', () => {
   it('passes the default metrics through to LandingStatGrid', async () => {
     const wrapper = await mountSuspended(HomeStats, mountOptions)
 
-    const statGrid = wrapper.findComponent({ name: 'LandingStatGrid' })
+    const statGrid = wrapper.getComponent({ name: 'LandingStatGrid' })
 
     expect(statGrid.props('metrics')).toEqual([
       {
@@ -37,9 +37,14 @@ describe('HomeStats.vue', () => {
         icon: 'lucide:messages-square',
       },
       {
-        metric: 'files',
-        label: 'Files attached',
+        metric: 'uploadedFiles',
+        label: 'Files uploaded',
         icon: 'lucide:paperclip',
+      },
+      {
+        metric: 'generatedImages',
+        label: 'Images generated',
+        icon: 'lucide:image',
       },
       {
         metric: 'sharedChats',
@@ -54,10 +59,29 @@ describe('HomeStats.vue', () => {
     ])
   })
 
+  it('shows uploaded files and generated images as separate metrics',
+    async () => {
+      const wrapper = await mountSuspended(HomeStats, mountOptions)
+
+      const statGrid = wrapper.getComponent({ name: 'LandingStatGrid' })
+      const metrics = statGrid.props('metrics')
+
+      expect(metrics).toContainEqual({
+        metric: 'uploadedFiles',
+        label: 'Files uploaded',
+        icon: 'lucide:paperclip',
+      })
+      expect(metrics).toContainEqual({
+        metric: 'generatedImages',
+        label: 'Images generated',
+        icon: 'lucide:image',
+      })
+    })
+
   it('includes a researches metric card with the telescope icon', async () => {
     const wrapper = await mountSuspended(HomeStats, mountOptions)
 
-    const statGrid = wrapper.findComponent({ name: 'LandingStatGrid' })
+    const statGrid = wrapper.getComponent({ name: 'LandingStatGrid' })
     const metrics = statGrid.props('metrics') as {
       metric: string
       label: string
@@ -80,7 +104,7 @@ describe('HomeStats.vue', () => {
       ...mountOptions,
     })
 
-    const statGrid = wrapper.findComponent({ name: 'LandingStatGrid' })
+    const statGrid = wrapper.getComponent({ name: 'LandingStatGrid' })
 
     expect(statGrid.props('metrics')).toEqual(customMetrics)
   })

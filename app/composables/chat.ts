@@ -17,6 +17,10 @@ import { parseError } from 'evlog'
 import { DefaultChatTransport } from 'ai'
 import { useChat as useChatSdk } from '@ai-sdk/vue'
 import { ulid } from 'ulid'
+import {
+  getGenerateImageToolPart,
+  isVisibleGenerateImageToolPart,
+} from '~/utils/generated-images'
 import { hydrateMessageUsage } from '#shared/utils/message-metadata'
 
 export interface ProcessedMessage {
@@ -331,6 +335,10 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
   }
 
   return message.parts?.some((part) => {
+    if (part.type === 'file' || isVisibleGenerateImageToolPart(part)) {
+      return true
+    }
+
     if (
       part.type !== 'text'
       && part.type !== 'reasoning'
@@ -354,6 +362,72 @@ export function shouldForceGenericLoadingIndicator(
   lastMessage: UIMessage | undefined,
 ): boolean {
   return isAwaitingGeneration && !hasVisibleAssistantContent(lastMessage)
+}
+
+export function shouldShowGenericLoadingIndicator(
+  status: ChatStatus,
+  isAwaitingGeneration: boolean,
+  lastMessage: UIMessage | undefined,
+): boolean {
+  if (hasVisibleAssistantContent(lastMessage)) {
+    return false
+  }
+
+  if (shouldForceGenericLoadingIndicator(
+    isAwaitingGeneration,
+    lastMessage,
+  )) {
+    return true
+  }
+
+  if (status === 'submitted') {
+    return true
+  }
+
+  if (status !== 'streaming' || lastMessage?.role !== 'assistant') {
+    return false
+  }
+
+  return !hasVisibleAssistantContent(lastMessage)
+}
+
+// The AI SDK Vue adapter keeps `messages` in a shallowRef, mutates it in place
+// (push / element replace), and signals updates via triggerRef. Feeding that
+// same array reference straight through a computed is a trap: Vue 3.4+ compares
+// a computed's new result against its previous one and, when they are === (the
+// same array), suppresses the downstream notification entirely. Message-content
+// changes then never reach template bindings that depend only on the messages
+// (e.g. shouldDisplayMessage's data-hide-content), so a fully streamed reply
+// can stay display:hidden until an unrelated re-render reads the live array.
+// Returning a fresh array on every call gives the computed a new identity per
+// SDK trigger, so those bindings react. Do NOT change these to `return
+// messages`.
+export function getRenderableChatMessages(
+  messages: UIMessage[],
+): UIMessage[] {
+  const lastMessage = messages.at(-1)
+
+  if (!lastMessage || lastMessage.role !== 'assistant') {
+    return [...messages]
+  }
+
+  const hasImageToolPart = lastMessage.parts.some((part) => {
+    return getGenerateImageToolPart(part) !== null
+  })
+
+  if (!hasImageToolPart) {
+    return [...messages]
+  }
+
+  return [
+    ...messages.slice(0, -1),
+    {
+      ...lastMessage,
+      parts: lastMessage.parts.map((part) => {
+        return getGenerateImageToolPart(part) ? { ...part } : part
+      }),
+    } as UIMessage,
+  ]
 }
 
 export function hasMeaningfulAssistantParts(message: UIMessage | undefined) {
@@ -741,9 +815,13 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
+  const renderableMessages = computed<UIMessage[]>(() => {
+    return getRenderableChatMessages(sdkMessages.value)
+  })
+
   const chatSdk = {
     get messages() {
-      return sdkMessages.value
+      return renderableMessages.value
     },
     set messages(value: UIMessage[]) {
       sdkMessages.value = value
@@ -794,36 +872,11 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const isLoading = computed<boolean>(() => {
-    if (shouldForceGenericLoadingIndicator(
+    return shouldShowGenericLoadingIndicator(
+      chatSdk.status,
       isAwaitingGeneration.value,
       lastMessage.value,
-    )) {
-      return true
-    } else if (chatSdk.status === 'submitted') {
-      return true
-    } else if (chatSdk.status !== 'streaming') {
-      return false
-    } else if (lastMessage.value?.role !== 'assistant') {
-      return false
-    } else if (!lastMessage.value.parts?.length) {
-      return true
-    }
-
-    const result: boolean = true
-
-    for (const part of lastMessage.value.parts) {
-      if (!['reasoning', 'text'].includes(part.type)) {
-        continue
-      }
-
-      const p = part as TextUIPart | ReasoningUIPart
-
-      if (p.text?.length) {
-        return false
-      }
-    }
-
-    return result
+    )
   })
 
   const displayStop = computed<boolean>(() => {
@@ -1196,10 +1249,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       return true
     }
 
-    return message.parts?.some((part) => {
-      return (part.type === 'reasoning' && part.text?.length)
-        || (part.type === 'text' && part.text?.length)
-    }) || false
+    return hasVisibleAssistantContent(message)
   }
 
   function getMessageReasoning(

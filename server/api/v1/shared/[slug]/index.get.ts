@@ -4,8 +4,8 @@ import { isToolUIPart } from 'ai'
 import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import {
+  hideFileParts,
   rewriteShareFileParts,
-  stripFileParts,
 } from '~~/server/utils/files/rewrite-share-file-urls'
 
 const paramsRules = z.object({
@@ -56,6 +56,7 @@ export default defineEventHandler(async (event) => {
           reasoning: true,
           createdAt: true,
           usage: true,
+          ...(share.showMetadata ? { tools: true } : {}),
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -81,6 +82,9 @@ export default defineEventHandler(async (event) => {
         reasoning: message.reasoning,
         createdAt: message.createdAt,
         usage: message.usage,
+        ...(share.showMetadata && 'tools' in message
+          ? { tools: message.tools }
+          : {}),
       }
     })
 
@@ -88,7 +92,7 @@ export default defineEventHandler(async (event) => {
 
   const messagesWithResolvedFiles = share.showFiles
     ? await rewriteShareFileParts(publicMessages, share.id, event)
-    : stripFileParts(publicMessages)
+    : hideFileParts(publicMessages)
 
   const messages = messagesWithResolvedFiles.map((message) => {
     return {
@@ -100,6 +104,7 @@ export default defineEventHandler(async (event) => {
         ? {
           createdAt: message.createdAt,
           usage: message.usage ?? undefined,
+          tools: message.tools,
         }
         : {}),
     }

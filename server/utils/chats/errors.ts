@@ -9,6 +9,11 @@ const chatErrorCodes: ChatErrorCode[] = [
   'provider-quota-exceeded',
   'provider-unavailable',
   'provider-auth',
+  'generation-busy',
+  'storage-quota',
+  'provider-safety',
+  'invalid-provider-output',
+  'image-save-failed',
   'message-persist-failed',
   'chat-request-invalid',
   'research-tier-required',
@@ -330,7 +335,7 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
   }
 }
 
-function getRequestId(event: H3Event): string | undefined {
+export function getRequestId(event: H3Event): string | undefined {
   try {
     return getRequestHeader(event, 'cf-ray')
       || getRequestHeader(event, 'x-request-id')

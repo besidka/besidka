@@ -1,11 +1,21 @@
 import { parseError } from 'evlog'
-import type { FileManagerFile, ViewMode } from '~/types/file-manager'
+import type {
+  FileManagerFile,
+  FileSourceFilter,
+  ViewMode,
+} from '~/types/file-manager'
 
 interface FetchFilesResponse {
   files: FileManagerFile[]
   total: number
   offset: number
   limit: number
+}
+
+interface FileRequestContext {
+  generation: number
+  search: string
+  source: FileSourceFilter
 }
 
 export function useFileManager() {
@@ -15,8 +25,14 @@ export function useFileManager() {
   const isLoading = shallowRef<boolean>(false)
   const isSearching = shallowRef<boolean>(false)
   const isDeletingSelected = shallowRef<boolean>(false)
-  const searchLoadingTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+  const searchLoadingTimeout = shallowRef<
+    ReturnType<typeof setTimeout> | null
+  >(null)
+  const searchDebounceTimeout = shallowRef<
+    ReturnType<typeof setTimeout> | null
+  >(null)
   const search = shallowRef<string>('')
+  const source = shallowRef<FileSourceFilter>('all')
   const prefStorage = usePreferenceStorage()
   const viewMode = customRef<ViewMode>((track, trigger) => ({
     get() {
@@ -37,6 +53,8 @@ export function useFileManager() {
     total: 0,
   })
   const serverOffset = shallowRef<number>(0)
+  let fileRequestGeneration = 0
+  let isFileManagerActive = false
 
   const hasMore = computed(() => {
     if (files.value.length > 0) {
@@ -67,7 +85,37 @@ export function useFileManager() {
     isSearching.value = false
   }
 
+  function clearSearchDebounce() {
+    if (!searchDebounceTimeout.value) {
+      return
+    }
+
+    clearTimeout(searchDebounceTimeout.value)
+    searchDebounceTimeout.value = null
+  }
+
+  function invalidateFileRequests() {
+    fileRequestGeneration++
+    isLoading.value = false
+    clearSearchTimeout()
+  }
+
+  function createFileRequestContext(): FileRequestContext {
+    return {
+      generation: ++fileRequestGeneration,
+      search: search.value,
+      source: source.value,
+    }
+  }
+
+  function isCurrentFileRequest(context: FileRequestContext): boolean {
+    return context.generation === fileRequestGeneration
+  }
+
   async function fetchFiles(reset = false, isSearch = false) {
+    isFileManagerActive = true
+    const requestContext = createFileRequestContext()
+    const requestOffset = reset ? 0 : pagination.offset
     let isSuccess = false
 
     if (reset) {
@@ -75,6 +123,8 @@ export function useFileManager() {
       serverOffset.value = 0
       files.value = []
       selectedIds.value.clear()
+      selectedIds.value = new Set()
+      lastSelectedIndex.value = null
     }
 
     isLoading.value = true
@@ -82,6 +132,10 @@ export function useFileManager() {
     if (isSearch) {
       clearSearchTimeout()
       searchLoadingTimeout.value = setTimeout(() => {
+        if (!isCurrentFileRequest(requestContext)) {
+          return
+        }
+
         isSearching.value = true
       }, 300)
     }
@@ -89,11 +143,18 @@ export function useFileManager() {
     try {
       const response = await $fetch<FetchFilesResponse>('/api/v1/files', {
         query: {
-          offset: pagination.offset,
+          offset: requestOffset,
           limit: pagination.limit,
-          ...(search.value && { search: search.value }),
+          source: requestContext.source,
+          ...(requestContext.search && {
+            search: requestContext.search,
+          }),
         },
       })
+
+      if (!isCurrentFileRequest(requestContext)) {
+        return false
+      }
 
       if (reset) {
         files.value = response.files
@@ -106,6 +167,10 @@ export function useFileManager() {
       pagination.total = response.total
       isSuccess = true
     } catch (exception) {
+      if (!isCurrentFileRequest(requestContext)) {
+        return false
+      }
+
       const parsedException = parseError(exception)
 
       useErrorMessage(
@@ -113,8 +178,10 @@ export function useFileManager() {
         parsedException.why,
       )
     } finally {
-      isLoading.value = false
-      clearSearchTimeout()
+      if (isCurrentFileRequest(requestContext)) {
+        isLoading.value = false
+        clearSearchTimeout()
+      }
     }
 
     return isSuccess
@@ -128,6 +195,8 @@ export function useFileManager() {
   }
 
   async function syncLoadedFiles() {
+    invalidateFileRequests()
+    const requestContext = createFileRequestContext()
     const loadedCount = Math.max(files.value.length, pagination.limit)
     const syncedFiles: FileManagerFile[] = []
     let syncedTotal = pagination.total
@@ -139,9 +208,16 @@ export function useFileManager() {
         query: {
           offset,
           limit: Math.min(remainingCount, 100),
-          ...(search.value && { search: search.value }),
+          source: requestContext.source,
+          ...(requestContext.search && {
+            search: requestContext.search,
+          }),
         },
       })
+
+      if (!isCurrentFileRequest(requestContext)) {
+        return false
+      }
 
       if (offset === 0) {
         syncedTotal = response.total
@@ -157,6 +233,10 @@ export function useFileManager() {
       if (syncedFiles.length >= syncedTotal) {
         break
       }
+    }
+
+    if (!isCurrentFileRequest(requestContext)) {
+      return false
     }
 
     files.value = syncedFiles
@@ -182,6 +262,8 @@ export function useFileManager() {
     if (selectedIds.value.size === 0) {
       lastSelectedIndex.value = null
     }
+
+    return true
   }
 
   function toggleSelect(id: string, index?: number) {
@@ -267,24 +349,63 @@ export function useFileManager() {
     }
   }
 
+  function reconcileDeletedFiles(ids: string[]) {
+    const deletedIds = new Set(ids)
+    const previousFileCount = files.value.length
+
+    files.value = files.value.filter((file) => {
+      return !deletedIds.has(file.id)
+    })
+
+    const removedFileCount = previousFileCount - files.value.length
+
+    pagination.total = Math.max(0, pagination.total - removedFileCount)
+    selectedIds.value = new Set(
+      Array.from(selectedIds.value).filter((selectedId) => {
+        return !deletedIds.has(selectedId)
+      }),
+    )
+
+    if (selectedIds.value.size === 0) {
+      lastSelectedIndex.value = null
+    }
+  }
+
+  async function syncAfterStaleDelete() {
+    if (!isFileManagerActive) {
+      return
+    }
+
+    try {
+      await syncLoadedFiles()
+    } catch (exception) {
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        'File deleted, but the file list could not be refreshed',
+        parsedException.why,
+      )
+    }
+  }
+
   async function deleteFile(id: string) {
+    const requestGeneration = fileRequestGeneration
+
     try {
       await $fetch(`/api/v1/files/${id}`, {
         method: 'DELETE',
       })
 
-      const index = files.value.findIndex(f => f.id === id)
-      if (index !== -1) {
-        files.value.splice(index, 1)
-        pagination.total--
-      }
+      const hasStaleRequestContext
+        = requestGeneration !== fileRequestGeneration
 
-      selectedIds.value.delete(id)
+      reconcileDeletedFiles([id])
 
-      if (files.value.length === 0 && pagination.total > 0) {
+      if (hasStaleRequestContext) {
+        await syncAfterStaleDelete()
+      } else if (files.value.length === 0 && pagination.total > 0) {
         await fetchFiles(true)
       }
-      selectedIds.value = new Set(selectedIds.value)
 
       useSuccessMessage('File deleted successfully')
 
@@ -305,6 +426,7 @@ export function useFileManager() {
     if (selectedIds.value.size === 0) return false
 
     const ids = Array.from(selectedIds.value)
+    const requestGeneration = fileRequestGeneration
     isDeletingSelected.value = true
 
     try {
@@ -313,15 +435,16 @@ export function useFileManager() {
         body: { ids },
       })
 
-      files.value = files.value.filter(file => !selectedIds.value.has(file.id))
-      pagination.total = Math.max(0, pagination.total - ids.length)
+      const hasStaleRequestContext
+        = requestGeneration !== fileRequestGeneration
 
-      selectedIds.value.clear()
-      selectedIds.value = new Set()
+      reconcileDeletedFiles(ids)
 
       useSuccessMessage(`${ids.length} file(s) deleted successfully`)
 
-      if (files.value.length === 0 && pagination.total > 0) {
+      if (hasStaleRequestContext) {
+        await syncAfterStaleDelete()
+      } else if (files.value.length === 0 && pagination.total > 0) {
         await fetchFiles(true)
       }
 
@@ -329,11 +452,14 @@ export function useFileManager() {
     } catch (exception) {
       const parsedException = parseError(exception)
 
-      if (parsedException.status === 409) {
+      if (
+        parsedException.status === 409
+        && requestGeneration === fileRequestGeneration
+      ) {
         try {
           await syncLoadedFiles()
-        } catch (_exception) {
-          void _exception
+        } catch {
+          reset()
         }
       }
 
@@ -357,7 +483,9 @@ export function useFileManager() {
   }
 
   function reset() {
-    clearSearchTimeout()
+    isFileManagerActive = false
+    invalidateFileRequests()
+    clearSearchDebounce()
     files.value = []
     selectedIds.value.clear()
     selectedIds.value = new Set()
@@ -366,15 +494,23 @@ export function useFileManager() {
     pagination.offset = 0
     pagination.total = 0
     serverOffset.value = 0
+    clearSearchDebounce()
   }
 
-  const debouncedSearch = useDebounceFn(() => {
-    fetchFiles(true, true)
-  }, 300)
-
   watch(search, () => {
-    debouncedSearch()
-  })
+    invalidateFileRequests()
+    clearSearchDebounce()
+    searchDebounceTimeout.value = setTimeout(() => {
+      searchDebounceTimeout.value = null
+      fetchFiles(true, true)
+    }, 300)
+  }, { flush: 'sync' })
+
+  watch(source, async () => {
+    invalidateFileRequests()
+    clearSearchDebounce()
+    await fetchFiles(true)
+  }, { flush: 'sync' })
 
   return {
     files,
@@ -383,6 +519,7 @@ export function useFileManager() {
     isLoading,
     isSearching,
     search,
+    source,
     viewMode,
     pagination,
 

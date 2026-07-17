@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -105,6 +106,7 @@ interface MessageFixture {
   reasoning: string | null
   createdAt: Date
   usage: MessageUsage | null
+  tools: string[]
 }
 
 function createMessageFixture(
@@ -118,6 +120,7 @@ function createMessageFixture(
     reasoning: 'off',
     createdAt: new Date('2026-07-01T00:00:00.000Z'),
     usage: null,
+    tools: [],
     ...overrides,
   }
 }
@@ -233,7 +236,7 @@ describe('public shared chat view API', () => {
     expect(response.title).toBe('Chat title')
   })
 
-  it('strips file parts when showFiles is false', async () => {
+  it('replaces file parts with hidden placeholders when showFiles is false', async () => {
     const handler = await getHandler()
     const { db } = createDb({
       shares: [createShareFixture({ slug: 'files-off', showFiles: false })],
@@ -244,6 +247,7 @@ describe('public shared chat view API', () => {
           parts: [
             { type: 'text', text: 'Hello' },
             { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+            { type: 'file', url: '/files/b.png', mediaType: 'image/png' },
           ],
         })],
       },
@@ -257,6 +261,53 @@ describe('public shared chat view API', () => {
 
     expect(response.messages[0]?.parts).toEqual([
       { type: 'text', text: 'Hello' },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+    ])
+  })
+
+  it('keeps an assistant message non-empty when its only content was a file and showFiles is false', async () => {
+    const handler = await getHandler()
+    const { db } = createDb({
+      shares: [createShareFixture({
+        slug: 'files-off-only-file',
+        showFiles: false,
+      })],
+      chat: {
+        title: 'Chat title',
+        user: { name: 'Owner', image: null },
+        messages: [createMessageFixture({
+          parts: [
+            { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+          ],
+        })],
+      },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: 'files-off-only-file' },
+    } as never)
+
+    expect(response.messages[0]?.parts).toHaveLength(1)
+    expect(response.messages[0]?.parts).toEqual([
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
     ])
   })
 
@@ -325,6 +376,48 @@ describe('public shared chat view API', () => {
     } as never)
 
     expect(response.messages[0]).toHaveProperty('usage', usage)
+  })
+
+  it('exposes used tools only when message metadata is enabled', async () => {
+    const handler = await getHandler()
+    const createChat = () => ({
+      title: 'Chat title',
+      user: { name: 'Owner', image: null },
+      messages: [createMessageFixture({
+        tools: ['image_generation'],
+      })],
+    })
+    const metadataOn = createDb({
+      shares: [createShareFixture({ slug: 'metadata-tools-on' })],
+      chat: createChat(),
+    })
+
+    vi.stubGlobal('useDb', () => metadataOn.db)
+
+    const visibleResponse = await handler({
+      params: { slug: 'metadata-tools-on' },
+    } as never)
+
+    expect(visibleResponse.messages[0]).toHaveProperty(
+      'tools',
+      ['image_generation'],
+    )
+
+    const metadataOff = createDb({
+      shares: [createShareFixture({
+        slug: 'metadata-tools-off',
+        showMetadata: false,
+      })],
+      chat: createChat(),
+    })
+
+    vi.stubGlobal('useDb', () => metadataOff.db)
+
+    const hiddenResponse = await handler({
+      params: { slug: 'metadata-tools-off' },
+    } as never)
+
+    expect(hiddenResponse.messages[0]).not.toHaveProperty('tools')
   })
 
   it('always strips tool parts even with every option enabled', async () => {

@@ -1,122 +1,121 @@
-# Files Generation (Future Implementation Guide)
+# Files generation (superseded implementation guide)
 
-## Goals
+> Superseded on 2026-07-15. Use the active
+> [architecture plan](../chats/files-generation-plan.md),
+> [implementation tickets](../chats/files-generation-tickets.md), and
+> [progress ledger](../chats/files-generation-progress.md).
 
-- Persist assistant-generated files as first-class files in R2 + D1.
-- Keep ownership, access checks, and deletion semantics aligned with uploads.
-- Keep model replay payloads stable by avoiding automatic assistant file replay.
+The original scaffolding guide predates the provider-neutral image-generation
+tool. The image MVP is implemented in draft pull request #300 and has passed
+automated validation. Production migration rollout and release remain
+operational steps.
 
-## Non-Goals
+## Current capability report
 
-- No immediate product rollout in this change set.
-- No UI polish for source badges or generated-file-specific actions yet.
-- No provider-specific file-generation UX contracts yet.
+The implemented generation tool creates images only. Besidka can upload, store,
+share, and download several existing file types, but accepting an uploaded file
+does not mean the chat can generate that format.
 
-## Locked Decisions
+| Capability | Current status | Notes |
+| --- | --- | --- |
+| PNG, JPEG, or WebP generation | Implemented | OpenAI and Google models use the `generate_image` tool. |
+| PDF upload and model input | Implemented | Existing PDFs use the normal user-file path. |
+| PDF generation | Not implemented | DOC-001 and DOC-002 remain required. |
+| PPT or PPTX generation | Not implemented | DOC-001 and DOC-003 remain required. |
+| XLS or XLSX generation | Not implemented | DOC-001 and DOC-004 remain required. |
+| PPT, PPTX, XLS, or XLSX upload | Not enabled | The shared upload allowlist currently excludes these MIME types. |
 
-- Generated files persist in `R2 + D1`, not external provider URLs.
-- Generated files use the same storage quota policy as uploads.
-- Generated files appear in file manager by default.
-- Assistant-generated files are not auto-sent back to model context.
-  Reuse requires explicit user reattach.
+When **Create Image** is active, the server forces exactly one call to
+`generate_image`. A request such as “generate PDF, PPT, and XLSX examples” is
+therefore treated as an image prompt, so the result can be an illustration of
+document icons rather than real downloadable documents. The current tool
+contract has no PDF, presentation, or workbook output type and cannot create
+those files.
 
-## Current Scaffolding Delivered
+The UI should not advertise general file generation until a document tool is
+available. A later implementation should disable image mode for document
+requests or explain the mismatch before spending provider credits. It should
+never relabel an image as a PDF, PPTX, or XLSX file.
 
-- `files` schema includes provenance columns:
-  - `source` (`upload | assistant`)
-  - `originMessageId` (nullable FK to `messages`)
-  - `originProvider` (nullable text)
-- Shared persistence utility exists: `server/utils/files/persist-file.ts`
-  - validates storage quota
-  - writes file bytes to R2
-  - writes metadata to D1
-  - rolls back R2 when DB insert fails
-  - invalidates storage cache
-- Chat model-context sanitizer exists:
-  - `sanitizeMessagesForModelContext()`
-  - strips assistant `file` parts before `convertToModelMessages(...)`
-- Assistant persistence hook exists:
-  - `normalizeAssistantMessagePartsForPersistence()`
-  - currently no-op for persistence
-  - logs assistant file detection via evlog context
-- Runtime gate exists:
-  - `enableAssistantFilePersistence` (default `false`)
+## Implemented image path
 
-## End-to-End Flow To Implement Later
+- Supported OpenAI and Google chat models advertise `image_generation`.
+- Explicit image mode forces one application tool named `generate_image` and
+  takes precedence over web search in a crafted mixed-tool request.
+- The server calls `gpt-image-2` or `gemini-3.1-flash-image` with the current
+  user's provider key.
+- The shared aspect-ratio contract contains only `1:1`, `2:3`, and `3:2`.
+- A synchronous one-shot claim and token-owned D1 lease prevent duplicate paid
+  calls. The lease uses a 10-minute crash expiry and a 10-second cooldown.
+- The server validates complete PNG, JPEG, or WebP output, enforces a 10 MiB
+  bound, and persists original bytes through `persistFile()`.
+- Generated files use the existing private R2 bucket, D1 `files` table, user
+  quota, retention, delete paths, and authenticated `/files/[key]` route.
+- `files.source = 'assistant'` separates generated and uploaded objects without
+  a second bucket or R2 directory.
+- Chat renders an honest skeleton, generating and saving labels, and a final
+  authenticated blur-in without streaming image bytes or fake percentages.
+- The file manager exposes `All`, `Uploaded`, and `Generated by AI`, protects
+  against stale source responses, and offers authenticated downloads.
+- Strict request and runtime schemas reject forged tool parts and streamed
+  URLs. The client derives view and download URLs from validated storage keys.
+- Active `showFiles` shares resynchronize after generation, while branch
+  creation strips tool parts.
 
-1. Detect assistant `file` parts in final response message.
-2. For each assistant file part:
-   - decode inline `data:` URL into bytes; or
-   - securely fetch external URL server-side with strict limits.
-3. Validate each candidate file:
-   - MIME allowlist
-   - max byte limits
-   - provider-specific constraints
-4. Persist each valid file through `persistFile(...)`:
-   - `source = 'assistant'`
-   - `originProvider = <provider id>`
-   - `originMessageId = <saved assistant message id>` when available
-5. Rewrite assistant message `file` part URLs to `/files/<storageKey>`.
-6. Save normalized assistant message parts in `messages.parts`.
-7. Emit client data events for partial failures when needed.
+## Additive lock migration
 
-## Failure Modes and Fallbacks
+The image MVP adds `image_generation_locks` for cross-request serialization.
+The generated migration contains only `CREATE TABLE`, has no foreign key or
+cascade, and contains no table rebuild or `DROP TABLE`. A read-only audit
+confirms it is applied to `chat-preview` and absent from production `chat`.
+Production still requires a Time Travel bookmark and integrity checks before
+the migration is applied.
 
-- If one generated file fails persistence:
-  - keep chat response successful
-  - skip only failed file part
-  - emit warning event to client
-- If all generated files fail:
-  - assistant text response still persists
-  - no broken file URLs should be stored
-- If R2 write succeeds but DB write fails:
-  - rollback R2 object (already handled by `persistFile`)
+## Foundations retained from the scaffolding
 
-## Security and Cost Constraints
+The earlier work remains part of the active design:
 
-- Keep owner-private file model; no public-by-default generated files.
-- Continue serving bytes via `/files/[key]` ownership/share authorization.
-- Enforce same user storage quota for upload and assistant-generated files.
-- Keep Cloudflare connection limits in mind:
-  - avoid unbounded parallel R2/KV/fetch fan-out
-  - batch or sequence when required
+- `files.source` records `upload` or `assistant`.
+- `files.originMessageId` links generated-file provenance when message
+  persistence succeeds.
+- `files.originProvider` records the provider without storing the prompt.
+- `persistFile()` enforces quota, writes R2 before D1, compensates failed D1
+  metadata, checks the post-insert quota race, and invalidates storage cache.
+- `sanitizeMessagesForModelContext()` removes assistant file parts from
+  automatic model replay.
+- `normalizeAssistantMessagePartsForPersistence()` converts a validated ready
+  tool result to a standard `FileUIPart` without base64.
 
-## API and Type Change Map
+The legacy `enableAssistantFilePersistence` flag belongs to the earlier generic
+assistant-file experiment. The current custom image tool self-persists and
+does not use that flag for enablement or rollback.
 
-- `FileMetadata` now includes:
-  - `source`
-  - `originMessageId`
-  - `originProvider`
-- `GET /api/v1/files` now returns `source`.
-- `PUT /api/v1/files/upload` now returns `source`.
-- Chat API contract remains unchanged for clients in this scaffolding phase.
+## Deferred document formats
 
-## Test Matrix and Acceptance Criteria
+PDF, PPTX, XLSX, DOCX, and other generated documents remain out of the image
+MVP. They must use a durable job model and a constrained, deterministic
+renderer instead of trusting arbitrary model-produced binary or executable
+content.
 
-1. Migration:
-   - legacy rows receive `source = 'upload'` default
-2. Upload regression:
-   - upload endpoint behavior unchanged after persistence refactor
-3. Model-context safety:
-   - assistant file parts are excluded from automatic replay
-4. Hook behavior:
-   - with flag disabled, assistant file detection logs context and persists
-     unchanged parts
-5. Validation:
-   - `pnpm run format` passes
-   - `pnpm run typecheck` passes
+The active tickets define the sequence:
 
-## Rollout Plan (Feature Flag Stages)
+1. Add durable generation jobs with idempotent phases, cancellation, retry,
+   expiry, and orphan cleanup.
+2. Add PDF rendering from a validated intermediate document schema.
+3. Add PPTX rendering from a bounded slide-deck schema with safe relationships.
+4. Add XLSX rendering from a bounded workbook schema with formula-injection
+   protection.
+5. Add DOCX and other formats only after the shared job and renderer controls
+   prove reliable.
 
-1. Stage 0 (current):
-   - `enableAssistantFilePersistence = false`
-   - logging + scaffolding only
-2. Stage 1:
-   - enable in local/dev only
-   - validate persistence, rewrite, and failure semantics
-3. Stage 2:
-   - limited production rollout
-   - monitor storage growth, failure rates, and chat latency
-4. Stage 3:
-   - full rollout
-   - add optional UI refinements (source badges, generated-file filters)
+Each format should use a separate, explicit chat action and tool contract. The
+server should first generate a validated intermediate schema, then enqueue a
+durable rendering job, validate the rendered container, reserve quota, and
+persist the result through the existing private file path. Chat should resume
+job state after reload and show format-specific progress, preview, retry, and
+download actions.
+
+Every future format reuses the same private R2 storage, D1 ownership, quota,
+provenance, file-manager, authenticated download, sharing, and deletion paths.
+See DOC-001 through DOC-005 in the
+[ticket backlog](../chats/files-generation-tickets.md) for acceptance criteria.

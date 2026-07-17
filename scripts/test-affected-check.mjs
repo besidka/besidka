@@ -49,14 +49,22 @@ export function getChangedFiles(base = 'HEAD') {
 export function getAffectedTests(changedFiles) {
   const affectedTests = new Set()
   const filesModuleTests = [
+    'tests/unit/components/Chat/Files.spec.ts',
+    'tests/unit/components/ChatInput/Files/Trigger.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/utils/files.spec.ts',
+    'tests/unit/utils/shared-files.spec.ts',
     'tests/unit/utils/upload-with-progress.spec.ts',
     'tests/integration/api/files-upload.spec.ts',
     'tests/integration/api/files-delete.spec.ts',
+    'tests/integration/api/files-index.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
+    'tests/integration/server/file-download.spec.ts',
+    'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
@@ -66,6 +74,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/user-setting.spec.ts',
     'tests/unit/plugins/user-settings-sync.client.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
+  ]
+  const imageGenerationTests = [
+    'tests/unit/utils/model.spec.ts',
+    'tests/unit/utils/image-generation-cost.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+    'tests/integration/server/image-generation.spec.ts',
+    'tests/integration/server/image-generation-lock.spec.ts',
+    'tests/integration/server/assistant-files.spec.ts',
+    'tests/integration/api/chats-message-id-stream.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -81,7 +99,6 @@ export function getAffectedTests(changedFiles) {
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
-    'tests/unit/components/History/ProjectActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/projects.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
@@ -116,6 +133,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-format.spec.ts',
     'tests/unit/utils/message-metadata.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
+    'tests/unit/utils/cost-map.spec.ts',
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
   ]
@@ -161,6 +179,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/content/HomeStats.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/stats.spec.ts',
+    'tests/integration/server/landing-cache-refresh.spec.ts',
+    'tests/integration/server/landing-stats.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -177,6 +197,10 @@ export function getAffectedTests(changedFiles) {
 
   const emailTests = [
     'tests/integration/server/email.spec.ts',
+  ]
+
+  const seoTests = [
+    'tests/unit/config/seo.spec.ts',
   ]
 
   const deepResearchTests = [
@@ -209,12 +233,54 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
+        /^(server\/utils\/ai\/image-generation(-lock|-cost)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google)\.ts|providers\/(openai|google)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/components\/ChatInput(\.client\.vue|\/ToolbarMore\.client\.vue)|server\/types\/tools\.d\.ts)$/,
+      tests: imageGenerationTests,
+    },
+    {
+      pattern: /^server\/utils\/ai\/image-generation-cost\.ts$/,
+      tests: messageUsageTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/request-schema\.ts$/,
+      tests: [
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-new.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/Chat\/GeneratedImage\.vue$/,
+      tests: ['tests/unit/components/Chat/GeneratedImage.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/Chat\/ImagePreview\.client\.vue$/,
+      tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/ChatInput\/ModelsTrigger\.vue$/,
+      tests: [
+        'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/utils\/generated-images\.ts$/,
+      tests: ['tests/unit/utils/generated-images.spec.ts'],
+    },
+    {
+      pattern:
         /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts)$/,
       tests: pushNotificationTests,
     },
     {
       pattern: /^server\/utils\/(email|auth)\.ts$/,
       tests: emailTests,
+    },
+    {
+      pattern: /^server\/routes\/sitemap\.xml\.ts$/,
+      tests: seoTests,
+    },
+    {
+      pattern: /^nuxt\.config\.ts$/,
+      tests: seoTests,
     },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,
@@ -229,7 +295,19 @@ export function getAffectedTests(changedFiles) {
       tests: landingTests,
     },
     {
-      pattern: /^server\/api\/v1\/events\/.*\.ts$/,
+      pattern: /^server\/api\/v1\/(events|stats)\/.*\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/plugins\/landing-cache-refresh\.ts$/,
+      tests: landingTests,
+    },
+    {
+      pattern: /^server\/middleware\/evlog-auth\.ts$/,
+      tests: ['tests/integration/api/stats.spec.ts'],
+    },
+    {
+      pattern: /^shared\/types\/landing\.d\.ts$/,
       tests: landingTests,
     },
     {
@@ -289,6 +367,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...messageUsageTests,
         ...chatTestEndpointTests,
+        'tests/unit/composables/chat-image-ui.spec.ts',
         'tests/unit/composables/haptics.spec.ts',
       ],
     },
@@ -362,6 +441,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/chat-scroll-spacer\.ts$/,
+      tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
+    },
+    {
+      pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
       tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
     },
     {
@@ -441,6 +524,10 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern: /^shared\/utils\/files\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
       pattern: /^app\/components\/History\/.*\.vue$/,
       tests: historyProjectsTests,
     },
@@ -479,6 +566,7 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         ...chatTestEndpointTests,
         ...messageUsageTests,
+        'tests/integration/api/chats-detail.spec.ts',
       ],
     },
     {
@@ -498,6 +586,11 @@ export function getAffectedTests(changedFiles) {
       tests: filesModuleTests,
     },
     {
+      pattern:
+        /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
+      tests: ['tests/integration/api/chats-detail.spec.ts'],
+    },
+    {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
       tests: historyProjectsTests,
     },
@@ -511,6 +604,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/types\/files\.d\.ts$/,
+      tests: filesModuleTests,
+    },
+    {
+      pattern: /^app\/types\/file-manager\.d\.ts$/,
       tests: filesModuleTests,
     },
     {

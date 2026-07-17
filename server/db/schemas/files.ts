@@ -1,5 +1,5 @@
 import {
-  snakeCase, text, integer, uniqueIndex, index,
+  snakeCase, text, integer, real, uniqueIndex, index,
 } from 'drizzle-orm/sqlite-core'
 import { users } from './auth'
 import { defaultSchemaWithPublicId } from '../../utils/schema'
@@ -23,6 +23,8 @@ export const files = snakeCase.table(
     originMessageId: integer({ mode: 'number' })
       .references(() => messages.id, { onDelete: 'set null' }),
     originProvider: text(),
+    originModel: text(),
+    generationCost: real(),
   },
   table => [
     uniqueIndex('uq_file_user').on(table.id, table.userId),

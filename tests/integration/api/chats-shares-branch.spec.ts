@@ -297,6 +297,54 @@ describe('shared chat branch API', () => {
     })
   })
 
+  it('strips every legacy tool part from shared branches', async () => {
+    mocks.resolveActiveShareBySlug.mockResolvedValue({
+      chatId: 'chat-1',
+      allowBranch: true,
+      showFiles: true,
+    })
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb({
+      messages: [{
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Safe response' },
+          {
+            type: 'tool-generate_image',
+            toolCallId: 'legacy-tool',
+            state: 'output-available',
+            output: { status: 'ready' },
+          },
+          {
+            type: 'dynamic-tool',
+            toolName: 'legacy_dynamic_tool',
+            toolCallId: 'dynamic-tool',
+            state: 'input-available',
+            input: {},
+          },
+          {
+            type: 'tool-invocation',
+            toolInvocation: { toolCallId: 'old-sdk-tool' },
+          },
+        ],
+      }] as any,
+    })
+    const { event } = createWaitUntilEvent({
+      params: { slug: 'share-slug' },
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler(event as never)
+
+    expect(insertValues).toHaveBeenCalledWith({
+      chatId: 'new-chat-id',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Safe response' }],
+    })
+  })
+
   it('never forwards the source tools or reasoning to branched messages', async () => {
     const handler = await getHandler()
     const { db, insertValues } = createDb()

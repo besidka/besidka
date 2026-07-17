@@ -99,6 +99,26 @@
               </span>
             </button>
           </li>
+          <li v-if="isImageGenerationSupported && !isDeepResearchModel">
+            <label
+              class="flex items-center gap-2"
+              :class="{ 'cursor-pointer': !isImageGenerationRequired }"
+            >
+              <Icon name="lucide:image-plus" size="16" />
+              <span class="grow">Create image</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-xs toggle-accent"
+                :checked="isImageGenerationEnabled"
+                :disabled="isImageGenerationRequired"
+                :aria-label="isImageGenerationRequired
+                  ? 'Image creation is required for this model'
+                  : 'Create image'
+                "
+                @change="emit('toggle-image-generation')"
+              >
+            </label>
+          </li>
           <li v-if="isWebSearchSupported && !isDeepResearchModel">
             <label class="flex items-center gap-2 cursor-pointer">
               <Icon name="lucide:globe" size="16" />
@@ -127,6 +147,9 @@ import type { ModelResearchConfig } from '#shared/types/research.d'
 const props = defineProps<{
   isWebSearchSupported?: boolean
   isWebSearchEnabled?: boolean
+  isImageGenerationSupported?: boolean
+  isImageGenerationEnabled?: boolean
+  isImageGenerationRequired?: boolean
   isReasoningSupported?: boolean
   isReasoningActive?: boolean
   reasoningMode?: 'none' | 'toggle' | 'levels'
@@ -144,6 +167,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'toggle-web-search': []
+  'toggle-image-generation': []
   'open-project-picker': []
   'clear-project-context': []
   'open-files-select': []
@@ -160,6 +184,7 @@ const isDropdownHovered = useElementHover(dropdown)
 const isAnyFeatureActive = computed<boolean>(() => {
   return !!(
     props.isWebSearchEnabled
+    || props.isImageGenerationEnabled
     || props.isReasoningActive
     || props.isDeepResearchModel
     || (props.filesCount ?? 0) > 0

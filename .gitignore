@@ -48,6 +48,7 @@ stats.html
 # Agents
 .claude/plans
 .pi
+.herdr
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md

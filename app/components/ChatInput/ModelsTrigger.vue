@@ -5,6 +5,7 @@
   >
     <summary
       aria-label="Select model"
+      data-testid="current-model-trigger"
       class="btn btn-ghost btn-sm rounded-full [--size:calc(var(--size-field)_*_6)] transition-colors duration-200 max-xxs:max-w-40"
       :class="{ 'btn-active': isDropdownHovered }"
     >
@@ -93,6 +94,23 @@
                         />
                       </span>
                       <span
+                        v-if="model.tools.includes('image_generation')
+                          || isImageGenerationModel(model)
+                        "
+                        data-testid="model-image-generation-capability"
+                        class="shrink-0 flex items-center p-0.5 rounded-full bg-green-100 dark:bg-secondary-content"
+                        :class="{
+                          'tooltip tooltip-secondary tooltip-top':
+                            $device.isDesktop
+                        }"
+                        data-tip="Image generation"
+                      >
+                        <Icon
+                          name="lucide:image-plus"
+                          class="text-green-800 dark:text-secondary"
+                        />
+                      </span>
+                      <span
                         v-if="model.research"
                         class="shrink-0 flex items-center p-0.5 rounded-full bg-[color-mix(in_oklab,var(--color-success)_15%,var(--color-base-100))] text-success"
                         :class="{
@@ -123,6 +141,7 @@ import type { Model } from '#shared/types/providers.d'
 
 defineProps<{
   isWebSearchEnabled: boolean
+  isImageGenerationEnabled: boolean
   isReasoningEnabled: boolean
 }>()
 
@@ -139,7 +158,7 @@ function getModelPriceTip(model: Model): string | undefined {
     return undefined
   }
 
-  return `${model.price.input} / ${model.price.output}`
+  return model.price.display ?? `${model.price.input} / ${model.price.output}`
 }
 
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')

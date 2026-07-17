@@ -1,48 +1,124 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { shallowRef } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelsTrigger from '../../../../app/components/ChatInput/ModelsTrigger.vue'
 
+const mocks = vi.hoisted(() => ({
+  getModel: vi.fn(),
+  getModelName: vi.fn(),
+  getProviders: vi.fn(),
+  onClickOutside: vi.fn(),
+  useDevice: vi.fn(),
+  useElementHover: vi.fn(),
+  useUserModel: vi.fn(),
+}))
+
+mockNuxtImport('getModel', () => mocks.getModel)
+mockNuxtImport('getModelName', () => mocks.getModelName)
+mockNuxtImport('getProviders', () => mocks.getProviders)
+mockNuxtImport('onClickOutside', () => mocks.onClickOutside)
+mockNuxtImport('useDevice', () => mocks.useDevice)
+mockNuxtImport('useElementHover', () => mocks.useElementHover)
+mockNuxtImport('useUserModel', () => mocks.useUserModel)
+
 describe('ChatInput/ModelsTrigger', () => {
-  it('renders the deep research badge and cost/time tooltip for a research model', async () => {
-    const wrapper = await mountSuspended(ModelsTrigger, {
-      props: {
-        isWebSearchEnabled: false,
-        isReasoningEnabled: false,
-      },
+  beforeEach(() => {
+    mocks.getModel.mockReturnValue({
+      provider: { id: 'google' },
     })
-
-    const researchButton = wrapper.findAll('button').find((button) => {
-      return button.attributes('aria-label') === 'Choose o4-mini Deep Research'
+    mocks.getModelName.mockReturnValue('Image model')
+    mocks.getProviders.mockReturnValue({
+      providers: [{
+        id: 'google',
+        name: 'Google AI Studio',
+        models: [{
+          id: 'image-model',
+          name: 'Image model',
+          tools: ['image_generation'],
+          reasoning: false,
+        }],
+      }],
     })
-
-    expect(researchButton).toBeTruthy()
-
-    const badge = researchButton?.find('[data-tip="Deep research"]')
-
-    expect(badge?.exists()).toBe(true)
-    expect(badge?.classes()).toContain('bg-[color-mix(in_oklab,var(--color-success)_15%,var(--color-base-100))]')
-    expect(badge?.classes()).not.toContain('bg-success/15')
-    expect(badge?.classes()).not.toContain('bg-success-content')
-    expect(researchButton?.attributes('data-tip')).toBe(
-      '~$1 / task · 5–15 min',
-    )
+    mocks.useDevice.mockReturnValue({
+      isIos: false,
+      isAndroid: false,
+    })
+    mocks.useElementHover.mockReturnValue(shallowRef<boolean>(false))
+    mocks.useUserModel.mockReturnValue({
+      userModel: shallowRef<string>('image-model'),
+    })
   })
 
-  it('shows the input/output token price tip for a regular model', async () => {
+  it('keeps image capability in the list but not the selected model trigger', async () => {
     const wrapper = await mountSuspended(ModelsTrigger, {
       props: {
         isWebSearchEnabled: false,
+        isImageGenerationEnabled: true,
         isReasoningEnabled: false,
+      },
+      global: {
+        stubs: {
+          ClientOnly: {
+            template: '<slot />',
+          },
+        },
       },
     })
 
-    const regularButton = wrapper.findAll('button').find((button) => {
-      return button.attributes('aria-label') === 'Choose GPT-5.4'
+    const selectedModel = wrapper.get(
+      '[data-testid="current-model-trigger"]',
+    )
+
+    expect(selectedModel.text()).toContain('Image model')
+    expect(selectedModel.find(
+      '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(false)
+    expect(wrapper.findAll(
+      '[data-testid="model-image-generation-capability"]',
+    )).toHaveLength(1)
+  })
+
+  it('shows only the image generation icon for a purpose-built image model', async () => {
+    mocks.getProviders.mockReturnValue({
+      providers: [{
+        id: 'google',
+        name: 'Google AI Studio',
+        models: [{
+          id: 'image-model',
+          name: 'Image model',
+          tools: [],
+          reasoning: false,
+          imageGeneration: {
+            controllerModel: 'controller-model',
+          },
+          price: {
+            display: '$0.039 / image',
+          },
+        }],
+      }],
     })
 
-    expect(regularButton?.attributes('data-tip')).toBe('$2.50 / $15.00')
-    expect(
-      regularButton?.find('[data-tip="Deep research"]').exists(),
-    ).toBe(false)
+    const wrapper = await mountSuspended(ModelsTrigger, {
+      props: {
+        isWebSearchEnabled: false,
+        isImageGenerationEnabled: true,
+        isReasoningEnabled: false,
+      },
+      global: {
+        stubs: {
+          ClientOnly: {
+            template: '<slot />',
+          },
+        },
+      },
+    })
+    const modelButton = wrapper.get('button[aria-label="Choose Image model"]')
+
+    expect(modelButton.find(
+      '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(true)
+    expect(modelButton.find('[data-tip="Reasoning"]').exists()).toBe(false)
+    expect(modelButton.find('[data-tip="Web search"]').exists()).toBe(false)
+    expect(modelButton.attributes('data-tip')).toBe('$0.039 / image')
   })
 })

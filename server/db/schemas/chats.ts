@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { ModelTool } from '#shared/types/providers.d'
 import { persistedMessageRoles } from '#shared/utils/chat-message-role'
 import { sql } from 'drizzle-orm'
 import {
@@ -51,7 +52,7 @@ export const messages = snakeCase.table(
       .default(sql`'[]'`),
     tools: text({ mode: 'json' })
       .notNull()
-      .$type<Array<'web_search'>>()
+      .$type<ModelTool[]>()
       .default(sql`'[]'`),
     reasoning: text({ enum: ['off', 'low', 'medium', 'high'] })
       .notNull()

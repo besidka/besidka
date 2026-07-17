@@ -13,6 +13,8 @@ import { cachedStats } from '~~/server/utils/landing/stats'
  *   chats: number
  *   messages: number
  *   files: number
+ *   uploadedFiles: number
+ *   generatedImages: number
  *   sharedChats: number
  *   researches: number  // completed deep research jobs
  *   updatedAt: string   // ISO8601 — when the D1 counts were last fetched
@@ -29,6 +31,8 @@ export default defineEventHandler(async (event) => {
     chats: 0,
     messages: 0,
     files: 0,
+    uploadedFiles: 0,
+    generatedImages: 0,
     sharedChats: 0,
     researches: 0,
     updatedAt: new Date(0).toISOString(),
@@ -49,6 +53,9 @@ export default defineEventHandler(async (event) => {
     stats: {
       source: result.source,
       updatedAt: result.updatedAt,
+      files: result.files,
+      uploadedFiles: result.uploadedFiles,
+      generatedImages: result.generatedImages,
     },
   })
 

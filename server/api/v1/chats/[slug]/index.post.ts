@@ -8,9 +8,12 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
+import type { ModelTool } from '#shared/types/providers.d'
+import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
   createUIMessageStream,
@@ -21,16 +24,32 @@ import {
   readUIMessageStream,
   toUIMessageStream,
 } from 'ai'
-import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
-import { normalizeChatError } from '~~/server/utils/chats/errors'
+import * as schema from '~~/server/db/schema'
+import {
+  buildMessageUsage,
+  addImageGenerationCostToUsage,
+} from '~~/server/utils/ai/message-usage'
+import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
+import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
+import {
+  chatToolSchema,
+  incomingUserMessageSchema,
+} from '~~/server/utils/chats/request-schema'
+import {
+  getActiveShareForChat,
+  syncChatShareFiles,
+} from '~~/server/utils/chats/share'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
+  getGeneratedImageFileIds,
+  isKnownImageGenerationModel,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
+import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 
 export default defineEventHandler(async (event) => {
@@ -49,25 +68,9 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    tools: z.array(z.enum(['web_search'])),
+    tools: z.array(chatToolSchema),
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
-    messages: z.array(
-      z.object({
-        id: z.string().nonempty(),
-        role: z.enum(['user', 'assistant']),
-        createdAt: z.coerce.date().optional(),
-        annotations: z.array(z.string()).optional(),
-        parts: z.array(z.any()),
-        tools: z.array(z.any()).optional(),
-        experimental_attachments: z.array(
-          z.object({
-            name: z.string().optional(),
-            contentType: z.string().optional(),
-            url: z.string().nonempty(),
-          }),
-        ).optional(),
-      }),
-    ).min(1, 'At least one message is required'),
+    messages: z.array(incomingUserMessageSchema).length(1),
   }).safeParse)
 
   if (body.error) {
@@ -151,6 +154,32 @@ export default defineEventHandler(async (event) => {
       status: 400,
     })
   }
+
+  const { provider, model } = useChatProvider(userModel)
+  const selectedTools = chat.messages.length === 1
+    ? chat.messages[0]?.tools || []
+    : body.data.tools
+  const requiredTools = getRequiredModelTools(model)
+  const supportedTools = [...model.tools, ...requiredTools]
+  const unsupportedTool = selectedTools.find((selectedTool) => {
+    return !supportedTools.includes(selectedTool)
+  })
+
+  if (unsupportedTool) {
+    throw createError({
+      message: 'The selected model does not support the requested tool.',
+      status: 400,
+      why: `${model.name} does not advertise ${unsupportedTool}.`,
+      fix: 'Choose a supported model or turn off that tool.',
+    })
+  }
+
+  const requestedTools = [...new Set([
+    ...selectedTools,
+    ...requiredTools,
+  ])]
+
+  logger.set({ tools: requestedTools })
 
   const previousMessages = chat.messages
     .filter((message) => {
@@ -312,12 +341,10 @@ export default defineEventHandler(async (event) => {
         id: newMessage.id,
         parts: newMessage.parts as UIMessage['parts'],
       },
-      tools: body.data.tools,
+      tools: requestedTools,
       reasoning: body.data.reasoning,
     })
   }
-
-  const { provider, model } = useChatProvider(userModel)
 
   if (model.research) {
     throw createError({
@@ -370,7 +397,7 @@ export default defineEventHandler(async (event) => {
     modelId: model.id,
     providerId: provider.id,
     reasoning: body.data.reasoning,
-    tools: body.data.tools,
+    tools: requestedTools,
   })
 
   // Mirror Cloudflare edge metadata (colo, country, ASN, etc.) onto the
@@ -379,9 +406,6 @@ export default defineEventHandler(async (event) => {
   // standalone child loggers don't inherit so we attach explicitly.
   attachCloudflareMeta(aiLogger, event)
 
-  const requestedTools = chat.messages.length === 1
-    ? chat.messages[0]?.tools || []
-    : body.data.tools
   const providerId = toSupportedProviderId(provider.id)
 
   logger.set({
@@ -393,12 +417,18 @@ export default defineEventHandler(async (event) => {
   let parsedTools: FormattedTools = {}
   let reasoningEffort: 'low' | 'medium' | 'high' | undefined
   const providerOptions: SharedV2ProviderOptions = {}
+  let generatedImage: {
+    modelId: string
+    aspectRatio: ImageGenerationAspectRatio
+  } | undefined
 
   try {
     switch (provider.id) {
       case 'openai': {
         const {
           instance: openAiInstance,
+          imageModel: openAiImageModel,
+          imageModelId: openAiImageModelId,
           tools: openAiTools,
           providerOptions: openAiProviderOptions,
           reasoning: openAiReasoning,
@@ -416,11 +446,43 @@ export default defineEventHandler(async (event) => {
           openai: openAiProviderOptions,
         })
 
+        if (requestedTools.includes('image_generation')) {
+          if (!openAiImageModel) {
+            throw createError({
+              message: 'Image generation is unavailable for this provider.',
+              status: 400,
+            })
+          }
+
+          const imageGenerationTool = createImageGenerationTool({
+            userId,
+            provider: 'openai',
+            model: openAiImageModelId,
+            imageModel: openAiImageModel,
+            logger: aiLogger,
+            requestId: getRequestId(event),
+            onGenerated: ({ aspectRatio }) => {
+              generatedImage = { modelId: openAiImageModelId, aspectRatio }
+            },
+          })
+          parsedTools = {
+            tools: {
+              generate_image: imageGenerationTool,
+            },
+            toolChoice: {
+              type: 'tool',
+              toolName: 'generate_image',
+            },
+          }
+        }
+
         break
       }
       case 'google': {
         const {
           instance: googleInstance,
+          imageModel: googleImageModel,
+          imageModelId: googleImageModelId,
           tools: googleTools,
           providerOptions: googleProviderOptions,
           reasoning: googleReasoning,
@@ -437,6 +499,36 @@ export default defineEventHandler(async (event) => {
         Object.assign(providerOptions, {
           google: googleProviderOptions,
         })
+
+        if (requestedTools.includes('image_generation')) {
+          if (!googleImageModel) {
+            throw createError({
+              message: 'Image generation is unavailable for this provider.',
+              status: 400,
+            })
+          }
+
+          const imageGenerationTool = createImageGenerationTool({
+            userId,
+            provider: 'google',
+            model: googleImageModelId,
+            imageModel: googleImageModel,
+            logger: aiLogger,
+            requestId: getRequestId(event),
+            onGenerated: ({ aspectRatio }) => {
+              generatedImage = { modelId: googleImageModelId, aspectRatio }
+            },
+          })
+          parsedTools = {
+            tools: {
+              generate_image: imageGenerationTool,
+            },
+            toolChoice: {
+              type: 'tool',
+              toolName: 'generate_image',
+            },
+          }
+        }
 
         break
       }
@@ -470,7 +562,7 @@ export default defineEventHandler(async (event) => {
       projectId: chat.projectId,
       modelId: model.id,
       reasoning: body.data.reasoning,
-      tools: body.data.tools,
+      tools: requestedTools,
     })
 
     return new Response(JSON.stringify(chatError), {
@@ -543,11 +635,22 @@ export default defineEventHandler(async (event) => {
           // on abort, so there is no cost to recover here either.)
           result = streamText({
             model: instance,
-            instructions: projectSystemPrompt || undefined,
+            instructions: buildChatInstructions(
+              projectSystemPrompt,
+              requestedTools,
+            ),
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
             onEnd({ usage }) {
+              const textCost = computeModelCost(model.id, provider.id, usage)
+              const imageCost = generatedImage
+                ? getImageGenerationCost(
+                  generatedImage.modelId,
+                  generatedImage.aspectRatio,
+                )
+                : undefined
+
               aiLogger.set({
                 ai: {
                   tokens: {
@@ -557,7 +660,9 @@ export default defineEventHandler(async (event) => {
                     total: usage.totalTokens
                       ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
                   },
-                  cost: computeModelCost(model.id, provider.id, usage),
+                  cost: textCost !== undefined || imageCost !== undefined
+                    ? (textCost ?? 0) + (imageCost ?? 0)
+                    : undefined,
                 },
               })
             },
@@ -588,7 +693,7 @@ export default defineEventHandler(async (event) => {
             projectId: chat.projectId,
             modelId: model.id,
             reasoning: body.data.reasoning,
-            tools: body.data.tools,
+            tools: requestedTools,
           })
 
           throw chatError
@@ -605,10 +710,20 @@ export default defineEventHandler(async (event) => {
               return undefined
             }
 
-            const usage = buildMessageUsage(
+            const baseUsage = buildMessageUsage(
               part.totalUsage,
               model.id,
               provider.id,
+            )
+            const imageGenerationCost = generatedImage
+              ? getImageGenerationCost(
+                generatedImage.modelId,
+                generatedImage.aspectRatio,
+              )
+              : undefined
+            const usage = addImageGenerationCostToUsage(
+              baseUsage,
+              imageGenerationCost,
             )
 
             return {
@@ -640,7 +755,7 @@ export default defineEventHandler(async (event) => {
               projectId: chat.projectId,
               modelId: model.id,
               reasoning: body.data.reasoning,
-              tools: body.data.tools,
+              tools: requestedTools,
             })
 
             return JSON.stringify(chatError)
@@ -662,7 +777,7 @@ export default defineEventHandler(async (event) => {
           projectId: chat.projectId,
           modelId: model.id,
           reasoning: body.data.reasoning,
-          tools: body.data.tools,
+          tools: requestedTools,
           publicId: messagePublicId,
           logger,
         })
@@ -760,6 +875,62 @@ function computeModelCost(
   }
 
   return messageUsage.inputCost + (messageUsage.outputCost ?? 0)
+}
+
+// Dollar cost of the image this turn's `generate_image` tool call actually
+// produced, read from the persisted tool part: `output.model` is the exact
+// image model used, `input.aspectRatio` is the size it was generated at.
+// Returns undefined when no image was generated, the tool call failed, or
+// the model has no known price — never fabricated as 0.
+function getGeneratedImageCostFromParts(
+  parts: UIMessage['parts'],
+): number | undefined {
+  for (const part of parts) {
+    if (
+      part.type !== 'tool-generate_image'
+      || part.state !== 'output-available'
+    ) {
+      continue
+    }
+
+    const output = part.output
+
+    if (
+      typeof output !== 'object'
+      || output === null
+      || !('status' in output)
+      || output.status !== 'ready'
+      || !('provider' in output)
+      || (output.provider !== 'openai' && output.provider !== 'google')
+      || !('model' in output)
+      || typeof output.model !== 'string'
+      || !isKnownImageGenerationModel(output.model, output.provider)
+    ) {
+      continue
+    }
+
+    return getImageGenerationCost(
+      output.model,
+      getToolInputAspectRatio(part.input),
+    )
+  }
+
+  return undefined
+}
+
+function getToolInputAspectRatio(input: unknown): string {
+  const defaultAspectRatio = '1:1'
+
+  if (
+    typeof input !== 'object'
+    || input === null
+    || !('aspectRatio' in input)
+    || typeof input.aspectRatio !== 'string'
+  ) {
+    return defaultAspectRatio
+  }
+
+  return input.aspectRatio
 }
 
 // Rebuild a UI message stream from an already-persisted assistant message so a
@@ -897,15 +1068,32 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+    const generatedFileIds = getGeneratedImageFileIds(
+      responseMessage.parts as UIMessage['parts'],
+      input.providerId,
+      normalizedParts,
+    )
+    const usedImageGeneration = responseMessage.parts.some((part) => {
+      return part.type === 'tool-generate_image'
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+    })
 
     let usage: MessageUsage | undefined
 
     try {
-      usage = buildMessageUsage(
+      const baseUsage = buildMessageUsage(
         await input.result.usage,
         input.modelId,
         input.providerId,
       )
+      const imageGenerationCost = getGeneratedImageCostFromParts(
+        responseMessage.parts as UIMessage['parts'],
+      )
+
+      usage = addImageGenerationCostToUsage(baseUsage, imageGenerationCost)
     } catch (exception) {
       input.logger.set({
         usageCapture: {
@@ -916,18 +1104,81 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
-    await insertMessageWithPublicId({
+    const assistantMessage = await insertMessageWithPublicId({
       db: input.db,
       values: {
         chatId: input.chatId,
         role: 'assistant',
         parts: normalizedParts,
-        tools: [],
+        tools: usedImageGeneration ? ['image_generation'] : [],
         reasoning: input.reasoning,
         usage: usage ?? null,
       },
       publicId: input.publicId,
     })
+
+    if (assistantMessage && generatedFileIds.length > 0) {
+      let filesLinked = false
+
+      try {
+        await input.db
+          .update(schema.files)
+          .set({
+            originMessageId: sql`(
+              select ${schema.messages.id}
+              from ${schema.messages}
+              where ${schema.messages.publicId} = ${input.publicId}
+            )`,
+          })
+          .where(and(
+            eq(schema.files.userId, input.userId),
+            eq(schema.files.source, 'assistant'),
+            eq(schema.files.originProvider, input.providerId),
+            inArray(schema.files.id, generatedFileIds),
+          ))
+
+        filesLinked = true
+      } catch {
+        input.logger.set({
+          assistantFiles: {
+            action: 'origin-link-failed',
+            count: generatedFileIds.length,
+            chatId: input.chatId,
+            userId: input.userId,
+            errorCode: 'assistant-file-link-failed',
+          },
+        })
+      }
+
+      if (filesLinked) {
+        try {
+          const activeShare = await getActiveShareForChat(
+            input.chatId,
+            input.event,
+          )
+
+          if (activeShare?.showFiles) {
+            await syncChatShareFiles(
+              activeShare.id,
+              input.chatId,
+              input.userId,
+              true,
+              input.event,
+            )
+          }
+        } catch {
+          input.logger.set({
+            assistantFiles: {
+              action: 'share-sync-failed',
+              count: generatedFileIds.length,
+              chatId: input.chatId,
+              userId: input.userId,
+              errorCode: 'assistant-file-share-sync-failed',
+            },
+          })
+        }
+      }
+    }
 
     return true
   } catch (exception) {
@@ -968,6 +1219,24 @@ function generationInProgressKvKey(
   userMessageId: string,
 ): string {
   return `chat-generating:${chatId}:${userMessageId}`
+}
+
+function buildChatInstructions(
+  projectSystemPrompt: string | null,
+  requestedTools: ModelTool[],
+): string | undefined {
+  const instructions = [projectSystemPrompt]
+
+  if (requestedTools.includes('image_generation')) {
+    instructions.push([
+      'Image generation mode is active. Call generate_image exactly once',
+      'with a complete visual prompt based on the user request. Do not',
+      'decline a valid image request or claim image generation is unavailable.',
+      'The tool saves the result in the user private file library.',
+    ].join(' '))
+  }
+
+  return instructions.filter(Boolean).join('\n\n') || undefined
 }
 
 function toSupportedProviderId(

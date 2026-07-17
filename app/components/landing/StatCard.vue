@@ -55,7 +55,7 @@ const { data: ownData, pending: ownPending } = await useLazyFetch(
   '/api/v1/stats',
   {
     immediate: !injectedStats,
-    query: { v: 2 },
+    query: { v: 'image-generation-1' },
   },
 )
 

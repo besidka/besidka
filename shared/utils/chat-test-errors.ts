@@ -1,5 +1,21 @@
 import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
 
+export const chatTestScenarios = [
+  'short',
+  'long',
+  'reasoning',
+  'image',
+] as const
+
+export type ChatTestScenario = (typeof chatTestScenarios)[number]
+
+export function isChatTestScenario(
+  value: unknown,
+): value is ChatTestScenario {
+  return typeof value === 'string'
+    && chatTestScenarios.includes(value as ChatTestScenario)
+}
+
 export const chatTestErrorIds = [
   'provider-auth',
   'provider-rate-limit',

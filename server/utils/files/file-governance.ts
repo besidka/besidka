@@ -1,7 +1,12 @@
 import type { UIMessage } from 'ai'
 import type { FilePolicy } from '#shared/types/files.d'
 import { and, eq, lt, sql } from 'drizzle-orm'
+import { extractLocalFileStorageKey } from '#shared/utils/files'
 import * as schema from '~~/server/db/schema'
+
+export function extractStorageKeyFromFileUrl(url: string): string | null {
+  return extractLocalFileStorageKey(url)
+}
 
 const DEFAULT_STORAGE_BYTES = 20 * 1024 * 1024 // 20MB
 const DEFAULT_MAX_FILES_PER_MESSAGE = 10
@@ -41,23 +46,18 @@ interface OwnedFile {
   size: number
 }
 
-export function getCurrentMonthKey(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 7)
+export interface OwnedGeneratedImageFile {
+  id: string
+  storageKey: string
+  name: string
+  size: number
+  type: string
+  originProvider: string | null
+  originModel: string | null
 }
 
-export function extractStorageKeyFromFileUrl(url: string): string | null {
-  if (!url) {
-    return null
-  }
-
-  const [cleanedUrl] = url.split('?')
-  const cleaned = cleanedUrl?.replace(/^\/files\//, '')
-
-  if (cleaned && !cleaned.includes('/')) {
-    return cleaned
-  }
-
-  return null
+export function getCurrentMonthKey(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 7)
 }
 
 export async function getOrCreateStoragePolicyRow(
@@ -458,6 +458,41 @@ export async function getOwnedFilesByStorageKeys(
   })
 
   const map = new Map<string, OwnedFile>()
+
+  for (const file of files) {
+    map.set(file.storageKey, file)
+  }
+
+  return map
+}
+
+export async function getOwnedGeneratedImageFilesByStorageKeys(
+  userId: number,
+  storageKeys: string[],
+): Promise<Map<string, OwnedGeneratedImageFile>> {
+  if (storageKeys.length === 0) {
+    return new Map<string, OwnedGeneratedImageFile>()
+  }
+
+  const uniqueStorageKeys = Array.from(new Set(storageKeys))
+  const files = await useDb().query.files.findMany({
+    where: {
+      userId,
+      source: 'assistant',
+      storageKey: { in: uniqueStorageKeys },
+    },
+    columns: {
+      id: true,
+      storageKey: true,
+      name: true,
+      size: true,
+      type: true,
+      originProvider: true,
+      originModel: true,
+    },
+  })
+
+  const map = new Map<string, OwnedGeneratedImageFile>()
 
   for (const file of files) {
     map.set(file.storageKey, file)

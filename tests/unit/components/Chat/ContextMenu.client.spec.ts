@@ -526,7 +526,7 @@ describe('Chat/ContextMenu.client', () => {
         role: 'assistant',
         createdAt: '2026-01-15T10:30:00.000Z',
         model: 'gpt-5.4',
-        usedTools: ['web_search'],
+        usedTools: ['web_search', 'image_generation'],
         reasoning: 'medium',
         tokens: 1180,
         reasoningTokens: 320,
@@ -550,6 +550,9 @@ describe('Chat/ContextMenu.client', () => {
       expect(
         wrapper.find('[data-testid="message-menu-tools"]').text(),
       ).toContain('Web search')
+      expect(
+        wrapper.find('[data-testid="message-menu-tools"]').text(),
+      ).toContain('Image generation')
       expect(
         wrapper.find('[data-testid="message-menu-reasoning"]').text(),
       ).toContain('medium')

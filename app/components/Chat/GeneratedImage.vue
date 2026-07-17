@@ -1,0 +1,337 @@
+<template>
+  <section
+    v-if="isRenderable"
+    class="mt-2 max-w-full"
+    :class="isFailure ? 'w-full' : 'w-80'"
+    aria-live="polite"
+    data-testid="generated-image"
+  >
+    <div
+      v-if="isFailure"
+      class="alert alert-error alert-soft items-start"
+      role="alert"
+      data-testid="generated-image-error"
+    >
+      <Icon name="lucide:image-off" size="18" class="shrink-0" />
+      <div>
+        <p class="font-medium">Image generation failed</p>
+        <p class="text-sm">{{ failureText }}</p>
+      </div>
+    </div>
+
+    <div
+      v-else-if="readyFile"
+      class="rounded-box border border-base-300 bg-base-200"
+      data-testid="generated-image-ready"
+    >
+      <button
+        type="button"
+        class="relative block w-full cursor-zoom-in overflow-hidden rounded-t-box bg-base-300 disabled:cursor-default"
+        :style="{ aspectRatio: imageAspectRatio }"
+        :disabled="hasImageLoadError"
+        :aria-label="`Preview ${readyFile.name}`"
+        data-testid="generated-image-preview-trigger"
+        @click="openImagePreview"
+      >
+        <span
+          v-if="!isImageLoaded && !hasImageLoadError"
+          class="skeleton skeleton--default absolute inset-0"
+        />
+        <img
+          v-show="!hasImageLoadError"
+          :src="imageUrl"
+          :alt="readyFile.name"
+          class="generated-image relative size-full object-contain"
+          :class="{
+            'generated-image--loaded': isImageLoaded,
+          }"
+          loading="lazy"
+          @load="isImageLoaded = true"
+          @error="onImageError"
+        >
+        <span
+          v-if="hasImageLoadError"
+          class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-base-content/60"
+          role="status"
+          data-testid="generated-image-preview-error"
+        >
+          <Icon name="lucide:image-off" size="32" />
+          <span class="text-sm">Image preview unavailable</span>
+        </span>
+      </button>
+      <div class="flex items-center gap-3 p-3">
+        <div class="min-w-0 grow">
+          <p class="truncate text-sm font-medium" :title="readyFile.name">
+            {{ readyFile.name }}
+          </p>
+          <p class="text-xs text-base-content/60">
+            {{ providerLabel }} · {{ formatFileSize(readyFile.size) }}
+          </p>
+        </div>
+        <span
+          v-if="hasImageLoadError"
+          class="badge badge-ghost"
+          role="status"
+          data-testid="generated-image-actions-unavailable"
+        >
+          Unavailable
+        </span>
+        <template v-else>
+          <UiButton
+            icon-only
+            circle
+            ghost
+            mode="default"
+            class="hitslop"
+            size="xs"
+            tooltip-position="top"
+            icon-name="lucide:maximize-2"
+            :icon-size="12"
+            :title="`Preview ${readyFile.name}`"
+            data-testid="generated-image-open"
+            @click="openImagePreview"
+          />
+          <UiButton
+            icon-only
+            circle
+            ghost
+            mode="default"
+            class="hitslop"
+            size="xs"
+            tooltip-position="top"
+            icon-name="lucide:paperclip"
+            :icon-size="12"
+            :title="`Attach ${readyFile.name} for next prompt`"
+            data-testid="generated-image-attach"
+            @click="attachForNextPrompt"
+          />
+          <div
+            class="tooltip tooltip-top tooltip-accent before:font-normal before:hidden after:hidden md:before:block md:after:block"
+            data-tip="Download"
+          >
+            <a
+              :href="downloadUrl"
+              class="btn btn-xs btn-circle btn-accent hitslop"
+              :aria-label="`Download ${readyFile.name}`"
+              data-testid="generated-image-download"
+            >
+              <Icon name="lucide:download" size="12" />
+            </a>
+          </div>
+        </template>
+      </div>
+      <LazyChatImagePreview
+        v-if="isImagePreviewOpen && !hasImageLoadError"
+        v-model:open="isImagePreviewOpen"
+        :src="imageUrl"
+        :download-url="downloadUrl"
+        :alt="readyFile.name"
+        :filename="readyFile.name"
+      />
+    </div>
+
+    <div
+      v-else
+      class="relative overflow-hidden rounded-box border border-base-300 bg-base-200"
+      :style="{ aspectRatio: imageAspectRatio }"
+      role="status"
+      data-testid="generated-image-progress"
+    >
+      <div class="skeleton skeleton--default absolute inset-0" />
+      <div
+        class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-base-200/50"
+      >
+        <span class="loading loading-spinner loading-md text-accent" />
+        <div class="text-center">
+          <p class="text-sm font-medium">{{ progressLabel }}</p>
+          <p class="mt-1 text-xs text-base-content/60">
+            This can take a little while
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script setup lang="ts">
+import type { UIMessage } from 'ai'
+import type {
+  GeneratedImageFile,
+} from '#shared/types/image-generation.d'
+import {
+  getGenerateImageOutput,
+  getGenerateImageToolPart,
+  getImageGenerationFailureText,
+} from '~/utils/generated-images'
+
+const { messageRole, part } = defineProps<{
+  messageRole: UIMessage['role']
+  part: UIMessage['parts'][number]
+}>()
+
+const isImageLoaded = shallowRef<boolean>(false)
+const hasImageLoadError = shallowRef<boolean>(false)
+const isImagePreviewOpen = shallowRef<boolean>(false)
+const supportedAspectRatios: Record<string, string> = {
+  '1:1': '1 / 1',
+  '2:3': '2 / 3',
+  '3:2': '3 / 2',
+}
+
+const toolPart = computed(() => {
+  return getGenerateImageToolPart(part)
+})
+
+const imageAspectRatio = computed<string>(() => {
+  const inputValue = toolPart.value?.input
+
+  if (!inputValue || typeof inputValue !== 'object') {
+    return '1 / 1'
+  }
+
+  const aspectRatio = (inputValue as { aspectRatio?: unknown }).aspectRatio
+
+  if (typeof aspectRatio !== 'string') {
+    return '1 / 1'
+  }
+
+  return supportedAspectRatios[aspectRatio] || '1 / 1'
+})
+
+const output = computed(() => {
+  return getGenerateImageOutput(part)
+})
+
+const isRenderable = computed<boolean>(() => {
+  if (messageRole !== 'assistant') {
+    return false
+  }
+
+  if (toolPart.value?.state === 'output-error') {
+    return true
+  }
+
+  if (
+    toolPart.value?.state === 'input-streaming'
+    || toolPart.value?.state === 'input-available'
+  ) {
+    return true
+  }
+
+  return output.value !== null
+})
+
+const readyFile = computed<GeneratedImageFile | null>(() => {
+  if (output.value?.status !== 'ready' || !output.value.file) {
+    return null
+  }
+
+  return output.value.file
+})
+
+const imageUrl = computed<string>(() => {
+  if (!readyFile.value) {
+    return ''
+  }
+
+  return getFileUrl(readyFile.value.storageKey)
+})
+
+const downloadUrl = computed<string>(() => {
+  if (!readyFile.value) {
+    return ''
+  }
+
+  return getFileDownloadUrl(readyFile.value.storageKey)
+})
+
+const isFailure = computed<boolean>(() => {
+  return toolPart.value?.state === 'output-error'
+})
+
+const failureText = computed<string>(() => {
+  return getImageGenerationFailureText(toolPart.value?.errorText)
+})
+
+const progressLabel = computed<string>(() => {
+  if (output.value?.status === 'saving') {
+    return 'Saving to your files...'
+  }
+
+  if (output.value?.status === 'generating') {
+    return 'Generating your image...'
+  }
+
+  return 'Preparing image generation...'
+})
+
+const providerLabel = computed<string>(() => {
+  if (output.value?.status !== 'ready') {
+    return 'AI'
+  }
+
+  if (output.value.provider === 'openai') {
+    return 'OpenAI'
+  }
+
+  if (output.value.provider === 'google') {
+    return 'Google AI'
+  }
+
+  return 'AI'
+})
+
+function onImageError() {
+  isImageLoaded.value = false
+  hasImageLoadError.value = true
+  isImagePreviewOpen.value = false
+}
+
+function openImagePreview() {
+  isImagePreviewOpen.value = true
+}
+
+function attachForNextPrompt() {
+  if (!readyFile.value) {
+    return
+  }
+
+  useNuxtApp().callHook('chat:attach-file', {
+    id: readyFile.value.id,
+    storageKey: readyFile.value.storageKey,
+    name: readyFile.value.name,
+    size: readyFile.value.size,
+    type: readyFile.value.type,
+  })
+}
+
+watch(imageUrl, () => {
+  isImageLoaded.value = false
+  hasImageLoadError.value = false
+  isImagePreviewOpen.value = false
+}, { flush: 'post' })
+</script>
+
+<style scoped>
+.generated-image {
+  filter: blur(1rem);
+  opacity: 0;
+  transform: scale(1.02);
+  transition:
+    filter 400ms ease,
+    opacity 300ms ease,
+    transform 400ms ease;
+}
+
+.generated-image--loaded {
+  filter: blur(0);
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generated-image {
+    transition: none;
+  }
+}
+</style>
