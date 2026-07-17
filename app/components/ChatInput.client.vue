@@ -101,7 +101,12 @@
                         : 'lucide:folder'"
                       size="14"
                     />
-                    {{ projectContext ? projectContext.name : '' }}
+                    <span
+                      v-if="projectContext"
+                      class="truncate max-w-[100px]"
+                    >
+                      {{ projectContext.name }}
+                    </span>
                   </button>
                   <button
                     v-if="projectContext"
