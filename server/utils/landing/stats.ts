@@ -7,10 +7,14 @@ export interface LandingStats {
   chats: number
   messages: number
   files: number
+  uploadedFiles: number
+  generatedImages: number
   sharedChats: number
   researches: number
   updatedAt: string
 }
+
+export const LANDING_STATS_CACHE_NAME = 'landing-stats-v4'
 
 export async function readStatsFromDb(): Promise<LandingStats> {
   const db = useDb()
@@ -20,6 +24,8 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     chats: number
     messages: number
     files: number
+    uploadedFiles: number
+    generatedImages: number
     sharedChats: number
     researches: number
   }>(sql`
@@ -28,9 +34,20 @@ export async function readStatsFromDb(): Promise<LandingStats> {
       (SELECT count(*) FROM ${schema.chats}) AS chats,
       (SELECT count(*) FROM ${schema.messages}) AS messages,
       (SELECT count(*) FROM ${schema.files}) AS files,
+      (
+        SELECT count(*) FROM ${schema.files}
+        WHERE ${schema.files.source} = 'upload'
+      ) AS uploadedFiles,
+      (
+        SELECT count(*) FROM ${schema.files}
+        WHERE ${schema.files.source} = 'assistant'
+          AND ${schema.files.type} LIKE 'image/%'
+      ) AS generatedImages,
       (SELECT count(*) FROM ${schema.chatShares}) AS sharedChats,
-      (SELECT count(*) FROM ${schema.researchJobs}
-        WHERE status = 'completed') AS researches
+      (
+        SELECT count(*) FROM ${schema.researchJobs}
+        WHERE ${schema.researchJobs.status} = 'completed'
+      ) AS researches
   `)
 
   return {
@@ -38,6 +55,8 @@ export async function readStatsFromDb(): Promise<LandingStats> {
     chats: counts?.chats ?? 0,
     messages: counts?.messages ?? 0,
     files: counts?.files ?? 0,
+    uploadedFiles: counts?.uploadedFiles ?? 0,
+    generatedImages: counts?.generatedImages ?? 0,
     sharedChats: counts?.sharedChats ?? 0,
     researches: counts?.researches ?? 0,
     updatedAt: new Date().toISOString(),
@@ -49,7 +68,7 @@ export const cachedStats = defineCachedFunction(
     return readStatsFromDb()
   },
   {
-    name: 'landing-stats-v3',
+    name: LANDING_STATS_CACHE_NAME,
     maxAge: 24 * 60 * 60,
     swr: true,
     staleMaxAge: 24 * 60 * 60,

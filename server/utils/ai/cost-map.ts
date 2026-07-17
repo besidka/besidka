@@ -61,6 +61,14 @@ function findLongestPrefixMatch(
  * provider-versioned model IDs (e.g. "gpt-5.4-nano-2026-03-17",
  * "gemini-3-flash-preview-09-2025") resolve to the correct base entry
  * without fragile per-provider regex patterns.
+ *
+ * The prefix match is a pure string comparison, so it cannot tell an
+ * image-generation model apart from a same-prefixed text model (e.g.
+ * "gemini-2.5-flash-image" starts with "gemini-2.5-flash-"). Every lookup
+ * that misses the exact-key map is resolved through `getModel()` first: an
+ * image-generation model always returns `undefined` there instead of
+ * falling through to the prefix match, since image models are priced
+ * per-image and have no per-token cost in this map.
  */
 export function getModelCostMap(): Record<string, ModelCost> {
   if (cached) {
@@ -94,6 +102,12 @@ export function getModelCostMap(): Record<string, ModelCost> {
 
       if (prop in target) {
         return target[prop]
+      }
+
+      const { model } = getModel(prop)
+
+      if (isImageGenerationModel(model)) {
+        return undefined
       }
 
       return findLongestPrefixMatch(prop, target)

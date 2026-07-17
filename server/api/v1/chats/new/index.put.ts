@@ -1,8 +1,12 @@
 import { useLogger, createError } from 'evlog'
-import type { TextUIPart, FileUIPart } from 'ai'
+import type { FileUIPart, TextUIPart } from 'ai'
 import { and, eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
+import {
+  chatToolSchema,
+  userMessagePartsSchema,
+} from '~~/server/utils/chats/request-schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
@@ -12,24 +16,9 @@ import {
   startResearchJobForChat,
 } from '~~/server/utils/research/start'
 
-const textPart = z.object({
-  type: z.literal('text'),
-  text: z.string().min(1),
-})
-
-const filePart = z.object({
-  type: z.literal('file'),
-  mediaType: z.string(),
-  filename: z.string().optional(),
-  url: z.string(),
-  providerMetadata: z.any().optional(),
-})
-
 const rules = z.object({
-  parts: z.array(z.union([textPart, filePart])).nonempty().refine((parts) => {
-    return parts.some(part => part.type === 'text')
-  }),
-  tools: z.array(z.enum(['web_search'])),
+  parts: userMessagePartsSchema,
+  tools: z.array(chatToolSchema),
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   projectId: z.string().nonempty().optional(),
   model: z.string().nonempty().optional(),

@@ -41,7 +41,7 @@ function isFullWidthCard(index: number): boolean {
 }
 
 const { data, pending } = await useLazyFetch('/api/v1/stats', {
-  query: { v: 2 },
+  query: { v: 'image-generation-1' },
 })
 
 provide<InjectedStats>('stat-grid-data', { data, pending })

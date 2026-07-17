@@ -177,6 +177,7 @@ export default defineNuxtConfig({
     disallow: [
       '/api/',
       '/chats/',
+      '/files/',
       '/profile/',
       '/signin',
       '/signup',
@@ -191,6 +192,7 @@ export default defineNuxtConfig({
     exclude: [
       '/api/**',
       '/chats/**',
+      '/files/**',
       '/profile/**',
       '/signin',
       '/signup',

@@ -269,6 +269,47 @@ describe('chat branch API', () => {
     })
   })
 
+  it('strips legacy tool parts from copied messages', async () => {
+    const handler = await getHandler()
+    const messages: BranchTestMessage[] = [{
+      id: 'message-1',
+      publicId: 'public-1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Saved response' },
+        {
+          type: 'tool-generate_image',
+          toolCallId: 'legacy-tool',
+          state: 'output-available',
+          output: { status: 'ready' },
+        },
+        {
+          type: 'dynamic-tool',
+          toolName: 'legacy_dynamic_tool',
+          toolCallId: 'dynamic-tool',
+          state: 'input-available',
+          input: {},
+        },
+      ] as any,
+      tools: [],
+      reasoning: 'off',
+    }]
+    const { db, insertValues } = createDb({ messages })
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      body: {
+        chatSlug: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      },
+    } as never)
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Saved response' }],
+    }))
+  })
+
   it('copies only messages up to the branch point', async () => {
     const handler = await getHandler()
     const messages = createMessages(5)

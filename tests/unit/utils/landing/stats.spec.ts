@@ -32,6 +32,8 @@ describe('landing stats', () => {
       chats: 20,
       messages: 30,
       files: 40,
+      uploadedFiles: 35,
+      generatedImages: 5,
       sharedChats: 5,
       researches: 7,
     })
@@ -46,6 +48,8 @@ describe('landing stats', () => {
       chats: 20,
       messages: 30,
       files: 40,
+      uploadedFiles: 35,
+      generatedImages: 5,
       sharedChats: 5,
       researches: 7,
       updatedAt: expect.any(String),
@@ -66,19 +70,21 @@ describe('landing stats', () => {
       chats: 0,
       messages: 0,
       files: 0,
+      uploadedFiles: 0,
+      generatedImages: 0,
       sharedChats: 0,
       researches: 0,
       updatedAt: expect.any(String),
     })
   })
 
-  it('bumps the cache name to v3 so the researches field cannot be served stale', async () => {
+  it('bumps the cache name to v4 so the merged fields cannot be served stale', async () => {
     vi.stubGlobal('useDb', () => createDb(null))
 
     await importStats()
 
     expect(capturedCacheOptions).toMatchObject({
-      name: 'landing-stats-v3',
+      name: 'landing-stats-v4',
       group: 'landing',
     })
   })

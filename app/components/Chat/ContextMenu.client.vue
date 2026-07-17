@@ -181,6 +181,7 @@
 
 <script setup lang="ts">
 import type { MessageMenuInfo } from '#shared/utils/message-metadata'
+import type { ModelTool } from '#shared/types/providers.d'
 import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import {
   formatMessageCost,
@@ -188,8 +189,9 @@ import {
   formatTokenCount,
 } from '#shared/utils/message-format'
 
-const TOOL_LABELS: Record<'web_search' | 'deep_research', string> = {
+const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search: 'Web search',
+  image_generation: 'Image generation',
   deep_research: 'Deep research',
 }
 
@@ -251,9 +253,15 @@ const toolsLabel = computed<string>(() => {
 })
 
 const toolsIconName = computed<string>(() => {
-  return props.info?.usedTools?.includes('deep_research')
-    ? 'lucide:telescope'
-    : 'lucide:globe'
+  if (props.info?.usedTools?.includes('deep_research')) {
+    return 'lucide:telescope'
+  }
+
+  if (props.info?.usedTools?.includes('image_generation')) {
+    return 'lucide:image-plus'
+  }
+
+  return 'lucide:globe'
 })
 
 const tokensLabel = computed<string>(() => {

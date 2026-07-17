@@ -1,14 +1,18 @@
 import type { UIMessage } from 'ai'
+import { computed, shallowRef, triggerRef } from 'vue'
 import { describe, expect, it } from 'vitest'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
+  getRenderableChatMessages,
+  hasVisibleAssistantContent,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
   shouldBlockGenerationRecovery,
   shouldForceGenericLoadingIndicator,
+  shouldShowGenericLoadingIndicator,
   shouldNotifyGenerationReadyWhileHidden,
   shouldRecoverInterruptedGeneration,
   shouldSurfaceChatError,
@@ -507,6 +511,141 @@ describe('chat error helpers', () => {
       true,
       streamingAssistantMessage,
     )).toBe(false)
+  })
+
+  it('treats image generation progress as visible assistant content', () => {
+    const generatingAssistantMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: { status: 'generating' },
+        },
+      ],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(generatingAssistantMessage)).toBe(true)
+    expect(shouldForceGenericLoadingIndicator(
+      true,
+      generatingAssistantMessage,
+    )).toBe(false)
+    expect(shouldShowGenericLoadingIndicator(
+      'streaming',
+      false,
+      generatingAssistantMessage,
+    )).toBe(false)
+    expect(shouldShowGenericLoadingIndicator(
+      'submitted',
+      false,
+      generatingAssistantMessage,
+    )).toBe(false)
+  })
+
+  it('refreshes an in-place streamed image tool update for Vue rendering', () => {
+    const imageToolPart = {
+      type: 'tool-generate_image',
+      toolCallId: 'image-1',
+      state: 'input-available',
+      input: { prompt: 'A quiet forest' },
+    }
+    const messages = [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [imageToolPart],
+    }] as unknown as UIMessage[]
+    const sdkMessages = shallowRef<UIMessage[]>(messages)
+    const renderableMessages = computed<UIMessage[]>(() => {
+      return getRenderableChatMessages(sdkMessages.value)
+    })
+    const preparingSnapshot = renderableMessages.value
+
+    Object.assign(imageToolPart, {
+      state: 'output-available',
+      output: {
+        status: 'ready',
+        provider: 'openai',
+        model: 'gpt-image-2',
+        file: {
+          id: 'file-1',
+          storageKey: 'generated.webp',
+          name: 'generated.webp',
+          size: 1024,
+          type: 'image/webp',
+          source: 'assistant',
+          url: '/files/generated.webp',
+          downloadUrl: '/files/generated.webp?download=1',
+        },
+      },
+    })
+    triggerRef(sdkMessages)
+
+    const readySnapshot = renderableMessages.value
+    const preparingPart = preparingSnapshot[0]?.parts[0]
+    const readyPart = readySnapshot[0]?.parts[0] as {
+      output?: { status?: string }
+    }
+
+    expect(readyPart).not.toBe(preparingPart)
+    expect(readyPart.output?.status).toBe('ready')
+  })
+
+  it('returns a fresh array without cloning messages for text replies', () => {
+    const messages = [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Hello' }],
+    }] as UIMessage[]
+
+    const result = getRenderableChatMessages(messages)
+
+    expect(result).not.toBe(messages)
+    expect(result[0]).toBe(messages[0])
+  })
+
+  it('propagates an in-place streamed text update to a computed consumer', () => {
+    const textPart = { type: 'text', text: '' }
+    const messages = [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [textPart],
+    }] as unknown as UIMessage[]
+    const sdkMessages = shallowRef<UIMessage[]>(messages)
+    const renderableMessages = computed<UIMessage[]>(() => {
+      return getRenderableChatMessages(sdkMessages.value)
+    })
+    const isAssistantVisible = computed<boolean>(() => {
+      const message = renderableMessages.value.find((candidate) => {
+        return candidate.id === 'assistant-1'
+      })
+
+      return hasVisibleAssistantContent(message)
+    })
+
+    expect(isAssistantVisible.value).toBe(false)
+
+    textPart.text = 'This is a streamed reply.'
+    triggerRef(sdkMessages)
+
+    expect(isAssistantVisible.value).toBe(true)
+  })
+
+  it('treats a persisted file-only reply as visible assistant content', () => {
+    const fileAssistantMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: '/files/generated.webp',
+        },
+      ],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(fileAssistantMessage)).toBe(true)
   })
 
   it('never forces the loader once a generation is not being awaited', () => {

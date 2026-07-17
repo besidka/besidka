@@ -1,5 +1,10 @@
 import type { FileUIPart, UIMessage } from 'ai'
 import type { H3Event } from 'h3'
+import {
+  HIDDEN_FILE_MEDIA_TYPE,
+  isGeneratedFilePart,
+  markUrlAsGeneratedFile,
+} from '#shared/utils/files'
 import { SHARE_FILE_TOKEN_TTL_SECONDS } from '~~/server/utils/chats/share'
 import {
   extractStorageKeyFromFileUrl,
@@ -18,6 +23,32 @@ export function stripFileParts<
       }),
     }
   })
+}
+
+export function hideFileParts<
+  TMessage extends { parts: UIMessage['parts'] },
+>(messages: TMessage[]): TMessage[] {
+  return messages.map((message) => {
+    return {
+      ...message,
+      parts: message.parts.map((part) => {
+        if (part.type !== 'file') {
+          return part
+        }
+
+        return buildHiddenFilePart()
+      }),
+    }
+  })
+}
+
+function buildHiddenFilePart(): FileUIPart {
+  return {
+    type: 'file',
+    mediaType: HIDDEN_FILE_MEDIA_TYPE,
+    filename: undefined,
+    url: '',
+  }
 }
 
 export async function rewriteShareFileParts<
@@ -79,13 +110,8 @@ export async function rewriteBranchedChatFileParts<
   event: H3Event = useEvent(),
 ): Promise<TMessage[]> {
   const storageKeys = collectFileStorageKeys(messages)
-
-  if (storageKeys.length === 0) {
-    return messages
-  }
-
   const ownedFiles = await getOwnedFilesByStorageKeys(ownerUserId, storageKeys)
-  const grantedStorageKeyToFileId = shareId
+  const grantedStorageKeyToFileId = shareId && storageKeys.length > 0
     ? await buildGrantedStorageKeyToFileIdMap(shareId)
     : new Map<string, string>()
   const tokensByFileId = new Map<string, string>()
@@ -102,8 +128,15 @@ export async function rewriteBranchedChatFileParts<
 
       const storageKey = extractStorageKeyFromFileUrl(part.url)
 
-      if (!storageKey || ownedFiles.has(storageKey)) {
-        rewrittenParts.push(part)
+      if (!storageKey) {
+        continue
+      }
+
+      if (ownedFiles.has(storageKey)) {
+        rewrittenParts.push({
+          ...part,
+          url: buildOwnedFileUrl(part.url, storageKey),
+        })
         continue
       }
 
@@ -112,6 +145,7 @@ export async function rewriteBranchedChatFileParts<
       if (fileId && shareId) {
         rewrittenParts.push(await tokenizeFilePart(
           part,
+          storageKey,
           fileId,
           tokensByFileId,
           shareId,
@@ -159,19 +193,30 @@ async function rewriteFilePart(
   event: H3Event,
 ): Promise<FileUIPart | null> {
   const storageKey = extractStorageKeyFromFileUrl(part.url)
-  const fileId = storageKey
-    ? storageKeyToFileId.get(storageKey)
-    : undefined
+
+  if (!storageKey) {
+    return null
+  }
+
+  const fileId = storageKeyToFileId.get(storageKey)
 
   if (!fileId) {
     return null
   }
 
-  return tokenizeFilePart(part, fileId, tokensByFileId, shareId, event)
+  return tokenizeFilePart(
+    part,
+    storageKey,
+    fileId,
+    tokensByFileId,
+    shareId,
+    event,
+  )
 }
 
 async function tokenizeFilePart(
   part: FileUIPart,
+  storageKey: string,
   fileId: string,
   tokensByFileId: Map<string, string>,
   shareId: string,
@@ -189,11 +234,39 @@ async function tokenizeFilePart(
 
   tokensByFileId.set(fileId, token)
 
-  const separator = part.url.includes('?') ? '&' : '?'
-
   return {
     ...part,
-    url: `${part.url}${separator}token=${token}`,
+    url: buildTokenizedFileUrl(part.url, storageKey, token),
+  }
+}
+
+function buildOwnedFileUrl(
+  sourceUrl: string,
+  storageKey: string,
+): string {
+  const canonicalUrl = `/files/${storageKey}`
+
+  return isGeneratedFilePart({ type: 'file', url: sourceUrl })
+    ? markUrlAsGeneratedFile(canonicalUrl)
+    : canonicalUrl
+}
+
+function buildTokenizedFileUrl(
+  sourceUrl: string,
+  storageKey: string,
+  token: string,
+): string {
+  try {
+    const source = new URL(sourceUrl, 'https://besidka.local')
+    const target = new URL(`/files/${storageKey}`, 'https://besidka.local')
+
+    target.search = source.search
+    target.hash = source.hash
+    target.searchParams.set('token', token)
+
+    return `${target.pathname}${target.search}${target.hash}`
+  } catch {
+    return `/files/${storageKey}?token=${encodeURIComponent(token)}`
   }
 }
 

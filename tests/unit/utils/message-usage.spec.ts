@@ -1,6 +1,9 @@
 import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it } from 'vitest'
-import { buildMessageUsage } from '../../../server/utils/ai/message-usage'
+import {
+  addImageGenerationCostToUsage,
+  buildMessageUsage,
+} from '../../../server/utils/ai/message-usage'
 
 const PRICED_MODEL_ID = 'gpt-5.4'
 const PRICED_PROVIDER_ID = 'openai'
@@ -126,5 +129,63 @@ describe('buildMessageUsage', () => {
 
     expect(result).not.toHaveProperty('reasoningTokens')
     expect(result).not.toHaveProperty('cachedInputTokens')
+  })
+})
+
+describe('addImageGenerationCostToUsage', () => {
+  it('adds the image cost onto an existing outputCost', () => {
+    const usage = buildMessageUsage(
+      createUsage({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      }),
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    const result = addImageGenerationCostToUsage(usage, 0.067)
+
+    expect(result?.outputCost).toBeCloseTo(
+      (500 * PRICED_MODEL_OUTPUT_PER_MILLION) / 1_000_000 + 0.067,
+    )
+  })
+
+  it('adds the image cost even when there is no text outputCost', () => {
+    const usage = buildMessageUsage(
+      createUsage({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      }),
+      'unknown-model-xyz',
+      PRICED_PROVIDER_ID,
+    )
+
+    const result = addImageGenerationCostToUsage(usage, 0.067)
+
+    expect(result?.outputCost).toBe(0.067)
+  })
+
+  it('returns usage unchanged when no image was generated', () => {
+    const usage = buildMessageUsage(
+      createUsage({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      }),
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    const result = addImageGenerationCostToUsage(usage, undefined)
+
+    expect(result).toEqual(usage)
+  })
+
+  it('returns undefined unchanged when usage itself is undefined', () => {
+    const result = addImageGenerationCostToUsage(undefined, 0.067)
+
+    expect(result).toBeUndefined()
   })
 })

@@ -64,6 +64,13 @@ comparison:
         - no
         - no
         - yes
+    - label: Image generation
+      values:
+        - yes
+        - yes
+        - yes
+        - no
+        - yes
     - label: Shareable chat links
       values:
         - yes
@@ -99,7 +106,7 @@ comparison:
         - no
         - no
         - no
-  note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup.
+  note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup. Image generation is billed separately at the provider's published image rates.
   priceDate: June 2026
 description: Your digital besidka for all AI chats. Bring your own API keys, pay only for what you use, and keep full control. No subscriptions, no markup, no lock-in.
 faqs:
@@ -107,6 +114,8 @@ faqs:
     answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from OpenAI or Google AI Studio directly. You pay the provider at their published rates — Besidka adds no markup.
   - question: Which AI providers are supported?
     answer: Currently OpenAI (GPT-5 and the full GPT model family) and Google AI Studio (Gemini models including Gemini 2.5 Pro and Gemini 3 series). More providers are planned. Check the GitHub repository for the latest list.
+  - question: Can Besidka generate images and documents?
+    answer: Yes for images. Select Create image with a supported OpenAI or Google chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
   - question: Do you store my API keys?
     answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged or transmitted to third parties. You can delete them from your profile at any time.
   - question: Can I self-host this?
@@ -118,7 +127,7 @@ faqs:
   - question: Does Besidka support deep research like ChatGPT?
     answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key like every other model, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
   - question: How is pricing calculated?
-    answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at their per-token rates. There is no monthly fee, no seat charge, and no markup. You only pay when you actually send a message.
+    answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
   - question: What does "Besidka" mean?
     answer: The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. The word derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
   - question: How to pronounce Besidka?
@@ -138,6 +147,9 @@ features:
   - icon: lucide:brain
     title: Reasoning mode
     body: Enable step-by-step thinking for complex questions. The model works through its reasoning before giving a final answer.
+  - icon: lucide:image-plus
+    title: AI image generation
+    body: Generate one image at a time with supported OpenAI and Google models. Besidka saves each result privately in your file library so you can preview and download it.
   - icon: lucide:paperclip
     title: File attachments
     body: Send images and PDFs. Files are stored in your own R2 bucket and can be reused across different chats.
@@ -256,7 +268,7 @@ That is the subscription trap: you pay whether you chat twice a week or twice a 
 
 Most AI tools charge a flat monthly fee, add a markup on top of the underlying API cost, and lock your history behind their platform. When the price goes up — and it usually does — you have no alternative.
 
-Besidka flips this: you connect your own API key, you pay the provider's published rate only for the tokens you actually use, and your data stays yours.
+Besidka flips this: you connect your own API key, you pay the provider's published rates only for the API usage you actually consume, and your data stays yours.
 ::
 
 ::home-bubble

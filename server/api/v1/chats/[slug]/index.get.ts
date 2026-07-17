@@ -1,6 +1,7 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import * as schema from '~~/server/db/schema'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { reconstructGeneratedImageParts } from '~~/server/utils/files/reconstruct-generated-image-parts'
 import { rewriteBranchedChatFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
 
@@ -85,6 +86,11 @@ export default defineEventHandler(async (event) => {
     )
     : messages
 
+  const messagesWithGeneratedImages = await reconstructGeneratedImageParts(
+    resolvedMessages,
+    userId,
+  )
+
   const latestResearchJob = await db.query.researchJobs.findFirst({
     where: { chatId: chat.id },
     orderBy: { id: 'desc' },
@@ -92,7 +98,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     ...chat,
-    messages: resolvedMessages,
+    messages: messagesWithGeneratedImages,
     activeResearchJob: isVisibleResearchJob(latestResearchJob)
       ? toResearchJobView(latestResearchJob)
       : null,

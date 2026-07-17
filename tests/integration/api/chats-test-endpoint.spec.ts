@@ -229,6 +229,62 @@ describe('test chat endpoints', () => {
     }))
   })
 
+  it('streams a realistic generate_image tool-call sequence for scenario=image', async () => {
+    const handler = await getPostHandler()
+
+    await handler(createEvent({
+      scenario: 'image',
+      messages: '1',
+      effort: 'off',
+      imageReasoningFirst: 'false',
+    }) as any)
+
+    await mocks.capturedChunks[0].ready
+    const chunks = mocks.capturedChunks[0].chunks
+
+    expect(chunks.map((chunk: any) => chunk.type)).toEqual([
+      'tool-input-start',
+      'tool-input-available',
+      'tool-output-available',
+      'tool-output-available',
+      'tool-output-available',
+    ])
+
+    const [inputAvailable, generating, saving, ready] = chunks.slice(1)
+
+    expect(inputAvailable.toolName).toBe('generate_image')
+    expect(generating.output).toEqual({ status: 'generating' })
+    expect(generating.preliminary).toBe(true)
+    expect(saving.output).toEqual({ status: 'saving' })
+    expect(saving.preliminary).toBe(true)
+    expect(ready.output).toMatchObject({
+      status: 'ready',
+      file: expect.objectContaining({ source: 'assistant' }),
+    })
+    expect(ready.preliminary).toBeUndefined()
+  })
+
+  it('streams reasoning before the tool call when imageReasoningFirst=true', async () => {
+    const handler = await getPostHandler()
+
+    await handler(createEvent({
+      scenario: 'image',
+      messages: '1',
+      effort: 'off',
+      imageReasoningFirst: 'true',
+    }) as any)
+
+    await mocks.capturedChunks[0].ready
+    const chunkTypes = mocks.capturedChunks[0].chunks
+      .map((chunk: any) => chunk.type)
+    const toolStartIndex = chunkTypes.indexOf('tool-input-start')
+
+    expect(toolStartIndex).toBeGreaterThan(0)
+    expect(chunkTypes.slice(0, toolStartIndex)).toEqual(
+      expect.arrayContaining(['reasoning-start', 'reasoning-end']),
+    )
+  })
+
   it('streams a structured error chunk when error=provider-unavailable', async () => {
     const handler = await getPostHandler()
 

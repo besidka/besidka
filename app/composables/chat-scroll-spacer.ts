@@ -165,6 +165,14 @@ export function useChatScrollSpacer(
   })
   onUpdated(captureMessageDimensions)
 
+  function rebroadcastSpacerChange(height: number) {
+    nuxtApp.callHook('chat-spacer:changed', height)
+
+    requestAnimationFrame(() => {
+      nuxtApp.callHook('chat-spacer:changed', height)
+    })
+  }
+
   async function adjustSpacerAfterResponse() {
     if (chatSdk.messages.length <= 1) {
       return
@@ -246,8 +254,6 @@ export function useChatScrollSpacer(
 
     spacerHeight.value = resultSpacer
 
-    nuxtApp.callHook('chat-spacer:changed', resultSpacer)
-
     await nextTick()
 
     container.scrollTo({
@@ -256,6 +262,8 @@ export function useChatScrollSpacer(
         - extraSpaceForScroll,
       behavior: 'instant',
     })
+
+    rebroadcastSpacerChange(resultSpacer)
   }
 
   async function pushUserMessageToTop(behavior: ScrollBehavior = 'smooth') {
@@ -286,18 +294,19 @@ export function useChatScrollSpacer(
     spacerComputedByPush.value = true
     spacerHeight.value = resultSpacer
 
-    nuxtApp.callHook('chat-spacer:changed', resultSpacer)
-
     await nextTick()
 
     messagesEndRef?.value?.scrollIntoView({
       behavior,
     })
+
+    rebroadcastSpacerChange(resultSpacer)
   }
 
-  function resetSpacer() {
+  async function resetSpacer() {
     spacerHeight.value = inputHeight.value
-    nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
+
+    await nextTick()
   }
 
   // The clarify topic bubble and the research pending block are rendered as
@@ -341,8 +350,13 @@ export function useChatScrollSpacer(
   // entry point is showing. When the anchor can't be measured yet (nothing
   // rendered, or a turn taller than the viewport), this falls back to the
   // round-4 input-clearance floor so the fixed ChatInput never overlaps the
-  // clarify form's or pending block's buttons on mobile.
-  async function reserveSpaceForClarify(): Promise<void> {
+  // clarify form's, pending block's, or pending-image skeleton's buttons on
+  // mobile. Also used to reserve space for the pending image-generation
+  // skeleton up front (see [slug].vue), so the phantom-to-real skeleton swap
+  // grows inside already-reserved space instead of needing a later re-pin.
+  async function reservePinnedSpace(
+    behavior: ScrollBehavior = 'smooth',
+  ): Promise<void> {
     spacerComputedByPush.value = true
 
     const container = scrollContainerRef.value
@@ -362,11 +376,11 @@ export function useChatScrollSpacer(
       )
     }
 
-    nuxtApp.callHook('chat-spacer:changed', spacerHeight.value)
-
     await nextTick()
 
-    messagesEndRef?.value?.scrollIntoView({ behavior: 'smooth' })
+    messagesEndRef?.value?.scrollIntoView({ behavior })
+
+    rebroadcastSpacerChange(spacerHeight.value)
   }
 
   function shouldResetSpacerOnScrollToBottom(): boolean {
@@ -391,12 +405,14 @@ export function useChatScrollSpacer(
     waitingForDimensions.value = true
   })
 
-  nuxtApp.hook('chat:scroll-to-bottom', () => {
+  nuxtApp.hook('chat:scroll-to-bottom', async () => {
     if (shouldResetSpacerOnScrollToBottom()) {
-      resetSpacer()
+      await resetSpacer()
     }
 
     messagesEndRef?.value?.scrollIntoView({ behavior: 'smooth' })
+
+    rebroadcastSpacerChange(spacerHeight.value)
   })
 
   /**
@@ -429,15 +445,12 @@ export function useChatScrollSpacer(
       ) {
         spacerHeight.value = inputHeight.value
 
-        nuxtApp.callHook(
-          'chat-spacer:changed',
-          spacerHeight.value,
-        )
-
         scrollContainerRef.value?.scrollTo({
           top: scrollContainerRef.value?.scrollHeight ?? 0,
           behavior: 'instant',
         })
+
+        rebroadcastSpacerChange(spacerHeight.value)
       }
     }, DEFAULT_DELAY_TO_MEASURE_RENDERED_DOM_ELEMENTS)
   })
@@ -448,6 +461,6 @@ export function useChatScrollSpacer(
     spacerHeight,
     pushUserMessageToTop,
     waitingForDimensions,
-    reserveSpaceForClarify,
+    reservePinnedSpace,
   }
 }

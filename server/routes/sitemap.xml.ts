@@ -11,10 +11,8 @@ export default defineEventHandler((event) => {
 
   const urls = [
     { loc: `${base}/`, priority: '1.0', changefreq: 'weekly' },
-    { loc: `${base}/signin`, priority: '0.8', changefreq: 'monthly' },
-    { loc: `${base}/signup`, priority: '0.8', changefreq: 'monthly' },
-    { loc: `${base}/terms`, priority: '0.4', changefreq: 'yearly' },
     { loc: `${base}/privacy`, priority: '0.4', changefreq: 'yearly' },
+    { loc: `${base}/terms`, priority: '0.4', changefreq: 'yearly' },
   ]
 
   const xml = [

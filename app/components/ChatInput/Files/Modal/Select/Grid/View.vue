@@ -3,11 +3,13 @@
     ref="containerRef"
     class="grid grid-cols-3 sm:grid-cols-4 gap-2 py-1 select-none"
   >
-    <button
+    <div
       v-for="(file, index) in files"
       :key="file.id"
-      type="button"
+      role="button"
+      tabindex="0"
       :data-file-index="index"
+      :aria-pressed="selectedIds.has(file.id)"
       class="group relative aspect-square rounded-box overflow-hidden bg-base-200 hover:ring-2 hover:ring-text/50 transition-all focus:outline-none focus:ring-2 focus:ring-text"
       :class="{
         'ring-2 ring-text': selectedIds.has(file.id),
@@ -15,6 +17,8 @@
           isTouchSelecting && touchedIndices.has(index)
       }"
       @click="$emit('file-click', $event, file, index)"
+      @keydown.enter.self="onKeyboardSelect(file, index)"
+      @keydown.space.self.prevent="onKeyboardSelect(file, index)"
     >
       <!-- Image Preview -->
       <img
@@ -73,6 +77,14 @@
         />
       </div>
 
+      <span
+        v-if="file.source === 'assistant'"
+        class="badge badge-secondary badge-xs absolute bottom-1 left-1 z-10 text-2xs leading-none gap-0.5"
+      >
+        <Icon name="lucide:sparkles" size="10" />
+        {{ getAiBadgeLabel(file) }}
+      </span>
+
       <!-- Hover/Focus Actions -->
       <div
         class="absolute top-1 right-1 flex gap-0.5"
@@ -86,6 +98,15 @@
         }"
         @click.stop
       >
+        <a
+          :href="getFileDownloadUrl(file.storageKey)"
+          class="btn btn-circle btn-xs btn-soft"
+          :aria-label="`Download ${file.name}`"
+          title="Download"
+          @click.stop
+        >
+          <Icon name="lucide:download" size="12" />
+        </a>
         <button
           type="button"
           class="btn btn-circle btn-xs btn-soft"
@@ -105,12 +126,13 @@
           <Icon name="lucide:trash-2" size="12" />
         </button>
       </div>
-    </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { FileManagerFile } from '~/types/file-manager'
+import { formatMessageCost } from '#shared/utils/message-format'
 
 defineProps<{
   files: FileManagerFile[]
@@ -119,13 +141,25 @@ defineProps<{
   touchedIndices: Set<number>
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'file-click': [event: MouseEvent, file: FileManagerFile, index: number]
   'rename': [file: FileManagerFile]
   'delete': [file: FileManagerFile]
 }>()
 
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
+
+function onKeyboardSelect(file: FileManagerFile, index: number) {
+  emit('file-click', new MouseEvent('click'), file, index)
+}
+
+function getAiBadgeLabel(file: FileManagerFile): string {
+  if (!file.generationCost) {
+    return 'AI'
+  }
+
+  return `AI · ${formatMessageCost(file.generationCost)}`
+}
 
 defineExpose({
   containerRef,

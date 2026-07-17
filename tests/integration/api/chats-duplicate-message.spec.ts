@@ -135,6 +135,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getGeneratedImageFileIds: vi.fn(() => []),
   sanitizeMessagesForModelContext: vi.fn(
     (messages: unknown) => messages,
   ),
@@ -271,7 +272,7 @@ describe('chat duplicate message detection', () => {
     )
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini' },
+      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({
       instance: {},

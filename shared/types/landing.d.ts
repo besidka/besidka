@@ -3,6 +3,8 @@ export type StatMetric
     | 'chats'
     | 'messages'
     | 'files'
+    | 'uploadedFiles'
+    | 'generatedImages'
     | 'sharedChats'
     | 'researches'
 

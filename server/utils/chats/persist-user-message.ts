@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import type { H3Event } from 'h3'
+import type { Tools } from '#shared/types/chats.d'
 import { createError } from 'evlog'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -20,7 +21,7 @@ export interface PersistUserMessageInput {
       publicId: string | null
       role: string
       parts: UIMessage['parts']
-      tools: Array<'web_search'>
+      tools: Tools
       reasoning: 'off' | 'low' | 'medium' | 'high'
     }>
   }
@@ -28,14 +29,14 @@ export interface PersistUserMessageInput {
     id: string
     role: string
     parts: UIMessage['parts']
-    tools: Array<'web_search'>
+    tools: Tools
     reasoning: 'off' | 'low' | 'medium' | 'high'
   }>
   newMessage: {
     id: string
     parts: UIMessage['parts']
   }
-  tools: Array<'web_search'>
+  tools: Tools
   reasoning: 'off' | 'low' | 'medium' | 'high'
 }
 
@@ -132,8 +133,8 @@ function hasSameParts(
 }
 
 function hasSameTools(
-  leftTools: Array<'web_search'>,
-  rightTools: Array<'web_search'>,
+  leftTools: Tools,
+  rightTools: Tools,
 ): boolean {
   return JSON.stringify(leftTools || []) === JSON.stringify(rightTools || [])
 }

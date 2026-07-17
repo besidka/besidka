@@ -1,4 +1,8 @@
-import type { Provider, Model } from '#shared/types/providers.d'
+import type {
+  Provider,
+  Model,
+  ModelTool,
+} from '#shared/types/providers.d'
 
 export function getModel(modelId: string): {
   modelName: Model['name']
@@ -37,4 +41,35 @@ export function getModelName(
   const { modelName } = getModel(modelId)
 
   return modelName
+}
+
+export function isImageGenerationModel(
+  model: Model | null | undefined,
+): boolean {
+  return !!model?.imageGeneration
+}
+
+export function getRequiredModelTools(
+  model: Model | null | undefined,
+): ModelTool[] {
+  if (!isImageGenerationModel(model)) {
+    return []
+  }
+
+  return ['image_generation']
+}
+
+export function getControllerModelId(model: Model): string {
+  return model.imageGeneration?.controllerModel ?? model.id
+}
+
+export function getImageGenerationModelId(
+  model: Model | null | undefined,
+  fallbackModelId: string,
+): string {
+  if (!isImageGenerationModel(model)) {
+    return fallbackModelId
+  }
+
+  return model?.id ?? fallbackModelId
 }

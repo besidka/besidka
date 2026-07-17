@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
-import { rewriteShareFileParts } from '../../../server/utils/files/rewrite-share-file-urls'
+import { HIDDEN_FILE_MEDIA_TYPE } from '#shared/utils/files'
+import {
+  hideFileParts,
+  rewriteBranchedChatFileParts,
+  rewriteShareFileParts,
+  stripFileParts,
+} from '../../../server/utils/files/rewrite-share-file-urls'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   chatShareFilesFindMany: vi.fn(),
   createFileAccessToken: vi.fn(),
+  filesFindMany: vi.fn(),
 }))
 
 vi.mock('evlog', () => ({
@@ -27,11 +34,16 @@ vi.mock('~~/server/utils/files/file-share-access', () => ({
 describe('rewriteShareFileParts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.chatShareFilesFindMany.mockResolvedValue([])
+    mocks.filesFindMany.mockResolvedValue([])
     vi.stubGlobal('useEvent', () => ({}))
     vi.stubGlobal('useDb', () => ({
       query: {
         chatShareFiles: {
           findMany: mocks.chatShareFilesFindMany,
+        },
+        files: {
+          findMany: mocks.filesFindMany,
         },
       },
     }))
@@ -185,5 +197,247 @@ describe('rewriteShareFileParts', () => {
     await rewriteShareFileParts(messages, 'share-1')
 
     expect(mocks.createFileAccessToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops every invalid file URL from a branched chat', async () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Safe text' },
+        {
+          type: 'file',
+          url: 'javascript:alert(1)',
+          mediaType: 'image/png',
+        },
+        {
+          type: 'file',
+          url: '//evil.example/image.png',
+          mediaType: 'image/png',
+        },
+        {
+          type: 'file',
+          url: '/files/%2e%2e%2fsecret',
+          mediaType: 'image/png',
+        },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = await rewriteBranchedChatFileParts(
+      messages,
+      2,
+      null,
+    )
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Safe text' },
+    ])
+    expect(mocks.filesFindMany).not.toHaveBeenCalled()
+  })
+
+  it('keeps only locally owned files and canonicalizes their URLs', async () => {
+    mocks.filesFindMany.mockResolvedValue([{
+      id: 'file-1',
+      storageKey: 'owned.png',
+      size: 100,
+    }])
+
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'file',
+          url: '/files/owned.png?token=stale#preview',
+          mediaType: 'image/png',
+        },
+        {
+          type: 'file',
+          url: '/files/unowned.png',
+          mediaType: 'image/png',
+        },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = await rewriteBranchedChatFileParts(
+      messages,
+      2,
+      null,
+    )
+
+    expect(result[0]?.parts).toEqual([{
+      type: 'file',
+      url: '/files/owned.png',
+      mediaType: 'image/png',
+    }])
+    expect(mocks.createFileAccessToken).not.toHaveBeenCalled()
+  })
+
+  it('preserves the generated-file marker for an owned file while stripping a stale token', async () => {
+    mocks.filesFindMany.mockResolvedValue([{
+      id: 'file-1',
+      storageKey: 'owned.png',
+      size: 100,
+    }])
+
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [{
+        type: 'file',
+        url: '/files/owned.png?token=stale&generated=1',
+        mediaType: 'image/png',
+      }],
+    }] as unknown as UIMessage[]
+
+    const result = await rewriteBranchedChatFileParts(
+      messages,
+      2,
+      null,
+    )
+
+    expect(result[0]?.parts).toEqual([{
+      type: 'file',
+      url: '/files/owned.png?generated=1',
+      mediaType: 'image/png',
+    }])
+  })
+
+  it('keeps only files granted by the current source share', async () => {
+    mocks.chatShareFilesFindMany.mockResolvedValue([{
+      fileId: 'file-1',
+      file: { storageKey: 'granted.png' },
+    }])
+    mocks.createFileAccessToken.mockResolvedValue('token-abc')
+
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'file',
+          url: '/files/granted.png?variant=thumb#preview',
+          mediaType: 'image/png',
+        },
+        {
+          type: 'file',
+          url: '/files/ungranted.png',
+          mediaType: 'image/png',
+        },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = await rewriteBranchedChatFileParts(
+      messages,
+      2,
+      'share-1',
+    )
+
+    expect(result[0]?.parts).toEqual([{
+      type: 'file',
+      url:
+        '/files/granted.png?variant=thumb&token=token-abc#preview',
+      mediaType: 'image/png',
+    }])
+    expect(mocks.createFileAccessToken).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('hideFileParts', () => {
+  it('replaces each file part with a hidden placeholder, 1:1', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Hello' },
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+        { type: 'file', url: '/files/b.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = hideFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Hello' },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+      {
+        type: 'file',
+        mediaType: HIDDEN_FILE_MEDIA_TYPE,
+        filename: undefined,
+        url: '',
+      },
+    ])
+  })
+
+  it('keeps a message non-empty when its only part was a file', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = hideFileParts(messages)
+
+    expect(result[0]?.parts).toHaveLength(1)
+    expect(result[0]?.parts[0]).toMatchObject({
+      type: 'file',
+      mediaType: HIDDEN_FILE_MEDIA_TYPE,
+    })
+  })
+
+  it('leaves non-file parts untouched', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'hello world' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = hideFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'hello world' },
+    ])
+  })
+})
+
+describe('stripFileParts', () => {
+  it('removes file parts entirely, leaving no placeholder', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Hello' },
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = stripFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([
+      { type: 'text', text: 'Hello' },
+    ])
+  })
+
+  it('leaves a message with only a file part empty', () => {
+    const messages = [{
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'file', url: '/files/a.png', mediaType: 'image/png' },
+      ],
+    }] as unknown as UIMessage[]
+
+    const result = stripFileParts(messages)
+
+    expect(result[0]?.parts).toEqual([])
   })
 })

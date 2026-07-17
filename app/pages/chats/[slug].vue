@@ -50,6 +50,9 @@
           :message-id="m.id"
           :is-selected="selectedMessageId === m.id"
           :any-selected="selectedMessageId !== null"
+          :class="{
+            'chat-message--fit-content': shouldFitMessageContent(m),
+          }"
           @select="onMessageSelect"
         >
           <ChatFiles :message="m" />
@@ -72,8 +75,13 @@
                 && waitingForDimensions,
             }"
           >
+            <ChatGeneratedImage
+              v-if="shouldRenderGenerateImageToolPart(m, part)"
+              :message-role="m.role"
+              :part="part"
+            />
             <div
-              v-if="isChatErrorTextPart(part)"
+              v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
             >
               <div class="alert alert-error alert-soft flex flex-col items-start gap-0 mt-2">
@@ -135,7 +143,19 @@
         @retry="onResearchRetry"
         @dismiss="dismissResearchJob"
       />
-      <LazyChatLoader :show="isLoading || isClarifying" />
+      <ChatMessage
+        v-if="shouldRenderPendingImageGeneration"
+        role="assistant"
+        class="chat-message--fit-content mt-3"
+      >
+        <ChatGeneratedImage
+          message-role="assistant"
+          :part="pendingGenerateImagePart"
+        />
+      </ChatMessage>
+      <LazyChatLoader
+        :show="(isLoading && !hasImageGenerationProgress) || isClarifying"
+      />
       <div ref="messagesEndRef" />
     </ChatContainer>
     <div :style="{ height: `${spacerHeight}px` }" />
@@ -152,14 +172,14 @@
     :messages-length="chatSdk.messages.length"
     :stopped="isStopped"
     :stop="stop"
-    :regenerate="regenerate"
+    :regenerate="onChatRegenerate"
     :display-regenerate="displayRegenerate"
     :display-stop="displayStop"
     :status="chatSdk.status"
     :any-messages-selected="selectedMessageId !== null"
     @clear-project-context="clearProjectContext"
     @open-project-picker="openProjectPicker"
-    @submit="submit"
+    @submit="onChatSubmit"
   />
 
   <LazyChatInputProjectPicker
@@ -184,8 +204,12 @@
 <script setup lang="ts">
 import type { TextUIPart, UIMessage } from 'ai'
 import { parseError } from 'evlog'
-import { isChatTestErrorId } from '#shared/utils/chat-test-errors'
+import {
+  isChatTestErrorId,
+  isChatTestScenario,
+} from '#shared/utils/chat-test-errors'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
+import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
 
 definePageMeta({
   layout: 'chat',
@@ -232,7 +256,7 @@ const query = computed(() => {
     ? route.query.error
     : undefined
 
-  if (!['short', 'long', 'reasoning'].includes(scenario)) {
+  if (!isChatTestScenario(scenario)) {
     scenario = 'short'
   }
 
@@ -319,6 +343,39 @@ const {
   seedActiveResearchJob,
   dismissResearchJob,
 } = useChat(toValue(chat.value))
+
+const { isImageGenerationRequired } = useChatInput()
+
+const isImageGenerationTurnPending = shallowRef<boolean>(false)
+
+function captureImageGenerationTurnPending(): void {
+  isImageGenerationTurnPending.value = tools.value.includes(
+    'image_generation',
+  ) || isImageGenerationRequired.value
+}
+
+function onChatSubmit(): void {
+  captureImageGenerationTurnPending()
+  submit()
+}
+
+function onChatRegenerate(): void {
+  captureImageGenerationTurnPending()
+  regenerate()
+}
+
+watch(() => route.params.slug, () => {
+  isImageGenerationTurnPending.value = false
+})
+
+const {
+  hasImageGenerationProgress,
+  shouldRenderPendingImageGeneration,
+  shouldFitMessageContent,
+} = useChatImageUi(() => chatSdk.messages, {
+  isImageGenerationTurnPending: () => isImageGenerationTurnPending.value,
+  isTurnActive: () => ['submitted', 'streaming'].includes(chatSdk.status),
+})
 
 seedActiveResearchJob(
   chat.value.activeResearchJob ?? null,
@@ -511,7 +568,7 @@ if (import.meta.client) {
 const {
   spacerHeight,
   waitingForDimensions,
-  reserveSpaceForClarify,
+  reservePinnedSpace,
 } = useChatScrollSpacer({
   scrollContainerRef,
   messagesEndRef,
@@ -532,9 +589,33 @@ if (import.meta.client) {
       }
 
       await nextTick()
-      reserveSpaceForClarify()
+      reservePinnedSpace()
     },
   )
+
+  // Reserve the pinned space as soon as the pending image skeleton is about
+  // to render, instead of waiting for captureMessageDimensions()'s own
+  // 150ms-debounced pin. This closes the empty gap between the loader hiding
+  // and the skeleton settling into place.
+  //
+  // Deliberately rising-edge only — do NOT also re-run this on the
+  // phantom-to-real swap (falling edge). Measured empirically (see the
+  // scroll-spacer image e2e scenario): re-running reservePinnedSpace() at
+  // that swap calls messagesEndRef.scrollIntoView() while the real skeleton
+  // is still settling into the v-for, which can clamp scrollTop to 0 and
+  // visibly un-pin the conversation until adjustSpacerAfterResponse() fixes
+  // it again at 'ready' — actively worse than the brief staleness it was
+  // meant to correct for a model that streams reasoning before the tool
+  // call. adjustSpacerAfterResponse() still corrects that rarer case once
+  // the turn finishes.
+  watch(shouldRenderPendingImageGeneration, async (isPending) => {
+    if (!isPending) {
+      return
+    }
+
+    await nextTick()
+    reservePinnedSpace('instant')
+  })
 }
 
 function openProjectPicker() {
@@ -718,3 +799,10 @@ async function branchFromMessage(messageId: string) {
   }
 }
 </script>
+
+<style scoped>
+.chat-message--fit-content :deep(.js-chat-bubble) {
+  width: fit-content;
+  max-width: 100%;
+}
+</style>

@@ -472,3 +472,125 @@ test.describe('Long chat spacer and scroll behavior', () => {
     await expectGapNearInput(page)
   })
 })
+
+interface ScrollSample {
+  scrollTop: number | null
+  containerTop: number | null
+}
+
+type WindowWithScrollSampler = typeof window & {
+  __scrollSamples?: ScrollSample[]
+  __scrollSamplerHandle?: number
+}
+
+async function startScrollSampler(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const messagesRoot = document.querySelector(
+      '[data-testid="chat-messages-container"]',
+    ) as HTMLElement | null
+    const scrollContainer = messagesRoot?.parentElement as HTMLElement | null
+    const sampledWindow = window as WindowWithScrollSampler
+
+    sampledWindow.__scrollSamples = []
+
+    function sample() {
+      const rect = scrollContainer?.getBoundingClientRect()
+
+      sampledWindow.__scrollSamples?.push({
+        scrollTop: scrollContainer?.scrollTop ?? null,
+        containerTop: rect?.top ?? null,
+      })
+      sampledWindow.__scrollSamplerHandle = requestAnimationFrame(sample)
+    }
+
+    sample()
+  })
+}
+
+async function stopScrollSampler(
+  page: Page,
+): Promise<ScrollSample[]> {
+  return page.evaluate(() => {
+    const sampledWindow = window as WindowWithScrollSampler
+
+    cancelAnimationFrame(sampledWindow.__scrollSamplerHandle ?? 0)
+
+    return sampledWindow.__scrollSamples ?? []
+  })
+}
+
+async function expectStableImageTurnPin(
+  page: Page,
+  url: string,
+): Promise<void> {
+  await openCase(page, url)
+
+  await page.locator('[data-testid="current-model-trigger"]').click()
+  await page.getByRole('button', { name: 'Choose Gemini 2.5 Flash Image' })
+    .click()
+  await page.locator('textarea').fill('A scottish fold cat by a fireplace')
+  await page.getByRole('button', { name: 'Send Message' }).click()
+
+  // The initial submit-to-pin transition (scrollTop moving from its
+  // pre-submit value to the first pinned position) is expected and
+  // correct — only start sampling once that first pin has settled, so
+  // this only measures unwanted movement during the rest of the turn
+  // (the pending-skeleton-to-real swap and the final ready settle).
+  await expect.poll(async () => {
+    const metrics = await getChatLayoutMetrics(page)
+
+    return metrics.lastUserTopRelative !== null
+      && metrics.lastUserTopRelative < TOP_ALIGNMENT_MAX
+  }, { timeout: 15_000 }).toBe(true)
+
+  await startScrollSampler(page)
+
+  await expect(
+    page.locator('[data-testid="generated-image-ready"]'),
+  ).toBeVisible({ timeout: 15_000 })
+
+  const samples = await stopScrollSampler(page)
+  const scrollTops = samples
+    .map(sample => sample.scrollTop)
+    .filter((value): value is number => value !== null)
+
+  expect(scrollTops.length).toBeGreaterThan(10)
+
+  const settledScrollTop = scrollTops.at(-1) as number
+  const maxDeviation = Math.max(
+    ...scrollTops.map(value => Math.abs(value - settledScrollTop)),
+  )
+
+  const MAX_ALLOWED_SCROLL_DEVIATION: number = 40
+
+  expect(maxDeviation).toBeLessThan(MAX_ALLOWED_SCROLL_DEVIATION)
+
+  const finalMetrics = await getChatLayoutMetrics(page)
+
+  expect(finalMetrics.lastUserTopRelative).not.toBeNull()
+  expect(
+    finalMetrics.lastUserTopRelative as number,
+  ).toBeLessThan(TOP_ALIGNMENT_MAX)
+}
+
+test.describe('Image generation spacer and scroll behavior', () => {
+  test('Case #1: pending skeleton appears without a jump through the whole turn', async ({
+    page,
+  }) => {
+    await expectStableImageTurnPin(page, '/chats/test?scenario=image')
+  })
+
+  test('Case #2: reasoning before the tool call keeps the pin stable', async ({
+    page,
+  }) => {
+    // Regression: models that stream reasoning before calling the image
+    // tool used to dismiss the pending skeleton while no real tool part
+    // existed yet. The content below the pinned user message shrank,
+    // scrollTop got clamped down, and the conversation visibly jumped
+    // until the end-of-turn spacer adjustment.
+    await expectStableImageTurnPin(
+      page,
+      '/chats/test?scenario=image&imageReasoningFirst',
+    )
+  })
+})

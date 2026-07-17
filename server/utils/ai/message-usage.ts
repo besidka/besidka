@@ -49,3 +49,25 @@ export function buildMessageUsage(
     ...(outputCost === undefined ? {} : { outputCost }),
   }
 }
+
+/**
+ * Fold a generated image's dollar cost into `outputCost` so the text model's
+ * per-token cost and the image model's flat per-image cost show up as one
+ * number to the user. `imageGenerationCost` is `undefined` whenever no image
+ * was generated this turn (or the image model has no known price), in which
+ * case `usage` is returned unchanged — a turn that merely supports image
+ * generation without using it must never gain a fabricated cost.
+ */
+export function addImageGenerationCostToUsage(
+  usage: MessageUsage | undefined,
+  imageGenerationCost: number | undefined,
+): MessageUsage | undefined {
+  if (!usage || imageGenerationCost === undefined) {
+    return usage
+  }
+
+  return {
+    ...usage,
+    outputCost: (usage.outputCost ?? 0) + imageGenerationCost,
+  }
+}
