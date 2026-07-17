@@ -113,6 +113,30 @@ this exact message from a different chat's recent attempt and read it as a
 stuck, unexplained error. The failure alert also renders full width instead
 of a fixed narrow card that clipped longer messages.
 
+### Correction: the busy error was not only a wording problem
+
+The generation-busy wording fix above assumed the "already being generated"
+error reaching a brand-new chat's first attempt was fully explained by the
+per-account lock's post-release cooldown plus accurate history from an
+earlier chat. Deployed-preview evidence (a fresh chat's first-ever generation
+showing a busy failure and a successful image in the *same* assistant
+message, with no other generation activity on the account) ruled that
+explanation out and pointed at a same-turn duplicate tool call instead: some
+models invoke `generate_image` more than once in one turn even though
+`toolChoice` forces a single tool choice. The tool's `isExecutionClaimed`
+guard (`server/utils/ai/image-generation.ts`) makes the redundant call fail
+instantly with the same generation-busy classification the real lock
+contention uses, so both a failed and a successful `tool-generate_image` part
+can land in one message - the failure is a same-turn artifact, not a
+cross-chat leak. `shouldRenderGenerateImageToolPart()` and
+`normalizeGeneratedImageToolParts()` now hide a failed part, live and in
+persisted history, whenever the same message has another `generate_image`
+part that is not itself an error. Already-persisted messages from before
+this fix keep showing the stray failure text; only new turns are covered.
+
+*Why* the model issues the duplicate call in the first place is still open -
+see "Open risks to monitor" below.
+
 ## Landing metrics and discovery content
 
 No schema migration or second counter store is needed. The daily cached stats
@@ -336,7 +360,10 @@ commits. The final documentation commit records the release state.
 | 8 | `feat(providers): add image generation models` | Published | `5df962f` |
 | 9 | `fix(chat): stop assistant replies from staying hidden after streaming` | Published | `1cfb1f1` |
 | 10 | `fix(chat): remove spacer jump when reasoning precedes image generation` | Published | `b43d330` |
-| 11 | `fix(chat): support-reference image-generation failures, fix busy wording` | This commit | See PR history |
+| 11 | `fix(chat): support-reference image-generation failures, fix busy wording` | Published | `ef6fdb6` |
+| 12 | `docs(chats): record hidden-reply and spacer-jump follow-up` | Published | `1451557` |
+| 13 | `docs(chats): deep-dive the image-generation pinning mechanism` | Published | `055eac2` |
+| 14 | `fix(chat): hide redundant generate_image failures from the same turn` | This commit | See PR history |
 
 GitHub's `main` advanced by five commits after this worktree branched. Those
 commits modify only package-management configuration and do not overlap this
@@ -470,6 +497,19 @@ These risks require evidence during the manual preview rollout:
   feature merges second must preserve both its `researches` field and this
   branch's `uploadedFiles` and `generatedImages` fields, then choose a new
   combined semantic cache name and client query.
+- Root cause unconfirmed: why a model calls `generate_image` more than once
+  in one turn under a forced `toolChoice`. The rendering/persistence fix
+  hides the resulting redundant-call artifact, but each duplicate call still
+  spends provider quota and a real generation attempt on the doomed call
+  before the guard rejects it. Confirmed only via deployed-preview evidence
+  (Google, per the "Google AI" provenance on the successful image) - not yet
+  reproduced against OpenAI, and not reproducible locally without live
+  provider credentials, since the mock `/chats/test` harness scripts a fixed
+  chunk sequence rather than exercising real model tool-calling behavior.
+  Investigate whether the Google provider's forced function-calling mode
+  (`functionCallingConfig: { mode: 'ANY' }`) allows more than one call to an
+  `allowedFunctionNames` entry per turn, and whether AI SDK v7 exposes a way
+  to cap tool calls per step for this request.
 
 ## Progress update protocol
 
