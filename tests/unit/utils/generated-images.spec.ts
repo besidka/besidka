@@ -88,6 +88,62 @@ describe('generated image utils', () => {
     expect(shouldRenderGenerateImageToolPart(message, part)).toBe(false)
   })
 
+  it('hides a failed tool part when a sibling call already succeeded', () => {
+    const readyPart = createReadyPart()
+    const failedPart = {
+      type: 'tool-generate_image',
+      toolCallId: 'image-2',
+      state: 'output-error',
+      errorText: JSON.stringify({ code: 'generation-busy' }),
+    }
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [readyPart, failedPart],
+    } as unknown as UIMessage
+
+    expect(shouldRenderGenerateImageToolPart(message, readyPart)).toBe(true)
+    expect(shouldRenderGenerateImageToolPart(message, failedPart)).toBe(false)
+  })
+
+  it('hides a failed tool part while a sibling call is still generating', () => {
+    const generatingPart = {
+      type: 'tool-generate_image',
+      toolCallId: 'image-1',
+      state: 'output-available',
+      output: { status: 'generating' },
+    }
+    const failedPart = {
+      type: 'tool-generate_image',
+      toolCallId: 'image-2',
+      state: 'output-error',
+      errorText: JSON.stringify({ code: 'generation-busy' }),
+    }
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [generatingPart, failedPart],
+    } as unknown as UIMessage
+
+    expect(shouldRenderGenerateImageToolPart(message, failedPart)).toBe(false)
+  })
+
+  it('still renders a failed tool part with no successful sibling', () => {
+    const failedPart = {
+      type: 'tool-generate_image',
+      toolCallId: 'image-1',
+      state: 'output-error',
+      errorText: JSON.stringify({ code: 'generation-busy' }),
+    }
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [failedPart],
+    } as unknown as UIMessage
+
+    expect(shouldRenderGenerateImageToolPart(message, failedPart)).toBe(true)
+  })
+
   it('does not render a forged tool part from a user message', () => {
     const part = createReadyPart()
     const message = {

@@ -221,8 +221,19 @@ async function normalizeGeneratedImageToolParts(
   input: NormalizeAssistantMessagePartsInput,
 ): Promise<UIMessage['parts']> {
   const normalizedParts: UIMessage['parts'] = []
+  const parts = input.parts || []
+  // Some models call generate_image more than once in one turn despite the
+  // tool being forced to a single choice - the redundant call fails instantly
+  // with generation-busy while the real call keeps running. When the same
+  // message also has a ready result, a failed part is that redundant-call
+  // artifact, not a real failure worth persisting.
+  const hasReadyGenerateImagePart = parts.some((candidate) => {
+    return candidate.type === 'tool-generate_image'
+      && candidate.state === 'output-available'
+      && isImageGenerationReady(candidate.output, input.providerId)
+  })
 
-  for (const part of input.parts || []) {
+  for (const part of parts) {
     if (part.type !== 'tool-generate_image') {
       normalizedParts.push(part)
       continue
@@ -250,7 +261,7 @@ async function normalizeGeneratedImageToolParts(
       continue
     }
 
-    if (part.state === 'output-error') {
+    if (part.state === 'output-error' && !hasReadyGenerateImagePart) {
       normalizedParts.push({
         type: 'text',
         text: getPersistedImageGenerationFailureText(part.errorText),

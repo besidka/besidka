@@ -227,6 +227,30 @@ export function isVisibleGenerateImageToolPart(part: unknown): boolean {
   return getGenerateImageOutput(toolPart) !== null
 }
 
+// Some models call generate_image more than once in one turn despite the
+// tool being forced to a single choice - the redundant call's execute() sees
+// the tool already claimed and fails instantly with generation-busy while
+// the real call keeps streaming toward a result. Once that message has any
+// other generate_image part that is not itself an error, a failed part in
+// the same message is a redundant-call artifact, not a real failure, so it
+// stays hidden for the rest of the turn instead of sitting next to the
+// successful result.
+function hasNonFailedSiblingGenerateImagePart(
+  message: UIMessage,
+  part: unknown,
+): boolean {
+  return message.parts.some((candidate) => {
+    if (candidate === part) {
+      return false
+    }
+
+    const candidateToolPart = getGenerateImageToolPart(candidate)
+
+    return candidateToolPart !== null
+      && candidateToolPart.state !== 'output-error'
+  })
+}
+
 export function shouldRenderGenerateImageToolPart(
   message: UIMessage,
   part: unknown,
@@ -234,6 +258,15 @@ export function shouldRenderGenerateImageToolPart(
   if (
     message.role !== 'assistant'
     || !isVisibleGenerateImageToolPart(part)
+  ) {
+    return false
+  }
+
+  const toolPart = getGenerateImageToolPart(part)
+
+  if (
+    toolPart?.state === 'output-error'
+    && hasNonFailedSiblingGenerateImagePart(message, part)
   ) {
     return false
   }

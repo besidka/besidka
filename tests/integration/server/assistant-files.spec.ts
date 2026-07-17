@@ -430,6 +430,61 @@ describe('assistant files scaffolding', () => {
     expect(loggerSet).not.toHaveBeenCalled()
   })
 
+  it('drops a redundant failed call once a sibling call succeeded', async () => {
+    const loggerSet = vi.fn()
+
+    stubGeneratedImageFile(createGeneratedImageFileRow())
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-1',
+        state: 'output-error',
+        input: { prompt: 'A quiet forest' },
+        errorText: JSON.stringify({ code: 'generation-busy' }),
+      },
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-2',
+        state: 'output-available',
+        input: { prompt: 'A quiet forest' },
+        output: {
+          status: 'ready',
+          file: {
+            id: 'file-1',
+            storageKey: 'generated.webp',
+            name: 'quiet-forest.webp',
+            size: 123,
+            type: 'image/webp',
+            source: 'assistant',
+            expiresAt: null,
+            url: '/files/generated.webp',
+            downloadUrl: '/files/generated.webp?download=1',
+          },
+          provider: 'openai',
+          model: 'gpt-image-2',
+        },
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'openai',
+      chatId: 'chat-3b',
+      userId: 3,
+      logger: { set: loggerSet },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'quiet-forest.webp',
+        url: '/files/generated.webp?generated=1',
+      },
+    ])
+  })
+
   it('normalizes a ready output from a non-default image model', async () => {
     const loggerSet = vi.fn()
 
