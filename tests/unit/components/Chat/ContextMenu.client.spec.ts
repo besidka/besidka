@@ -319,6 +319,23 @@ describe('Chat/ContextMenu.client', () => {
       expect(style).toContain('top: 536px')
     })
 
+    it('clamps to the top edge and caps max-height when the menu is taller than the viewport', async () => {
+      window.innerHeight = 60
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+
+      expect(style).toContain('top: 16px')
+      expect(style).toContain('max-height: 28px')
+    })
+
     it('falls back to right alignment when the bubble is narrower than the menu', async () => {
       setBubbleRect({ top: -50, bottom: 700 })
       window.innerHeight = 600

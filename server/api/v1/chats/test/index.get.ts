@@ -2,6 +2,11 @@ import type { ReasoningUIPart, TextUIPart } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { chatTestErrorIds } from '#shared/utils/chat-test-errors'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
+import {
+  buildTestImageAssistantParts,
+  TEST_IMAGE_PROMPT,
+  TEST_IMAGE_USAGE,
+} from '~~/server/utils/chats/test/image-fixture'
 
 const shortMessage = 'Test message'
 const longMessage = `Here is text with three paragraphs:
@@ -23,7 +28,7 @@ export default defineEventHandler(async (event) => {
 
   const query = await getValidatedQuery(event, z.object({
     scenario: z
-      .enum(['short', 'long', 'reasoning'])
+      .enum(['short', 'long', 'reasoning', 'image'])
       .default('short'),
     messages: z.string().regex(/^\d+$/).default('1').transform(Number),
     effort: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
@@ -62,9 +67,32 @@ export default defineEventHandler(async (event) => {
     title: `Test Chat - ${testKey}`,
     messages: Array.from({ length: messages }, (_, index) => {
       const role = index % 2 === 0 ? 'user' : 'assistant'
+      const id = `test-chat-${scenarioKey}-message-${index + 1}`
+
+      if (effectiveScenario === 'image' && role === 'assistant') {
+        return {
+          id,
+          role,
+          parts: buildTestImageAssistantParts(`${id}-source-1`),
+          tools: [],
+          reasoning: 'off' as ReasoningLevel,
+          usage: TEST_IMAGE_USAGE,
+          createdAt: new Date().toISOString(),
+        }
+      }
+
+      if (effectiveScenario === 'image') {
+        return {
+          id,
+          role,
+          parts: [{ type: 'text', text: TEST_IMAGE_PROMPT } as TextUIPart],
+          tools: [],
+          reasoning: 'off' as ReasoningLevel,
+        }
+      }
 
       return {
-        id: `test-chat-${scenarioKey}-message-${index + 1}`,
+        id,
         role,
         parts: [
           ...(role === 'assistant' && effectiveScenario === 'reasoning'

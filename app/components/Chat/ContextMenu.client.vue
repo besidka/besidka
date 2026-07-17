@@ -5,7 +5,7 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none transition-[opacity,visibility] duration-200"
+      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none overflow-y-auto overscroll-contain transition-[opacity,visibility] duration-200"
       :class="{
         invisible: !menuStyle || isTextSelecting,
         'opacity-0': isTextSelecting,
@@ -397,6 +397,7 @@ onMounted(async () => {
     menuStyle.value = {
       top: `${bubbleRect.bottom - anchorRect.top + gap}px`,
       right: `${right}px`,
+      maxHeight: `${spaceBelow - gap - edgeMargin}px`,
     }
 
     return
@@ -406,6 +407,7 @@ onMounted(async () => {
     menuStyle.value = {
       bottom: `${anchorRect.bottom - bubbleRect.top + gap}px`,
       right: `${right}px`,
+      maxHeight: `${bubbleRect.top - gap - edgeMargin}px`,
     }
 
     return
@@ -414,10 +416,14 @@ onMounted(async () => {
   const desiredTop = props.pointer
     ? props.pointer.y + gap
     : window.innerHeight - menuHeight - edgeMargin
-  const clampedTop = Math.min(
-    Math.max(desiredTop, edgeMargin),
-    window.innerHeight - menuHeight - edgeMargin,
+  const clampedTop = Math.max(
+    edgeMargin,
+    Math.min(
+      Math.max(desiredTop, edgeMargin),
+      window.innerHeight - menuHeight - edgeMargin,
+    ),
   )
+  const availableHeight = window.innerHeight - edgeMargin - clampedTop
   const menuWidth = menu.value.offsetWidth
   const bubbleWidth = bubbleRect.right - bubbleRect.left
 
@@ -431,6 +437,7 @@ onMounted(async () => {
     menuStyle.value = {
       top: `${clampedTop - anchorRect.top}px`,
       left: `${clampedLeft - anchorRect.left}px`,
+      maxHeight: `${availableHeight}px`,
     }
 
     return
@@ -439,6 +446,7 @@ onMounted(async () => {
   menuStyle.value = {
     top: `${clampedTop - anchorRect.top}px`,
     right: `${right}px`,
+    maxHeight: `${availableHeight}px`,
   }
 })
 

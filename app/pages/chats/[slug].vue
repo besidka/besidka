@@ -232,7 +232,7 @@ const query = computed(() => {
     ? route.query.error
     : undefined
 
-  if (!['short', 'long', 'reasoning'].includes(scenario)) {
+  if (!['short', 'long', 'reasoning', 'image'].includes(scenario)) {
     scenario = 'short'
   }
 
