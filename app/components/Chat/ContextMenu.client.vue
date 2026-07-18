@@ -504,9 +504,11 @@ function onDocumentPointerUp(event: PointerEvent) {
 
   if (dx > POINTER_MOVE_THRESHOLD_PX || dy > POINTER_MOVE_THRESHOLD_PX) return
 
-  const selection = window.getSelection()
+  if (bubbleEl.value?.contains(target)) {
+    const selection = window.getSelection()
 
-  if (selection && !selection.isCollapsed) return
+    if (selection && !selection.isCollapsed) return
+  }
 
   event.preventDefault()
   event.stopImmediatePropagation()

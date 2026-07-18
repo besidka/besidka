@@ -201,6 +201,30 @@ describe('Chat/ContextMenu.client', () => {
     expect(wrapper.emitted('close')).toBeUndefined()
   })
 
+  it('emits close on a quick tap outside the bubble even with an unrelated selection present', async () => {
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+    } as Selection)
+
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+    }))
+    vi.advanceTimersByTime(100)
+    outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+    }))
+
+    expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
   it('emits close when the quick tap happens on the anchor row outside the bubble', async () => {
     const wrapper = await mountSuspended(ContextMenu, {
       props: {

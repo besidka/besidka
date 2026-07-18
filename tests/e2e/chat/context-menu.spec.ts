@@ -156,7 +156,10 @@ test.describe('chat context menu selection state', () => {
     ).toBeHidden()
   })
 
-  test('drag gesture on selected message does not dismiss context menu', async ({ page }) => {
+  // End-to-end guarantee, not gate isolation: CDP round-trip overhead makes
+  // it unreliable to isolate a single guard's timing here. That precise
+  // coverage lives in the ContextMenu.client unit tests (fake timers).
+  test('long-press-and-drag on selected message does not dismiss context menu', async ({ page }) => {
     const assistantMessage = page
       .locator('[data-role="assistant"]')
       .first()
