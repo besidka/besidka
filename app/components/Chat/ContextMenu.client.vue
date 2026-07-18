@@ -214,8 +214,12 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const POINTER_MOVE_THRESHOLD_PX = 8
+
 const menu = useTemplateRef<HTMLUListElement>('menu')
 let pointerDownTime = 0
+let pointerDownX = 0
+let pointerDownY = 0
 
 const menuStyle = shallowRef<Record<string, string> | null>(
   null,
@@ -480,8 +484,10 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
-function onDocumentPointerDown() {
+function onDocumentPointerDown(event: PointerEvent) {
   pointerDownTime = Date.now()
+  pointerDownX = event.clientX
+  pointerDownY = event.clientY
 }
 
 function onDocumentPointerUp(event: PointerEvent) {
@@ -492,7 +498,15 @@ function onDocumentPointerUp(event: PointerEvent) {
   const target = event.target as HTMLElement
 
   if (menu.value?.contains(target)) return
-  if (bubbleEl.value?.contains(target)) return
+
+  const dx = Math.abs(event.clientX - pointerDownX)
+  const dy = Math.abs(event.clientY - pointerDownY)
+
+  if (dx > POINTER_MOVE_THRESHOLD_PX || dy > POINTER_MOVE_THRESHOLD_PX) return
+
+  const selection = window.getSelection()
+
+  if (selection && !selection.isCollapsed) return
 
   event.preventDefault()
   event.stopImmediatePropagation()

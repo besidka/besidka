@@ -51,6 +51,40 @@ async function quickTap(locator: Locator): Promise<void> {
   })
 }
 
+async function longPressDrag(locator: Locator): Promise<void> {
+  const target = locator.locator('.group').first()
+  const box = await target.boundingBox()
+
+  if (!box) {
+    throw new Error('Element has no bounding box')
+  }
+
+  const page = locator.page()
+  const client = await page.context().newCDPSession(page)
+  const startX = Math.round(box.x + box.width / 4)
+  const startY = Math.round(box.y + box.height / 2)
+  const endX = Math.round(box.x + (box.width * 3) / 4)
+  const endY = Math.round(box.y + box.height / 2)
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [
+      { x: startX, y: startY, radiusX: 1, radiusY: 1, force: 1, id: 1 },
+    ],
+  })
+  await page.waitForTimeout(400)
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [
+      { x: endX, y: endY, radiusX: 1, radiusY: 1, force: 1, id: 1 },
+    ],
+  })
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  })
+}
+
 test.describe('chat context menu selection state', () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(30_000)
@@ -102,7 +136,7 @@ test.describe('chat context menu selection state', () => {
     ).toBeHidden()
   })
 
-  test('quick tap on selected message does not dismiss context menu', async ({ page }) => {
+  test('quick tap on selected message dismisses context menu', async ({ page }) => {
     const assistantMessage = page
       .locator('[data-role="assistant"]')
       .first()
@@ -116,6 +150,26 @@ test.describe('chat context menu selection state', () => {
     ).toBeVisible()
 
     await quickTap(assistantMessage)
+
+    await expect(
+      page.getByRole('button', { name: 'Branch chat from here' }),
+    ).toBeHidden()
+  })
+
+  test('drag gesture on selected message does not dismiss context menu', async ({ page }) => {
+    const assistantMessage = page
+      .locator('[data-role="assistant"]')
+      .first()
+
+    await expect(assistantMessage).toBeVisible()
+
+    await longPress(assistantMessage)
+
+    await expect(
+      page.getByRole('button', { name: 'Branch chat from here' }),
+    ).toBeVisible()
+
+    await longPressDrag(assistantMessage)
 
     await expect(
       page.getByRole('button', { name: 'Branch chat from here' }),

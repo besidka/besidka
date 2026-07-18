@@ -125,7 +125,7 @@ describe('Chat/ContextMenu.client', () => {
     expect(wrapper.emitted('close')).toBeUndefined()
   })
 
-  it('does not emit close when the quick tap happens on the bubble', async () => {
+  it('emits close on a quick tap on the bubble when nothing is selected', async () => {
     const wrapper = await mountSuspended(ContextMenu, {
       props: {
         messageId: 'msg-1',
@@ -136,10 +136,66 @@ describe('Chat/ContextMenu.client', () => {
 
     bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true,
+      clientX: 100,
+      clientY: 100,
     }))
     vi.advanceTimersByTime(100)
     bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
       bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+
+    expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  it('does not emit close when a tap on the bubble moves past the threshold', async () => {
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+    vi.advanceTimersByTime(100)
+    bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      clientX: 120,
+      clientY: 100,
+    }))
+
+    expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('does not emit close when the tap results in a text selection', async () => {
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+    } as Selection)
+
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+    vi.advanceTimersByTime(100)
+    bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
     }))
 
     expect(wrapper.emitted('close')).toBeUndefined()
