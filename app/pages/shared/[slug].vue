@@ -365,6 +365,11 @@ const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 
+const isSharedChatMessageSelected = useState<boolean>(
+  'shared-chat-message-selected',
+  () => false,
+)
+
 function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
   return part.type === 'text'
     && !isChatErrorTextPart(part)
@@ -395,6 +400,7 @@ function onMessageSelect(
 
   selectedMessageId.value = messageId
   selectedPointer.value = pointer ?? null
+  isSharedChatMessageSelected.value = true
 
   nuxtApp.callHook('chat:message-selected', messageId)
 
@@ -409,6 +415,7 @@ function resetMessageSelection() {
   selectedMessageId.value = null
   selectedAnchorEl.value = null
   selectedPointer.value = null
+  isSharedChatMessageSelected.value = false
 
   nuxtApp.callHook('chat:message-selected', null)
 }
@@ -474,6 +481,7 @@ watch([data, shareSlug], ([nextData, nextShareSlug]) => {
 
 onUnmounted(() => {
   sharedBranchTarget.value = null
+  isSharedChatMessageSelected.value = false
 })
 
 const selectedMessageInfo = computed(() => {
