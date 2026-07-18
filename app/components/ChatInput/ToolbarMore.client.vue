@@ -58,7 +58,7 @@
               </span>
             </div>
           </li>
-          <li>
+          <li v-if="hasReasoningSection">
             <label class="menu-title text-xs">
               <span class="divider my-0"/>
             </label>
@@ -67,7 +67,7 @@
             <div class="flex items-center gap-2 w-full">
               <button
                 type="button"
-                class="flex items-center gap-2 grow"
+                class="flex items-center gap-2 grow text-left"
                 :class="{
                   'text-accent': projectContext
                 }"
@@ -78,8 +78,11 @@
                     ? 'lucide:check'
                     : 'lucide:folder'"
                   size="16"
+                  class="shrink-0"
                 />
-                {{ projectContext ? projectContext.name : 'Project' }}
+                <span class="min-w-0 truncate">
+                  {{ projectContext ? projectContext.name : 'Project' }}
+                </span>
               </button>
             </div>
           </li>
@@ -189,6 +192,17 @@ const isAnyFeatureActive = computed<boolean>(() => {
     || props.isDeepResearchModel
     || (props.filesCount ?? 0) > 0
     || props.projectContext
+  )
+})
+
+const hasReasoningSection = computed<boolean>(() => {
+  return !!(
+    (props.isReasoningSupported
+      && !props.isDeepResearchModel
+      && (props.reasoningMode === 'toggle'
+        || props.reasoningMode === 'levels')
+    )
+    || (props.isDeepResearchModel && props.research)
   )
 })
 
