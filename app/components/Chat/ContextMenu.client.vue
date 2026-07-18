@@ -526,7 +526,11 @@ function swallowNextClick() {
   function onClick(event: Event) {
     event.preventDefault()
     event.stopImmediatePropagation()
-    cleanup()
+    cleanup(true)
+  }
+
+  function onPointerDown() {
+    cleanup(false)
   }
 
   // Releasing on the next pointerdown (a new interaction starting) is a
@@ -535,24 +539,40 @@ function swallowNextClick() {
   // touch starting before this gesture's delayed synthetic click arrives
   // would let that click through unswallowed. The backstop timer bounds
   // the same window if no pointerdown happens at all.
-  function cleanup() {
+  //
+  // deferRelease is true only when THIS click was the one being swallowed:
+  // the image-preview guard must stay elevated for that click's entire
+  // synchronous dispatch (checked by GeneratedImage/Files in their own
+  // click handler), even if stopImmediatePropagation somehow failed to
+  // halt it beforehand. A pointerdown/backstop-triggered release means no
+  // click is currently mid-dispatch, so releasing immediately is both safe
+  // and necessary — deferring here would risk still reading "suppressed"
+  // for a fresh, unrelated click dispatched synchronously right after.
+  function cleanup(deferRelease: boolean) {
     document.removeEventListener('click', onClick, { capture: true })
-    document.removeEventListener('pointerdown', cleanup, { capture: true })
+    document.removeEventListener('pointerdown', onPointerDown, {
+      capture: true,
+    })
     clearTimeout(backstopTimer)
     cancelSwallowedClick = null
 
-    // Deferred a tick so the image-preview guard (checked synchronously by
-    // GeneratedImage/Files on their own click handler) stays elevated for
-    // the entire dispatch of a swallowed click, even if this handler's own
-    // stopImmediatePropagation somehow failed to halt it beforehand.
-    setTimeout(releaseImagePreview, 0)
+    if (deferRelease) {
+      setTimeout(releaseImagePreview, 0)
+
+      return
+    }
+
+    releaseImagePreview()
   }
 
-  const backstopTimer = setTimeout(cleanup, SWALLOWED_CLICK_BACKSTOP_MS)
+  const backstopTimer = setTimeout(
+    () => cleanup(false),
+    SWALLOWED_CLICK_BACKSTOP_MS,
+  )
 
   document.addEventListener('click', onClick, { capture: true })
-  document.addEventListener('pointerdown', cleanup, { capture: true })
-  cancelSwallowedClick = cleanup
+  document.addEventListener('pointerdown', onPointerDown, { capture: true })
+  cancelSwallowedClick = () => cleanup(false)
 }
 
 function onDocumentContextMenu(event: Event) {

@@ -1268,5 +1268,94 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(guardCount().value).toBe(0)
     })
+
+    it('releases the guard synchronously on a fresh pointerdown so a legitimate click right after is not wrongly suppressed', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      const freshTarget = document.createElement('button')
+
+      document.body.appendChild(freshTarget)
+
+      freshTarget.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+
+      expect(guardCount().value).toBe(0)
+
+      freshTarget.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+
+      expect(guardCount().value).toBe(0)
+
+      freshTarget.remove()
+    })
+
+    it('keeps the guard active across an overlapping reselection until both the old and new instance release it', async () => {
+      const wrapperA = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-a', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapperA.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      const anchorElB = document.createElement('div')
+      const bubbleElB = document.createElement('div')
+
+      bubbleElB.className = 'js-chat-bubble'
+      anchorElB.appendChild(bubbleElB)
+      document.body.appendChild(anchorElB)
+      vi.spyOn(anchorElB, 'getBoundingClientRect')
+        .mockReturnValue(anchorEl.getBoundingClientRect())
+      vi.spyOn(bubbleElB, 'getBoundingClientRect')
+        .mockReturnValue(bubbleEl.getBoundingClientRect())
+
+      const wrapperB = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-b', anchorEl: anchorElB },
+        attachTo: document.body,
+      })
+
+      expect(guardCount().value).toBe(2)
+
+      outsideEl.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+      vi.advanceTimersByTime(0)
+
+      expect(guardCount().value).toBe(1)
+
+      wrapperB.unmount()
+
+      expect(guardCount().value).toBe(0)
+
+      anchorElB.remove()
+    })
   })
 })
