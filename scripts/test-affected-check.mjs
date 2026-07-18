@@ -94,6 +94,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
+    'tests/e2e/chat/context-menu-image.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -124,6 +125,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
+    'tests/e2e/chat/context-menu-image.spec.ts',
+    'tests/e2e/shared/context-menu-clipping.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
   ]
 
@@ -148,6 +151,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/ShareModal.client.spec.ts',
     'tests/unit/composables/ios-in-app-browser.spec.ts',
     'tests/unit/utils/og-description.spec.ts',
+    'tests/e2e/shared/context-menu-clipping.spec.ts',
   ]
 
   const cookieConsentTests = [
@@ -363,9 +367,25 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,
       tests: [
         ...messageUsageTests,
+        ...chatTestEndpointTests,
         'tests/unit/composables/chat-image-ui.spec.ts',
         'tests/unit/composables/haptics.spec.ts',
       ],
+    },
+    {
+      pattern: /^(app\/app\.vue|app\/layouts\/shared\.vue)$/,
+      tests: [
+        'tests/e2e/shared/context-menu-clipping.spec.ts',
+        ...contextMenuTests,
+      ],
+    },
+    {
+      pattern: /^server\/api\/v1\/shared\/test\/.*\.ts$/,
+      tests: chatShareTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/test\/.*\.ts$/,
+      tests: [...chatTestEndpointTests, ...chatShareTests],
     },
     {
       pattern:
@@ -556,7 +576,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/routes\/files\/.*\.ts$/,
-      tests: filesModuleTests,
+      tests: [
+        ...filesModuleTests,
+        ...chatTestEndpointTests,
+        'tests/e2e/shared/context-menu-clipping.spec.ts',
+      ],
     },
     {
       pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,

@@ -5,12 +5,16 @@ const ui = useCookieConsentUi()
 const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
 const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
 const isHomePage = computed<boolean>(() => route.path === '/')
+const isSharedChatMessageSelected = useState<boolean>(
+  'shared-chat-message-selected',
+  () => false,
+)
 </script>
 
 <template>
   <div>
     <CookieConsentTrigger
-      v-if="!isChatLayout"
+      v-if="!isChatLayout && !isSharedChatMessageSelected"
       v-slot="{ isOpen }"
       data-testid="cookies-trigger"
       :title="
@@ -47,7 +51,7 @@ const isHomePage = computed<boolean>(() => route.path === '/')
     </CookieConsentTrigger>
 
     <CookieConsentPopup
-      v-if="!isChatLayout"
+      v-if="!isChatLayout && !isSharedChatMessageSelected"
       v-slot="{
         titleId,
         categories,

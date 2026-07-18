@@ -5,7 +5,7 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none transition-[opacity,visibility] duration-200"
+      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none overflow-y-auto overscroll-contain transition-[opacity,visibility] duration-200"
       :class="{
         invisible: !menuStyle || isTextSelecting,
         'opacity-0': isTextSelecting,
@@ -395,9 +395,15 @@ onMounted(async () => {
   const bubbleRect
     = (bubbleEl.value ?? props.anchorEl).getBoundingClientRect()
   const menuHeight = menu.value.offsetHeight
+  const menuWidth = menu.value.offsetWidth
   const gap = 4
   const edgeMargin = 16
-  const right = anchorRect.right - bubbleRect.right
+  const rightMin = anchorRect.right - window.innerWidth + edgeMargin
+  const rightMax = anchorRect.right - menuWidth - edgeMargin
+  const right = Math.min(
+    Math.max(anchorRect.right - bubbleRect.right, rightMin),
+    rightMax,
+  )
   const spaceBelow
     = window.innerHeight - bubbleRect.bottom
 
@@ -405,6 +411,7 @@ onMounted(async () => {
     menuStyle.value = {
       top: `${bubbleRect.bottom - anchorRect.top + gap}px`,
       right: `${right}px`,
+      maxHeight: `${spaceBelow - gap - edgeMargin}px`,
     }
 
     return
@@ -414,6 +421,7 @@ onMounted(async () => {
     menuStyle.value = {
       bottom: `${anchorRect.bottom - bubbleRect.top + gap}px`,
       right: `${right}px`,
+      maxHeight: `${bubbleRect.top - gap - edgeMargin}px`,
     }
 
     return
@@ -422,11 +430,14 @@ onMounted(async () => {
   const desiredTop = props.pointer
     ? props.pointer.y + gap
     : window.innerHeight - menuHeight - edgeMargin
-  const clampedTop = Math.min(
-    Math.max(desiredTop, edgeMargin),
-    window.innerHeight - menuHeight - edgeMargin,
+  const clampedTop = Math.max(
+    edgeMargin,
+    Math.min(
+      Math.max(desiredTop, edgeMargin),
+      window.innerHeight - menuHeight - edgeMargin,
+    ),
   )
-  const menuWidth = menu.value.offsetWidth
+  const availableHeight = window.innerHeight - edgeMargin - clampedTop
   const bubbleWidth = bubbleRect.right - bubbleRect.left
 
   if (props.pointer && bubbleWidth >= menuWidth) {
@@ -439,6 +450,7 @@ onMounted(async () => {
     menuStyle.value = {
       top: `${clampedTop - anchorRect.top}px`,
       left: `${clampedLeft - anchorRect.left}px`,
+      maxHeight: `${availableHeight}px`,
     }
 
     return
@@ -447,6 +459,7 @@ onMounted(async () => {
   menuStyle.value = {
     top: `${clampedTop - anchorRect.top}px`,
     right: `${right}px`,
+    maxHeight: `${availableHeight}px`,
   }
 })
 
