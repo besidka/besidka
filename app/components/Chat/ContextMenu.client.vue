@@ -215,11 +215,13 @@ const emit = defineEmits<{
 }>()
 
 const POINTER_MOVE_THRESHOLD_PX = 8
+const SWALLOWED_CLICK_BACKSTOP_MS = 500
 
 const menu = useTemplateRef<HTMLUListElement>('menu')
 let pointerDownTime = 0
 let pointerDownX = 0
 let pointerDownY = 0
+let cancelSwallowedClick: (() => void) | null = null
 
 const menuStyle = shallowRef<Record<string, string> | null>(
   null,
@@ -517,19 +519,32 @@ function onDocumentPointerUp(event: PointerEvent) {
 }
 
 function swallowNextClick() {
-  const handler = (event: Event) => {
+  cancelSwallowedClick?.()
+
+  function onClick(event: Event) {
     event.preventDefault()
     event.stopImmediatePropagation()
+    cleanup()
   }
 
-  document.addEventListener('click', handler, {
-    capture: true,
-    once: true,
-  })
+  // Releasing on the next pointerdown (a new interaction starting) is a
+  // deliberate trade-off: it avoids over-swallowing a legitimate click that
+  // follows quickly, at the cost of a narrow window where an unrelated
+  // touch starting before this gesture's delayed synthetic click arrives
+  // would let that click through unswallowed. The backstop timer bounds
+  // the same window if no pointerdown happens at all.
+  function cleanup() {
+    document.removeEventListener('click', onClick, { capture: true })
+    document.removeEventListener('pointerdown', cleanup, { capture: true })
+    clearTimeout(backstopTimer)
+    cancelSwallowedClick = null
+  }
 
-  setTimeout(() => {
-    document.removeEventListener('click', handler, { capture: true })
-  }, 100)
+  const backstopTimer = setTimeout(cleanup, SWALLOWED_CLICK_BACKSTOP_MS)
+
+  document.addEventListener('click', onClick, { capture: true })
+  document.addEventListener('pointerdown', cleanup, { capture: true })
+  cancelSwallowedClick = cleanup
 }
 
 function onDocumentContextMenu(event: Event) {

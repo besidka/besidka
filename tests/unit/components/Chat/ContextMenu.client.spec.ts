@@ -245,6 +245,125 @@ describe('Chat/ContextMenu.client', () => {
     expect(wrapper.emitted('close')).toEqual([[]])
   })
 
+  describe('swallowed click after dismiss', () => {
+    let underlyingButton: HTMLButtonElement
+    let onUnderlyingClick: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      underlyingButton = document.createElement('button')
+      onUnderlyingClick = vi.fn()
+
+      underlyingButton.addEventListener('click', onUnderlyingClick)
+      document.body.appendChild(underlyingButton)
+    })
+
+    afterEach(() => {
+      underlyingButton.remove()
+    })
+
+    it('swallows a synthetic click that arrives after the dismiss tap, even past the old 100ms window', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[]])
+
+      vi.advanceTimersByTime(150)
+      underlyingButton.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+
+      expect(onUnderlyingClick).not.toHaveBeenCalled()
+    })
+
+    it('does not swallow a click that follows a genuinely new pointerdown', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[]])
+
+      underlyingButton.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      underlyingButton.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+
+      expect(onUnderlyingClick).toHaveBeenCalledTimes(1)
+    })
+
+    it('cancels a still-pending swallow before installing a new one', async () => {
+      const addSpy = vi.spyOn(document, 'addEventListener')
+      const removeSpy = vi.spyOn(document, 'removeEventListener')
+
+      function countClickCaptureCalls(spy: typeof addSpy) {
+        return spy.mock.calls.filter(([type, , options]) => {
+          return type === 'click'
+            && typeof options === 'object'
+            && (options as AddEventListenerOptions).capture === true
+        }).length
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(50)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[], []])
+
+      underlyingButton.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+
+      expect(onUnderlyingClick).not.toHaveBeenCalled()
+      expect(countClickCaptureCalls(removeSpy)).toBe(
+        countClickCaptureCalls(addSpy),
+      )
+    })
+  })
+
   describe('positioning', () => {
     let originalInnerHeight: number
     let originalInnerWidth: number
