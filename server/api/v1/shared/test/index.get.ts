@@ -1,6 +1,6 @@
 import type { TextUIPart } from 'ai'
 import {
-  buildTestImageAssistantParts,
+  buildTestSharedImageFileParts,
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
@@ -40,10 +40,11 @@ export default defineEventHandler(() => {
       {
         id: 'shared-test-image-assistant',
         role: 'assistant' as const,
-        parts: buildTestImageAssistantParts('shared-test-image-source-1'),
+        parts: buildTestSharedImageFileParts('shared-test-image-source-1'),
         reasoning: 'off' as const,
         createdAt: new Date().toISOString(),
         usage: TEST_IMAGE_USAGE,
+        tools: ['image_generation'] as const,
       },
     ],
   }

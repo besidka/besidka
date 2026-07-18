@@ -167,10 +167,12 @@ describe('Chat/ContextMenu.client', () => {
 
   describe('positioning', () => {
     let originalInnerHeight: number
+    let originalInnerWidth: number
     let originalOffsetWidth: PropertyDescriptor | undefined
 
     beforeEach(() => {
       originalInnerHeight = window.innerHeight
+      originalInnerWidth = window.innerWidth
 
       originalOffsetWidth = Object.getOwnPropertyDescriptor(
         HTMLElement.prototype,
@@ -186,6 +188,7 @@ describe('Chat/ContextMenu.client', () => {
 
     afterEach(() => {
       window.innerHeight = originalInnerHeight
+      window.innerWidth = originalInnerWidth
 
       if (originalOffsetWidth) {
         Object.defineProperty(
@@ -242,7 +245,7 @@ describe('Chat/ContextMenu.client', () => {
       const style = wrapper.find('ul').attributes('style')
 
       expect(style).toContain('top: 68px')
-      expect(style).toContain('right: 56px')
+      expect(style).toContain('right: 48px')
     })
 
     it('anchors above the bubble when space below is insufficient but space above fits', async () => {
@@ -261,7 +264,7 @@ describe('Chat/ContextMenu.client', () => {
       const style = wrapper.find('ul').attributes('style')
 
       expect(style).toContain('bottom: 84px')
-      expect(style).toContain('right: 56px')
+      expect(style).toContain('right: 48px')
       expect(style).not.toContain('top:')
     })
 
@@ -281,7 +284,7 @@ describe('Chat/ContextMenu.client', () => {
       const style = wrapper.find('ul').attributes('style')
 
       expect(style).toContain('top: 304px')
-      expect(style).toContain('right: 56px')
+      expect(style).toContain('right: 48px')
     })
 
     it('clamps the pointer-anchored position near the bottom of the viewport', async () => {
@@ -351,8 +354,38 @@ describe('Chat/ContextMenu.client', () => {
 
       const style = wrapper.find('ul').attributes('style')
 
-      expect(style).toContain('right: 56px')
+      // anchorRect.right (320) - bubbleRect.right (264) = 56 unclamped, but
+      // that would leave the menu's left edge only 8px from anchorRect's own
+      // left edge (320 - 56 - 256 menu width = 8px), less than the 16px
+      // edgeMargin every other side of this menu respects. 48px is the
+      // clamped value that restores the 16px margin.
+      expect(style).toContain('right: 48px')
       expect(style).not.toContain('left:')
+    })
+
+    it('clamps right alignment so a narrow bubble near the left edge does not push the menu off-screen', async () => {
+      window.innerWidth = 390
+      setAnchorRect({ left: 0, right: 390, width: 390 })
+      setBubbleRect({ left: 16, right: 150, width: 134, top: -50, bottom: 700 })
+      window.innerHeight = 600
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const style = wrapper.find('ul').attributes('style')
+      const rightMatch = style?.match(/right: (-?\d+(?:\.\d+)?)px/)
+
+      expect(rightMatch).not.toBeNull()
+
+      const right = Number(rightMatch?.[1])
+      const menuLeftEdge = 390 - right - 256
+
+      expect(menuLeftEdge).toBeGreaterThanOrEqual(16)
     })
 
     it('follows the pointer horizontally when the bubble is wide enough', async () => {

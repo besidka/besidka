@@ -126,6 +126,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
+    'tests/e2e/shared/context-menu-clipping.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
   ]
 
@@ -575,7 +576,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/routes\/files\/.*\.ts$/,
-      tests: filesModuleTests,
+      tests: [
+        ...filesModuleTests,
+        ...chatTestEndpointTests,
+        'tests/e2e/shared/context-menu-clipping.spec.ts',
+      ],
     },
     {
       pattern: /^server\/api\/v1\/storage\/index\.get\.ts$/,

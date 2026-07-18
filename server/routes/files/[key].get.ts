@@ -1,4 +1,9 @@
 import { hasShareTokenFileAccess } from '~~/server/utils/files/file-share-access'
+import {
+  getTestImageFixtureBytes,
+  TEST_IMAGE_FIXTURE_MEDIA_TYPE,
+} from '~~/server/utils/chats/test/image-fixture-bytes'
+import { isTestImageFixtureStorageKey } from '~~/server/utils/chats/test/image-fixture'
 import { getPreferredFileExtension } from '#shared/utils/files'
 
 const unsafeBidiControlPattern
@@ -12,6 +17,29 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Missing file Storage Key',
     })
+  }
+
+  const isTestEnvironment = import.meta.dev || process.env.CI === 'true'
+
+  if (isTestEnvironment && isTestImageFixtureStorageKey(storageKey)) {
+    const bytes = getTestImageFixtureBytes()
+    const query = getQuery(event)
+    const contentDisposition = query.download === '1'
+      ? buildAttachmentContentDisposition(
+        'sunset-mountain.png',
+        TEST_IMAGE_FIXTURE_MEDIA_TYPE,
+      )
+      : 'inline'
+
+    setResponseHeaders(event, {
+      'Content-Type': TEST_IMAGE_FIXTURE_MEDIA_TYPE,
+      'Content-Length': bytes.byteLength.toString(),
+      'Cache-Control': 'private, no-store, max-age=0',
+      'Content-Disposition': contentDisposition,
+      'X-Content-Type-Options': 'nosniff',
+    })
+
+    return bytes
   }
 
   const file = await useDb().query.files.findFirst({

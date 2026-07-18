@@ -395,9 +395,15 @@ onMounted(async () => {
   const bubbleRect
     = (bubbleEl.value ?? props.anchorEl).getBoundingClientRect()
   const menuHeight = menu.value.offsetHeight
+  const menuWidth = menu.value.offsetWidth
   const gap = 4
   const edgeMargin = 16
-  const right = anchorRect.right - bubbleRect.right
+  const rightMin = anchorRect.right - window.innerWidth + edgeMargin
+  const rightMax = anchorRect.right - menuWidth - edgeMargin
+  const right = Math.min(
+    Math.max(anchorRect.right - bubbleRect.right, rightMin),
+    rightMax,
+  )
   const spaceBelow
     = window.innerHeight - bubbleRect.bottom
 
@@ -432,7 +438,6 @@ onMounted(async () => {
     ),
   )
   const availableHeight = window.innerHeight - edgeMargin - clampedTop
-  const menuWidth = menu.value.offsetWidth
   const bubbleWidth = bubbleRect.right - bubbleRect.left
 
   if (props.pointer && bubbleWidth >= menuWidth) {

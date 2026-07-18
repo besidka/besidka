@@ -1,4 +1,4 @@
-import type { Locator } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { devices, expect, test } from '@playwright/test'
 
 const iPhone12 = devices['iPhone 12']
@@ -68,6 +68,32 @@ async function getClippingViolation(
   }, CLIPPING_CHECK_EPSILON)
 }
 
+interface ViewportOverflowResult {
+  left: number
+  right: number
+  fitsWithinViewport: boolean
+}
+
+async function getMenuViewportOverflow(
+  page: Page,
+): Promise<ViewportOverflowResult> {
+  return page.evaluate(() => {
+    const menu = document.querySelector('ul.menu') as HTMLElement | null
+
+    if (!menu) {
+      throw new Error('Context menu is not open')
+    }
+
+    const rect = menu.getBoundingClientRect()
+
+    return {
+      left: rect.left,
+      right: rect.right,
+      fitsWithinViewport: rect.left >= 0 && rect.right <= window.innerWidth,
+    }
+  })
+}
+
 test.describe('shared chat context menu layout', () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(30_000)
@@ -105,12 +131,56 @@ test.describe('shared chat context menu layout', () => {
       page.getByTestId('message-menu-cost-chat-total'),
     ).toBeVisible()
 
-    const lastMenuItem = page.getByTestId('message-menu-copy-markdown')
+    // The fixture message is image-only (no text part), so ContextMenu's
+    // copyText is empty and it skips the copy section entirely — "Branch
+    // chat from here" is the real last item for this message shape.
+    const lastMenuItem = page.getByRole('button', {
+      name: 'Branch chat from here',
+    })
 
     await expect(lastMenuItem).toBeVisible()
 
     const clipping = await getClippingViolation(lastMenuItem)
 
     expect(clipping.fitsWithinAncestor).toBe(true)
+  })
+
+  // A real generated-image message only ever reaches the shared page as a
+  // bare `file` part (server/utils/files/assistant-files.ts converts the
+  // tool-generate_image part to `file` at persistence, and the shared
+  // endpoint's filterPublicParts() strips tool parts) so it renders through
+  // ChatFiles.vue's 192px thumbnail, not ChatGeneratedImage.vue's 320px
+  // card. That narrow, image-only bubble is exactly what makes
+  // shouldFitMessageBubble() shrink `.js-chat-bubble` to fit-content, which
+  // can land it below the menu's own 256px (w-64) width — the scenario the
+  // menu's unclamped `right` fallback did not defend against.
+  test('does not push the menu off-screen for a narrower-than-menu bubble', async ({
+    page,
+  }) => {
+    const imageMessage = page.locator('[data-role="assistant"]').last()
+
+    await expect(imageMessage).toBeVisible()
+
+    const bubbleWidth = await imageMessage.evaluate((element) => {
+      const bubble = element.querySelector('.js-chat-bubble')
+
+      if (!bubble) {
+        throw new Error('Message is missing .js-chat-bubble')
+      }
+
+      return bubble.getBoundingClientRect().width
+    })
+
+    expect(bubbleWidth).toBeLessThan(256)
+
+    await selectMessage(imageMessage)
+
+    const menu = page.locator('ul.menu')
+
+    await expect(menu).toBeVisible()
+
+    const overflow = await getMenuViewportOverflow(page)
+
+    expect(overflow.fitsWithinViewport).toBe(true)
   })
 })
