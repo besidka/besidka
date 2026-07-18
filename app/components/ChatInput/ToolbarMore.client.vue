@@ -63,11 +63,11 @@
               <span class="divider my-0"/>
             </label>
           </li>
-          <li v-if="displayProjectPicker || projectContext">
+          <li v-if="displayProjectPicker || projectContext" class="w-full">
             <div class="flex items-center gap-2 w-full">
               <button
                 type="button"
-                class="flex items-center gap-2 grow text-left"
+                class="flex items-center gap-2 grow min-w-0 text-left"
                 :class="{
                   'text-accent': projectContext
                 }"
