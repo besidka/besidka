@@ -169,6 +169,8 @@ const { messageRole, part } = defineProps<{
   part: UIMessage['parts'][number]
 }>()
 
+const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+
 const isImageLoaded = shallowRef<boolean>(false)
 const hasImageLoadError = shallowRef<boolean>(false)
 const isImagePreviewOpen = shallowRef<boolean>(false)
@@ -288,6 +290,8 @@ function onImageError() {
 }
 
 function openImagePreview() {
+  if (isImagePreviewSuppressed.value) return
+
   isImagePreviewOpen.value = true
 }
 

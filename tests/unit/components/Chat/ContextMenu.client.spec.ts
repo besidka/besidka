@@ -23,6 +23,8 @@ describe('Chat/ContextMenu.client', () => {
   beforeEach(() => {
     vi.useFakeTimers()
 
+    useState<number>('image-preview-guard-count', () => 0).value = 0
+
     anchorEl = document.createElement('div')
     outsideEl = document.createElement('div')
 
@@ -1189,6 +1191,82 @@ describe('Chat/ContextMenu.client', () => {
       await flushPromises()
 
       expect(useErrorMessage).toHaveBeenCalledWith('Failed to copy message')
+    })
+  })
+
+  describe('image preview guard', () => {
+    function guardCount() {
+      return useState<number>('image-preview-guard-count', () => 0)
+    }
+
+    it('activates the guard while mounted', async () => {
+      await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      expect(guardCount().value).toBe(1)
+    })
+
+    it('releases the guard on unmount when no swallow is pending', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(0)
+    })
+
+    it('keeps the guard active across unmount while a click is being swallowed, releasing it once the click resolves', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      outsideEl.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+      vi.advanceTimersByTime(0)
+
+      expect(guardCount().value).toBe(0)
+    })
+
+    it('keeps the guard active across unmount until the backstop elapses', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      vi.advanceTimersByTime(501)
+
+      expect(guardCount().value).toBe(0)
     })
   })
 })

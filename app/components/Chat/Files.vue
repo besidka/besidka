@@ -162,6 +162,8 @@ const props = defineProps<{
   message: UIMessage
 }>()
 
+const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+
 const containerRef = useTemplateRef<HTMLDivElement>('containerRef')
 const failedUrls = reactive<Record<string, boolean>>({})
 const previewFile = shallowRef<DisplayFile | null>(null)
@@ -204,6 +206,8 @@ function onImageError(url: string) {
 }
 
 function openImagePreview(file: DisplayFile) {
+  if (isImagePreviewSuppressed.value) return
+
   if (!file.links || !isImageFile(file.mediaType)) {
     return
   }

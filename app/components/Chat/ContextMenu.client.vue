@@ -217,6 +217,8 @@ const emit = defineEmits<{
 const POINTER_MOVE_THRESHOLD_PX = 8
 const SWALLOWED_CLICK_BACKSTOP_MS = 500
 
+const { suppressImagePreview, releaseImagePreview } = useImagePreviewGuard()
+
 const menu = useTemplateRef<HTMLUListElement>('menu')
 let pointerDownTime = 0
 let pointerDownX = 0
@@ -538,6 +540,12 @@ function swallowNextClick() {
     document.removeEventListener('pointerdown', cleanup, { capture: true })
     clearTimeout(backstopTimer)
     cancelSwallowedClick = null
+
+    // Deferred a tick so the image-preview guard (checked synchronously by
+    // GeneratedImage/Files on their own click handler) stays elevated for
+    // the entire dispatch of a swallowed click, even if this handler's own
+    // stopImmediatePropagation somehow failed to halt it beforehand.
+    setTimeout(releaseImagePreview, 0)
   }
 
   const backstopTimer = setTimeout(cleanup, SWALLOWED_CLICK_BACKSTOP_MS)
@@ -562,6 +570,7 @@ function onSelectionChange() {
 }
 
 onMounted(() => {
+  suppressImagePreview()
   document.addEventListener('keydown', onKeyDown)
   document.addEventListener('pointerdown', onDocumentPointerDown)
   document.addEventListener('pointerup', onDocumentPointerUp)
@@ -571,6 +580,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Only release immediately when no swallow is pending for this instance
+  // — if one is, its own cleanup() releases the guard once the swallowed
+  // click (or the backstop) actually resolves, since this component can
+  // unmount well before that.
+  if (!cancelSwallowedClick) {
+    releaseImagePreview()
+  }
+
   document.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('pointerdown', onDocumentPointerDown)
   document.removeEventListener('pointerup', onDocumentPointerUp)
