@@ -344,6 +344,7 @@ export default defineNuxtConfig({
     typescriptPlugin: true,
     // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
     nitroAutoImports: true,
+    watcher: 'builder',
   },
   hooks: {
     // App-level cookie texts must merge through the same lazy locale-file
