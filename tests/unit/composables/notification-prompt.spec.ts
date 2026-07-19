@@ -340,6 +340,19 @@ describe('useNotificationPrompt', () => {
       expect(userSettingMocks.setNotificationPromptState).not
         .toHaveBeenCalled()
     })
+
+    it('does nothing when permission is denied, avoiding a dead-end banner', async () => {
+      mocks.permission = 'denied'
+
+      const prompt = useNotificationPrompt()
+
+      await prompt.requestEnable()
+
+      expect(mocks.subscribe).not.toHaveBeenCalled()
+      expect(prompt.isVisible.value).toBe(false)
+      expect(userSettingMocks.setNotificationPromptState).not
+        .toHaveBeenCalled()
+    })
   })
 
   describe('disable (settings-menu toggle button)', () => {

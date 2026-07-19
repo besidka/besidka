@@ -91,6 +91,27 @@ Two independent states that are easy to conflate:
 Server-side pruning: a 404/410 from the push service deletes the row — the
 only signal that a browser dropped the subscription.
 
+### Settings-menu toggle
+
+A bell button in the user settings dropdown (`Sidebar/PushToggle.client.vue`,
+after the API keys button) gives a second, manual entry point alongside the
+banner. It reflects only this device's live `permission`/subscription state,
+never `notificationPromptState` alone — an account that enabled push on one
+device but never subscribed this browser must not show as "on" here. Clicking
+it:
+
+- silently (re)subscribes when permission is already `granted` (no dialog),
+- opens the disclosed banner when permission is `default` (never calls
+  `Notification.requestPermission()` directly — the same compliance
+  requirement as above),
+- disables the button when permission is `denied` — the browser will never
+  re-show the dialog once blocked, so there is nothing left to do here.
+
+This is also the only way back in for an account stuck at
+`notificationPromptState === false` on a fresh origin: the proactive banner
+above deliberately never re-shows for a declined state until a notification
+is missed first.
+
 ## Sending
 
 - **Generation finished** (`chats/[slug]/index.post.ts`): always sends when

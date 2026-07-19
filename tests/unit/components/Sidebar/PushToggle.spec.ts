@@ -89,6 +89,16 @@ describe('Sidebar/PushToggle', () => {
       .toContain('i-lucide:bell-off')
   })
 
+  it('blocks interaction and explains why when permission is denied', async () => {
+    mocks.permission = 'denied'
+
+    const wrapper = await mountPushToggle()
+
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.get('[aria-label]').attributes('aria-label'))
+      .toBe('Notifications blocked in browser settings')
+  })
+
   it('calls disable (not requestEnable) when clicked while enabled', async () => {
     mocks.permission = 'granted'
     mocks.isSubscribed = true

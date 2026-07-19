@@ -7,11 +7,13 @@
     :class="{ 'btn-active': isEnabled }"
     :icon-name="isEnabled ? 'lucide:bell-ring' : 'lucide:bell-off'"
     :title="
-      isEnabled
-        ? 'Disable push notifications'
-        : 'Enable push notifications'
+      isBlocked
+        ? 'Notifications blocked in browser settings'
+        : isEnabled
+          ? 'Disable push notifications'
+          : 'Enable push notifications'
     "
-    :disabled="pending"
+    :disabled="pending || isBlocked"
     @click="handleClick"
   />
 </template>
@@ -25,6 +27,10 @@ const pending = shallowRef<boolean>(false)
 const isEnabled = computed<boolean>(() => {
   return pushNotifications.permission.value === 'granted'
     && pushNotifications.isSubscribed.value
+})
+
+const isBlocked = computed<boolean>(() => {
+  return pushNotifications.permission.value === 'denied'
 })
 
 async function handleClick() {
