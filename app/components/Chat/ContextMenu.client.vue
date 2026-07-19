@@ -224,6 +224,8 @@ let pointerDownTime = 0
 let pointerDownX = 0
 let pointerDownY = 0
 let cancelSwallowedClick: (() => void) | null = null
+let hasReleasedGuard = false
+let isSwallowScheduled = false
 
 const menuStyle = shallowRef<Record<string, string> | null>(
   null,
@@ -520,17 +522,36 @@ function onDocumentPointerUp(event: PointerEvent) {
   dismiss()
 }
 
+// Guarantees the mount-time suppressImagePreview() is matched by exactly
+// one release, no matter which of the paths below (swallowed click,
+// pointerdown/backstop cleanup, or plain unmount) gets there first.
+function releaseGuardOnce() {
+  if (hasReleasedGuard) return
+
+  hasReleasedGuard = true
+  releaseImagePreview()
+}
+
 function swallowNextClick() {
+  isSwallowScheduled = true
   cancelSwallowedClick?.()
 
   function onClick(event: Event) {
+    // Third-party libraries can dispatch untrusted synthetic clicks at
+    // arbitrary times (e.g. web-haptics' debug-mode toggle fires one as
+    // a side effect of playing feedback on message selection). Since this
+    // listener swallows only the NEXT click it sees, a stray synthetic
+    // click here would consume it instead of the real trailing click of
+    // this dismiss gesture, letting that real click through unguarded.
+    if (!event.isTrusted) return
+
     event.preventDefault()
     event.stopImmediatePropagation()
-    cleanup(true)
+    cleanup()
   }
 
   function onPointerDown() {
-    cleanup(false)
+    cleanup()
   }
 
   // Releasing on the next pointerdown (a new interaction starting) is a
@@ -539,40 +560,21 @@ function swallowNextClick() {
   // touch starting before this gesture's delayed synthetic click arrives
   // would let that click through unswallowed. The backstop timer bounds
   // the same window if no pointerdown happens at all.
-  //
-  // deferRelease is true only when THIS click was the one being swallowed:
-  // the image-preview guard must stay elevated for that click's entire
-  // synchronous dispatch (checked by GeneratedImage/Files in their own
-  // click handler), even if stopImmediatePropagation somehow failed to
-  // halt it beforehand. A pointerdown/backstop-triggered release means no
-  // click is currently mid-dispatch, so releasing immediately is both safe
-  // and necessary — deferring here would risk still reading "suppressed"
-  // for a fresh, unrelated click dispatched synchronously right after.
-  function cleanup(deferRelease: boolean) {
+  function cleanup() {
     document.removeEventListener('click', onClick, { capture: true })
     document.removeEventListener('pointerdown', onPointerDown, {
       capture: true,
     })
     clearTimeout(backstopTimer)
     cancelSwallowedClick = null
-
-    if (deferRelease) {
-      setTimeout(releaseImagePreview, 0)
-
-      return
-    }
-
-    releaseImagePreview()
+    releaseGuardOnce()
   }
 
-  const backstopTimer = setTimeout(
-    () => cleanup(false),
-    SWALLOWED_CLICK_BACKSTOP_MS,
-  )
+  const backstopTimer = setTimeout(cleanup, SWALLOWED_CLICK_BACKSTOP_MS)
 
   document.addEventListener('click', onClick, { capture: true })
   document.addEventListener('pointerdown', onPointerDown, { capture: true })
-  cancelSwallowedClick = () => cleanup(false)
+  cancelSwallowedClick = cleanup
 }
 
 function onDocumentContextMenu(event: Event) {
@@ -600,12 +602,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Only release immediately when no swallow is pending for this instance
-  // — if one is, its own cleanup() releases the guard once the swallowed
-  // click (or the backstop) actually resolves, since this component can
-  // unmount well before that.
-  if (!cancelSwallowedClick) {
-    releaseImagePreview()
+  // Only release immediately when no swallow was ever scheduled for this
+  // instance — if one was, its own cleanup() releases the guard once the
+  // swallowed click (or the backstop) actually resolves, since this
+  // component can unmount well before that. isSwallowScheduled (unlike
+  // cancelSwallowedClick) stays true even after the swallow resolves, so
+  // this check can't race with cleanup() already having run.
+  if (!isSwallowScheduled) {
+    releaseGuardOnce()
   }
 
   document.removeEventListener('keydown', onKeyDown)

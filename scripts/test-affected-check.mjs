@@ -95,6 +95,7 @@ export function getAffectedTests(changedFiles) {
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
+    'tests/e2e/chat/context-menu-image-desktop.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -126,6 +127,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
+    'tests/e2e/chat/context-menu-image-desktop.spec.ts',
     'tests/e2e/shared/context-menu-clipping.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
   ]

@@ -14,6 +14,22 @@ async function flushPromises() {
   }
 }
 
+// happy-dom reports `isTrusted` as undefined on constructed events rather
+// than the spec's `false`, so a plain dispatch already reads as "untrusted"
+// by ContextMenu's own check. Tests simulating a real user click need to
+// mark the event trusted explicitly to exercise the swallow-and-resolve
+// path; tests simulating a third-party library's synthetic click (e.g.
+// web-haptics' debug toggle) can dispatch a plain click as-is.
+function dispatchTrustedClick(target: EventTarget) {
+  const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+
+  Object.defineProperty(event, 'isTrusted', {
+    value: true,
+    configurable: true,
+  })
+  target.dispatchEvent(event)
+}
+
 describe('Chat/ContextMenu.client', () => {
   let anchorEl: HTMLDivElement
   let bubbleEl: HTMLDivElement
@@ -283,10 +299,7 @@ describe('Chat/ContextMenu.client', () => {
       expect(wrapper.emitted('close')).toEqual([[]])
 
       vi.advanceTimersByTime(150)
-      underlyingButton.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-      }))
+      dispatchTrustedClick(underlyingButton)
 
       expect(onUnderlyingClick).not.toHaveBeenCalled()
     })
@@ -313,10 +326,7 @@ describe('Chat/ContextMenu.client', () => {
       underlyingButton.dispatchEvent(new PointerEvent('pointerdown', {
         bubbles: true,
       }))
-      underlyingButton.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-      }))
+      dispatchTrustedClick(underlyingButton)
 
       expect(onUnderlyingClick).toHaveBeenCalledTimes(1)
     })
@@ -354,15 +364,50 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(wrapper.emitted('close')).toEqual([[], []])
 
-      underlyingButton.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-      }))
+      dispatchTrustedClick(underlyingButton)
 
       expect(onUnderlyingClick).not.toHaveBeenCalled()
       expect(countClickCaptureCalls(removeSpy)).toBe(
         countClickCaptureCalls(addSpy),
       )
+    })
+
+    it('ignores an untrusted synthetic click and still swallows the real trailing click that follows it', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[]])
+
+      // A third-party library (e.g. web-haptics' debug-mode toggle) can
+      // dispatch an untrusted click at any time, unrelated to this dismiss
+      // gesture. It must not consume the one-shot swallow meant for the
+      // real trailing click.
+      const unrelatedTarget = document.createElement('label')
+
+      document.body.appendChild(unrelatedTarget)
+      unrelatedTarget.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+
+      dispatchTrustedClick(underlyingButton)
+
+      expect(onUnderlyingClick).not.toHaveBeenCalled()
+
+      unrelatedTarget.remove()
     })
   })
 
@@ -1237,10 +1282,7 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(guardCount().value).toBe(1)
 
-      outsideEl.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-      }))
+      dispatchTrustedClick(outsideEl)
       vi.advanceTimersByTime(0)
 
       expect(guardCount().value).toBe(0)
@@ -1297,10 +1339,7 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(guardCount().value).toBe(0)
 
-      freshTarget.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-      }))
+      dispatchTrustedClick(freshTarget)
 
       expect(guardCount().value).toBe(0)
 
@@ -1343,10 +1382,7 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(guardCount().value).toBe(2)
 
-      outsideEl.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-      }))
+      dispatchTrustedClick(outsideEl)
       vi.advanceTimersByTime(0)
 
       expect(guardCount().value).toBe(1)
