@@ -3,14 +3,21 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useResearchLink } from '../../../app/composables/research-links'
 import { useUserSetting } from '../../../app/composables/user-setting'
 
-const useConfirmMock = vi.hoisted(() => {
-  return vi.fn<() => Promise<{ label: string, index: number } | null>>(
-    async () => null,
-  )
+const { useConfirmMock, fetchMock } = vi.hoisted(() => {
+  return {
+    useConfirmMock: vi.fn<
+      () => Promise<{ label: string, index: number } | null>
+    >(async () => null),
+    fetchMock: vi.fn(),
+  }
 })
 
 mockNuxtImport('useConfirm', () => {
   return useConfirmMock
+})
+
+mockNuxtImport('$fetch', () => {
+  return fetchMock
 })
 
 describe('useResearchLink', () => {
@@ -59,11 +66,9 @@ describe('useResearchLink', () => {
   })
 
   it('persists "Open always" via setAllowExternalLinks and still opens', async () => {
-    const fetchMock = vi.fn()
+    fetchMock
       .mockResolvedValueOnce({ allowExternalLinks: false })
       .mockResolvedValueOnce({})
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { syncForUser } = useUserSetting()
 
@@ -95,13 +100,10 @@ describe('useResearchLink', () => {
     )
 
     windowOpen.mockRestore()
-    vi.unstubAllGlobals()
   })
 
   it('opens without a prompt when allowExternalLinks is already true', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ allowExternalLinks: true })
-
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue({ allowExternalLinks: true })
 
     const { syncForUser, allowExternalLinks } = useUserSetting()
 
@@ -123,6 +125,5 @@ describe('useResearchLink', () => {
     )
 
     windowOpen.mockRestore()
-    vi.unstubAllGlobals()
   })
 })

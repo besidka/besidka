@@ -8,11 +8,13 @@ import {
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
 
-const { navigateToMock } = vi.hoisted(() => ({
+const { navigateToMock, fetchMock } = vi.hoisted(() => ({
   navigateToMock: vi.fn(),
+  fetchMock: vi.fn(),
 }))
 
 mockNuxtImport('navigateTo', () => navigateToMock)
+mockNuxtImport('$fetch', () => fetchMock)
 
 async function flushPromises() {
   await Promise.resolve()
@@ -179,7 +181,7 @@ describe('chats new page', () => {
     })
     const projectARequest = createDeferred<{ id: string, name: string }>()
     const projectBRequest = createDeferred<{ id: string, name: string }>()
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/projects/project-a') {
         return projectARequest.promise
       }
@@ -190,8 +192,6 @@ describe('chats new page', () => {
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     wrapper = await mountSuspended(ChatsNewPage, {
       global: {
@@ -287,13 +287,13 @@ describe('chats new page', () => {
       template: '<div />',
     })
 
-    vi.stubGlobal('$fetch', vi.fn(async () => ({
+    fetchMock.mockImplementation(async () => ({
       id: 'project-a',
       name: 'Project A',
       instructions: 'Stay focused on milestones',
       memory: 'User prefers concise updates.',
       memoryStatus: 'ready',
-    })))
+    }))
 
     wrapper = await mountSuspended(ChatsNewPage, {
       global: {
@@ -357,14 +357,14 @@ describe('chats new page', () => {
 
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
-    vi.stubGlobal('$fetch', vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.reject(
         Object.assign(new Error('No access'), {
           statusCode: 401,
           status: 401,
         }),
       )
-    }))
+    })
 
     const { chatInputStub, stubs } = createSendStubs()
 
@@ -393,7 +393,9 @@ describe('chats new page', () => {
   it('restores attached files on a failed send', async () => {
     const storage = createStorageShim()
 
-    const fetchMock = vi.fn(() => {
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+    fetchMock.mockImplementation(() => {
       return Promise.reject(
         Object.assign(new Error('Server error'), {
           statusCode: 500,
@@ -401,10 +403,6 @@ describe('chats new page', () => {
         }),
       )
     })
-
-    vi.stubGlobal('localStorage', storage)
-    navigateToMock.mockClear()
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, stubs } = createSendStubs()
 
@@ -444,9 +442,9 @@ describe('chats new page', () => {
 
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
-    vi.stubGlobal('$fetch', vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve({ slug: 'created-chat' })
-    }))
+    })
 
     const { chatInputStub, stubs } = createSendStubs()
 
@@ -479,7 +477,6 @@ describe('chats new page', () => {
     )
 
     vi.stubGlobal('localStorage', storage)
-    vi.stubGlobal('$fetch', vi.fn())
 
     const { chatInputStub, stubs } = createSendStubs()
 
@@ -498,7 +495,7 @@ describe('chats new page', () => {
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.resolve({
           questions: [],
@@ -512,8 +509,6 @@ describe('chats new page', () => {
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
 
@@ -573,7 +568,8 @@ describe('chats new page', () => {
     navigateToMock.mockClear()
 
     const createRequest = createDeferred<{ slug: string }>()
-    const fetchMock = vi.fn((url: string) => {
+
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.resolve({ questions: [] })
       }
@@ -584,8 +580,6 @@ describe('chats new page', () => {
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
 
@@ -631,15 +625,13 @@ describe('chats new page', () => {
     storage.setItem('model', 'o4-mini-deep-research')
     vi.stubGlobal('localStorage', storage)
 
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.resolve({ questions: [] })
       }
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, stubs } = createResearchStubs()
 
@@ -673,15 +665,13 @@ describe('chats new page', () => {
     storage.setItem('model', 'o4-mini-deep-research')
     vi.stubGlobal('localStorage', storage)
 
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.resolve({ questions: [] })
       }
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, stubs } = createResearchStubs()
 
@@ -718,7 +708,7 @@ describe('chats new page', () => {
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.resolve({ questions: [] })
       }
@@ -734,8 +724,6 @@ describe('chats new page', () => {
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
 
@@ -772,7 +760,7 @@ describe('chats new page', () => {
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.reject(new Error('clarify unavailable'))
       }
@@ -783,8 +771,6 @@ describe('chats new page', () => {
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, stubs } = createResearchStubs()
 
@@ -823,7 +809,8 @@ describe('chats new page', () => {
     navigateToMock.mockClear()
 
     const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
-    const fetchMock = vi.fn((url: string) => {
+
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/research/clarify') {
         return Promise.resolve({ questions: [] })
       }
@@ -840,8 +827,6 @@ describe('chats new page', () => {
 
       throw new Error(`Unexpected request: ${url}`)
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { chatInputStub, clarifyStub, stubs } = createResearchStubs()
 

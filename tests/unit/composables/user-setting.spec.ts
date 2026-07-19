@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useUserSetting } from '../../../app/composables/user-setting'
+
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 describe('useUserSetting', () => {
   beforeEach(() => {
@@ -20,13 +27,10 @@ describe('useUserSetting', () => {
   })
 
   it('syncs settings once for the same user and reuses cached value', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: true,
       reasoningAutoHide: true,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       syncForUser,
       reasoningExpanded,
@@ -48,13 +52,10 @@ describe('useUserSetting', () => {
   it('uses DB value as source of truth after authenticated sync', async () => {
     localStorage.setItem('settings_reasoning_expanded', 'true')
 
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: true,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       reasoningExpanded,
       syncForUser,
@@ -71,10 +72,7 @@ describe('useUserSetting', () => {
   })
 
   it('updates local storage without API call for guests', async () => {
-    const fetchMock = vi.fn()
-
-    vi.stubGlobal('$fetch', fetchMock)
-
+    fetchMock.mockReset()
     const {
       reasoningExpanded,
       setReasoningExpanded,
@@ -87,7 +85,7 @@ describe('useUserSetting', () => {
   })
 
   it('persists setting for authenticated users', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
@@ -96,9 +94,6 @@ describe('useUserSetting', () => {
         reasoningExpanded: true,
         reasoningAutoHide: true,
       })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       syncForUser,
       reasoningExpanded,
@@ -126,13 +121,10 @@ describe('useUserSetting', () => {
   })
 
   it('persists setting when authenticated user is active before sync', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: true,
       reasoningAutoHide: true,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       activeUserId,
       reasoningExpanded,
@@ -157,15 +149,12 @@ describe('useUserSetting', () => {
   })
 
   it('rolls back optimistic value when authenticated save fails', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
       })
       .mockRejectedValueOnce(new Error('Save failed'))
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       reasoningExpanded,
       settingsError,
@@ -193,13 +182,10 @@ describe('useUserSetting', () => {
   })
 
   it('syncs reasoningAutoHide from server response', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: false,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const { syncForUser, reasoningAutoHide } = useUserSetting()
 
     await syncForUser('user-1')
@@ -211,10 +197,7 @@ describe('useUserSetting', () => {
   })
 
   it('updates reasoningAutoHide without API call for guests', async () => {
-    const fetchMock = vi.fn()
-
-    vi.stubGlobal('$fetch', fetchMock)
-
+    fetchMock.mockReset()
     const { reasoningAutoHide, setReasoningAutoHide } = useUserSetting()
 
     await setReasoningAutoHide(false)
@@ -224,7 +207,7 @@ describe('useUserSetting', () => {
   })
 
   it('persists reasoningAutoHide for authenticated users', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
@@ -232,9 +215,6 @@ describe('useUserSetting', () => {
       .mockResolvedValueOnce({
         reasoningAutoHide: false,
       })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       syncForUser,
       reasoningAutoHide,
@@ -262,15 +242,12 @@ describe('useUserSetting', () => {
   })
 
   it('rolls back optimistic reasoningAutoHide when authenticated save fails', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
       })
       .mockRejectedValueOnce(new Error('Save failed'))
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       reasoningAutoHide,
       settingsError,
@@ -298,14 +275,11 @@ describe('useUserSetting', () => {
   })
 
   it('syncs allowExternalLinks from server response', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: true,
       allowExternalLinks: true,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const { syncForUser, allowExternalLinks } = useUserSetting()
 
     await syncForUser('user-1')
@@ -314,10 +288,7 @@ describe('useUserSetting', () => {
   })
 
   it('does not persist allowExternalLinks for guests', async () => {
-    const fetchMock = vi.fn()
-
-    vi.stubGlobal('$fetch', fetchMock)
-
+    fetchMock.mockReset()
     const { allowExternalLinks, setAllowExternalLinks } = useUserSetting()
 
     await setAllowExternalLinks(true)
@@ -327,7 +298,7 @@ describe('useUserSetting', () => {
   })
 
   it('persists allowExternalLinks for authenticated users', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
@@ -336,9 +307,6 @@ describe('useUserSetting', () => {
       .mockResolvedValueOnce({
         allowExternalLinks: true,
       })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       syncForUser,
       allowExternalLinks,
@@ -366,16 +334,13 @@ describe('useUserSetting', () => {
   })
 
   it('rolls back optimistic allowExternalLinks when save fails', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
         allowExternalLinks: false,
       })
       .mockRejectedValueOnce(new Error('Save failed'))
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       allowExternalLinks,
       settingsError,
@@ -403,14 +368,11 @@ describe('useUserSetting', () => {
   })
 
   it('syncs notificationPromptState from server response', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: true,
       notificationPromptState: false,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const { syncForUser, notificationPromptState } = useUserSetting()
 
     await syncForUser('user-1')
@@ -419,10 +381,7 @@ describe('useUserSetting', () => {
   })
 
   it('does not persist notificationPromptState for guests', async () => {
-    const fetchMock = vi.fn()
-
-    vi.stubGlobal('$fetch', fetchMock)
-
+    fetchMock.mockReset()
     const {
       notificationPromptState,
       setNotificationPromptState,
@@ -435,7 +394,7 @@ describe('useUserSetting', () => {
   })
 
   it('persists notificationPromptState for authenticated users', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
@@ -444,9 +403,6 @@ describe('useUserSetting', () => {
       .mockResolvedValueOnce({
         notificationPromptState: true,
       })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       syncForUser,
       notificationPromptState,
@@ -474,16 +430,13 @@ describe('useUserSetting', () => {
   })
 
   it('rolls back optimistic notificationPromptState when save fails', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
         notificationPromptState: null,
       })
       .mockRejectedValueOnce(new Error('Save failed'))
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       notificationPromptState,
       settingsError,
@@ -515,14 +468,11 @@ describe('useUserSetting', () => {
   it('uses DB value as source of truth for sidebarPinned after sync', async () => {
     localStorage.setItem('settings_sidebar_pinned', 'true')
 
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: true,
       sidebarPinned: false,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       sidebarPinned,
       syncForUser,
@@ -539,10 +489,7 @@ describe('useUserSetting', () => {
   })
 
   it('updates local storage without API call for sidebarPinned guests', async () => {
-    const fetchMock = vi.fn()
-
-    vi.stubGlobal('$fetch', fetchMock)
-
+    fetchMock.mockReset()
     const {
       sidebarPinned,
       setSidebarPinned,
@@ -555,7 +502,7 @@ describe('useUserSetting', () => {
   })
 
   it('persists sidebarPinned for authenticated users', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
@@ -564,9 +511,6 @@ describe('useUserSetting', () => {
       .mockResolvedValueOnce({
         sidebarPinned: true,
       })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       syncForUser,
       sidebarPinned,
@@ -594,12 +538,9 @@ describe('useUserSetting', () => {
   })
 
   it('persists sidebarPinned when authenticated user is active before sync', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       sidebarPinned: true,
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       activeUserId,
       sidebarPinned,
@@ -624,16 +565,13 @@ describe('useUserSetting', () => {
   })
 
   it('rolls back optimistic sidebarPinned when authenticated save fails', async () => {
-    const fetchMock = vi.fn()
+    fetchMock.mockReset()
       .mockResolvedValueOnce({
         reasoningExpanded: false,
         reasoningAutoHide: true,
         sidebarPinned: false,
       })
       .mockRejectedValueOnce(new Error('Save failed'))
-
-    vi.stubGlobal('$fetch', fetchMock)
-
     const {
       sidebarPinned,
       settingsError,

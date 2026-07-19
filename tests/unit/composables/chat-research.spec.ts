@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import type { UIMessage } from 'ai'
 import type { ResearchJobView } from '#shared/types/research.d'
 import { useChatResearch } from '../../../app/composables/chat-research'
@@ -26,10 +27,15 @@ function createChatSdk() {
   }
 }
 
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
+
 describe('useChatResearch', () => {
   let visibilityHandler: (() => void) | null = null
   let focusHandler: (() => void) | null = null
-  let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -65,14 +71,12 @@ describe('useChatResearch', () => {
       get: () => 'visible',
     })
 
-    fetchMock = vi.fn()
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockReset()
   })
 
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
-    vi.unstubAllGlobals()
   })
 
   it('starts a job, appends the user message locally, and begins polling', async () => {

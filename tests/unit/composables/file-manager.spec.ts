@@ -1,5 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useFileManager } from '../../../app/composables/file-manager'
+
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 const smallFileSet = [
   {
@@ -44,11 +51,11 @@ function generateFiles(count: number) {
   }))
 }
 
-let fetchMock: ReturnType<typeof vi.fn>
 let activeFileSet: typeof smallFileSet
+let baseFetchImpl: (url: string, options?: any) => Promise<any>
 
 function createFetchMock(fileSet: typeof smallFileSet) {
-  return vi.fn(async (url: string, options?: any) => {
+  return async (url: string, options?: any) => {
     if (url === '/api/v1/files') {
       const search = options?.query?.search?.toLowerCase() || ''
       const source = options?.query?.source || 'all'
@@ -103,7 +110,7 @@ function createFetchMock(fileSet: typeof smallFileSet) {
     }
 
     throw new Error(`Unhandled $fetch call: ${url}`)
-  })
+  }
 }
 
 async function flushPromises() {
@@ -127,8 +134,8 @@ describe('useFileManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     activeFileSet = [...smallFileSet]
-    fetchMock = createFetchMock(activeFileSet)
-    vi.stubGlobal('$fetch', fetchMock)
+    baseFetchImpl = createFetchMock(activeFileSet)
+    fetchMock.mockImplementation(baseFetchImpl)
   })
 
   afterEach(() => {
@@ -200,7 +207,7 @@ describe('useFileManager', () => {
       },
     )
 
-    vi.stubGlobal('$fetch', raceFetchMock)
+    fetchMock.mockImplementation(raceFetchMock)
 
     const manager = useFileManager()
     const initialRequest = manager.fetchFiles(true)
@@ -238,7 +245,7 @@ describe('useFileManager', () => {
       limit: number
     }>()
 
-    vi.stubGlobal('$fetch', vi.fn(async () => pendingResponse.promise))
+    fetchMock.mockImplementation(async () => pendingResponse.promise)
 
     const manager = useFileManager()
     const pendingRequest = manager.fetchFiles(true)
@@ -304,7 +311,6 @@ describe('useFileManager', () => {
 
   it('uses the selection snapshot when bulk delete resolves', async () => {
     const deleteResponse = createDeferred<void>()
-    const baseFetchMock = fetchMock
     const raceFetchMock = vi.fn(
       async (url: string, options?: any) => {
         if (url === '/api/v1/files/delete/bulk') {
@@ -313,11 +319,11 @@ describe('useFileManager', () => {
           return { success: true }
         }
 
-        return baseFetchMock(url, options)
+        return baseFetchImpl(url, options)
       },
     )
 
-    vi.stubGlobal('$fetch', raceFetchMock)
+    fetchMock.mockImplementation(raceFetchMock)
 
     const manager = useFileManager()
 
@@ -378,7 +384,7 @@ describe('useFileManager', () => {
       },
     )
 
-    vi.stubGlobal('$fetch', raceFetchMock)
+    fetchMock.mockImplementation(raceFetchMock)
 
     const manager = useFileManager()
 
@@ -423,12 +429,12 @@ describe('useFileManager', () => {
   })
 
   it('shows error when fetching fails', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => {
+    fetchMock.mockImplementation(async () => {
       throw {
         statusCode: 500,
         statusMessage: 'Failed to load files',
       }
-    }))
+    })
 
     const manager = useFileManager()
     await manager.fetchFiles(true)
@@ -517,8 +523,7 @@ describe('useFileManager', () => {
     it('shows hasMore when more files exist on server', async () => {
       const largeFileSet = generateFiles(45)
 
-      fetchMock = createFetchMock(largeFileSet)
-      vi.stubGlobal('$fetch', fetchMock)
+      fetchMock.mockImplementation(createFetchMock(largeFileSet))
 
       const manager = useFileManager()
       await manager.fetchFiles(true)
@@ -533,8 +538,7 @@ describe('useFileManager', () => {
       async () => {
         const largeFileSet = generateFiles(45)
 
-        fetchMock = createFetchMock(largeFileSet)
-        vi.stubGlobal('$fetch', fetchMock)
+        fetchMock.mockImplementation(createFetchMock(largeFileSet))
 
         const manager = useFileManager()
         await manager.fetchFiles(true)
@@ -558,8 +562,7 @@ describe('useFileManager', () => {
       async () => {
         const largeFileSet = generateFiles(45)
 
-        fetchMock = createFetchMock(largeFileSet)
-        vi.stubGlobal('$fetch', fetchMock)
+        fetchMock.mockImplementation(createFetchMock(largeFileSet))
 
         const manager = useFileManager()
         await manager.fetchFiles(true)
@@ -605,8 +608,7 @@ describe('useFileManager', () => {
       async () => {
         const largeFileSet = generateFiles(25)
 
-        fetchMock = createFetchMock(largeFileSet)
-        vi.stubGlobal('$fetch', fetchMock)
+        fetchMock.mockImplementation(createFetchMock(largeFileSet))
 
         const manager = useFileManager()
         await manager.fetchFiles(true)
@@ -653,8 +655,7 @@ describe('useFileManager', () => {
       async () => {
         const largeFileSet = generateFiles(21)
 
-        fetchMock = createFetchMock(largeFileSet)
-        vi.stubGlobal('$fetch', fetchMock)
+        fetchMock.mockImplementation(createFetchMock(largeFileSet))
 
         const manager = useFileManager()
         manager.pagination.limit = 1

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref, type EffectScope } from 'vue'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useProjectChats } from '../../../app/composables/project-chats'
 import {
   createProject,
@@ -27,6 +28,12 @@ function createDeferred<T>() {
   }
 }
 
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
+
 const scopes: EffectScope[] = []
 
 function createProjectChatsComposable(
@@ -51,7 +58,6 @@ describe('useProjectChats', () => {
     vi.setSystemTime(new Date('2026-03-11T10:00:00.000Z'))
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
   })
 
   afterEach(() => {
@@ -67,14 +73,13 @@ describe('useProjectChats', () => {
     const project = createProject({ id: 'project-1', name: 'Project one' })
     const cachedChat = createHistoryChat({ id: 'chat-1', title: 'Cached chat' })
     const nextChat = createHistoryChat({ id: 'chat-2', title: 'Next chat' })
-    const fetchMock = vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve(createProjectChatsResponse({
         project,
         chats: [nextChat],
         nextCursor: null,
       }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const firstProjectChats = useProjectChats(projectId)
     firstProjectChats.prime(createProjectChatsResponse({
@@ -149,7 +154,7 @@ describe('useProjectChats', () => {
   it('uses separate cache entries per project id', async () => {
     const firstProject = createProject({ id: 'project-1', name: 'Project one' })
     const secondProject = createProject({ id: 'project-2', name: 'Project two' })
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/projects/project-2/chats') {
         return Promise.resolve(createProjectChatsResponse({
           project: secondProject,
@@ -162,7 +167,6 @@ describe('useProjectChats', () => {
         chats: [createHistoryChat({ id: 'chat-1', projectId: 'project-1' })],
       }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const firstProjectId = ref('project-1')
     const firstProjectChats = useProjectChats(firstProjectId)
@@ -195,7 +199,7 @@ describe('useProjectChats', () => {
     const projectBRequest = createDeferred<
       ReturnType<typeof createProjectChatsResponse>
     >()
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/projects/project-a/chats') {
         return projectARequest.promise
       }
@@ -207,8 +211,6 @@ describe('useProjectChats', () => {
       throw new Error(`Unexpected request: ${url}`)
     })
     const projectId = ref('project-a')
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const projectChats = useProjectChats(projectId)
     const firstRequest = projectChats.hydrateAndRefresh()
@@ -256,9 +258,7 @@ describe('useProjectChats', () => {
     const refreshDeferred = createDeferred<
       ReturnType<typeof createProjectChatsResponse>
     >()
-    const fetchMock = vi.fn(() => refreshDeferred.promise)
-
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockImplementation(() => refreshDeferred.promise)
 
     const projectChats = createProjectChatsComposable(projectId)
     projectChats.prime(createProjectChatsResponse({
