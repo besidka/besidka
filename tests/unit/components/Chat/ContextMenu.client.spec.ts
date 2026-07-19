@@ -1283,7 +1283,6 @@ describe('Chat/ContextMenu.client', () => {
       expect(guardCount().value).toBe(1)
 
       dispatchTrustedClick(outsideEl)
-      vi.advanceTimersByTime(0)
 
       expect(guardCount().value).toBe(0)
     })
@@ -1383,7 +1382,58 @@ describe('Chat/ContextMenu.client', () => {
       expect(guardCount().value).toBe(2)
 
       dispatchTrustedClick(outsideEl)
-      vi.advanceTimersByTime(0)
+
+      expect(guardCount().value).toBe(1)
+
+      wrapperB.unmount()
+
+      expect(guardCount().value).toBe(0)
+
+      anchorElB.remove()
+    })
+
+    it('does not double-release the guard when a swallow resolves while still mounted and the instance unmounts afterward', async () => {
+      const wrapperA = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-a', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      const anchorElB = document.createElement('div')
+      const bubbleElB = document.createElement('div')
+
+      bubbleElB.className = 'js-chat-bubble'
+      anchorElB.appendChild(bubbleElB)
+      document.body.appendChild(anchorElB)
+      vi.spyOn(anchorElB, 'getBoundingClientRect')
+        .mockReturnValue(anchorEl.getBoundingClientRect())
+      vi.spyOn(bubbleElB, 'getBoundingClientRect')
+        .mockReturnValue(bubbleEl.getBoundingClientRect())
+
+      const wrapperB = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-b', anchorEl: anchorElB },
+        attachTo: document.body,
+      })
+
+      expect(guardCount().value).toBe(2)
+
+      // Resolve A's swallow (its own click-capture cleanup releases the
+      // guard) while A is STILL mounted, then unmount A afterward. A's
+      // onUnmounted must not release a second time on top of the swallow's
+      // own release — otherwise this drops to 0 and wrongly cancels B's
+      // still-active suppression.
+      dispatchTrustedClick(outsideEl)
+
+      expect(guardCount().value).toBe(1)
+
+      wrapperA.unmount()
 
       expect(guardCount().value).toBe(1)
 
