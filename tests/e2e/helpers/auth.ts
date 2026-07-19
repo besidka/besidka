@@ -245,9 +245,13 @@ export async function signIn(
   // native GET submit to `/signin?` that never reaches the sign-in API and
   // leaves the page bouncing on /signin. Retry the fill + submit until it
   // takes effect on the settled, hydrated form. This is dev-only: a
-  // production build ships no HMR or dependency pre-bundling.
+  // production build ships no HMR or dependency pre-bundling. The 14s retry
+  // budget exceeds the suite's default per-test timeout (10s, see
+  // playwright.config.ts), so callers must raise their own via
+  // test.setTimeout(20_000) or higher.
   await expect(async () => {
     await expect(emailInput).toBeEditable()
+    await expect(passwordInput).toBeEditable()
     await expect(signInButton).toBeEnabled()
     await typeInputValue(emailInput, email)
     await typeInputValue(passwordInput, password)
