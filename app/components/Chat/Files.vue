@@ -53,7 +53,8 @@
         <button
           v-else-if="file.links && isImageFile(file.mediaType)"
           type="button"
-          class="absolute inset-0 z-20 block size-full cursor-zoom-in"
+          class="absolute inset-0 z-20 block size-full"
+          :class="isImagePreviewSuppressed ? 'cursor-default' : 'cursor-zoom-in'"
           :aria-label="`Preview ${file.filename || 'attached image'}`"
           data-testid="chat-file-preview-trigger"
           @click="openImagePreview(file)"

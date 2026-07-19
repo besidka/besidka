@@ -26,7 +26,8 @@
     >
       <button
         type="button"
-        class="relative block w-full cursor-zoom-in overflow-hidden rounded-t-box bg-base-300 disabled:cursor-default"
+        class="relative block w-full overflow-hidden rounded-t-box bg-base-300 disabled:cursor-default"
+        :class="isImagePreviewSuppressed ? 'cursor-default' : 'cursor-zoom-in'"
         :style="{ aspectRatio: imageAspectRatio }"
         :disabled="hasImageLoadError"
         :aria-label="`Preview ${readyFile.name}`"

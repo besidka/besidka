@@ -180,6 +180,7 @@ describe('Chat/GeneratedImage', () => {
     expect(wrapper.classes()).toContain('w-80')
     expect(image.attributes('src')).toBe('/files/generated.webp')
     expect(preview.element.tagName).toBe('BUTTON')
+    expect(preview.classes()).toContain('cursor-zoom-in')
     expect(preview.element.querySelector('div')).toBeNull()
     expect(wrapper.get('[data-testid="generated-image-open"]')
       .element.tagName).toBe('BUTTON')
@@ -247,6 +248,48 @@ describe('Chat/GeneratedImage', () => {
     expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="image-preview-modal"]').exists())
       .toBe(false)
+  })
+
+  it('shows a default cursor instead of zoom-in while a context menu is suppressing preview', async () => {
+    useState<number>('image-preview-guard-count', () => 0).value = 1
+
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: {
+            status: 'ready',
+            provider: 'google',
+            model: 'gemini-3.1-flash-image',
+            file: {
+              id: 'file-1',
+              storageKey: 'generated.webp',
+              name: 'sunset.webp',
+              size: 2048,
+              type: 'image/webp',
+              source: 'assistant',
+              url: '/files/generated.webp',
+              downloadUrl: '/files/generated.webp?download=1',
+            },
+          },
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const preview = wrapper.get(
+      '[data-testid="generated-image-preview-trigger"]',
+    )
+
+    expect(preview.classes()).toContain('cursor-default')
+    expect(preview.classes()).not.toContain('cursor-zoom-in')
   })
 
   it('attaches the ready file for the next prompt via the shared hook', async () => {
