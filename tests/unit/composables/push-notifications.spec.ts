@@ -31,6 +31,19 @@ describe('usePushNotifications', () => {
     mocks.fetch.mockClear()
     mocks.vapidPublicKey = 'QUJDRA'
 
+    useState<NotificationPermission>(
+      'push-notifications:permission',
+      () => 'default',
+    ).value = 'default'
+    useState<boolean>(
+      'push-notifications:is-subscribed',
+      () => false,
+    ).value = false
+    useState<boolean>(
+      'push-notifications:has-auto-refreshed',
+      () => false,
+    ).value = false
+
     requestPermissionMock = vi.fn(async () => 'granted')
     getSubscriptionMock = vi.fn(async () => null)
     subscribeMock = vi.fn(async () => ({

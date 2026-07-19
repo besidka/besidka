@@ -59,8 +59,18 @@ function isApplicationServerKeyStale(
 
 export function usePushNotifications() {
   const { public: { vapidPublicKey } } = useRuntimeConfig()
-  const permission = shallowRef<NotificationPermission>('default')
-  const isSubscribed = shallowRef<boolean>(false)
+  const permission = useState<NotificationPermission>(
+    'push-notifications:permission',
+    () => 'default',
+  )
+  const isSubscribed = useState<boolean>(
+    'push-notifications:is-subscribed',
+    () => false,
+  )
+  const hasAutoRefreshed = useState<boolean>(
+    'push-notifications:has-auto-refreshed',
+    () => false,
+  )
 
   const isSupported = computed<boolean>(() => {
     if (!import.meta.client) {
@@ -259,7 +269,8 @@ export function usePushNotifications() {
     }
   }
 
-  if (import.meta.client) {
+  if (import.meta.client && !hasAutoRefreshed.value) {
+    hasAutoRefreshed.value = true
     refreshState().then(watchPermissionChanges).catch((exception) => {
       void exception
     })

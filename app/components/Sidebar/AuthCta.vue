@@ -34,6 +34,7 @@
       title="API keys"
       circle
     />
+    <LazySidebarPushToggle />
   </LazySidebarSubmenu>
   <template v-else>
     <UiButton

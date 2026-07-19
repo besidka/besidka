@@ -160,6 +160,11 @@ export function useNotificationPrompt() {
     userSetting.setNotificationPromptState(false)
   }
 
+  async function disable(): Promise<void> {
+    await pushNotifications.unsubscribe()
+    userSetting.setNotificationPromptState(false)
+  }
+
   async function enable(): Promise<void> {
     const subscribed = await pushNotifications.subscribe()
 
@@ -169,6 +174,22 @@ export function useNotificationPrompt() {
 
     isVisible.value = false
     userSetting.setNotificationPromptState(true)
+  }
+
+  // Entry point for the settings-menu toggle button (not the banner). When
+  // permission is already 'granted', requestPermission() resolves instantly
+  // with no dialog, so delegating to enable() safely (re)subscribes this
+  // device. When permission is still 'default', calling subscribe() here
+  // would fire the OS dialog with zero prior disclosure — a compliance
+  // regression — so this shows the same disclosed banner instead.
+  async function requestEnable(): Promise<void> {
+    if (pushNotifications.permission.value !== 'granted') {
+      isVisible.value = true
+
+      return
+    }
+
+    await enable()
   }
 
   if (!hasRegisteredMissedNotificationHook.value) {
@@ -182,7 +203,9 @@ export function useNotificationPrompt() {
   return {
     isVisible,
     dismiss,
+    disable,
     enable,
+    requestEnable,
     maybeShowProactively,
   }
 }

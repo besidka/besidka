@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   permission: 'default' as NotificationPermission,
   isSubscribed: false,
   subscribe: vi.fn(async () => true),
+  unsubscribe: vi.fn(async () => undefined),
   refreshState: vi.fn(async () => undefined),
 }))
 
@@ -54,7 +55,7 @@ mockNuxtImport('usePushNotifications', () => {
       },
     },
     subscribe: mocks.subscribe,
-    unsubscribe: vi.fn(),
+    unsubscribe: mocks.unsubscribe,
     refreshState: mocks.refreshState,
   })
 })
@@ -78,6 +79,7 @@ describe('useNotificationPrompt', () => {
     mocks.permission = 'default'
     mocks.isSubscribed = false
     mocks.subscribe.mockClear()
+    mocks.unsubscribe.mockClear()
     mocks.refreshState.mockClear()
     userSettingMocks.activeUserId.value = null
     userSettingMocks.isLoadingSettings.value = false
@@ -310,5 +312,45 @@ describe('useNotificationPrompt', () => {
     expect(prompt.isVisible.value).toBe(false)
     expect(userSettingMocks.setNotificationPromptState)
       .toHaveBeenCalledWith(false)
+  })
+
+  describe('requestEnable (settings-menu toggle button)', () => {
+    it('delegates to enable() when permission is already granted', async () => {
+      mocks.permission = 'granted'
+
+      const prompt = useNotificationPrompt()
+
+      await prompt.requestEnable()
+
+      expect(mocks.subscribe).toHaveBeenCalledTimes(1)
+      expect(prompt.isVisible.value).toBe(false)
+      expect(userSettingMocks.setNotificationPromptState)
+        .toHaveBeenCalledWith(true)
+    })
+
+    it('shows the disclosed banner instead of subscribing when permission is default', async () => {
+      mocks.permission = 'default'
+
+      const prompt = useNotificationPrompt()
+
+      await prompt.requestEnable()
+
+      expect(mocks.subscribe).not.toHaveBeenCalled()
+      expect(prompt.isVisible.value).toBe(true)
+      expect(userSettingMocks.setNotificationPromptState).not
+        .toHaveBeenCalled()
+    })
+  })
+
+  describe('disable (settings-menu toggle button)', () => {
+    it('unsubscribes and records declined', async () => {
+      const prompt = useNotificationPrompt()
+
+      await prompt.disable()
+
+      expect(mocks.unsubscribe).toHaveBeenCalledTimes(1)
+      expect(userSettingMocks.setNotificationPromptState)
+        .toHaveBeenCalledWith(false)
+    })
   })
 })
