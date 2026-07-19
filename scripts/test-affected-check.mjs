@@ -68,6 +68,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
+    'tests/e2e/shared/context-menu-image-hover.spec.ts',
   ]
   const profileSettingsTests = [
     'tests/integration/api/profile-settings.spec.ts',
@@ -95,6 +96,7 @@ export function getAffectedTests(changedFiles) {
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
+    'tests/e2e/chat/context-menu-image-desktop.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -126,7 +128,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/Message.spec.ts',
     'tests/e2e/chat/context-menu.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
+    'tests/e2e/chat/context-menu-image-desktop.spec.ts',
     'tests/e2e/shared/context-menu-clipping.spec.ts',
+    'tests/e2e/shared/context-menu-image-hover.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
   ]
 

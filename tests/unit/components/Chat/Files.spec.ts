@@ -29,6 +29,7 @@ describe('Chat/Files', () => {
       .mockImplementation(function () {
         this.removeAttribute('open')
       })
+    useState<number>('image-preview-guard-count', () => 0).value = 0
   })
 
   afterEach(() => {
@@ -66,6 +67,11 @@ describe('Chat/Files', () => {
     const open = wrapper.get('[data-testid="chat-file-open"]')
 
     expect(open.element.tagName).toBe('BUTTON')
+    expect(
+      wrapper.get('[data-testid="chat-file-preview-trigger"]').classes(),
+    ).toContain('cursor-zoom-in')
+    expect(wrapper.get('.carousel-item').classes())
+      .not.toContain('pointer-events-none')
     expect(open.attributes('href')).toBeUndefined()
     expect(
       wrapper.get('[data-testid="chat-file-download"]').attributes('href'),
@@ -84,6 +90,67 @@ describe('Chat/Files', () => {
       .attributes('src')).toBe(
       '/files/shared.webp?token=header.payload.signature#preview',
     )
+  })
+
+  it('does not open the preview while a context menu is suppressing it', async () => {
+    useState<number>('image-preview-guard-count', () => 0).value = 1
+
+    const wrapper = await mountSuspended(Files, {
+      props: {
+        message: {
+          id: 'message-1',
+          role: 'assistant',
+          parts: [{
+            type: 'file',
+            mediaType: 'image/webp',
+            filename: 'shared.webp',
+            url: '/files/shared.webp',
+          }],
+        },
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="chat-file-preview-trigger"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="image-preview-modal"]').exists())
+      .toBe(false)
+  })
+
+  it('disables pointer interaction on the carousel item while a context menu is suppressing preview', async () => {
+    useState<number>('image-preview-guard-count', () => 0).value = 1
+
+    const wrapper = await mountSuspended(Files, {
+      props: {
+        message: {
+          id: 'message-1',
+          role: 'assistant',
+          parts: [{
+            type: 'file',
+            mediaType: 'image/webp',
+            filename: 'shared.webp',
+            url: '/files/shared.webp',
+          }],
+        },
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.get('.carousel-item').classes())
+      .toContain('pointer-events-none')
   })
 
   it('renders malformed legacy file parts without actionable URLs', async () => {

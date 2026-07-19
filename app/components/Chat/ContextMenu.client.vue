@@ -214,8 +214,18 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const POINTER_MOVE_THRESHOLD_PX = 8
+const SWALLOWED_CLICK_BACKSTOP_MS = 500
+
+const { suppressImagePreview, releaseImagePreview } = useImagePreviewGuard()
+
 const menu = useTemplateRef<HTMLUListElement>('menu')
 let pointerDownTime = 0
+let pointerDownX = 0
+let pointerDownY = 0
+let cancelSwallowedClick: (() => void) | null = null
+let hasReleasedGuard = false
+let isSwallowScheduled = false
 
 const menuStyle = shallowRef<Record<string, string> | null>(
   null,
@@ -480,8 +490,10 @@ function onKeyDown(event: KeyboardEvent) {
   }
 }
 
-function onDocumentPointerDown() {
+function onDocumentPointerDown(event: PointerEvent) {
   pointerDownTime = Date.now()
+  pointerDownX = event.clientX
+  pointerDownY = event.clientY
 }
 
 function onDocumentPointerUp(event: PointerEvent) {
@@ -492,7 +504,17 @@ function onDocumentPointerUp(event: PointerEvent) {
   const target = event.target as HTMLElement
 
   if (menu.value?.contains(target)) return
-  if (bubbleEl.value?.contains(target)) return
+
+  const dx = Math.abs(event.clientX - pointerDownX)
+  const dy = Math.abs(event.clientY - pointerDownY)
+
+  if (dx > POINTER_MOVE_THRESHOLD_PX || dy > POINTER_MOVE_THRESHOLD_PX) return
+
+  if (bubbleEl.value?.contains(target)) {
+    const selection = window.getSelection()
+
+    if (selection && !selection.isCollapsed) return
+  }
 
   event.preventDefault()
   event.stopImmediatePropagation()
@@ -500,20 +522,59 @@ function onDocumentPointerUp(event: PointerEvent) {
   dismiss()
 }
 
+// Guarantees the mount-time suppressImagePreview() is matched by exactly
+// one release, no matter which of the paths below (swallowed click,
+// pointerdown/backstop cleanup, or plain unmount) gets there first.
+function releaseGuardOnce() {
+  if (hasReleasedGuard) return
+
+  hasReleasedGuard = true
+  releaseImagePreview()
+}
+
 function swallowNextClick() {
-  const handler = (event: Event) => {
+  isSwallowScheduled = true
+  cancelSwallowedClick?.()
+
+  function onClick(event: Event) {
+    // Third-party libraries can dispatch untrusted synthetic clicks at
+    // arbitrary times (e.g. web-haptics' debug-mode toggle fires one as
+    // a side effect of playing feedback on message selection). Since this
+    // listener swallows only the NEXT click it sees, a stray synthetic
+    // click here would consume it instead of the real trailing click of
+    // this dismiss gesture, letting that real click through unguarded.
+    if (!event.isTrusted) return
+
     event.preventDefault()
     event.stopImmediatePropagation()
+    cleanup()
   }
 
-  document.addEventListener('click', handler, {
-    capture: true,
-    once: true,
-  })
+  function onPointerDown() {
+    cleanup()
+  }
 
-  setTimeout(() => {
-    document.removeEventListener('click', handler, { capture: true })
-  }, 100)
+  // Releasing on the next pointerdown (a new interaction starting) is a
+  // deliberate trade-off: it avoids over-swallowing a legitimate click that
+  // follows quickly, at the cost of a narrow window where an unrelated
+  // touch starting before this gesture's delayed synthetic click arrives
+  // would let that click through unswallowed. The backstop timer bounds
+  // the same window if no pointerdown happens at all.
+  function cleanup() {
+    document.removeEventListener('click', onClick, { capture: true })
+    document.removeEventListener('pointerdown', onPointerDown, {
+      capture: true,
+    })
+    clearTimeout(backstopTimer)
+    cancelSwallowedClick = null
+    releaseGuardOnce()
+  }
+
+  const backstopTimer = setTimeout(cleanup, SWALLOWED_CLICK_BACKSTOP_MS)
+
+  document.addEventListener('click', onClick, { capture: true })
+  document.addEventListener('pointerdown', onPointerDown, { capture: true })
+  cancelSwallowedClick = cleanup
 }
 
 function onDocumentContextMenu(event: Event) {
@@ -531,6 +592,7 @@ function onSelectionChange() {
 }
 
 onMounted(() => {
+  suppressImagePreview()
   document.addEventListener('keydown', onKeyDown)
   document.addEventListener('pointerdown', onDocumentPointerDown)
   document.addEventListener('pointerup', onDocumentPointerUp)
@@ -540,6 +602,16 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Only release immediately when no swallow was ever scheduled for this
+  // instance — if one was, its own cleanup() releases the guard once the
+  // swallowed click (or the backstop) actually resolves, since this
+  // component can unmount well before that. isSwallowScheduled (unlike
+  // cancelSwallowedClick) stays true even after the swallow resolves, so
+  // this check can't race with cleanup() already having run.
+  if (!isSwallowScheduled) {
+    releaseGuardOnce()
+  }
+
   document.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('pointerdown', onDocumentPointerDown)
   document.removeEventListener('pointerup', onDocumentPointerUp)

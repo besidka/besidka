@@ -28,6 +28,87 @@ async function longPress(locator: Locator): Promise<void> {
   }, messageId)
 }
 
+// The context menu can visually overlap the image preview trigger on a
+// small viewport, especially with few messages. A tap that lands on the
+// menu itself (e.g. the Branch button) proves nothing about click-through
+// to the image underneath, so this picks a corner of the trigger's own
+// bounding box that falls outside the menu's, then verifies via
+// elementFromPoint that the point genuinely resolves onto the trigger
+// before dispatching the touch — failing loudly instead of silently
+// testing the wrong thing if a future layout change reintroduces overlap.
+async function quickTapOnImagePreviewTrigger(
+  previewTrigger: Locator,
+): Promise<void> {
+  const page = previewTrigger.page()
+  const box = await previewTrigger.boundingBox()
+
+  if (!box) {
+    throw new Error('Preview trigger has no bounding box')
+  }
+
+  const menuBox = await page.getByTestId('chat-messages-container')
+    .getByRole('list')
+    .boundingBox()
+
+  const candidates = [
+    { x: box.x + box.width - 4, y: box.y + box.height - 4 },
+    { x: box.x + 4, y: box.y + 4 },
+    { x: box.x + 4, y: box.y + box.height - 4 },
+    { x: box.x + box.width - 4, y: box.y + 4 },
+  ]
+
+  const point = candidates.find((candidate) => {
+    if (!menuBox) return true
+
+    const insideMenu = candidate.x >= menuBox.x
+      && candidate.x <= menuBox.x + menuBox.width
+      && candidate.y >= menuBox.y
+      && candidate.y <= menuBox.y + menuBox.height
+
+    return !insideMenu
+  })
+
+  if (!point) {
+    throw new Error(
+      'The context menu fully covers the image preview trigger — cannot '
+      + 'construct a tap point that avoids it',
+    )
+  }
+
+  // The trigger goes pointer-events-none while a context menu is
+  // suppressing it, so a genuine tap there resolves onto its
+  // `generated-image-ready` parent instead — both are valid depending on
+  // whether the guard is currently active.
+  const isOnTriggerOrParent = await page.evaluate(([px, py]) => {
+    const element = document.elementFromPoint(px, py)
+
+    return !!element?.closest(
+      '[data-testid="generated-image-preview-trigger"], '
+      + '[data-testid="generated-image-ready"]',
+    )
+  }, [point.x, point.y] as const)
+
+  if (!isOnTriggerOrParent) {
+    throw new Error(
+      `Tap point (${point.x}, ${point.y}) does not resolve onto the image `
+      + 'preview trigger or its container — test setup is unsound',
+    )
+  }
+
+  const client = await page.context().newCDPSession(page)
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [
+      { x: point.x, y: point.y, radiusX: 1, radiusY: 1, force: 1, id: 1 },
+    ],
+  })
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  })
+}
+
 interface ClippingCheckResult {
   hasClippingAncestor: boolean
   fitsWithinAncestor: boolean
@@ -115,5 +196,73 @@ test.describe('chat context menu for AI-generated-image messages', () => {
     const clipping = await getClippingViolation(lastMenuItem)
 
     expect(clipping.fitsWithinAncestor).toBe(true)
+  })
+
+  test('tapping a blurred generated image under a different selected message dismisses the menu without opening the preview', async ({
+    page,
+  }) => {
+    const userMessage = page.locator('[data-role="user"]').first()
+    const previewTrigger = page.getByTestId(
+      'generated-image-preview-trigger',
+    )
+
+    await expect(userMessage).toBeVisible()
+    await expect(previewTrigger).toBeVisible()
+
+    await longPress(userMessage)
+
+    await expect(
+      page.getByRole('button', { name: 'Branch chat from here' }),
+    ).toBeVisible()
+
+    await quickTapOnImagePreviewTrigger(previewTrigger)
+
+    await expect(
+      page.getByRole('button', { name: 'Branch chat from here' }),
+    ).toBeHidden()
+
+    // The preview is a lazy-loaded async component that can take a couple
+    // of seconds to compile in dev mode on first use. Asserting "hidden"
+    // immediately would trivially pass before it ever had a chance to
+    // render, whether or not the click actually got through — wait out
+    // that window first so this proves it never opens, not that it merely
+    // hasn't opened yet.
+    await page.waitForTimeout(3000)
+
+    await expect(page.getByTestId('image-preview-modal')).toBeHidden()
+  })
+
+  test('tapping the selected message\'s own generated image dismisses the menu without opening the preview', async ({
+    page,
+  }) => {
+    const assistantMessage = page.locator('[data-role="assistant"]').first()
+    const previewTrigger = page.getByTestId(
+      'generated-image-preview-trigger',
+    )
+
+    await expect(assistantMessage).toBeVisible()
+    await expect(previewTrigger).toBeVisible()
+
+    await longPress(assistantMessage)
+
+    await expect(
+      page.getByRole('button', { name: 'Branch chat from here' }),
+    ).toBeVisible()
+
+    await quickTapOnImagePreviewTrigger(previewTrigger)
+
+    await expect(
+      page.getByRole('button', { name: 'Branch chat from here' }),
+    ).toBeHidden()
+
+    // The preview is a lazy-loaded async component that can take a couple
+    // of seconds to compile in dev mode on first use. Asserting "hidden"
+    // immediately would trivially pass before it ever had a chance to
+    // render, whether or not the click actually got through — wait out
+    // that window first so this proves it never opens, not that it merely
+    // hasn't opened yet.
+    await page.waitForTimeout(3000)
+
+    await expect(page.getByTestId('image-preview-modal')).toBeHidden()
   })
 })

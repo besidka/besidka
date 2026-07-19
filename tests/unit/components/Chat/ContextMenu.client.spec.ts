@@ -14,6 +14,22 @@ async function flushPromises() {
   }
 }
 
+// happy-dom reports `isTrusted` as undefined on constructed events rather
+// than the spec's `false`, so a plain dispatch already reads as "untrusted"
+// by ContextMenu's own check. Tests simulating a real user click need to
+// mark the event trusted explicitly to exercise the swallow-and-resolve
+// path; tests simulating a third-party library's synthetic click (e.g.
+// web-haptics' debug toggle) can dispatch a plain click as-is.
+function dispatchTrustedClick(target: EventTarget) {
+  const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+
+  Object.defineProperty(event, 'isTrusted', {
+    value: true,
+    configurable: true,
+  })
+  target.dispatchEvent(event)
+}
+
 describe('Chat/ContextMenu.client', () => {
   let anchorEl: HTMLDivElement
   let bubbleEl: HTMLDivElement
@@ -22,6 +38,8 @@ describe('Chat/ContextMenu.client', () => {
 
   beforeEach(() => {
     vi.useFakeTimers()
+
+    useState<number>('image-preview-guard-count', () => 0).value = 0
 
     anchorEl = document.createElement('div')
     outsideEl = document.createElement('div')
@@ -125,7 +143,7 @@ describe('Chat/ContextMenu.client', () => {
     expect(wrapper.emitted('close')).toBeUndefined()
   })
 
-  it('does not emit close when the quick tap happens on the bubble', async () => {
+  it('emits close on a quick tap on the bubble when nothing is selected', async () => {
     const wrapper = await mountSuspended(ContextMenu, {
       props: {
         messageId: 'msg-1',
@@ -136,13 +154,93 @@ describe('Chat/ContextMenu.client', () => {
 
     bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true,
+      clientX: 100,
+      clientY: 100,
     }))
     vi.advanceTimersByTime(100)
     bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
       bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+
+    expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  it('does not emit close when a tap on the bubble moves past the threshold', async () => {
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+    vi.advanceTimersByTime(100)
+    bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      clientX: 120,
+      clientY: 100,
     }))
 
     expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('does not emit close when the tap results in a text selection', async () => {
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+    } as Selection)
+
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    bubbleEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+    vi.advanceTimersByTime(100)
+    bubbleEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    }))
+
+    expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('emits close on a quick tap outside the bubble even with an unrelated selection present', async () => {
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+    } as Selection)
+
+    const wrapper = await mountSuspended(ContextMenu, {
+      props: {
+        messageId: 'msg-1',
+        anchorEl,
+      },
+      attachTo: document.body,
+    })
+
+    outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+    }))
+    vi.advanceTimersByTime(100)
+    outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+    }))
+
+    expect(wrapper.emitted('close')).toEqual([[]])
   })
 
   it('emits close when the quick tap happens on the anchor row outside the bubble', async () => {
@@ -163,6 +261,154 @@ describe('Chat/ContextMenu.client', () => {
     }))
 
     expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  describe('swallowed click after dismiss', () => {
+    let underlyingButton: HTMLButtonElement
+    let onUnderlyingClick: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      underlyingButton = document.createElement('button')
+      onUnderlyingClick = vi.fn()
+
+      underlyingButton.addEventListener('click', onUnderlyingClick)
+      document.body.appendChild(underlyingButton)
+    })
+
+    afterEach(() => {
+      underlyingButton.remove()
+    })
+
+    it('swallows a synthetic click that arrives after the dismiss tap, even past the old 100ms window', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[]])
+
+      vi.advanceTimersByTime(150)
+      dispatchTrustedClick(underlyingButton)
+
+      expect(onUnderlyingClick).not.toHaveBeenCalled()
+    })
+
+    it('does not swallow a click that follows a genuinely new pointerdown', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[]])
+
+      underlyingButton.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      dispatchTrustedClick(underlyingButton)
+
+      expect(onUnderlyingClick).toHaveBeenCalledTimes(1)
+    })
+
+    it('cancels a still-pending swallow before installing a new one', async () => {
+      const addSpy = vi.spyOn(document, 'addEventListener')
+      const removeSpy = vi.spyOn(document, 'removeEventListener')
+
+      function countClickCaptureCalls(spy: typeof addSpy) {
+        return spy.mock.calls.filter(([type, , options]) => {
+          return type === 'click'
+            && typeof options === 'object'
+            && (options as AddEventListenerOptions).capture === true
+        }).length
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(50)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[], []])
+
+      dispatchTrustedClick(underlyingButton)
+
+      expect(onUnderlyingClick).not.toHaveBeenCalled()
+      expect(countClickCaptureCalls(removeSpy)).toBe(
+        countClickCaptureCalls(addSpy),
+      )
+    })
+
+    it('ignores an untrusted synthetic click and still swallows the real trailing click that follows it', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'msg-1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      expect(wrapper.emitted('close')).toEqual([[]])
+
+      // A third-party library (e.g. web-haptics' debug-mode toggle) can
+      // dispatch an untrusted click at any time, unrelated to this dismiss
+      // gesture. It must not consume the one-shot swallow meant for the
+      // real trailing click.
+      const unrelatedTarget = document.createElement('label')
+
+      document.body.appendChild(unrelatedTarget)
+      unrelatedTarget.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+      }))
+
+      dispatchTrustedClick(underlyingButton)
+
+      expect(onUnderlyingClick).not.toHaveBeenCalled()
+
+      unrelatedTarget.remove()
+    })
   })
 
   describe('positioning', () => {
@@ -990,6 +1236,212 @@ describe('Chat/ContextMenu.client', () => {
       await flushPromises()
 
       expect(useErrorMessage).toHaveBeenCalledWith('Failed to copy message')
+    })
+  })
+
+  describe('image preview guard', () => {
+    function guardCount() {
+      return useState<number>('image-preview-guard-count', () => 0)
+    }
+
+    it('activates the guard while mounted', async () => {
+      await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      expect(guardCount().value).toBe(1)
+    })
+
+    it('releases the guard on unmount when no swallow is pending', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(0)
+    })
+
+    it('keeps the guard active across unmount while a click is being swallowed, releasing it once the click resolves', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      dispatchTrustedClick(outsideEl)
+
+      expect(guardCount().value).toBe(0)
+    })
+
+    it('keeps the guard active across unmount until the backstop elapses', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      vi.advanceTimersByTime(501)
+
+      expect(guardCount().value).toBe(0)
+    })
+
+    it('releases the guard synchronously on a fresh pointerdown so a legitimate click right after is not wrongly suppressed', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-1', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapper.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      const freshTarget = document.createElement('button')
+
+      document.body.appendChild(freshTarget)
+
+      freshTarget.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+
+      expect(guardCount().value).toBe(0)
+
+      dispatchTrustedClick(freshTarget)
+
+      expect(guardCount().value).toBe(0)
+
+      freshTarget.remove()
+    })
+
+    it('keeps the guard active across an overlapping reselection until both the old and new instance release it', async () => {
+      const wrapperA = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-a', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      wrapperA.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      const anchorElB = document.createElement('div')
+      const bubbleElB = document.createElement('div')
+
+      bubbleElB.className = 'js-chat-bubble'
+      anchorElB.appendChild(bubbleElB)
+      document.body.appendChild(anchorElB)
+      vi.spyOn(anchorElB, 'getBoundingClientRect')
+        .mockReturnValue(anchorEl.getBoundingClientRect())
+      vi.spyOn(bubbleElB, 'getBoundingClientRect')
+        .mockReturnValue(bubbleEl.getBoundingClientRect())
+
+      const wrapperB = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-b', anchorEl: anchorElB },
+        attachTo: document.body,
+      })
+
+      expect(guardCount().value).toBe(2)
+
+      dispatchTrustedClick(outsideEl)
+
+      expect(guardCount().value).toBe(1)
+
+      wrapperB.unmount()
+
+      expect(guardCount().value).toBe(0)
+
+      anchorElB.remove()
+    })
+
+    it('does not double-release the guard when a swallow resolves while still mounted and the instance unmounts afterward', async () => {
+      const wrapperA = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-a', anchorEl },
+        attachTo: document.body,
+      })
+
+      outsideEl.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+      }))
+      vi.advanceTimersByTime(100)
+      outsideEl.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+      }))
+
+      const anchorElB = document.createElement('div')
+      const bubbleElB = document.createElement('div')
+
+      bubbleElB.className = 'js-chat-bubble'
+      anchorElB.appendChild(bubbleElB)
+      document.body.appendChild(anchorElB)
+      vi.spyOn(anchorElB, 'getBoundingClientRect')
+        .mockReturnValue(anchorEl.getBoundingClientRect())
+      vi.spyOn(bubbleElB, 'getBoundingClientRect')
+        .mockReturnValue(bubbleEl.getBoundingClientRect())
+
+      const wrapperB = await mountSuspended(ContextMenu, {
+        props: { messageId: 'msg-b', anchorEl: anchorElB },
+        attachTo: document.body,
+      })
+
+      expect(guardCount().value).toBe(2)
+
+      // Resolve A's swallow (its own click-capture cleanup releases the
+      // guard) while A is STILL mounted, then unmount A afterward. A's
+      // onUnmounted must not release a second time on top of the swallow's
+      // own release — otherwise this drops to 0 and wrongly cancels B's
+      // still-active suppression.
+      dispatchTrustedClick(outsideEl)
+
+      expect(guardCount().value).toBe(1)
+
+      wrapperA.unmount()
+
+      expect(guardCount().value).toBe(1)
+
+      wrapperB.unmount()
+
+      expect(guardCount().value).toBe(0)
+
+      anchorElB.remove()
     })
   })
 })

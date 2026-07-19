@@ -36,6 +36,7 @@ describe('Chat/GeneratedImage', () => {
         this.removeAttribute('open')
         this.dispatchEvent(new Event('close'))
       })
+    useState<number>('image-preview-guard-count', () => 0).value = 0
   })
 
   afterEach(() => {
@@ -179,6 +180,8 @@ describe('Chat/GeneratedImage', () => {
     expect(wrapper.classes()).toContain('w-80')
     expect(image.attributes('src')).toBe('/files/generated.webp')
     expect(preview.element.tagName).toBe('BUTTON')
+    expect(preview.classes()).toContain('cursor-zoom-in')
+    expect(preview.classes()).not.toContain('pointer-events-none')
     expect(preview.element.querySelector('div')).toBeNull()
     expect(wrapper.get('[data-testid="generated-image-open"]')
       .element.tagName).toBe('BUTTON')
@@ -200,6 +203,93 @@ describe('Chat/GeneratedImage', () => {
     await image.trigger('load')
 
     expect(image.classes()).toContain('generated-image--loaded')
+  })
+
+  it('does not open the preview while a context menu is suppressing it', async () => {
+    useState<number>('image-preview-guard-count', () => 0).value = 1
+
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: {
+            status: 'ready',
+            provider: 'google',
+            model: 'gemini-3.1-flash-image',
+            file: {
+              id: 'file-1',
+              storageKey: 'generated.webp',
+              name: 'sunset.webp',
+              size: 2048,
+              type: 'image/webp',
+              source: 'assistant',
+              url: '/files/generated.webp',
+              downloadUrl: '/files/generated.webp?download=1',
+            },
+          },
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const preview = wrapper.get(
+      '[data-testid="generated-image-preview-trigger"]',
+    )
+
+    await preview.trigger('click')
+    await flushPromises()
+
+    expect(HTMLDialogElement.prototype.showModal).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="image-preview-modal"]').exists())
+      .toBe(false)
+  })
+
+  it('disables pointer interaction on the trigger while a context menu is suppressing preview', async () => {
+    useState<number>('image-preview-guard-count', () => 0).value = 1
+
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: {
+            status: 'ready',
+            provider: 'google',
+            model: 'gemini-3.1-flash-image',
+            file: {
+              id: 'file-1',
+              storageKey: 'generated.webp',
+              name: 'sunset.webp',
+              size: 2048,
+              type: 'image/webp',
+              source: 'assistant',
+              url: '/files/generated.webp',
+              downloadUrl: '/files/generated.webp?download=1',
+            },
+          },
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const preview = wrapper.get(
+      '[data-testid="generated-image-preview-trigger"]',
+    )
+
+    expect(preview.classes()).toContain('pointer-events-none')
   })
 
   it('attaches the ready file for the next prompt via the shared hook', async () => {
