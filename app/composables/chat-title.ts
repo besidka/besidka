@@ -1,13 +1,13 @@
 import type { Chat } from '#shared/types/chats.d'
 
-export async function useSetChatTitle(title?: Chat['title']) {
+export function useSetChatTitle(title?: Chat['title']) {
   const route = useRoute()
   const { userModel } = useUserModel()
 
   const {
     data: chatTitle,
     error: chatTitleError,
-  } = await useLazyFetch(
+  } = useLazyFetch(
     `/api/v1/chats/${route.params.slug}/title`,
     {
       method: 'patch',
