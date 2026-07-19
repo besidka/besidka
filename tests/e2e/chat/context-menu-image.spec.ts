@@ -75,18 +75,23 @@ async function quickTapOnImagePreviewTrigger(
     )
   }
 
-  const isOnTrigger = await page.evaluate(([px, py]) => {
+  // The trigger goes pointer-events-none while a context menu is
+  // suppressing it, so a genuine tap there resolves onto its
+  // `generated-image-ready` parent instead — both are valid depending on
+  // whether the guard is currently active.
+  const isOnTriggerOrParent = await page.evaluate(([px, py]) => {
     const element = document.elementFromPoint(px, py)
 
     return !!element?.closest(
-      '[data-testid="generated-image-preview-trigger"]',
+      '[data-testid="generated-image-preview-trigger"], '
+      + '[data-testid="generated-image-ready"]',
     )
   }, [point.x, point.y] as const)
 
-  if (!isOnTrigger) {
+  if (!isOnTriggerOrParent) {
     throw new Error(
       `Tap point (${point.x}, ${point.y}) does not resolve onto the image `
-      + 'preview trigger — test setup is unsound',
+      + 'preview trigger or its container — test setup is unsound',
     )
   }
 

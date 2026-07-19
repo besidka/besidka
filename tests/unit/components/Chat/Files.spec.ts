@@ -70,6 +70,8 @@ describe('Chat/Files', () => {
     expect(
       wrapper.get('[data-testid="chat-file-preview-trigger"]').classes(),
     ).toContain('cursor-zoom-in')
+    expect(wrapper.get('.carousel-item').classes())
+      .not.toContain('pointer-events-none')
     expect(open.attributes('href')).toBeUndefined()
     expect(
       wrapper.get('[data-testid="chat-file-download"]').attributes('href'),
@@ -123,7 +125,7 @@ describe('Chat/Files', () => {
       .toBe(false)
   })
 
-  it('shows a default cursor instead of zoom-in while a context menu is suppressing preview', async () => {
+  it('disables pointer interaction on the carousel item while a context menu is suppressing preview', async () => {
     useState<number>('image-preview-guard-count', () => 0).value = 1
 
     const wrapper = await mountSuspended(Files, {
@@ -147,10 +149,8 @@ describe('Chat/Files', () => {
       },
     })
 
-    const preview = wrapper.get('[data-testid="chat-file-preview-trigger"]')
-
-    expect(preview.classes()).toContain('cursor-default')
-    expect(preview.classes()).not.toContain('cursor-zoom-in')
+    expect(wrapper.get('.carousel-item').classes())
+      .toContain('pointer-events-none')
   })
 
   it('renders malformed legacy file parts without actionable URLs', async () => {

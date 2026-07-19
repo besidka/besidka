@@ -15,7 +15,8 @@
             ? 'Hidden file'
             : `File ${file.filename || 'attachment'}`
         "
-        class="group carousel-item relative overflow-hidden flex items-center justify-center size-48 rounded-box aspect-square bg-base-300"
+        class="group/file carousel-item relative overflow-hidden flex items-center justify-center size-48 rounded-box aspect-square bg-base-300"
+        :class="{ 'pointer-events-none': isImagePreviewSuppressed }"
       >
         <Icon
           :name="getFileIcon(file.mediaType)"
@@ -53,8 +54,7 @@
         <button
           v-else-if="file.links && isImageFile(file.mediaType)"
           type="button"
-          class="absolute inset-0 z-20 block size-full"
-          :class="isImagePreviewSuppressed ? 'cursor-default' : 'cursor-zoom-in'"
+          class="absolute inset-0 z-20 block size-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
           :aria-label="`Preview ${file.filename || 'attached image'}`"
           data-testid="chat-file-preview-trigger"
           @click="openImagePreview(file)"
@@ -72,7 +72,7 @@
           class="absolute z-30 top-2 right-2 flex gap-1"
           :class="{
             [
-              'md:opacity-0 md:group-hover:opacity-100 '
+              'md:opacity-0 md:group-hover/file:opacity-100 '
               + 'md:focus-within:opacity-100 transition-opacity'
             ]: $device.isDesktop,
           }"
@@ -126,7 +126,7 @@
             [`
               md:transition-transform
               md:translate-y-full
-              md:group-hover:translate-y-0
+              md:group-hover/file:translate-y-0
             `]: $device.isDesktop && isImageFile(file.mediaType),
           }"
         >

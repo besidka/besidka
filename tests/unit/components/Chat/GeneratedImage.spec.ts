@@ -181,6 +181,7 @@ describe('Chat/GeneratedImage', () => {
     expect(image.attributes('src')).toBe('/files/generated.webp')
     expect(preview.element.tagName).toBe('BUTTON')
     expect(preview.classes()).toContain('cursor-zoom-in')
+    expect(preview.classes()).not.toContain('pointer-events-none')
     expect(preview.element.querySelector('div')).toBeNull()
     expect(wrapper.get('[data-testid="generated-image-open"]')
       .element.tagName).toBe('BUTTON')
@@ -250,7 +251,7 @@ describe('Chat/GeneratedImage', () => {
       .toBe(false)
   })
 
-  it('shows a default cursor instead of zoom-in while a context menu is suppressing preview', async () => {
+  it('disables pointer interaction on the trigger while a context menu is suppressing preview', async () => {
     useState<number>('image-preview-guard-count', () => 0).value = 1
 
     const wrapper = await mountSuspended(GeneratedImage, {
@@ -288,8 +289,7 @@ describe('Chat/GeneratedImage', () => {
       '[data-testid="generated-image-preview-trigger"]',
     )
 
-    expect(preview.classes()).toContain('cursor-default')
-    expect(preview.classes()).not.toContain('cursor-zoom-in')
+    expect(preview.classes()).toContain('pointer-events-none')
   })
 
   it('attaches the ready file for the next prompt via the shared hook', async () => {

@@ -23,7 +23,21 @@ test.describe('chat context menu for AI-generated-image messages (desktop mouse)
       page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
 
-    await previewTrigger.click()
+    // The trigger becomes pointer-events-none while a context menu is
+    // suppressing it, so a real click at its on-screen position now
+    // resolves to its parent container instead — mirror that with a raw
+    // coordinate click rather than clicking the (now unreachable) locator
+    // directly.
+    const triggerBox = await previewTrigger.boundingBox()
+
+    if (!triggerBox) {
+      throw new Error('Preview trigger has no bounding box')
+    }
+
+    await page.mouse.click(
+      triggerBox.x + triggerBox.width / 2,
+      triggerBox.y + triggerBox.height / 2,
+    )
 
     await expect(
       page.getByRole('button', { name: 'Branch chat from here' }),
@@ -61,7 +75,21 @@ test.describe('chat context menu for AI-generated-image messages (desktop mouse)
       page.getByRole('button', { name: 'Branch chat from here' }),
     ).toBeVisible()
 
-    await previewTrigger.click()
+    // The trigger becomes pointer-events-none while a context menu is
+    // suppressing it, so a real click at its on-screen position now
+    // resolves to its parent container instead — mirror that with a raw
+    // coordinate click rather than clicking the (now unreachable) locator
+    // directly.
+    const triggerBox = await previewTrigger.boundingBox()
+
+    if (!triggerBox) {
+      throw new Error('Preview trigger has no bounding box')
+    }
+
+    await page.mouse.click(
+      triggerBox.x + triggerBox.width / 2,
+      triggerBox.y + triggerBox.height / 2,
+    )
 
     await expect(
       page.getByRole('button', { name: 'Branch chat from here' }),
