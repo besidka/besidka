@@ -1,3 +1,5 @@
+import { parseError } from 'evlog'
+
 // Long-standing, universally-compatible conversion — every browser that
 // implements the Push API accepts a BufferSource applicationServerKey; only
 // newer ones also accept a raw base64url string, so converting here rather
@@ -151,7 +153,13 @@ export function usePushNotifications() {
             },
           })
         } catch (exception) {
-          void exception
+          const parsedException = parseError(exception)
+
+          useErrorMessage(
+            parsedException.message
+            || 'Failed to refresh push notification subscription',
+            parsedException.why,
+          )
         }
       }
     } catch (exception) {
@@ -215,7 +223,12 @@ export function usePushNotifications() {
 
       return true
     } catch (exception) {
-      void exception
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to enable push notifications',
+        parsedException.why,
+      )
 
       return false
     }
