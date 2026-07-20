@@ -85,7 +85,7 @@
               class="flex flex-col gap-1"
             >
               <span class="text-xs font-normal text-base-content/50">
-                Cost
+                {{ hasEstimatedCost ? 'Cost (estimated)' : 'Cost' }}
               </span>
               <div
                 v-if="info.cost !== undefined"
@@ -96,7 +96,7 @@
                   Current message
                 </span>
                 <span class="min-w-0 truncate font-normal text-base-content">
-                  {{ formatMessageCost(info.cost) }}
+                  {{ formatMessageCost(info.cost, info.costIsEstimated) }}
                 </span>
               </div>
               <div
@@ -108,7 +108,12 @@
                   Up to this message
                 </span>
                 <span class="min-w-0 truncate font-normal text-base-content">
-                  {{ formatMessageCost(info.costToMessage) }}
+                  {{
+                    formatMessageCost(
+                      info.costToMessage,
+                      info.costToMessageIsEstimated,
+                    )
+                  }}
                 </span>
               </div>
               <div
@@ -120,7 +125,12 @@
                   Chat total
                 </span>
                 <span class="min-w-0 truncate font-normal text-base-content">
-                  {{ formatMessageCost(info.chatTotalCost) }}
+                  {{
+                    formatMessageCost(
+                      info.chatTotalCost,
+                      info.chatTotalCostIsEstimated,
+                    )
+                  }}
                 </span>
               </div>
             </div>
@@ -285,6 +295,14 @@ const hasCostInfo = computed<boolean>(() => {
     props.info?.cost !== undefined
     || props.info?.costToMessage !== undefined
     || props.info?.chatTotalCost !== undefined
+  )
+})
+
+const hasEstimatedCost = computed<boolean>(() => {
+  return (
+    !!props.info?.costIsEstimated
+    || !!props.info?.costToMessageIsEstimated
+    || !!props.info?.chatTotalCostIsEstimated
   )
 })
 

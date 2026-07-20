@@ -46,27 +46,32 @@ export function formatTokenCount(
  *   always keeping at least 2 decimals.
  * - Smaller positive values render with up to 6 decimals.
  * - In both cases, trailing zeros beyond the minimum are trimmed.
+ * - When `isEstimated` is `true`, the result is prefixed with `~` to mark
+ *   it as a flat per-task estimate rather than a measured, exact figure.
  */
 export function formatMessageCost(
   cost: number | undefined | null,
+  isEstimated = false,
 ): string {
   if (cost === undefined || cost === null) {
     return '—'
   }
 
+  const prefix = isEstimated ? '~' : ''
+
   if (cost === 0) {
-    return '$0.00'
+    return `${prefix}$0.00`
   }
 
   if (cost > 0 && cost < 0.0001) {
-    return '< $0.0001'
+    return `${prefix}< $0.0001`
   }
 
   const formatter = cost >= 0.01
     ? COST_ABOVE_CENT_FORMATTER
     : COST_BELOW_CENT_FORMATTER
 
-  return `$${formatter.format(cost)}`
+  return `${prefix}$${formatter.format(cost)}`
 }
 
 export function formatMessageDateTime(

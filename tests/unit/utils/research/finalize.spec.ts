@@ -635,7 +635,7 @@ describe('finalizeResearchJob', () => {
     )
   })
 
-  it('persists tokens without cost for a Google deep research report', async () => {
+  it('persists a flat cost estimate for a Google deep research report with totals-only tokens', async () => {
     mocks.getResearchAdapter.mockReturnValue({
       status: vi.fn(async () => ({ status: 'completed' })),
       result: vi.fn(async () => ({
@@ -673,6 +673,8 @@ describe('finalizeResearchJob', () => {
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 500,
+      outputCost: 2,
+      costEstimated: true,
     })
   })
 

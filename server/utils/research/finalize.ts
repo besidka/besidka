@@ -10,7 +10,10 @@ import type {
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
-import { buildMessageUsage } from '~~/server/utils/ai/message-usage'
+import {
+  addResearchCostEstimateToUsage,
+  buildMessageUsage,
+} from '~~/server/utils/ai/message-usage'
 import {
   mapResearchProviderError,
   normalizeChatError,
@@ -232,10 +235,13 @@ export async function finalizeResearchJob(
   }
 
   const parts = buildResearchAssistantParts({ result, job, durationMs })
-  const messageUsage = buildMessageUsage(
-    toLanguageModelUsage(result.usage),
+  const messageUsage = addResearchCostEstimateToUsage(
+    buildMessageUsage(
+      toLanguageModelUsage(result.usage),
+      job.modelId,
+      job.provider,
+    ),
     job.modelId,
-    job.provider,
   )
 
   try {

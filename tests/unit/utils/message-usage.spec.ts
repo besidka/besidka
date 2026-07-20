@@ -2,6 +2,7 @@ import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it } from 'vitest'
 import {
   addImageGenerationCostToUsage,
+  addResearchCostEstimateToUsage,
   buildMessageUsage,
 } from '../../../server/utils/ai/message-usage'
 
@@ -185,6 +186,90 @@ describe('addImageGenerationCostToUsage', () => {
 
   it('returns undefined unchanged when usage itself is undefined', () => {
     const result = addImageGenerationCostToUsage(undefined, 0.067)
+
+    expect(result).toBeUndefined()
+  })
+})
+
+describe('addResearchCostEstimateToUsage', () => {
+  it('fills in the midpoint task estimate for a Google deep research usage with totals-only tokens', () => {
+    const usage = buildMessageUsage(
+      createUsage({ totalTokens: 1130546 }),
+      'deep-research-preview-04-2026',
+      'google',
+    )
+
+    const result = addResearchCostEstimateToUsage(
+      usage,
+      'deep-research-preview-04-2026',
+    )
+
+    expect(result?.outputCost).toBe(2)
+    expect(result?.costEstimated).toBe(true)
+  })
+
+  it('leaves an OpenAI deep research usage with a real computed cost unchanged', () => {
+    const usage = buildMessageUsage(
+      createUsage({
+        inputTokens: 49052,
+        outputTokens: 35610,
+        totalTokens: 84662,
+      }),
+      'o4-mini-deep-research',
+      'openai',
+    )
+
+    const result = addResearchCostEstimateToUsage(
+      usage,
+      'o4-mini-deep-research',
+    )
+
+    expect(result).toEqual(usage)
+  })
+
+  it('is a no-op for a regular non-research model', () => {
+    const usage = buildMessageUsage(
+      createUsage({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      }),
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    const result = addResearchCostEstimateToUsage(usage, PRICED_MODEL_ID)
+
+    expect(result).toEqual(usage)
+  })
+
+  it('overwrites a fake $0 caused by an unknown split on a priced research model', () => {
+    const usage = buildMessageUsage(
+      createUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 1000,
+      }),
+      'o4-mini-deep-research',
+      'openai',
+    )
+
+    expect(usage?.outputCost).toBe(0)
+
+    const result = addResearchCostEstimateToUsage(
+      usage,
+      'o4-mini-deep-research',
+    )
+
+    expect(result?.outputCost).toBe(1)
+    expect(result?.costEstimated).toBe(true)
+  })
+
+  it('returns undefined unchanged when usage itself is undefined', () => {
+    const result = addResearchCostEstimateToUsage(
+      undefined,
+      'deep-research-preview-04-2026',
+    )
 
     expect(result).toBeUndefined()
   })
