@@ -1000,6 +1000,65 @@ describe('Chat/ContextMenu.client', () => {
       ).toContain('Web search')
     })
 
+    it('prefixes estimated costs with a tilde', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        cost: 2,
+        costIsEstimated: true,
+        costToMessage: 2,
+        costToMessageIsEstimated: true,
+        chatTotalCost: 2,
+        chatTotalCostIsEstimated: true,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-current"]').text(),
+      ).toContain('~$2.00')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-to-message"]').text(),
+      ).toContain('~$2.00')
+      expect(
+        wrapper.find('[data-testid="message-menu-cost-chat-total"]').text(),
+      ).toContain('~$2.00')
+      expect(
+        wrapper.find('[data-testid="message-menu-info"]').text(),
+      ).toContain('Cost (estimated)')
+    })
+
+    it('labels the cost section plainly when nothing is estimated', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        cost: 0.0177,
+        costToMessage: 0.0177,
+        chatTotalCost: 0.0177,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const infoText = wrapper.find('[data-testid="message-menu-info"]').text()
+
+      expect(infoText).toContain('Cost')
+      expect(infoText).not.toContain('Cost (estimated)')
+    })
+
     it('shows only the cost sub-rows that have a value', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',

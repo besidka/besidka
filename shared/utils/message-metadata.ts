@@ -14,8 +14,16 @@ export type MessageMenuInfo = {
   tokens?: number
   reasoningTokens?: number
   cost?: number
+  costIsEstimated?: boolean
   costToMessage?: number
+  costToMessageIsEstimated?: boolean
   chatTotalCost?: number
+  chatTotalCostIsEstimated?: boolean
+}
+
+type DisplayCost = {
+  amount: number
+  isEstimated: boolean
 }
 
 type MenuMessage = {
@@ -77,7 +85,7 @@ export function hydrateMessageUsage<
 // split was never reported — so it's a reliable signal to fall back to the
 // total instead of displaying a misleading "0", and to treat any cost
 // computed from that zeroed split as unknown rather than a real $0.00.
-function hasUnknownTokenSplit(usage: MessageUsage): boolean {
+export function hasUnknownTokenSplit(usage: MessageUsage): boolean {
   return usage.inputTokens === 0
     && usage.outputTokens === 0
     && usage.totalTokens > 0
@@ -97,12 +105,16 @@ function resolveDisplayTokens(
 function resolveDisplayCost(
   usage: MessageUsage | undefined,
   cost: number | undefined,
-): number | undefined {
-  if (usage && hasUnknownTokenSplit(usage)) {
+): DisplayCost | undefined {
+  if (cost === undefined) {
     return undefined
   }
 
-  return cost
+  if (usage && hasUnknownTokenSplit(usage) && !usage.costEstimated) {
+    return undefined
+  }
+
+  return { amount: cost, isEstimated: !!usage?.costEstimated }
 }
 
 export function getMessageUsedTools(
@@ -171,7 +183,7 @@ function getFollowingAssistantUsage(
 function getPerMessageCost(
   messages: MenuMessage[],
   messageIndex: number,
-): number | undefined {
+): DisplayCost | undefined {
   const message = messages[messageIndex]
 
   if (!message) {
@@ -196,9 +208,10 @@ function getPerMessageCost(
 function sumMessageCosts(
   messages: MenuMessage[],
   endIndex: number,
-): number | undefined {
+): DisplayCost | undefined {
   let total = 0
   let hasCost = false
+  let isEstimated = false
 
   for (let index = 0; index <= endIndex; index += 1) {
     const cost = getPerMessageCost(messages, index)
@@ -208,10 +221,11 @@ function sumMessageCosts(
     }
 
     hasCost = true
-    total += cost
+    total += cost.amount
+    isEstimated = isEstimated || cost.isEstimated
   }
 
-  return hasCost ? total : undefined
+  return hasCost ? { amount: total, isEstimated } : undefined
 }
 
 export function resolveMessageMenuInfo(
@@ -248,9 +262,12 @@ export function resolveMessageMenuInfo(
       reasoning: message.reasoning,
       tokens: resolveDisplayTokens(usage, usage?.outputTokens),
       reasoningTokens: usage?.reasoningTokens,
-      cost,
-      costToMessage,
-      chatTotalCost,
+      cost: cost?.amount,
+      costIsEstimated: cost?.isEstimated || undefined,
+      costToMessage: costToMessage?.amount,
+      costToMessageIsEstimated: costToMessage?.isEstimated || undefined,
+      chatTotalCost: chatTotalCost?.amount,
+      chatTotalCostIsEstimated: chatTotalCost?.isEstimated || undefined,
     }
   }
 
@@ -260,8 +277,11 @@ export function resolveMessageMenuInfo(
     role: 'user',
     createdAt: metadata.createdAt,
     tokens: resolveDisplayTokens(followingUsage, followingUsage?.inputTokens),
-    cost,
-    costToMessage,
-    chatTotalCost,
+    cost: cost?.amount,
+    costIsEstimated: cost?.isEstimated || undefined,
+    costToMessage: costToMessage?.amount,
+    costToMessageIsEstimated: costToMessage?.isEstimated || undefined,
+    chatTotalCost: chatTotalCost?.amount,
+    chatTotalCostIsEstimated: chatTotalCost?.isEstimated || undefined,
   }
 }

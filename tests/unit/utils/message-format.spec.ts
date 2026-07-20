@@ -45,6 +45,19 @@ describe('formatMessageCost', () => {
   it('pads whole-cent costs to 2 decimals', () => {
     expect(formatMessageCost(2.5)).toBe('$2.50')
   })
+
+  it('prefixes an estimated cost with a tilde', () => {
+    expect(formatMessageCost(2, true)).toBe('~$2.00')
+  })
+
+  it('does not prefix a non-estimated cost', () => {
+    expect(formatMessageCost(2, false)).toBe('$2.00')
+    expect(formatMessageCost(2)).toBe('$2.00')
+  })
+
+  it('prefixes the near-zero lower bound when estimated', () => {
+    expect(formatMessageCost(0.00005, true)).toBe('~< $0.0001')
+  })
 })
 
 describe('formatMessageDateTime', () => {

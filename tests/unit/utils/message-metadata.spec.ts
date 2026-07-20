@@ -371,6 +371,85 @@ describe('resolveMessageMenuInfo', () => {
     expect(info?.chatTotalCost).toBeUndefined()
   })
 
+  it('marks an estimated deep-research cost with the isEstimated flags', () => {
+    const researchUsage = {
+      model: 'deep-research-preview-04-2026',
+      provider: 'google',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 1130546,
+      outputCost: 2,
+      costEstimated: true,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: researchUsage, createdAt: 'when' },
+      parts: [
+        { type: 'data-research', data: { provider: 'google' } },
+      ],
+    }]
+
+    expect(resolveMessageMenuInfo(messages, 'a1')).toEqual({
+      role: 'assistant',
+      createdAt: 'when',
+      model: 'deep-research-preview-04-2026',
+      usedTools: ['deep_research'],
+      tokens: 1130546,
+      reasoningTokens: undefined,
+      cost: 2,
+      costIsEstimated: true,
+      costToMessage: 2,
+      costToMessageIsEstimated: true,
+      chatTotalCost: 2,
+      chatTotalCostIsEstimated: true,
+    })
+  })
+
+  it('mixes an estimated research cost into a real chat total and still flags it as estimated', () => {
+    const researchUsage = {
+      model: 'deep-research-preview-04-2026',
+      provider: 'google',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 1130546,
+      outputCost: 2,
+      costEstimated: true,
+    }
+    const followUpUsage = {
+      model: 'gemini-2.5-flash-lite',
+      provider: 'google',
+      inputTokens: 5000,
+      outputTokens: 3000,
+      totalTokens: 8000,
+      inputCost: 0.0012251,
+      outputCost: 0.0079328,
+    }
+    const messages = [
+      { id: 'a1', role: 'assistant', metadata: { usage: researchUsage } },
+      { id: 'u1', role: 'user', metadata: { createdAt: 'follow-up' } },
+      { id: 'a2', role: 'assistant', metadata: { usage: followUpUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'a2')
+
+    expect(info?.chatTotalCost).toBeCloseTo(2 + 0.0012251 + 0.0079328)
+    expect(info?.chatTotalCostIsEstimated).toBe(true)
+  })
+
+  it('does not mark chatTotalCost as estimated for a chat with only real costs', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: assistantUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.chatTotalCost).toBe(0.0177)
+    expect(info?.chatTotalCostIsEstimated).toBeFalsy()
+  })
+
   it('still reports a genuine zero-token assistant reply without a fallback', () => {
     const usage = {
       model: 'gpt-5.4',
