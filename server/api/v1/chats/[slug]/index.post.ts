@@ -6,6 +6,7 @@ import type {
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { H3Event } from 'h3'
+import { getRequestURL } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
@@ -797,6 +798,15 @@ export default defineEventHandler(async (event) => {
         if (wasPersisted && cfCtx?.waitUntil) {
           const runtimeConfig = useRuntimeConfig()
 
+          let targetOrigin: string | undefined
+
+          try {
+            targetOrigin = getRequestURL(event).origin
+          } catch (exception) {
+            void exception
+            targetOrigin = undefined
+          }
+
           cfCtx.waitUntil(sendPushNotificationToUser(
             db,
             userId,
@@ -811,6 +821,7 @@ export default defineEventHandler(async (event) => {
               privateKey: runtimeConfig.vapidPrivateKey || undefined,
             },
             cfCtx.waitUntil.bind(cfCtx),
+            targetOrigin,
           ))
         }
 

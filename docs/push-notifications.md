@@ -132,6 +132,15 @@ is missed first.
   outcome counts + failure details (host/status/reason only — never
   endpoints or keys, both are capability secrets) go into the evlog wide
   event.
+- **Origin scoping**: `sendPushNotificationToUser` takes an optional
+  `targetOrigin` and filters delivery to subscriptions whose stored `origin`
+  matches, falling back to the full subscription set when nothing matches
+  (legacy rows with no origin, or a caller that omits it) — so this can never
+  silently drop a notification. The `chats/[slug]/index.post.ts` call site
+  passes `getRequestURL(event).origin` (same derivation as
+  `push/subscribe.post.ts`) specifically to avoid duplicate notifications
+  when one account has subscriptions from multiple PR-preview subdomains,
+  since all previews share one D1 database.
 
 ## Service worker behavior (`public/sw-push.js`)
 
