@@ -434,6 +434,14 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/ThemeSwitcher.spec.ts',
         'tests/e2e/settings/theme.spec.ts',
+        'tests/e2e/settings/theme-tokens.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/assets\/css\/main\.css$/,
+      tests: [
+        'tests/e2e/settings/theme.spec.ts',
+        'tests/e2e/settings/theme-tokens.spec.ts',
       ],
     },
     {
