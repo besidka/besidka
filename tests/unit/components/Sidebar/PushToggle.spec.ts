@@ -72,6 +72,8 @@ describe('Sidebar/PushToggle', () => {
     const button = wrapper.get('button')
 
     expect(button.classes()).toContain('btn-active')
+    expect(button.classes()).toContain('btn-accent')
+    expect(button.classes()).not.toContain('btn-ghost')
     expect(button.attributes('aria-label'))
       .toBe('Disable push notifications')
     expect(wrapper.get('.iconify').classes())
@@ -83,6 +85,8 @@ describe('Sidebar/PushToggle', () => {
     const button = wrapper.get('button')
 
     expect(button.classes()).not.toContain('btn-active')
+    expect(button.classes()).toContain('btn-ghost')
+    expect(button.classes()).not.toContain('btn-accent')
     expect(button.attributes('aria-label'))
       .toBe('Enable push notifications')
     expect(wrapper.get('.iconify').classes())

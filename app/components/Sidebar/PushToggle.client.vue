@@ -1,7 +1,8 @@
 <template>
   <UiButton
     v-if="pushNotifications.isSupported.value"
-    mode="primary"
+    :ghost="!isEnabled"
+    :mode="isEnabled ? 'accent' : 'primary'"
     :icon-only="true"
     circle
     :class="{ 'btn-active': isEnabled }"
