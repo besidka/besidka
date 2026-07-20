@@ -158,6 +158,10 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   finalize/cron sweep, UI, live-spike checklist
 - `docs/deep-research-failed-attempt.md` - Post-mortem of the abandoned v1
   agentic-loop approach; read before changing the deep-research architecture
+- `docs/vite-css-minify.md` - Why `vite.build.cssMinify` is pinned to
+  `esbuild`: a Vite 8 default-change + DaisyUI/Lightning CSS `:is()`
+  specificity bug that broke the light theme in production builds only;
+  when to prefer lightningcss vs esbuild, and revert criteria
 
 ### Tech Stack
 

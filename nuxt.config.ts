@@ -288,6 +288,13 @@ export default defineNuxtConfig({
     typeCheck: process.env.CI !== 'true',
   },
   vite: {
+    build: {
+      // Vite 8's new cssMinify default ('lightningcss') breaks this app's
+      // light theme in production builds via a DaisyUI/Lightning CSS
+      // selector-specificity interaction. See docs/vite-css-minify.md
+      // before changing or reverting this.
+      cssMinify: 'esbuild',
+    },
     optimizeDeps: {
       include: [
         'better-auth/vue',
