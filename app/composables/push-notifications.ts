@@ -253,6 +253,13 @@ export function usePushNotifications() {
 
       await subscription.unsubscribe()
 
+      // Unlike subscribe()/refreshState(), a failed POST here is left
+      // silent on purpose: the browser-side unsubscribe above already
+      // succeeded, so isSubscribed correctly reflects this device's real
+      // state regardless. The stale server row self-heals on its own next
+      // send attempt (sendToSubscription in server/utils/push.ts deletes it
+      // on the push service's 404/410), so there's nothing actionable to
+      // surface to the user.
       await $fetch('/api/v1/push/unsubscribe', {
         method: 'POST',
         body: { endpoint },
