@@ -1,7 +1,8 @@
 <template>
   <UiBubble
     role="alert"
-    class="sticky z-50 top-0 inset-x-0 !block px-14 max-sm:pl-4 !rounded-none !shadow-none"
+    class="z-50 top-0 inset-x-0 !block px-14 max-sm:pl-4 !rounded-none !shadow-none"
+    :class="fixed ? 'fixed' : 'sticky'"
   >
     <div class="w-full text-center text-xs sm:text-sm">
       <slot />
@@ -21,6 +22,10 @@
 </template>
 
 <script setup lang="ts">
+defineProps<{
+  fixed?: boolean
+}>()
+
 defineEmits<{
   click: []
 }>()

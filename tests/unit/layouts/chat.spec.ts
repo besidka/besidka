@@ -1,4 +1,4 @@
-import { defineComponent, nextTick } from 'vue'
+import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
 import ChatLayout from '../../../app/layouts/chat.vue'
@@ -22,10 +22,6 @@ describe('chat layout', () => {
 
     const stubs = {
       NuxtPage: true,
-      ClientOnly: defineComponent({
-        template: '<div><slot /></div>',
-      }),
-      LazyNotificationPrompt: true,
     }
 
     await mountSuspended(ChatLayout, { global: { stubs } })

@@ -1,5 +1,6 @@
 <template>
   <UiAlert
+    fixed
     class="-translate-y-full"
     :class="{
       'transition-transform duration-500 ease-in': !mounted,

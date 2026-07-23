@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { usePushNotifications } from '../../../app/composables/push-notifications'
+import * as messagesComposable from '../../../app/composables/messages'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(async () => undefined),
@@ -30,6 +31,19 @@ describe('usePushNotifications', () => {
   beforeEach(async () => {
     mocks.fetch.mockClear()
     mocks.vapidPublicKey = 'QUJDRA'
+
+    useState<NotificationPermission>(
+      'push-notifications:permission',
+      () => 'default',
+    ).value = 'default'
+    useState<boolean>(
+      'push-notifications:is-subscribed',
+      () => false,
+    ).value = false
+    useState<boolean>(
+      'push-notifications:has-auto-refreshed',
+      () => false,
+    ).value = false
 
     requestPermissionMock = vi.fn(async () => 'granted')
     getSubscriptionMock = vi.fn(async () => null)
@@ -122,6 +136,20 @@ describe('usePushNotifications', () => {
     expect(mocks.fetch).not.toHaveBeenCalled()
   })
 
+  it('surfaces an error and returns false when the subscribe POST fails', async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error('401 Unauthorized'))
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+    const composable = usePushNotifications()
+    const result = await composable.subscribe()
+
+    expect(result).toBe(false)
+    expect(useErrorMessage).toHaveBeenCalledWith(
+      '401 Unauthorized',
+      undefined,
+    )
+  })
+
   it('reuses an existing subscription instead of subscribing again', async () => {
     getSubscriptionMock.mockResolvedValue({
       endpoint: 'https://push.example.com/existing',
@@ -181,11 +209,16 @@ describe('usePushNotifications', () => {
     })
     mocks.fetch.mockRejectedValueOnce(new Error('401 Unauthorized'))
 
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
     const composable = usePushNotifications()
 
     await flushPromises()
 
     expect(composable.isSubscribed.value).toBe(true)
+    expect(useErrorMessage).toHaveBeenCalledWith(
+      '401 Unauthorized',
+      undefined,
+    )
   })
 
   it('replaces a stale-key subscription on refresh when granted', async () => {

@@ -542,6 +542,15 @@ describe('chat stream message ids', () => {
     const { db } = createDb()
     const { event, waitUntil } = createWaitUntilEvent({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      node: {
+        req: {
+          headers: {
+            'host': 'pr-304.besidka-preview.chernenko.workers.dev',
+            'x-forwarded-proto': 'https',
+          },
+          originalUrl: '/api/v1/chats/01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        },
+      },
       body: {
         model: 'gpt-5-mini',
         tools: [],
@@ -567,6 +576,7 @@ describe('chat stream message ids', () => {
       },
       expect.anything(),
       expect.anything(),
+      'https://pr-304.besidka-preview.chernenko.workers.dev',
     )
   })
 

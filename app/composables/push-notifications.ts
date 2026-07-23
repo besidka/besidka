@@ -1,3 +1,5 @@
+import { parseError } from 'evlog'
+
 // Long-standing, universally-compatible conversion — every browser that
 // implements the Push API accepts a BufferSource applicationServerKey; only
 // newer ones also accept a raw base64url string, so converting here rather
@@ -59,8 +61,18 @@ function isApplicationServerKeyStale(
 
 export function usePushNotifications() {
   const { public: { vapidPublicKey } } = useRuntimeConfig()
-  const permission = shallowRef<NotificationPermission>('default')
-  const isSubscribed = shallowRef<boolean>(false)
+  const permission = useState<NotificationPermission>(
+    'push-notifications:permission',
+    () => 'default',
+  )
+  const isSubscribed = useState<boolean>(
+    'push-notifications:is-subscribed',
+    () => false,
+  )
+  const hasAutoRefreshed = useState<boolean>(
+    'push-notifications:has-auto-refreshed',
+    () => false,
+  )
 
   const isSupported = computed<boolean>(() => {
     if (!import.meta.client) {
@@ -141,7 +153,13 @@ export function usePushNotifications() {
             },
           })
         } catch (exception) {
-          void exception
+          const parsedException = parseError(exception)
+
+          useErrorMessage(
+            parsedException.message
+            || 'Failed to refresh push notification subscription',
+            parsedException.why,
+          )
         }
       }
     } catch (exception) {
@@ -205,7 +223,12 @@ export function usePushNotifications() {
 
       return true
     } catch (exception) {
-      void exception
+      const parsedException = parseError(exception)
+
+      useErrorMessage(
+        parsedException.message || 'Failed to enable push notifications',
+        parsedException.why,
+      )
 
       return false
     }
@@ -230,6 +253,13 @@ export function usePushNotifications() {
 
       await subscription.unsubscribe()
 
+      // Unlike subscribe()/refreshState(), a failed POST here is left
+      // silent on purpose: the browser-side unsubscribe above already
+      // succeeded, so isSubscribed correctly reflects this device's real
+      // state regardless. The stale server row self-heals on its own next
+      // send attempt (sendToSubscription in server/utils/push.ts deletes it
+      // on the push service's 404/410), so there's nothing actionable to
+      // surface to the user.
       await $fetch('/api/v1/push/unsubscribe', {
         method: 'POST',
         body: { endpoint },
@@ -259,7 +289,8 @@ export function usePushNotifications() {
     }
   }
 
-  if (import.meta.client) {
+  if (import.meta.client && !hasAutoRefreshed.value) {
+    hasAutoRefreshed.value = true
     refreshState().then(watchPermissionChanges).catch((exception) => {
       void exception
     })

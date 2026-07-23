@@ -20,8 +20,9 @@
 //     call per page. Chrome's own telemetry shows a cold permission prompt
 //     converts far worse than one shown after the user has experienced the
 //     product, so this intentionally is NOT wired to first app load (the
-//     banner itself also only renders within that layout — see chat.vue —
-//     so it never shows on the home page or elsewhere).
+//     banner component mounts globally in app.vue — see requestEnable()
+//     below for the settings-menu entry point — but this proactive trigger
+//     itself is still only called from the chat layout).
 //   - maybeShowAfterMissedNotification(): fired from chat.ts's
 //     'chat:generation-ready-while-hidden' hook — a generation finished
 //     while the user was away with no way to notify them. Re-asks only a
@@ -160,6 +161,11 @@ export function useNotificationPrompt() {
     userSetting.setNotificationPromptState(false)
   }
 
+  async function disable(): Promise<void> {
+    await pushNotifications.unsubscribe()
+    userSetting.setNotificationPromptState(false)
+  }
+
   async function enable(): Promise<void> {
     const subscribed = await pushNotifications.subscribe()
 
@@ -169,6 +175,30 @@ export function useNotificationPrompt() {
 
     isVisible.value = false
     userSetting.setNotificationPromptState(true)
+  }
+
+  // Entry point for the settings-menu toggle button (not the banner). When
+  // permission is already 'granted', requestPermission() resolves instantly
+  // with no dialog, so delegating to enable() safely (re)subscribes this
+  // device. When permission is still 'default', calling subscribe() here
+  // would fire the OS dialog with zero prior disclosure — a compliance
+  // regression — so this shows the same disclosed banner instead. When
+  // permission is 'denied', the browser will never show the dialog again
+  // regardless of what this calls, so opening the banner would be a dead
+  // end with no way forward — the button itself disables in that state
+  // instead (see PushToggle.client.vue), this is just a defensive no-op.
+  async function requestEnable(): Promise<void> {
+    if (pushNotifications.permission.value === 'denied') {
+      return
+    }
+
+    if (pushNotifications.permission.value !== 'granted') {
+      isVisible.value = true
+
+      return
+    }
+
+    await enable()
   }
 
   if (!hasRegisteredMissedNotificationHook.value) {
@@ -182,7 +212,9 @@ export function useNotificationPrompt() {
   return {
     isVisible,
     dismiss,
+    disable,
     enable,
+    requestEnable,
     maybeShowProactively,
   }
 }

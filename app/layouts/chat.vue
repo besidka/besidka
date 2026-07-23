@@ -1,7 +1,4 @@
 <template>
-  <ClientOnly>
-    <LazyNotificationPrompt />
-  </ClientOnly>
   <NuxtPage/>
 </template>
 
