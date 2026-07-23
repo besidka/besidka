@@ -1,6 +1,7 @@
 import { useLogger } from 'evlog'
 import type { H3Event } from 'h3'
 import type { LandingEventName, LandingEventData } from '#shared/types/analytics.d'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const BOT_PATTERN
   = /bot|crawler|spider|scraper|curl|wget|python|java(?!script)|headless|phantom/i
@@ -68,10 +69,12 @@ export function trackLandingEvent(
 
     logger.set({
       analytics: {
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
         event: name,
+      },
+      attributes: {
+        analytics: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

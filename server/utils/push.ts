@@ -308,13 +308,20 @@ export async function sendPushNotificationToUser(
     waitUntil,
   })
 
+  const { failures, ...outcomeCounts } = outcomes
+
   logger.set({
     push: {
       operation: 'send',
       userId,
       subscriptionCount: subscriptionsToNotify.length,
       totalSubscriptionCount: subscriptions.length,
-      ...outcomes,
+      ...outcomeCounts,
+    },
+    attributes: {
+      push: {
+        failures,
+      },
     },
   })
 

@@ -1,4 +1,5 @@
 import { createRequestLogger } from 'evlog'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { cleanupExpiredFiles } from '~~/server/utils/files/cleanup-expired-files'
 
 const ERROR_STACK_MAX_LENGTH = 2000
@@ -101,10 +102,12 @@ export async function runFileRetentionCleanupJob(
     logger.set({
       retentionCleanupError: {
         phase: 'cleanup-run',
-        message: exception instanceof Error
-          ? exception.message
-          : String(exception),
-        stack: getSafeErrorStack(exception),
+      },
+      attributes: {
+        retentionCleanupError: {
+          message: exceptionMessage(exception),
+          stack: getSafeErrorStack(exception),
+        },
       },
     })
   }

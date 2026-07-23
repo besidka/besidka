@@ -9,6 +9,7 @@ import {
   resolveServerLogger,
 } from '~~/server/utils/files/logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export interface MissingFile {
   storageKey: string
@@ -87,7 +88,11 @@ export async function convertFilesForAI(
         logger.set({
           fileConversion: {
             reason: 'invalid-url',
-            url: part.url,
+          },
+          attributes: {
+            fileConversion: {
+              url: part.url,
+            },
           },
         })
         convertedParts.push(part)
@@ -138,9 +143,11 @@ export async function convertFilesForAI(
             fileConversion: {
               operation: 'inline-text',
               storageKey,
-              error: exception instanceof Error
-                ? exception.message
-                : String(exception),
+            },
+            attributes: {
+              fileConversion: {
+                error: exceptionMessage(exception),
+              },
             },
           })
           missingFiles.push({
@@ -190,9 +197,11 @@ export async function convertFilesForAI(
           fileConversion: {
             operation: 'convert',
             storageKey,
-            error: exception instanceof Error
-              ? exception.message
-              : String(exception),
+          },
+          attributes: {
+            fileConversion: {
+              error: exceptionMessage(exception),
+            },
           },
         })
         missingFiles.push({
@@ -229,9 +238,11 @@ async function getCachedFileDataUrl(
       fileCache: {
         operation: 'read',
         key: getCacheKey(storageKey),
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        fileCache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -256,9 +267,11 @@ async function cacheFileDataUrl(
       fileCache: {
         operation: 'write',
         key: getCacheKey(storageKey),
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        fileCache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }
@@ -286,9 +299,11 @@ async function readStorageFileAsText(
       fileStorage: {
         operation: 'read-text',
         storageKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        fileStorage: {
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -370,9 +385,11 @@ async function convertStorageFileToDataUrl(
       fileStorage: {
         operation: 'read',
         storageKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        fileStorage: {
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -396,9 +413,11 @@ export async function invalidateFileCache(
       fileCache: {
         operation: 'invalidate',
         key: getCacheKey(storageKey),
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        fileCache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

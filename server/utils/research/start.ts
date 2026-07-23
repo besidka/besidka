@@ -15,6 +15,7 @@ import { and, count, eq, inArray } from 'drizzle-orm'
 import { getRequestURL } from 'h3'
 import * as schema from '~~/server/db/schema'
 import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
 import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
@@ -236,8 +237,12 @@ export async function startResearchJobForChat(
           phase: 'start',
           jobId: job.id,
           status: currentJob.status,
-          note: 'job left the active state before the provider job'
-            + ' could be stored',
+        },
+        attributes: {
+          research: {
+            note: 'job left the active state before the provider job'
+              + ' could be stored',
+          },
         },
       })
 
@@ -248,10 +253,14 @@ export async function startResearchJobForChat(
       research: {
         phase: 'start',
         jobId: job.id,
-        provider: supportedProviderId,
         level: research.tier,
-        modelId: model.id,
         status: started.status,
+      },
+      attributes: {
+        research: {
+          provider: supportedProviderId,
+          modelId: model.id,
+        },
       },
     })
 
@@ -292,8 +301,12 @@ export async function startResearchJobForChat(
       research: {
         phase: 'start',
         jobId: job.id,
-        errorCode: chatError.code,
-        errorMessage: chatError.why,
+      },
+      attributes: {
+        research: {
+          errorCode: chatError.code,
+          errorMessage: chatError.why,
+        },
       },
     })
 
@@ -314,9 +327,11 @@ async function cancelStartedProviderJobBestEffort(
       research: {
         phase: 'start-cancel',
         providerJobId,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        research: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

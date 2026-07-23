@@ -22,13 +22,17 @@ export default defineEventHandler(async (event) => {
     requestId: body.requestId,
     transportRequestId: body.transportRequestId,
     chatId: body.chatId,
-    modelId: body.modelId,
-    providerId: body.providerId,
     userId: session ? Number(session.user.id) : undefined,
     status: body.status,
-    errorCode: body.code,
     stage: 'client-transport',
     why: body.reason,
+    attributes: {
+      clientError: {
+        modelId: body.modelId,
+        providerId: body.providerId,
+        errorCode: body.code,
+      },
+    },
   })
 
   setResponseStatus(event, 204)

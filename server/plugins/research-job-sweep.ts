@@ -1,5 +1,6 @@
 import { createRequestLogger } from 'evlog'
 import type { VapidKeys } from '~~/server/utils/push'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { sweepResearchJobs } from '~~/server/utils/research/sweep'
 
 const ERROR_STACK_MAX_LENGTH = 2000
@@ -107,10 +108,12 @@ export async function runResearchJobSweepJob(
     logger.set({
       researchSweepError: {
         phase: 'sweep-run',
-        message: exception instanceof Error
-          ? exception.message
-          : String(exception),
-        stack: getSafeErrorStack(exception),
+      },
+      attributes: {
+        researchSweepError: {
+          message: exceptionMessage(exception),
+          stack: getSafeErrorStack(exception),
+        },
       },
     })
   }

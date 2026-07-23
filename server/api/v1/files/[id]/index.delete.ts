@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -55,9 +56,11 @@ export default defineEventHandler(async (event) => {
         operation: 'delete',
         fileId: id,
         key: file.storageKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        storage: {
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -75,9 +78,11 @@ export default defineEventHandler(async (event) => {
         operation: 'invalidate',
         fileId: id,
         key: file.storageKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        cache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

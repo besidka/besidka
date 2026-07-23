@@ -87,18 +87,26 @@ export async function runLandingCacheRefreshJob(
         uploadedFiles: statsResult.value.uploadedFiles,
         generatedImages: statsResult.value.generatedImages,
       }
-      : {
-        error: statsResult.reason instanceof Error
-          ? statsResult.reason.message
-          : String(statsResult.reason),
-      },
+      : {},
     githubStars: githubStarsResult.status === 'fulfilled'
       ? { updatedAt: githubStarsResult.value.updatedAt }
-      : {
-        error: githubStarsResult.reason instanceof Error
-          ? githubStarsResult.reason.message
-          : String(githubStarsResult.reason),
-      },
+      : {},
+    attributes: {
+      stats: statsResult.status === 'fulfilled'
+        ? {}
+        : {
+          error: statsResult.reason instanceof Error
+            ? statsResult.reason.message
+            : String(statsResult.reason),
+        },
+      githubStars: githubStarsResult.status === 'fulfilled'
+        ? {}
+        : {
+          error: githubStarsResult.reason instanceof Error
+            ? githubStarsResult.reason.message
+            : String(githubStarsResult.reason),
+        },
+    },
   })
 
   const status = statsResult.status === 'fulfilled'
