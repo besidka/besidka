@@ -94,9 +94,25 @@ export async function invalidateStorageCache(
   logger?: LoggerLike,
 ): Promise<void> {
   const activeLogger = resolveServerLogger(logger)
-  const kv = useKV()
   const storageCacheKey = getStorageCacheKey(userId)
   const filePolicyCacheKey = getFilePolicyCacheKey(userId)
+  let kv: ReturnType<typeof useKV>
+
+  try {
+    kv = useKV()
+  } catch (exception) {
+    activeLogger.set({
+      cache: {
+        operation: 'invalidate',
+        key: `${storageCacheKey},${filePolicyCacheKey}`,
+        error: exception instanceof Error
+          ? exception.message
+          : String(exception),
+      },
+    })
+
+    return
+  }
 
   try {
     await kv.delete(storageCacheKey)

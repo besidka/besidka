@@ -21,7 +21,7 @@ function getIdentify(): Identify {
         '/api/_evlog/**',
         '/api/_nuxt_icon/**',
         '/api/v1/stats*',
-        '/api/v1/consents',
+        '/api/v1/consents*',
         '/_nuxt/**',
         '/health',
       ],
