@@ -9,6 +9,7 @@ import {
   resolveServerLogger,
 } from '~~/server/utils/files/logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { getFilePolicyCacheKey } from '~~/server/api/v1/files/policy.get'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -46,9 +47,11 @@ export default defineEventHandler(async (event): Promise<StorageStats> => {
     })
   }
 
-  const policy = await getEffectiveUserFilePolicy(userId)
-  const used = await getUserStorageUsageBytes(userId)
-  const globalTransformStats = await getGlobalMonthlyTransformStats()
+  const [policy, used, globalTransformStats] = await Promise.all([
+    getEffectiveUserFilePolicy(userId),
+    getUserStorageUsageBytes(userId),
+    getGlobalMonthlyTransformStats(),
+  ])
   const total = policy.maxStorageBytes
 
   const percentage = total > 0 ? Math.round((used / total) * 100) : 0
@@ -91,17 +94,31 @@ export async function invalidateStorageCache(
   logger?: LoggerLike,
 ): Promise<void> {
   const activeLogger = resolveServerLogger(logger)
-  const cacheKey = getStorageCacheKey(userId)
+  const kv = useKV()
+  const storageCacheKey = getStorageCacheKey(userId)
+  const filePolicyCacheKey = getFilePolicyCacheKey(userId)
 
   try {
-    const kv = useKV()
-
-    await kv.delete(cacheKey)
+    await kv.delete(storageCacheKey)
   } catch (exception) {
     activeLogger.set({
       cache: {
         operation: 'invalidate',
-        key: cacheKey,
+        key: storageCacheKey,
+        error: exception instanceof Error
+          ? exception.message
+          : String(exception),
+      },
+    })
+  }
+
+  try {
+    await kv.delete(filePolicyCacheKey)
+  } catch (exception) {
+    activeLogger.set({
+      cache: {
+        operation: 'invalidate',
+        key: filePolicyCacheKey,
         error: exception instanceof Error
           ? exception.message
           : String(exception),
