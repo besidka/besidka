@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import userSettingsSyncPlugin
   from '../../../app/plugins/10.user-settings-sync.client'
 import { useAuth } from '../../../app/composables/auth'
 import { useUserSetting } from '../../../app/composables/user-setting'
+
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 function getPluginSetup() {
   return userSettingsSyncPlugin as unknown as (
@@ -28,14 +35,13 @@ describe('user settings sync plugin', () => {
   })
 
   it('syncs settings immediately when auth user is already available', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: true,
       reasoningAutoHide: true,
     })
     const { user } = useAuth()
     const { activeUserId, reasoningExpanded } = useUserSetting()
 
-    vi.stubGlobal('$fetch', fetchMock)
     user.value = {
       id: 'user-1',
     } as never
@@ -50,14 +56,13 @@ describe('user settings sync plugin', () => {
   })
 
   it('clears user context when auth user becomes null', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: true,
     })
     const { user } = useAuth()
     const { activeUserId } = useUserSetting()
 
-    vi.stubGlobal('$fetch', fetchMock)
     user.value = {
       id: 'user-1',
     } as never
@@ -76,13 +81,12 @@ describe('user settings sync plugin', () => {
   })
 
   it('does not trigger sync again when user id stays unchanged', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       reasoningExpanded: false,
       reasoningAutoHide: true,
     })
     const { user } = useAuth()
 
-    vi.stubGlobal('$fetch', fetchMock)
     user.value = {
       id: 'user-1',
     } as never

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { effectScope, type EffectScope } from 'vue'
 import { useProjects } from '../../../app/composables/projects'
 import {
@@ -9,6 +10,12 @@ import {
   installMockNuxtState,
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
+
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 const scopes: EffectScope[] = []
 
@@ -31,7 +38,6 @@ describe('useProjects rename behavior', () => {
     vi.useRealTimers()
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
   })
 
   afterEach(() => {
@@ -48,9 +54,7 @@ describe('useProjects rename behavior', () => {
       id: 'project-1',
       name: 'Projects',
     })
-    vi.stubGlobal('$fetch', vi.fn(() => {
-      return Promise.resolve({ success: true })
-    }))
+    fetchMock.mockResolvedValue({ success: true })
 
     const projects = createProjectsComposable()
     projects.search.value = 'proj'

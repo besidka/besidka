@@ -238,19 +238,29 @@ export async function signIn(
     exact: true,
   })
 
-  await expect(emailInput).toBeEditable()
-  await expect(passwordInput).toBeEditable()
-  await expect(signInButton).toBeEnabled()
-  await typeInputValue(emailInput, email)
-  await expect(emailInput).toHaveValue(email)
-  await typeInputValue(passwordInput, password)
-  await expect(emailInput).toHaveValue(email)
-  await expect(passwordInput).toHaveValue(password)
+  // A cold Vite dev server can emit a one-time optimize-deps HMR full-reload
+  // that swaps the server-rendered form for a freshly-hydrating copy right
+  // around this interaction. A click landing on that transient, un-hydrated
+  // form finds no `@submit.prevent` bound yet, so the browser performs a
+  // native GET submit to `/signin?` that never reaches the sign-in API and
+  // leaves the page bouncing on /signin. Retry the fill + submit until it
+  // takes effect on the settled, hydrated form. This is dev-only: a
+  // production build ships no HMR or dependency pre-bundling. The 14s retry
+  // budget exceeds the suite's default per-test timeout (10s, see
+  // playwright.config.ts), so callers must raise their own via
+  // test.setTimeout(20_000) or higher.
+  await expect(async () => {
+    await expect(emailInput).toBeEditable()
+    await expect(passwordInput).toBeEditable()
+    await expect(signInButton).toBeEnabled()
+    await typeInputValue(emailInput, email)
+    await typeInputValue(passwordInput, password)
+    await expect(emailInput).toHaveValue(email)
+    await expect(passwordInput).toHaveValue(password)
 
-  await Promise.all([
-    page.waitForURL('/chats/new'),
-    signInButton.click(),
-  ])
+    await signInButton.click()
+    await page.waitForURL('/chats/new', { timeout: 4_000 })
+  }).toPass({ timeout: 14_000 })
 }
 
 export async function signUp(

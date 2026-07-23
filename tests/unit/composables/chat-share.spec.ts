@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useChatShare } from '../../../app/composables/chat-share'
 
-const { navigateToMock } = vi.hoisted(() => ({
+const { fetchMock, navigateToMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
   navigateToMock: vi.fn(),
 }))
 
+mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('navigateTo', () => navigateToMock)
 
 function resetChatShareState() {
@@ -29,6 +31,7 @@ function resetChatShareState() {
 describe('useChatShare', () => {
   beforeEach(() => {
     resetChatShareState()
+    fetchMock.mockClear()
     navigateToMock.mockClear()
   })
 
@@ -38,7 +41,7 @@ describe('useChatShare', () => {
   })
 
   it('narrows a share row with no slug to no active share', async () => {
-    vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       share: {
         slug: null,
         url: null,
@@ -50,7 +53,7 @@ describe('useChatShare', () => {
         allowBranch: true,
       },
       hasFiles: true,
-    }))
+    })
 
     const {
       loadShare,
@@ -67,10 +70,10 @@ describe('useChatShare', () => {
   })
 
   it('treats a null share payload as no active share', async () => {
-    vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       share: null,
       hasFiles: false,
-    }))
+    })
 
     const {
       loadShare,
@@ -87,7 +90,7 @@ describe('useChatShare', () => {
   })
 
   it('loads an active share row using the current origin', async () => {
-    vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       share: {
         slug: 'abc123',
         url: 'https://old-preview-host.example/shared/abc123',
@@ -99,7 +102,7 @@ describe('useChatShare', () => {
         allowBranch: false,
       },
       hasFiles: false,
-    }))
+    })
 
     const { loadShare, share, targetChatSlug } = useChatShare()
 
@@ -119,10 +122,10 @@ describe('useChatShare', () => {
   })
 
   it('opens the modal and overrides targetHasFiles from the GET response', async () => {
-    vi.stubGlobal('$fetch', vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       share: null,
       hasFiles: true,
-    }))
+    })
 
     const { openShareModal, isModalOpen, targetChatSlug, targetHasFiles }
       = useChatShare()
@@ -135,7 +138,7 @@ describe('useChatShare', () => {
   })
 
   it('creates a share and stores it using the current origin', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       slug: 'new-slug',
       url: 'https://old-preview-host.example/shared/new-slug',
       expiresAt: null,
@@ -145,7 +148,6 @@ describe('useChatShare', () => {
       showAuthorAvatar: false,
       allowBranch: true,
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const { createOrUpdateShare, share } = useChatShare()
 
@@ -183,8 +185,7 @@ describe('useChatShare', () => {
   })
 
   it('revokes the active share and clears local state', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue(undefined)
 
     const { share, revokeShare } = useChatShare()
 
@@ -209,8 +210,7 @@ describe('useChatShare', () => {
   })
 
   it('branches an owned chat and navigates to the new chat', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ slug: 'branched-chat' })
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue({ slug: 'branched-chat' })
 
     const { branchOwnedChat } = useChatShare()
 
@@ -224,8 +224,7 @@ describe('useChatShare', () => {
   })
 
   it('branches a shared chat and navigates to the new chat', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ slug: 'branched-chat' })
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue({ slug: 'branched-chat' })
 
     const { branchSharedChat } = useChatShare()
 
@@ -239,8 +238,7 @@ describe('useChatShare', () => {
   })
 
   it('branches a shared chat from a specific message and navigates to the new chat', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ slug: 'branched-chat' })
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue({ slug: 'branched-chat' })
 
     const { branchSharedChat } = useChatShare()
 
@@ -254,8 +252,7 @@ describe('useChatShare', () => {
   })
 
   it('requests a push handoff for the shared chat', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ sent: true })
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue({ sent: true })
 
     const { sendSharedChatToApp, isSendingToApp } = useChatShare()
 
@@ -269,8 +266,7 @@ describe('useChatShare', () => {
   })
 
   it('resets the sending state when the handoff request fails', async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new Error('boom'))
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockRejectedValue(new Error('boom'))
 
     const { sendSharedChatToApp, isSendingToApp } = useChatShare()
 

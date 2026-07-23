@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { effectScope, type EffectScope } from 'vue'
 import { useProjects } from '../../../app/composables/projects'
 import {
@@ -26,6 +27,12 @@ function createDeferred<T>() {
   }
 }
 
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
+
 const scopes: EffectScope[] = []
 
 function createProjectsComposable() {
@@ -48,7 +55,7 @@ describe('useProjects', () => {
     vi.setSystemTime(new Date('2026-03-11T10:00:00.000Z'))
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
+    fetchMock.mockReset()
   })
 
   afterEach(() => {
@@ -70,8 +77,7 @@ describe('useProjects', () => {
       name: 'Fresh project',
     })
     const deferred = createDeferred<ReturnType<typeof createProjectsResponse>>()
-    const fetchMock = vi.fn(() => deferred.promise)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockImplementation(() => deferred.promise)
 
     const firstProjects = createProjectsComposable()
     firstProjects.prime(createProjectsResponse({ projects: [cachedProject] }))
@@ -94,7 +100,7 @@ describe('useProjects', () => {
   it('creates, renames, pins, archives, and deletes projects', async () => {
     const project = createProject({ id: 'project-1', name: 'Inbox' })
     const createdProject = createProject({ id: 'project-2', name: 'Projects' })
-    vi.stubGlobal('$fetch', vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/projects') {
         return Promise.resolve(createdProject)
       }
@@ -108,7 +114,7 @@ describe('useProjects', () => {
       }
 
       return Promise.resolve({ success: true })
-    }))
+    })
 
     const projects = createProjectsComposable()
     projects.prime(createProjectsResponse({ projects: [project] }))
@@ -139,7 +145,7 @@ describe('useProjects', () => {
       name: 'Zulu',
       pinnedAt: '2026-03-10T10:00:00.000Z',
     })
-    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       method?: string
     }) => {
       if (url === '/api/v1/projects' && !options?.method) {
@@ -150,7 +156,7 @@ describe('useProjects', () => {
       }
 
       return Promise.resolve({ pinnedAt: '2026-03-11T10:00:00.000Z' })
-    }))
+    })
 
     const projects = createProjectsComposable()
     projects.sortBy.value = 'name'
@@ -183,7 +189,7 @@ describe('useProjects', () => {
       activityAt: '2026-03-09T09:00:00.000Z',
       pinnedAt: '2026-03-11T08:00:00.000Z',
     })
-    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       method?: string
     }) => {
       if (url === '/api/v1/projects' && !options?.method) {
@@ -194,7 +200,7 @@ describe('useProjects', () => {
       }
 
       return Promise.resolve({ pinnedAt: null })
-    }))
+    })
 
     const projects = createProjectsComposable()
     projects.sortBy.value = 'activity'
@@ -216,7 +222,7 @@ describe('useProjects', () => {
 
     const visibleProject = createProject({ id: 'project-1', name: 'Alpha' })
     const createdProject = createProject({ id: 'project-2', name: 'Projects' })
-    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       method?: string
     }) => {
       if (url === '/api/v1/projects' && options?.method === 'PUT') {
@@ -226,7 +232,7 @@ describe('useProjects', () => {
       return Promise.resolve(createProjectsResponse({
         projects: [visibleProject],
       }))
-    }))
+    })
 
     const projects = createProjectsComposable()
     projects.search.value = 'Alpha'
@@ -247,7 +253,7 @@ describe('useProjects', () => {
       name: 'Archive',
       archivedAt: '2026-03-01T10:00:00.000Z',
     })
-    const fetchMock = vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       query?: {
         archived?: string
         search?: string
@@ -270,7 +276,6 @@ describe('useProjects', () => {
         projects: [activeProject],
       }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const projects = createProjectsComposable()
     projects.sortBy.value = 'activity'
@@ -314,7 +319,7 @@ describe('useProjects', () => {
   it('loads more projects when loadMore is called with a cursor', async () => {
     const firstProject = createProject({ id: 'project-1', name: 'First' })
     const secondProject = createProject({ id: 'project-2', name: 'Second' })
-    const fetchMock = vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       query?: { cursor?: string }
     }) => {
       if (options?.query?.cursor === 'cursor-page-2') {
@@ -329,7 +334,6 @@ describe('useProjects', () => {
         nextCursor: 'cursor-page-2',
       }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const projects = createProjectsComposable()
     projects.search.value = ''
@@ -352,13 +356,12 @@ describe('useProjects', () => {
 
   it('resets cursor when filters change', async () => {
     const project = createProject({ id: 'project-1', name: 'First' })
-    const fetchMock = vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve(createProjectsResponse({
         projects: [project],
         nextCursor: 'cursor-page-2',
       }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const projects = createProjectsComposable()
     projects.search.value = ''

@@ -14,6 +14,8 @@ mockNuxtImport('useRuntimeConfig', () => {
   })
 })
 
+mockNuxtImport('$fetch', () => mocks.fetch)
+
 async function flushPromises() {
   for (let tick = 0; tick < 6; tick += 1) {
     await Promise.resolve()
@@ -28,7 +30,6 @@ describe('usePushNotifications', () => {
   beforeEach(async () => {
     mocks.fetch.mockClear()
     mocks.vapidPublicKey = 'QUJDRA'
-    vi.stubGlobal('$fetch', mocks.fetch)
 
     requestPermissionMock = vi.fn(async () => 'granted')
     getSubscriptionMock = vi.fn(async () => null)

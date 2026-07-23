@@ -1,8 +1,14 @@
 import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useChatFiles } from '../../../app/composables/chat-files'
 
-const uploadWithProgressMock = vi.fn()
+const { uploadWithProgressMock, fetchMock } = vi.hoisted(() => ({
+  uploadWithProgressMock: vi.fn(),
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 vi.mock('~/utils/upload-with-progress', () => ({
   uploadWithProgress: (...args: any[]) => uploadWithProgressMock(...args),
@@ -30,7 +36,7 @@ function createTextFile(name: string, size = 4): File {
 describe('useChatFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubGlobal('$fetch', vi.fn(async (url: string) => {
+    fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/v1/files/policy') {
         return {
           policy: {
@@ -47,12 +53,11 @@ describe('useChatFiles', () => {
       }
 
       throw new Error(`Unhandled $fetch call: ${url}`)
-    }))
+    })
   })
 
   afterEach(() => {
     uploadWithProgressMock.mockReset()
-    vi.unstubAllGlobals()
   })
 
   it('validates max file count before enqueue', async () => {
@@ -69,7 +74,7 @@ describe('useChatFiles', () => {
   })
 
   it('validates total file size before enqueue', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async (url: string) => {
+    fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/v1/files/policy') {
         return {
           policy: {
@@ -86,7 +91,7 @@ describe('useChatFiles', () => {
       }
 
       throw new Error(`Unhandled $fetch call: ${url}`)
-    }))
+    })
 
     const attachedFiles = ref([]) as any
     const { uploadFiles, uploadingFiles } = useChatFiles(attachedFiles)

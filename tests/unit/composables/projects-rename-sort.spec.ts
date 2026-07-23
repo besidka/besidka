@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, type EffectScope } from 'vue'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useProjects } from '../../../app/composables/projects'
 import {
   createProject,
@@ -9,6 +10,12 @@ import {
   installMockNuxtState,
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
+
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 function flushPromises() {
   return Promise.resolve()
@@ -35,7 +42,6 @@ describe('useProjects rename sorting', () => {
     vi.useRealTimers()
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
   })
 
   afterEach(() => {
@@ -50,7 +56,7 @@ describe('useProjects rename sorting', () => {
   it('re-sorts renamed projects when sorting by name', async () => {
     const alphaProject = createProject({ id: 'project-1', name: 'Alpha' })
     const betaProject = createProject({ id: 'project-2', name: 'Beta' })
-    vi.stubGlobal('$fetch', vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       method?: string
     }) => {
       if (url === '/api/v1/projects' && !options?.method) {
@@ -60,7 +66,7 @@ describe('useProjects rename sorting', () => {
       }
 
       return Promise.resolve({ success: true })
-    }))
+    })
 
     const projects = createProjectsComposable()
     projects.prime(createProjectsResponse({

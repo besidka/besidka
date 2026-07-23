@@ -4,12 +4,19 @@ import ShareModal from '../../../../app/components/Chat/ShareModal.client.vue'
 import { useChatShare } from '../../../../app/composables/chat-share'
 import * as messagesComposable from '../../../../app/composables/messages'
 
-const useConfirmMock = vi.hoisted(() => {
-  return vi.fn<() => Promise<boolean | null>>(async () => true)
+const { useConfirmMock, fetchMock } = vi.hoisted(() => {
+  return {
+    useConfirmMock: vi.fn<() => Promise<boolean | null>>(async () => true),
+    fetchMock: vi.fn(),
+  }
 })
 
 mockNuxtImport('useConfirm', () => {
   return useConfirmMock
+})
+
+mockNuxtImport('$fetch', () => {
+  return fetchMock
 })
 
 function resetChatShareState() {
@@ -168,7 +175,7 @@ describe('Chat/ShareModal.client', () => {
   })
 
   it('generates a share link, auto-copies it, and shows the Copied state', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       slug: 'share-1',
       url: 'https://old-preview-host.example/shared/share-1',
       expiresAt: null,
@@ -178,7 +185,6 @@ describe('Chat/ShareModal.client', () => {
       showAuthorAvatar: true,
       allowBranch: true,
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const wrapper = await mountSuspended(ShareModal)
 
@@ -226,7 +232,7 @@ describe('Chat/ShareModal.client', () => {
       },
     })
 
-    const fetchMock = vi.fn().mockResolvedValue({
+    fetchMock.mockResolvedValue({
       slug: 'share-1',
       url: 'https://old-preview-host.example/shared/share-1',
       expiresAt: null,
@@ -236,7 +242,6 @@ describe('Chat/ShareModal.client', () => {
       showAuthorAvatar: true,
       allowBranch: true,
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const wrapper = await mountSuspended(ShareModal)
 
@@ -320,9 +325,7 @@ describe('Chat/ShareModal.client', () => {
 
   it('stops sharing and removes the active share', async () => {
     useConfirmMock.mockResolvedValue(true)
-
-    const fetchMock = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue(undefined)
 
     const { share } = useChatShare()
 
@@ -355,9 +358,7 @@ describe('Chat/ShareModal.client', () => {
 
   it('does not stop sharing when confirmation is declined', async () => {
     useConfirmMock.mockResolvedValue(null)
-
-    const fetchMock = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockResolvedValue(undefined)
 
     const { share } = useChatShare()
 

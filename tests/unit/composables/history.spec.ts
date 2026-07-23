@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { effectScope, type EffectScope } from 'vue'
 import { useHistory } from '../../../app/composables/history'
 import {
@@ -26,6 +27,12 @@ function createDeferred<T>() {
   }
 }
 
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
+
 const scopes: EffectScope[] = []
 
 function createHistoryComposable() {
@@ -48,7 +55,6 @@ describe('useHistory', () => {
     vi.setSystemTime(new Date('2026-03-11T10:00:00.000Z'))
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
   })
 
   afterEach(() => {
@@ -57,15 +63,13 @@ describe('useHistory', () => {
     })
     vi.clearAllTimers()
     vi.useRealTimers()
-    vi.unstubAllGlobals()
   })
 
   it('hydrates cached history immediately and refreshes in the background', async () => {
     const cachedChat = createHistoryChat({ id: 'chat-cached', title: 'Cached chat' })
     const freshChat = createHistoryChat({ id: 'chat-fresh', title: 'Fresh chat' })
     const deferred = createDeferred<ReturnType<typeof createHistoryResponse>>()
-    const fetchMock = vi.fn(() => deferred.promise)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockImplementation(() => deferred.promise)
 
     const firstHistory = createHistoryComposable()
     firstHistory.prime(createHistoryResponse({
@@ -95,7 +99,7 @@ describe('useHistory', () => {
 
     const defaultChat = createHistoryChat({ id: 'chat-default', title: 'Default chat' })
     const searchChat = createHistoryChat({ id: 'chat-search', title: 'Search chat' })
-    const fetchMock = vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       query?: {
         search?: string
       }
@@ -106,7 +110,6 @@ describe('useHistory', () => {
 
       return Promise.resolve(createHistoryResponse({ chats: [defaultChat] }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     await history.hydrateAndRefresh()
@@ -133,13 +136,12 @@ describe('useHistory', () => {
   it('loads more chats using the cursor and appends the next page', async () => {
     const firstChat = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
     const secondChat = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
-    const fetchMock = vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve(createHistoryResponse({
         chats: [secondChat],
         nextCursor: null,
       }))
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({
@@ -158,11 +160,11 @@ describe('useHistory', () => {
 
   it('toggles pin state and re-buckets chats', async () => {
     const chat = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
-    vi.stubGlobal('$fetch', vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve({
         pinnedAt: '2026-03-11T10:00:00.000Z',
       })
-    }))
+    })
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [chat] }))
@@ -188,7 +190,7 @@ describe('useHistory', () => {
     const searchRefresh = createDeferred<
       ReturnType<typeof createHistoryResponse>
     >()
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/api/v1/chats/history/pin') {
         return Promise.resolve({
           pinnedAt: '2026-03-11T10:00:00.000Z',
@@ -197,8 +199,6 @@ describe('useHistory', () => {
 
       return searchRefresh.promise
     })
-
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [defaultChat] }))
@@ -229,10 +229,9 @@ describe('useHistory', () => {
         title: `Chat ${index + 1}`,
       })
     })
-    const fetchMock = vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve({ success: true })
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats }))
@@ -270,8 +269,7 @@ describe('useHistory', () => {
     const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
     const chatThree = createHistoryChat({ id: 'chat-3', title: 'Chat 3' })
     const deferred = createDeferred<{ success: boolean }>()
-    const fetchMock = vi.fn(() => deferred.promise)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockImplementation(() => deferred.promise)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({
@@ -327,10 +325,9 @@ describe('useHistory', () => {
       title: 'Older chat',
       activityAt: '2026-03-10T09:00:00.000Z',
     })
-    const fetchMock = vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve({ success: true })
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({
@@ -364,8 +361,7 @@ describe('useHistory', () => {
     const chatTwo = createHistoryChat({ id: 'chat-2', title: 'Chat 2' })
     const chatThree = createHistoryChat({ id: 'chat-3', title: 'Chat 3' })
     const deferred = createDeferred<{ success: boolean }>()
-    const fetchMock = vi.fn(() => deferred.promise)
-    vi.stubGlobal('$fetch', fetchMock)
+    fetchMock.mockImplementation(() => deferred.promise)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({
@@ -412,14 +408,13 @@ describe('useHistory', () => {
       title: 'Newer chat',
       activityAt: '2026-03-11T09:00:00.000Z',
     })
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url.endsWith('/rename')) {
         return Promise.resolve({ title: 'Renamed chat' })
       }
 
       return Promise.resolve({ success: true })
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({ chats: [newerChat, olderChat] }))
@@ -451,10 +446,9 @@ describe('useHistory', () => {
       slug: 'chat-1',
       activityAt: '2026-03-10T09:00:00.000Z',
     })
-    const fetchMock = vi.fn(() => {
+    fetchMock.mockImplementation(() => {
       return Promise.resolve({ projectId: 'project-2' })
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({
@@ -492,7 +486,7 @@ describe('useHistory', () => {
     const deleteRefresh = createDeferred<
       ReturnType<typeof createHistoryResponse>
     >()
-    const fetchMock = vi.fn((url: string) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url.endsWith('/rename')) {
         return Promise.resolve({ title: 'Renamed report' })
       }
@@ -509,7 +503,6 @@ describe('useHistory', () => {
 
       return deleteRefresh.promise
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const defaultChat = createHistoryChat({
       id: 'chat-1',

@@ -1,7 +1,7 @@
 {
 	"name": "besidka",
 	"type": "module",
-	"packageManager": "pnpm@11.9.0+sha512.bd682d5d03fe525ef7c9fd6780c6884d1e756ac4c9c9fe00c538782824310dcf90e3ddc4f53835f06dfaebd5085e41855e0bcbb3b60de2ac5bbab89e5036f03b",
+	"packageManager": "pnpm@11.15.1",
 	"engines": {
 		"node": ">=24"
 	},
@@ -60,38 +60,38 @@
 		"cms:files:download": "node scripts/cms-bucket-manager.mjs download"
 	},
 	"dependencies": {
-		"@ai-sdk/google": "^4.0.14",
-		"@ai-sdk/openai": "^4.0.13",
+		"@ai-sdk/google": "^4.0.21",
+		"@ai-sdk/openai": "^4.0.17",
 		"@ai-sdk/provider": "^4.0.3",
-		"@ai-sdk/vue": "^4.0.25",
+		"@ai-sdk/vue": "^4.0.34",
 		"@besidka/nuxt-cookie-consent": "workspace:*",
-		"@iconify-json/lucide": "^1.2.117",
-		"@nuxt/content": "^3.15.0",
+		"@iconify-json/lucide": "^1.2.118",
+		"@nuxt/content": "^3.15.1",
 		"@nuxt/eslint": "^1.16.0",
 		"@nuxt/fonts": "^0.14.0",
 		"@nuxt/icon": "^2.3.1",
 		"@nuxt/image": "^2.0.0",
 		"@nuxtjs/color-mode": "^4.0.1",
 		"@nuxtjs/device": "^4.0.0",
-		"@nuxtjs/i18n": "^10.4.1",
-		"@nuxtjs/mdc": "^0.22.1",
-		"@nuxtjs/robots": "^6.1.2",
-		"@nuxtjs/sitemap": "^8.2.2",
-		"@tailwindcss/vite": "^4.3.2",
+		"@nuxtjs/i18n": "^10.5.0",
+		"@nuxtjs/mdc": "^0.22.2",
+		"@nuxtjs/robots": "^6.1.3",
+		"@nuxtjs/sitemap": "^8.3.0",
+		"@tailwindcss/vite": "^4.3.3",
 		"@vite-pwa/nuxt": "^1.1.1",
 		"@vueuse/core": "^14.3.0",
 		"@vueuse/nuxt": "^14.3.0",
-		"ai": "^7.0.25",
+		"ai": "^7.0.34",
 		"better-auth": "^1.6.23",
 		"crypto-shield": "^1.6.2",
-		"daisyui": "^5.6.18",
+		"daisyui": "^5.7.0",
 		"defu": "^6.1.7",
 		"drizzle-kit": "1.0.0-rc.4",
 		"drizzle-orm": "1.0.0-rc.4",
 		"eslint": "^10.7.0",
-		"evlog": "2.20.0",
+		"evlog": "2.22.1",
 		"hashids": "^2.3.0",
-		"nuxt": "^4.4.8",
+		"nuxt": "^4.5.0",
 		"nuxt-studio": "^1.7.0",
 		"nuxt-svgo": "^5.3.0",
 		"plyr": "^3.8.4",
@@ -99,20 +99,20 @@
 		"sanitize-html": "^2.17.6",
 		"shiki": "^4.3.1",
 		"shiki-stream": "^0.1.5",
-		"tailwindcss": "^4.3.2",
+		"tailwindcss": "^4.3.3",
 		"ulid": "^3.0.2",
-		"vue": "^3.5.39",
-		"vue-router": "^5.1.0",
+		"vue": "^3.5.40",
+		"vue-router": "^5.2.0",
 		"web-haptics": "0.0.6",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^5.20260712.1",
+		"@cloudflare/workers-types": "^5.20260721.1",
 		"@commitlint/cli": "^21.2.1",
 		"@commitlint/config-conventional": "^21.2.0",
 		"@commitlint/format": "^21.2.0",
 		"@commitlint/types": "^21.2.0",
-		"@nuxt/kit": "^4.4.8",
+		"@nuxt/kit": "^4.5.0",
 		"@nuxt/test-utils": "^4.0.3",
 		"@playwright/test": "^1.61.1",
 		"@stylistic/eslint-plugin": "^5.10.0",
@@ -122,11 +122,11 @@
 		"@vitest/coverage-v8": "^4.1.10",
 		"@vitest/ui": "^4.1.10",
 		"@vue/test-utils": "^2.4.11",
-		"better-sqlite3": "^12.11.1",
-		"happy-dom": "^20.10.6",
+		"better-sqlite3": "^13.0.1",
+		"happy-dom": "^20.11.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^17.0.8",
-		"mediabunny": "^1.50.8",
+		"lint-staged": "^17.1.0",
+		"mediabunny": "^1.50.9",
 		"msw": "^2.15.0",
 		"playwright-core": "^1.61.1",
 		"typescript": "^6.0.3",
@@ -135,7 +135,7 @@
 		"vitest-environment-nuxt": "^2.0.0",
 		"vue-tsc": "^3.3.7",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.110.0"
+		"wrangler": "^4.113.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
@@ -144,9 +144,6 @@
 		"@react-email/render": {
 			"optional": true
 		}
-	},
-	"overrides": {
-		"vite": "npm:rolldown-vite@latest"
 	},
 	"lint-staged": {
 		"*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}": [

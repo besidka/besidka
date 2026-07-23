@@ -33,11 +33,21 @@ export default defineConfig({
   // Fail the build on CI
   // if you accidentally left test.only in the source code.
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  // CI uses 1 worker; local dev uses 2 workers to keep Vite HMR from
-  // propagating across too many concurrent browser tabs and resetting
-  // reactive component state mid-test.
-  workers: process.env.CI ? 1 : 2,
+  // One local retry absorbs the non-deterministic Vite dev-reload flake below
+  // (a re-run hits now-warm deps); it only masks non-determinism, not real
+  // regressions, which fail both attempts. CI keeps 2 retries.
+  retries: process.env.CI ? 2 : 1,
+  // Run e2e serially (one worker). The Nuxt dev server (Vite) pre-bundles deps
+  // on demand and, on discovering a new one, BROADCASTS a one-time HMR
+  // full-reload to every connected page. With parallel workers that broadcast
+  // reloads another worker's page mid-interaction ("Execution context was
+  // destroyed" / lost scroll or input state), flaking timing-sensitive specs.
+  // A single worker removes that cross-worker amplifier and warms deps
+  // progressively so fragile specs run after their deps are optimized. It does
+  // not stop an in-page reload landing mid-interaction (see signIn's toPass in
+  // helpers/auth.ts), which the lone local retry above covers. Dev-only: a
+  // production build never pre-bundles or reloads.
+  workers: 1,
   // Reporter to use.
   // See https://playwright.dev/docs/test-reporters
   reporter: process.env.CI

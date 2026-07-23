@@ -288,6 +288,13 @@ export default defineNuxtConfig({
     typeCheck: process.env.CI !== 'true',
   },
   vite: {
+    build: {
+      // Vite 8's new cssMinify default ('lightningcss') breaks this app's
+      // light theme in production builds via a DaisyUI/Lightning CSS
+      // selector-specificity interaction. See docs/vite-css-minify.md
+      // before changing or reverting this.
+      cssMinify: 'esbuild',
+    },
     optimizeDeps: {
       include: [
         'better-auth/vue',
@@ -344,6 +351,8 @@ export default defineNuxtConfig({
     typescriptPlugin: true,
     // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
     nitroAutoImports: true,
+    watcher: 'builder',
+    prefetchPreloadTags: true,
   },
   hooks: {
     // App-level cookie texts must merge through the same lazy locale-file

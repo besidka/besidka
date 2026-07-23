@@ -9,6 +9,13 @@ import {
   installMockNuxtState,
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
+
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
 
 function flushPromises() {
   return Promise.resolve()
@@ -47,7 +54,6 @@ describe('useHistory race handling', () => {
     vi.useRealTimers()
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
   })
 
   afterEach(() => {
@@ -72,7 +78,7 @@ describe('useHistory race handling', () => {
       id: 'chat-search',
       title: 'Search chat',
     })
-    const fetchMock = vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       query?: {
         search?: string
       }
@@ -83,7 +89,6 @@ describe('useHistory race handling', () => {
 
       return defaultDeferred.promise
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     const initialRequest = history.hydrateAndRefresh()

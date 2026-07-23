@@ -71,6 +71,7 @@
 
 <script setup lang="ts">
 const route = useRoute()
+const layout = useLayout()
 const ui = useCookieConsentUi()
 const { isDesktop } = useDevice()
 const reducedMotion = usePreferredReducedMotion()
@@ -93,7 +94,7 @@ const isOwnedChatPage = computed<boolean>(() => {
 })
 
 const isChatLayout = computed<boolean>(() => {
-  return route.meta.layout === 'chat'
+  return layout.value === 'chat'
 })
 
 const isSharedChatPage = computed<boolean>(() => {

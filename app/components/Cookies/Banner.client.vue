@@ -1,9 +1,10 @@
 <script setup lang="ts">
 const route = useRoute()
+const layout = useLayout()
 const isDetailsOpen = shallowRef<boolean>(false)
 const ui = useCookieConsentUi()
 const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
-const isChatLayout = computed<boolean>(() => route.meta.layout === 'chat')
+const isChatLayout = computed<boolean>(() => layout.value === 'chat')
 const isHomePage = computed<boolean>(() => route.path === '/')
 const isSharedChatMessageSelected = useState<boolean>(
   'shared-chat-message-selected',

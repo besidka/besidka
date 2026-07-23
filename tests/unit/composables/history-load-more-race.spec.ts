@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { effectScope, type EffectScope } from 'vue'
 import { useHistory } from '../../../app/composables/history'
 import {
@@ -26,6 +27,12 @@ function createDeferred<T>() {
   }
 }
 
+const { fetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+}))
+
+mockNuxtImport('$fetch', () => fetchMock)
+
 const scopes: EffectScope[] = []
 
 function createHistoryComposable() {
@@ -47,7 +54,6 @@ describe('useHistory load-more race handling', () => {
     vi.useRealTimers()
     resetMockNuxtState()
     installMockNuxtState()
-    vi.stubGlobal('$fetch', vi.fn())
   })
 
   afterEach(() => {
@@ -56,7 +62,6 @@ describe('useHistory load-more race handling', () => {
     })
     vi.clearAllTimers()
     vi.useRealTimers()
-    vi.unstubAllGlobals()
   })
 
   it('retries the active search after load-more resolves for an old key', async () => {
@@ -73,7 +78,7 @@ describe('useHistory load-more race handling', () => {
       id: 'chat-search',
       title: 'Search chat',
     })
-    const fetchMock = vi.fn((url: string, options?: {
+    fetchMock.mockImplementation((url: string, options?: {
       query?: {
         cursor?: string
         search?: string
@@ -85,7 +90,6 @@ describe('useHistory load-more race handling', () => {
 
       return loadMoreDeferred.promise
     })
-    vi.stubGlobal('$fetch', fetchMock)
 
     const history = createHistoryComposable()
     history.prime(createHistoryResponse({
