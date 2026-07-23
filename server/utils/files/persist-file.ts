@@ -8,6 +8,7 @@ import {
 import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   getEffectiveUserFilePolicy,
   getUserStorageUsageBytes,
@@ -91,13 +92,15 @@ export async function persistFile(
     logger.set({
       filePersistence: {
         operation: 'r2-put',
-        fileName: input.fileName,
-        mediaType: input.mediaType,
         fileSize,
         source,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        filePersistence: {
+          fileName: input.fileName,
+          mediaType: input.mediaType,
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -146,13 +149,15 @@ export async function persistFile(
     logger.set({
       filePersistence: {
         operation: 'db-insert',
-        fileName: input.fileName,
-        mediaType: input.mediaType,
         fileSize,
         source,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        filePersistence: {
+          fileName: input.fileName,
+          mediaType: input.mediaType,
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -162,14 +167,16 @@ export async function persistFile(
       logger.set({
         filePersistence: {
           operation: 'r2-rollback',
-          fileName: input.fileName,
-          mediaType: input.mediaType,
           fileSize,
           source,
           key: response.key,
-          error: rollbackException instanceof Error
-            ? rollbackException.message
-            : String(rollbackException),
+        },
+        attributes: {
+          filePersistence: {
+            fileName: input.fileName,
+            mediaType: input.mediaType,
+            error: exceptionMessage(rollbackException),
+          },
         },
       })
     }
@@ -242,14 +249,16 @@ async function rollbackPersistedFile(
     input.logger.set({
       filePersistence: {
         operation: 'quota-db-rollback',
-        fileName: input.fileName,
-        mediaType: input.mediaType,
         fileSize: input.fileSize,
         source: input.source,
         key: input.storageKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        filePersistence: {
+          fileName: input.fileName,
+          mediaType: input.mediaType,
+          error: exceptionMessage(exception),
+        },
       },
     })
 
@@ -265,14 +274,16 @@ async function rollbackPersistedFile(
     input.logger.set({
       filePersistence: {
         operation: 'quota-r2-rollback',
-        fileName: input.fileName,
-        mediaType: input.mediaType,
         fileSize: input.fileSize,
         source: input.source,
         key: input.storageKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        filePersistence: {
+          fileName: input.fileName,
+          mediaType: input.mediaType,
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

@@ -180,8 +180,12 @@ export async function normalizeAssistantMessagePartsForPersistence(
         : 'skipped-feature-disabled',
       count: assistantFileParts.length,
       chatId: input.chatId,
-      providerId: input.providerId,
       userId: input.userId,
+    },
+    attributes: {
+      assistantFiles: {
+        providerId: input.providerId,
+      },
     },
   })
 

@@ -6,6 +6,7 @@ import {
   markProjectsMemoryStale,
   refreshProjectMemory,
 } from '~~/server/utils/projects/memory'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -20,9 +21,11 @@ export default defineEventHandler(async (event) => {
       logger.set({
         projectMemoryRefreshError: {
           projectId,
-          message: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        },
+        attributes: {
+          projectMemoryRefreshError: {
+            message: exceptionMessage(exception),
+          },
         },
       })
     }

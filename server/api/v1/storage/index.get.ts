@@ -9,6 +9,7 @@ import {
   resolveServerLogger,
 } from '~~/server/utils/files/logger'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -39,9 +40,11 @@ export default defineEventHandler(async (event): Promise<StorageStats> => {
       cache: {
         operation: 'read',
         key: cacheKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        cache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }
@@ -76,9 +79,11 @@ export default defineEventHandler(async (event): Promise<StorageStats> => {
       cache: {
         operation: 'write',
         key: cacheKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        cache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }
@@ -102,9 +107,11 @@ export async function invalidateStorageCache(
       cache: {
         operation: 'invalidate',
         key: cacheKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        cache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

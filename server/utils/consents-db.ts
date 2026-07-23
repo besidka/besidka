@@ -7,6 +7,7 @@ import type { RequestLogger } from 'evlog'
 import { consentReceipts } from '~~/server/db/consent/schema'
 import type { ConsentDecision } from '~~/server/utils/consents'
 import { DrizzleQueryLogger } from '~~/server/utils/drizzle-logger'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export interface ConsentReceiptRecord {
   id: string
@@ -64,10 +65,10 @@ export async function insertConsentReceipt(
     logger.set({ consentDb: { stored: true } })
   } catch (exception) {
     logger.set({
-      consentDb: {
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      attributes: {
+        consentDb: {
+          error: exceptionMessage(exception),
+        },
       },
     })
 

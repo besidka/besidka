@@ -100,7 +100,11 @@ describe('file-retention cleanup plugin', () => {
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
       retentionCleanupError: expect.objectContaining({
         phase: 'cleanup-run',
-        message: 'cleanup failed',
+      }),
+      attributes: expect.objectContaining({
+        retentionCleanupError: expect.objectContaining({
+          message: 'cleanup failed',
+        }),
       }),
     }))
     expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })

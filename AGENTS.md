@@ -162,6 +162,10 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `esbuild`: a Vite 8 default-change + DaisyUI/Lightning CSS `:is()`
   specificity bug that broke the light theme in production builds only;
   when to prefer lightningcss vs esbuild, and revert criteria
+- `docs/axiom-map-fields.md` - Why `besidka-prod` hit Axiom's 256-field
+  schema limit, the `attributes` map-field convention that fixes it, the
+  `scripts/axiom-declare-map-field.mjs` rollout step that MUST run before
+  deploying, and why the fix doesn't reclaim existing schema headroom
 
 ### Tech Stack
 

@@ -7,6 +7,7 @@ import {
   reserveImageTransformSlots,
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 /**
  * @example
@@ -70,10 +71,14 @@ export default defineEventHandler(async (event) => {
     logger.set({
       upload: {
         operation: 'size-mismatch',
-        fileName,
-        fileType,
         headerFileSize,
         actualFileSize: parsedFileSize,
+      },
+      attributes: {
+        upload: {
+          fileName,
+          fileType,
+        },
       },
     })
   }
@@ -148,12 +153,14 @@ export default defineEventHandler(async (event) => {
         logger.set({
           upload: {
             operation: 'transform-fallback',
-            fileName,
-            fileType,
             fileSize: parsedFileSize,
-            error: exception instanceof Error
-              ? exception.message
-              : String(exception),
+          },
+          attributes: {
+            upload: {
+              fileName,
+              fileType,
+              error: exceptionMessage(exception),
+            },
           },
         })
       }
@@ -161,10 +168,14 @@ export default defineEventHandler(async (event) => {
       logger.set({
         upload: {
           operation: 'transform-skipped',
-          fileName,
-          fileType,
           fileSize: parsedFileSize,
           reason: reservation.reason,
+        },
+        attributes: {
+          upload: {
+            fileName,
+            fileType,
+          },
         },
       })
     }

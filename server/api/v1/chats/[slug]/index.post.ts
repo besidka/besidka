@@ -52,6 +52,7 @@ import {
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -604,9 +605,11 @@ export default defineEventHandler(async (event) => {
         logger.set({
           generationGuard: {
             operation: 'put',
-            error: exception instanceof Error
-              ? exception.message
-              : String(exception),
+          },
+          attributes: {
+            generationGuard: {
+              error: exceptionMessage(exception),
+            },
           },
         })
       }
@@ -855,9 +858,11 @@ export default defineEventHandler(async (event) => {
           logger.set({
             generationGuard: {
               operation: 'delete',
-              error: exception instanceof Error
-                ? exception.message
-                : String(exception),
+            },
+            attributes: {
+              generationGuard: {
+                error: exceptionMessage(exception),
+              },
             },
           })
         }
@@ -1107,10 +1112,10 @@ async function persistAssistantMessageFromStream(input: {
       usage = addImageGenerationCostToUsage(baseUsage, imageGenerationCost)
     } catch (exception) {
       input.logger.set({
-        usageCapture: {
-          error: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        attributes: {
+          usageCapture: {
+            error: exceptionMessage(exception),
+          },
         },
       })
     }

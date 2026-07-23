@@ -89,7 +89,11 @@ export default defineEventHandler(async (event) => {
             phase: 'cancel',
             jobId: job.id,
             errorStatus: exceptionDetails.status,
-            error: exceptionDetails.message,
+          },
+          attributes: {
+            research: {
+              error: exceptionDetails.message,
+            },
           },
         })
       }
