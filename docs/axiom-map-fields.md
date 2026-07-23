@@ -61,7 +61,7 @@ sub-keys different call sites add over time. This mirrors exactly how Axiom
 handles OpenTelemetry's `attributes.custom` field for arbitrary span
 attributes.
 
-Across 26 files, the ~55 field paths identified as high-variety and rarely
+Across 28 files, the ~60 field paths identified as high-variety and rarely
 filtered by exact value — free-form exception messages/stacks, provider ids,
 model ids, media/mime types, and error-code enums with many variants — moved
 from `<domain>.<key>` to `attributes.<domain>.<key>`. Bounded, genuinely
@@ -102,7 +102,7 @@ A small helper, `server/utils/evlog-attributes.ts`, DRYs up the
 that was repeated at ~20 call sites:
 
 ```ts
-import { exceptionMessage, exceptionStack } from '~~/server/utils/evlog-attributes'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 ```
 
 ## Rollout

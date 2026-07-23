@@ -1,4 +1,5 @@
 import type { VapidKeys } from '~~/server/utils/push'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { finalizeResearchJob } from '~~/server/utils/research/finalize'
 
 export interface SweepResearchJobsInput {
@@ -66,9 +67,11 @@ export async function sweepResearchJobs(
         researchSweep: {
           phase: 'finalize',
           jobId: job.id,
-          error: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        },
+        attributes: {
+          researchSweep: {
+            error: exceptionMessage(exception),
+          },
         },
       })
     }
