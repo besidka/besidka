@@ -6,6 +6,7 @@ import * as messagesComposable from '../../../app/composables/messages'
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(async () => undefined),
   vapidPublicKey: 'QUJDRA',
+  loggedIn: true,
 }))
 
 mockNuxtImport('useRuntimeConfig', () => {
@@ -16,6 +17,12 @@ mockNuxtImport('useRuntimeConfig', () => {
 })
 
 mockNuxtImport('$fetch', () => mocks.fetch)
+
+mockNuxtImport('useAuth', () => {
+  return () => ({
+    loggedIn: computed(() => mocks.loggedIn),
+  })
+})
 
 async function flushPromises() {
   for (let tick = 0; tick < 6; tick += 1) {
@@ -31,6 +38,7 @@ describe('usePushNotifications', () => {
   beforeEach(async () => {
     mocks.fetch.mockClear()
     mocks.vapidPublicKey = 'QUJDRA'
+    mocks.loggedIn = true
 
     useState<NotificationPermission>(
       'push-notifications:permission',
@@ -221,6 +229,28 @@ describe('usePushNotifications', () => {
     )
   })
 
+  it('does not re-post an existing subscription on load when logged out', async () => {
+    mocks.loggedIn = false
+
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/existing',
+      getKey: (name: string) => {
+        return name === 'p256dh'
+          ? new TextEncoder().encode('p256dh-bytes').buffer
+          : new TextEncoder().encode('auth-bytes').buffer
+      },
+    })
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+    const composable = usePushNotifications()
+
+    await flushPromises()
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(useErrorMessage).not.toHaveBeenCalled()
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
   it('replaces a stale-key subscription on refresh when granted', async () => {
     Object.defineProperty(globalThis, 'Notification', {
       configurable: true,
@@ -302,6 +332,38 @@ describe('usePushNotifications', () => {
         },
       },
     })
+    expect(composable.isSubscribed.value).toBe(true)
+  })
+
+  it('does not replace a stale-key subscription when logged out', async () => {
+    mocks.loggedIn = false
+
+    Object.defineProperty(globalThis, 'Notification', {
+      configurable: true,
+      value: {
+        permission: 'granted',
+        requestPermission: requestPermissionMock,
+      },
+    })
+
+    const unsubscribeMock = vi.fn(async () => true)
+
+    getSubscriptionMock.mockResolvedValue({
+      endpoint: 'https://push.example.com/stale',
+      options: {
+        applicationServerKey: new TextEncoder().encode('stale-key').buffer,
+      },
+      getKey: () => new TextEncoder().encode('key-bytes').buffer,
+      unsubscribe: unsubscribeMock,
+    })
+
+    const composable = usePushNotifications()
+
+    await flushPromises()
+
+    expect(unsubscribeMock).not.toHaveBeenCalled()
+    expect(subscribeMock).not.toHaveBeenCalled()
+    expect(mocks.fetch).not.toHaveBeenCalled()
     expect(composable.isSubscribed.value).toBe(true)
   })
 
