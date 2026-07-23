@@ -61,6 +61,7 @@ function isApplicationServerKeyStale(
 
 export function usePushNotifications() {
   const { public: { vapidPublicKey } } = useRuntimeConfig()
+  const { loggedIn } = useAuth()
   const permission = useState<NotificationPermission>(
     'push-notifications:permission',
     () => 'default',
@@ -101,7 +102,8 @@ export function usePushNotifications() {
           vapidPublicKey,
         )
 
-      if (isStale && Notification.permission === 'granted') {
+      if (isStale && Notification.permission === 'granted'
+        && loggedIn.value) {
         try {
           await subscription.unsubscribe()
 
@@ -138,7 +140,7 @@ export function usePushNotifications() {
 
       isSubscribed.value = subscription !== null
 
-      if (subscription !== null) {
+      if (subscription !== null && loggedIn.value) {
         try {
           await $fetch('/api/v1/push/subscribe', {
             method: 'POST',
