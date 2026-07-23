@@ -107,7 +107,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^5.20260721.1",
+		"@cloudflare/workers-types": "^5.20260722.1",
 		"@commitlint/cli": "^21.2.1",
 		"@commitlint/config-conventional": "^21.2.0",
 		"@commitlint/format": "^21.2.0",
@@ -125,7 +125,7 @@
 		"better-sqlite3": "^13.0.1",
 		"happy-dom": "^20.11.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^17.1.0",
+		"lint-staged": "^17.1.1",
 		"mediabunny": "^1.50.9",
 		"msw": "^2.15.0",
 		"playwright-core": "^1.61.1",
