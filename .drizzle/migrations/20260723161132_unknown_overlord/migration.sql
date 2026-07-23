@@ -1,0 +1,1 @@
+CREATE INDEX `idx_files_user_id` ON `files` (`user_id`);

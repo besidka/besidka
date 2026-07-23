@@ -15,6 +15,11 @@ const SESSION_TOKEN_COOKIE
 
 export async function useUserSession() {
   const event = useEvent()
+
+  if (event.context.authSession) {
+    return event.context.authSession
+  }
+
   const session = await useServerAuth().api.getSession({
     // @ts-ignore
     headers: getHeaders(event),
