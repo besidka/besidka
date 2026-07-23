@@ -164,8 +164,12 @@ export default defineEventHandler(async (event) => {
       logger.set({
         research: {
           phase: 'start',
-          errorCode: researchFailure.code,
           errorStatus: researchFailure.status,
+        },
+        attributes: {
+          research: {
+            errorCode: researchFailure.code,
+          },
         },
       })
 

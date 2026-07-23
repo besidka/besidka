@@ -19,6 +19,7 @@ import {
   normalizeChatError,
 } from '~~/server/utils/chats/errors'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
 import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
 import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
@@ -97,7 +98,11 @@ export async function finalizeResearchJob(
         phase: 'poll',
         jobId: job.id,
         errorStatus: exceptionDetails.status,
-        error: exceptionDetails.message,
+      },
+      attributes: {
+        research: {
+          error: exceptionDetails.message,
+        },
       },
     })
 
@@ -151,7 +156,11 @@ export async function finalizeResearchJob(
             phase: 'timeout-cancel',
             jobId: job.id,
             errorStatus: exceptionDetails.status,
-            error: exceptionDetails.message,
+          },
+          attributes: {
+            research: {
+              error: exceptionDetails.message,
+            },
           },
         })
       }
@@ -200,7 +209,11 @@ export async function finalizeResearchJob(
         phase: 'result',
         jobId: job.id,
         errorStatus: exceptionDetails.status,
-        error: exceptionDetails.message,
+      },
+      attributes: {
+        research: {
+          error: exceptionDetails.message,
+        },
       },
     })
 
@@ -289,9 +302,11 @@ export async function finalizeResearchJob(
       research: {
         phase: 'finalize-persist',
         jobId: job.id,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        research: {
+          error: exceptionMessage(exception),
+        },
       },
     })
 

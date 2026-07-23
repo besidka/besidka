@@ -144,8 +144,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const sent = outcomes.sent > 0
+  const { failures, ...outcomeCounts } = outcomes
 
-  logger.set({ handoff: { sent, outcomes } })
+  logger.set({
+    handoff: { sent, outcomes: outcomeCounts },
+    attributes: { handoff: { failures } },
+  })
 
   if (!sent) {
     return {

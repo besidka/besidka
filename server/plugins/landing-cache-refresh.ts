@@ -5,6 +5,7 @@ import {
 } from '~~/server/utils/landing/stats'
 import { cachedGithubStars } from '~~/server/utils/landing/github-stars'
 import { shipWideEventToAxiom } from '~~/server/utils/evlog-drains'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const REFRESH_UTC_HOUR = 3
 const LANDING_CACHE_REFRESH_CRON = '0 * * * *'
@@ -87,18 +88,18 @@ export async function runLandingCacheRefreshJob(
         uploadedFiles: statsResult.value.uploadedFiles,
         generatedImages: statsResult.value.generatedImages,
       }
-      : {
-        error: statsResult.reason instanceof Error
-          ? statsResult.reason.message
-          : String(statsResult.reason),
-      },
+      : {},
     githubStars: githubStarsResult.status === 'fulfilled'
       ? { updatedAt: githubStarsResult.value.updatedAt }
-      : {
-        error: githubStarsResult.reason instanceof Error
-          ? githubStarsResult.reason.message
-          : String(githubStarsResult.reason),
-      },
+      : {},
+    attributes: {
+      stats: statsResult.status === 'fulfilled'
+        ? {}
+        : { error: exceptionMessage(statsResult.reason) },
+      githubStars: githubStarsResult.status === 'fulfilled'
+        ? {}
+        : { error: exceptionMessage(githubStarsResult.reason) },
+    },
   })
 
   const status = statsResult.status === 'fulfilled'

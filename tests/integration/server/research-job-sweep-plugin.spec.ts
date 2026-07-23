@@ -127,7 +127,11 @@ describe('research job sweep plugin', () => {
     expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
       researchSweepError: expect.objectContaining({
         phase: 'sweep-run',
-        message: 'sweep failed',
+      }),
+      attributes: expect.objectContaining({
+        researchSweepError: expect.objectContaining({
+          message: 'sweep failed',
+        }),
       }),
     }))
     expect(loggerEmit).toHaveBeenCalledWith({ status: 500 })
