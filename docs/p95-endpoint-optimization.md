@@ -285,22 +285,43 @@ substitute for, the round-trip elimination.
     `401` (session correctly invalidated, no stale-context leak across the
     sign-out boundary).
 
-## Rolling out the migration
+## Rolling out the migration — this is NOT a manual step
 
-The migration (`.drizzle/migrations/20260723161132_unknown_overlord/`) has
-only been applied to this worktree's local D1 for benchmarking and smoke
-testing. Per this repo's D1 migration safety rules, applying it to
-`chat-preview` and then production `chat` is a separate, explicit step:
+Unlike a typical schema change in this repo, applying this migration is
+**not** something anyone needs to remember to run by hand — CI does it
+automatically, with no approval gate in between:
+
+- `.github/workflows/preview-deploy.yml` runs automatically once "Preview
+  Build" succeeds for this PR, and its deploy job runs
+  `wrangler d1 migrations apply DB --remote` against `chat-preview`
+  unattended.
+- `.github/workflows/production.yml` triggers on every push to `main`, and
+  its deploy job runs `wrangler d1 migrations apply DB --remote --env
+  production` against the production `chat` database unattended.
+
+So: merging this PR is what applies `idx_files_user_id` to production — not
+a follow-up command someone runs later. There is no Time Travel bookmark
+step anywhere in either workflow; this repo's D1 safety checklist's "take a
+bookmark first" step is not automated and is on whoever merges to do it
+manually if they want that safety net:
 
 ```bash
 npx wrangler d1 time-travel info chat-preview
-pnpm run db:migrate:preview
-# verify, then:
 npx wrangler d1 time-travel info chat
-pnpm run db:migrate:prod
 ```
 
 This migration is additive-only (`CREATE INDEX`, no `DROP TABLE`) and does
 not touch any cascade-dependent table, so it carries none of the rebuild risk
-this repo's checklist warns about — but the checklist's "take a Time Travel
-bookmark first" step is still cheap insurance and should not be skipped.
+this repo's checklist warns about — but given CI applies it to production
+with no human gate, taking the bookmark before merging is still cheap
+insurance worth doing.
+
+**Important asymmetry to expect post-merge**: the session-dedup, read-first,
+dedup-threading, parallelization, and KV-cache fixes all go live simply by
+deploying the new code — no migration involved. The index is the one fix
+with hard, measured, algorithmic proof (see the benchmark above) but it only
+takes effect once the migration actually runs against `chat`/`chat-preview`
+via the deploy pipelines above. If you check production p95 right after
+merge and the `files.userId`-scan-related improvement seems absent, confirm
+the production deploy job actually completed its migration step before
+concluding anything is wrong.
