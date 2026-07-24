@@ -346,8 +346,12 @@ describe('assistant files scaffolding', () => {
         action: 'skipped-feature-disabled',
         count: 1,
         chatId: 'chat-1',
-        providerId: 'openai',
         userId: 1,
+      },
+      attributes: {
+        assistantFiles: {
+          providerId: 'openai',
+        },
       },
     })
   })

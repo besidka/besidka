@@ -83,6 +83,10 @@ describe('landing cache refresh job', () => {
         githubStars: {
           updatedAt: '2026-07-15T03:00:00.000Z',
         },
+        attributes: {
+          stats: {},
+          githubStars: {},
+        },
       })
       expect(logger.emit).toHaveBeenCalledWith({ status: 200 })
       expect(shipWideEvent).toHaveBeenCalledWith(wideEvent)

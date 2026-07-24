@@ -6,6 +6,7 @@ import { useLogger, createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { finalizeResearchJob } from '~~/server/utils/research/finalize'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 type WaitUntilCtx = {
   cloudflare?: {
@@ -98,9 +99,11 @@ export default defineEventHandler(async (event) => {
       research: {
         phase: 'finalize',
         jobId: job.id,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        research: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

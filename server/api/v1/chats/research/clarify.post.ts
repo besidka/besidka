@@ -63,9 +63,13 @@ export default defineEventHandler(async (event) => {
 
   logger.set({
     userId,
-    providerId: provider.id,
-    model: body.data.model,
     operation: 'research-clarify',
+    attributes: {
+      research: {
+        providerId: provider.id,
+        model: body.data.model,
+      },
+    },
   })
 
   const runtimeConfig = useRuntimeConfig()
@@ -105,9 +109,13 @@ export default defineEventHandler(async (event) => {
 
     logger.set({
       stage: 'generate-clarifications',
-      errorCode: chatError.code,
       providerStatus: chatError.status,
       providerRequestId: chatError.providerRequestId,
+      attributes: {
+        research: {
+          errorCode: chatError.code,
+        },
+      },
     })
 
     throw createError({ ...chatError })

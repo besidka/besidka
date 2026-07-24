@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "axiom": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "mcp-remote",
+                "https://mcp.axiom.co/mcp"
+            ]
+        }
+    }
+}

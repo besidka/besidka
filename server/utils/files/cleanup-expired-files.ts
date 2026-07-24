@@ -3,6 +3,7 @@ import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import type { LoggerLike } from '~~/server/utils/files/logger'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export interface CleanupExpiredFilesInput {
   now?: Date
@@ -71,9 +72,11 @@ export async function cleanupExpiredFiles(
           storageKey: file.storageKey,
           userId: file.userId,
           expiresAt,
-          error: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        },
+        attributes: {
+          retentionCleanup: {
+            error: exceptionMessage(exception),
+          },
         },
       })
       continue
@@ -89,9 +92,11 @@ export async function cleanupExpiredFiles(
           storageKey: file.storageKey,
           userId: file.userId,
           expiresAt,
-          error: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        },
+        attributes: {
+          retentionCleanup: {
+            error: exceptionMessage(exception),
+          },
         },
       })
     }
@@ -112,9 +117,11 @@ export async function cleanupExpiredFiles(
           storageKey: file.storageKey,
           userId: file.userId,
           expiresAt,
-          error: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        },
+        attributes: {
+          retentionCleanup: {
+            error: exceptionMessage(exception),
+          },
         },
       })
 
@@ -133,9 +140,11 @@ export async function cleanupExpiredFiles(
         retentionCleanup: {
           phase: 'storage-cache-invalidate',
           userId,
-          error: exception instanceof Error
-            ? exception.message
-            : String(exception),
+        },
+        attributes: {
+          retentionCleanup: {
+            error: exceptionMessage(exception),
+          },
         },
       })
     }

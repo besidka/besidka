@@ -87,7 +87,11 @@ describe('sweepResearchJobs', () => {
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       researchSweep: expect.objectContaining({
         jobId: 'job-1',
-        error: 'boom',
+      }),
+      attributes: expect.objectContaining({
+        researchSweep: expect.objectContaining({
+          error: 'boom',
+        }),
       }),
     }))
   })

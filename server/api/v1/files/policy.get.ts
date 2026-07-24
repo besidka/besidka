@@ -4,6 +4,7 @@ import {
   getEffectiveUserFilePolicy,
   getGlobalMonthlyTransformStats,
 } from '~~/server/utils/files/file-governance'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -36,9 +37,11 @@ export default defineEventHandler(async (
       cache: {
         operation: 'read',
         key: cacheKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        cache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }
@@ -62,9 +65,11 @@ export default defineEventHandler(async (
       cache: {
         operation: 'write',
         key: cacheKey,
-        error: exception instanceof Error
-          ? exception.message
-          : String(exception),
+      },
+      attributes: {
+        cache: {
+          error: exceptionMessage(exception),
+        },
       },
     })
   }

@@ -132,13 +132,17 @@ export function createImageGenerationTool(
         input.logger.set({
           imageGeneration: {
             status: 'ready',
-            provider: input.provider,
-            model: input.model,
             durationMs: Date.now() - startedAt,
             size: persistedFile.size,
-            mediaType: persistedFile.type,
             warnings: result.warnings.length,
-            usage: result.usage,
+          },
+          attributes: {
+            imageGeneration: {
+              provider: input.provider,
+              model: input.model,
+              mediaType: persistedFile.type,
+              usage: result.usage,
+            },
           },
         })
 
@@ -168,13 +172,17 @@ export function createImageGenerationTool(
         input.logger.set({
           imageGeneration: {
             status: 'failed',
-            provider: input.provider,
-            model: input.model,
             durationMs: Date.now() - startedAt,
-            errorCode: safeError.code,
             providerStatus: safeError.providerStatus,
             providerRequestId: safeError.providerRequestId,
             requestId: input.requestId,
+          },
+          attributes: {
+            imageGeneration: {
+              provider: input.provider,
+              model: input.model,
+              errorCode: safeError.code,
+            },
           },
         })
 

@@ -47,7 +47,8 @@ stats.html
 
 # Agents
 .claude/plans
-.pi
+.pi/*
+!.pi/mcp.json
 .herdr
 
 # Snyk Security Extension - AI Rules (auto-generated)
@@ -58,3 +59,6 @@ stats.html
 
 # CMS bucket assets (large binary files — upload to R2 instead)
 .files/
+
+# Axiom dashboards (separate repo)
+.axiom-dashboard/
