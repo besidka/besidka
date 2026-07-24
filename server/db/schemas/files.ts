@@ -30,5 +30,6 @@ export const files = snakeCase.table(
     uniqueIndex('uq_file_user').on(table.id, table.userId),
     uniqueIndex('uq_file_storageKey').on(table.storageKey),
     index('idx_files_expires_at').on(table.expiresAt),
+    index('idx_files_user_id').on(table.userId),
   ],
 )

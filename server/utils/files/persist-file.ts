@@ -1,4 +1,4 @@
-import type { FileMetadata, FileSource } from '#shared/types/files.d'
+import type { FileMetadata, FilePolicy, FileSource } from '#shared/types/files.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { and, eq } from 'drizzle-orm'
 import {
@@ -29,6 +29,8 @@ export interface PersistFileInput {
   originModel?: string | null
   generationCost?: number | null
   logger?: LoggerLike
+  policy?: FilePolicy
+  totalFilesSize?: number
 }
 
 export type PersistedFile = Pick<
@@ -58,8 +60,10 @@ export async function persistFile(
     })
   }
 
-  const policy = await getEffectiveUserFilePolicy(input.userId)
-  const totalFilesSize = await getUserStorageUsageBytes(input.userId)
+  const policy = input.policy
+    ?? await getEffectiveUserFilePolicy(input.userId)
+  const totalFilesSize = input.totalFilesSize
+    ?? await getUserStorageUsageBytes(input.userId)
   const wouldExceed = totalFilesSize + quotaSizeBytes > policy.maxStorageBytes
   const expiresAt = getExpiresAtByRetentionDays(policy.fileRetentionDays)
 

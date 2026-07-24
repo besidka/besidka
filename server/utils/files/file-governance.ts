@@ -33,6 +33,21 @@ interface StoragePolicyRow {
   imageTransformUsedTotal: number
 }
 
+type TransformSlotPolicy = Pick<
+  StoragePolicyRow,
+  'imageTransformLimitTotal' | 'imageTransformUsedTotal'
+>
+
+const storagePolicyRowColumns = {
+  tier: true,
+  storage: true,
+  maxFilesPerMessage: true,
+  maxMessageFilesBytes: true,
+  fileRetentionDays: true,
+  imageTransformLimitTotal: true,
+  imageTransformUsedTotal: true,
+} as const
+
 interface TransformSlotReservation {
   reserved: boolean
   used: number
@@ -64,13 +79,22 @@ export async function getOrCreateStoragePolicyRow(
   userId: number,
 ): Promise<StoragePolicyRow> {
   const db = useDb()
+  const existingRow = await db.query.storages.findFirst({
+    where: { userId },
+    columns: storagePolicyRowColumns,
+  })
+
+  if (existingRow) {
+    return existingRow
+  }
+
   const config = useRuntimeConfig().public
   const defaultMaxFilesPerMessage = config.maxFilesPerMessage
     || DEFAULT_MAX_FILES_PER_MESSAGE
   const defaultMaxMessageFilesBytes = config.maxMessageFilesBytes
     || DEFAULT_MAX_MESSAGE_FILES_BYTES
 
-  await db
+  const insertedRow = await db
     .insert(schema.storages)
     .values({
       userId,
@@ -83,29 +107,34 @@ export async function getOrCreateStoragePolicyRow(
       imageTransformUsedTotal: 0,
     })
     .onConflictDoNothing()
-    .run()
+    .returning({
+      tier: schema.storages.tier,
+      storage: schema.storages.storage,
+      maxFilesPerMessage: schema.storages.maxFilesPerMessage,
+      maxMessageFilesBytes: schema.storages.maxMessageFilesBytes,
+      fileRetentionDays: schema.storages.fileRetentionDays,
+      imageTransformLimitTotal: schema.storages.imageTransformLimitTotal,
+      imageTransformUsedTotal: schema.storages.imageTransformUsedTotal,
+    })
+    .get()
 
-  const row = await db.query.storages.findFirst({
+  if (insertedRow) {
+    return insertedRow
+  }
+
+  const raceWinnerRow = await db.query.storages.findFirst({
     where: { userId },
-    columns: {
-      tier: true,
-      storage: true,
-      maxFilesPerMessage: true,
-      maxMessageFilesBytes: true,
-      fileRetentionDays: true,
-      imageTransformLimitTotal: true,
-      imageTransformUsedTotal: true,
-    },
+    columns: storagePolicyRowColumns,
   })
 
-  if (!row) {
+  if (!raceWinnerRow) {
     throw createError({
       statusCode: 500,
       statusMessage: 'Failed to initialize user storage policy',
     })
   }
 
-  return row
+  return raceWinnerRow
 }
 
 export function getEffectiveFilePolicy(
@@ -280,6 +309,26 @@ export async function getGlobalMonthlyTransformStats(
   const db = useDb()
   const monthKey = getCurrentMonthKey()
   const limit = getGlobalMonthlyTransformLimit()
+  const existingRow = await db.query.imageTransformUsageMonthly.findFirst({
+    where: { monthKey },
+    columns: {
+      monthKey: true,
+      transformsUsed: true,
+      transformsLimit: true,
+    },
+  })
+
+  if (existingRow && existingRow.transformsLimit === limit) {
+    return {
+      monthKey: existingRow.monthKey,
+      used: existingRow.transformsUsed,
+      limit: existingRow.transformsLimit,
+      remaining: Math.max(
+        existingRow.transformsLimit - existingRow.transformsUsed,
+        0,
+      ),
+    }
+  }
 
   await db
     .insert(schema.imageTransformUsageMonthly)
@@ -326,22 +375,27 @@ export async function getGlobalMonthlyTransformStats(
 
 export async function reserveImageTransformSlots(
   userId: number,
+  policy?: TransformSlotPolicy,
 ): Promise<TransformSlotReservation> {
-  const policy = await getOrCreateStoragePolicyRow(userId)
+  const effectivePolicy = policy
+    || await getOrCreateStoragePolicyRow(userId)
 
   if (
-    policy.imageTransformLimitTotal !== null
-    && policy.imageTransformLimitTotal <= 0
+    effectivePolicy.imageTransformLimitTotal !== null
+    && effectivePolicy.imageTransformLimitTotal <= 0
   ) {
     return {
       reserved: false,
-      used: policy.imageTransformUsedTotal,
-      limit: policy.imageTransformLimitTotal,
+      used: effectivePolicy.imageTransformUsedTotal,
+      limit: effectivePolicy.imageTransformLimitTotal,
       reason: 'disabled',
     }
   }
 
-  const userReservation = await reserveUserTransformSlot(userId, policy)
+  const userReservation = await reserveUserTransformSlot(
+    userId,
+    effectivePolicy,
+  )
 
   if (!userReservation.reserved) {
     return userReservation
@@ -503,7 +557,7 @@ export async function getOwnedGeneratedImageFilesByStorageKeys(
 
 async function reserveUserTransformSlot(
   userId: number,
-  policy: StoragePolicyRow,
+  policy: TransformSlotPolicy,
 ): Promise<TransformSlotReservation> {
   const db = useDb()
   const userLimit = policy.imageTransformLimitTotal

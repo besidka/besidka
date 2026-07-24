@@ -57,7 +57,8 @@
 		"test:cookie-consent": "pnpm --filter @besidka/nuxt-cookie-consent test:run",
 		"landing:video": "node scripts/landing-demo-video.mjs",
 		"cms:files:upload": "node scripts/cms-bucket-manager.mjs upload",
-		"cms:files:download": "node scripts/cms-bucket-manager.mjs download"
+		"cms:files:download": "node scripts/cms-bucket-manager.mjs download",
+		"bench:files-index": "node scripts/bench/files-user-id-index.mjs"
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^4.0.21",

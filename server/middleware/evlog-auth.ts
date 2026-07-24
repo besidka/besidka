@@ -1,6 +1,7 @@
 import { useLogger } from 'evlog'
 import { createAuthMiddleware } from 'evlog/better-auth'
 import type { BetterAuthInstance } from 'evlog/better-auth'
+import type { AuthSession } from '~~/server/types/h3-context'
 
 type Identify = ReturnType<typeof createAuthMiddleware>
 
@@ -20,10 +21,14 @@ function getIdentify(): Identify {
         '/api/_evlog/**',
         '/api/_nuxt_icon/**',
         '/api/v1/stats*',
+        '/api/v1/consents*',
         '/_nuxt/**',
         '/health',
       ],
       maskEmail: true,
+      onIdentify: (_logger, session) => {
+        useEvent().context.authSession = session as AuthSession
+      },
       onAnonymous: (logger) => {
         logger.set({ anonymous: true })
       },

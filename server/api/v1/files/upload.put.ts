@@ -90,8 +90,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const policy = await getEffectiveUserFilePolicy(userId)
-  const totalFilesSize = await getUserStorageUsageBytes(userId)
+  const [policy, totalFilesSize] = await Promise.all([
+    getEffectiveUserFilePolicy(userId),
+    getUserStorageUsageBytes(userId),
+  ])
   const wouldExceed = totalFilesSize + parsedFileSize > policy.maxStorageBytes
 
   if (wouldExceed) {
@@ -112,7 +114,7 @@ export default defineEventHandler(async (event) => {
   let hasReservedTransformSlots = false
 
   if (isFileImage) {
-    const reservation = await reserveImageTransformSlots(userId)
+    const reservation = await reserveImageTransformSlots(userId, policy)
 
     if (reservation.reserved) {
       hasReservedTransformSlots = true
@@ -185,6 +187,8 @@ export default defineEventHandler(async (event) => {
       quotaSizeBytes: parsedFileSize,
       source: 'upload',
       logger,
+      policy,
+      totalFilesSize,
     })
   } catch (exception) {
     if (!transformed && hasReservedTransformSlots) {

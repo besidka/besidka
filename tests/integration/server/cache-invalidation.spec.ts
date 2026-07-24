@@ -73,6 +73,19 @@ describe('cache invalidation helpers', () => {
     expect(loggerSet).toHaveBeenCalledTimes(1)
   })
 
+  it('deletes both the storage-stats and file-policy cache keys', async () => {
+    const invalidateStorageCache = await getInvalidateStorageCache()
+
+    vi.stubGlobal('useEvent', () => {
+      throw new Error('Request event is unavailable')
+    })
+
+    await expect(invalidateStorageCache(12)).resolves.toBeUndefined()
+
+    expect(mocks.kvDelete).toHaveBeenCalledWith('storage-stats:12')
+    expect(mocks.kvDelete).toHaveBeenCalledWith('file-policy:12')
+  })
+
   it('falls back to no-op logger when event is unavailable', async () => {
     const invalidateFileCache = await getInvalidateFileCache()
     const invalidateStorageCache = await getInvalidateStorageCache()

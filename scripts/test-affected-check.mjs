@@ -561,6 +561,7 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/session\.ts$/,
       tests: [
+        'tests/integration/server/session.spec.ts',
         'tests/integration/api/chats-new.spec.ts',
         'tests/integration/api/projects.spec.ts',
         'tests/integration/api/chats-branch.spec.ts',
