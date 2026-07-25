@@ -11,6 +11,7 @@ on:
       - '.claude/**'
       - '.cursor/**'
       - '.windsurf/**'
+      - '.pi/**'
       - '.github/**'
       - '.husky/**'
       - '.vscode/**'
@@ -70,6 +71,7 @@ jobs:
           ignored = [
               '.ai/**',
               '.claude/**',
+              '.pi/**',
               '.github/**',
               '.husky/**',
               '.vscode/**',

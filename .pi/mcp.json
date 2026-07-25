@@ -7,6 +7,14 @@
                 "mcp-remote",
                 "https://mcp.axiom.co/mcp"
             ]
+        },
+        "nuxt": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "mcp-remote",
+                "https://nuxt.com/mcp"
+            ]
         }
     }
 }
