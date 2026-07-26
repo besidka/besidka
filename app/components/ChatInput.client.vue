@@ -67,7 +67,7 @@
             @focus="onKeyboardFocus"
             @blur="onKeyboardBlur"
           />
-          <div class="flex items-center justify-between gap-2 p-2">
+          <div class="flex items-center justify-between gap-2 p-2 pb-0">
             <div class="flex items-center gap-2 max-md:grow">
               <div class="max-md:grow min-w-0">
                 <LazyChatInputModelsTrigger
@@ -286,7 +286,7 @@
             reveal a fixed strip from the container's top, so anything above the
             textarea eats into the draft text visible while peeking.
           -->
-          <p class="px-3 pt-1.5 text-center text-2xs text-base-content/60">
+          <p class="px-3 pb-2 text-center text-2xs text-base-content/60">
             AI-generated responses can be inaccurate — verify important
             information.
             <NuxtLink to="/terms-of-use" class="link link-accent">
