@@ -26,6 +26,7 @@
 	},
 	"vars": {
 		"NUXT_PUBLIC_BASE_URL": "https://besidka-preview.chernenko.workers.dev",
+		"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
 		"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
 		"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
 		"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
@@ -139,6 +140,7 @@
 			},
 			"vars": {
 				"NUXT_PUBLIC_BASE_URL": "https://www.besidka.com",
+				"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
 				"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
 				"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
 				"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
@@ -149,6 +151,7 @@
 				"NUXT_RESEARCH_SWEEP_ENABLED": true,
 				"NUXT_RESEARCH_SWEEP_BATCH_SIZE": 20,
 				"NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
+				"NUXT_RESEARCH_MOCK_ENABLED": true,
 				"NUXT_AXIOM_DATASET": "besidka-prod",
 				"NUXT_AXIOM_AUDIT_DATASET": "besidka-audit-prod",
 				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod"
