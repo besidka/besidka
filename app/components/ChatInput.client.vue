@@ -287,8 +287,7 @@
             textarea eats into the draft text visible while peeking.
           -->
           <p class="px-3 pb-2 text-center text-2xs text-base-content/60">
-            AI-generated responses can be inaccurate — verify important
-            information.
+            AI can make mistakes.
             <NuxtLink to="/terms-of-use" class="link link-accent">
               Terms of Use
             </NuxtLink>
