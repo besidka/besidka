@@ -21,6 +21,7 @@
       <div class="flex items-center gap-2">
         <SidebarThemeSwitcher
           show-label
+          mode="default"
           size="sm"
         />
         <UiButton
@@ -37,7 +38,7 @@
             <Icon
               name="lucide:log-out"
               size="20"
-              class="cta-icon-left"
+              class="cta-icon order-last"
             />
           </template>
         </UiButton>

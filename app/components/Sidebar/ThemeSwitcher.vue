@@ -6,8 +6,11 @@
     <UiButton
       data-testid="theme-switcher"
       ghost
+      :mode="mode"
       :circle="!showLabel"
       :icon-only="!showLabel"
+      :icon-only-mobile="showLabel"
+      :class="{ 'max-lg:btn-circle': showLabel }"
       :size="size"
       :tooltip-position="tipsPosition"
       :title="label"
@@ -56,18 +59,21 @@
 
 <script setup lang="ts">
 import type { FaviconTheme, ThemePreference } from '~/types/favicon.d'
+import type { ButtonProps } from '~/types/button.d'
 
 interface Props {
   tips?: boolean
   tipsPosition?: 'right' | 'left' | 'top' | 'bottom'
   size?: 'xs' | 'sm' | 'md' | 'lg'
   showLabel?: boolean
+  mode?: ButtonProps['mode']
 }
 
 withDefaults(defineProps<Props>(), {
   size: 'md',
   tipsPosition: 'bottom',
   showLabel: false,
+  mode: 'primary',
 })
 
 const { setFavicon } = useThemeFavicon()
