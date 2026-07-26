@@ -720,9 +720,12 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * The clip is a clip-path: circle() that grows from a small circle (the
  * peek) to one large enough to expose the whole pill, so the reveal
  * visibly grows the circle into the pill and the collapse shrinks it back
- * — a smoothly interpolated mirror on the same duration as the slide. The
- * revealed radius is kept large enough that button tooltips and submenu
- * popovers are never clipped in the settled hover state.
+ * — a smoothly interpolated mirror on the same duration as the slide.
+ *
+ * The revealed radius must reach the farthest submenu icon, not just the
+ * pill — the submenus open wider than it, and every icon added pushes that
+ * corner ~3.5rem further out. The widest today needs 20.2rem, so 28rem
+ * carries about two icons of headroom. Adding more means re-measuring.
  * ─────────────────────────────────────────────────────────────────── */
 .sidebar-clip {
   display: contents;
@@ -758,7 +761,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
 
   .sidebar-hoverable:hover .sidebar-clip,
   .sidebar-hoverable:focus-within .sidebar-clip {
-    clip-path: circle(20rem at center);
+    clip-path: circle(28rem at center);
     transform: translateX(0);
   }
 }
