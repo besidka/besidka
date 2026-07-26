@@ -65,12 +65,11 @@ useHead({
 const { baseUrl } = useRuntimeConfig().public
 const route = useRoute()
 
-// Every page inherits this, so it must resolve per-route: a single global
-// `baseUrl` advertised the home page as the canonical URL and og:url of all
-// 15 routes. `new URL` also normalises `/` to a trailing slash, matching the
-// <loc> that @nuxtjs/sitemap emits, so the two never disagree.
+// `baseUrl` is '' unless NUXT_PUBLIC_BASE_URL is set, and an empty base throws.
+const siteOrigin = (baseUrl as string) || useRequestURL().origin
+
 const canonicalUrl = computed<string>(() => {
-  return new URL(route.path, baseUrl as string).href
+  return buildCanonicalUrl(siteOrigin, route.path)
 })
 
 useSeoMeta({
@@ -80,7 +79,7 @@ useSeoMeta({
   ogTitle: siteName,
   description: description as string,
   ogDescription: description as string,
-  ogImage: `${baseUrl}/og-image.png`,
+  ogImage: buildCanonicalUrl(siteOrigin, '/og-image.png'),
   twitterCard: 'summary_large_image',
 })
 

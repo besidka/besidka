@@ -19,18 +19,27 @@ describe('robots and sitemap configuration contract', () => {
   })
 
   it(
-    'does not disallow auth routes, since a Disallow-ed URL is never '
-    + 'fetched so its noindex meta is never read and the URL can still be '
-    + 'indexed without content — the landing hero CTA links straight to '
-    + '/signup, so those pages rely on a crawlable useSeoMeta '
-    + 'noindex/nofollow instead',
+    'does not disallow the crawler-reachable auth routes, since a '
+    + 'Disallow-ed URL is never fetched so its noindex meta is never read '
+    + 'and the bare URL can still be indexed without content — the hero CTA '
+    + 'links to /signup and /signin links to /reset-password, so those pages '
+    + 'rely on a crawlable useSeoMeta noindex/nofollow instead',
     () => {
       const disallow = configuration.robots?.disallow
 
       expect(disallow).not.toContain('/signin')
       expect(disallow).not.toContain('/signup')
       expect(disallow).not.toContain('/reset-password')
-      expect(disallow).not.toContain('/new-password')
+    },
+  )
+
+  it(
+    'still disallows /new-password, which is only reachable through a '
+    + 'tokened email link — nothing crawlable points at it, so there is no '
+    + 'discovery for a noindex to prevent, and keeping it disallowed keeps '
+    + 'token-bearing URLs away from crawlers and link prefetchers',
+    () => {
+      expect(configuration.robots?.disallow).toContain('/new-password')
     },
   )
 

@@ -62,16 +62,24 @@ row has `indexable = true`.
 `/signin`, `/signup`, `/reset-password`, `/new-password`, and shared chats with
 `indexable = false`.
 
-### Why the auth routes are noindex but NOT robots-disallowed
+### Why most auth routes are noindex but NOT robots-disallowed
 
 They used to be both, which is self-defeating: a `Disallow`-ed URL is never
-fetched, so its `noindex` is never read — and the URL can still be indexed
-without content if anything links to it. The landing hero's primary CTA links
-straight to `/signup`, so crawlers discover it regardless.
+fetched, so its `noindex` is never read — and the bare URL can still be indexed
+without content if anything links to it. Crawlers reach these pages regardless:
+the landing hero's primary CTA links to `/signup`, and `/signin` links to
+`/reset-password`.
 
-The fix is to allow the crawl and let the `noindex` do the work. Each auth page
-sets `robots: 'noindex, nofollow'` via `useSeoMeta`. **If you re-add these paths
-to `robots.disallow` in `nuxt.config.ts`, you silently re-break this.**
+So for `/signin`, `/signup` and `/reset-password` the fix is to allow the crawl
+and let the `noindex` do the work. Each sets `robots: 'noindex, nofollow'` via
+`useSeoMeta`. **If you re-add those paths to `robots.disallow` in
+`nuxt.config.ts`, you silently re-break this.**
+
+`/new-password` is deliberately the exception and remains disallowed. It is only
+ever reached through a tokened link in an email, so nothing crawlable points at
+it and there is no discovery for a `noindex` to prevent. Keeping it disallowed
+also keeps a token-bearing URL out of scope for crawlers and link prefetchers —
+worth noting because this site serves Cloudflare `speculation-rules`.
 
 `/api/`, `/chats/`, `/files/`, `/profile/`, `/_studio`, `/__nuxt_studio` and
 `/__nuxt_content/` remain disallowed — those either require auth (so a crawler
@@ -259,6 +267,20 @@ for p in / /privacy /terms /signin; do
     '<title>[^<]*</title>|<link rel="canonical" href="[^"]*"|<meta property="og:url" content="[^"]*"|<meta name="robots" content="[^"]*"'
 done
 ```
+
+### Preview deployments are already protected
+
+A preview Worker (`pr-<n>-besidka-preview.chernenko.workers.dev`) serves
+`robots: index, follow` in the page **and** `x-robots-tag: noindex` as an HTTP
+header. The header is the more restrictive signal and wins, so previews are not
+indexable — this is not a bug to fix. Previews also self-canonicalise to the
+preview host rather than to production, which is harmless precisely because the
+header keeps them out of the index.
+
+Note the asymmetry when reading preview output: `robots.txt` and `sitemap.xml`
+on a preview host correctly advertise the **production** `https://www.besidka.com`
+URLs (they come from `site.url`), while the in-page canonical comes from the
+runtime `baseUrl` and therefore shows the preview host. Both are expected.
 
 ### The post-deploy trap
 

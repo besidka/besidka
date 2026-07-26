@@ -35,6 +35,8 @@ definePageMeta({
 
 const { baseUrl } = useRuntimeConfig().public
 
+const siteOrigin = (baseUrl as string) || useRequestURL().origin
+
 // Provided synchronously (before the await below) so MDC-rendered widgets
 // can inject their data. All structured data lives in frontmatter (page
 // settings in Studio) and is forwarded here to inject('home:data').
@@ -72,10 +74,7 @@ const faqs = computed<FaqItem[]>(() => {
 const hero = computed(() => page.value?.hero)
 const description = computed<string>(() => page.value?.description ?? '')
 
-// Brand-first, and the global "<chunk> | Besidka" template is switched off
-// below so the brand is not repeated. "Besidka" collides with unrelated
-// entrenched entities in search, so the home page — the one page carrying the
-// entity — leads with the brand token rather than trailing it.
+// Brand-first; `titleTemplate: null` below stops the brand appearing twice.
 const fullTitle = computed<string>(() => {
   const chunk = page.value?.title
 
@@ -88,7 +87,7 @@ useSeoMeta({
   description: () => description.value,
   ogDescription: () => description.value,
   ogType: 'website',
-  ogImage: `${baseUrl}/og-image.png`,
+  ogImage: buildCanonicalUrl(siteOrigin, '/og-image.png'),
   ogImageWidth: 1200,
   ogImageHeight: 630,
   ogSiteName: 'Besidka',
@@ -96,7 +95,7 @@ useSeoMeta({
   twitterCard: 'summary_large_image',
   twitterTitle: () => fullTitle.value,
   twitterDescription: () => description.value,
-  twitterImage: `${baseUrl}/og-image.png`,
+  twitterImage: buildCanonicalUrl(siteOrigin, '/og-image.png'),
   twitterSite: '@besidka_ai',
   robots: 'index, follow',
 })
@@ -113,7 +112,7 @@ useHead({
     {
       type: 'application/ld+json',
       innerHTML: () => JSON.stringify(buildLandingGraphLd({
-        baseUrl: baseUrl as string,
+        baseUrl: siteOrigin,
         siteName: siteName as string,
         description: description.value,
         faqs: faqs.value,

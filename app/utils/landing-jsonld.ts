@@ -1,14 +1,9 @@
 /**
- * Structured data for the landing page, emitted as a single `@graph` so the
- * nodes cross-reference each other by `@id` instead of repeating themselves.
- *
- * `alternateName` carries the Cyrillic and "AI"-suffixed spellings. The brand
- * token "Besidka" collides with an entrenched Czech-language entity
- * (besidka.cz, a hotel) and with the generic Ukrainian noun "бесідка" (a garden
- * gazebo), so search engines need an explicit machine-readable statement that
- * these strings all name this software. The on-page FAQ entry "What does
- * Besidka mean?" is the human-readable half of the same claim — keep the two
- * in sync.
+ * Landing-page structured data as one `@graph` so nodes cross-reference by
+ * `@id`. `alternateName` carries the Cyrillic and "AI"-suffixed spellings,
+ * because "Besidka" collides with unrelated entrenched entities in search.
+ * Keep it in sync with the "What does Besidka mean?" FAQ entry — that is the
+ * on-page half of the same claim. See docs/seo.md.
  */
 
 const ALTERNATE_NAMES = [

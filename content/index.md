@@ -129,7 +129,7 @@ faqs:
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
   - question: What does "Besidka" mean?
-    answer: Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think, and it derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”). Besidka AI is not affiliated with any hotel, restaurant, or garden-furniture business of the same name.
+    answer: Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think, and it derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
   - question: How to pronounce Besidka?
     answer: |-
       Besidka is pronounced “beh-SEED-kah”.
