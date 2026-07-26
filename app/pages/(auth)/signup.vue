@@ -253,6 +253,7 @@ definePageMeta({
 if (import.meta.server) {
   useSeoMeta({
     title: 'Sign Up',
+    robots: 'noindex, nofollow',
   })
 }
 

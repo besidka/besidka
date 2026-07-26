@@ -282,10 +282,6 @@ export function getAffectedTests(changedFiles) {
       tests: emailTests,
     },
     {
-      pattern: /^server\/routes\/sitemap\.xml\.ts$/,
-      tests: seoTests,
-    },
-    {
       pattern: /^nuxt\.config\.ts$/,
       tests: seoTests,
     },
@@ -316,6 +312,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^shared\/types\/landing\.d\.ts$/,
       tests: landingTests,
+    },
+    {
+      pattern: /^app\/pages\/index\.vue$/,
+      tests: ['tests/unit/utils/landing-jsonld.spec.ts'],
     },
     {
       pattern: /^server\/api\/v1\/stats\/.*\.ts$/,

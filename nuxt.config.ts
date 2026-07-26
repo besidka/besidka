@@ -173,16 +173,17 @@ export default defineNuxtConfig({
     url: process.env.NUXT_PUBLIC_BASE_URL || 'https://www.besidka.com',
     name: 'Besidka',
   },
+  // The auth routes are deliberately NOT disallowed here: the hero CTA links
+  // to /signup, so crawlers discover it either way, and a Disallow-ed URL is
+  // never fetched — meaning its `noindex` is never read and the URL can still
+  // be indexed without content. Each auth page sets `robots: noindex, nofollow`
+  // in useSeoMeta instead, which requires the crawl to be allowed to work.
   robots: {
     disallow: [
       '/api/',
       '/chats/',
       '/files/',
       '/profile/',
-      '/signin',
-      '/signup',
-      '/new-password',
-      '/reset-password',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/',

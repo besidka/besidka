@@ -158,6 +158,7 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Sign In',
+  robots: 'noindex, nofollow',
 })
 
 const { Validation } = useValidation()

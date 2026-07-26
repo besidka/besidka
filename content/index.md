@@ -1,5 +1,5 @@
 ---
-title: Open-source AI chat with BYOK
+title: Open-source, self-hostable AI chat (BYOK)
 benefits:
   - icon: lucide:piggy-bank
     title: Stop paying for days you don't chat
@@ -108,7 +108,7 @@ comparison:
         - no
   note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup. Image generation is billed separately at the provider's published image rates.
   priceDate: June 2026
-description: Your digital besidka for all AI chats. Bring your own API keys, pay only for what you use, and keep full control. No subscriptions, no markup, no lock-in.
+description: Besidka is an open-source, self-hostable AI chat app. Bring your own OpenAI or Google API key and pay the provider directly. No subscriptions, no markup, no lock-in.
 faqs:
   - question: What does BYOK mean?
     answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from OpenAI or Google AI Studio directly. You pay the provider at their published rates — Besidka adds no markup.
@@ -129,7 +129,7 @@ faqs:
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
   - question: What does "Besidka" mean?
-    answer: The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. The word derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
+    answer: Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think, and it derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”). Besidka AI is not affiliated with any hotel, restaurant, or garden-furniture business of the same name.
   - question: How to pronounce Besidka?
     answer: |-
       Besidka is pronounced “beh-SEED-kah”.
@@ -167,8 +167,8 @@ features:
     body: Kick off an autonomous agent that browses the web, cross-checks sources, and writes a cited report while you do something else. Runs on your own key for roughly $1 to $10 per task, with a push notification when it's done.
 hero:
   eyebrow: OPEN SOURCE · BYOK · SELF-HOSTABLE
-  headline: Open-source AI chat. Your keys, your costs.
-  subheadline: Self-host or use besidka.com — pay per use, no subscriptions, no markup, no lock-in.
+  headline: Besidka — open-source AI chat. Your keys, your costs.
+  subheadline: Self-host it or use besidka.com. Switch between GPT and Gemini models on your own API key — pay per use, no subscriptions, no markup, no lock-in.
   primaryCta:
     label: Start chatting
     href: /signup

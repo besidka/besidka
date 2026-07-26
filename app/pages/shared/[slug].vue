@@ -312,8 +312,6 @@ if (import.meta.server && data.value) {
   }
 }
 
-const { baseUrl } = useRuntimeConfig().public
-
 const description = computed<string>(() => {
   const firstUserMessage = data.value?.messages.find((message) => {
     return message.role === 'user'
@@ -331,19 +329,9 @@ useSeoMeta({
   robots: () => data.value?.indexable ? 'index, follow' : 'noindex, nofollow',
   ogTitle: () => data.value?.title || 'Shared chat',
   ogDescription: () => description.value,
-  ogUrl: () => `${baseUrl}/shared/${shareSlug.value}`,
   twitterCard: 'summary_large_image',
   twitterTitle: () => data.value?.title || 'Shared chat',
   twitterDescription: () => description.value,
-})
-
-useHead({
-  link: [
-    {
-      rel: 'canonical',
-      href: () => `${baseUrl}/shared/${shareSlug.value}`,
-    },
-  ],
 })
 
 const { messageComponents, getUnwrap } = useChatFormat()

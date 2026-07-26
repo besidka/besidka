@@ -22,15 +22,11 @@
 </template>
 
 <script setup lang="ts">
-import {
-  buildFaqPageLd,
-  buildOrganizationLd,
-  buildSoftwareApplicationLd,
-} from '~/utils/landing-jsonld'
+import type { FaqItem } from '~/utils/landing-jsonld'
+import { buildLandingGraphLd } from '~/utils/landing-jsonld'
 
-const { themeColor } = useAppConfig()
+const { siteName, themeColor } = useAppConfig()
 
-type FaqItem = { question: string, answer: string }
 type HomeData = Record<string, unknown>
 
 definePageMeta({
@@ -76,17 +72,21 @@ const faqs = computed<FaqItem[]>(() => {
 const hero = computed(() => page.value?.hero)
 const description = computed<string>(() => page.value?.description ?? '')
 
-const fullTitle = computed(() => {
+// Brand-first, and the global "<chunk> | Besidka" template is switched off
+// below so the brand is not repeated. "Besidka" collides with unrelated
+// entrenched entities in search, so the home page — the one page carrying the
+// entity — leads with the brand token rather than trailing it.
+const fullTitle = computed<string>(() => {
   const chunk = page.value?.title
-  return chunk ? `${chunk} | Besidka` : 'Besidka'
+
+  return chunk ? `${siteName} — ${chunk}` : siteName
 })
 
 useSeoMeta({
-  title: () => page.value?.title || null,
+  title: () => fullTitle.value,
   ogTitle: () => fullTitle.value,
   description: () => description.value,
   ogDescription: () => description.value,
-  ogUrl: baseUrl as string,
   ogType: 'website',
   ogImage: `${baseUrl}/og-image.png`,
   ogImageWidth: 1200,
@@ -102,9 +102,7 @@ useSeoMeta({
 })
 
 useHead({
-  link: [
-    { rel: 'canonical', href: baseUrl as string },
-  ],
+  titleTemplate: null,
   meta: [
     {
       name: 'theme-color',
@@ -114,24 +112,12 @@ useHead({
   script: [
     {
       type: 'application/ld+json',
-      innerHTML: () => JSON.stringify(buildSoftwareApplicationLd({
+      innerHTML: () => JSON.stringify(buildLandingGraphLd({
         baseUrl: baseUrl as string,
-        siteName: 'Besidka',
+        siteName: siteName as string,
         description: description.value,
+        faqs: faqs.value,
       })).replace(/</g, '\\u003c'),
-    },
-    {
-      type: 'application/ld+json',
-      innerHTML: () => JSON.stringify(buildOrganizationLd({
-        baseUrl: baseUrl as string,
-        siteName: 'Besidka',
-      })).replace(/</g, '\\u003c'),
-    },
-    {
-      type: 'application/ld+json',
-      innerHTML: () => JSON.stringify(
-        buildFaqPageLd(faqs.value),
-      ).replace(/</g, '\\u003c'),
     },
   ],
 })

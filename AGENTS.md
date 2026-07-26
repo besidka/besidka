@@ -166,6 +166,12 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   schema limit, the `attributes` map-field convention that fixes it, the
   `scripts/axiom-declare-map-field.mjs` rollout step that MUST run before
   deploying, and why the fix doesn't reclaim existing schema headroom
+- `docs/seo.md` - Canonical/`og:url` derivation, the indexable surface and why
+  auth routes are noindex-but-crawlable, the "besidka"/"бесідка" brand-entity
+  collision the schema and copy are shaped around, deliberate non-actions
+  (`llms.txt`, dynamic OG images, `nuxt-schema-org`, `/uk`, sitemap `lastmod`,
+  indexing shared chats), the off-page checklist, and the SWR/buildId
+  post-deploy verification trap
 
 ### Tech Stack
 
@@ -200,9 +206,29 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   rules locally with `curl 'http://localhost:3000/robots.txt?mockProductionEnv'`.
 - Studio OAuth callback URL must also use the `www` host
   (`https://www.besidka.com/_studio`).
-- Only `/`, `/privacy`, `/terms` are public/indexable; authenticated app routes
-  (`/chats/**`, `/profile/**`), auth routes, `/api/**`, `/_studio`, and
-  `/__nuxt_content/**` are disallowed in robots and excluded from the sitemap.
+- **Canonical and `og:url` are derived per route in `app/app.vue`** from
+  `useRoute()` — a single source of truth that every page inherits. Do NOT add a
+  per-page `canonical` or `ogUrl`; the global one is already correct and a second
+  tag risks a duplicate. `new URL()` normalises `/` to a trailing slash so the
+  canonical matches the `<loc>` the sitemap emits.
+- Indexable: `/`, `/privacy`, `/terms`, and `/shared/<publicId>` when that
+  share's `indexable` flag is set. Everything else is `noindex, nofollow`.
+  `/api/`, `/chats/`, `/files/`, `/profile/`, `/_studio`, `/__nuxt_studio` and
+  `/__nuxt_content/` are also disallowed in robots.
+- **Auth routes (`/signin`, `/signup`, `/reset-password`, `/new-password`) are
+  `noindex` but deliberately NOT in `robots.disallow`.** A disallowed URL is
+  never fetched, so its `noindex` is never read — yet it can still be indexed
+  without content, and the landing hero CTA links straight to `/signup`.
+  Re-adding these paths to `robots.disallow` silently re-breaks this.
+- Shared chats are **not** in the sitemap, by decision — see `docs/seo.md`.
+- Landing structured data is one hand-rolled `@graph` in
+  `app/utils/landing-jsonld.ts` (`Organization` + `WebSite` +
+  `SoftwareApplication` + `FAQPage`, linked by `@id`). `alternateName` carries
+  `Бесідка`/`Besidka AI` to disambiguate the brand from unrelated entities that
+  own the same word; keep it in sync with the "What does Besidka mean?" FAQ entry.
+- Full audit, brand-entity strategy, the rejected options (`llms.txt`,
+  `nuxt-og-image`, `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
+  checklist live in `docs/seo.md`. Read it before changing SEO behaviour.
 
 ### Key Patterns
 

@@ -65,6 +65,7 @@ definePageMeta({
 
 useSeoMeta({
   title: 'Reset Password',
+  robots: 'noindex, nofollow',
 })
 
 const { Validation } = useValidation()
