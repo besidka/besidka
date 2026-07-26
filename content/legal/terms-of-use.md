@@ -2,7 +2,7 @@
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
 updatedAt: 2026-07-26
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key and pay that provider directly — you never pay me. You must be at least 16. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key and pay that provider directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -46,7 +46,7 @@ The absence of any revenue is not an accident, and it is part of what these term
 
 ## Who may use it
 
-You must be at least **16 years old**. Poland has set the age for a child's own consent to data processing at 16, and I do not operate an under-16 service. By using Besidka you confirm you are 16 or over.
+You must be at least **18 years old**. Besidka only works if you bring your own AI provider API key, and the providers set their own minimum age for an API account — Google AI Studio requires you to be 18 or over. You cannot use Besidka without such an account, so 18 is the minimum here too. By using Besidka you confirm you are 18 or over.
 
 ## Your account
 

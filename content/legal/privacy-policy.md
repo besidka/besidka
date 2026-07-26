@@ -227,7 +227,7 @@ I do not ask for it, I have no lawful basis to process it, and content you type 
 
 ## Age limit
 
-Besidka is for people aged **16 or over**. Poland has set the age for a child's own consent under GDPR Art. 8 at 16. If you are under 16, please do not create an account. If you believe a child under 16 has an account, write to **{{ privacyEmail }}** and I will delete it.
+Besidka is for people aged **18 or over**. Using Besidka requires your own AI provider API key, and the providers set 18 as the minimum age for an API account — Google AI Studio requires you to be 18 or over — so there is no younger tier for me to support. Because the service is adults-only, the children's consent rules in GDPR Art. 8 do not arise. If you are under 18, please do not create an account. If you believe someone under 18 has an account, write to **{{ privacyEmail }}** and I will delete it.
 
 ## Your rights
 
