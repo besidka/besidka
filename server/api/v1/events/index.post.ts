@@ -12,7 +12,13 @@ const CLIENT_ALLOWED_EVENTS = new Set<ClientLandingEventName>([
   'video_complete',
   'github_click',
 ])
-const CLIENT_ALLOWED_PATHS = ['/', '/privacy', '/terms'] as const
+// Must track the public route slugs, or client events from them 400.
+const CLIENT_ALLOWED_PATHS = [
+  '/',
+  '/privacy-policy',
+  '/terms-of-use',
+  '/cookie-policy',
+] as const
 
 const bodySchema = z.object({
   event: z.string().max(64),

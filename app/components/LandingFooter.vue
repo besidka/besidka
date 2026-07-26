@@ -116,16 +116,22 @@
             class="flex flex-col gap-2 max-sm:items-center"
           >
             <NuxtLink
-              to="/terms"
+              to="/terms-of-use"
               class="link link-hover text-sm"
             >
-              Terms of Service
+              Terms of Use
             </NuxtLink>
             <NuxtLink
-              to="/privacy"
+              to="/privacy-policy"
               class="link link-hover text-sm"
             >
               Privacy Policy
+            </NuxtLink>
+            <NuxtLink
+              to="/cookie-policy"
+              class="link link-hover text-sm"
+            >
+              Cookie Policy
             </NuxtLink>
           </nav>
         </div>

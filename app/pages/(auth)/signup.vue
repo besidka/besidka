@@ -207,7 +207,7 @@
           :disabled="pending"
           class="sm:-mt-3"
         >
-          Agree to the <NuxtLink to="/terms" class="underline hover:no-underline">Terms of Service</NuxtLink> and <NuxtLink to="/privacy" class="underline hover:no-underline">Privacy Policy</NuxtLink>
+          Agree to the <NuxtLink to="/terms-of-use" class="underline hover:no-underline">Terms of Use</NuxtLink> and <NuxtLink to="/privacy-policy" class="underline hover:no-underline">Privacy Policy</NuxtLink>
         </UiFormCheckbox>
       </UiFormFieldset>
       <UiFormFieldset :inputs="false" class="flex justify-center mt-4">
