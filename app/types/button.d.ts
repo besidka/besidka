@@ -40,6 +40,7 @@ export interface ButtonProps {
   iconOnly?: boolean
   iconOnlyDesktop?: boolean
   iconOnlyMobile?: boolean
+  iconOnlyPhone?: boolean
   iconName?: string
   iconNameDisabled?: string
   iconSize?: number

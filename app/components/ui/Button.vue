@@ -24,6 +24,7 @@
             'sr-only': iconOnly,
             'max-lg:not-sr-only lg:sr-only': iconOnlyDesktop && !iconOnly,
             'max-lg:sr-only lg:not-sr-only': iconOnlyMobile && !iconOnly,
+            'max-sm:sr-only sm:not-sr-only': iconOnlyPhone && !iconOnly,
           }"
         >
           <span
@@ -35,7 +36,7 @@
             {{ text }}
           </span>
           <span
-            v-if="mobileText && !(iconOnly || iconOnlyMobile)"
+            v-if="mobileText && !(iconOnly || iconOnlyMobile || iconOnlyPhone)"
             class="lg:sr-only"
             :class="{ capitalize: !normalCase }"
           >
