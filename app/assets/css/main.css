@@ -804,5 +804,30 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * the cookie-policy tables almost borderless. Restate the colour directly.
  */
 .prose :is(th, td) {
+  @apply py-2 px-3;
+
   border-color: var(--color-base-300);
+}
+
+.prose thead th {
+  @apply text-accent dark:text-base-content;
+}
+
+.prose thead tr {
+  @apply !bg-pink-100 dark:!bg-pink-950;
+}
+
+.prose tbody tr {
+  @apply even:bg-pink-100/30 dark:even:bg-pink-100/5;
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6) > a {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
 }

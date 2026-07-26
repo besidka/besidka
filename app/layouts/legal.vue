@@ -6,9 +6,11 @@
   >
     Skip to main content
   </a>
-  <LandingHeader />
-  <main id="content">
-    <NuxtPage />
-  </main>
-  <LandingFooter />
+  <div class="relative z-30">
+    <LandingHeader />
+    <main id="content">
+      <NuxtPage />
+    </main>
+    <LandingFooter />
+  </div>
 </template>
