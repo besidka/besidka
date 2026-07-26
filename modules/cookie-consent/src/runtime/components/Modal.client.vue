@@ -49,7 +49,7 @@ function handleKeydown(event: KeyboardEvent): void {
 watch(
   () => ui.view.value === 'modal',
   (isVisible) => {
-    if (!isVisible) {
+    if (!isVisible || !ui.shouldFocusOnShow()) {
       return
     }
 

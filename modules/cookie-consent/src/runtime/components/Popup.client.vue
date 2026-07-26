@@ -94,7 +94,7 @@ watch(
 watch(
   () => ui.view.value === 'popup',
   (isVisible) => {
-    if (!isVisible) {
+    if (!isVisible || !ui.shouldFocusOnShow()) {
       return
     }
 
