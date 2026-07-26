@@ -1,11 +1,10 @@
 <script setup lang="ts">
-const route = useRoute()
 const layout = useLayout()
 const isDetailsOpen = shallowRef<boolean>(false)
 const ui = useCookieConsentUi()
 const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
 const isChatLayout = computed<boolean>(() => layout.value === 'chat')
-const isHomePage = computed<boolean>(() => route.path === '/')
+const hasSidebar = useHasSidebar()
 const isSharedChatMessageSelected = useState<boolean>(
   'shared-chat-message-selected',
   () => false,
@@ -36,7 +35,7 @@ const isSharedChatMessageSelected = useState<boolean>(
         left-2 sm:left-4 z-40
         max-sm:btn-sm hitslop
       "
-      :class="isHomePage
+      :class="!hasSidebar
         ? 'max-sm:bottom-[calc(var(--spacing)*6+var(--sab))]'
         : 'max-sm:bottom-[calc(var(--spacing)*24+var(--sab))]'"
     >
@@ -73,7 +72,7 @@ const isSharedChatMessageSelected = useState<boolean>(
         w-[min(20rem,calc(100vw-2rem))]
         focus:outline-none focus-visible:outline-none
       "
-      :class="isHomePage
+      :class="!hasSidebar
         ? 'max-sm:bottom-[calc(var(--spacing)*20+var(--sab))]'
         : 'max-sm:bottom-[calc(var(--spacing)*38+var(--sab))]'"
     >

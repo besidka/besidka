@@ -34,7 +34,7 @@
     <UiMessages />
     <LazyChatShareModal />
     <LazyNotificationPrompt />
-    <Sidebar v-if="$route.path !== '/'" />
+    <Sidebar v-if="hasSidebar" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />
   </ClientOnly>
@@ -64,6 +64,7 @@ useHead({
 
 const { baseUrl } = useRuntimeConfig().public
 const route = useRoute()
+const hasSidebar = useHasSidebar()
 
 // `baseUrl` is '' unless NUXT_PUBLIC_BASE_URL is set, and an empty base throws.
 const siteOrigin = (baseUrl as string) || useRequestURL().origin
