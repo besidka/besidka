@@ -34,6 +34,15 @@
       title="API keys"
       circle
     />
+    <UiButton
+      to="/profile/settings"
+      :disabled="$route.path === '/profile/settings'"
+      ghost
+      icon-name="lucide:settings"
+      :icon-only="true"
+      title="Settings"
+      circle
+    />
     <LazySidebarPushToggle />
   </LazySidebarSubmenu>
   <template v-else>

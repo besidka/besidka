@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
 import * as schema from '../db/schema'
+import { purgeUserData } from './account/purge-user-data'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -21,6 +22,7 @@ function createAuth() {
   const kv = useKV()
   const dataKey = 'auth'
   const rateLimitTtl = 60
+  const deleteAccountTokenTtl = 60 * 60
 
   const allowedHosts = getAllowedHosts(config.public.baseUrl)
 
@@ -137,7 +139,43 @@ function createAuth() {
         clientSecret: config.githubClientSecret,
       },
     },
+    user: {
+      deleteUser: {
+        enabled: true,
+        deleteTokenExpiresIn: deleteAccountTokenTtl,
+        // Configuring this callback moves erasure to a two-step flow:
+        // POST /delete-user only mails a token, and the confirmation link
+        // (GET /delete-user/callback) performs the deletion. That path never
+        // reaches Better Auth's session-freshness gate, so erasure stays
+        // reachable for OAuth-only users — who have no password to satisfy it
+        // — without relaxing `session.freshAge` for every sensitive endpoint.
+        async sendDeleteAccountVerification({ user, url }) {
+          if (import.meta.dev) {
+            // eslint-disable-next-line no-console
+            console.log(`Account deletion link for ${user.email}: ${url}`)
+            return
+          }
+
+          const { send: sendEmail } = useEmail()
+
+          await sendEmail({
+            to: user.email,
+            subject: 'Confirm deleting your account',
+            html: `Click the link to permanently delete your account and all associated data: ${url}`,
+            text: `Click the link to permanently delete your account and all associated data: ${url}`,
+          })
+        },
+        async beforeDelete(user) {
+          await purgeUserData({ userId: Number(user.id) })
+        },
+      },
+    },
     account: {
+      // Covers `accessToken` and `refreshToken` only — Better Auth writes
+      // `idToken` in plaintext regardless (api/routes/callback.mjs and
+      // oauth2/link-account.mjs pass it straight through), so "OAuth tokens
+      // are encrypted" is narrower than it sounds.
+      encryptOAuthTokens: true,
       accountLinking: {
         enabled: true,
         trustedProviders: ['google', 'github', 'email-password'],
