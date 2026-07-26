@@ -1,6 +1,7 @@
 <template>
   <article
     class="max-w-3xl mx-auto w-full px-3 sm:px-6 py-10 flex flex-col gap-6"
+    @click.capture="onAnchorClick"
   >
     <header class="flex flex-col gap-2">
       <h1 class="text-3xl sm:text-4xl font-black text-base-content">
@@ -44,6 +45,8 @@ const { doc } = defineProps<{ doc?: LegalCollectionItem | null }>()
 
 // Reaches the markdown as {{ privacyEmail }} via ContentRenderer's `data`.
 const { privacyEmail } = useRuntimeConfig().public
+
+const { onAnchorClick } = useHashAnchorScroll()
 
 const formattedUpdatedAt = computed<string>(() => {
   if (!doc?.updatedAt) {

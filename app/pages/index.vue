@@ -124,32 +124,6 @@ useHead({
 onMounted(async () => {
   await nextTick()
 
-  const { hash } = window.location
-
-  if (!hash) {
-    return
-  }
-
-  const target = document.querySelector<HTMLElement>(hash)
-
-  if (!target) {
-    return
-  }
-
-  // Deep links / reloads jump instantly; in-page anchor clicks stay smooth
-  // (the scroll container has scroll-smooth in app.vue). We temporarily
-  // disable smooth scrolling on the scroller for this one programmatic jump.
-  const scroller = target.closest<HTMLElement>('.overflow-y-auto')
-  const previousBehavior = scroller?.style.scrollBehavior
-
-  if (scroller) {
-    scroller.style.scrollBehavior = 'auto'
-  }
-
-  target.scrollIntoView({ block: 'start' })
-
-  if (scroller) {
-    scroller.style.scrollBehavior = previousBehavior || ''
-  }
+  scrollToHash(window.location.hash, { instant: true })
 })
 </script>
