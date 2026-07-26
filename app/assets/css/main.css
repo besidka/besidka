@@ -812,6 +812,29 @@ html body[data-studio-active][data-expand-sidebar]::before {
   border-color: var(--color-base-300);
 }
 
+/*
+ * daisyUI ships its own unlayered `.prose` rule
+ * (`:root .prose { & :where(code):not(pre > code) { ... } }`) that turns
+ * every inline `code` into a rounded pill (background + padding +
+ * border-radius). That reads fine for a short word, but a long token like
+ * `better-auth.last_used_login_method` inside a table cell has no spaces
+ * to wrap on, so it breaks mid-word into two disconnected pill fragments.
+ *
+ * Must stay UNLAYERED for the same reason as the `.prose` block above, and
+ * at least as specific as daisyUI's `:root .prose` selector (two
+ * class/pseudo-class selectors) to actually win the cascade rather than
+ * relying on source order.
+ */
+:root .prose :is(th, td) code:not(pre > code) {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  padding-inline: 0;
+  padding-block: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .prose thead th {
   @apply text-accent dark:text-base-content;
 }
