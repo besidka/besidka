@@ -2,7 +2,7 @@
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
 updatedAt: 2026-07-26
-summary: "Besidka stores your account, chats, files, settings and your encrypted AI provider API key on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied — that provider is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. We never train any model on your data, we never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
+summary: "Besidka stores your account, chats, files, settings and your encrypted AI provider API key on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied — that provider is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
 ## What this policy covers
@@ -10,9 +10,9 @@ summary: "Besidka stores your account, chats, files, settings and your encrypted
 This policy applies to the hosted service at **www.besidka.com** only.
 
 Besidka is open-source software. If you run your own copy of it, **you** are the
-data controller for that deployment. We have no access to it, and this policy
+data controller for that deployment. I have no access to it, and this policy
 does not apply to it. Under the EU AI Act you would also be the provider or
-deployer of that system, not us.
+deployer of that system, not me.
 
 ## Who is responsible for your data
 
@@ -27,23 +27,23 @@ registration behind it.
 - Email: **{{ privacyEmail }}**
 - Location: **Poland (European Union)**
 
-We tell you the country because it decides which supervisory authority is
+I tell you the country because it decides which supervisory authority is
 competent for you to complain to — see [Complaining](#complaining).
 
-We are too small to be required to appoint a data protection officer, and we
-have not appointed one. Write to the address above and you reach the controller
-directly, not a bot.
+Besidka does not process personal data on the scale that requires a data
+protection officer, so none has been appointed. Write to the address above and
+you reach the controller directly, not a bot.
 
 ## How Besidka works, in one paragraph
 
 Besidka is a free AI chat app. You bring your own API key from an AI provider
 (OpenAI or Google AI Studio), and you pay that provider directly for the usage.
-**There is no payment relationship between you and us at all** — no
+**There is no payment relationship between you and me at all** — no
 subscription, no ads, no donations, no payment processor, and therefore no
-billing or card data anywhere in this policy. What we store is what is needed
+billing or card data anywhere in this policy. What I store is what is needed
 to run the chat app for you.
 
-## What we store
+## What I store
 
 Everything below lives in a Cloudflare D1 database, except files, which live in
 Cloudflare R2 object storage.
@@ -55,7 +55,7 @@ Cloudflare R2 object storage.
   when the session was created
 - Your linked Google or GitHub account, if you sign in that way, and which
   sign-in method you used last
-- A hash of your password, if you sign in with a password. We never store the
+- A hash of your password, if you sign in with a password. I never store the
   password itself.
 
 ### Your content
@@ -86,13 +86,13 @@ that the whole database is encrypted at the application level.
 
 ### Operational logs
 
-We record structured logs of requests and errors so we can keep the service
+I record structured logs of requests and errors so I can keep the service
 working. What goes into those logs is described under
 [Operational logging](#operational-logging).
 
-## Why we are allowed to process your data
+## Why I am allowed to process your data
 
-| What we do | Legal basis |
+| What I do | Legal basis |
 | --- | --- |
 | Create your account, sign you in, keep you signed in | Contract — GDPR Art. 6(1)(b) |
 | Store your chats, messages, projects, files and settings | Contract — Art. 6(1)(b) |
@@ -106,27 +106,27 @@ working. What goes into those logs is described under
 | Error and operational logging | Legitimate interests — Art. 6(1)(f) |
 | Security, abuse prevention and rate limiting | Legitimate interests — Art. 6(1)(f) |
 
-Where we rely on legitimate interests, our interest is keeping a free service
-running, debuggable and not abused. We only log what we need for that, and we
+Where I rely on legitimate interests, my interest is keeping a free service
+running, debuggable and not abused. I only log what I need for that, and I
 never log the content of your messages. You can object to this processing — see
 [Your rights](#your-rights).
 
-Where we rely on consent, you can withdraw it at any time, and withdrawing is
+Where I rely on consent, you can withdraw it at any time, and withdrawing is
 as easy as giving it.
 
 ## The AI provider you choose
 
 This is the most important section of this policy, so please read it.
 
-When you send a message, we send your prompt, the message history of that chat
-and any attachments to the AI provider whose API key you supplied. We send it
+When you send a message, I send your prompt, the message history of that chat
+and any attachments to the AI provider whose API key you supplied. I send it
 **with your own API key**, on your instruction.
 
-Those providers are **independent controllers**, not our processors. We have no
+Those providers are **independent controllers**, not my processors. I have no
 contract with them about your data. Your relationship is directly with them,
 under the terms of your own OpenAI or Google account. What they do with your
 content, how long they keep it and how you delete it is governed by their
-terms, not ours.
+terms, not mine.
 
 ### If you use a free Google Gemini key
 
@@ -147,10 +147,10 @@ OpenAI states that it does not use data submitted through its API to train its
 models by default. It does retain logs for abuse monitoring, and those logs can
 contain your prompts, for **up to 30 days**.
 
-### We never train on your data
+### I never train on your data
 
-We do not train, fine-tune or evaluate any model on your chats, files or any
-other data you give us. There is no opt-out to offer, because it never happens.
+I do not train, fine-tune or evaluate any model on your chats, files or any
+other data you give me. There is no opt-out to offer, because it never happens.
 
 Whether the **provider** trains on your content is a matter between you and
 that provider, decided by your own account and contract with them.
@@ -159,19 +159,19 @@ that provider, decided by your own account and contract with them.
 
 | Recipient | What they receive | Where | Safeguard |
 | --- | --- | --- | --- |
-| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing | EU and US | Processor for us. Certified under the EU–US Data Privacy Framework. |
-| Axiom | Operational and error logs | US | Processor for us. Standard Contractual Clauses. |
+| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
+| Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
 | OpenAI or Google AI Studio | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
 | Google FCM, Apple APNs, Mozilla autopush | The push endpoint your browser issued, plus the encrypted notification | Depends on your browser vendor | Necessary to deliver a push notification you asked for. |
-| Google or GitHub | Only if you use them to sign in. We request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
+| Google or GitHub | Only if you use them to sign in. I request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
 | Search engines | A shared chat, and only if you turned on the separate indexing option for that share | Worldwide | Your consent. |
 
-We do not sell your data. We do not share it with advertisers, data brokers or
+I do not sell your data. I do not share it with advertisers, data brokers or
 analytics networks. There are no advertising or tracking scripts on the site.
 
-We may disclose data if we are legally required to, for example in response to
-a valid order from a Polish authority. If that happens and we are allowed to
-tell you, we will.
+I may disclose data if I am legally required to, for example in response to
+a valid order from a Polish authority. If that happens and I am allowed to
+tell you, I will.
 
 ## Transfers outside the EU
 
@@ -184,9 +184,9 @@ hold with them.
 
 ## Operational logging
 
-Our logs are deliberately narrow. Specifically:
+My logs are deliberately narrow. Specifically:
 
-- **No raw IP address is ever written to our logs.** We keep only coarse
+- **No raw IP address is ever written to my logs.** I keep only coarse
   metadata that Cloudflare attaches to the request: the data centre, country,
   region, continent, network operator (ASN) and timezone.
 - Email addresses in authentication flows are **masked** before they are logged.
@@ -194,7 +194,7 @@ Our logs are deliberately narrow. Specifically:
   logged.**
 - Push endpoints and push keys are never logged.
 
-## How long we keep things
+## How long I keep things
 
 | Data | How long |
 | --- | --- |
@@ -203,23 +203,23 @@ Our logs are deliberately narrow. Specifically:
 | Share links | Until you revoke the share, or until the expiry you chose (1 hour, 1 day, 1 week, 1 month, 1 year, or never). Revoking deletes the share record. |
 | Push subscriptions | Until you turn notifications off, or until your browser's push service reports the endpoint as invalid |
 | Sessions | Until they expire or you sign out |
-| Operational logs | As kept by Axiom under our plan, and only in the reduced form described above |
+| Operational logs | As kept by Axiom under my plan, and only in the reduced form described above |
 | Consent records | Stored in a separate database, pseudonymously — see [Cookie consent records](#cookie-consent-records) |
 
 ### Backups
 
-Our database runs on Cloudflare D1, which keeps **point-in-time backups for up
+My database runs on Cloudflare D1, which keeps **point-in-time backups for up
 to 30 days** ("Time Travel"). This is a disaster-recovery feature: it is used
 only to restore the database after data loss or a bad migration.
 
 The honest consequence is that for up to 30 days after you delete something, a
-copy of it can still exist inside those backups. We cannot selectively erase a
+copy of it can still exist inside those backups. I cannot selectively erase a
 single record from a point-in-time backup. Those backups roll off after 30 days
-and we do not use them for anything else.
+and I do not use them for anything else.
 
 ### Cookie consent records
 
-When you make a cookie choice, we record it so we can prove the choice was
+When you make a cookie choice, I record it so I can prove the choice was
 made. Those records are kept in a **separate database, pseudonymously**: no user
 id, no IP address, no email address. A record holds a random id, a timestamp,
 the version of the banner, which categories were granted, denied or changed, how
@@ -250,13 +250,13 @@ does.
 
 ### Revoking a share
 
-Revoking a share deletes the share record and stops access through us
+Revoking a share deletes the share record and stops access through me
 immediately.
 
-We want to be honest about the limit of that. Once something has been public,
-we **cannot** recall search-engine caches, web archives, screenshots, copies
-someone downloaded, or content that was scraped while the link was live. We take
-the reasonable steps that are within our control. We cannot promise that a
+I want to be honest about the limit of that. Once something has been public,
+I **cannot** recall search-engine caches, web archives, screenshots, copies
+someone downloaded, or content that was scraped while the link was live. I take
+the reasonable steps that are within my control. I cannot promise that a
 shared chat becomes unseen.
 
 If you plan to share a chat, please re-read it first, and remember that it may
@@ -265,7 +265,7 @@ contain other people's personal data as well as your own.
 ## Push notifications
 
 Push notifications are optional and based on your consent. If you turn them on,
-your browser issues a subscription endpoint and we store it, along with the keys
+your browser issues a subscription endpoint and I store it, along with the keys
 needed to encrypt a message to your browser. Delivery goes through your
 browser's own push service — Google FCM for Chrome, Apple APNs for Safari,
 Mozilla autopush for Firefox. Those services see the endpoint and the encrypted
@@ -274,20 +274,20 @@ payload.
 Turning notifications off in your settings, or in your browser, revokes the
 subscription.
 
-## Email we send you
+## Email I send you
 
-We send exactly two kinds of email:
+I send exactly two kinds of email:
 
 1. Email address verification
 2. Password reset
 
-That is all. **We never send marketing email**, newsletters or product
+That is all. **I never send marketing email**, newsletters or product
 announcements, and there is no mailing list to unsubscribe from. Email is sent
 through Cloudflare's email sending service.
 
 ## Analytics
 
-We count page views and a small set of interface events (for example, that a
+I count page views and a small set of interface events (for example, that a
 call-to-action was clicked) **server-side**. That counting uses **no cookie, no
 user identifier and stores no IP address**. What is recorded is the event name,
 the path, a coarse country, and a device class (mobile, tablet or desktop)
@@ -298,12 +298,12 @@ not personal data, and they are not gated behind consent.
 
 ## Cookies and browser storage
 
-We use a small number of cookies and browser storage keys. The necessary ones
+I use a small number of cookies and browser storage keys. The necessary ones
 keep you signed in and remember your cookie choice. The optional ones remember
 preferences such as your theme. Nothing is used for advertising or
 cross-site tracking.
 
-The full list, with names and durations, is in our
+The full list, with names and durations, is in the
 [Cookie Policy](/cookie-policy).
 
 ## Security
@@ -314,16 +314,16 @@ The full list, with names and durations, is in our
 - Access to production data is limited to the controller.
 
 No service is perfectly secure. If you find a security problem, please write to
-**{{ privacyEmail }}** and give us a chance to fix it before disclosing it.
+**{{ privacyEmail }}** and give me a chance to fix it before disclosing it.
 
 ## Automated decision-making and profiling
 
-**GDPR Art. 22 does not apply to Besidka.** We do not make automated decisions
+**GDPR Art. 22 does not apply to Besidka.** I do not make automated decisions
 that produce legal effects for you or that similarly significantly affect you.
 The model's answer in a chat is content generated at your request, not a
 decision about you.
 
-We also build no features that infer, classify, score or profile you from the
+I also build no features that infer, classify, score or profile you from the
 content of your chats.
 
 ## Special category data
@@ -331,10 +331,10 @@ content of your chats.
 Please do not put special category data into Besidka — health data, political
 opinions, religious or philosophical beliefs, trade union membership, genetic or
 biometric data, sex life or sexual orientation, or data about criminal
-convictions. This is also a rule in our [Terms of Use](/terms-of-use).
+convictions. This is also a rule in the [Terms of Use](/terms-of-use).
 
-We do not ask for it, we have no lawful basis to process it, and content you
-type is forwarded to a third-party AI provider whose handling of it we do not
+I do not ask for it, I have no lawful basis to process it, and content you
+type is forwarded to a third-party AI provider whose handling of it I do not
 control.
 
 ## Age limit
@@ -342,7 +342,7 @@ control.
 Besidka is for people aged **16 or over**. Poland has set the age for a child's
 own consent under GDPR Art. 8 at 16. If you are under 16, please do not create
 an account. If you believe a child under 16 has an account, write to
-**{{ privacyEmail }}** and we will delete it.
+**{{ privacyEmail }}** and I will delete it.
 
 ## Your rights
 
@@ -351,10 +351,10 @@ Under the GDPR you have the right to:
 - **Access** your data and get a copy of it (Art. 15)
 - **Correct** inaccurate or incomplete data (Art. 16)
 - **Erase** your data (Art. 17)
-- **Restrict** how we process it (Art. 18)
+- **Restrict** how I process it (Art. 18)
 - **Portability** — receive your data in a structured, machine-readable format
   and have it transmitted to another controller (Art. 20)
-- **Object** to processing based on our legitimate interests (Art. 21)
+- **Object** to processing based on my legitimate interests (Art. 21)
 - **Withdraw consent** at any time, without affecting what happened before you
   withdrew it (Art. 7(3))
 - **Complain** to a supervisory authority
@@ -365,22 +365,22 @@ Most things you can do yourself in the app: edit your profile, delete a chat,
 delete a file, revoke a share, turn notifications off, change your cookie
 choices, or delete your whole account.
 
-For anything else, email **{{ privacyEmail }}**. We answer within **one
-month**. If a request is complex we may extend that by up to **two further
-months**, and if we do, we will tell you within the first month and explain why.
+For anything else, email **{{ privacyEmail }}**. I answer within **one
+month**. If a request is complex I may extend that by up to **two further
+months**, and if I do, I will tell you within the first month and explain why.
 
-We do not charge for this. We may ask you to confirm you control the account's
-email address, so we do not hand your data to someone else.
+I do not charge for this. I may ask you to confirm you control the account's
+email address, so I do not hand your data to someone else.
 
 ### Getting a copy of your data
 
 There is **no self-service export button yet**. Until there is, email
-**{{ privacyEmail }}** and we will send you a copy of your account data,
+**{{ privacyEmail }}** and I will send you a copy of your account data,
 chats, projects and file list in a machine-readable format.
 
 ### Deleting your account
 
-You can delete your account from your settings. We email you a confirmation
+You can delete your account from your settings. I email you a confirmation
 link, and opening it removes your account and all data associated with it,
 including your chats, projects, settings, stored provider API keys, share
 records, push subscriptions and your stored files.
@@ -394,7 +394,7 @@ Two honest limits:
    point-in-time backups for up to 30 days. Deleted data can persist there for
    that window before rolling off. Those backups exist only for disaster
    recovery.
-2. **Your AI provider.** We **cannot** erase anything from OpenAI or Google.
+2. **Your AI provider.** I **cannot** erase anything from OpenAI or Google.
    That processing happened under **your** provider account, with your key, and
    they are independent controllers. To delete data there, use their own
    controls and privacy requests — OpenAI at
@@ -403,7 +403,7 @@ Two honest limits:
 
 ### Complaining
 
-If you think we have handled your data unlawfully, you can complain to the
+If you think I have handled your data unlawfully, you can complain to the
 Polish supervisory authority:
 
 **Prezes Urzędu Ochrony Danych Osobowych (UODO)**
@@ -415,7 +415,7 @@ where you live or work, and you have the right to an effective judicial remedy.
 
 ## Changes to this policy
 
-If we change this policy in a way that matters, we will update the date at the
+If I change this policy in a way that matters, I will update the date at the
 top and, for significant changes, tell you in the app before the change takes
 effect. The current version is always at this URL.
 
