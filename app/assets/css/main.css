@@ -787,8 +787,8 @@ html body[data-studio-active][data-expand-sidebar]::before {
   --tw-prose-lead: var(--color-base-content);
   --tw-prose-links: var(--color-accent);
   --tw-prose-bold: var(--color-base-content);
-  --tw-prose-counters: var(--color-base-content);
-  --tw-prose-bullets: var(--color-base-300);
+  --tw-prose-counters: var(--color-accent);
+  --tw-prose-bullets: var(--color-accent);
   --tw-prose-hr: var(--color-base-300);
   --tw-prose-quotes: var(--color-base-content);
   --tw-prose-quote-borders: var(--color-base-300);
@@ -801,15 +801,15 @@ html body[data-studio-active][data-expand-sidebar]::before {
 }
 
 /*
- * The variables above are not enough for table borders: something in the
- * daisyUI/preflight cascade sets a `base-content / 5%` border on cells, which
- * wins over the plugin's `var(--tw-prose-th-borders)` declaration and leaves
- * the cookie-policy tables almost borderless. Restate the colour directly.
+ * `.chat-markdown` tables have no cell borders — rows are told apart by the
+ * header background and zebra striping instead. Match that here: keep the
+ * padding, drop the border. Nuxt Content's table renderer adds daisyUI's
+ * `.table` class, whose `thead tr :is(td, th), tbody tr:not(:last-child)
+ * :is(td, th)` rule paints a `base-content/5%` border-bottom on cells —
+ * on top of the plugin's own `thead`/`tbody tr` borders neutralised below.
  */
 .prose :is(th, td) {
-  @apply py-2 px-3;
-
-  border-color: var(--color-base-300);
+  @apply py-2 px-3 border-b-0;
 }
 
 /*
@@ -835,6 +835,10 @@ html body[data-studio-active][data-expand-sidebar]::before {
   word-break: break-word;
 }
 
+.prose thead {
+  @apply border-b-0;
+}
+
 .prose thead th {
   @apply text-accent dark:text-base-content;
 }
@@ -844,7 +848,7 @@ html body[data-studio-active][data-expand-sidebar]::before {
 }
 
 .prose tbody tr {
-  @apply even:bg-pink-100/30 dark:even:bg-pink-100/5;
+  @apply border-b-0 even:bg-pink-100/30 dark:even:bg-pink-100/5;
 }
 
 .prose :is(h1, h2, h3, h4, h5, h6) > a {
