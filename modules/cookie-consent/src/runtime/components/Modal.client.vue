@@ -2,6 +2,7 @@
 import {
   shallowRef,
   watch,
+  onBeforeUnmount,
   useId,
 } from 'vue'
 import { useI18n } from '#imports'
@@ -32,19 +33,48 @@ const consent = useCookieConsent()
 const titleId = useId()
 const containerRef = shallowRef<HTMLElement | null>(null)
 
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    ui.close()
-
-    return
-  }
-
+function handleTab(event: KeyboardEvent): void {
   if (!containerRef.value) {
     return
   }
 
   trapTabKey(event, containerRef.value)
 }
+
+// Bound at document level, not on the container, because an auto-shown
+// modal (chat layout, undecided user) never receives focus (by design) —
+// a container-scoped listener would only ever see Escape once focus had
+// already moved inside it.
+let documentEscapeHandler: ((event: KeyboardEvent) => void) | null = null
+
+function attachDocumentEscape(): void {
+  documentEscapeHandler = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      ui.close()
+    }
+  }
+
+  document.addEventListener('keydown', documentEscapeHandler)
+}
+
+function detachDocumentEscape(): void {
+  if (documentEscapeHandler) {
+    document.removeEventListener('keydown', documentEscapeHandler)
+    documentEscapeHandler = null
+  }
+}
+
+watch(
+  () => ui.view.value === 'modal',
+  (isVisible) => {
+    if (isVisible) {
+      attachDocumentEscape()
+    } else {
+      detachDocumentEscape()
+    }
+  },
+  { flush: 'post' },
+)
 
 watch(
   () => ui.view.value === 'modal',
@@ -71,6 +101,10 @@ watch(
   },
   { immediate: true, flush: 'post' },
 )
+
+onBeforeUnmount(() => {
+  detachDocumentEscape()
+})
 
 const slotProps = {
   titleId,
@@ -115,7 +149,7 @@ const slotProps = {
         aria-modal="true"
         :aria-labelledby="titleId"
         tabindex="-1"
-        @keydown="handleKeydown"
+        @keydown="handleTab"
       >
         <slot v-bind="slotProps">
           <div>

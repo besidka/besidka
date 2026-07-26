@@ -34,23 +34,12 @@ const consent = useCookieConsent()
 const titleId = useId()
 const containerRef = shallowRef<HTMLElement | null>(null)
 
-function handleEsc(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    ui.close()
-  }
-}
-
 function handleTab(event: KeyboardEvent): void {
   if (!containerRef.value) {
     return
   }
 
   trapTabKey(event, containerRef.value)
-}
-
-function handleKeydown(event: KeyboardEvent): void {
-  handleEsc(event)
-  handleTab(event)
 }
 
 let outsideClickHandler: ((event: MouseEvent) => void) | null = null
@@ -79,13 +68,37 @@ function detachOutsideClick(): void {
   }
 }
 
+// Bound at document level, not on the container, because an auto-shown
+// popup never receives focus (by design) — a container-scoped listener
+// would only ever see Escape once focus had already moved inside it.
+let documentEscapeHandler: ((event: KeyboardEvent) => void) | null = null
+
+function attachDocumentEscape(): void {
+  documentEscapeHandler = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      ui.close()
+    }
+  }
+
+  document.addEventListener('keydown', documentEscapeHandler)
+}
+
+function detachDocumentEscape(): void {
+  if (documentEscapeHandler) {
+    document.removeEventListener('keydown', documentEscapeHandler)
+    documentEscapeHandler = null
+  }
+}
+
 watch(
   () => ui.view.value,
   (newView) => {
     if (newView === 'popup') {
       attachOutsideClick()
+      attachDocumentEscape()
     } else {
       detachOutsideClick()
+      detachDocumentEscape()
     }
   },
   { flush: 'post' },
@@ -111,6 +124,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   detachOutsideClick()
+  detachDocumentEscape()
   // If the popup is removed before its auto-show fired (e.g. navigating into
   // the chat layout where the popup is v-if-hidden), hand the auto-show over
   // so the modal can take it; a popup that already showed keeps the gate shut.
@@ -156,7 +170,7 @@ const slotProps = {
       role="dialog"
       :aria-labelledby="titleId"
       tabindex="-1"
-      @keydown="handleKeydown"
+      @keydown="handleTab"
     >
       <slot v-bind="slotProps">
         <div>

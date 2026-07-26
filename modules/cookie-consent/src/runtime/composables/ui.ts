@@ -9,7 +9,9 @@ let autoShowTimer: ReturnType<typeof setTimeout> | null = null
 let triggerElement: HTMLElement | null = null
 // Whether the surface currently shown was opened by a user action (click,
 // keyboard activation) rather than the unattended auto-show timer — decides
-// whether Popup/Modal are allowed to move focus into themselves on open.
+// both whether Popup/Modal move focus into themselves on open and whether
+// close() restores focus afterwards (nothing to "restore" if nothing was
+// ever taken).
 let userInitiatedOpen = true
 
 export function useCookieConsentUi() {
@@ -80,11 +82,12 @@ export function useCookieConsentUi() {
     view.value = 'hidden'
 
     const target = triggerElement
+    const shouldRestoreFocus = userInitiatedOpen
 
     triggerElement = null
     draft.value = {}
 
-    if (!import.meta.client) {
+    if (!import.meta.client || !shouldRestoreFocus) {
       return
     }
 

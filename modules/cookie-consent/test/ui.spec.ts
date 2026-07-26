@@ -264,6 +264,29 @@ describe('useCookieConsentUi (sequential session)', () => {
       document.body.removeChild(trigger)
     })
 
+    it(
+      'does not move focus when closing a surface that was never '
+      + 'user-initiated (auto-show)',
+      () => {
+        const elsewhere = document.createElement('input')
+
+        document.body.appendChild(elsewhere)
+        elsewhere.focus()
+
+        const { openPopup, close } = useCookieConsentUi()
+
+        openPopup(undefined, { userInitiated: false })
+
+        expect(document.activeElement).toBe(elsewhere)
+
+        close()
+
+        expect(document.activeElement).toBe(elsewhere)
+
+        document.body.removeChild(elsewhere)
+      },
+    )
+
     it('does not throw when the trigger left the document', () => {
       const trigger = document.createElement('button')
 
