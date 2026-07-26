@@ -280,6 +280,19 @@
               />
             </div>
           </div>
+
+          <!--
+            AI Act Art. 50(1) disclosure. Must stay LAST: the collapsed states
+            reveal a fixed strip from the container's top, so anything above the
+            textarea eats into the draft text visible while peeking.
+          -->
+          <p class="px-3 pt-1.5 text-center text-2xs text-base-content/60">
+            AI-generated responses can be inaccurate — verify important
+            information.
+            <NuxtLink to="/terms-of-use" class="link link-accent">
+              Terms of Use
+            </NuxtLink>
+          </p>
         </div>
       </UiBubble>
     </div>
