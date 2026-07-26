@@ -4,24 +4,48 @@
       <UiButton
         to="/chats/new"
         ghost
+        mode="default"
+        normal-case
         size="sm"
-        icon-name="lucide:arrow-left"
         text="Back to Chat"
-      />
-      <UiButton
-        ghost
-        mode="error"
-        size="sm"
-        icon-name="lucide:log-out"
-        text="Sign out"
-        :disabled="isSigningOut"
-        data-testid="settings-sign-out"
-        @click="signOut"
-      />
+        class="group/cta"
+      >
+        <template #icon>
+          <Icon
+            name="lucide:arrow-left"
+            size="20"
+            class="cta-icon-left"
+          />
+        </template>
+      </UiButton>
+      <div class="flex items-center gap-2">
+        <SidebarThemeSwitcher
+          show-label
+          size="sm"
+        />
+        <UiButton
+          ghost
+          normal-case
+          size="sm"
+          text="Sign out"
+          class="group/cta"
+          :disabled="isSigningOut"
+          data-testid="settings-sign-out"
+          @click="signOut"
+        >
+          <template #icon>
+            <Icon
+              name="lucide:log-out"
+              size="20"
+              class="cta-icon-left"
+            />
+          </template>
+        </UiButton>
+      </div>
     </div>
     <div class="grid gap-8 sm:grid-cols-3">
       <div
-        class="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left"
+        class="flex flex-col items-center gap-3 text-center"
       >
         <div
           class="avatar rounded-full"

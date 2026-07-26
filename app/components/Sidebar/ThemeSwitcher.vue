@@ -6,11 +6,12 @@
     <UiButton
       data-testid="theme-switcher"
       ghost
-      circle
+      :circle="!showLabel"
+      :icon-only="!showLabel"
       :size="size"
       :tooltip-position="tipsPosition"
       :title="label"
-      :icon-only="true"
+      :text="preferenceLabel"
       @click="changeColorMode"
     >
       <template #icon>
@@ -60,11 +61,13 @@ interface Props {
   tips?: boolean
   tipsPosition?: 'right' | 'left' | 'top' | 'bottom'
   size?: 'xs' | 'sm' | 'md' | 'lg'
+  showLabel?: boolean
 }
 
 withDefaults(defineProps<Props>(), {
   size: 'md',
   tipsPosition: 'bottom',
+  showLabel: false,
 })
 
 const { setFavicon } = useThemeFavicon()
@@ -180,6 +183,15 @@ const label = computed<string>(() => {
     case 'dark': return 'Switch to system theme'
     case 'system': return 'Switch to light theme'
     default: return 'Switch theme'
+  }
+})
+
+const preferenceLabel = computed<string>(() => {
+  switch (currentPreference.value) {
+    case 'light': return 'Light'
+    case 'dark': return 'Dark'
+    case 'system': return 'System'
+    default: return 'System'
   }
 })
 </script>

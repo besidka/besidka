@@ -27,8 +27,8 @@
           }"
         >
           <span
-            class="capitalize"
             :class="{
+              'capitalize': !normalCase,
               'sr-only lg:not-sr-only': mobileText,
             }"
           >
@@ -36,7 +36,8 @@
           </span>
           <span
             v-if="mobileText && !(iconOnly || iconOnlyMobile)"
-            class="lg:sr-only capitalize"
+            class="lg:sr-only"
+            :class="{ capitalize: !normalCase }"
           >
             {{ mobileText }}
           </span>

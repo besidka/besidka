@@ -25,6 +25,7 @@ export interface ButtonProps {
   ghost?: boolean
   ghostNew?: boolean
   outline?: boolean
+  normalCase?: boolean
   square?: boolean
   circle?: boolean
   block?: boolean
