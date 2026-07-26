@@ -62,11 +62,11 @@ export default defineNuxtPlugin(() => {
     { flush: 'post' },
   )
 
-  const { lastLoginMethod } = useAuth()
+  const { lastLoginMethod, client } = useAuth()
 
   watch(lastLoginMethod, () => {
     if (!isAllowed('preferences')) {
-      document.cookie = 'better_auth.last_login_method=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      client.clearLastUsedLoginMethod?.()
     }
   })
 })

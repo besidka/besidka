@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => {
     instances: [] as FakeInstance[],
     lastOptions: null as Record<string, unknown> | null,
     shouldThrow: false,
+    isAllowed: vi.fn((_categoryId: string) => true),
+    onConsentChange: vi.fn(),
   }
 })
 
@@ -64,6 +66,15 @@ mockNuxtImport('useLandingVideoThumbnails', () => {
   }
 })
 
+mockNuxtImport('useCookieConsent', () => {
+  return () => {
+    return {
+      isAllowed: mocks.isAllowed,
+      onConsentChange: mocks.onConsentChange,
+    }
+  }
+})
+
 describe('VideoPlayer.client.vue', () => {
   beforeEach(() => {
     mocks.track.mockReset()
@@ -71,7 +82,44 @@ describe('VideoPlayer.client.vue', () => {
     mocks.instances.length = 0
     mocks.lastOptions = null
     mocks.shouldThrow = false
+    mocks.isAllowed.mockReset().mockReturnValue(true)
+    mocks.onConsentChange.mockReset()
   })
+
+  it(
+    'enables Plyr storage when preferences consent is granted',
+    async () => {
+      mocks.isAllowed.mockReturnValue(true)
+
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4', thumbnails: false },
+      })
+
+      await flushPromises()
+
+      const options = mocks.lastOptions as Record<string, never>
+
+      expect(mocks.isAllowed).toHaveBeenCalledWith('preferences')
+      expect(options.storage).toMatchObject({ enabled: true, key: 'plyr' })
+    },
+  )
+
+  it(
+    'disables Plyr storage when preferences consent is denied',
+    async () => {
+      mocks.isAllowed.mockReturnValue(false)
+
+      await mountSuspended(VideoPlayer, {
+        props: { src: '/videos/demo.mp4', thumbnails: false },
+      })
+
+      await flushPromises()
+
+      const options = mocks.lastOptions as Record<string, never>
+
+      expect(options.storage).toMatchObject({ enabled: false, key: 'plyr' })
+    },
+  )
 
   it('builds options with parsed markers and a sorted quality ladder',
     async () => {
