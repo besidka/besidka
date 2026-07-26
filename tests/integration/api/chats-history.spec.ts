@@ -369,6 +369,13 @@ describe('chat history API', () => {
           ])),
         },
       },
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(async () => []),
+          })),
+        })),
+      })),
       delete: vi.fn(() => ({
         where: deleteWhere,
       })),
