@@ -74,7 +74,7 @@
               <p class="text-sm break-all text-base-content/70">{{ user?.email }}</p>
             </div>
           </div>
-          <div class="sm:col-span-2">
+          <div class="md:col-span-2">
             <nav
               aria-label="Account sections"
               class="tabs tabs-box tabs-sm mb-6 w-full"
