@@ -79,34 +79,20 @@
               class="text-sm font-black text-base-content uppercase
                 tracking-wide"
             >
-              Product
+              On this page
             </h3>
             <nav
               class="flex flex-col gap-2 max-sm:items-center"
-              aria-label="Product links"
+              aria-label="Sections on this page"
             >
               <a
-                href="#features"
+                v-for="section in sections"
+                :key="section.hash"
+                :href="section.hash"
                 class="link link-hover text-sm"
-                @click="track('footer_link_click', { target: '#features' })"
+                @click="track('footer_link_click', { target: section.hash })"
               >
-                Features
-              </a>
-              <a
-                href="#how-it-works"
-                class="link link-hover text-sm"
-                @click="track('footer_link_click', {
-                  target: '#how-it-works',
-                })"
-              >
-                How it works
-              </a>
-              <a
-                href="#faq"
-                class="link link-hover text-sm"
-                @click="track('footer_link_click', { target: '#faq' })"
-              >
-                FAQ
+                {{ section.label }}
               </a>
             </nav>
           </div>
@@ -198,6 +184,21 @@
 <script setup lang="ts">
 const year = useState('footer-year', () => new Date().getFullYear())
 const { authorGithubProfile } = useRuntimeConfig().public
+
+// One entry per heading in content/index.md. Headings are not tabbable -- Tab
+// is for controls -- so these links are what makes every section reachable by
+// keyboard, and they are the only place that stays in sync with those ids.
+const sections = [
+  { hash: '#community', label: 'Community' },
+  { hash: '#benefits', label: 'Why Besidka' },
+  { hash: '#how-it-works', label: 'How it works' },
+  { hash: '#features', label: 'Features' },
+  { hash: '#use-cases', label: 'Who it is for' },
+  { hash: '#pricing', label: 'Pricing' },
+  { hash: '#self-hosting', label: 'Self-hosting' },
+  { hash: '#about-the-name', label: 'The name' },
+  { hash: '#faq', label: 'FAQ' },
+]
 const { track } = useLandingAnalytics()
 const route = useRoute()
 const isHomePage = computed<boolean>(() => route.path === '/')

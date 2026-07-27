@@ -813,15 +813,20 @@ html body[data-studio-active][data-expand-sidebar]::before {
 }
 
 /*
- * `.chat-markdown` tables have no cell borders — rows are told apart by the
- * header background and zebra striping instead. Match that here: keep the
- * padding, drop the border. Nuxt Content's table renderer adds daisyUI's
- * `.table` class, whose `thead tr :is(td, th), tbody tr:not(:last-child)
- * :is(td, th)` rule paints a `base-content/5%` border-bottom on cells —
- * on top of the plugin's own `thead`/`tbody tr` borders neutralised below.
+ * Typography also gives table cells their own padding, including a
+ * flush-to-the-edge convention that zeroes the inline padding on each row's
+ * first and last cell (`thead th:first-child`, `tbody td:last-child`, etc).
+ * `.chat-markdown` never carries `.prose`, so its cells only ever see
+ * daisyUI's own `.table` padding (`padding-block: .75rem; padding-inline:
+ * 1rem`), applied uniformly with no first/last exception. Match that here,
+ * at equal specificity to Typography's per-child rules so source order (this
+ * file loads after the plugin) decides it — copying daisyUI's literal values
+ * instead of Tailwind's `py-2 px-3` spacing scale keeps this one visibly tied
+ * to what it is matching, not an independent number that can drift from it.
  */
 .prose :is(th, td) {
-  @apply py-2 px-3 border-b-0;
+  padding-block: .75rem;
+  padding-inline: 1rem;
 }
 
 /*
@@ -874,22 +879,47 @@ html body[data-studio-active][data-expand-sidebar]::before {
   @apply text-accent dark:text-base-content;
 }
 
+/*
+ * `@tailwindcss/typography` adds its own thead/tbody-row bottom border
+ * inside `.prose` — a rule `.chat-markdown` never has to neutralise,
+ * since it never carries the `.prose` class. This is a different border
+ * from daisyUI's own per-cell one (see `:is(th, td)` below, which is left
+ * alone so both contexts keep it).
+ */
 .prose thead {
   @apply border-b-0;
 }
 
+.prose tbody tr {
+  @apply border-b-0;
+}
+
+/*
+ * `pink-100`/`pink-950` are the chat values, and the header only reads as a
+ * band because a chat table sits on the `bubble` surface. A prose table sat
+ * directly on the page's pink gradient, where the same tint measures 1.02
+ * contrast against it — invisible. The wrapper below supplies the missing
+ * surface instead of tinting the header harder, so one pair of tokens keeps
+ * working in both places rather than drifting apart again.
+ *
+ * The background is set on `tr` (which `.table-pin-rows` makes sticky) and on
+ * `th`, the more reliable target for a sticky header's background.
+ */
 .chat-markdown thead tr,
-.prose thead tr {
+.chat-markdown thead tr th,
+.prose thead tr,
+.prose thead tr th {
   @apply !bg-pink-100 dark:!bg-pink-950;
+}
+
+.prose .table-scroller {
+  background-color: color-mix(in oklab, var(--color-base-100) 55%, transparent);
+  border-radius: var(--radius-box);
 }
 
 .chat-markdown tbody tr,
 .prose tbody tr {
   @apply even:bg-pink-100/30 dark:even:bg-pink-100/5;
-}
-
-.prose tbody tr {
-  @apply border-b-0;
 }
 
 .prose :is(h1, h2, h3, h4, h5, h6) > a {
@@ -914,7 +944,11 @@ html body[data-studio-active][data-expand-sidebar]::before {
  *
  * Deliberately in `@layer base` and deliberately unscoped, so it is a default
  * every future focusable element inherits, while daisyUI's own component rings
- * (`.btn`, `.link`, inputs — all in later layers) still win over it.
+ * (`.btn`, `.link`, inputs — all in later layers) still win over it. Colour is
+ * a safe base-layer default because it's harmless to inherit unscoped; radius
+ * is not — every daisyUI component ring (`.btn-circle` included) would inherit
+ * whatever shape landed here. The two rules below give text-like and
+ * container elements their own colour and radius without touching this one.
  */
 @layer base {
   :focus-visible {
@@ -922,5 +956,43 @@ html body[data-studio-active][data-expand-sidebar]::before {
     outline-width: 2px;
     outline-offset: 2px;
     outline-color: var(--color-accent);
+  }
+}
+
+/*
+ * Text-like focus targets (prose headings via hash navigation, prose links)
+ * ring in the text's own colour instead of the base accent default, and take
+ * daisyUI's field radius so the ring is rounded like every other daisyUI
+ * component ring instead of a sharp rectangle. `a:not(.btn)` matters here — a
+ * `.btn` styled as an `<a>` already owns its own ring and radius below.
+ */
+.prose :is(h1, h2, h3, h4, h5, h6):focus-visible,
+.prose a:not(.btn):focus-visible {
+  outline-color: currentColor;
+  border-radius: var(--radius-field);
+}
+
+/*
+ * Container focus targets (`.table-scroller`, and any other `div` that ends
+ * up keyboard-focusable) ring in primary instead of accent, with daisyUI's
+ * box radius. Dark theme's `--color-primary` is the same `stone-800` as
+ * `--color-base-100` (see the theme blocks above), so a plain primary ring
+ * would be nearly invisible there — same trap `.btn` already solves via
+ * `--custom-outline-color` under `@variant dark`, mirrored here with
+ * `--color-primary-content` (readable against a `stone-800` surface).
+ *
+ * `:not([role="region"])` excludes app.vue's page-scroll wrapper (the
+ * `tabindex="0"` + `role="region"` div every non-chat route renders around
+ * its whole content) — a full-viewport `overflow-y-auto` landmark, not a
+ * "container" in the sense this rule means. A radius there doesn't just
+ * shape a ring, it clips the page's own content at rounded corners for as
+ * long as focus sits on it.
+ */
+div:focus-visible:not([role="region"]) {
+  outline-color: var(--custom-outline-color, var(--color-primary));
+  border-radius: var(--radius-box);
+
+  @variant dark {
+    --custom-outline-color: var(--color-primary-content);
   }
 }
