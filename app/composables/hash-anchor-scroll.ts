@@ -3,6 +3,132 @@ interface ScrollToHashOptions {
   focusTarget?: boolean
 }
 
+const MIN_SCROLL_DURATION_MS: number = 200
+const MAX_SCROLL_DURATION_MS: number = 400
+const SCROLL_DURATION_MS_PER_1000PX: number = 300
+
+// Distance-proportional with a cap, not fixed: NN/g places perceptible-but
+// -not-jarring UI motion at roughly 200-400ms and calls 500ms+ "a real drag"
+// (nngroup.com/articles/animation-duration), and a fixed duration can't
+// satisfy both ends of this app's page lengths -- a short in-page hop needs
+// the 200ms floor to read as motion at all, while a jump the length of the
+// ~10 000px privacy-policy page needs the 400ms ceiling or it crawls at the
+// UA-defined pace native `scrollIntoView({behavior:'smooth'})` used to pick.
+// The 300ms-per-1000px scaling factor and easeInOutCubic (accelerate into
+// the jump, decelerate into the landing) both match the everyday defaults
+// real anchor-scroll libraries ship for this exact case (e.g.
+// cferdinandi/smooth-scroll's `speed` option and its default easing).
+function getScrollDuration(distance: number): number {
+  const proportional = (Math.abs(distance) / 1000)
+    * SCROLL_DURATION_MS_PER_1000PX
+
+  return Math.min(
+    MAX_SCROLL_DURATION_MS,
+    Math.max(MIN_SCROLL_DURATION_MS, proportional),
+  )
+}
+
+function easeInOutCubic(progress: number): number {
+  if (progress < 0.5) {
+    return 4 * progress * progress * progress
+  }
+
+  return 1 - (-2 * progress + 2) ** 3 / 2
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+interface InFlightScrollAnimation {
+  frameId: number
+  previousBehavior: string
+}
+
+const inFlightScrollAnimations
+  = new WeakMap<HTMLElement, InFlightScrollAnimation>()
+
+function cancelScrollAnimation(scroller: HTMLElement): void {
+  const inFlight = inFlightScrollAnimations.get(scroller)
+
+  if (!inFlight) {
+    return
+  }
+
+  cancelAnimationFrame(inFlight.frameId)
+  scroller.style.scrollBehavior = inFlight.previousBehavior
+  inFlightScrollAnimations.delete(scroller)
+}
+
+// A second anchor click while this is in flight calls this again for the
+// same scroller -- cancelling the previous rAF loop and restarting from
+// whatever scrollTop it left off at (rather than the interrupted target)
+// is what makes the second click win cleanly instead of the two fighting.
+function animateScrollTop(scroller: HTMLElement, targetTop: number): void {
+  cancelScrollAnimation(scroller)
+
+  const startTop = scroller.scrollTop
+  const distance = targetTop - startTop
+  const duration = getScrollDuration(distance)
+  const startTime = performance.now()
+  // The container carries `motion-safe:scroll-smooth` (app.vue), and per
+  // CSSOM-View assigning scrollTop honours `scroll-behavior` -- each frame
+  // would start its own smooth scroll that the next frame interrupts, so the
+  // rAF loop has to own the scrolling outright while it runs.
+  const previousBehavior = scroller.style.scrollBehavior
+
+  scroller.style.scrollBehavior = 'auto'
+
+  function step(now: number) {
+    const progress = Math.min(1, (now - startTime) / duration)
+
+    scroller.scrollTop = startTop + distance * easeInOutCubic(progress)
+
+    if (progress >= 1) {
+      scroller.style.scrollBehavior = previousBehavior
+      inFlightScrollAnimations.delete(scroller)
+
+      return
+    }
+
+    inFlightScrollAnimations.set(scroller, {
+      frameId: requestAnimationFrame(step),
+      previousBehavior,
+    })
+  }
+
+  inFlightScrollAnimations.set(scroller, {
+    frameId: requestAnimationFrame(step),
+    previousBehavior,
+  })
+}
+
+function getScrollMarginTopPx(target: HTMLElement): number {
+  return Number.parseFloat(getComputedStyle(target).scrollMarginTop) || 0
+}
+
+// Mirrors what native `scrollIntoView({block: 'start'})` on a scrollable
+// ancestor already does for free, since hand-rolling the scroll means
+// losing that for free -- read the resolved `scroll-margin-top` (whether it
+// comes from `prose-headings:scroll-mt-24` or the `landing-anchor` utility's
+// runtime `--landing-header-offset` var) rather than assuming either one, so
+// the target still lands below the sticky header instead of behind it.
+function getScrollTargetTop(
+  scroller: HTMLElement,
+  target: HTMLElement,
+): number {
+  const offsetWithinScroller = target.getBoundingClientRect().top
+    - scroller.getBoundingClientRect().top
+
+  const rawTargetTop = scroller.scrollTop + offsetWithinScroller
+    - getScrollMarginTopPx(target)
+
+  return Math.max(
+    0,
+    Math.min(rawTargetTop, scroller.scrollHeight - scroller.clientHeight),
+  )
+}
+
 // vue-router's hash scrollBehavior calls window.scrollTo, a no-op since
 // html/body are `position: fixed` -- scroll the real `.overflow-y-auto`
 // ancestor (app.vue) directly instead.
@@ -21,16 +147,20 @@ export function scrollToHash(
   }
 
   const scroller = target.closest<HTMLElement>('.overflow-y-auto')
-  const previousBehavior = scroller?.style.scrollBehavior
+  const instant = options.instant || prefersReducedMotion()
 
-  if (options.instant && scroller) {
+  if (!scroller) {
+    target.scrollIntoView({ block: 'start' })
+  } else if (instant) {
+    cancelScrollAnimation(scroller)
+
+    const previousBehavior = scroller.style.scrollBehavior
+
     scroller.style.scrollBehavior = 'auto'
-  }
-
-  target.scrollIntoView({ block: 'start' })
-
-  if (options.instant && scroller) {
+    target.scrollIntoView({ block: 'start' })
     scroller.style.scrollBehavior = previousBehavior || ''
+  } else {
+    animateScrollTop(scroller, getScrollTargetTop(scroller, target))
   }
 
   if (options.focusTarget) {
@@ -209,6 +339,8 @@ function reassertLastSettledScrollPosition(): void {
 // next couple of frames -- the same race scrollToHash's `instant` option
 // already guards against.
 function scrollContainerInstant(container: HTMLElement, top: number): void {
+  cancelScrollAnimation(container)
+
   const previousBehavior = container.style.scrollBehavior
 
   container.style.scrollBehavior = 'auto'
