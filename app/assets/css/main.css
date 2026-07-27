@@ -518,31 +518,12 @@ html body[data-studio-active][data-expand-sidebar]::before {
     @apply pl-1;
   }
 
-  thead {
-    @apply text-accent;
-
-    tr {
-      @apply !bg-pink-100 dark:!bg-pink-950 dark:text-base-content;
-    }
-  }
-
-  tbody tr {
-    @apply even:bg-pink-100/30 dark:even:bg-pink-100/5;
-  }
-
   blockquote {
     @apply my-4 py-2 pl-4 border-l-4 border-base-content/50 italic text-base-content/90;
   }
 
   p {
     @apply mb-2 last:mb-0;
-  }
-
-  p,
-  li {
-    & > code {
-      @apply whitespace-pre-wrap p-1 rounded bg-accent/10 text-accent text-sm;
-    }
   }
 
   a {
@@ -801,6 +782,37 @@ html body[data-studio-active][data-expand-sidebar]::before {
 }
 
 /*
+ * Nuxt Content's table wrapper (app/components/prose/Table.vue, shared with
+ * `.chat-markdown`) sets `my-6` on the scroll container that makes `thead`
+ * sticky via `table-pin-rows`. Inside `.prose`, Typography's `h2 + *` (and
+ * h3/h4/hr) rule zeroes the top margin of whatever sits right after a
+ * heading — the wrapper always does — so the sticky header stops pinning
+ * flush to the container's own top edge. That rule is
+ * `:where(h2+*):not(...)`, contributing zero specificity from its own
+ * argument, but it's still Tailwind Typography/daisyUI output living in a
+ * named layer, so any unlayered rule beats it regardless of specificity —
+ * same principle as the `.prose` variable remap below. The margin lives here
+ * rather than as a `my-6` utility on the wrapper precisely because a utility
+ * would be the thing getting zeroed; keeping both would leave two sources for
+ * one value, and the template one would look effective while doing nothing.
+ */
+.table-scroller {
+  margin-block: calc(var(--spacing) * 6);
+}
+
+/*
+ * Typography also gives the `<table>` itself a margin-top/bottom inside
+ * `.prose` (no such rule exists for `.chat-markdown`, which never had this
+ * problem). That gap sits INSIDE the scroll container above, pushing the
+ * sticky `thead` down from the wrapper's own top edge by the same amount
+ * the wrapper's margin just restored. Zero it — the wrapper's margin is
+ * the only spacing this table needs, matching `.chat-markdown`'s tables.
+ */
+.prose table {
+  margin-block: 0;
+}
+
+/*
  * `.chat-markdown` tables have no cell borders — rows are told apart by the
  * header background and zebra striping instead. Match that here: keep the
  * padding, drop the border. Nuxt Content's table renderer adds daisyUI's
@@ -816,16 +828,37 @@ html body[data-studio-active][data-expand-sidebar]::before {
  * daisyUI ships its own unlayered `.prose` rule
  * (`:root .prose { & :where(code):not(pre > code) { ... } }`) that turns
  * every inline `code` into a rounded pill (background + padding +
- * border-radius). That reads fine for a short word, but a long token like
- * `better-auth.last_used_login_method` inside a table cell has no spaces
- * to wrap on, so it breaks mid-word into two disconnected pill fragments.
+ * border-radius) in a fixed grey, instead of the soft accent chip
+ * `.chat-markdown` uses for `p > code`/`li > code`. The two rules below
+ * give `.prose` the same accent look in the same two contexts, sharing one
+ * declaration with `.chat-markdown` instead of drifting copies.
  *
  * Must stay UNLAYERED for the same reason as the `.prose` block above, and
  * at least as specific as daisyUI's `:root .prose` selector (two
  * class/pseudo-class selectors) to actually win the cascade rather than
- * relying on source order.
+ * relying on source order — `:not(pre > code)` can never actually match on
+ * this `p >`/`li >` shape (a `pre` can't be a direct child of `p`/`li`),
+ * it's kept purely to hold that specificity margin.
+ */
+.chat-markdown p > code,
+.chat-markdown li > code,
+:root .prose p > code:not(pre > code),
+:root .prose li > code:not(pre > code) {
+  @apply whitespace-pre-wrap p-1 rounded bg-accent/10 text-accent text-sm;
+}
+
+/*
+ * Table cells keep their own reconciliation instead of the chip above: a
+ * long token like `better-auth.last_used_login_method` has no spaces to
+ * wrap on, and once it wraps onto a second line inside the cell, a pill's
+ * background/border/radius renders as disconnected fragments per line —
+ * wrapping the text doesn't fix that, only dropping the pill decoration
+ * does. So cells get the same accent text color as the chip above, but no
+ * background/padding/radius, plus `overflow-wrap: anywhere` so the token
+ * still wraps as one continuous, undecorated run.
  */
 :root .prose :is(th, td) code:not(pre > code) {
+  color: var(--color-accent);
   background-color: transparent;
   border: none;
   border-radius: 0;
@@ -835,20 +868,27 @@ html body[data-studio-active][data-expand-sidebar]::before {
   word-break: break-word;
 }
 
-.prose thead {
-  @apply border-b-0;
-}
-
+.chat-markdown thead,
 .prose thead th {
   @apply text-accent dark:text-base-content;
 }
 
+.prose thead {
+  @apply border-b-0;
+}
+
+.chat-markdown thead tr,
 .prose thead tr {
   @apply !bg-pink-100 dark:!bg-pink-950;
 }
 
+.chat-markdown tbody tr,
 .prose tbody tr {
-  @apply border-b-0 even:bg-pink-100/30 dark:even:bg-pink-100/5;
+  @apply even:bg-pink-100/30 dark:even:bg-pink-100/5;
+}
+
+.prose tbody tr {
+  @apply border-b-0;
 }
 
 .prose :is(h1, h2, h3, h4, h5, h6) > a {
