@@ -111,9 +111,21 @@ Consequences that drive real decisions:
    for all AI chats") it fed gazebo topicality into the highest-visibility
    snippet field while telling a searcher nothing. As an explicit *definitional*
    statement it does the opposite — it disambiguates. So the metaphor was
-   removed from `<title>`, `<h1>` and the meta description, and kept in the FAQ
-   entry "What does Besidka mean?", phrased to co-locate `бесідка` with
-   "open-source AI chat application" in one sentence.
+   removed from `<title>`, `<h1>` and the meta description, and kept in the
+   dedicated `#about-the-name` landing section, phrased to co-locate `бесідка`
+   with "open-source AI chat application" in one sentence.
+
+   That explanation used to be duplicated as an FAQ entry as well, and the FAQ
+   was briefly the preferred single home for it on the theory that `FAQPage`
+   markup earned something a plain section did not. It does not: Google
+   restricted FAQ rich results to authoritative government and health sites in
+   August 2023 (Besidka was never eligible) and **retired the feature entirely
+   on 7 May 2026**. Google still parses `FAQPage` for entity understanding, but
+   that parsing is not location-specific — it reads ordinary prose the same way.
+   Meanwhile the structures differ: a `HomeBubble` with a `heading` prop emits a
+   real (`sr-only`, still crawlable) `<h2>`, whereas an FAQ item emits only a
+   `<summary>` inside `<details>` and no heading tag at all. So the section is
+   the stronger placement. Do not "consolidate" it back into the FAQ.
 
 ### How the association is asserted
 
@@ -125,9 +137,12 @@ Consequences that drive real decisions:
 alternateName: ['Besidka AI', 'Бесідка', 'Бесідка AI']
 ```
 
-That is the machine-readable half of the claim; the FAQ entry is the
-human-readable half. **Keep the two in sync** — a self-asserted `alternateName`
-with no on-page corroboration is a weak signal on its own.
+That is the machine-readable half of the claim; the `#about-the-name` section is
+the human-readable half. **Keep the two in sync** — a self-asserted
+`alternateName` with no on-page corroboration is a weak signal on its own. Note
+that since the FAQ entry was removed, no node in the `@graph` connects `бесідка`
+to "open-source AI chat application" in a sentence any more; `alternateName`
+carries the string bare, and that section carries the only sentence.
 
 Nodes are linked by `@id` (`#organization`, `#website`, `#software`, `#faq`)
 rather than repeated. `tests/unit/utils/landing-jsonld.spec.ts` asserts that

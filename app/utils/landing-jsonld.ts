@@ -2,8 +2,9 @@
  * Landing-page structured data as one `@graph` so nodes cross-reference by
  * `@id`. `alternateName` carries the Cyrillic and "AI"-suffixed spellings,
  * because "Besidka" collides with unrelated entrenched entities in search.
- * Keep it in sync with the "What does Besidka mean?" FAQ entry — that is the
- * on-page half of the same claim. See docs/seo.md.
+ * Keep it in sync with the `#about-the-name` landing section — that is the
+ * on-page half of the same claim, and the only place either half states it in a
+ * sentence. See docs/seo.md.
  */
 
 const ALTERNATE_NAMES = [

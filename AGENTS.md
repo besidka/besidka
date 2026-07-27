@@ -233,7 +233,8 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `app/utils/landing-jsonld.ts` (`Organization` + `WebSite` +
   `SoftwareApplication` + `FAQPage`, linked by `@id`). `alternateName` carries
   `Бесідка`/`Besidka AI` to disambiguate the brand from unrelated entities that
-  own the same word; keep it in sync with the "What does Besidka mean?" FAQ entry.
+  own the same word; keep it in sync with the `#about-the-name` landing section
+  (deliberately a section and not an FAQ entry — see `docs/seo.md`).
 - Full audit, brand-entity strategy, the rejected options (`llms.txt`,
   `nuxt-og-image`, `nuxt-schema-org`, `/uk`, sitemap `lastmod`) and the off-page
   checklist live in `docs/seo.md`. Read it before changing SEO behaviour.

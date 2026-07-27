@@ -128,8 +128,6 @@ faqs:
     answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key like every other model, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
-  - question: What does "Besidka" mean?
-    answer: Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think, and it derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
   - question: How to pronounce Besidka?
     answer: |-
       Besidka is pronounced “beh-SEED-kah”.
@@ -405,10 +403,13 @@ What does “Besidka” mean?
 
 ::home-bubble
 ---
+wide: true
+heading: What does "Besidka" mean?
+id: about-the-name
 role: assistant
 sr-label: Explanation of the name "Besidka"
 ---
-The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. Similar words exist across Slavic languages: “besídka” in Czech and “besiedka” in Slovak. All these words derive from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
+Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think. Similar words exist across other Slavic languages, such as “besídka” in Czech and “besiedka” in Slovak, and all of them derive from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
 ::
 
 ::home-bubble{role="user" sr-label="User asking FAQ questions"}
