@@ -153,6 +153,7 @@ export default defineNuxtConfig({
     public: {
       baseUrl: '',
       privacyEmail: '',
+      authorGithubProfile: '',
       defaultModel,
       // @ts-expect-error
       providers,

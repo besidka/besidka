@@ -177,7 +177,19 @@
           items-center justify-between gap-2 text-xs text-base-content/70"
       >
         <p>© {{ year }} Besidka. All rights reserved.</p>
-        <p class="text-center">Made with care for the open-source community.</p>
+        <p class="text-center">
+          Made by
+          <NuxtLink
+            v-if="authorGithubProfile"
+            :to="authorGithubProfile"
+            class="link"
+            target="_blank"
+          >
+            Serhii Chernenko
+          </NuxtLink>
+          <template v-else>Serhii Chernenko</template>
+          with care for the open-source community.
+        </p>
       </div>
     </div>
   </footer>
@@ -185,6 +197,7 @@
 
 <script setup lang="ts">
 const year = useState('footer-year', () => new Date().getFullYear())
+const { authorGithubProfile } = useRuntimeConfig().public
 const { track } = useLandingAnalytics()
 const route = useRoute()
 const isHomePage = computed<boolean>(() => route.path === '/')

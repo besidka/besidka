@@ -4,6 +4,9 @@ NUXT_PUBLIC_BASE_URL=http://localhost:3000
 # Contact address published in the legal pages — see docs/legal.md
 NUXT_PUBLIC_PRIVACY_EMAIL=privacy@besidka.com
 
+# Author profile linked from the footer credit
+NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE=https://github.com/serhii-chernenko
+
 # Drizzle
 NUXT_ENCRYPTION_HASHIDS=secret
 NUXT_ENCRYPTION_KEY=secret

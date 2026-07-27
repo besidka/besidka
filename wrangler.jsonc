@@ -27,6 +27,7 @@
 	"vars": {
 		"NUXT_PUBLIC_BASE_URL": "https://besidka-preview.chernenko.workers.dev",
 		"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
+		"NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE": "https://github.com/serhii-chernenko",
 		"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
 		"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
 		"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
@@ -141,6 +142,7 @@
 			"vars": {
 				"NUXT_PUBLIC_BASE_URL": "https://www.besidka.com",
 				"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
+				"NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE": "https://github.com/serhii-chernenko",
 				"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
 				"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
 				"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
