@@ -249,7 +249,7 @@ We are an early, growing community. Here is where things stand today.
 :home-stats
 ::
 
-::home-bubble{role="user"}
+::home-bubble{role="user" heading id="subscriptions"}
 I am paying $20/month for ChatGPT Plus and I do not even use it most days.
 ::
 

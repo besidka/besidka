@@ -11,7 +11,10 @@
         tabindex="-1"
         class="landing-anchor"
       >
-        <MDCSlot unwrap="p" />
+        <a v-if="id" :href="`#${id}`">
+          <MDCSlot unwrap="p" />
+        </a>
+        <MDCSlot v-else unwrap="p" />
       </h2>
       <slot v-else />
     </div>

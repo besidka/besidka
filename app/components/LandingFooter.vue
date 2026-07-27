@@ -185,11 +185,11 @@
 const year = useState('footer-year', () => new Date().getFullYear())
 const { authorGithubProfile } = useRuntimeConfig().public
 
-// One entry per heading in content/index.md. Headings are not tabbable -- Tab
-// is for controls -- so these links are what makes every section reachable by
-// keyboard, and they are the only place that stays in sync with those ids.
+// One entry per heading id in content/index.md, and the only place that has to
+// stay in sync with them.
 const sections = [
   { hash: '#community', label: 'Community' },
+  { hash: '#subscriptions', label: 'The subscription trap' },
   { hash: '#benefits', label: 'Why Besidka' },
   { hash: '#how-it-works', label: 'How it works' },
   { hash: '#features', label: 'Features' },

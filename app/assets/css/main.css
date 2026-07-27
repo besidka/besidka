@@ -934,6 +934,26 @@ html body[data-studio-active][data-expand-sidebar]::before {
 }
 
 /*
+ * The landing page's own turn headings (HomeBubble.vue) carry the same
+ * "heading text is a self-anchor link" shape as the rule above, but the
+ * landing conversation never sits inside `.prose` — it lives in plain
+ * `.chat-bubble` markup — so that rule never matches here. `.landing-anchor`
+ * is the class HomeBubble already puts on every `<h2>` for its scroll-margin,
+ * making it the natural scope for the equivalent link reset instead of
+ * introducing a second class just for this.
+ */
+.landing-anchor > a {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+/*
  * Nothing had ever defined a focus indicator, so anything daisyUI doesn't own
  * fell through to the UA's blue `outline-style: auto` — headings focused by
  * hash navigation, prose links, and `.table-scroller`, which has no tabindex
@@ -968,6 +988,20 @@ html body[data-studio-active][data-expand-sidebar]::before {
  */
 .prose :is(h1, h2, h3, h4, h5, h6):focus-visible,
 .prose a:not(.btn):focus-visible {
+  outline-color: currentColor;
+  border-radius: var(--radius-field);
+}
+
+/*
+ * Same text-like ring as above, for `.landing-anchor` instead of `.prose` —
+ * see the comment on `.landing-anchor > a` further up for why `.prose`'s
+ * rule can't reach the landing page. Covers both focus targets a landing
+ * heading can receive: the `<h2>` itself (programmatic focus after hash
+ * navigation, via scrollToHash in hash-anchor-scroll.ts) and the `<a>` inside
+ * it (real Tab stop, keyboard-activatable like any other link).
+ */
+.landing-anchor:focus-visible,
+.landing-anchor > a:focus-visible {
   outline-color: currentColor;
   border-radius: var(--radius-field);
 }
