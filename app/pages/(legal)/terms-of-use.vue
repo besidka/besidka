@@ -7,9 +7,7 @@ definePageMeta({
   layout: 'legal',
 })
 
-const { data: page } = await useAsyncData('legal-terms-of-use', () => {
-  return queryCollection('legal').path('/legal/terms-of-use').first()
-})
+const { data: page } = await useLegalDocument()
 
 useSeoMeta({
   title: () => page.value?.title || 'Terms of Use',

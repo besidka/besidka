@@ -7,9 +7,7 @@ definePageMeta({
   layout: 'legal',
 })
 
-const { data: page } = await useAsyncData('legal-cookie-policy', () => {
-  return queryCollection('legal').path('/legal/cookie-policy').first()
-})
+const { data: page } = await useLegalDocument()
 
 useSeoMeta({
   title: () => page.value?.title || 'Cookie Policy',

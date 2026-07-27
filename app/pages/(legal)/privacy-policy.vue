@@ -7,9 +7,7 @@ definePageMeta({
   layout: 'legal',
 })
 
-const { data: page } = await useAsyncData('legal-privacy-policy', () => {
-  return queryCollection('legal').path('/legal/privacy-policy').first()
-})
+const { data: page } = await useLegalDocument()
 
 useSeoMeta({
   title: () => page.value?.title || 'Privacy Policy',

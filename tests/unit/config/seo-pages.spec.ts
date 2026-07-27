@@ -80,18 +80,33 @@ function readFrontmatterValue(slug: string, key: string): string {
   return (valueMatch?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
 }
 
+describe('useLegalDocument', () => {
+  it(
+    'derives the collection path and the payload key from one route slug, so '
+    + 'a renamed document cannot leave a page querying a path that no longer '
+    + 'exists while still rendering its hardcoded fallback title',
+    () => {
+      const source = readPageSource('app/composables/legal-document.ts')
+
+      expect(source).toContain('queryCollection(\'legal\')')
+      expect(source).toMatch(/path\(`\/legal\/\$\{slug\}`\)/)
+      expect(source).toMatch(/`legal-\$\{slug\}`/)
+    },
+  )
+})
+
 describe.each(LEGAL_DOCUMENTS)(
   'legal page %s is content-driven and carries its own SEO meta',
   (slug) => {
     it(
-      'queries its own document from the legal collection, since the page '
-      + 'renders nothing and silently falls back to a hardcoded title when '
-      + 'the path no longer matches a content file',
+      'fetches through useLegalDocument, since the page renders nothing and '
+      + 'silently falls back to a hardcoded title when the path no longer '
+      + 'matches a content file',
       () => {
         const source = readPageSource(`app/pages/(legal)/${slug}.vue`)
 
-        expect(source).toContain('queryCollection(\'legal\')')
-        expect(source).toContain(`.path('/legal/${slug}')`)
+        expect(source).toContain('useLegalDocument()')
+        expect(source).not.toContain('queryCollection(')
       },
     )
 
