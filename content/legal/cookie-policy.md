@@ -106,4 +106,4 @@ If I add or remove a cookie or a storage key, I update this table and the date a
 
 ## Contact
 
-Questions about anything on this page: **{{ privacyEmail }}**.
+Questions about anything on this page: **:privacy-email-link{}**.

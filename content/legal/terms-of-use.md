@@ -10,7 +10,7 @@ summary: "Besidka is a free AI chat app run by one person in Poland. You bring y
 The hosted Besidka service at **www.besidka.com** is provided by **Serhii Chernenko**, an individual resident in Poland (European Union). Besidka is a personal, non-commercial project and **not a registered business** — there is no company, no sole proprietorship and no VAT registration behind it.
 
 - Name: **Serhii Chernenko**
-- Email: **{{ privacyEmail }}**
+- Email: **:privacy-email-link{}**
 - Location: **Poland (European Union)**
 
 That one address handles everything — general questions, privacy requests, reports of illegal content, and enquiries from authorities. It is read by a person, not a bot, and it is the fastest way to reach me.
@@ -53,7 +53,7 @@ You must be at least **18 years old**. Besidka only works if you bring your own 
 - Give a real email address you control. You need it to verify your account and to reset your password.
 - Keep your password and your session to yourself. You are responsible for activity under your account.
 - One person per account. Do not share an account.
-- Tell me at **{{ privacyEmail }}** if you think someone else has access to your account.
+- Tell me at **:privacy-email-link{}** if you think someone else has access to your account.
 
 You can delete your account at any time from your settings. That deletes your account and its data — see the [Privacy Policy](/privacy-policy) for exactly what happens, including the 30-day backup window.
 
@@ -136,7 +136,7 @@ Revoking a share stops access through me immediately and deletes the share recor
 
 Anyone — user or not — can tell me about content on Besidka they believe is illegal. I host user content and treat myself as an online platform, because share links are public.
 
-**Send reports to {{ privacyEmail }}.** There is no form to fill in, and the mailbox is read by a person — it is not a bot-only address.
+**Send reports to :privacy-email-link{}.** There is no form to fill in, and the mailbox is read by a person — it is not a bot-only address.
 
 For the purposes of the Digital Services Act, that same address is my published single point of contact:
 
@@ -236,12 +236,12 @@ That choice of law is not a way to strip protections from you. To the extent the
 
 Wherever you live, you can raise a dispute with me in the courts of your own country, and I will not argue that you had to travel to Poland to do it.
 
-I would much rather sort a problem out by email first. Write to **{{ privacyEmail }}**.
+I would much rather sort a problem out by email first. Write to **:privacy-email-link{}**.
 
 ## Contact
 
 One address covers everything in these terms — general questions, privacy and data protection requests, reports of illegal content, and enquiries from authorities:
 
-**{{ privacyEmail }}**
+**:privacy-email-link{}**
 
 See also the [Privacy Policy](/privacy-policy) and the [Cookie Policy](/cookie-policy).

@@ -18,7 +18,7 @@ The controller of your personal data is **Serhii Chernenko**, an individual resi
 Besidka is a personal, non-commercial project. It is **not a registered business** — there is no company, no sole proprietorship and no VAT registration behind it.
 
 - Name: **Serhii Chernenko**
-- Email: **{{ privacyEmail }}**
+- Email: **:privacy-email-link{}**
 - Location: **Poland (European Union)**
 
 I tell you the country because it decides which supervisory authority is competent for you to complain to — see [Complaining](#complaining).
@@ -211,7 +211,7 @@ The full list, with names and durations, is in the [Cookie Policy](/cookie-polic
 - Your provider API keys are encrypted as described above.
 - Access to production data is limited to the controller.
 
-No service is perfectly secure. If you find a security problem, please write to **{{ privacyEmail }}** and give me a chance to fix it before disclosing it.
+No service is perfectly secure. If you find a security problem, please write to **:privacy-email-link{}** and give me a chance to fix it before disclosing it.
 
 ## Automated decision-making and profiling
 
@@ -227,7 +227,7 @@ I do not ask for it, I have no lawful basis to process it, and content you type 
 
 ## Age limit
 
-Besidka is for people aged **18 or over**. Using Besidka requires your own AI provider API key, and the providers set 18 as the minimum age for an API account — Google AI Studio requires you to be 18 or over — so there is no younger tier for me to support. Because the service is adults-only, the children's consent rules in GDPR Art. 8 do not arise. If you are under 18, please do not create an account. If you believe someone under 18 has an account, write to **{{ privacyEmail }}** and I will delete it.
+Besidka is for people aged **18 or over**. Using Besidka requires your own AI provider API key, and the providers set 18 as the minimum age for an API account — Google AI Studio requires you to be 18 or over — so there is no younger tier for me to support. Because the service is adults-only, the children's consent rules in GDPR Art. 8 do not arise. If you are under 18, please do not create an account. If you believe someone under 18 has an account, write to **:privacy-email-link{}** and I will delete it.
 
 ## Your rights
 
@@ -246,13 +246,13 @@ Under the GDPR you have the right to:
 
 Most things you can do yourself in the app: edit your profile, delete a chat, delete a file, revoke a share, turn notifications off, change your cookie choices, or delete your whole account.
 
-For anything else, email **{{ privacyEmail }}**. I answer within **one month**. If a request is complex I may extend that by up to **two further months**, and if I do, I will tell you within the first month and explain why.
+For anything else, email **:privacy-email-link{}**. I answer within **one month**. If a request is complex I may extend that by up to **two further months**, and if I do, I will tell you within the first month and explain why.
 
 I do not charge for this. I may ask you to confirm you control the account's email address, so I do not hand your data to someone else.
 
 ### Getting a copy of your data
 
-There is **no self-service export button yet**. Until there is, email **{{ privacyEmail }}** and I will send you a copy of your account data, chats, projects and file list in a machine-readable format.
+There is **no self-service export button yet**. Until there is, email **:privacy-email-link{}** and I will send you a copy of your account data, chats, projects and file list in a machine-readable format.
 
 ### Deleting your account
 
@@ -281,4 +281,4 @@ If I change this policy in a way that matters, I will update the date at the top
 
 ## Contact
 
-For anything in this policy, including any of the rights above, write to **{{ privacyEmail }}**.
+For anything in this policy, including any of the rights above, write to **:privacy-email-link{}**.
