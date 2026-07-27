@@ -122,10 +122,14 @@ Consequences that drive real decisions:
    August 2023 (Besidka was never eligible) and **retired the feature entirely
    on 7 May 2026**. Google still parses `FAQPage` for entity understanding, but
    that parsing is not location-specific — it reads ordinary prose the same way.
-   Meanwhile the structures differ: a `HomeBubble` with a `heading` prop emits a
-   real (`sr-only`, still crawlable) `<h2>`, whereas an FAQ item emits only a
-   `<summary>` inside `<details>` and no heading tag at all. So the section is
-   the stronger placement. Do not "consolidate" it back into the FAQ.
+   Meanwhile the structures differ: a `HomeBubble` with `heading` set emits a
+   real, visible `<h2>` (the user turn's own question text, doubling as the
+   anchor target), whereas an FAQ item emits only a `<summary>` inside
+   `<details>` and no heading tag at all — see WHATWG issue #8864: a heading
+   inside `<summary>` isn't exposed with heading role, and a closed
+   `<details>` excludes its content from the accessibility tree, so per-item
+   FAQ headings would be inert either way. So the section is the stronger
+   placement. Do not "consolidate" it back into the FAQ.
 
 ### How the association is asserted
 

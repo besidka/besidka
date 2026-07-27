@@ -172,15 +172,37 @@ Short user question goes here.
 | ---------- | --------------------- | ------------------------------------------------ |
 | `role`     | `user` \| `assistant` | default `assistant`                              |
 | `wide`     | boolean (presence)    | full-width bubble (for bubbles holding a widget) |
-| `heading`  | string                | adds a visually-hidden `<h2>` (SEO/a11y/anchors) |
-| `id`       | string                | anchor target for nav links (e.g. `features`)    |
-| `sr-label` | string                | screen-reader label for the turn                 |
+| `heading`  | boolean (presence)    | on a `role="user"` bubble, promotes its own visible text to a real `<h2>` — see below |
+| `id`       | string                | anchor target for nav links (e.g. `features`), set alongside `heading` on the same bubble |
+| `sr-label` | string                | screen-reader label for the turn; only meaningful on a bubble that has no `heading` |
+
+**`heading` is boolean, not a string.** It opts a `role="user"` turn's own
+question text into a real `<h2>` — there is no separate heading string to
+author or keep in sync, because the visible question *is* the heading. Every
+conversation turn should carry one, so the page has a real (not
+visually-hidden) outline that mirrors its simulated Q&A structure:
+
+```md
+::home-bubble
+---
+role: user
+heading: true
+id: features
+---
+What can I actually do with it?
+::
+```
+
+The paired `role="assistant"` bubble that answers the question keeps `wide`
+and, if it has no heading of its own, `sr-label` — but no longer carries
+`heading` or `id`. The anchor and the heading must be the same element, so
+`id` moves with `heading` onto the user turn.
 
 A bubble may contain prose and/or a widget placeholder. Nest the widget with
 more colons, indented two spaces:
 
 ```md
-::home-bubble{wide heading="Features" id="features" role="assistant"}
+::home-bubble{wide role="assistant"}
   :::home-features{set="features"}
   :::
 ::

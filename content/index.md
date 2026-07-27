@@ -239,7 +239,7 @@ Here is a quick look at Besidka running in both light and dark themes.
 :home-carousel
 :: -->
 
-::home-bubble{role="user" sr-label="User question about adoption"}
+::home-bubble{role="user" heading id="community"}
 How many people are using this?
 ::
 
@@ -249,11 +249,7 @@ We are an early, growing community. Here is where things stand today.
 :home-stats
 ::
 
-::home-bubble
----
-role: user
-sr-label: User expressing frustration with subscription AI tools
----
+::home-bubble{role="user"}
 I am paying $20/month for ChatGPT Plus and I do not even use it most days.
 ::
 
@@ -292,30 +288,36 @@ Connect an OpenAI or Google AI Studio key and pay only for what you use — no m
   :::
 ::
 
-::home-bubble{role="user" sr-label="User asking what makes Besidka different"}
+::home-bubble
+---
+role: user
+heading: true
+id: benefits
+---
 Why should I pick this over a regular subscription?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: Why Besidka
-id: benefits
 role: assistant
 sr-label: Key customer benefits of using Besidka
 ---
 :home-features{columns="3" set="benefits"}
 ::
 
-::home-bubble{role="user" sr-label="User asking for a starting guide"}
+::home-bubble
+---
+role: user
+heading: true
+id: how-it-works
+---
 How do I get started?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: How it works
-id: how-it-works
 role: assistant
 ---
 :home-features{set="steps"}
@@ -337,21 +339,24 @@ Here is a short walkthrough of the key features.
 :home-video
 :: -->
 
-::home-bubble{role="user" sr-label="User asking about available features"}
+::home-bubble
+---
+role: user
+heading: true
+id: features
+---
 What can I actually do with it?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: Features
-id: features
 role: assistant
 ---
 :home-features{set="features"}
 ::
 
-::home-bubble{role="user" sr-label="User asking who this is for"}
+::home-bubble{role="user" heading id="use-cases"}
 Who is this for?
 ::
 
@@ -367,7 +372,8 @@ sr-label: Use cases — who Besidka is built for
 ::home-bubble
 ---
 role: user
-sr-label: User asking about cost compared to ChatGPT Plus
+heading: true
+id: pricing
 ---
 What does it cost compared to ChatGPT Plus?
 ::
@@ -375,15 +381,13 @@ What does it cost compared to ChatGPT Plus?
 ::home-bubble
 ---
 wide: true
-heading: What does it cost?
-id: pricing
 role: assistant
 sr-label: Pricing comparison between Besidka and subscription alternatives
 ---
 :home-comparison
 ::
 
-::home-bubble{role="user" sr-label="User asking for a self-hosting option"}
+::home-bubble{role="user" heading id="self-hosting"}
 Can I run this myself?
 ::
 
@@ -397,30 +401,36 @@ Besidka is built on Cloudflare Workers and ships with everything you need to run
 :home-stars
 ::
 
-::home-bubble{role="user" sr-label="User asking about what Besidka means"}
+::home-bubble
+---
+role: user
+heading: true
+id: about-the-name
+---
 What does “Besidka” mean?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: What does "Besidka" mean?
-id: about-the-name
 role: assistant
 sr-label: Explanation of the name "Besidka"
 ---
 Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think. Similar words exist across other Slavic languages, such as “besídka” in Czech and “besiedka” in Slovak, and all of them derive from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
 ::
 
-::home-bubble{role="user" sr-label="User asking FAQ questions"}
+::home-bubble
+---
+role: user
+heading: true
+id: faq
+---
 I have more questions.
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: FAQ
-id: faq
 role: assistant
 ---
 :home-faq
