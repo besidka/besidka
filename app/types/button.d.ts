@@ -25,6 +25,7 @@ export interface ButtonProps {
   ghost?: boolean
   ghostNew?: boolean
   outline?: boolean
+  normalCase?: boolean
   square?: boolean
   circle?: boolean
   block?: boolean
@@ -39,6 +40,7 @@ export interface ButtonProps {
   iconOnly?: boolean
   iconOnlyDesktop?: boolean
   iconOnlyMobile?: boolean
+  iconOnlyPhone?: boolean
   iconName?: string
   iconNameDisabled?: string
   iconSize?: number

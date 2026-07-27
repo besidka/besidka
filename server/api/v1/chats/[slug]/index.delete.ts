@@ -3,6 +3,11 @@ import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import {
+  cleanupFilesOrphanedByChatDeletion,
+  findChatOriginFiles,
+} from '~~/server/utils/files/chat-deletion-cleanup'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -47,6 +52,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const originFiles = await findChatOriginFiles(chat.id, userId)
+
   await db.delete(schema.chats)
     .where(and(
       eq(schema.chats.id, chat.id),
@@ -55,6 +62,22 @@ export default defineEventHandler(async (event) => {
 
   await refreshProjectActivityAt([chat.projectId], userId, db)
   await markProjectsMemoryStale([chat.projectId], userId, db)
+
+  try {
+    await cleanupFilesOrphanedByChatDeletion(originFiles, userId, logger)
+  } catch (exception) {
+    logger.set({
+      orphanedFileCleanup: {
+        phase: 'cleanup',
+        candidateCount: originFiles.length,
+      },
+      attributes: {
+        orphanedFileCleanup: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   return { success: true }
 })

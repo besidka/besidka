@@ -187,6 +187,32 @@ export function useAuth() {
         },
       })
     },
+    /**
+     * Starts erasure by asking the server to email a confirmation link. The
+     * account is destroyed only when that link is opened, so this resolves
+     * with the account still intact and the session still valid.
+     */
+    async requestAccountDeletion() {
+      const draftBackup = useChatDraftBackup()
+      const preferenceStorage = usePreferenceStorage()
+      const { error } = await client.deleteUser({
+        callbackURL: '/',
+      })
+
+      if (error) {
+        throw createError({
+          statusCode: error.status,
+          message: error.message || 'Failed to request account deletion.',
+        })
+      }
+
+      // Deletion completes in a plain GET from the mail client, which lands on
+      // '/' with no chance to run app code, so the device-local draft is
+      // dropped here instead — same shared-device reasoning as signOut. It is
+      // an unsent draft belonging to a user who just asked to be erased.
+      draftBackup.clear()
+      preferenceStorage.removeItem('chat_input')
+    },
     options,
     fetchSession,
     client,

@@ -106,6 +106,7 @@ const props = withDefaults(defineProps<{
 
 const { track } = useLandingAnalytics()
 const { generate } = useLandingVideoThumbnails()
+const { isAllowed, onConsentChange } = useCookieConsent()
 
 const DEFAULT_QUALITY = 720
 const THUMBNAIL_COUNT = 12
@@ -235,6 +236,7 @@ function buildOptions(): Plyr.Options {
     tooltips: { controls: true, seek: false },
     clickToPlay: true,
     ratio: '16:9',
+    storage: { enabled: isAllowed('preferences'), key: 'plyr' },
   }
 
   if (sizes.length) {
@@ -384,6 +386,28 @@ function registerListeners(instance: Plyr) {
     track('video_complete', { target: 'demo' })
   })
 }
+
+function setPlyrStorageEnabled(enabled: boolean) {
+  if (!player) {
+    return
+  }
+
+  const storage = (player as unknown as { storage: { enabled: boolean } })
+    .storage
+
+  storage.enabled = enabled
+}
+
+onConsentChange(({ granted, denied }) => {
+  if (granted.includes('preferences')) {
+    setPlyrStorageEnabled(true)
+  }
+
+  if (denied.includes('preferences')) {
+    setPlyrStorageEnabled(false)
+    localStorage.removeItem('plyr')
+  }
+})
 
 /** Native HTML5 fallback when Plyr fails to initialize. */
 function fallbackToNative(element: HTMLVideoElement) {

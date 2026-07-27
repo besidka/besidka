@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildShareDescription } from '../../../shared/utils/og-description'
+import {
+  buildShareDescription,
+  GENERIC_SHARE_DESCRIPTION,
+  resolveShareDescription,
+} from '../../../shared/utils/og-description'
 
 describe('buildShareDescription', () => {
   it('returns the first sentence when it fits within maxLength', () => {
@@ -84,5 +88,36 @@ describe('buildShareDescription', () => {
 
     expect(result.at(-1)).toBe('…')
     expect(result).not.toMatch(/[\uD800-\uDBFF]…$/)
+  })
+})
+
+describe('resolveShareDescription', () => {
+  const sentinel = 'Zx7QpLumen-secret-onboarding-plan'
+
+  it('returns the generic description for a non-indexable share and '
+    + 'does not leak any part of the message', () => {
+    const parts = [
+      { type: 'text', text: `${sentinel} needs a private walkthrough.` },
+    ]
+
+    const result = resolveShareDescription(parts, false)
+
+    expect(result).toBe(GENERIC_SHARE_DESCRIPTION)
+    expect(result).not.toContain(sentinel)
+  })
+
+  it('still derives the description from the message for an '
+    + 'indexable share', () => {
+    const parts = [
+      { type: 'text', text: `${sentinel} is public. It is fine.` },
+    ]
+
+    expect(resolveShareDescription(parts, true))
+      .toBe(`${sentinel} is public.`)
+  })
+
+  it('falls back to the generic description when an indexable share '
+    + 'has no usable message text', () => {
+    expect(resolveShareDescription([], true)).toBe(GENERIC_SHARE_DESCRIPTION)
   })
 })

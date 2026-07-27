@@ -66,6 +66,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/file-download.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
+    'tests/integration/server/chat-deletion-cleanup.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
@@ -161,6 +162,8 @@ export function getAffectedTests(changedFiles) {
   const cookieConsentTests = [
     'tests/unit/composables/preference-storage.spec.ts',
     'tests/unit/utils/consents.spec.ts',
+    'tests/unit/config/cookie-consent.spec.ts',
+    'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/integration/api/consents.spec.ts',
     'tests/e2e/cookies/consent.spec.ts',
   ]
@@ -172,6 +175,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/plugins/session-revalidate.client.spec.ts',
   ]
 
+  const accountDeletionTests = [
+    'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/composables/auth.spec.ts',
+  ]
+
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
@@ -181,7 +189,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
     'tests/unit/components/landing/CtaButtons.spec.ts',
     'tests/unit/components/landing/FeatureGrid.spec.ts',
+    'tests/unit/components/landing/MessageBubble.spec.ts',
     'tests/unit/components/content/HomeStats.spec.ts',
+    'tests/unit/components/content/HomeBubble.spec.ts',
     'tests/integration/api/events-ingest.spec.ts',
     'tests/integration/api/stats.spec.ts',
     'tests/integration/server/landing-cache-refresh.spec.ts',
@@ -282,12 +292,16 @@ export function getAffectedTests(changedFiles) {
       tests: emailTests,
     },
     {
-      pattern: /^server\/routes\/sitemap\.xml\.ts$/,
-      tests: seoTests,
+      pattern: /^nuxt\.config\.ts$/,
+      tests: [...seoTests, ...cookieConsentTests],
     },
     {
-      pattern: /^nuxt\.config\.ts$/,
-      tests: seoTests,
+      pattern: /^app\/pages\/\((auth|legal)\)\/.*\.vue$/,
+      tests: ['tests/unit/config/seo-pages.spec.ts'],
+    },
+    {
+      pattern: /^content\/legal\/.*\.md$/,
+      tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,
@@ -316,6 +330,13 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^shared\/types\/landing\.d\.ts$/,
       tests: landingTests,
+    },
+    {
+      pattern: /^app\/pages\/index\.vue$/,
+      tests: [
+        'tests/unit/utils/landing-jsonld.spec.ts',
+        'tests/unit/utils/canonical.spec.ts',
+      ],
     },
     {
       pattern: /^server\/api\/v1\/stats\/.*\.ts$/,
@@ -384,6 +405,10 @@ export function getAffectedTests(changedFiles) {
         'tests/e2e/shared/context-menu-clipping.spec.ts',
         ...contextMenuTests,
       ],
+    },
+    {
+      pattern: /^app\/app\.vue$/,
+      tests: ['tests/unit/utils/canonical.spec.ts'],
     },
     {
       pattern: /^server\/api\/v1\/shared\/test\/.*\.ts$/,
@@ -559,6 +584,11 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern:
+        /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/settings\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
+      tests: accountDeletionTests,
+    },
+    {
       pattern: /^server\/utils\/session\.ts$/,
       tests: [
         'tests/integration/server/session.spec.ts',
@@ -583,6 +613,15 @@ export function getAffectedTests(changedFiles) {
         ...chatTestEndpointTests,
         ...messageUsageTests,
         'tests/integration/api/chats-detail.spec.ts',
+        'tests/integration/api/chats-client-errors.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/chats\/\[slug\]\/index\.delete\.ts|server\/utils\/files\/chat-deletion-cleanup\.ts)$/,
+      tests: [
+        ...historyProjectsTests,
+        ...filesModuleTests,
       ],
     },
     {

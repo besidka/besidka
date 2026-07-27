@@ -241,7 +241,7 @@ import type { MessageUsage } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
-import { buildShareDescription } from '#shared/utils/og-description'
+import { resolveShareDescription } from '#shared/utils/og-description'
 import {
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
@@ -312,38 +312,36 @@ if (import.meta.server && data.value) {
   }
 }
 
-const { baseUrl } = useRuntimeConfig().public
-
 const description = computed<string>(() => {
   const firstUserMessage = data.value?.messages.find((message) => {
     return message.role === 'user'
   })
 
-  return (
-    buildShareDescription(firstUserMessage?.parts)
-    || 'A conversation shared from Besidka.'
+  return resolveShareDescription(
+    firstUserMessage?.parts,
+    data.value?.indexable ?? false,
   )
+})
+
+// Titles are model-generated from the first user message. Link-preview scrapers
+// ignore robots, so social tags stay neutral unless indexing was opted into.
+const socialTitle = computed<string>(() => {
+  if (!data.value?.indexable) {
+    return 'Shared chat'
+  }
+
+  return data.value.title || 'Shared chat'
 })
 
 useSeoMeta({
   title: () => data.value?.title || 'Shared chat',
   description: () => description.value,
   robots: () => data.value?.indexable ? 'index, follow' : 'noindex, nofollow',
-  ogTitle: () => data.value?.title || 'Shared chat',
+  ogTitle: () => socialTitle.value,
   ogDescription: () => description.value,
-  ogUrl: () => `${baseUrl}/shared/${shareSlug.value}`,
   twitterCard: 'summary_large_image',
-  twitterTitle: () => data.value?.title || 'Shared chat',
+  twitterTitle: () => socialTitle.value,
   twitterDescription: () => description.value,
-})
-
-useHead({
-  link: [
-    {
-      rel: 'canonical',
-      href: () => `${baseUrl}/shared/${shareSlug.value}`,
-    },
-  ],
 })
 
 const { messageComponents, getUnwrap } = useChatFormat()

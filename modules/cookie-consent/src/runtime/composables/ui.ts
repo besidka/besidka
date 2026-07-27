@@ -7,6 +7,12 @@ import { useCookieConsent } from './consent'
 let autoShowScheduled = false
 let autoShowTimer: ReturnType<typeof setTimeout> | null = null
 let triggerElement: HTMLElement | null = null
+// Whether the surface currently shown was opened by a user action (click,
+// keyboard activation) rather than the unattended auto-show timer — decides
+// both whether Popup/Modal move focus into themselves on open and whether
+// close() restores focus afterwards (nothing to "restore" if nothing was
+// ever taken).
+let userInitiatedOpen = true
 
 export function useCookieConsentUi() {
   const consent = useCookieConsent()
@@ -31,7 +37,12 @@ export function useCookieConsentUi() {
     draft.value = next
   }
 
-  function openPopup(trigger?: HTMLElement | null): void {
+  function openPopup(
+    trigger?: HTMLElement | null,
+    options?: { userInitiated?: boolean },
+  ): void {
+    userInitiatedOpen = options?.userInitiated ?? true
+
     if (import.meta.client) {
       triggerElement = trigger ?? (document.activeElement as HTMLElement | null)
     }
@@ -40,12 +51,18 @@ export function useCookieConsentUi() {
     view.value = 'popup'
   }
 
-  function expand(): void {
+  function expand(options?: { userInitiated?: boolean }): void {
+    userInitiatedOpen = options?.userInitiated ?? true
+
     if (view.value === 'hidden') {
       initDraft()
     }
 
     view.value = 'modal'
+  }
+
+  function shouldFocusOnShow(): boolean {
+    return userInitiatedOpen
   }
 
   function isTriggerNode(node: Node | null): boolean {
@@ -65,11 +82,12 @@ export function useCookieConsentUi() {
     view.value = 'hidden'
 
     const target = triggerElement
+    const shouldRestoreFocus = userInitiatedOpen
 
     triggerElement = null
     draft.value = {}
 
-    if (!import.meta.client) {
+    if (!import.meta.client || !shouldRestoreFocus) {
       return
     }
 
@@ -143,9 +161,9 @@ export function useCookieConsentUi() {
       }
 
       if (view === 'modal') {
-        expand()
+        expand({ userInitiated: false })
       } else {
-        openPopup()
+        openPopup(undefined, { userInitiated: false })
       }
     }, delay)
 
@@ -207,6 +225,7 @@ export function useCookieConsentUi() {
     isTriggerNode,
     scheduleAutoShow,
     cancelAutoShow,
+    shouldFocusOnShow,
     switchProps,
   }
 }

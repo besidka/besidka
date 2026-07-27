@@ -46,6 +46,10 @@ export default defineNuxtConfig({
   features: {
     // devLogs: true,
   },
+  routeRules: {
+    '/privacy': { redirect: { to: '/privacy-policy', statusCode: 301 } },
+    '/terms': { redirect: { to: '/terms-of-use', statusCode: 301 } },
+  },
   nitro: {
     preset: 'cloudflare_module',
     experimental: {
@@ -148,6 +152,8 @@ export default defineNuxtConfig({
     vapidSubject: '',
     public: {
       baseUrl: '',
+      privacyEmail: '',
+      authorGithubProfile: '',
       defaultModel,
       // @ts-expect-error
       providers,
@@ -173,16 +179,17 @@ export default defineNuxtConfig({
     url: process.env.NUXT_PUBLIC_BASE_URL || 'https://www.besidka.com',
     name: 'Besidka',
   },
+  // /signin, /signup and /reset-password are crawler-reachable and rely on a
+  // useSeoMeta `noindex` instead — a Disallow-ed URL is never fetched, so its
+  // noindex is never read. /new-password stays disallowed: nothing crawlable
+  // links to it, and its URLs carry tokens. See docs/seo.md.
   robots: {
     disallow: [
       '/api/',
       '/chats/',
       '/files/',
       '/profile/',
-      '/signin',
-      '/signup',
       '/new-password',
-      '/reset-password',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/',
@@ -418,7 +425,11 @@ export default defineNuxtConfig({
         entries: [
           {
             id: 'last-login-method',
-            name: 'better_auth.last_login_method',
+            // Real Better Auth cookie name (hyphenated prefix,
+            // "last_used_login_method") — see the lastLoginMethod plugin's
+            // default cookieName. Do not "fix" this back to
+            // better_auth.last_login_method; that name matches nothing.
+            name: 'better-auth.last_used_login_method',
             type: 'cookie',
           },
           {

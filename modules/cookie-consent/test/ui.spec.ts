@@ -47,6 +47,69 @@ describe('useCookieConsentUi (sequential session)', () => {
     })
   })
 
+  describe('shouldFocusOnShow()', () => {
+    it('is true after a plain openPopup() call (user-initiated default)', () => {
+      const { openPopup, shouldFocusOnShow, close } = useCookieConsentUi()
+
+      openPopup()
+
+      expect(shouldFocusOnShow()).toBe(true)
+
+      close()
+    })
+
+    it('is false when openPopup() is marked as not user-initiated', () => {
+      const { openPopup, shouldFocusOnShow, close } = useCookieConsentUi()
+
+      openPopup(undefined, { userInitiated: false })
+
+      expect(shouldFocusOnShow()).toBe(false)
+
+      close()
+    })
+
+    it('is true after a plain expand() call (user-initiated default)', () => {
+      const { expand, shouldFocusOnShow, close } = useCookieConsentUi()
+
+      expand()
+
+      expect(shouldFocusOnShow()).toBe(true)
+
+      close()
+    })
+
+    it('is false when expand() is marked as not user-initiated', () => {
+      const { expand, shouldFocusOnShow, close } = useCookieConsentUi()
+
+      expand({ userInitiated: false })
+
+      expect(shouldFocusOnShow()).toBe(false)
+
+      close()
+    })
+
+    it('flips back to true once a real user click reopens the popup', () => {
+      const { openPopup, shouldFocusOnShow, close } = useCookieConsentUi()
+
+      openPopup(undefined, { userInitiated: false })
+
+      expect(shouldFocusOnShow()).toBe(false)
+
+      close()
+
+      const trigger = document.createElement('button')
+
+      document.body.appendChild(trigger)
+
+      openPopup(trigger)
+
+      expect(shouldFocusOnShow()).toBe(true)
+
+      close()
+      document.body.removeChild(trigger)
+    })
+  })
+
   describe('shared state across instances', () => {
     it('draft and view changes in one instance reach another', () => {
       const first = useCookieConsentUi()
@@ -200,6 +263,29 @@ describe('useCookieConsentUi (sequential session)', () => {
 
       document.body.removeChild(trigger)
     })
+
+    it(
+      'does not move focus when closing a surface that was never '
+      + 'user-initiated (auto-show)',
+      () => {
+        const elsewhere = document.createElement('input')
+
+        document.body.appendChild(elsewhere)
+        elsewhere.focus()
+
+        const { openPopup, close } = useCookieConsentUi()
+
+        openPopup(undefined, { userInitiated: false })
+
+        expect(document.activeElement).toBe(elsewhere)
+
+        close()
+
+        expect(document.activeElement).toBe(elsewhere)
+
+        document.body.removeChild(elsewhere)
+      },
+    )
 
     it('does not throw when the trigger left the document', () => {
       const trigger = document.createElement('button')

@@ -1,3 +1,12 @@
+# Canonical site origin — see docs/seo.md
+NUXT_PUBLIC_BASE_URL=http://localhost:3000
+
+# Contact address published in the legal pages — see docs/legal.md
+NUXT_PUBLIC_PRIVACY_EMAIL=privacy@besidka.com
+
+# Author profile linked from the footer credit
+NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE=https://github.com/serhii-chernenko
+
 # Drizzle
 NUXT_ENCRYPTION_HASHIDS=secret
 NUXT_ENCRYPTION_KEY=secret
@@ -34,8 +43,6 @@ NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS=20000
 
 # Deep research mock/dry-run mode. When true, a topic prefixed with "mock:"
 # skips the real provider call and returns a canned report at zero cost.
-# Only ever set true on preview (wrangler.jsonc top-level vars) — never in
-# production — so the mock path cannot be selected on the live Worker.
 NUXT_RESEARCH_MOCK_ENABLED=false
 
 # Axiom observability (production only)

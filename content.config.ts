@@ -266,5 +266,28 @@ export default defineContentConfig({
           .describe('Demo video shown in the how-it-works section'),
       }),
     }),
+    legal: defineCollection({
+      type: 'page',
+      source: 'legal/*.md',
+      schema: z.object({
+        description: z
+          .string()
+          .describe('SEO meta description and social share text'),
+        updatedAt: z
+          .string()
+          .describe(
+            'ISO date this document last changed, e.g. 2026-07-26. Shown to'
+            + ' users and used as the sitemap lastmod — bump it whenever the'
+            + ' substance changes.',
+          ),
+        summary: z
+          .string()
+          .optional()
+          .describe(
+            'Plain-language summary shown above the formal text. GDPR Art. 12'
+            + ' requires clear and plain language; this is where it lives.',
+          ),
+      }),
+    }),
   },
 })

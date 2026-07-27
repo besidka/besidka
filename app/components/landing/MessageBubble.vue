@@ -1,9 +1,8 @@
 <template>
   <div
-    :id="id || undefined"
-    class="chat landing-anchor"
+    class="chat"
     :class="role === 'assistant' ? 'chat-start' : 'chat-end'"
-    role="doc-example"
+    :role="srLabel ? 'group' : undefined"
     :aria-label="srLabel || undefined"
   >
     <div
@@ -38,10 +37,8 @@ withDefaults(defineProps<{
   role: 'assistant' | 'user'
   wide?: boolean
   srLabel?: string
-  id?: string
 }>(), {
   wide: false,
   srLabel: undefined,
-  id: undefined,
 })
 </script>

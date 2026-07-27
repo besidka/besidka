@@ -1,15 +1,22 @@
 <template>
   <LandingMessageBubble
-    :id="id || undefined"
     :role="role"
     :wide="wide"
-    :sr-label="srLabel || undefined"
+    :sr-label="heading ? undefined : (srLabel || undefined)"
   >
     <div class="flex flex-col gap-3">
-      <h2 v-if="heading" class="sr-only">
-        {{ heading }}
+      <h2
+        v-if="heading"
+        :id="id || undefined"
+        tabindex="-1"
+        class="landing-anchor"
+      >
+        <a v-if="id" :href="`#${id}`">
+          <MDCSlot unwrap="p" />
+        </a>
+        <MDCSlot v-else unwrap="p" />
       </h2>
-      <slot />
+      <slot v-else />
     </div>
   </LandingMessageBubble>
 </template>
@@ -18,13 +25,13 @@
 withDefaults(defineProps<{
   role?: 'assistant' | 'user'
   wide?: boolean
-  heading?: string
+  heading?: boolean
   id?: string
   srLabel?: string
 }>(), {
   role: 'assistant',
   wide: false,
-  heading: undefined,
+  heading: false,
   id: undefined,
   srLabel: undefined,
 })

@@ -74,3 +74,22 @@ export function buildShareDescription(
 
   return `${cut}…`
 }
+
+export const GENERIC_SHARE_DESCRIPTION = 'A conversation shared from Besidka.'
+
+export function resolveShareDescription(
+  parts: unknown,
+  isIndexable: boolean,
+  maxLength = 160,
+): string {
+  // Link-preview scrapers (Slack, Discord, iMessage, WhatsApp, Twitter)
+  // fetch OG tags but ignore robots directives entirely, so a
+  // message-derived description would leak content even when the share
+  // owner opted out of indexing. Only derive from the message when the
+  // share is explicitly indexable.
+  if (!isIndexable) {
+    return GENERIC_SHARE_DESCRIPTION
+  }
+
+  return buildShareDescription(parts, maxLength) || GENERIC_SHARE_DESCRIPTION
+}

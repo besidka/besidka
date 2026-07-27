@@ -22,15 +22,11 @@
 </template>
 
 <script setup lang="ts">
-import {
-  buildFaqPageLd,
-  buildOrganizationLd,
-  buildSoftwareApplicationLd,
-} from '~/utils/landing-jsonld'
+import type { FaqItem } from '~/utils/landing-jsonld'
+import { buildLandingGraphLd } from '~/utils/landing-jsonld'
 
-const { themeColor } = useAppConfig()
+const { siteName, themeColor } = useAppConfig()
 
-type FaqItem = { question: string, answer: string }
 type HomeData = Record<string, unknown>
 
 definePageMeta({
@@ -38,6 +34,8 @@ definePageMeta({
 })
 
 const { baseUrl } = useRuntimeConfig().public
+
+const siteOrigin = (baseUrl as string) || useRequestURL().origin
 
 // Provided synchronously (before the await below) so MDC-rendered widgets
 // can inject their data. All structured data lives in frontmatter (page
@@ -76,19 +74,20 @@ const faqs = computed<FaqItem[]>(() => {
 const hero = computed(() => page.value?.hero)
 const description = computed<string>(() => page.value?.description ?? '')
 
-const fullTitle = computed(() => {
+// Brand-first; `titleTemplate: null` below stops the brand appearing twice.
+const fullTitle = computed<string>(() => {
   const chunk = page.value?.title
-  return chunk ? `${chunk} | Besidka` : 'Besidka'
+
+  return chunk ? `${siteName} — ${chunk}` : siteName
 })
 
 useSeoMeta({
-  title: () => page.value?.title || null,
+  title: () => fullTitle.value,
   ogTitle: () => fullTitle.value,
   description: () => description.value,
   ogDescription: () => description.value,
-  ogUrl: baseUrl as string,
   ogType: 'website',
-  ogImage: `${baseUrl}/og-image.png`,
+  ogImage: buildCanonicalUrl(siteOrigin, '/og-image.png'),
   ogImageWidth: 1200,
   ogImageHeight: 630,
   ogSiteName: 'Besidka',
@@ -96,15 +95,13 @@ useSeoMeta({
   twitterCard: 'summary_large_image',
   twitterTitle: () => fullTitle.value,
   twitterDescription: () => description.value,
-  twitterImage: `${baseUrl}/og-image.png`,
+  twitterImage: buildCanonicalUrl(siteOrigin, '/og-image.png'),
   twitterSite: '@besidka_ai',
   robots: 'index, follow',
 })
 
 useHead({
-  link: [
-    { rel: 'canonical', href: baseUrl as string },
-  ],
+  titleTemplate: null,
   meta: [
     {
       name: 'theme-color',
@@ -114,24 +111,12 @@ useHead({
   script: [
     {
       type: 'application/ld+json',
-      innerHTML: () => JSON.stringify(buildSoftwareApplicationLd({
-        baseUrl: baseUrl as string,
-        siteName: 'Besidka',
+      innerHTML: () => JSON.stringify(buildLandingGraphLd({
+        baseUrl: siteOrigin,
+        siteName: siteName as string,
         description: description.value,
+        faqs: faqs.value,
       })).replace(/</g, '\\u003c'),
-    },
-    {
-      type: 'application/ld+json',
-      innerHTML: () => JSON.stringify(buildOrganizationLd({
-        baseUrl: baseUrl as string,
-        siteName: 'Besidka',
-      })).replace(/</g, '\\u003c'),
-    },
-    {
-      type: 'application/ld+json',
-      innerHTML: () => JSON.stringify(
-        buildFaqPageLd(faqs.value),
-      ).replace(/</g, '\\u003c'),
     },
   ],
 })
@@ -139,32 +124,6 @@ useHead({
 onMounted(async () => {
   await nextTick()
 
-  const { hash } = window.location
-
-  if (!hash) {
-    return
-  }
-
-  const target = document.querySelector<HTMLElement>(hash)
-
-  if (!target) {
-    return
-  }
-
-  // Deep links / reloads jump instantly; in-page anchor clicks stay smooth
-  // (the scroll container has scroll-smooth in app.vue). We temporarily
-  // disable smooth scrolling on the scroller for this one programmatic jump.
-  const scroller = target.closest<HTMLElement>('.overflow-y-auto')
-  const previousBehavior = scroller?.style.scrollBehavior
-
-  if (scroller) {
-    scroller.style.scrollBehavior = 'auto'
-  }
-
-  target.scrollIntoView({ block: 'start' })
-
-  if (scroller) {
-    scroller.style.scrollBehavior = previousBehavior || ''
-  }
+  scrollToHash(window.location.hash, { instant: true })
 })
 </script>

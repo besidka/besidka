@@ -172,15 +172,55 @@ Short user question goes here.
 | ---------- | --------------------- | ------------------------------------------------ |
 | `role`     | `user` \| `assistant` | default `assistant`                              |
 | `wide`     | boolean (presence)    | full-width bubble (for bubbles holding a widget) |
-| `heading`  | string                | adds a visually-hidden `<h2>` (SEO/a11y/anchors) |
-| `id`       | string                | anchor target for nav links (e.g. `features`)    |
-| `sr-label` | string                | screen-reader label for the turn                 |
+| `heading`  | boolean (presence)    | on a `role="user"` bubble, promotes its own visible text to a real `<h2>` — see below |
+| `id`       | string                | anchor target for nav links (e.g. `features`) and the heading's own self-link href, set alongside `heading` on the same bubble |
+| `sr-label` | string                | screen-reader label for the turn; only meaningful on a bubble that has no `heading` |
+
+**`heading` is boolean, not a string.** It opts a `role="user"` turn's own
+question text into a real `<h2>` — there is no separate heading string to
+author or keep in sync, because the visible question *is* the heading. Every
+conversation turn should carry one, so the page has a real (not
+visually-hidden) outline that mirrors its simulated Q&A structure:
+
+```md
+::home-bubble
+---
+role: user
+heading: true
+id: features
+---
+What can I actually do with it?
+::
+```
+
+The paired `role="assistant"` bubble that answers the question keeps `wide`
+and, if it has no heading of its own, `sr-label` — but no longer carries
+`heading` or `id`. The anchor and the heading must be the same element, so
+`id` moves with `heading` onto the user turn.
+
+**When `id` is set alongside `heading`, the `<h2>`'s visible text is also a
+self-link to `#<id>`** — the same "heading text links to its own anchor"
+pattern the legal pages already use for prose headings (`.prose :is(h1..h6) >
+a` in `main.css`; the landing page mirrors it via the `.landing-anchor` class
+instead, since the conversation body is never inside `.prose`). This is not
+decorative: `tabindex="0"` on a heading is an anti-pattern (WCAG 2.1.1/2.4.3,
+ARIA APG — Tab is for controls, not text), so a plain `<h2>` gives keyboard
+users no way to stop on that turn. A self-link is genuinely interactive — it
+navigates, updates the URL hash, and is copyable as a permalink — so it earns
+a real Tab stop without faking interactivity. The `id`/`tabindex="-1"` stay on
+the `<h2>` itself rather than moving to the `<a>`, so hash navigation
+(`scrollToHash` in `app/composables/hash-anchor-scroll.ts`) keeps landing and
+focusing exactly as before; only the visible/Tab-reachable affordance changed.
+If `id` is omitted, the heading renders as plain text with no link, same as
+before. Every `role="user"` heading turn should set `id`, so every simulated
+Q&A turn is Tab-reachable — including the "subscription trap" turn
+(`#subscriptions`), which was the last one missing this.
 
 A bubble may contain prose and/or a widget placeholder. Nest the widget with
 more colons, indented two spaces:
 
 ```md
-::home-bubble{wide heading="Features" id="features" role="assistant"}
+::home-bubble{wide role="assistant"}
   :::home-features{set="features"}
   :::
 ::

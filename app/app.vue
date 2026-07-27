@@ -34,7 +34,7 @@
     <UiMessages />
     <LazyChatShareModal />
     <LazyNotificationPrompt />
-    <Sidebar v-if="$route.path !== '/'" />
+    <Sidebar v-if="hasSidebar" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />
   </ClientOnly>
@@ -63,16 +63,31 @@ useHead({
 })
 
 const { baseUrl } = useRuntimeConfig().public
+const route = useRoute()
+const hasSidebar = useHasSidebar()
+
+// `baseUrl` is '' unless NUXT_PUBLIC_BASE_URL is set, and an empty base throws.
+const siteOrigin = (baseUrl as string) || useRequestURL().origin
+
+const canonicalUrl = computed<string>(() => {
+  return buildCanonicalUrl(siteOrigin, route.path)
+})
 
 useSeoMeta({
-  ogUrl: baseUrl as string,
+  ogUrl: () => canonicalUrl.value,
   robots: 'index, follow',
   title: siteName,
   ogTitle: siteName,
   description: description as string,
   ogDescription: description as string,
-  ogImage: `${baseUrl}/og-image.png`,
+  ogImage: buildCanonicalUrl(siteOrigin, '/og-image.png'),
   twitterCard: 'summary_large_image',
+})
+
+useHead({
+  link: [
+    { rel: 'canonical', href: () => canonicalUrl.value },
+  ],
 })
 
 async function onException(exception: unknown) {

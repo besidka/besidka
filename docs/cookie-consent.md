@@ -397,12 +397,20 @@ plugin watches `useColorMode().preference` with `{ flush: 'post' }` and, if
 cookie right after the write. The theme keeps working in-session via the
 module's reactive state.
 
-**Ongoing prevention — better_auth.last_login_method:**
+**Ongoing prevention — better-auth.last_used_login_method:**
 The better-auth client sets this cookie during sign-in (not interceptable). The
-gate plugin watches `useAuth().lastLoginMethod` and deletes the cookie via a
-`document.cookie` expiry write whenever it changes while `preferences` is
-denied. On a grant-flush, this cookie is **not** regenerated (it is only set at
-login time) — this is acceptable and documented here.
+manifest entry's `name` must match the real cookie set by the
+`lastLoginMethod` server plugin — its default is
+`better-auth.last_used_login_method` (hyphenated `better-auth` prefix, and
+`last_used_login_method`, not `last_login_method`), never a `__Secure-`
+prefixed variant, since the plugin sets it via a literal `ctx.setCookie()`
+call rather than the framework's prefix-aware `createCookie()` helper. The
+gate plugin watches `useAuth().lastLoginMethod` and, while `preferences` is
+denied, clears the cookie via the better-auth client's own
+`clearLastUsedLoginMethod()` action (from the `last-login-method` client
+plugin) rather than hand-writing the cookie name again. On a grant-flush,
+this cookie is **not** regenerated (it is only set at login time) — this is
+acceptable and documented here.
 
 ### Adding a new preference key
 
@@ -411,11 +419,10 @@ login time) — this is acceptable and documented here.
    `useLocalStorage` or raw `localStorage` in the composable that owns it.
 3. Add an i18n description per the manifest guide above.
 
-### feat/244 note — Plyr VideoPlayer
+### Plyr VideoPlayer
 
-When the `feat/244` branch ships `VideoPlayer`, Plyr must respect the
-`preferences` consent. Pass the `storage` option reactively and listen for
-consent changes:
+`app/components/landing/VideoPlayer.client.vue` gates Plyr's `storage` option
+on the `preferences` consent, both at mount and reactively:
 
 ```ts
 import Plyr from 'plyr'
@@ -426,7 +433,7 @@ let player: Plyr | null = null
 
 function initPlayer(element: HTMLElement) {
   player = new Plyr(element, {
-    storage: { enabled: isAllowed('preferences') },
+    storage: { enabled: isAllowed('preferences'), key: 'plyr' },
   })
 }
 

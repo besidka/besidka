@@ -14,6 +14,7 @@
       </NuxtLink>
 
       <ul
+        v-if="isHomePage"
         class="hidden md:flex items-center gap-6 text-sm
           list-none m-0 p-0"
       >
@@ -81,4 +82,6 @@
 <script setup lang="ts">
 const { loggedIn } = useAuth()
 const { track } = useLandingAnalytics()
+const route = useRoute()
+const isHomePage = computed<boolean>(() => route.path === '/')
 </script>

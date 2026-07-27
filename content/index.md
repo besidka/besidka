@@ -1,5 +1,5 @@
 ---
-title: Open-source AI chat with BYOK
+title: Open-source, self-hostable AI chat (BYOK)
 benefits:
   - icon: lucide:piggy-bank
     title: Stop paying for days you don't chat
@@ -108,7 +108,7 @@ comparison:
         - no
   note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup. Image generation is billed separately at the provider's published image rates.
   priceDate: June 2026
-description: Your digital besidka for all AI chats. Bring your own API keys, pay only for what you use, and keep full control. No subscriptions, no markup, no lock-in.
+description: Besidka is an open-source, self-hostable AI chat app. Bring your own OpenAI or Google API key and pay the provider directly. No subscriptions, no markup, no lock-in.
 faqs:
   - question: What does BYOK mean?
     answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from OpenAI or Google AI Studio directly. You pay the provider at their published rates — Besidka adds no markup.
@@ -128,8 +128,6 @@ faqs:
     answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key like every other model, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
   - question: How is pricing calculated?
     answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
-  - question: What does "Besidka" mean?
-    answer: The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. The word derives from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
   - question: How to pronounce Besidka?
     answer: |-
       Besidka is pronounced “beh-SEED-kah”.
@@ -167,8 +165,8 @@ features:
     body: Kick off an autonomous agent that browses the web, cross-checks sources, and writes a cited report while you do something else. Runs on your own key for roughly $1 to $10 per task, with a push notification when it's done.
 hero:
   eyebrow: OPEN SOURCE · BYOK · SELF-HOSTABLE
-  headline: Open-source AI chat. Your keys, your costs.
-  subheadline: Self-host or use besidka.com — pay per use, no subscriptions, no markup, no lock-in.
+  headline: Besidka — open-source AI chat. Your keys, your costs.
+  subheadline: Self-host it or use besidka.com. Switch between GPT and Gemini models on your own API key — pay per use, no subscriptions, no markup, no lock-in.
   primaryCta:
     label: Start chatting
     href: /signup
@@ -241,7 +239,7 @@ Here is a quick look at Besidka running in both light and dark themes.
 :home-carousel
 :: -->
 
-::home-bubble{role="user" sr-label="User question about adoption"}
+::home-bubble{role="user" heading id="community"}
 How many people are using this?
 ::
 
@@ -251,11 +249,7 @@ We are an early, growing community. Here is where things stand today.
 :home-stats
 ::
 
-::home-bubble
----
-role: user
-sr-label: User expressing frustration with subscription AI tools
----
+::home-bubble{role="user" heading id="subscriptions"}
 I am paying $20/month for ChatGPT Plus and I do not even use it most days.
 ::
 
@@ -294,30 +288,36 @@ Connect an OpenAI or Google AI Studio key and pay only for what you use — no m
   :::
 ::
 
-::home-bubble{role="user" sr-label="User asking what makes Besidka different"}
+::home-bubble
+---
+role: user
+heading: true
+id: benefits
+---
 Why should I pick this over a regular subscription?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: Why Besidka
-id: benefits
 role: assistant
 sr-label: Key customer benefits of using Besidka
 ---
 :home-features{columns="3" set="benefits"}
 ::
 
-::home-bubble{role="user" sr-label="User asking for a starting guide"}
+::home-bubble
+---
+role: user
+heading: true
+id: how-it-works
+---
 How do I get started?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: How it works
-id: how-it-works
 role: assistant
 ---
 :home-features{set="steps"}
@@ -339,21 +339,24 @@ Here is a short walkthrough of the key features.
 :home-video
 :: -->
 
-::home-bubble{role="user" sr-label="User asking about available features"}
+::home-bubble
+---
+role: user
+heading: true
+id: features
+---
 What can I actually do with it?
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: Features
-id: features
 role: assistant
 ---
 :home-features{set="features"}
 ::
 
-::home-bubble{role="user" sr-label="User asking who this is for"}
+::home-bubble{role="user" heading id="use-cases"}
 Who is this for?
 ::
 
@@ -369,7 +372,8 @@ sr-label: Use cases — who Besidka is built for
 ::home-bubble
 ---
 role: user
-sr-label: User asking about cost compared to ChatGPT Plus
+heading: true
+id: pricing
 ---
 What does it cost compared to ChatGPT Plus?
 ::
@@ -377,15 +381,13 @@ What does it cost compared to ChatGPT Plus?
 ::home-bubble
 ---
 wide: true
-heading: What does it cost?
-id: pricing
 role: assistant
 sr-label: Pricing comparison between Besidka and subscription alternatives
 ---
 :home-comparison
 ::
 
-::home-bubble{role="user" sr-label="User asking for a self-hosting option"}
+::home-bubble{role="user" heading id="self-hosting"}
 Can I run this myself?
 ::
 
@@ -399,27 +401,36 @@ Besidka is built on Cloudflare Workers and ships with everything you need to run
 :home-stars
 ::
 
-::home-bubble{role="user" sr-label="User asking about what Besidka means"}
+::home-bubble
+---
+role: user
+heading: true
+id: about-the-name
+---
 What does “Besidka” mean?
 ::
 
 ::home-bubble
 ---
+wide: true
 role: assistant
 sr-label: Explanation of the name "Besidka"
 ---
-The name comes from the Ukrainian word “бесідка” for a garden gazebo — a place to sit, talk, and think. Similar words exist across Slavic languages: “besídka” in Czech and “besiedka” in Slovak. All these words derive from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
+Besidka — Ukrainian “бесідка” — is an open-source AI chat application. The name is the Ukrainian word for a garden gazebo, a place to sit, talk, and think. Similar words exist across other Slavic languages, such as “besídka” in Czech and “besiedka” in Slovak, and all of them derive from the Proto-Slavic root besěda (meaning “speech,” “conversation,” or “council”).
 ::
 
-::home-bubble{role="user" sr-label="User asking FAQ questions"}
+::home-bubble
+---
+role: user
+heading: true
+id: faq
+---
 I have more questions.
 ::
 
 ::home-bubble
 ---
 wide: true
-heading: FAQ
-id: faq
 role: assistant
 ---
 :home-faq
