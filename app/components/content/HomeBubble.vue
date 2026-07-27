@@ -9,8 +9,7 @@
         v-if="heading"
         :id="id || undefined"
         tabindex="-1"
-        class="landing-anchor focus-visible:outline-2
-          focus-visible:outline-accent focus-visible:outline-offset-2"
+        class="landing-anchor"
       >
         <MDCSlot unwrap="p" />
       </h2>

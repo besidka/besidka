@@ -844,7 +844,8 @@ html body[data-studio-active][data-expand-sidebar]::before {
 .chat-markdown li > code,
 :root .prose p > code:not(pre > code),
 :root .prose li > code:not(pre > code) {
-  @apply whitespace-pre-wrap p-1 rounded bg-accent/10 text-accent text-sm;
+  @apply whitespace-pre-wrap p-1 rounded border-none bg-accent/10
+    text-accent text-sm;
 }
 
 /*
@@ -899,5 +900,27 @@ html body[data-studio-active][data-expand-sidebar]::before {
   &:hover,
   &:focus-visible {
     text-decoration: underline;
+  }
+}
+
+/*
+ * Nothing had ever defined a focus indicator, so anything daisyUI doesn't own
+ * fell through to the UA's blue `outline-style: auto` — headings focused by
+ * hash navigation, prose links, and `.table-scroller`, which has no tabindex
+ * and must not get one: Chrome 127+ makes a scroll container with no focusable
+ * children keyboard-focusable by itself, so it takes real focus and needs a
+ * real ring. `outline-style` has to be stated; setting only `outline-color`
+ * loses to `auto`, which paints its own platform ring.
+ *
+ * Deliberately in `@layer base` and deliberately unscoped, so it is a default
+ * every future focusable element inherits, while daisyUI's own component rings
+ * (`.btn`, `.link`, inputs — all in later layers) still win over it.
+ */
+@layer base {
+  :focus-visible {
+    outline-style: solid;
+    outline-width: 2px;
+    outline-offset: 2px;
+    outline-color: var(--color-accent);
   }
 }
