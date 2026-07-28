@@ -108,14 +108,14 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^5.20260722.1",
+		"@cloudflare/workers-types": "^5.20260726.1",
 		"@commitlint/cli": "^21.2.1",
 		"@commitlint/config-conventional": "^21.2.0",
 		"@commitlint/format": "^21.2.0",
 		"@commitlint/types": "^21.2.0",
 		"@nuxt/kit": "^4.5.0",
 		"@nuxt/test-utils": "^4.0.3",
-		"@playwright/test": "^1.61.1",
+		"@playwright/test": "^1.62.0",
 		"@stylistic/eslint-plugin": "^5.10.0",
 		"@tailwindcss/typography": "^0.5.20",
 		"@types/better-sqlite3": "^7.6.13",
@@ -125,19 +125,19 @@
 		"@vitest/ui": "^4.1.10",
 		"@vue/test-utils": "^2.4.11",
 		"better-sqlite3": "^13.0.1",
-		"happy-dom": "^20.11.0",
+		"happy-dom": "^20.11.1",
 		"husky": "^9.1.7",
-		"lint-staged": "^17.1.1",
-		"mediabunny": "^1.50.9",
+		"lint-staged": "^17.2.0",
+		"mediabunny": "^1.51.0",
 		"msw": "^2.15.0",
-		"playwright-core": "^1.61.1",
+		"playwright-core": "^1.62.0",
 		"typescript": "^6.0.3",
 		"vite-plugin-eslint2": "^5.3.0",
 		"vitest": "^4.1.10",
 		"vitest-environment-nuxt": "^2.0.0",
-		"vue-tsc": "^3.3.7",
+		"vue-tsc": "^3.3.8",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.113.0"
+		"wrangler": "^4.114.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"
