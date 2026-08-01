@@ -107,21 +107,48 @@ is "leaving on \<date\>," only that it currently is or isn't deprecated.
 value list, so an unrecognized future status string is dropped rather than
 persisted as-is), `ModelSnapshotEntry`/`Model` carry it as an optional field,
 and `mergeModelMetadata()` passes it through untouched — same fetched-metadata
-category as `releaseDate`. There is intentionally no UI badge for it yet;
-this PR only gets the field flowing through the data layer and into the
-audit warning above.
+category as `releaseDate`.
 
-As of this pass, two currently curated ids are flagged deprecated:
+`status === 'deprecated'` is enforced two ways once a model reaches this
+state:
 
-- **`gemini-3-pro-preview`** — a standalone curated chat model, not wired
-  as anyone's `assistModel`/`controllerModel`/`default`.
-- **`gemini-3.1-flash-lite-preview`** — curated with `forProjectMemory: true`
-  *and* wired as the `assistModel` for **both** Gemini Deep Research tiers
-  (`deep-research-max-preview-04-2026` and `deep-research-preview-04-2026`)
-  in `providers/google.ts`. `deprecated` doesn't mean already removed, but if
-  Google does pull it, both Deep Research configs' assist step breaks, not
-  just a picker row. Whether to swap it for a non-deprecated assist model
-  now or wait is a product decision for the owner — not guessed at here.
+- **Picker UI**: a deprecated model is removed from the normal selectable
+  list and collected into a collapsed "N legacy models" disclosure at the
+  bottom of the picker (`ModelsTrigger.vue`), mirroring t3.chat's own
+  pattern. Legacy rows are `aria-disabled`, expose no select or favorite
+  control, and their info button still opens the detail panel, which now
+  explains that the provider retired the model and it can no longer be
+  picked. A model that's deprecated but already the user's current
+  selection keeps resolving normally everywhere else — only the picker's
+  own selection surface stops offering it as a new pick.
+- **Server guard**: `useChatProvider()` (`server/utils/chats/provider.ts`)
+  rejects a deprecated model id with a structured 400 before any provider
+  call, closing the gap a client-side-only gate leaves open (a
+  `localStorage`/devtools edit could otherwise still send a deprecated
+  model id straight to the API).
+
+As of this pass, one currently curated id is flagged deprecated:
+
+- **`gemini-3-pro-preview`** — a standalone curated chat model whose
+  successor, `gemini-3.1-pro-preview`, is already curated separately. Left
+  in the catalog (not deleted — a user with it persisted would otherwise
+  see `getModel()` silently resolve to nothing) and handled entirely by the
+  legacy-section UI and server guard above.
+
+**`gemini-3.1-flash-lite-preview`** was ALSO flagged deprecated on an
+earlier pass of this audit, but that was a genuine bug, not a "leave it in
+the legacy section" case: it had already been superseded two months earlier
+by a stable, non-deprecated release, `gemini-3.1-flash-lite` (released
+2026-05-07 vs. the preview's 2026-03-03). The curated id, both Deep Research
+`assistModel` references (`deep-research-max-preview-04-2026` and
+`deep-research-preview-04-2026`), and the `forProjectMemory: true` flag were
+all swapped to the stable id in `providers/google.ts` — the deprecated
+preview id is no longer curated at all. The lesson: a `status: 'deprecated'`
+hit on a curated id should first be checked for a same-family successor
+already available upstream (often just the same name minus `-preview`, or
+the next point release) before assuming the legacy-section treatment is the
+right fix — swapping the id is strictly better when a real successor
+exists.
 
 ## Hard failure on a retired model
 
@@ -240,16 +267,24 @@ deliberately not fixed now — logged here instead of silently dropped:
   `last_updated` — so a "leaving on \<date\>" countdown badge isn't
   derivable from this data source; that would need a hand-curated
   retirement date per model. See "Model status" above for the coarse
-  present-tense `status` field this data source does carry, which is now
-  fetched and surfaced in the audit warning, but has no UI badge yet.
-- **`gemini-3.1-flash-lite-preview`'s fetched `description` already reads
-  *"Legacy model retained for compatibility with older integrations"***
-  (visible in the committed snapshot as of this PR, not a hypothetical
-  future fetch) — its `status: "deprecated"` flag and this description
-  both predate this PR's changes; nothing here newly triggered it. Its
-  likely stable successor, the non-preview `gemini-3.1-flash-lite`, exists
-  upstream and is not deprecated. See "Model status" above for the
-  Deep Research `assistModel` risk this creates.
+  present-tense `status` field this data source does carry instead, and
+  how it now drives the legacy-section UI and server guard.
+
+## New models added this pass — confidence on capability flags
+
+`gpt-5.6`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (OpenAI) and
+`gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite` (Google) were
+added to the curated files this pass, found via the audit report above.
+
+**`tool_call`/`reasoning: true` are confirmed** for all seven from
+models.dev's own fields, and OpenAI's docs additionally confirm web search
+for `gpt-5.6-sol`/`terra`/`luna` explicitly. **`tools: ['image_generation']`
+on all seven is a convention copy from sibling models in the same lineage
+(every `gpt-5.x`/`gemini-3.x` mainline entry already gets it), not a
+per-model capability confirmed against any field models.dev exposes.** If a
+model in this set turns out not to actually support image generation, a user
+picking that tool would only find out at generation time. Worth a spot-check
+before relying on it for a model you haven't tried yet.
 
 ## Ids deliberately not auto-added (owner review needed)
 
@@ -275,11 +310,15 @@ automatic add:
   bare `gpt-5.6` id was curated instead, matching how every other mainline
   release in this lineage (`gpt-5`, `gpt-5.1`, `gpt-5.2`, `gpt-5.4`) has no
   separate top-tier alias id.
-- **`gemini-3.5-flash-lite`** — a lite-tier sibling of the newly-curated
-  `gemini-3.5-flash`; leaving it out is a scope call (2 new models, not 3),
-  not a capability concern.
-- **`gemini-3.1-flash-lite`** — looks like the stable, non-preview
-  graduation of the currently-curated `gemini-3.1-flash-lite-preview` (see
-  the deprecation note above), but renaming vs. adding-alongside is a
-  decision that affects `forProjectMemory` and both Deep Research
-  `assistModel` references — left for the owner rather than guessed here.
+Two ids originally listed here on an earlier pass of this audit were
+subsequently added, not left out — corrected in a follow-up commit:
+
+- **`gemini-3.5-flash-lite`** is curated alongside `gemini-3.5-flash`. The
+  original exclusion reasoning ("scope call, not a capability concern") was
+  wrong on its own terms: `gemini-2.5-flash-lite` is already curated
+  alongside `gemini-2.5-flash`, so the lite-tier sibling is this app's
+  established convention for this provider, not a new product decision.
+- **`gemini-3.1-flash-lite`** is curated — it's the stable, non-preview
+  successor of the now-fully-removed `gemini-3.1-flash-lite-preview` (see
+  "Model status" above). `forProjectMemory: true` and both Deep Research
+  `assistModel` references were repointed to it.
