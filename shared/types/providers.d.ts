@@ -7,6 +7,8 @@ export interface ModelImageGenerationCapability {
   controllerModel: string
 }
 
+export type ModelPriceTier = '$' | '$$' | '$$$' | '$$$+'
+
 export interface Model {
   id: string
   name: string
@@ -15,12 +17,14 @@ export interface Model {
   description: string
   contextLength: number
   maxOutputTokens: number
+  releaseDate?: string
   price: {
     tokens: number
     input: string
     output: string
     display?: string
   }
+  priceTier: ModelPriceTier
   modalities: {
     input: string[]
     output: string[]

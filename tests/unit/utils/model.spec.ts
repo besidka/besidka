@@ -2,6 +2,7 @@ import type { Model } from '#shared/types/providers.d'
 import { describe, expect, it } from 'vitest'
 import google from '../../../providers/google'
 import openai from '../../../providers/openai'
+import { providers } from '../../../providers'
 import {
   getControllerModelId,
   getImageGenerationModelId,
@@ -17,15 +18,16 @@ const googleImageModelIds = [
 ]
 
 function getConfiguredModel(modelId: string): Model {
-  const model = [...openai.models, ...google.models].find((candidate) => {
-    return candidate.id === modelId
-  })
+  const model = providers.flatMap(provider => provider.models)
+    .find((candidate) => {
+      return candidate.id === modelId
+    })
 
   if (!model) {
     throw new Error(`Missing model ${modelId}`)
   }
 
-  return model as Model
+  return model
 }
 
 describe('image generation models', () => {

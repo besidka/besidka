@@ -1,3 +1,5 @@
+import type { CuratedProvider } from './merge'
+
 export default {
   id: 'openai',
   name: 'OpenAI',
@@ -52,18 +54,8 @@ export default {
     },
     {
       id: 'gpt-5.4',
-      name: 'GPT-5.4',
-      description: 'Best intelligence at scale for agentic, coding, and professional workflows',
-      contextLength: 1_050_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$2.50',
-        output: '$15.00',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -73,18 +65,8 @@ export default {
     },
     {
       id: 'gpt-5.4-mini',
-      name: 'GPT-5.4 mini',
-      description: 'Strongest mini model yet for coding, computer use, and subagents',
-      contextLength: 400_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$0.75',
-        output: '$4.50',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -94,18 +76,8 @@ export default {
     },
     {
       id: 'gpt-5.4-nano',
-      name: 'GPT-5.4 nano',
-      description: 'Cheapest GPT-5.4-class model for simple high-volume tasks',
-      contextLength: 400_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$0.2',
-        output: '$1.25',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -116,18 +88,8 @@ export default {
     },
     {
       id: 'gpt-5.2',
-      name: 'GPT-5.2',
-      description: 'The best model for coding and agentic tasks across industries',
-      contextLength: 400_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$1.75',
-        output: '$14.00',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -137,18 +99,8 @@ export default {
     },
     {
       id: 'gpt-5.1',
-      name: 'GPT-5.1',
-      description: 'The best model for coding and agentic tasks with configurable reasoning effort',
-      contextLength: 400_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$1.25',
-        output: '$10.00',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -158,18 +110,8 @@ export default {
     },
     {
       id: 'gpt-5',
-      name: 'GPT-5',
-      description: 'The best model for coding and agentic tasks across domains',
-      contextLength: 400_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$1.25',
-        output: '$10.00',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -179,18 +121,8 @@ export default {
     },
     {
       id: 'gpt-5-mini',
-      name: 'GPT-5 mini',
-      description: 'A faster, more cost-efficient version of GPT-5 for well-defined tasks',
-      contextLength: 400_000,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$0.25',
-        output: '$2.00',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
@@ -200,18 +132,8 @@ export default {
     },
     {
       id: 'gpt-5-nano',
-      name: 'GPT-5 nano',
-      description: 'Fastest, most cost-efficient version of GPT-5',
-      contextLength: 1_047_576,
-      maxOutputTokens: 128_000,
       price: {
         tokens: 1_000_000,
-        input: '$0.05',
-        output: '$0.40',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['text'],
       },
       tools: ['image_generation'],
       reasoning: {
@@ -222,18 +144,9 @@ export default {
     {
       id: 'gpt-image-2',
       name: 'GPT Image 2',
-      description: 'State-of-the-art image generation and editing with flexible sizes and high-fidelity image inputs',
-      contextLength: 0,
-      maxOutputTokens: 0,
       price: {
         tokens: 1,
-        input: '',
-        output: '',
         display: '$0.041–$0.053 / medium image, plus input',
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['image'],
       },
       tools: [],
       imageGeneration: {
@@ -241,4 +154,4 @@ export default {
       },
     },
   ],
-}
+} satisfies CuratedProvider
