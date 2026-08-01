@@ -82,7 +82,7 @@ describe('Projects/MemoryCard', () => {
         memoryStatus: 'idle',
         memoryUpdatedAt: null,
         memoryProvider: 'google',
-        memoryModel: 'gemini-3.1-flash-lite-preview',
+        memoryModel: 'gemini-3.1-flash-lite',
         memoryError: null,
         isRefreshing: false,
         isToggling: false,

@@ -36,6 +36,7 @@
       >
         <button
           type="button"
+          :aria-pressed="selected === option.value"
           :class="{ 'menu-active': selected === option.value }"
           class="flex items-center gap-2"
         >

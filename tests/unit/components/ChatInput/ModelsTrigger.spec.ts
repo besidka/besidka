@@ -52,12 +52,19 @@ const legacyModel = {
   status: 'deprecated',
 }
 
+const secondModel = {
+  ...imageModel,
+  id: 'second-model',
+  name: 'Second model',
+  description: 'Also selectable',
+}
+
 function useLegacyCatalog() {
   mocks.getProviders.mockReturnValue({
     providers: [{
       id: 'google',
       name: 'Google AI Studio',
-      models: [imageModel, legacyModel],
+      models: [imageModel, secondModel, legacyModel],
     }],
   })
 }
@@ -287,6 +294,11 @@ describe('ChatInput/ModelsTrigger', () => {
       .toBe('model-option-image-model')
     expect(listbox.find('#model-option-image-model').exists()).toBe(true)
     expect(listbox.find('#model-option-legacy-model').exists()).toBe(false)
+
+    await search.trigger('keydown', { key: 'ArrowDown' })
+
+    expect(search.attributes('aria-activedescendant'))
+      .toBe('model-option-second-model')
 
     await search.trigger('keydown', { key: 'ArrowDown' })
 

@@ -60,6 +60,8 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
 
     expect(research.attributes('aria-selected')).toBe('true')
     expect(chat.attributes('aria-selected')).toBe('false')
+    expect(research.get('button').attributes('aria-pressed')).toBe('true')
+    expect(chat.get('button').attributes('aria-pressed')).toBe('false')
   })
 
   it('selects a category on click and clears it on a second click', async () => {
