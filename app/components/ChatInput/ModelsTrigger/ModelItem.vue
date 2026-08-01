@@ -48,10 +48,7 @@
             v-if="model.priceTier"
             data-testid="model-price-tier"
             class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
-            :class="[
-              getPriceTierClass(model.priceTier),
-              getPriceTierTooltipClass(model.priceTier),
-            ]"
+            :class="getPriceTierClass(model.priceTier)"
             :data-tip="priceTip"
           >
             {{ model.priceTier }}

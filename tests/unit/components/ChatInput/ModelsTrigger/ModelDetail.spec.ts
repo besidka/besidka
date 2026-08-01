@@ -78,7 +78,6 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(priceTier.classes()).toContain('tooltip')
     expect(priceTier.classes()).toContain('tooltip-soft')
     expect(priceTier.classes()).toContain('tooltip-bottom')
-    expect(priceTier.classes()).toContain('tooltip-info')
     expect(priceTier.attributes('data-tip')).toBe('from $2.50 / from $15.00')
   })
 
