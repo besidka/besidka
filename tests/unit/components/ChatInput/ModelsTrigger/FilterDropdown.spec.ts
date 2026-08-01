@@ -10,11 +10,11 @@ const mocks = vi.hoisted(() => ({
 
 mockNuxtImport('onClickOutside', () => mocks.onClickOutside)
 
-async function mountFilterDropdown(selected: ModelCategory[] = []) {
+async function mountFilterDropdown(selected: ModelCategory | null = null) {
   const wrapper = await mountSuspended(FilterDropdown, {
     props: {
       'modelValue': selected,
-      'onUpdate:modelValue': (value: ModelCategory[]) => {
+      'onUpdate:modelValue': (value: ModelCategory | null) => {
         wrapper.setProps({ modelValue: value })
       },
     },
@@ -32,7 +32,7 @@ function getClickOutsideHandler() {
 }
 
 describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
-  it('renders a checkbox for every model category', async () => {
+  it('renders an option for every model category', async () => {
     const wrapper = await mountFilterDropdown()
     const menu = wrapper.get('[data-testid="models-picker-filter-menu"]')
 
@@ -51,40 +51,52 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
     ).toBe(true)
   })
 
-  it('checks only the selected categories', async () => {
-    const wrapper = await mountFilterDropdown(['research'])
-    const research = wrapper.get<HTMLInputElement>(
+  it('marks only the selected category', async () => {
+    const wrapper = await mountFilterDropdown('research')
+    const research = wrapper.get(
       '[data-testid="models-picker-filter-research"]',
     )
-    const chat = wrapper.get<HTMLInputElement>(
-      '[data-testid="models-picker-filter-chat"]',
-    )
+    const chat = wrapper.get('[data-testid="models-picker-filter-chat"]')
 
-    expect(research.element.checked).toBe(true)
-    expect(chat.element.checked).toBe(false)
+    expect(research.attributes('aria-selected')).toBe('true')
+    expect(chat.attributes('aria-selected')).toBe('false')
   })
 
-  it('adds a category on the first change and removes it on the second', async () => {
+  it('selects a category on click and clears it on a second click', async () => {
     const wrapper = await mountFilterDropdown()
     const chat = wrapper.get('[data-testid="models-picker-filter-chat"]')
 
-    await chat.setValue(true)
+    await chat.trigger('click')
 
-    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['chat']])
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['chat'])
 
-    await chat.setValue(false)
+    await wrapper.setProps({ modelValue: 'chat' })
+    await wrapper.get('[data-testid="models-picker-filter-chat"]')
+      .trigger('click')
 
-    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([[]])
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([null])
   })
 
-  it('keeps existing categories when another one is added', async () => {
-    const wrapper = await mountFilterDropdown(['chat'])
+  it('replaces the active category when another one is selected', async () => {
+    const wrapper = await mountFilterDropdown('chat')
 
     await wrapper.get('[data-testid="models-picker-filter-image-generation"]')
-      .setValue(true)
+      .trigger('click')
 
     expect(wrapper.emitted('update:modelValue')?.at(-1))
-      .toEqual([['chat', 'image-generation']])
+      .toEqual(['image-generation'])
+  })
+
+  it('closes the dropdown when a category is selected', async () => {
+    const wrapper = await mountFilterDropdown()
+    const dropdown = wrapper.get('details')
+
+    dropdown.element.open = true
+
+    await wrapper.get('[data-testid="models-picker-filter-chat"]')
+      .trigger('click')
+
+    expect(dropdown.element.open).toBe(false)
   })
 
   it('leaves the trigger unbadged while no filter is applied', async () => {
@@ -98,14 +110,14 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
     expect(trigger.find('.badge').exists()).toBe(false)
   })
 
-  it('badges the trigger with the number of applied filters', async () => {
-    const wrapper = await mountFilterDropdown(['chat', 'research'])
+  it('badges the trigger while a category is applied', async () => {
+    const wrapper = await mountFilterDropdown('chat')
     const trigger = wrapper.get(
       '[data-testid="models-picker-filter-trigger"]',
     )
 
     expect(trigger.classes()).toContain('text-accent')
-    expect(trigger.get('.badge').text()).toBe('2')
+    expect(trigger.find('.badge').exists()).toBe(true)
   })
 
   it('closes the open dropdown on escape', async () => {

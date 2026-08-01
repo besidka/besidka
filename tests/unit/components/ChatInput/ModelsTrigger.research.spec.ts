@@ -72,7 +72,7 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(findModelButton(wrapper, 'GPT-5.4')).toBeTruthy()
 
     await wrapper.get('[data-testid="models-picker-filter-research"]')
-      .setValue(true)
+      .trigger('click')
 
     expect(findModelButton(wrapper, 'GPT-5.4')).toBeUndefined()
     expect(findModelButton(wrapper, 'o4-mini Deep Research')).toBeTruthy()

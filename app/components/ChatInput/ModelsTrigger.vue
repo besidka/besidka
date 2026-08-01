@@ -60,7 +60,7 @@
                 @keydown="onSearchKeydown"
               />
               <ChatInputModelsTriggerFilterDropdown
-                v-model="activeCategories"
+                v-model="activeCategory"
               />
             </div>
             <div class="relative flex flex-1 min-h-0">
@@ -179,7 +179,7 @@ const isOpen = shallowRef<boolean>(false)
 const searchQuery = shallowRef<string>('')
 const activeProviderId = shallowRef<string | null>(null)
 const isFavoritesOnly = shallowRef<boolean>(false)
-const activeCategories = shallowRef<ModelCategory[]>([])
+const activeCategory = shallowRef<ModelCategory | null>(null)
 const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
 const root = useTemplateRef<HTMLDivElement>('root')
@@ -223,7 +223,7 @@ const isRailFilterApplied = computed<boolean>(() => {
 })
 
 const hasActiveFilters = computed<boolean>(() => {
-  return activeCategories.value.length > 0 || isRailFilterApplied.value
+  return activeCategory.value !== null || isRailFilterApplied.value
 })
 
 const filteredModels = computed<PickerModel[]>(() => {
@@ -236,8 +236,8 @@ const filteredModels = computed<PickerModel[]>(() => {
     }
 
     if (
-      activeCategories.value.length
-      && !activeCategories.value.includes(getModelCategory(model))
+      activeCategory.value !== null
+      && getModelCategory(model) !== activeCategory.value
     ) {
       return false
     }
@@ -333,7 +333,7 @@ function toggleFavoritesOnly() {
 }
 
 function clearFilters() {
-  activeCategories.value = []
+  activeCategory.value = null
   activeProviderId.value = null
   isFavoritesOnly.value = false
   searchQuery.value = ''
@@ -481,7 +481,7 @@ watch(hasFavorites, (value) => {
   isFavoritesOnly.value = false
 })
 
-watch([searchTerm, activeCategories, activeProviderId, isFavoritesOnly], () => {
+watch([searchTerm, activeCategory, activeProviderId, isFavoritesOnly], () => {
   closeDetail()
   highlightedModelId.value = filteredModels.value[0]?.model.id ?? null
 })

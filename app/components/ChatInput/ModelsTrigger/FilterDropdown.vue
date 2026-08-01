@@ -7,7 +7,7 @@
     <summary
       data-testid="models-picker-filter-trigger"
       class="btn btn-ghost btn-sm btn-circle relative"
-      :class="{ 'text-accent': selected.length }"
+      :class="{ 'text-accent': selected }"
       aria-label="Filter models by category"
     >
       <Icon
@@ -15,35 +15,37 @@
         size="16"
       />
       <span
-        v-if="selected.length"
+        v-if="selected"
+        aria-hidden="true"
         class="badge badge-xs badge-accent absolute -top-0.5 -right-0.5"
-      >
-        {{ selected.length }}
-      </span>
+      />
     </summary>
     <ul
       data-testid="models-picker-filter-menu"
+      role="listbox"
+      aria-label="Filter models by category"
       class="dropdown-content menu menu-sm z-50 mt-1 w-52 p-1 rounded-box bg-base-100 border border-base-content/10 shadow-lg"
     >
       <li
         v-for="option in modelCategoryOptions"
         :key="option.value"
+        role="option"
+        :aria-selected="selected === option.value"
+        :data-testid="`models-picker-filter-${option.value}`"
+        @click="selectCategory(option.value)"
       >
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            class="checkbox checkbox-xs checkbox-accent"
-            :data-testid="`models-picker-filter-${option.value}`"
-            :checked="selected.includes(option.value)"
-            @change="toggle(option.value)"
-          >
+        <button
+          type="button"
+          :class="{ 'menu-active': selected === option.value }"
+          class="flex items-center gap-2"
+        >
           <Icon
             :name="option.icon"
             size="14"
             class="opacity-60"
           />
           <span class="grow">{{ option.label }}</span>
-        </label>
+        </button>
       </li>
     </ul>
   </details>
@@ -52,7 +54,7 @@
 <script setup lang="ts">
 import type { ModelCategory } from '~/types/models-picker'
 
-const selected = defineModel<ModelCategory[]>({ default: () => [] })
+const selected = defineModel<ModelCategory | null>({ default: null })
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 
 onClickOutside(dropdown, () => {
@@ -67,15 +69,8 @@ function close() {
   dropdown.value.open = false
 }
 
-function toggle(category: ModelCategory) {
-  if (selected.value.includes(category)) {
-    selected.value = selected.value.filter((value) => {
-      return value !== category
-    })
-
-    return
-  }
-
-  selected.value = [...selected.value, category]
+function selectCategory(category: ModelCategory) {
+  selected.value = selected.value === category ? null : category
+  close()
 }
 </script>
