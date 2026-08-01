@@ -148,7 +148,8 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     badges.push({
       label: 'Image generation',
       icon: 'lucide:image-plus',
-      class: 'badge-secondary',
+      class: '[--badge-color:var(--color-violet-700)] '
+        + 'dark:[--badge-color:var(--color-violet-200)]',
     })
   }
 
