@@ -1,0 +1,233 @@
+<template>
+  <div
+    :id="detailId"
+    data-testid="model-detail-panel"
+    role="region"
+    :aria-label="`${model.name} details`"
+    class="absolute inset-x-0 bottom-0 z-10 max-h-full overflow-y-auto p-3 rounded-2xl bg-base-100/95 backdrop-blur-lg border border-base-content/10 shadow-xl"
+    @mouseenter="onMouseEnter"
+    @mouseleave="onMouseLeave"
+  >
+    <div class="flex items-start gap-2">
+      <h3 class="grow text-sm font-semibold">
+        {{ model.name }}
+      </h3>
+      <span
+        v-if="model.priceTier"
+        class="badge badge-xs shrink-0 font-semibold"
+        :class="getPriceTierClass(model.priceTier)"
+      >
+        {{ model.priceTier }}
+      </span>
+      <button
+        v-if="isInteractive"
+        type="button"
+        class="btn btn-ghost btn-xs btn-circle shrink-0 -mt-1"
+        aria-label="Close model details"
+        @click="emit('close')"
+      >
+        <Icon
+          name="lucide:x"
+          size="12"
+        />
+      </button>
+    </div>
+    <p
+      v-if="model.description"
+      class="mt-1.5 text-xs opacity-70"
+    >
+      {{ model.description }}
+    </p>
+    <div
+      v-if="capabilities.length"
+      class="mt-2.5 flex flex-wrap gap-1"
+    >
+      <span
+        v-for="capability in capabilities"
+        :key="capability.label"
+        class="badge badge-xs badge-soft"
+        :class="capability.class"
+      >
+        <Icon
+          :name="capability.icon"
+          size="11"
+        />
+        {{ capability.label }}
+      </span>
+    </div>
+    <dl
+      class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs"
+      data-testid="model-detail-specs"
+    >
+      <template
+        v-for="row in rows"
+        :key="row.label"
+      >
+        <dt class="opacity-50">
+          {{ row.label }}
+        </dt>
+        <dd class="text-right break-words">
+          {{ row.value }}
+        </dd>
+      </template>
+    </dl>
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { Model } from '#shared/types/providers.d'
+
+interface CapabilityBadge {
+  label: string
+  icon: string
+  class: string
+}
+
+interface SpecRow {
+  label: string
+  value: string
+}
+
+const props = defineProps<{
+  model: Model
+  providerName: string
+  isInteractive: boolean
+}>()
+
+const emit = defineEmits<{
+  close: []
+  showDetail: []
+  hideDetail: []
+}>()
+
+const detailId = computed<string>(() => {
+  return `model-detail-${props.model.id}`
+})
+
+function onMouseEnter() {
+  if (props.isInteractive) {
+    return
+  }
+
+  emit('showDetail')
+}
+
+function onMouseLeave() {
+  if (props.isInteractive) {
+    return
+  }
+
+  emit('hideDetail')
+}
+
+const capabilities = computed<CapabilityBadge[]>(() => {
+  const { model } = props
+  const badges: CapabilityBadge[] = []
+
+  if (model.reasoning) {
+    badges.push({
+      label: 'Reasoning',
+      icon: 'lucide:brain',
+      class: 'badge-warning',
+    })
+  }
+
+  if (model.tools.includes('web_search')) {
+    badges.push({
+      label: 'Web search',
+      icon: 'lucide:globe',
+      class: 'badge-info',
+    })
+  }
+
+  if (hasImageGenerationCapability(model)) {
+    badges.push({
+      label: 'Image generation',
+      icon: 'lucide:image-plus',
+      class: 'badge-secondary',
+    })
+  }
+
+  if (model.research) {
+    badges.push({
+      label: 'Deep research',
+      icon: 'lucide:telescope',
+      class: 'badge-success',
+    })
+  }
+
+  return badges
+})
+
+const priceValue = computed<string>(() => {
+  const { price } = props.model
+
+  if (price.display) {
+    return price.display
+  }
+
+  if (price.input && price.output) {
+    return `${price.input} in / ${price.output} out per 1M tokens`
+  }
+
+  return price.input || '—'
+})
+
+const rows = computed<SpecRow[]>(() => {
+  const { model, providerName } = props
+  const contextLength = formatModelTokenLimit(model.contextLength)
+  const maxOutputTokens = formatModelTokenLimit(model.maxOutputTokens)
+  const specs: SpecRow[] = [{ label: 'Provider', value: providerName }]
+
+  if (contextLength) {
+    specs.push({ label: 'Context', value: contextLength })
+  }
+
+  if (maxOutputTokens) {
+    specs.push({ label: 'Max output', value: maxOutputTokens })
+  }
+
+  if (model.modalities.input.length) {
+    specs.push({
+      label: 'Input',
+      value: model.modalities.input.join(', '),
+    })
+  }
+
+  if (model.modalities.output.length) {
+    specs.push({
+      label: 'Output',
+      value: model.modalities.output.join(', '),
+    })
+  }
+
+  specs.push({ label: 'Price', value: priceValue.value })
+
+  if (model.reasoning?.mode === 'levels' && model.reasoning.levels.length) {
+    specs.push({
+      label: 'Reasoning levels',
+      value: model.reasoning.levels.join(', '),
+    })
+  }
+
+  if (model.research) {
+    specs.push({
+      label: 'Research cost',
+      value: model.research.costEstimate,
+    })
+    specs.push({
+      label: 'Research time',
+      value: model.research.timeEstimate,
+    })
+  }
+
+  if (model.releaseDate) {
+    specs.push({
+      label: 'Added on',
+      value: formatReleaseDate(model.releaseDate),
+    })
+  }
+
+  return specs
+})
+</script>
