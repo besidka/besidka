@@ -133,6 +133,7 @@
     "name": "Gemini 3.1 Flash Lite Preview",
     "description": "Legacy model retained for compatibility with older integrations",
     "releaseDate": "2026-03-03",
+    "status": "deprecated",
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -158,6 +159,7 @@
     "name": "Gemini 3 Pro Preview",
     "description": "Preview Gemini flagship for complex reasoning, coding, and rich multimodal prompts",
     "releaseDate": "2025-11-18",
+    "status": "deprecated",
     "limit": {
       "context": 1048576,
       "output": 65536
