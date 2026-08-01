@@ -155,7 +155,6 @@ export default defineNuxtConfig({
       privacyEmail: '',
       authorGithubProfile: '',
       defaultModel,
-      // @ts-expect-error
       providers,
       redirectUserTo: '/chats/new',
       redirectGuestTo: '/signin',

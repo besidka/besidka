@@ -2,16 +2,33 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useUserSetting } from '../../../app/composables/user-setting'
 
-const { fetchMock } = vi.hoisted(() => ({
+const { fetchMock, getProvidersMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
+  getProvidersMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
+mockNuxtImport('getProviders', () => getProvidersMock)
 
 describe('useUserSetting', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+
+    getProvidersMock.mockReturnValue({
+      providers: [
+        {
+          id: 'openai',
+          name: 'OpenAI',
+          models: [{ id: 'gpt-5.4' }],
+        },
+        {
+          id: 'google',
+          name: 'Google AI Studio',
+          models: [{ id: 'gemini-2.5-flash' }],
+        },
+      ],
+    })
 
     const { clearUserContext } = useUserSetting()
 
@@ -591,4 +608,208 @@ describe('useUserSetting', () => {
     expect(sidebarPinned.value).toBe(false)
     expect(settingsError.value).not.toBeNull()
   })
+
+  it('uses the local storage fallback for favoriteModels before sync', () => {
+    localStorage.setItem(
+      'settings_favorite_models',
+      JSON.stringify(['gpt-5.4']),
+    )
+
+    const { favoriteModels } = useUserSetting()
+
+    expect(favoriteModels.value).toEqual(['gpt-5.4'])
+  })
+
+  it('falls back to an empty list when stored favorites are corrupt', () => {
+    localStorage.setItem('settings_favorite_models', 'not json')
+
+    const { favoriteModels } = useUserSetting()
+
+    expect(favoriteModels.value).toEqual([])
+  })
+
+  it('uses DB favoriteModels as source of truth after sync', async () => {
+    localStorage.setItem(
+      'settings_favorite_models',
+      JSON.stringify(['gpt-5.4']),
+    )
+
+    fetchMock.mockResolvedValue({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      favoriteModels: ['gemini-2.5-flash'],
+    })
+    const {
+      favoriteModels,
+      syncForUser,
+    } = useUserSetting()
+
+    expect(favoriteModels.value).toEqual(['gpt-5.4'])
+
+    await syncForUser('user-1')
+
+    expect(favoriteModels.value).toEqual(['gemini-2.5-flash'])
+    expect(localStorage.getItem('settings_favorite_models')).toBe(
+      JSON.stringify(['gemini-2.5-flash']),
+    )
+  })
+
+  it('updates local storage without API call for favorites guests', async () => {
+    fetchMock.mockReset()
+    const {
+      favoriteModels,
+      toggleFavoriteModel,
+    } = useUserSetting()
+
+    await toggleFavoriteModel('gpt-5.4')
+
+    expect(favoriteModels.value).toEqual(['gpt-5.4'])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('toggles a favorite off and persists it for authenticated users',
+    async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          reasoningExpanded: false,
+          reasoningAutoHide: true,
+          favoriteModels: ['gpt-5.4', 'gemini-2.5-flash'],
+        })
+        .mockResolvedValueOnce({
+          favoriteModels: ['gemini-2.5-flash'],
+        })
+      const {
+        syncForUser,
+        favoriteModels,
+        toggleFavoriteModel,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+      await toggleFavoriteModel('gpt-5.4')
+
+      expect(favoriteModels.value).toEqual(['gemini-2.5-flash'])
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/profiles/settings',
+        {
+          method: 'PATCH',
+          body: {
+            favoriteModels: ['gemini-2.5-flash'],
+          },
+        },
+      )
+    })
+
+  it('rolls back optimistic favoriteModels when the save fails', async () => {
+    fetchMock.mockReset()
+      .mockResolvedValueOnce({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        favoriteModels: [],
+      })
+      .mockRejectedValueOnce(new Error('Save failed'))
+    const {
+      favoriteModels,
+      settingsError,
+      syncForUser,
+      setFavoriteModels,
+    } = useUserSetting()
+
+    await syncForUser('user-1')
+
+    const savePromise = setFavoriteModels(['gpt-5.4'])
+
+    expect(favoriteModels.value).toEqual(['gpt-5.4'])
+    await savePromise
+
+    expect(favoriteModels.value).toEqual([])
+    expect(settingsError.value).not.toBeNull()
+  })
+
+  it('applies only the latest toggle when responses resolve out of order',
+    async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          reasoningExpanded: false,
+          reasoningAutoHide: true,
+          favoriteModels: [],
+        })
+      const {
+        syncForUser,
+        favoriteModels,
+        setFavoriteModels,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      let resolveFirstRequest: (value: unknown) => void = () => {}
+      let resolveSecondRequest: (value: unknown) => void = () => {}
+
+      fetchMock
+        .mockImplementationOnce(() => new Promise((resolve) => {
+          resolveFirstRequest = resolve
+        }))
+        .mockImplementationOnce(() => new Promise((resolve) => {
+          resolveSecondRequest = resolve
+        }))
+
+      const callsBeforeSaves = fetchMock.mock.calls.length
+      const firstSave = setFavoriteModels(['gpt-5.4'])
+      const secondSave = setFavoriteModels(['gemini-2.5-flash'])
+
+      resolveSecondRequest({})
+      await secondSave
+
+      resolveFirstRequest({})
+      await firstSave
+
+      expect(favoriteModels.value).toEqual(['gemini-2.5-flash'])
+      expect(fetchMock.mock.calls.length - callsBeforeSaves).toBe(2)
+    })
+
+  it(
+    'filters stale favorite ids from the derived list but keeps them '
+    + 'in what gets persisted',
+    async () => {
+      fetchMock.mockReset()
+        .mockResolvedValueOnce({
+          reasoningExpanded: false,
+          reasoningAutoHide: true,
+          favoriteModels: ['gpt-5.4', 'legacy-model-removed'],
+        })
+      const {
+        syncForUser,
+        favoriteModels,
+        toggleFavoriteModel,
+      } = useUserSetting()
+
+      await syncForUser('user-1')
+
+      expect(favoriteModels.value).toEqual(['gpt-5.4'])
+
+      fetchMock.mockResolvedValueOnce({
+        favoriteModels: [
+          'gpt-5.4',
+          'legacy-model-removed',
+          'gemini-2.5-flash',
+        ],
+      })
+
+      await toggleFavoriteModel('gemini-2.5-flash')
+
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/v1/profiles/settings',
+        {
+          method: 'PATCH',
+          body: {
+            favoriteModels: [
+              'gpt-5.4',
+              'legacy-model-removed',
+              'gemini-2.5-flash',
+            ],
+          },
+        },
+      )
+      expect(favoriteModels.value).toEqual(['gpt-5.4', 'gemini-2.5-flash'])
+    },
+  )
 })

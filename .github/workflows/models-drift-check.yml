@@ -1,0 +1,77 @@
+name: Models Metadata Drift Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: models-drift-check
+  cancel-in-progress: true
+
+jobs:
+  check-drift:
+    name: Check models.dev drift
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch model metadata
+        shell: bash
+        run: |
+          pnpm run models:fetch 2>&1 | tee "$RUNNER_TEMP/models-fetch.log"
+
+      - name: Check for snapshot changes
+        id: diff
+        run: |
+          if [ -n "$(git status --porcelain providers/data/models-dev-snapshot.json)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build pull request body
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          {
+            echo "Automated weekly refresh of"
+            echo "\`providers/data/models-dev-snapshot.json\` from models.dev,"
+            echo "matching the dependabot schedule."
+            echo ""
+            echo "Audit output from \`scripts/audit-curated-models.mjs\`"
+            echo "(see \`docs/models-data-fetching.md\`):"
+            echo ""
+            echo '```'
+            cat "$RUNNER_TEMP/models-fetch.log"
+            echo '```'
+          } > "$RUNNER_TEMP/pr-body.md"
+
+      - name: Open pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore(models): refresh models.dev metadata snapshot"
+          title: "chore(models): refresh models.dev metadata snapshot"
+          body-path: ${{ runner.temp }}/pr-body.md
+          branch: chore/models-metadata-drift
+          add-paths: providers/data/models-dev-snapshot.json
+          labels: dependencies

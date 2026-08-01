@@ -177,6 +177,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   (`llms.txt`, dynamic OG images, `nuxt-schema-org`, `/uk`, sitemap `lastmod`,
   indexing shared chats), the off-page checklist, and the SWR/buildId
   post-deploy verification trap
+- `docs/models-data-fetching.md` - Model catalog architecture: curated
+  capabilities (`providers/*.ts`) merged at import time with objective
+  metadata fetched from models.dev (`providers/data/*.snapshot.json`,
+  `scripts/fetch-models-metadata.mjs`); the per-field merge policy; why a
+  curated-id-driven join can't pull in junk/legacy/open-weights models;
+  the `EXEMPT_IDS` hard-fail behavior; DB-persisted cross-device favorites;
+  owner action items and known trade-offs
 
 ### Tech Stack
 

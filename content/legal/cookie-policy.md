@@ -57,6 +57,7 @@ These only remember how you like the app set up. They are stored **only if you a
 | `settings_reasoning_auto_hide` | localStorage | Besidka | Whether reasoning collapses by itself once an answer is done | Until removed |
 | `settings_reasoning_level` | localStorage | Besidka | Your preferred reasoning effort level | Until removed |
 | `settings_sidebar_pinned` | localStorage | Besidka | Whether the sidebar stays pinned open | Until removed |
+| `settings_favorite_models` | localStorage | Besidka | Your favorited models in the model picker, mirrored from your account settings | Until removed |
 | `model` | localStorage | Besidka | The model you used last, so a new chat starts with it | Until removed |
 | `chat_input` | localStorage | Besidka | The draft of the message currently in the input box, so it is still there if you navigate away and come back. Like the backup above it holds **your text verbatim**, in your browser only. Unlike the backup it is a convenience, so it is consent-gated and is deleted if you deny preferences | Until sent, cleared, or removed |
 | `plyr` | localStorage | Besidka | Video player preferences such as volume, captions and quality | Until removed |

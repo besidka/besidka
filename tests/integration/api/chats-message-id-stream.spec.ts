@@ -537,6 +537,41 @@ describe('chat stream message ids', () => {
     expect(mocks.generatedMessageIds).toHaveLength(0)
   })
 
+  it('rejects a deprecated model before any provider call is attempted', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+    const useOpenAiMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    }))
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useOpenAI', useOpenAiMock)
+    vi.stubGlobal('useChatProvider', vi.fn(() => {
+      throw Object.assign(new Error('This model is no longer available.'), {
+        status: 400,
+        why: 'Gemini 3 Pro Preview is deprecated and can no longer be used'
+          + ' for new requests.',
+        fix: 'Choose a different model from the picker.',
+      })
+    }))
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gemini-3-pro-preview',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)).rejects.toThrow('This model is no longer available.')
+
+    expect(insertValues).not.toHaveBeenCalled()
+    expect(useOpenAiMock).not.toHaveBeenCalled()
+    expect(mocks.generatedMessageIds).toHaveLength(0)
+  })
+
   it('sends a push notification via waitUntil after a successful generation', async () => {
     const handler = await getHandler()
     const { db } = createDb()

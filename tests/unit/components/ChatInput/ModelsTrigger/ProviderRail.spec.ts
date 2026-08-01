@@ -1,0 +1,136 @@
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { describe, expect, it } from 'vitest'
+import type { Providers } from '#shared/types/providers.d'
+import ProviderRail
+  from '../../../../../app/components/ChatInput/ModelsTrigger/ProviderRail.vue'
+
+const providers: Providers = [
+  { id: 'openai', name: 'OpenAI', models: [] },
+  { id: 'google', name: 'Google AI Studio', models: [] },
+]
+
+function mountRail(
+  props: Partial<{
+    providers: Providers
+    activeProviderId: string | null
+    isFavoritesOnly: boolean
+    hasFavorites: boolean
+  }> = {},
+) {
+  return mountSuspended(ProviderRail, {
+    props: {
+      providers,
+      activeProviderId: null,
+      isFavoritesOnly: false,
+      hasFavorites: false,
+      ...props,
+    },
+  })
+}
+
+describe('ChatInput/ModelsTrigger/ProviderRail', () => {
+  it('renders one labelled button per provider', async () => {
+    const wrapper = await mountRail()
+    const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
+    const google = wrapper.get('[data-testid="models-picker-rail-google"]')
+
+    expect(openai.attributes('aria-label')).toBe('Show OpenAI models only')
+    expect(openai.attributes('data-tip')).toBe('OpenAI')
+    expect(openai.attributes('aria-pressed')).toBe('false')
+    expect(google.attributes('aria-label'))
+      .toBe('Show Google AI Studio models only')
+    expect(google.attributes('data-tip')).toBe('Google AI Studio')
+  })
+
+  it('hides the favorites filter until the user has a favorite', async () => {
+    const wrapper = await mountRail()
+
+    expect(
+      wrapper.find('[data-testid="models-picker-rail-favorites"]').exists(),
+    ).toBe(false)
+    expect(wrapper.find('.divider').exists()).toBe(false)
+  })
+
+  it('shows the favorites filter once a favorite exists', async () => {
+    const wrapper = await mountRail({ hasFavorites: true })
+    const favorites = wrapper.get(
+      '[data-testid="models-picker-rail-favorites"]',
+    )
+
+    expect(favorites.attributes('aria-label'))
+      .toBe('Show favorite models only')
+    expect(favorites.attributes('data-tip')).toBe('Favorites')
+    expect(favorites.attributes('aria-pressed')).toBe('false')
+    expect(wrapper.find('.divider').exists()).toBe(true)
+  })
+
+  it('marks the favorites filter pressed while it is applied', async () => {
+    const wrapper = await mountRail({
+      hasFavorites: true,
+      isFavoritesOnly: true,
+    })
+    const favorites = wrapper.get(
+      '[data-testid="models-picker-rail-favorites"]',
+    )
+
+    expect(favorites.attributes('aria-pressed')).toBe('true')
+    expect(favorites.classes()).toContain('btn-active')
+    expect(favorites.classes()).toContain('text-warning')
+  })
+
+  it('emits toggleFavorites when the favorites filter is clicked', async () => {
+    const wrapper = await mountRail({ hasFavorites: true })
+
+    await wrapper.get('[data-testid="models-picker-rail-favorites"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('toggleFavorites')).toEqual([[]])
+  })
+
+  it('emits toggleProvider with the clicked provider id', async () => {
+    const wrapper = await mountRail()
+
+    await wrapper.get('[data-testid="models-picker-rail-google"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('toggleProvider')).toEqual([['google']])
+  })
+
+  it('marks only the active provider as pressed', async () => {
+    const wrapper = await mountRail({ activeProviderId: 'openai' })
+    const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
+    const google = wrapper.get('[data-testid="models-picker-rail-google"]')
+
+    expect(openai.attributes('aria-pressed')).toBe('true')
+    expect(openai.classes()).toContain('btn-active')
+    expect(openai.classes()).toContain('text-accent')
+    expect(google.attributes('aria-pressed')).toBe('false')
+    expect(google.classes()).not.toContain('btn-active')
+  })
+
+  it('renders brand marks for the known providers', async () => {
+    const wrapper = await mountRail()
+
+    expect(
+      wrapper.get('[data-testid="models-picker-rail-openai"]').find('svg')
+        .exists(),
+    ).toBe(true)
+    expect(
+      wrapper.get('[data-testid="models-picker-rail-google"]').find('svg')
+        .exists(),
+    ).toBe(true)
+  })
+
+  it('falls back to the first two letters of an unknown provider', async () => {
+    const wrapper = await mountRail({
+      providers: [{ id: 'anthropic', name: 'Anthropic', models: [] }],
+    })
+    const anthropic = wrapper.get(
+      '[data-testid="models-picker-rail-anthropic"]',
+    )
+
+    expect(anthropic.text()).toBe('An')
+    expect(anthropic.get('span').classes()).toContain('uppercase')
+    expect(anthropic.find('svg').exists()).toBe(false)
+  })
+})

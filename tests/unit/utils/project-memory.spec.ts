@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import googleProvider from '../../../providers/google'
-import openaiProvider from '../../../providers/openai'
+import { providers } from '../../../providers'
 
 const mocks = vi.hoisted(() => ({
   generateText: vi.fn(),
@@ -10,13 +9,16 @@ vi.mock('ai', () => ({
   generateText: mocks.generateText,
 }))
 
-const googleProjectMemoryModel = googleProvider.models.find((model) => {
-  return model.forProjectMemory
-})
+function findProjectMemoryModel(providerId: string) {
+  return providers.find((provider) => {
+    return provider.id === providerId
+  })?.models.find((model) => {
+    return model.forProjectMemory
+  })
+}
 
-const openAIProjectMemoryModel = openaiProvider.models.find((model) => {
-  return model.forProjectMemory
-})
+const googleProjectMemoryModel = findProjectMemoryModel('google')
+const openAIProjectMemoryModel = findProjectMemoryModel('openai')
 
 if (!googleProjectMemoryModel || !openAIProjectMemoryModel) {
   throw new Error('Project memory models must be configured in providers')

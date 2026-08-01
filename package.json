@@ -42,6 +42,7 @@
 		"test:affected:fast": "node scripts/test-affected.mjs --type=unit && node scripts/test-affected.mjs --type=integration",
 		"coverage": "vitest run --coverage --passWithNoTests",
 		"coverage:ui": "vitest --coverage --ui",
+		"models:fetch": "node scripts/fetch-models-metadata.mjs",
 		"db:generate": "drizzle-kit generate",
 		"db:reset": "rm -rf .wrangler/state/v3/d1 && drizzle-kit generate && pnpm exec wrangler d1 migrations apply DB",
 		"db:migrate": "pnpm exec wrangler d1 migrations apply DB",

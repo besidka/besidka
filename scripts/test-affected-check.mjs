@@ -87,6 +87,26 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/assistant-files.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
   ]
+  const modelsTriggerPattern
+    = /^(app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/utils\/models-picker\.ts|app\/types\/models-picker\.d\.ts)$/
+  const modelsTriggerTests = [
+    'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/utils/models-picker.spec.ts',
+  ]
+  const modelCatalogTests = [
+    'tests/unit/providers/merge.spec.ts',
+    'tests/unit/scripts/audit-curated-models.spec.ts',
+    'tests/unit/utils/model.spec.ts',
+    'tests/unit/utils/cost-map.spec.ts',
+    ...modelsTriggerTests,
+    'tests/e2e/chat/scroll-spacer.spec.ts',
+  ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/utils/filter-ui-message-stream.spec.ts',
@@ -235,6 +255,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Chat/DeepResearchPending.spec.ts',
     'tests/unit/components/ChatInput/DeepResearchTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
     'tests/unit/components/prose/A.spec.ts',
     'tests/unit/composables/chat-research.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
@@ -258,6 +279,11 @@ export function getAffectedTests(changedFiles) {
       tests: messageUsageTests,
     },
     {
+      pattern:
+        /^(providers\/(index|merge|google|openai)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
+      tests: modelCatalogTests,
+    },
+    {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,
       tests: [
         'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -273,10 +299,8 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
     },
     {
-      pattern: /^app\/components\/ChatInput\/ModelsTrigger\.vue$/,
-      tests: [
-        'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
-      ],
+      pattern: modelsTriggerPattern,
+      tests: modelsTriggerTests,
     },
     {
       pattern: /^app\/utils\/generated-images\.ts$/,
@@ -529,7 +553,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/components\/ChatInput\/ModelsTrigger\.vue|app\/composables\/(chat-research|chat-input|research-links)\.ts)$/,
+        /^(app\/components\/(Chat|ChatInput)\/DeepResearch.*\.vue|app\/components\/ChatInput\/ModelsTrigger(\.vue|\/.+\.vue)|app\/composables\/(chat-research|chat-input|research-links)\.ts)$/,
       tests: deepResearchTests,
     },
     {
@@ -554,6 +578,15 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/chats\/filter-ui-message-stream\.ts$/,
       tests: chatStreamBranchTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/provider\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/provider.spec.ts',
+        ...chatStreamBranchTests,
+        'tests/integration/api/chats-title.spec.ts',
+        'tests/integration/api/chats-research-clarify.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/(history|projects|project-chats)\.ts$/,
