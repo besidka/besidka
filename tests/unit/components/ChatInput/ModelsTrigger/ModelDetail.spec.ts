@@ -74,7 +74,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
 
     expect(wrapper.get('h3').text()).toBe('GPT-5.4')
     expect(wrapper.text()).toContain('Flagship chat model')
-    expect(wrapper.get('.badge-ghost').text()).toBe('$$')
+    expect(wrapper.get('.badge-info').text()).toBe('$$')
   })
 
   it('omits the description paragraph when the model has none', async () => {
