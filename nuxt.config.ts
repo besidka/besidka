@@ -227,14 +227,11 @@ export default defineNuxtConfig({
     },
   },
   eslint: {
-    // vite-plugin-checker's client runtime virtual module fails to
-    // resolve under Vite 8 (`Failed to resolve import
-    // "/_nuxt/@vite-plugin-checker-runtime"`), which aborts the entire
-    // client bundle silently — SSR HTML looks fine but nothing
-    // hydrates. ESLint still runs fully via `pnpm run lint`/`format`
-    // and the pre-commit/pre-push hooks; the in-browser overlay isn't
-    // worth a broken dev client.
-    checker: false,
+    checker: process.env.CI !== 'true'
+      ? {
+        eslintPath: 'eslint',
+      }
+      : false,
   },
   svgo: {
     autoImportPath: '~/assets/icons',
@@ -294,11 +291,7 @@ export default defineNuxtConfig({
     compatibilityVersion: 5,
   },
   typescript: {
-    // Also routes through vite-plugin-checker, same as eslint.checker
-    // above — same Vite 8 client-injection breakage. Run
-    // `pnpm run typecheck` instead; it isn't live-in-terminal during
-    // dev anymore, but the dev client actually hydrates.
-    typeCheck: false,
+    typeCheck: process.env.CI !== 'true',
   },
   vite: {
     build: {
