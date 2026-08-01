@@ -53,7 +53,7 @@ export default {
       },
     },
     {
-      id: 'gpt-5.6',
+      id: 'gpt-5.6-sol',
       price: {
         tokens: 1_000_000,
       },
