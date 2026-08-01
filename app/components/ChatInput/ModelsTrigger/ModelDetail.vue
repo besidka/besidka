@@ -4,14 +4,14 @@
     data-testid="model-detail-panel"
     class="p-3 rounded-2xl bg-base-100/95 backdrop-blur-lg border border-base-content/10 shadow-xl"
   >
-    <div class="flex items-start gap-2">
+    <div class="flex items-center gap-2">
       <h3 class="grow text-sm font-semibold">
         {{ model.name }}
       </h3>
       <span
         v-if="model.priceTier"
         data-testid="model-detail-price-tier"
-        class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
+        class="badge badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
         :class="getPriceTierClass(model.priceTier)"
         :data-tip="priceTip"
       >
@@ -25,7 +25,7 @@
       </span>
       <button
         type="button"
-        class="btn btn-ghost btn-xs btn-circle shrink-0 -mt-1"
+        class="btn btn-ghost btn-xs btn-circle shrink-0"
         aria-label="Close model details"
         @click="emit('close')"
       >
@@ -64,7 +64,7 @@
       <span
         v-for="capability in capabilities"
         :key="capability.label"
-        class="badge badge-xs badge-soft"
+        class="badge badge-sm badge-soft"
         :class="capability.class"
       >
         <Icon

@@ -108,7 +108,7 @@
           type="button"
           data-testid="model-info-trigger"
           class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
-          :class="{ 'text-accent': isDetailOpen }"
+          :class="{ 'text-accent': isDetailOpen, 'btn-active': isDetailOpen }"
           :aria-label="`About ${model.name}`"
           :aria-expanded="isDetailOpen"
           :aria-controls="isDetailOpen ? detailId : undefined"

@@ -263,6 +263,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(info.attributes('aria-controls')).toBe('model-detail-gpt-5.4')
     expect(info.attributes('aria-describedby')).toBe('model-detail-gpt-5.4')
     expect(info.attributes('aria-expanded')).toBe('true')
+    expect(info.classes()).toContain('btn-active')
   })
 
   it('ignores hover and focus and only toggles the detail on click on desktop', async () => {
