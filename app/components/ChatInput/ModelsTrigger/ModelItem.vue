@@ -28,7 +28,7 @@
           Deprecated, no longer selectable.
         </span>
         <span
-          class="w-full xs:w-auto xs:grow min-w-0 flex items-center gap-1.5"
+          class="w-full xs:w-auto min-w-0 flex items-center gap-1.5"
         >
           <SvgoGeminiShort
             v-if="providerId === 'google'"
@@ -46,25 +46,29 @@
           </span>
         </span>
         <span
-          v-if="hasCapabilities || model.priceTier"
-          data-testid="model-capabilities"
-          class="shrink-0 flex gap-1 items-center ml-5"
+          v-if="model.priceTier"
+          data-testid="model-price-tier"
+          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom max-xs:ml-5"
+          :class="getPriceTierClass(model.priceTier)"
+          :data-tip="priceTip"
         >
+          {{ model.priceTier }}
           <span
-            v-if="model.priceTier"
-            data-testid="model-price-tier"
-            class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
-            :class="getPriceTierClass(model.priceTier)"
-            :data-tip="priceTip"
+            v-if="priceTip"
+            class="sr-only"
           >
-            {{ model.priceTier }}
-            <span
-              v-if="priceTip"
-              class="sr-only"
-            >
-              {{ priceTip }}
-            </span>
+            {{ priceTip }}
           </span>
+        </span>
+        <span
+          v-if="hasCapabilities"
+          data-testid="model-capabilities"
+          class="shrink-0 flex gap-1 items-center xs:ml-auto"
+          :class="{
+            'max-xs:ml-5': !model.priceTier,
+            'max-xs:-ml-1': !!model.priceTier
+          }"
+        >
           <span
             v-if="model.reasoning"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"

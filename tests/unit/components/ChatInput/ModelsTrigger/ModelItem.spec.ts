@@ -151,7 +151,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     const wrapper = await mountModelItem()
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
-      .toBe(true)
+      .toBe(false)
     expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
     expect(wrapper.find('[data-tip="Web search"]').exists()).toBe(false)
     expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(false)
@@ -160,28 +160,43 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     ).exists()).toBe(false)
   })
 
-  it('omits the capabilities row entirely without a price tier or '
-    + 'capabilities', async () => {
+  it('omits the price-tier badge when the model has no price tier', async () => {
     const wrapper = await mountModelItem(
       createModel({ priceTier: undefined }),
     )
 
-    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+    expect(wrapper.find('[data-testid="model-price-tier"]').exists())
       .toBe(false)
   })
 
-  it('places the price tier before the capability icons in the '
-    + 'wrapped row', async () => {
+  it('places the price tier as a preceding sibling of the capability '
+    + 'icons, indenting only the icons on mobile', async () => {
     const model = createModel({
       tools: ['web_search'],
       reasoning: { mode: 'toggle' },
     })
     const wrapper = await mountModelItem(model)
+    const priceTier = wrapper.get('[data-testid="model-price-tier"]')
     const capabilities = wrapper.get('[data-testid="model-capabilities"]')
-    const priceTier = capabilities.get('[data-testid="model-price-tier"]')
 
-    expect(capabilities.classes()).toContain('ml-5')
-    expect(capabilities.element.firstElementChild).toBe(priceTier.element)
+    expect(priceTier.classes()).toContain('max-xs:ml-5')
+    expect(capabilities.classes()).toContain('xs:ml-auto')
+    expect(capabilities.classes()).toContain('max-xs:-ml-1')
+    expect(capabilities.classes()).not.toContain('max-xs:ml-5')
+    expect(priceTier.element.nextElementSibling).toBe(capabilities.element)
+  })
+
+  it('indents the capability icons on mobile when there is no price '
+    + 'tier', async () => {
+    const model = createModel({
+      priceTier: undefined,
+      tools: ['web_search'],
+    })
+    const wrapper = await mountModelItem(model)
+    const capabilities = wrapper.get('[data-testid="model-capabilities"]')
+
+    expect(capabilities.classes()).toContain('max-xs:ml-5')
+    expect(capabilities.classes()).not.toContain('max-xs:-ml-1')
   })
 
   it('renders every capability icon a model declares', async () => {
