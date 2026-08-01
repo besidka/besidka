@@ -46,7 +46,7 @@
           class="absolute bottom-full left-0 z-50 mb-2 w-[min(30rem,calc(100vw-4rem))]"
         >
           <div
-            class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100/90 border border-base-content/10 shadow-xl"
+            class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl"
           >
             <div
               class="shrink-0 flex items-center gap-1 p-2 border-b border-base-content/10"
