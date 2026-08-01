@@ -107,16 +107,16 @@ describe('hasImageGenerationCapability', () => {
 })
 
 describe('getPriceTierClass', () => {
-  it('maps every price tier to an increasingly opaque badge', () => {
-    expect(getPriceTierClass('$')).toBe('badge-ghost text-base-content/50')
-    expect(getPriceTierClass('$$')).toBe('badge-ghost text-base-content/65')
-    expect(getPriceTierClass('$$$')).toBe('badge-ghost text-base-content/80')
-    expect(getPriceTierClass('$$$+')).toBe('badge-ghost text-base-content/95')
+  it('maps every price tier to a semantic badge color', () => {
+    expect(getPriceTierClass('$')).toBe('badge-success')
+    expect(getPriceTierClass('$$')).toBe('badge-info')
+    expect(getPriceTierClass('$$$')).toBe('badge-warning')
+    expect(getPriceTierClass('$$$+')).toBe('badge-error')
   })
 
   it('falls back to the cheapest badge for an unmapped tier', () => {
     expect(getPriceTierClass('$$$$' as ModelPriceTier))
-      .toBe('badge-ghost text-base-content/50')
+      .toBe('badge-success')
   })
 })
 

@@ -12,10 +12,10 @@ export const modelCategoryOptions: ModelCategoryOption[] = [
 ]
 
 const priceTierClasses: Record<ModelPriceTier, string> = {
-  '$': 'badge-ghost text-base-content/50',
-  '$$': 'badge-ghost text-base-content/65',
-  '$$$': 'badge-ghost text-base-content/80',
-  '$$$+': 'badge-ghost text-base-content/95',
+  '$': 'badge-success',
+  '$$': 'badge-info',
+  '$$$': 'badge-warning',
+  '$$$+': 'badge-error',
 }
 
 const monthNames = [
@@ -36,7 +36,7 @@ export function getModelCategory(model: Model): ModelCategory {
 }
 
 export function getPriceTierClass(tier: ModelPriceTier): string {
-  return priceTierClasses[tier] ?? 'badge-ghost text-base-content/50'
+  return priceTierClasses[tier] ?? 'badge-success'
 }
 
 export function hasImageGenerationCapability(model: Model): boolean {
