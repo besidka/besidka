@@ -29,6 +29,10 @@ export function useUserSetting() {
     'user-settings:sidebar-pinned',
     () => null,
   )
+  const serverFavoriteModels = useState<string[] | null>(
+    'user-settings:favorite-models',
+    () => null,
+  )
   const isLoadingSettings = useState<boolean>(
     'user-settings:is-loading',
     () => false,
@@ -43,6 +47,10 @@ export function useUserSetting() {
   )
   const lastSyncToken = useState<number>(
     'user-settings:sync-token',
+    () => 0,
+  )
+  const lastFavoriteModelsRequestToken = useState<number>(
+    'user-settings:favorite-models-request-token',
     () => 0,
   )
   const prefStorage = usePreferenceStorage()
@@ -82,6 +90,29 @@ export function useUserSetting() {
     },
     set(value) {
       prefStorage.setItem('settings_sidebar_pinned', String(value))
+      trigger()
+    },
+  }))
+  const fallbackFavoriteModels = customRef<string[]>((track, trigger) => ({
+    get() {
+      track()
+
+      const raw = prefStorage.getItem('settings_favorite_models')
+
+      if (raw === null) {
+        return []
+      }
+
+      try {
+        const parsed = JSON.parse(raw)
+
+        return Array.isArray(parsed) ? parsed as string[] : []
+      } catch {
+        return []
+      }
+    },
+    set(value) {
+      prefStorage.setItem('settings_favorite_models', JSON.stringify(value))
       trigger()
     },
   }))
@@ -148,6 +179,41 @@ export function useUserSetting() {
     return serverSidebarPinned.value
   })
 
+  const rawFavoriteModels = computed<string[]>(() => {
+    if (
+      !activeUserId.value
+      || loadedUserId.value !== activeUserId.value
+      || serverFavoriteModels.value === null
+    ) {
+      return fallbackFavoriteModels.value
+    }
+
+    return serverFavoriteModels.value
+  })
+
+  const catalogModelIds = computed<Set<string>>(() => {
+    const { providers } = getProviders()
+
+    return new Set(
+      providers.flatMap((provider) => {
+        return provider.models.map((model) => {
+          return model.id
+        })
+      }),
+    )
+  })
+
+  // Filtered against the live catalog so a favorited model that was later
+  // removed or renamed upstream can't keep a phantom entry visible in the
+  // picker UI. `rawFavoriteModels` (unfiltered) remains what gets read for
+  // building the next PATCH payload, so a stale id is never silently
+  // dropped from what's actually persisted.
+  const favoriteModels = computed<string[]>(() => {
+    return rawFavoriteModels.value.filter((modelId) => {
+      return catalogModelIds.value.has(modelId)
+    })
+  })
+
   async function syncForUser(userId: string) {
     activeUserId.value = userId
     settingsError.value = null
@@ -196,6 +262,10 @@ export function useUserSetting() {
       const nextSidebarPinned = Boolean(response.sidebarPinned)
       serverSidebarPinned.value = nextSidebarPinned
       fallbackSidebarPinned.value = nextSidebarPinned
+
+      const nextFavoriteModels = response.favoriteModels ?? []
+      serverFavoriteModels.value = nextFavoriteModels
+      fallbackFavoriteModels.value = nextFavoriteModels
     } catch (exception) {
       if (
         activeUserId.value !== userId
@@ -210,6 +280,7 @@ export function useUserSetting() {
       serverAllowExternalLinks.value = null
       serverNotificationPromptState.value = null
       serverSidebarPinned.value = null
+      serverFavoriteModels.value = null
 
       const parsedException = parseError(exception)
 
@@ -462,6 +533,78 @@ export function useUserSetting() {
     }
   }
 
+  async function setFavoriteModels(favoriteModels: string[]) {
+    settingsError.value = null
+
+    const previousFallbackFavoriteModels
+      = fallbackFavoriteModels.value
+    fallbackFavoriteModels.value = favoriteModels
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousServerFavoriteModels
+      = serverFavoriteModels.value as string[]
+
+    serverFavoriteModels.value = favoriteModels
+    isSavingSettings.value = true
+
+    const requestToken = lastFavoriteModelsRequestToken.value + 1
+    lastFavoriteModelsRequestToken.value = requestToken
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          favoriteModels,
+        },
+      })
+
+      if (
+        activeUserId.value !== currentUserId
+        || lastFavoriteModelsRequestToken.value !== requestToken
+      ) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverFavoriteModels.value = favoriteModels
+      fallbackFavoriteModels.value = favoriteModels
+    } catch (exception) {
+      if (
+        activeUserId.value !== currentUserId
+        || lastFavoriteModelsRequestToken.value !== requestToken
+      ) {
+        return
+      }
+
+      serverFavoriteModels.value = previousServerFavoriteModels
+      fallbackFavoriteModels.value = previousFallbackFavoriteModels
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      if (lastFavoriteModelsRequestToken.value === requestToken) {
+        isSavingSettings.value = false
+      }
+    }
+  }
+
+  async function toggleFavoriteModel(modelId: string) {
+    const current = rawFavoriteModels.value
+    const next = current.includes(modelId)
+      ? current.filter((id) => {
+        return id !== modelId
+      })
+      : [...current, modelId]
+
+    await setFavoriteModels(next)
+  }
+
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
@@ -470,6 +613,7 @@ export function useUserSetting() {
     serverAllowExternalLinks.value = null
     serverNotificationPromptState.value = null
     serverSidebarPinned.value = null
+    serverFavoriteModels.value = null
     settingsError.value = null
     isLoadingSettings.value = false
     isSavingSettings.value = false
@@ -482,6 +626,7 @@ export function useUserSetting() {
     allowExternalLinks,
     notificationPromptState,
     sidebarPinned,
+    favoriteModels,
     isLoadingSettings,
     isSavingSettings,
     settingsError,
@@ -491,6 +636,8 @@ export function useUserSetting() {
     setAllowExternalLinks,
     setNotificationPromptState,
     setSidebarPinned,
+    setFavoriteModels,
+    toggleFavoriteModel,
     clearUserContext,
   }
 }

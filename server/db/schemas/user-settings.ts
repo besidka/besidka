@@ -1,6 +1,7 @@
 import {
   snakeCase,
   integer,
+  text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core'
 import { defaultSchemaTimestamps } from '../../utils/schema'
@@ -23,6 +24,7 @@ export const userSettings = snakeCase.table(
     allowExternalLinks: integer({ mode: 'boolean' }),
     notificationPromptState: integer({ mode: 'boolean' }),
     sidebarPinned: integer({ mode: 'boolean' }),
+    favoriteModels: text({ mode: 'json' }).$type<string[]>(),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

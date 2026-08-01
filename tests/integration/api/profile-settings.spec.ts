@@ -7,6 +7,7 @@ interface SettingsRecord {
   allowExternalLinks: boolean | null
   notificationPromptState: boolean | null
   sidebarPinned: boolean
+  favoriteModels: string[] | null
 }
 
 function createDbMock() {
@@ -22,6 +23,7 @@ function createDbMock() {
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
+    favoriteModels?: string[]
   }) => {
     currentSettings = {
       id: 1,
@@ -30,6 +32,7 @@ function createDbMock() {
       allowExternalLinks: values.allowExternalLinks ?? null,
       notificationPromptState: values.notificationPromptState ?? null,
       sidebarPinned: values.sidebarPinned ?? false,
+      favoriteModels: values.favoriteModels ?? null,
     }
   })
   const insert = vi.fn(() => ({
@@ -44,6 +47,7 @@ function createDbMock() {
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
+    favoriteModels?: string[]
   }) => {
     currentSettings = {
       id: 1,
@@ -62,6 +66,9 @@ function createDbMock() {
       sidebarPinned: values.sidebarPinned
         ?? currentSettings?.sidebarPinned
         ?? false,
+      favoriteModels: values.favoriteModels
+        ?? currentSettings?.favoriteModels
+        ?? null,
     }
 
     return {
@@ -175,6 +182,7 @@ describe('profile settings API', () => {
       allowExternalLinks: null,
       notificationPromptState: null,
       sidebarPinned: false,
+      favoriteModels: [],
     })
   })
 
@@ -220,6 +228,7 @@ describe('profile settings API', () => {
       allowExternalLinks: null,
       notificationPromptState: null,
       sidebarPinned: false,
+      favoriteModels: [],
     })
   })
 
@@ -253,6 +262,7 @@ describe('profile settings API', () => {
       allowExternalLinks: null,
       notificationPromptState: null,
       sidebarPinned: false,
+      favoriteModels: [],
     })
   })
 
@@ -286,6 +296,7 @@ describe('profile settings API', () => {
       allowExternalLinks: true,
       notificationPromptState: null,
       sidebarPinned: false,
+      favoriteModels: [],
     })
   })
 
@@ -319,6 +330,7 @@ describe('profile settings API', () => {
       allowExternalLinks: null,
       notificationPromptState: false,
       sidebarPinned: false,
+      favoriteModels: [],
     })
   })
 
@@ -352,8 +364,86 @@ describe('profile settings API', () => {
       allowExternalLinks: null,
       notificationPromptState: null,
       sidebarPinned: true,
+      favoriteModels: [],
     })
   })
+
+  it('saves deduped favoriteModels and returns them', async () => {
+    const getHandler = await getSettingsHandler()
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        favoriteModels: ['gpt-5.4', 'gemini-2.5-flash', 'gpt-5.4'],
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      favoriteModels: ['gpt-5.4', 'gemini-2.5-flash'],
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toEqual({
+      reasoningExpanded: false,
+      reasoningAutoHide: true,
+      allowExternalLinks: null,
+      notificationPromptState: null,
+      sidebarPinned: false,
+      favoriteModels: ['gpt-5.4', 'gemini-2.5-flash'],
+    })
+  })
+
+  it('rejects a favoriteModels list over the cap', async () => {
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    await expect(patchHandler({
+      body: {
+        favoriteModels: Array.from({ length: 51 }, (_value, index) => {
+          return `model-${index}`
+        }),
+      },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
+    })
+  })
+
+  it('rejects a favoriteModels entry over the per-string length cap',
+    async () => {
+      const patchHandler = await patchSettingsHandler()
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+      vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+        user: {
+          id: '1',
+        },
+      }))
+
+      await expect(patchHandler({
+        body: {
+          favoriteModels: ['a'.repeat(101)],
+        },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+      })
+    })
 
   it('returns 400 for invalid patch payload', async () => {
     const patchHandler = await patchSettingsHandler()

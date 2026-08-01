@@ -15,6 +15,7 @@ export default defineEventHandler(async () => {
       allowExternalLinks: true,
       notificationPromptState: true,
       sidebarPinned: true,
+      favoriteModels: true,
     },
   })
 
@@ -24,5 +25,6 @@ export default defineEventHandler(async () => {
     allowExternalLinks: settings?.allowExternalLinks ?? null,
     notificationPromptState: settings?.notificationPromptState ?? null,
     sidebarPinned: settings?.sidebarPinned ?? false,
+    favoriteModels: settings?.favoriteModels ?? [],
   }
 })

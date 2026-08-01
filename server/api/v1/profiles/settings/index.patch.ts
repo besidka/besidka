@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
     allowExternalLinks: z.boolean().nullable().optional(),
     notificationPromptState: z.boolean().nullable().optional(),
     sidebarPinned: z.boolean().optional(),
+    favoriteModels: z.array(z.string().max(100)).max(50).optional(),
   }).safeParse)
 
   if (body.error) {
@@ -41,6 +42,7 @@ export default defineEventHandler(async (event) => {
     allowExternalLinks?: boolean | null
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
+    favoriteModels?: string[]
   } = {}
 
   if (body.data.reasoningExpanded !== undefined) {
@@ -62,6 +64,10 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.sidebarPinned !== undefined) {
     fieldUpdates.sidebarPinned = body.data.sidebarPinned
+  }
+
+  if (body.data.favoriteModels !== undefined) {
+    fieldUpdates.favoriteModels = [...new Set(body.data.favoriteModels)]
   }
 
   if (Object.keys(fieldUpdates).length === 0) {
