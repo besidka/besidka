@@ -2,8 +2,6 @@
   <div
     :id="detailId"
     data-testid="model-detail-panel"
-    role="region"
-    :aria-label="`${model.name} details`"
     class="p-3 rounded-2xl bg-base-100/95 backdrop-blur-lg border border-base-content/10 shadow-xl"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
@@ -12,17 +10,6 @@
       <h3 class="grow text-sm font-semibold">
         {{ model.name }}
       </h3>
-      <span
-        v-if="model.status === 'deprecated'"
-        data-testid="model-detail-deprecated-badge"
-        class="badge badge-xs badge-error badge-outline shrink-0 gap-0.5 font-semibold"
-      >
-        <Icon
-          name="lucide:triangle-alert"
-          size="11"
-        />
-        Deprecated
-      </span>
       <span
         v-if="model.priceTier"
         data-testid="model-detail-price-tier"
@@ -44,6 +31,21 @@
         />
       </button>
     </div>
+    <p
+      v-if="model.status === 'deprecated'"
+      data-testid="model-detail-deprecated-notice"
+      class="mt-2 flex items-start gap-1.5 p-2 rounded-xl text-xs text-error capability-chip"
+    >
+      <Icon
+        name="lucide:triangle-alert"
+        size="13"
+        class="shrink-0 mt-px"
+      />
+      <span>
+        The provider has deprecated this model, so it can stop responding at
+        any time and can no longer be selected. Pick a supported model instead.
+      </span>
+    </p>
     <p
       v-if="model.description"
       class="mt-1.5 text-xs opacity-70"

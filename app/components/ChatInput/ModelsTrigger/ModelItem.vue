@@ -2,22 +2,31 @@
   <li
     :id="optionId"
     role="option"
-    :aria-selected="isSelected"
+    :aria-selected="isLegacy ? false : isSelected"
+    :aria-disabled="isLegacy ? true : undefined"
   >
     <div
       class="flex items-center gap-1 rounded-xl pl-2 pr-1 py-1 transition-colors"
       :class="{
-        'bg-accent/15': isSelected,
-        'bg-base-content/10': isHighlighted && !isSelected,
-        'hover:bg-base-content/5': !isSelected && !isHighlighted
+        'bg-accent/15': isSelected && !isLegacy,
+        'bg-base-content/10': isHighlighted && !isSelected && !isLegacy,
+        'hover:bg-base-content/5': !isSelected && !isHighlighted && !isLegacy
       }"
     >
-      <button
-        type="button"
-        class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left cursor-pointer"
-        :aria-label="selectLabel"
-        @click="emit('select')"
+      <component
+        :is="isLegacy ? 'div' : 'button'"
+        :type="isLegacy ? undefined : 'button'"
+        :aria-label="isLegacy ? undefined : selectLabel"
+        class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left"
+        :class="isLegacy ? 'opacity-50' : 'cursor-pointer'"
+        @click="onSelect"
       >
+        <span
+          v-if="isLegacy"
+          class="sr-only"
+        >
+          Deprecated, no longer selectable.
+        </span>
         <span
           class="w-full xs:w-auto xs:grow min-w-0 flex items-center gap-1.5"
         >
@@ -50,17 +59,6 @@
               {{ priceTip }}
             </span>
           </span>
-          <span
-            v-if="model.status === 'deprecated'"
-            data-testid="model-deprecated-badge"
-            class="badge badge-xs badge-error badge-outline shrink-0 gap-0.5 font-semibold"
-          >
-            <Icon
-              name="lucide:triangle-alert"
-              size="11"
-            />
-            <span class="sr-only sm:not-sr-only">Deprecated</span>
-          </span>
         </span>
         <span
           v-if="hasCapabilities"
@@ -69,59 +67,39 @@
         >
           <span
             v-if="model.reasoning"
-            class="shrink-0 flex items-center p-0.5 rounded-full bg-warning-content"
-            :class="{
-              'tooltip tooltip-warning tooltip-top': $device.isDesktop
-            }"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Reasoning"
           >
-            <Icon
-              name="lucide:brain"
-              class="text-warning"
-            />
+            <Icon name="lucide:brain" />
           </span>
           <span
             v-if="model.tools.includes('web_search')"
-            class="shrink-0 flex items-center p-0.5 rounded-full bg-info-content"
-            :class="{
-              'tooltip tooltip-info tooltip-top': $device.isDesktop
-            }"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-info"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Web search"
           >
-            <Icon
-              name="lucide:globe"
-              class="text-info"
-            />
+            <Icon name="lucide:globe" />
           </span>
           <span
             v-if="hasImageGenerationCapability(model)"
             data-testid="model-image-generation-capability"
-            class="shrink-0 flex items-center p-0.5 rounded-full bg-green-100 dark:bg-secondary-content"
-            :class="{
-              'tooltip tooltip-secondary tooltip-top': $device.isDesktop
-            }"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-violet-700 dark:text-violet-200"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Image generation"
           >
-            <Icon
-              name="lucide:image-plus"
-              class="text-green-800 dark:text-secondary"
-            />
+            <Icon name="lucide:image-plus" />
           </span>
           <span
             v-if="model.research"
-            class="shrink-0 flex items-center p-0.5 rounded-full bg-[color-mix(in_oklab,var(--color-success)_15%,var(--color-base-100))] text-success"
-            :class="{
-              'tooltip tooltip-success tooltip-top': $device.isDesktop
-            }"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-success"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Deep research"
           >
-            <Icon
-              name="lucide:telescope"
-              class="text-success"
-            />
+            <Icon name="lucide:telescope" />
           </span>
         </span>
-      </button>
+      </component>
       <span
         data-testid="model-actions"
         class="shrink-0 flex items-center gap-1 max-xs:flex-col max-xs:gap-1.5"
@@ -147,6 +125,7 @@
           />
         </button>
         <button
+          v-if="!isLegacy"
           type="button"
           data-testid="model-favorite-toggle"
           class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
@@ -180,6 +159,7 @@ const props = defineProps<{
   isHighlighted: boolean
   isFavorite: boolean
   isDetailOpen: boolean
+  isLegacy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -196,6 +176,10 @@ const priceTip = computed<string | undefined>(() => {
   return getModelPriceTip(props.model)
 })
 
+const hasTooltip = computed<boolean>(() => {
+  return isDesktop && !props.isLegacy
+})
+
 const hasCapabilities = computed<boolean>(() => {
   const { model } = props
 
@@ -205,18 +189,8 @@ const hasCapabilities = computed<boolean>(() => {
     || !!model.research
 })
 
-/**
- * The explicit label overrides the button content, so the deprecation badge
- * inside it would otherwise never reach assistive technology.
- */
 const selectLabel = computed<string>(() => {
-  const { model } = props
-
-  if (model.status === 'deprecated') {
-    return `Choose ${model.name}, deprecated`
-  }
-
-  return `Choose ${model.name}`
+  return `Choose ${props.model.name}`
 })
 
 const optionId = computed<string>(() => {
@@ -226,6 +200,14 @@ const optionId = computed<string>(() => {
 const detailId = computed<string>(() => {
   return `model-detail-${props.model.id}`
 })
+
+function onSelect() {
+  if (props.isLegacy) {
+    return
+  }
+
+  emit('select')
+}
 
 /**
  * Pointer and keyboard both open the detail on desktop only. A touch tap

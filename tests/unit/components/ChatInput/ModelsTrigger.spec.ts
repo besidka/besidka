@@ -43,6 +43,25 @@ const imageModel = {
   reasoning: false,
 }
 
+const legacyModel = {
+  ...imageModel,
+  id: 'legacy-model',
+  name: 'Legacy model',
+  description: 'Retired upstream',
+  tools: [],
+  status: 'deprecated',
+}
+
+function useLegacyCatalog() {
+  mocks.getProviders.mockReturnValue({
+    providers: [{
+      id: 'google',
+      name: 'Google AI Studio',
+      models: [imageModel, legacyModel],
+    }],
+  })
+}
+
 function mountPicker() {
   return mountSuspended(ModelsTrigger, {
     props: {
@@ -174,6 +193,130 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(wrapper.get('[data-testid="models-picker-empty"]').text())
       .toContain('No models match')
     expect(wrapper.find('[data-testid="models-picker-clear-filters"]').exists())
+      .toBe(false)
+  })
+
+  it('keeps deprecated models out of the selectable list', async () => {
+    useLegacyCatalog()
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+
+    expect(wrapper.find('button[aria-label="Choose Legacy model"]').exists())
+      .toBe(false)
+    expect(wrapper.find('button[aria-label="Choose Image model"]').exists())
+      .toBe(true)
+  })
+
+  it('collapses the legacy section by default and counts its models', async () => {
+    useLegacyCatalog()
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+
+    const toggle = wrapper.get('[data-testid="models-picker-legacy-toggle"]')
+
+    expect(toggle.text()).toContain('1 legacy model')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('[data-testid="models-picker-legacy-list"]')
+      .attributes('style')).toBe('display: none;')
+  })
+
+  it('reveals the non-selectable legacy rows once expanded', async () => {
+    useLegacyCatalog()
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="models-picker-legacy-toggle"]')
+      .trigger('click')
+
+    const toggle = wrapper.get('[data-testid="models-picker-legacy-toggle"]')
+    const row = wrapper.get('#model-option-legacy-model')
+
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-testid="models-picker-legacy-list"]')
+      .attributes('style')).toBeUndefined()
+    expect(row.attributes('aria-disabled')).toBe('true')
+    expect(row.find('button[aria-label="Choose Legacy model"]').exists())
+      .toBe(false)
+    expect(row.find('[data-testid="model-favorite-toggle"]').exists())
+      .toBe(false)
+
+    await toggle.trigger('click')
+
+    expect(wrapper.get('[data-testid="models-picker-legacy-toggle"]')
+      .attributes('aria-expanded')).toBe('false')
+  })
+
+  it('opens the detail panel from a legacy row info button', async () => {
+    useLegacyCatalog()
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="models-picker-legacy-toggle"]')
+      .trigger('click')
+    await wrapper.get('#model-option-legacy-model')
+      .get('[data-testid="model-info-trigger"]')
+      .trigger('mouseenter')
+
+    const panel = wrapper.get('[data-testid="model-detail-panel"]')
+
+    expect(panel.attributes('id')).toBe('model-detail-legacy-model')
+    expect(wrapper.get('[data-testid="model-detail-deprecated-notice"]').text())
+      .toContain('no longer be selected')
+  })
+
+  it('never aims the keyboard highlight at a deprecated selection', async () => {
+    useLegacyCatalog()
+    mocks.useUserModel.mockReturnValue({
+      userModel: shallowRef<string>('legacy-model'),
+    })
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+
+    const search = wrapper.get('[data-testid="models-picker-search"]')
+    const listbox = wrapper.get('[role="listbox"][aria-label="Models"]')
+
+    expect(search.attributes('aria-activedescendant'))
+      .toBe('model-option-image-model')
+    expect(listbox.find('#model-option-image-model').exists()).toBe(true)
+    expect(listbox.find('#model-option-legacy-model').exists()).toBe(false)
+
+    await search.trigger('keydown', { key: 'ArrowDown' })
+
+    expect(search.attributes('aria-activedescendant'))
+      .toBe('model-option-image-model')
+
+    await search.trigger('keydown', { key: 'Enter' })
+
+    expect(wrapper.emitted()).toBeTruthy()
+  })
+
+  it('hides the legacy section when no model is deprecated', async () => {
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="models-picker-legacy"]').exists())
+      .toBe(false)
+  })
+
+  it('keeps the listbox free of the legacy section', async () => {
+    useLegacyCatalog()
+
+    const wrapper = await mountPicker()
+
+    await wrapper.get('[data-testid="current-model-trigger"]').trigger('click')
+
+    const listbox = wrapper.get('[role="listbox"][aria-label="Models"]')
+
+    expect(listbox.find('[data-testid="models-picker-legacy"]').exists())
       .toBe(false)
   })
 

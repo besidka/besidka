@@ -10,7 +10,7 @@
         class="btn btn-ghost btn-sm btn-circle"
         :class="{
           'btn-active text-warning': isFavoritesOnly,
-          'tooltip tooltip-right': $device.isDesktop
+          'tooltip tooltip-soft tooltip-right': $device.isDesktop
         }"
         data-tip="Favorites"
         aria-label="Show favorite models only"
@@ -34,7 +34,7 @@
       class="btn btn-ghost btn-sm btn-circle"
       :class="{
         'btn-active text-accent': activeProviderId === provider.id,
-        'tooltip tooltip-right': $device.isDesktop
+        'tooltip tooltip-soft tooltip-right': $device.isDesktop
       }"
       :data-tip="provider.name"
       :aria-label="`Show ${provider.name} models only`"

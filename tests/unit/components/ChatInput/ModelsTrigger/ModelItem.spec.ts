@@ -95,8 +95,10 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.text()).not.toContain('Flagship chat model')
   })
 
-  it('omits the deprecated badge for a supported model', async () => {
-    const wrapper = await mountModelItem()
+  it('never renders an inline deprecated badge', async () => {
+    const wrapper = await mountModelItem(createModel({
+      status: 'deprecated',
+    }))
 
     expect(wrapper.find('[data-testid="model-deprecated-badge"]').exists())
       .toBe(false)
@@ -104,22 +106,41 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
       .toBe(true)
   })
 
-  it('flags a deprecated model in the badge and the select label', async () => {
-    const wrapper = await mountModelItem(createModel({
-      status: 'deprecated',
-    }))
+  it('offers no selectable control for a legacy row', async () => {
+    const wrapper = await mountModelItem(
+      createModel({ status: 'deprecated' }),
+      { isLegacy: true },
+    )
+    const option = wrapper.get('li')
 
-    expect(wrapper.get('[data-testid="model-deprecated-badge"]').text())
-      .toBe('Deprecated')
-    expect(wrapper.find('button[aria-label="Choose GPT-5.4, deprecated"]')
-      .exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="Choose GPT-5.4"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="model-favorite-toggle"]').exists())
+      .toBe(false)
+    expect(option.attributes('aria-disabled')).toBe('true')
+    expect(option.attributes('aria-selected')).toBe('false')
+    expect(wrapper.text()).toContain('Deprecated, no longer selectable.')
   })
 
-  it('leaves beta and alpha models unbadged', async () => {
-    const wrapper = await mountModelItem(createModel({ status: 'beta' }))
+  it('keeps the info button working on a legacy row', async () => {
+    const wrapper = await mountModelItem(
+      createModel({ status: 'deprecated' }),
+      { isLegacy: true },
+    )
+    const info = wrapper.get('[data-testid="model-info-trigger"]')
 
-    expect(wrapper.find('[data-testid="model-deprecated-badge"]').exists())
-      .toBe(false)
+    await info.trigger('mouseenter')
+
+    expect(wrapper.emitted('showDetail')).toHaveLength(1)
+    expect(wrapper.emitted('select')).toBeUndefined()
+  })
+
+  it('still marks a non-legacy row as selectable and selected', async () => {
+    const wrapper = await mountModelItem(createModel(), { isSelected: true })
+    const option = wrapper.get('li')
+
+    expect(option.attributes('aria-selected')).toBe('true')
+    expect(option.attributes('aria-disabled')).toBeUndefined()
   })
 
   it('renders no capability icons for a plain model', async () => {

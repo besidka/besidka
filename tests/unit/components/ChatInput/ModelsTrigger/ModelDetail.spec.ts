@@ -60,13 +60,12 @@ function readSpecLabels(wrapper: VueWrapper): string[] {
 }
 
 describe('ChatInput/ModelsTrigger/ModelDetail', () => {
-  it('exposes the panel as a region keyed by the model id', async () => {
+  it('keys the panel by the model id without claiming a landmark role', async () => {
     const wrapper = await mountDetail()
     const panel = wrapper.get('[data-testid="model-detail-panel"]')
 
     expect(panel.attributes('id')).toBe('model-detail-gpt-5.4')
-    expect(panel.attributes('role')).toBe('region')
-    expect(panel.attributes('aria-label')).toBe('GPT-5.4 details')
+    expect(panel.attributes('role')).toBeUndefined()
   })
 
   it('renders the name, description and price tier badge', async () => {
@@ -77,18 +76,19 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(wrapper.get('.badge-info').text()).toBe('$$')
   })
 
-  it('badges a deprecated model in the header', async () => {
+  it('explains why a deprecated model should not be used', async () => {
     const wrapper = await mountDetail(createModel({ status: 'deprecated' }))
-    const badge = wrapper.get('[data-testid="model-detail-deprecated-badge"]')
+    const notice = wrapper.get('[data-testid="model-detail-deprecated-notice"]')
 
-    expect(badge.text()).toBe('Deprecated')
+    expect(notice.text()).toContain('deprecated this model')
+    expect(notice.text()).toContain('no longer be selected')
   })
 
-  it('omits the deprecated badge for a supported model', async () => {
+  it('omits the deprecation notice for a supported model', async () => {
     const wrapper = await mountDetail()
 
     expect(
-      wrapper.find('[data-testid="model-detail-deprecated-badge"]').exists(),
+      wrapper.find('[data-testid="model-detail-deprecated-notice"]').exists(),
     ).toBe(false)
   })
 

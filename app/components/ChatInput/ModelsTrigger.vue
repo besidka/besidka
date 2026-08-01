@@ -74,44 +74,113 @@
                 @toggle-favorites="toggleFavoritesOnly"
               />
               <div
-                :id="listboxId"
                 ref="resultsContainer"
-                role="listbox"
-                aria-label="Models"
                 class="flex-1 min-h-[14rem] overflow-y-auto p-1.5"
+                :class="{ 'pb-9': filteredModels.length }"
               >
-                <template
-                  v-for="section in sections"
-                  :key="section.id"
+                <div
+                  :id="listboxId"
+                  role="listbox"
+                  aria-label="Models"
                 >
-                  <p
-                    v-if="section.label"
-                    :id="`${section.id}-label`"
-                    class="px-2 pt-1.5 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-50"
+                  <template
+                    v-for="section in sections"
+                    :key="section.id"
                   >
-                    {{ section.label }}
-                  </p>
+                    <p
+                      v-if="section.label"
+                      :id="`${section.id}-label`"
+                      class="px-2 pt-1.5 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-50"
+                    >
+                      {{ section.label }}
+                    </p>
+                    <ul
+                      class="flex flex-col gap-0.5"
+                      :role="section.label ? 'group' : 'presentation'"
+                      :aria-labelledby="section.label
+                        ? `${section.id}-label`
+                        : undefined
+                      "
+                    >
+                      <template
+                        v-for="entry in section.entries"
+                        :key="entry.model.id"
+                      >
+                        <ChatInputModelsTriggerModelItem
+                          :model="entry.model"
+                          :provider-id="entry.providerId"
+                          :is-selected="userModel === entry.model.id"
+                          :is-highlighted="
+                            highlightedModelId === entry.model.id
+                          "
+                          :is-favorite="favoriteModels.includes(entry.model.id)"
+                          :is-detail-open="detailModelId === entry.model.id"
+                          @select="selectModel(entry.model.id)"
+                          @toggle-favorite="toggleFavoriteModel(entry.model.id)"
+                          @show-detail="showDetail(entry.model.id)"
+                          @hide-detail="hideDetail(entry.model.id)"
+                          @toggle-detail="toggleDetail(entry.model.id)"
+                        />
+                        <li
+                          v-if="detailModelId === entry.model.id"
+                          role="presentation"
+                          class="py-0.5"
+                        >
+                          <ChatInputModelsTriggerModelDetail
+                            :model="entry.model"
+                            :provider-name="entry.providerName"
+                            :is-interactive="!$device.isDesktop"
+                            @close="closeDetail"
+                            @show-detail="showDetail(entry.model.id)"
+                            @hide-detail="hideDetail(entry.model.id)"
+                          />
+                        </li>
+                      </template>
+                    </ul>
+                  </template>
+                </div>
+                <div
+                  v-if="legacyModels.length"
+                  data-testid="models-picker-legacy"
+                  class="mt-1 pt-1 border-t border-base-content/10"
+                >
+                  <button
+                    :id="legacyLabelId"
+                    type="button"
+                    data-testid="models-picker-legacy-toggle"
+                    class="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-[0.65rem] font-semibold uppercase tracking-wide opacity-50 cursor-pointer transition-colors hover:bg-base-content/5 hover:opacity-80"
+                    :aria-expanded="isLegacyExpanded"
+                    :aria-controls="legacyListId"
+                    @click="toggleLegacy"
+                  >
+                    <Icon
+                      name="lucide:chevron-right"
+                      size="12"
+                      class="transition-transform"
+                      :class="{ 'rotate-90': isLegacyExpanded }"
+                    />
+                    {{ legacyLabel }}
+                  </button>
                   <ul
+                    v-show="isLegacyExpanded"
+                    :id="legacyListId"
+                    data-testid="models-picker-legacy-list"
+                    role="listbox"
+                    :aria-labelledby="legacyLabelId"
                     class="flex flex-col gap-0.5"
-                    :role="section.label ? 'group' : 'presentation'"
-                    :aria-labelledby="section.label
-                      ? `${section.id}-label`
-                      : undefined
-                    "
                   >
                     <template
-                      v-for="entry in section.entries"
+                      v-for="entry in legacyModels"
                       :key="entry.model.id"
                     >
                       <ChatInputModelsTriggerModelItem
                         :model="entry.model"
                         :provider-id="entry.providerId"
-                        :is-selected="userModel === entry.model.id"
-                        :is-highlighted="highlightedModelId === entry.model.id"
-                        :is-favorite="favoriteModels.includes(entry.model.id)"
+                        is-legacy
+                        :is-selected="false"
+                        :is-highlighted="false"
+                        :is-favorite="false"
                         :is-detail-open="detailModelId === entry.model.id"
-                        @select="selectModel(entry.model.id)"
-                        @toggle-favorite="toggleFavoriteModel(entry.model.id)"
                         @show-detail="showDetail(entry.model.id)"
                         @hide-detail="hideDetail(entry.model.id)"
                         @toggle-detail="toggleDetail(entry.model.id)"
@@ -132,12 +201,11 @@
                       </li>
                     </template>
                   </ul>
-                </template>
+                </div>
                 <div
-                  v-if="!filteredModels.length"
+                  v-if="!filteredModels.length && !legacyModels.length"
                   data-testid="models-picker-empty"
-                  role="presentation"
-                  class="flex flex-col items-center gap-2 px-4 py-10 text-center"
+                  class="min-h-full flex flex-col items-center justify-center gap-2 px-4 py-10 text-center"
                 >
                   <Icon
                     name="lucide:search-x"
@@ -190,11 +258,14 @@ const isFavoritesOnly = shallowRef<boolean>(false)
 const activeCategory = shallowRef<ModelCategory | null>(null)
 const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
+const isLegacyExpanded = shallowRef<boolean>(false)
 const root = useTemplateRef<HTMLDivElement>('root')
 const trigger = useTemplateRef<HTMLButtonElement>('trigger')
 const resultsContainer = useTemplateRef<HTMLDivElement>('resultsContainer')
 const panelId = useId()
 const listboxId = useId()
+const legacyListId = useId()
+const legacyLabelId = useId()
 
 let hideDetailTimeoutId: ReturnType<typeof setTimeout> | undefined
 
@@ -234,32 +305,52 @@ const hasActiveFilters = computed<boolean>(() => {
   return activeCategory.value !== null || isRailFilterApplied.value
 })
 
+function matchesActiveFilters({ model, providerId }: PickerModel): boolean {
+  const matchesSearch = !isSearching.value
+    || model.name.toLowerCase().includes(searchTerm.value)
+
+  if (!matchesSearch) {
+    return false
+  }
+
+  if (
+    activeCategory.value !== null
+    && getModelCategory(model) !== activeCategory.value
+  ) {
+    return false
+  }
+
+  if (!isRailFilterApplied.value) {
+    return true
+  }
+
+  if (isFavoritesOnly.value && !favoriteModels.value.includes(model.id)) {
+    return false
+  }
+
+  return !activeProviderId.value || providerId === activeProviderId.value
+}
+
+const matchingModels = computed<PickerModel[]>(() => {
+  return allModels.value.filter(matchesActiveFilters)
+})
+
 const filteredModels = computed<PickerModel[]>(() => {
-  return allModels.value.filter(({ model, providerId }) => {
-    const matchesSearch = !isSearching.value
-      || model.name.toLowerCase().includes(searchTerm.value)
-
-    if (!matchesSearch) {
-      return false
-    }
-
-    if (
-      activeCategory.value !== null
-      && getModelCategory(model) !== activeCategory.value
-    ) {
-      return false
-    }
-
-    if (!isRailFilterApplied.value) {
-      return true
-    }
-
-    if (isFavoritesOnly.value && !favoriteModels.value.includes(model.id)) {
-      return false
-    }
-
-    return !activeProviderId.value || providerId === activeProviderId.value
+  return matchingModels.value.filter(({ model }) => {
+    return model.status !== 'deprecated'
   })
+})
+
+const legacyModels = computed<PickerModel[]>(() => {
+  return matchingModels.value.filter(({ model }) => {
+    return model.status === 'deprecated'
+  })
+})
+
+const legacyLabel = computed<string>(() => {
+  const count = legacyModels.value.length
+
+  return `${count} legacy ${count === 1 ? 'model' : 'models'}`
 })
 
 const sections = computed<PickerSection[]>(() => {
@@ -300,7 +391,13 @@ function close() {
   isOpen.value = false
   highlightedModelId.value = null
   searchQuery.value = ''
+  isLegacyExpanded.value = false
   closeDetail()
+}
+
+function toggleLegacy() {
+  closeDetail()
+  isLegacyExpanded.value = !isLegacyExpanded.value
 }
 
 function closeAndRestoreFocus() {
@@ -316,7 +413,25 @@ function toggle() {
   }
 
   isOpen.value = true
-  setHighlight(toValue(userModel))
+  setHighlight(getInitialHighlight())
+}
+
+/**
+ * A model deprecated after the user picked it still renders in the legacy
+ * list, so highlighting it would aim `aria-activedescendant` at an option
+ * outside the listbox the search input controls.
+ */
+function getInitialHighlight(): string | null {
+  const selectedId = toValue(userModel)
+  const isSelectable = filteredModels.value.some(({ model }) => {
+    return model.id === selectedId
+  })
+
+  if (isSelectable) {
+    return selectedId
+  }
+
+  return filteredModels.value[0]?.model.id ?? null
 }
 
 function toggleProvider(providerId: string) {
