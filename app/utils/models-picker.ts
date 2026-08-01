@@ -11,11 +11,16 @@ export const modelCategoryOptions: ModelCategoryOption[] = [
   },
 ]
 
-const priceTierClasses: Record<ModelPriceTier, string> = {
-  '$': 'badge-success',
-  '$$': 'badge-info',
-  '$$$': 'badge-warning',
-  '$$$+': 'badge-error',
+interface PriceTierClasses {
+  badge: string
+  tooltip: string
+}
+
+const priceTierClasses: Record<ModelPriceTier, PriceTierClasses> = {
+  '$': { badge: 'badge-success', tooltip: 'tooltip-success' },
+  '$$': { badge: 'badge-info', tooltip: 'tooltip-info' },
+  '$$$': { badge: 'badge-warning', tooltip: 'tooltip-warning' },
+  '$$$+': { badge: 'badge-error', tooltip: 'tooltip-error' },
 }
 
 const monthNames = [
@@ -36,7 +41,11 @@ export function getModelCategory(model: Model): ModelCategory {
 }
 
 export function getPriceTierClass(tier: ModelPriceTier): string {
-  return priceTierClasses[tier] ?? 'badge-success'
+  return priceTierClasses[tier]?.badge ?? 'badge-success'
+}
+
+export function getPriceTierTooltipClass(tier: ModelPriceTier): string {
+  return priceTierClasses[tier]?.tooltip ?? 'tooltip-success'
 }
 
 export function hasImageGenerationCapability(model: Model): boolean {

@@ -79,13 +79,18 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.get('li').attributes('aria-selected')).toBe('true')
   })
 
-  it('renders the name and price tier with its tooltip', async () => {
+  it('renders the name and price tier with a color-matched tooltip', async () => {
     const wrapper = await mountModelItem()
     const priceTier = wrapper.get('[data-testid="model-price-tier"]')
 
     expect(wrapper.text()).toContain('GPT-5.4')
     expect(priceTier.text()).toContain('$$')
-    expect(priceTier.attributes('title')).toBe('from $2.50 / from $15.00')
+    expect(priceTier.classes()).toContain('badge-info')
+    expect(priceTier.classes()).toContain('tooltip')
+    expect(priceTier.classes()).toContain('tooltip-soft')
+    expect(priceTier.classes()).toContain('tooltip-bottom')
+    expect(priceTier.classes()).toContain('tooltip-info')
+    expect(priceTier.attributes('data-tip')).toBe('from $2.50 / from $15.00')
     expect(priceTier.get('.sr-only').text()).toBe('from $2.50 / from $15.00')
   })
 
@@ -129,9 +134,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     )
     const info = wrapper.get('[data-testid="model-info-trigger"]')
 
-    await info.trigger('mouseenter')
+    await info.trigger('click')
 
-    expect(wrapper.emitted('showDetail')).toHaveLength(1)
+    expect(wrapper.emitted('toggleDetail')).toHaveLength(1)
     expect(wrapper.emitted('select')).toBeUndefined()
   })
 
@@ -218,6 +223,14 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(favorite.attributes('aria-label'))
       .toBe('Add GPT-5.4 to favorites')
     expect(favorite.attributes('aria-pressed')).toBe('false')
+    expect(favorite.attributes('data-tip')).toBe('Add to favorites')
+    expect(favorite.classes()).toContain('tooltip')
+    expect(favorite.classes()).toContain('tooltip-left')
+    expect(favorite.classes()).not.toContain('tooltip-soft')
+    expect(favorite.classes()).not.toContain('tooltip-success')
+    expect(favorite.classes()).not.toContain('tooltip-info')
+    expect(favorite.classes()).not.toContain('tooltip-warning')
+    expect(favorite.classes()).not.toContain('tooltip-error')
 
     await favorite.trigger('click')
 
@@ -231,6 +244,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(favorite.attributes('aria-label'))
       .toBe('Remove GPT-5.4 from favorites')
     expect(favorite.attributes('aria-pressed')).toBe('true')
+    expect(favorite.attributes('data-tip')).toBe('Remove from favorites')
   })
 
   it('omits the detail panel id while the detail panel is closed', async () => {
@@ -252,39 +266,23 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(info.attributes('aria-expanded')).toBe('true')
   })
 
-  it('opens and closes the detail on pointer and focus on desktop', async () => {
+  it('ignores hover and focus and only toggles the detail on click on desktop', async () => {
     const wrapper = await mountModelItem()
     const info = wrapper.get('[data-testid="model-info-trigger"]')
 
     await info.trigger('mouseenter')
-
-    expect(wrapper.emitted('showDetail')).toHaveLength(1)
-    expect(wrapper.emitted('hideDetail')).toBeUndefined()
-
-    await info.trigger('mouseleave')
-
-    expect(wrapper.emitted('hideDetail')).toHaveLength(1)
-
     await info.trigger('focus')
-
-    expect(wrapper.emitted('showDetail')).toHaveLength(2)
-
+    await info.trigger('mouseleave')
     await info.trigger('blur')
 
-    expect(wrapper.emitted('hideDetail')).toHaveLength(2)
     expect(wrapper.emitted('toggleDetail')).toBeUndefined()
+
+    await info.trigger('click')
+
+    expect(wrapper.emitted('toggleDetail')).toHaveLength(1)
   })
 
-  it('ignores a desktop click so hover keeps ownership of the detail', async () => {
-    const wrapper = await mountModelItem()
-
-    await wrapper.get('[data-testid="model-info-trigger"]').trigger('click')
-
-    expect(wrapper.emitted('toggleDetail')).toBeUndefined()
-    expect(wrapper.emitted('showDetail')).toBeUndefined()
-  })
-
-  it('toggles the detail on tap and ignores pointer events on touch', async () => {
+  it('ignores hover and focus and only toggles the detail on tap on touch', async () => {
     mocks.useDevice.mockReturnValue({
       isIos: true,
       isAndroid: false,
@@ -297,12 +295,11 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     await info.trigger('focus')
     await info.trigger('mouseenter')
 
-    expect(wrapper.emitted('showDetail')).toBeUndefined()
+    expect(wrapper.emitted('toggleDetail')).toBeUndefined()
 
     await info.trigger('click')
 
     expect(wrapper.emitted('toggleDetail')).toHaveLength(1)
-    expect(wrapper.emitted('hideDetail')).toBeUndefined()
   })
 
   it('highlights the keyboard-focused row without the selected styling', async () => {

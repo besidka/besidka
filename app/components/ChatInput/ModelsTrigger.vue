@@ -117,8 +117,6 @@
                           :is-detail-open="detailModelId === entry.model.id"
                           @select="selectModel(entry.model.id)"
                           @toggle-favorite="toggleFavoriteModel(entry.model.id)"
-                          @show-detail="showDetail(entry.model.id)"
-                          @hide-detail="hideDetail(entry.model.id)"
                           @toggle-detail="toggleDetail(entry.model.id)"
                         />
                         <li
@@ -129,10 +127,7 @@
                           <ChatInputModelsTriggerModelDetail
                             :model="entry.model"
                             :provider-name="entry.providerName"
-                            :is-interactive="!$device.isDesktop"
                             @close="closeDetail"
-                            @show-detail="showDetail(entry.model.id)"
-                            @hide-detail="hideDetail(entry.model.id)"
                           />
                         </li>
                       </template>
@@ -181,8 +176,6 @@
                         :is-highlighted="false"
                         :is-favorite="false"
                         :is-detail-open="detailModelId === entry.model.id"
-                        @show-detail="showDetail(entry.model.id)"
-                        @hide-detail="hideDetail(entry.model.id)"
                         @toggle-detail="toggleDetail(entry.model.id)"
                       />
                       <li
@@ -193,10 +186,7 @@
                         <ChatInputModelsTriggerModelDetail
                           :model="entry.model"
                           :provider-name="entry.providerName"
-                          :is-interactive="!$device.isDesktop"
                           @close="closeDetail"
-                          @show-detail="showDetail(entry.model.id)"
-                          @hide-detail="hideDetail(entry.model.id)"
                         />
                       </li>
                     </template>
@@ -266,8 +256,6 @@ const panelId = useId()
 const listboxId = useId()
 const legacyListId = useId()
 const legacyLabelId = useId()
-
-let hideDetailTimeoutId: ReturnType<typeof setTimeout> | undefined
 
 const allModels = computed<PickerModel[]>(() => {
   return providers.flatMap((provider) => {
@@ -453,44 +441,11 @@ function clearFilters() {
   searchQuery.value = ''
 }
 
-function clearHideDetailTimeout() {
-  if (hideDetailTimeoutId === undefined) {
-    return
-  }
-
-  clearTimeout(hideDetailTimeoutId)
-  hideDetailTimeoutId = undefined
-}
-
 function closeDetail() {
-  clearHideDetailTimeout()
   detailModelId.value = null
 }
 
-function showDetail(modelId: string) {
-  clearHideDetailTimeout()
-  detailModelId.value = modelId
-}
-
-/**
- * Hiding is delayed so the pointer can cross the row padding and list gap
- * separating the info button from the adjacent detail card without the card
- * tearing down before `mouseenter` on the card itself can cancel this.
- */
-function hideDetail(modelId: string) {
-  clearHideDetailTimeout()
-
-  hideDetailTimeoutId = setTimeout(() => {
-    if (detailModelId.value !== modelId) {
-      return
-    }
-
-    detailModelId.value = null
-  }, 100)
-}
-
 function toggleDetail(modelId: string) {
-  clearHideDetailTimeout()
   detailModelId.value = detailModelId.value === modelId ? null : modelId
 }
 

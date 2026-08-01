@@ -30,13 +30,12 @@ function createModel(overrides: Partial<Model> = {}): Model {
 
 function mountDetail(
   model: Model = createModel(),
-  props: Partial<{ providerName: string, isInteractive: boolean }> = {},
+  props: Partial<{ providerName: string }> = {},
 ) {
   return mountSuspended(ModelDetail, {
     props: {
       model,
       providerName: 'OpenAI',
-      isInteractive: false,
       ...props,
     },
   })
@@ -68,12 +67,19 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(panel.attributes('role')).toBeUndefined()
   })
 
-  it('renders the name, description and price tier badge', async () => {
+  it('renders the name, description and price tier badge with a tooltip', async () => {
     const wrapper = await mountDetail()
+    const priceTier = wrapper.get('[data-testid="model-detail-price-tier"]')
 
     expect(wrapper.get('h3').text()).toBe('GPT-5.4')
     expect(wrapper.text()).toContain('Flagship chat model')
-    expect(wrapper.get('.badge-info').text()).toBe('$$')
+    expect(priceTier.text()).toContain('$$')
+    expect(priceTier.classes()).toContain('badge-info')
+    expect(priceTier.classes()).toContain('tooltip')
+    expect(priceTier.classes()).toContain('tooltip-soft')
+    expect(priceTier.classes()).toContain('tooltip-bottom')
+    expect(priceTier.classes()).toContain('tooltip-info')
+    expect(priceTier.attributes('data-tip')).toBe('from $2.50 / from $15.00')
   })
 
   it('explains why a deprecated model should not be used', async () => {
@@ -240,33 +246,15 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(specs['Research time']).toBe('20–40 min')
   })
 
-  it('opens the detail on hover while the panel is not interactive', async () => {
+  it('always offers a close button and ignores hover on the panel', async () => {
     const wrapper = await mountDetail()
     const panel = wrapper.get('[data-testid="model-detail-panel"]')
 
+    await panel.trigger('mouseenter')
+    await panel.trigger('mouseleave')
+
     expect(wrapper.find('button[aria-label="Close model details"]').exists())
-      .toBe(false)
-
-    await panel.trigger('mouseenter')
-
-    expect(wrapper.emitted('showDetail')).toHaveLength(1)
-    expect(wrapper.emitted('hideDetail')).toBeUndefined()
-
-    await panel.trigger('mouseleave')
-
-    expect(wrapper.emitted('hideDetail')).toHaveLength(1)
-    expect(wrapper.emitted('showDetail')).toHaveLength(1)
-  })
-
-  it('offers a close button and ignores hover when interactive', async () => {
-    const wrapper = await mountDetail(createModel(), { isInteractive: true })
-    const panel = wrapper.get('[data-testid="model-detail-panel"]')
-
-    await panel.trigger('mouseenter')
-    await panel.trigger('mouseleave')
-
-    expect(wrapper.emitted('showDetail')).toBeUndefined()
-    expect(wrapper.emitted('hideDetail')).toBeUndefined()
+      .toBe(true)
 
     await wrapper.get('button[aria-label="Close model details"]')
       .trigger('click')

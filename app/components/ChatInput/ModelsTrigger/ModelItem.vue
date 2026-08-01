@@ -47,9 +47,12 @@
           <span
             v-if="model.priceTier"
             data-testid="model-price-tier"
-            class="badge badge-xs badge-soft shrink-0 font-semibold"
-            :class="getPriceTierClass(model.priceTier)"
-            :title="priceTip"
+            class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
+            :class="[
+              getPriceTierClass(model.priceTier),
+              getPriceTierTooltipClass(model.priceTier),
+            ]"
+            :data-tip="priceTip"
           >
             {{ model.priceTier }}
             <span
@@ -114,10 +117,6 @@
           :aria-controls="isDetailOpen ? detailId : undefined"
           :aria-describedby="isDetailOpen ? detailId : undefined"
           @click.stop="onInfoClick"
-          @mouseenter="revealDetail"
-          @mouseleave="dismissDetail"
-          @focus="revealDetail"
-          @blur="dismissDetail"
         >
           <Icon
             name="lucide:info"
@@ -128,13 +127,17 @@
           v-if="!isLegacy"
           type="button"
           data-testid="model-favorite-toggle"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left"
           :class="{ 'text-warning': isFavorite }"
           :aria-label="isFavorite
             ? `Remove ${model.name} from favorites`
             : `Add ${model.name} to favorites`
           "
           :aria-pressed="isFavorite"
+          :data-tip="isFavorite
+            ? 'Remove from favorites'
+            : 'Add to favorites'
+          "
           @click.stop="emit('toggleFavorite')"
         >
           <Icon
@@ -165,8 +168,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: []
   toggleFavorite: []
-  showDetail: []
-  hideDetail: []
   toggleDetail: []
 }>()
 
@@ -209,32 +210,7 @@ function onSelect() {
   emit('select')
 }
 
-/**
- * Pointer and keyboard both open the detail on desktop only. A touch tap
- * fires `focus` before `click`, so an ungated focus handler would open the
- * detail and let the following `toggleDetail` immediately close it again.
- */
-function revealDetail() {
-  if (!isDesktop) {
-    return
-  }
-
-  emit('showDetail')
-}
-
-function dismissDetail() {
-  if (!isDesktop) {
-    return
-  }
-
-  emit('hideDetail')
-}
-
 function onInfoClick() {
-  if (isDesktop) {
-    return
-  }
-
   emit('toggleDetail')
 }
 </script>

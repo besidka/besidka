@@ -162,7 +162,9 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(modelButton.find('[data-tip="Reasoning"]').exists()).toBe(false)
     expect(modelButton.find('[data-tip="Web search"]').exists()).toBe(false)
     expect(
-      modelButton.get('[data-testid="model-price-tier"]').attributes('title'),
+      modelButton
+        .get('[data-testid="model-price-tier"]')
+        .attributes('data-tip'),
     ).toBe('$0.039 / image')
   })
 
@@ -268,7 +270,7 @@ describe('ChatInput/ModelsTrigger', () => {
       .trigger('click')
     await wrapper.get('#model-option-legacy-model')
       .get('[data-testid="model-info-trigger"]')
-      .trigger('mouseenter')
+      .trigger('click')
 
     const panel = wrapper.get('[data-testid="model-detail-panel"]')
 

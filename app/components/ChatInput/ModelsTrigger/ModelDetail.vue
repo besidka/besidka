@@ -3,8 +3,6 @@
     :id="detailId"
     data-testid="model-detail-panel"
     class="p-3 rounded-2xl bg-base-100/95 backdrop-blur-lg border border-base-content/10 shadow-xl"
-    @mouseenter="onMouseEnter"
-    @mouseleave="onMouseLeave"
   >
     <div class="flex items-start gap-2">
       <h3 class="grow text-sm font-semibold">
@@ -13,13 +11,22 @@
       <span
         v-if="model.priceTier"
         data-testid="model-detail-price-tier"
-        class="badge badge-xs badge-soft shrink-0 font-semibold"
-        :class="getPriceTierClass(model.priceTier)"
+        class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
+        :class="[
+          getPriceTierClass(model.priceTier),
+          getPriceTierTooltipClass(model.priceTier),
+        ]"
+        :data-tip="priceTip"
       >
         {{ model.priceTier }}
+        <span
+          v-if="priceTip"
+          class="sr-only"
+        >
+          {{ priceTip }}
+        </span>
       </span>
       <button
-        v-if="isInteractive"
         type="button"
         class="btn btn-ghost btn-xs btn-circle shrink-0 -mt-1"
         aria-label="Close model details"
@@ -106,34 +113,19 @@ interface SpecRow {
 const props = defineProps<{
   model: Model
   providerName: string
-  isInteractive: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
-  showDetail: []
-  hideDetail: []
 }>()
 
 const detailId = computed<string>(() => {
   return `model-detail-${props.model.id}`
 })
 
-function onMouseEnter() {
-  if (props.isInteractive) {
-    return
-  }
-
-  emit('showDetail')
-}
-
-function onMouseLeave() {
-  if (props.isInteractive) {
-    return
-  }
-
-  emit('hideDetail')
-}
+const priceTip = computed<string | undefined>(() => {
+  return getModelPriceTip(props.model)
+})
 
 const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props

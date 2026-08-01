@@ -49,7 +49,7 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(
       researchButton
         ?.get('[data-testid="model-price-tier"]')
-        .attributes('title'),
+        .attributes('data-tip'),
     ).toBe('~$1 / task · 5–15 min')
   })
 
@@ -60,7 +60,7 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(
       regularButton
         ?.get('[data-testid="model-price-tier"]')
-        .attributes('title'),
+        .attributes('data-tip'),
     ).toBe('from $2.50 / from $15.00')
     expect(
       regularButton?.find('[data-tip="Deep research"]').exists(),

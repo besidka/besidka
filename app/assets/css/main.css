@@ -343,7 +343,6 @@ Meanwhile dark:xx and light:xx in *.vue templates will still work as expected.
 
   &[data-tip]::before {
     color: currentColor;
-    border: 1px solid color-mix(in oklab, currentColor 25%, transparent);
     font-size: 0.75rem;
     font-weight: 500;
   }

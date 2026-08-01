@@ -6,6 +6,7 @@ import {
   getModelCategory,
   getModelPriceTip,
   getPriceTierClass,
+  getPriceTierTooltipClass,
   hasImageGenerationCapability,
   modelCategoryOptions,
 } from '../../../app/utils/models-picker'
@@ -117,6 +118,32 @@ describe('getPriceTierClass', () => {
   it('falls back to the cheapest badge for an unmapped tier', () => {
     expect(getPriceTierClass('$$$$' as ModelPriceTier))
       .toBe('badge-success')
+  })
+})
+
+describe('getPriceTierTooltipClass', () => {
+  it('maps every price tier to a semantic tooltip color', () => {
+    expect(getPriceTierTooltipClass('$')).toBe('tooltip-success')
+    expect(getPriceTierTooltipClass('$$')).toBe('tooltip-info')
+    expect(getPriceTierTooltipClass('$$$')).toBe('tooltip-warning')
+    expect(getPriceTierTooltipClass('$$$+')).toBe('tooltip-error')
+  })
+
+  it('falls back to the cheapest tooltip color for an unmapped tier', () => {
+    expect(getPriceTierTooltipClass('$$$$' as ModelPriceTier))
+      .toBe('tooltip-success')
+  })
+
+  it('keeps the tooltip color in lockstep with the badge color', () => {
+    const tiers: ModelPriceTier[] = ['$', '$$', '$$$', '$$$+']
+
+    for (const tier of tiers) {
+      const badgeColor = getPriceTierClass(tier).replace('badge-', '')
+      const tooltipColor = getPriceTierTooltipClass(tier)
+        .replace('tooltip-', '')
+
+      expect(tooltipColor).toBe(badgeColor)
+    }
   })
 })
 
