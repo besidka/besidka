@@ -48,6 +48,24 @@
           <span class="grow">{{ option.label }}</span>
         </button>
       </li>
+      <li
+        role="presentation"
+        data-testid="models-picker-filter-clear"
+        :class="{ 'menu-disabled': selected === null }"
+      >
+        <button
+          type="button"
+          class="flex w-full justify-start text-error disabled:opacity-50"
+          :disabled="selected === null ? true : undefined"
+          @click="onClear"
+        >
+          <Icon
+            name="lucide:list-x"
+            size="14"
+          />
+          Clear
+        </button>
+      </li>
     </ul>
   </details>
 </template>
@@ -72,6 +90,11 @@ function close() {
 
 function selectCategory(category: ModelCategory) {
   selected.value = selected.value === category ? null : category
+  close()
+}
+
+function onClear() {
+  selected.value = null
   close()
 }
 </script>

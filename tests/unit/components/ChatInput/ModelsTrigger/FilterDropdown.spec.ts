@@ -133,6 +133,30 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
     expect(dropdown.element.open).toBe(false)
   })
 
+  it('disables the clear action until a category is selected', async () => {
+    const wrapper = await mountFilterDropdown()
+    const clear = wrapper.get('[data-testid="models-picker-filter-clear"]')
+
+    expect(clear.classes()).toContain('menu-disabled')
+    expect(clear.get('button').attributes('disabled')).toBeDefined()
+  })
+
+  it('clears the selected category and closes the dropdown', async () => {
+    const wrapper = await mountFilterDropdown('chat')
+    const dropdown = wrapper.get('details')
+    const clear = wrapper.get('[data-testid="models-picker-filter-clear"]')
+
+    dropdown.element.open = true
+
+    expect(clear.classes()).not.toContain('menu-disabled')
+    expect(clear.get('button').attributes('disabled')).toBeUndefined()
+
+    await clear.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([null])
+    expect(dropdown.element.open).toBe(false)
+  })
+
   it('closes the open dropdown on an outside click', async () => {
     const wrapper = await mountFilterDropdown()
     const dropdown = wrapper.get('details')
