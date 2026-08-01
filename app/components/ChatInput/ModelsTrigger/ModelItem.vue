@@ -44,6 +44,12 @@
           >
             {{ model.name }}
           </span>
+        </span>
+        <span
+          v-if="hasCapabilities || model.priceTier"
+          data-testid="model-capabilities"
+          class="shrink-0 flex gap-1 items-center ml-5"
+        >
           <span
             v-if="model.priceTier"
             data-testid="model-price-tier"
@@ -59,12 +65,6 @@
               {{ priceTip }}
             </span>
           </span>
-        </span>
-        <span
-          v-if="hasCapabilities"
-          data-testid="model-capabilities"
-          class="shrink-0 flex gap-1 items-center"
-        >
           <span
             v-if="model.reasoning"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"
@@ -102,7 +102,7 @@
       </component>
       <span
         data-testid="model-actions"
-        class="shrink-0 flex items-center gap-1 max-xs:flex-col max-xs:gap-1.5"
+        class="shrink-0 flex items-center gap-1 max-xs:flex-col"
       >
         <button
           type="button"

@@ -151,13 +151,37 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     const wrapper = await mountModelItem()
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
-      .toBe(false)
+      .toBe(true)
     expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
     expect(wrapper.find('[data-tip="Web search"]').exists()).toBe(false)
     expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(false)
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(false)
+  })
+
+  it('omits the capabilities row entirely without a price tier or '
+    + 'capabilities', async () => {
+    const wrapper = await mountModelItem(
+      createModel({ priceTier: undefined }),
+    )
+
+    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+      .toBe(false)
+  })
+
+  it('places the price tier before the capability icons in the '
+    + 'wrapped row', async () => {
+    const model = createModel({
+      tools: ['web_search'],
+      reasoning: { mode: 'toggle' },
+    })
+    const wrapper = await mountModelItem(model)
+    const capabilities = wrapper.get('[data-testid="model-capabilities"]')
+    const priceTier = capabilities.get('[data-testid="model-price-tier"]')
+
+    expect(capabilities.classes()).toContain('ml-5')
+    expect(capabilities.element.firstElementChild).toBe(priceTier.element)
   })
 
   it('renders every capability icon a model declares', async () => {
