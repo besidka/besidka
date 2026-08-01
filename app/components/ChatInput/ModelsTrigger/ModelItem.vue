@@ -107,7 +107,7 @@
         <button
           type="button"
           data-testid="model-info-trigger"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] hitslop"
           :class="{ 'text-accent': isDetailOpen, 'btn-active': isDetailOpen }"
           :aria-label="`About ${model.name}`"
           :aria-expanded="isDetailOpen"
@@ -124,7 +124,7 @@
           v-if="!isLegacy"
           type="button"
           data-testid="model-favorite-toggle"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left hitslop"
           :class="{ 'text-warning': isFavorite }"
           :aria-label="isFavorite
             ? `Remove ${model.name} from favorites`

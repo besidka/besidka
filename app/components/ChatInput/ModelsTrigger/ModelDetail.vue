@@ -25,7 +25,7 @@
       </span>
       <button
         type="button"
-        class="btn btn-ghost btn-xs btn-circle shrink-0"
+        class="btn btn-ghost btn-xs btn-circle shrink-0 hitslop"
         aria-label="Close model details"
         @click="emit('close')"
       >

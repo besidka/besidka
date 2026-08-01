@@ -7,7 +7,7 @@
       <button
         type="button"
         data-testid="models-picker-rail-favorites"
-        class="btn btn-ghost btn-sm btn-circle"
+        class="btn btn-ghost btn-sm btn-circle hitslop"
         :class="{
           'btn-active text-warning': isFavoritesOnly,
           'tooltip tooltip-soft tooltip-right': $device.isDesktop
@@ -31,7 +31,7 @@
       :key="provider.id"
       type="button"
       :data-testid="`models-picker-rail-${provider.id}`"
-      class="btn btn-ghost btn-sm btn-circle"
+      class="btn btn-ghost btn-sm btn-circle hitslop"
       :class="{
         'btn-active text-accent': activeProviderId === provider.id,
         'tooltip tooltip-soft tooltip-right': $device.isDesktop

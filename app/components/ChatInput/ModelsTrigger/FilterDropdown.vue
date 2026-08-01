@@ -6,7 +6,7 @@
   >
     <summary
       data-testid="models-picker-filter-trigger"
-      class="btn btn-ghost btn-sm btn-circle relative"
+      class="btn btn-ghost btn-sm btn-circle relative hitslop"
       :class="{ 'text-accent': selected }"
       aria-label="Filter models by category"
     >
