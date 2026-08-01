@@ -13,8 +13,20 @@
         {{ model.name }}
       </h3>
       <span
+        v-if="model.status === 'deprecated'"
+        data-testid="model-detail-deprecated-badge"
+        class="badge badge-xs badge-error badge-outline shrink-0 gap-0.5 font-semibold"
+      >
+        <Icon
+          name="lucide:triangle-alert"
+          size="11"
+        />
+        Deprecated
+      </span>
+      <span
         v-if="model.priceTier"
-        class="badge badge-xs shrink-0 font-semibold"
+        data-testid="model-detail-price-tier"
+        class="badge badge-xs badge-soft shrink-0 font-semibold"
         :class="getPriceTierClass(model.priceTier)"
       >
         {{ model.priceTier }}
@@ -40,6 +52,7 @@
     </p>
     <div
       v-if="capabilities.length"
+      data-testid="model-detail-capabilities"
       class="mt-2.5 flex flex-wrap gap-1"
     >
       <span

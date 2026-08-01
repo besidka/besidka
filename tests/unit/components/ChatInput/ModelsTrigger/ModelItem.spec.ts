@@ -79,26 +79,54 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.get('li').attributes('aria-selected')).toBe('true')
   })
 
-  it('renders the name, description and price tier with its tooltip', async () => {
+  it('renders the name and price tier with its tooltip', async () => {
     const wrapper = await mountModelItem()
     const priceTier = wrapper.get('[data-testid="model-price-tier"]')
 
     expect(wrapper.text()).toContain('GPT-5.4')
-    expect(wrapper.text()).toContain('Flagship chat model')
     expect(priceTier.text()).toContain('$$')
     expect(priceTier.attributes('title')).toBe('from $2.50 / from $15.00')
     expect(priceTier.get('.sr-only').text()).toBe('from $2.50 / from $15.00')
   })
 
-  it('omits the description line when the model has none', async () => {
-    const wrapper = await mountModelItem(createModel({ description: '' }))
+  it('keeps the description out of the compact row', async () => {
+    const wrapper = await mountModelItem()
 
     expect(wrapper.text()).not.toContain('Flagship chat model')
+  })
+
+  it('omits the deprecated badge for a supported model', async () => {
+    const wrapper = await mountModelItem()
+
+    expect(wrapper.find('[data-testid="model-deprecated-badge"]').exists())
+      .toBe(false)
+    expect(wrapper.get('button[aria-label="Choose GPT-5.4"]').exists())
+      .toBe(true)
+  })
+
+  it('flags a deprecated model in the badge and the select label', async () => {
+    const wrapper = await mountModelItem(createModel({
+      status: 'deprecated',
+    }))
+
+    expect(wrapper.get('[data-testid="model-deprecated-badge"]').text())
+      .toBe('Deprecated')
+    expect(wrapper.find('button[aria-label="Choose GPT-5.4, deprecated"]')
+      .exists()).toBe(true)
+  })
+
+  it('leaves beta and alpha models unbadged', async () => {
+    const wrapper = await mountModelItem(createModel({ status: 'beta' }))
+
+    expect(wrapper.find('[data-testid="model-deprecated-badge"]').exists())
+      .toBe(false)
   })
 
   it('renders no capability icons for a plain model', async () => {
     const wrapper = await mountModelItem()
 
+    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+      .toBe(false)
     expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
     expect(wrapper.find('[data-tip="Web search"]').exists()).toBe(false)
     expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(false)
@@ -120,6 +148,8 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     })
     const wrapper = await mountModelItem(model)
 
+    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+      .toBe(true)
     expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(true)
     expect(wrapper.find('[data-tip="Web search"]').exists()).toBe(true)
     expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(true)
@@ -146,6 +176,18 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     await wrapper.get('button[aria-label="Choose GPT-5.4"]').trigger('click')
 
     expect(wrapper.emitted('select')).toHaveLength(1)
+  })
+
+  it('places the favorite toggle past the info button', async () => {
+    const wrapper = await mountModelItem()
+    const actions = wrapper
+      .get('[data-testid="model-actions"]')
+      .findAll('button')
+      .map((button) => {
+        return button.attributes('data-testid')
+      })
+
+    expect(actions).toEqual(['model-info-trigger', 'model-favorite-toggle'])
   })
 
   it('emits toggleFavorite and labels the button for adding a favorite', async () => {

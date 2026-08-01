@@ -77,6 +77,29 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(wrapper.get('.badge-info').text()).toBe('$$')
   })
 
+  it('badges a deprecated model in the header', async () => {
+    const wrapper = await mountDetail(createModel({ status: 'deprecated' }))
+    const badge = wrapper.get('[data-testid="model-detail-deprecated-badge"]')
+
+    expect(badge.text()).toBe('Deprecated')
+  })
+
+  it('omits the deprecated badge for a supported model', async () => {
+    const wrapper = await mountDetail()
+
+    expect(
+      wrapper.find('[data-testid="model-detail-deprecated-badge"]').exists(),
+    ).toBe(false)
+  })
+
+  it('flows inline instead of overlaying the model list', async () => {
+    const wrapper = await mountDetail()
+    const panel = wrapper.get('[data-testid="model-detail-panel"]')
+
+    expect(panel.classes()).not.toContain('absolute')
+    expect(panel.classes()).not.toContain('bottom-0')
+  })
+
   it('omits the description paragraph when the model has none', async () => {
     const wrapper = await mountDetail(createModel({ description: '' }))
 
@@ -95,9 +118,12 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       },
     })
     const wrapper = await mountDetail(model)
-    const badges = wrapper.findAll('.badge-soft').map((badge) => {
-      return badge.text()
-    })
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
 
     expect(badges).toEqual([
       'Reasoning',
@@ -110,7 +136,8 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
   it('renders no capability badges for a plain model', async () => {
     const wrapper = await mountDetail()
 
-    expect(wrapper.findAll('.badge-soft')).toHaveLength(0)
+    expect(wrapper.find('[data-testid="model-detail-capabilities"]').exists())
+      .toBe(false)
   })
 
   it('lists the full spec table for a regular model', async () => {
