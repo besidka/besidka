@@ -124,7 +124,7 @@
           v-if="!isLegacy"
           type="button"
           data-testid="model-favorite-toggle"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left hitslop"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left"
           :class="{ 'text-warning': isFavorite }"
           :aria-label="isFavorite
             ? `Remove ${model.name} from favorites`
