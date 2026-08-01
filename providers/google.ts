@@ -16,7 +16,7 @@ export default {
       tools: [],
       research: {
         tier: 'thorough',
-        assistModel: 'gemini-3.1-flash-lite-preview',
+        assistModel: 'gemini-3.1-flash-lite',
         costEstimate: '$3–7 / task',
         timeEstimate: 'up to 60 min',
       },
@@ -33,7 +33,7 @@ export default {
       tools: [],
       research: {
         tier: 'quick',
-        assistModel: 'gemini-3.1-flash-lite-preview',
+        assistModel: 'gemini-3.1-flash-lite',
         costEstimate: '$1–3 / task',
         timeEstimate: 'under 20 min',
       },
@@ -61,6 +61,17 @@ export default {
       },
     },
     {
+      id: 'gemini-3.5-flash-lite',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'gemini-3.1-pro-preview',
       price: {
         tokens: 1_000_000,
@@ -72,7 +83,7 @@ export default {
       },
     },
     {
-      id: 'gemini-3.1-flash-lite-preview',
+      id: 'gemini-3.1-flash-lite',
       price: {
         tokens: 1_000_000,
       },

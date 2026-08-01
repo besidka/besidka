@@ -103,6 +103,31 @@
       "output": 9
     }
   },
+  "gemini-3.5-flash-lite": {
+    "name": "Gemini 3.5 Flash Lite",
+    "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
+    "releaseDate": "2026-07-21",
+    "limit": {
+      "context": 1048576,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.3,
+      "output": 2.5
+    }
+  },
   "gemini-3.1-pro-preview": {
     "name": "Gemini 3.1 Pro Preview",
     "description": "Reasoning-first Gemini preview for agentic coding and complex problem solving",
@@ -129,11 +154,10 @@
     },
     "tieredPricing": true
   },
-  "gemini-3.1-flash-lite-preview": {
-    "name": "Gemini 3.1 Flash Lite Preview",
-    "description": "Legacy model retained for compatibility with older integrations",
-    "releaseDate": "2026-03-03",
-    "status": "deprecated",
+  "gemini-3.1-flash-lite": {
+    "name": "Gemini 3.1 Flash Lite",
+    "description": "Low-latency Gemini model for high-volume multimodal and agent workloads",
+    "releaseDate": "2026-05-07",
     "limit": {
       "context": 1048576,
       "output": 65536
