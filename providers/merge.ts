@@ -41,6 +41,7 @@ export interface ModelSnapshotEntry {
   name: string
   description: string
   releaseDate?: string
+  status?: 'deprecated' | 'beta' | 'alpha'
   limit: {
     context: number
     output: number
@@ -251,8 +252,8 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
  * structural `price.tokens` divisor, the per-image `price.display` copy) and
  * for research-agent models, whose name, description and price deliberately
  * encode per-task billing that no per-token figure can express. Everything
- * objective — specs, modalities, release date, per-token cost — comes from
- * the snapshot.
+ * objective — specs, modalities, release date, status, per-token cost —
+ * comes from the snapshot.
  * A model with no snapshot entry is fully curated by necessity; see
  * `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs`.
  */
@@ -277,6 +278,7 @@ export function mergeModelMetadata(
     contextLength: snapshot.limit.context,
     maxOutputTokens: snapshot.limit.output,
     ...(snapshot.releaseDate ? { releaseDate: snapshot.releaseDate } : {}),
+    ...(snapshot.status ? { status: snapshot.status } : {}),
     price: mergedPrice(
       curated.price,
       keepCuratedPrice

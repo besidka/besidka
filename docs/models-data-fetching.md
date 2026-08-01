@@ -30,6 +30,7 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `name` | fetched, unless the model is a research agent or models.dev publishes the bare id as the name |
 | `description` | fetched, unless the model is a research agent |
 | `contextLength`, `maxOutputTokens`, `modalities` | fetched |
+| `status` | fetched, present only when models.dev flags `deprecated`/`beta`/`alpha` |
 | `price.input`, `price.output` | fetched, unless the model is a research agent (billed per task) |
 | `price.display` | curated (per-image copy) |
 | `price.tokens` | curated (the structural cost divisor) |
@@ -55,6 +56,72 @@ The join only ever looks curated ids **up** in the remote catalog; it never
 iterates models.dev outward. Embedding, video, music, TTS, realtime and
 open-weights models that models.dev also lists therefore cannot reach the
 app, regardless of what the remote catalog grows.
+
+## Auditing curated vs. available models
+
+The curated-id-driven join above is deliberately one-directional: it means a
+junk model can never sneak in, but it also means a genuinely new, worthwhile
+model silently never appears until a human adds its id to `providers/*.ts`
+first. That's exactly what happened with GPT-5.6 — it existed on models.dev
+and in OpenAI's own docs for weeks before anyone noticed it was missing from
+the picker, because nothing was watching for it.
+
+`pnpm run models:fetch` now always prints a second report after the normal
+curated-id lookup: the full diff between every model id models.dev lists
+under the `google` and `openai` namespaces and the set of ids currently
+curated in `providers/google.ts` / `providers/openai.ts`. The report is
+grouped by provider and sorted newest release date first, so a fresh release
+worth reviewing surfaces near the top instead of being buried under years of
+embedding/TTS/video/dated-snapshot noise.
+
+This is informational only — it always prints and never fails the command.
+An unreviewed upstream model is expected and normal (models.dev tracks many
+models this app will never curate: embeddings, TTS, video, realtime,
+open-weights, and OpenAI/Google-internal chat-latest aliases). The point is
+visibility, not enforcement: read the printed list occasionally, decide what
+(if anything) is worth curating, same as reading
+`git diff providers/data/models-dev-snapshot.json` after a fetch.
+
+The diff logic lives in `scripts/audit-curated-models.mjs` as pure functions
+(`findUncuratedModels`, `formatUncuratedModelsReport`, and the deprecated-model
+pair below), kept out of `scripts/fetch-models-metadata.mjs` itself because
+that script fetches the network and writes the snapshot as a side effect of
+being imported — a unit test can't import it directly. Covered by
+`tests/unit/scripts/audit-curated-models.spec.ts`.
+
+The same run also prints a second, more urgent warning ahead of the
+uncurated-models report: any **currently curated** id whose models.dev
+`status` is `"deprecated"` right now, prefixed `⚠ DEPRECATED` so it can't be
+mistaken for the routine "not curated yet" list. This is still a report, not
+a hard failure — a deprecated model isn't necessarily already broken for
+BYOK users — but it's a stronger signal than "here's what's new upstream."
+See "Model status" below for what this caught on this pass.
+
+## Model status (deprecated/beta/alpha)
+
+Some models.dev entries carry a `status` field (`"deprecated"`, `"beta"`, or
+`"alpha"`) alongside `release_date`/`last_updated`. It's a coarse, *current*
+flag, not a forward-looking retirement date — models.dev never says a model
+is "leaving on \<date\>," only that it currently is or isn't deprecated.
+`toSnapshotEntry()` now captures it when present (validated against a known
+value list, so an unrecognized future status string is dropped rather than
+persisted as-is), `ModelSnapshotEntry`/`Model` carry it as an optional field,
+and `mergeModelMetadata()` passes it through untouched — same fetched-metadata
+category as `releaseDate`. There is intentionally no UI badge for it yet;
+this PR only gets the field flowing through the data layer and into the
+audit warning above.
+
+As of this pass, two currently curated ids are flagged deprecated:
+
+- **`gemini-3-pro-preview`** — a standalone curated chat model, not wired
+  as anyone's `assistModel`/`controllerModel`/`default`.
+- **`gemini-3.1-flash-lite-preview`** — curated with `forProjectMemory: true`
+  *and* wired as the `assistModel` for **both** Gemini Deep Research tiers
+  (`deep-research-max-preview-04-2026` and `deep-research-preview-04-2026`)
+  in `providers/google.ts`. `deprecated` doesn't mean already removed, but if
+  Google does pull it, both Deep Research configs' assist step breaks, not
+  just a picker row. Whether to swap it for a non-deprecated assist model
+  now or wait is a product decision for the owner — not guessed at here.
 
 ## Hard failure on a retired model
 
@@ -169,3 +236,50 @@ deliberately not fixed now — logged here instead of silently dropped:
   server-side.** An id that doesn't match any known model is stored as-is
   and simply never rendered (see "Favorites are DB-persisted" above) —
   inert, not a correctness risk, so not worth rejecting at the API layer.
+- **models.dev has no retirement *date* field**, only `release_date` and
+  `last_updated` — so a "leaving on \<date\>" countdown badge isn't
+  derivable from this data source; that would need a hand-curated
+  retirement date per model. See "Model status" above for the coarse
+  present-tense `status` field this data source does carry, which is now
+  fetched and surfaced in the audit warning, but has no UI badge yet.
+- **`gemini-3.1-flash-lite-preview`'s fetched `description` already reads
+  *"Legacy model retained for compatibility with older integrations"***
+  (visible in the committed snapshot as of this PR, not a hypothetical
+  future fetch) — its `status: "deprecated"` flag and this description
+  both predate this PR's changes; nothing here newly triggered it. Its
+  likely stable successor, the non-preview `gemini-3.1-flash-lite`, exists
+  upstream and is not deprecated. See "Model status" above for the
+  Deep Research `assistModel` risk this creates.
+
+## Ids deliberately not auto-added (owner review needed)
+
+Found upstream via the audit report above but intentionally left out of
+`providers/*.ts` in this pass — each needs a human product decision, not an
+automatic add:
+
+- **`gpt-5-pro`, `gpt-5.2-pro`, `gpt-5.4-pro`, `gpt-5.5-pro`** — a premium
+  "Pro" tier positioned above the mainline model at several times the
+  price; adding a whole new price tier to the picker is a bigger surface
+  decision than adding the next point release.
+- **`gpt-5.2-chat-latest`, `gpt-5.3-chat-latest`** — rolling aliases
+  ("-latest") that repoint to whatever OpenAI currently ships under that
+  name; curating a moving target breaks the assumption that a curated id
+  is a stable, specific model.
+- **`gpt-5.3-codex`, `gpt-5.3-codex-spark`** — coding-agent-specialized
+  variants, a different product positioning than this app's general chat
+  models (also: no plain `gpt-5.3` mainline model exists upstream at all).
+- **`gpt-5.6-sol`** — not a distinct model. OpenAI's own docs state
+  "Model ID: gpt-5.6-sol (aliased as gpt-5.6)", and its models.dev entry is
+  byte-identical to bare `gpt-5.6` (same cost, description, release date).
+  Curating both would show two indistinguishable rows for one model; the
+  bare `gpt-5.6` id was curated instead, matching how every other mainline
+  release in this lineage (`gpt-5`, `gpt-5.1`, `gpt-5.2`, `gpt-5.4`) has no
+  separate top-tier alias id.
+- **`gemini-3.5-flash-lite`** — a lite-tier sibling of the newly-curated
+  `gemini-3.5-flash`; leaving it out is a scope call (2 new models, not 3),
+  not a capability concern.
+- **`gemini-3.1-flash-lite`** — looks like the stable, non-preview
+  graduation of the currently-curated `gemini-3.1-flash-lite-preview` (see
+  the deprecation note above), but renaming vs. adding-alongside is a
+  decision that affects `forProjectMemory` and both Deep Research
+  `assistModel` references — left for the owner rather than guessed here.

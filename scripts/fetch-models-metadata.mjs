@@ -29,6 +29,12 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  findDeprecatedCuratedModels,
+  findUncuratedModels,
+  formatDeprecatedCuratedModelsWarning,
+  formatUncuratedModelsReport,
+} from './audit-curated-models.mjs'
 import google from '../providers/google.ts'
 import openai from '../providers/openai.ts'
 
@@ -42,6 +48,8 @@ const SNAPSHOT_PATH = fileURLToPath(
 // does not track separately (it lists only the bare o3 / o4-mini). These two
 // stay fully curated in providers/openai.ts.
 const EXEMPT_IDS = ['o3-deep-research', 'o4-mini-deep-research']
+
+const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']
 
 const curatedProviders = [google, openai]
 
@@ -118,6 +126,41 @@ console.log(
   `Exempt (curated by hand): ${EXEMPT_IDS.join(', ')}`,
 )
 
+const providerReports = curatedProviders.map((provider) => {
+  const curatedIds = new Set(provider.models.map(model => model.id))
+  const remoteModels = catalog[provider.id].models
+
+  return {
+    providerId: provider.id,
+    curatedIds,
+    remoteModels,
+  }
+})
+
+const deprecatedCuratedWarning = formatDeprecatedCuratedModelsWarning(
+  providerReports.map(({ providerId, curatedIds, remoteModels }) => {
+    return {
+      providerId,
+      models: findDeprecatedCuratedModels(remoteModels, curatedIds),
+    }
+  }),
+)
+
+if (deprecatedCuratedWarning) {
+  console.log()
+  console.log(deprecatedCuratedWarning)
+}
+
+console.log()
+console.log(formatUncuratedModelsReport(
+  providerReports.map(({ providerId, curatedIds, remoteModels }) => {
+    return {
+      providerId,
+      models: findUncuratedModels(remoteModels, curatedIds),
+    }
+  }),
+))
+
 async function fetchCatalog() {
   try {
     const response = await fetch(CATALOG_URL, {
@@ -157,6 +200,9 @@ function toSnapshotEntry(model) {
     description: model.description,
     ...(typeof model.release_date === 'string'
       ? { releaseDate: model.release_date }
+      : {}),
+    ...(KNOWN_MODEL_STATUSES.includes(model.status)
+      ? { status: model.status }
       : {}),
     limit: {
       context: model.limit.context,

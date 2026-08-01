@@ -4,7 +4,7 @@
     data-testid="model-detail-panel"
     role="region"
     :aria-label="`${model.name} details`"
-    class="absolute inset-x-0 bottom-0 z-10 max-h-full overflow-y-auto p-3 rounded-2xl bg-base-100/95 backdrop-blur-lg border border-base-content/10 shadow-xl"
+    class="p-3 rounded-2xl bg-base-100/95 backdrop-blur-lg border border-base-content/10 shadow-xl"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
   >

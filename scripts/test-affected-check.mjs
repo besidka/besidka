@@ -101,6 +101,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const modelCatalogTests = [
     'tests/unit/providers/merge.spec.ts',
+    'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     ...modelsTriggerTests,
@@ -279,7 +280,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(providers\/(index|merge|google|openai)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/fetch-models-metadata\.mjs|shared\/types\/providers\.d\.ts)$/,
+        /^(providers\/(index|merge|google|openai)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
     },
     {

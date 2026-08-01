@@ -39,6 +39,28 @@ export default {
       },
     },
     {
+      id: 'gemini-3.6-flash',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gemini-3.5-flash',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'gemini-3.1-pro-preview',
       price: {
         tokens: 1_000_000,

@@ -63,7 +63,7 @@
                 v-model="activeCategory"
               />
             </div>
-            <div class="relative flex flex-1 min-h-0">
+            <div class="flex flex-1 min-h-0">
               <ChatInputModelsTriggerProviderRail
                 v-if="!isSearching"
                 :providers="providers"
@@ -99,21 +99,38 @@
                       : undefined
                     "
                   >
-                    <ChatInputModelsTriggerModelItem
+                    <template
                       v-for="entry in section.entries"
                       :key="entry.model.id"
-                      :model="entry.model"
-                      :provider-id="entry.providerId"
-                      :is-selected="userModel === entry.model.id"
-                      :is-highlighted="highlightedModelId === entry.model.id"
-                      :is-favorite="favoriteModels.includes(entry.model.id)"
-                      :is-detail-open="detailModelId === entry.model.id"
-                      @select="selectModel(entry.model.id)"
-                      @toggle-favorite="toggleFavoriteModel(entry.model.id)"
-                      @show-detail="showDetail(entry.model.id)"
-                      @hide-detail="hideDetail(entry.model.id)"
-                      @toggle-detail="toggleDetail(entry.model.id)"
-                    />
+                    >
+                      <ChatInputModelsTriggerModelItem
+                        :model="entry.model"
+                        :provider-id="entry.providerId"
+                        :is-selected="userModel === entry.model.id"
+                        :is-highlighted="highlightedModelId === entry.model.id"
+                        :is-favorite="favoriteModels.includes(entry.model.id)"
+                        :is-detail-open="detailModelId === entry.model.id"
+                        @select="selectModel(entry.model.id)"
+                        @toggle-favorite="toggleFavoriteModel(entry.model.id)"
+                        @show-detail="showDetail(entry.model.id)"
+                        @hide-detail="hideDetail(entry.model.id)"
+                        @toggle-detail="toggleDetail(entry.model.id)"
+                      />
+                      <li
+                        v-if="detailModelId === entry.model.id"
+                        role="presentation"
+                        class="py-0.5"
+                      >
+                        <ChatInputModelsTriggerModelDetail
+                          :model="entry.model"
+                          :provider-name="entry.providerName"
+                          :is-interactive="!$device.isDesktop"
+                          @close="closeDetail"
+                          @show-detail="showDetail(entry.model.id)"
+                          @hide-detail="hideDetail(entry.model.id)"
+                        />
+                      </li>
+                    </template>
                   </ul>
                 </template>
                 <div
@@ -141,15 +158,6 @@
                   </button>
                 </div>
               </div>
-              <ChatInputModelsTriggerModelDetail
-                v-if="detailEntry"
-                :model="detailEntry.model"
-                :provider-name="detailEntry.providerName"
-                :is-interactive="!$device.isDesktop"
-                @close="closeDetail"
-                @show-detail="showDetail(detailEntry.model.id)"
-                @hide-detail="hideDetail(detailEntry.model.id)"
-              />
             </div>
           </div>
         </div>
@@ -272,14 +280,6 @@ const sections = computed<PickerSection[]>(() => {
   ]
 })
 
-const detailEntry = computed<PickerModel | null>(() => {
-  const entry = allModels.value.find(({ model }) => {
-    return model.id === detailModelId.value
-  })
-
-  return entry ?? null
-})
-
 const highlightedOptionId = computed<string | undefined>(() => {
   if (!highlightedModelId.value) {
     return undefined
@@ -316,8 +316,7 @@ function toggle() {
   }
 
   isOpen.value = true
-  highlightedModelId.value = toValue(userModel)
-  scrollHighlightedIntoView()
+  setHighlight(toValue(userModel))
 }
 
 function toggleProvider(providerId: string) {
@@ -359,8 +358,8 @@ function showDetail(modelId: string) {
 }
 
 /**
- * Hiding is delayed so the pointer can cross the dead space between the
- * info button and the absolutely-positioned detail card without the card
+ * Hiding is delayed so the pointer can cross the row padding and list gap
+ * separating the info button from the adjacent detail card without the card
  * tearing down before `mouseenter` on the card itself can cancel this.
  */
 function hideDetail(modelId: string) {
@@ -399,16 +398,24 @@ async function scrollHighlightedIntoView() {
   element?.scrollIntoView?.({ block: 'nearest' })
 }
 
-function highlightFirst() {
-  highlightedModelId.value = filteredModels.value[0]?.model.id ?? null
+/**
+ * Closing the detail keeps the inline detail card from shifting rows out from
+ * under the highlight while the user is arrowing through the list.
+ */
+function setHighlight(modelId: string | null) {
+  closeDetail()
+  highlightedModelId.value = modelId
   scrollHighlightedIntoView()
+}
+
+function highlightFirst() {
+  setHighlight(filteredModels.value[0]?.model.id ?? null)
 }
 
 function highlightLast() {
   const models = filteredModels.value
 
-  highlightedModelId.value = models[models.length - 1]?.model.id ?? null
-  scrollHighlightedIntoView()
+  setHighlight(models[models.length - 1]?.model.id ?? null)
 }
 
 function moveHighlight(step: number) {
@@ -426,8 +433,7 @@ function moveHighlight(step: number) {
     ? 0
     : (currentIndex + step + models.length) % models.length
 
-  highlightedModelId.value = models[nextIndex]?.model.id ?? null
-  scrollHighlightedIntoView()
+  setHighlight(models[nextIndex]?.model.id ?? null)
 }
 
 function selectHighlighted() {
