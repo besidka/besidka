@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 async function importAdapter() {
   return import(
@@ -7,6 +7,14 @@ async function importAdapter() {
 }
 
 describe('mock research adapter', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('starts with a mock_<epoch>_<ulid> sentinel job id and running status', async () => {
     const { mockResearchAdapter } = await importAdapter()
 
