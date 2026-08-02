@@ -107,3 +107,38 @@ export async function sendSignInMethodDisconnectedEmail({
     logger,
   })
 }
+
+export async function sendTwoFactorEnabledEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'Two-factor authentication turned on',
+    html: 'Two-factor authentication was just turned on for your Besidka '
+      + 'account. If this was not you, turn it off from your account '
+      + 'security settings and change your password immediately.',
+    logger,
+  })
+}
+
+export async function sendTwoFactorDisabledEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'Two-factor authentication turned off',
+    html: 'Two-factor authentication was just turned off for your '
+      + 'Besidka account. If this was not you, turn it back on from '
+      + 'your account security settings and change your password '
+      + 'immediately.',
+    logger,
+  })
+}

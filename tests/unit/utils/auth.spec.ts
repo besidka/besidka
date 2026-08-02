@@ -6,6 +6,14 @@ const mocks = vi.hoisted(() => ({
   sendPasswordChangedEmail: vi.fn(async () => undefined),
   sendSignInMethodConnectedEmail: vi.fn(async () => undefined),
   sendSignInMethodDisconnectedEmail: vi.fn(async () => undefined),
+  sendTwoFactorEnabledEmail: vi.fn(async () => undefined),
+  sendTwoFactorDisabledEmail: vi.fn(async () => undefined),
+}))
+
+const dbMocks = vi.hoisted(() => ({
+  findFirstUser: vi.fn(async (): Promise<
+    { twoFactorEnabled: boolean } | null
+  > => null),
 }))
 
 vi.mock('~~/server/utils/account/security-emails', () => mocks)
@@ -32,7 +40,13 @@ function stubBindings() {
     githubClientId: '',
     githubClientSecret: '',
   }))
-  vi.stubGlobal('useDb', () => ({}))
+  vi.stubGlobal('useDb', () => ({
+    query: {
+      users: {
+        findFirst: dbMocks.findFirstUser,
+      },
+    },
+  }))
   vi.stubGlobal('useKV', () => ({}))
   vi.stubGlobal('getCaptchaOptions', () => null)
   vi.stubGlobal('authRateLimitDefaults', { window: 60, max: 60 })
@@ -63,7 +77,10 @@ function createHookCtx(overrides: {
   path: string
   body?: Record<string, unknown>
   returned?: unknown
-  user?: { email: string } | null
+  user?: {
+    id?: string
+    email: string
+  } | null
 }) {
   return {
     path: overrides.path,
@@ -325,6 +342,96 @@ describe('server/utils/auth.ts security notification wiring', () => {
       },
     )
 
+    it(
+      'skips notifying for /two-factor/enable while unverified',
+      async () => {
+        dbMocks.findFirstUser.mockResolvedValueOnce({
+          twoFactorEnabled: false,
+        })
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/enable',
+          returned: { totpURI: 'otpauth://totp/x', backupCodes: ['a'] },
+          user,
+        }) as any)
+
+        expect(dbMocks.findFirstUser).toHaveBeenCalledWith({
+          where: { id: 1 },
+          columns: { twoFactorEnabled: true },
+        })
+        expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'sends the two-factor-enabled email once /two-factor/enable '
+      + 'actually finished verification',
+      async () => {
+        dbMocks.findFirstUser.mockResolvedValueOnce({
+          twoFactorEnabled: true,
+        })
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/enable',
+          user,
+        }) as any)
+
+        expect(mocks.sendTwoFactorEnabledEmail).toHaveBeenCalledWith({ user })
+      },
+    )
+
+    it(
+      'catches a /two-factor/enable lookup failure and logs it',
+      async () => {
+        dbMocks.findFirstUser.mockRejectedValueOnce(
+          new Error('E_LOOKUP_FAILED'),
+        )
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const loggerSet = vi.fn()
+
+        vi.stubGlobal('resolveServerLogger', () => ({ set: loggerSet }))
+
+        await expect(after(createHookCtx({
+          path: '/two-factor/enable',
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)).resolves.toBeUndefined()
+
+        expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+        expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+          securityNotificationHook: expect.objectContaining({
+            path: '/two-factor/enable',
+            error: 'E_LOOKUP_FAILED',
+          }),
+        }))
+      },
+    )
+
+    it('sends the two-factor-disabled email for /two-factor/disable',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/disable',
+          user,
+        }) as any)
+
+        expect(mocks.sendTwoFactorDisabledEmail)
+          .toHaveBeenCalledWith({ user })
+        expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+      })
+
     it('ignores every other path', async () => {
       const options = await importAuthOptions()
       const after = options.hooks!.after!
@@ -336,6 +443,8 @@ describe('server/utils/auth.ts security notification wiring', () => {
 
       expect(mocks.sendPasswordChangedEmail).not.toHaveBeenCalled()
       expect(mocks.sendSignInMethodDisconnectedEmail).not.toHaveBeenCalled()
+      expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+      expect(mocks.sendTwoFactorDisabledEmail).not.toHaveBeenCalled()
     })
 
     it(

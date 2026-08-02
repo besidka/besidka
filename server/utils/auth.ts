@@ -14,6 +14,8 @@ import {
   sendPasswordChangedEmail,
   sendSignInMethodConnectedEmail,
   sendSignInMethodDisconnectedEmail,
+  sendTwoFactorDisabledEmail,
+  sendTwoFactorEnabledEmail,
 } from './account/security-emails'
 import { getAllowedHosts } from './auth-hosts'
 
@@ -301,6 +303,25 @@ function createAuth() {
             if (typeof providerId === 'string') {
               await sendSignInMethodDisconnectedEmail({ user, providerId })
             }
+
+            return
+          }
+
+          if (ctx.path === '/two-factor/enable') {
+            const currentUser = await db.query.users.findFirst({
+              where: { id: Number(user.id) },
+              columns: { twoFactorEnabled: true },
+            })
+
+            if (currentUser?.twoFactorEnabled) {
+              await sendTwoFactorEnabledEmail({ user })
+            }
+
+            return
+          }
+
+          if (ctx.path === '/two-factor/disable') {
+            await sendTwoFactorDisabledEmail({ user })
           }
         } catch (exception) {
           resolveServerLogger().set({

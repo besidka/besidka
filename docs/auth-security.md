@@ -116,6 +116,8 @@ abuse containment instead of raw burst suppression.
 | `/two-factor/generate-backup-codes` | 900s | 3 |
 | `/two-factor/enable` | 900s | 5 |
 | `/two-factor/disable` | 900s | 5 |
+| `/two-factor/get-totp-uri` | 900s | 5 |
+| `/two-factor/send-otp` | 900s | 5 |
 | `/two-factor/*` (catch-all) | 300s | 10 |
 | `/passkey/verify-authentication` | 300s | 10 |
 | `/passkey/verify-registration` | 900s | 10 |
@@ -140,6 +142,13 @@ responds `200`/`400 INVALID_PASSWORD` — a password-guessing oracle with
 no dedicated rule before this fix, silently falling through to the
 generic 60-per-60s default (3600 guesses/hour). It now gets its own row,
 tighter than `/sign-in/email`'s.
+
+`/two-factor/get-totp-uri` and `/two-factor/send-otp` used to fall
+through to the `/two-factor/*` catch-all (300s/10), looser than their
+password-gated siblings `/two-factor/enable`/`/two-factor/disable`.
+`get-totp-uri` also requires the account password and returns the live
+decrypted TOTP secret, so it now gets the same 900s/5 row as `enable`/
+`disable` instead of the wildcard's looser limit.
 
 `/reset-password/*`, `/delete-user/*`, and `/callback/*` are wildcard
 rows for parameterized sibling routes (`GET /reset-password/:token`,

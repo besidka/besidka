@@ -68,6 +68,34 @@ describe('security-emails', () => {
       }))
     })
 
+  it('sends the two-factor-enabled email to the account address', async () => {
+    const { sendTwoFactorEnabledEmail } = await importSecurityEmails()
+
+    await sendTwoFactorEnabledEmail({
+      user: { email: 'user@example.com' },
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'user@example.com',
+      subject: 'Two-factor authentication turned on',
+    }))
+  })
+
+  it('sends the two-factor-disabled email to the account address', async () => {
+    const { sendTwoFactorDisabledEmail } = await importSecurityEmails()
+
+    await sendTwoFactorDisabledEmail({
+      user: { email: 'user@example.com' },
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'user@example.com',
+      subject: 'Two-factor authentication turned off',
+    }))
+  })
+
   it('falls back to the raw provider id when it has no display label',
     async () => {
       const { sendSignInMethodDisconnectedEmail }
