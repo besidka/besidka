@@ -63,9 +63,7 @@ describe('Auth/Turnstile.client', () => {
   })
 
   it('renders without a widget when the script fails to load, without throwing', async () => {
-    mocks.renderWidget.mockRejectedValueOnce(
-      new Error('Failed to load the Turnstile script'),
-    )
+    mocks.renderWidget.mockResolvedValueOnce(null)
 
     const wrapper = await mountSuspended(AuthTurnstile, {
       props: { action: 'auth' },

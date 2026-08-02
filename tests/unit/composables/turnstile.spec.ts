@@ -4,6 +4,7 @@ import { useTurnstile } from '../../../app/composables/turnstile'
 
 const mocks = vi.hoisted(() => ({
   turnstileSiteKey: 'test-sitekey',
+  useScript: vi.fn(),
 }))
 
 mockNuxtImport('useRuntimeConfig', () => {
@@ -12,6 +13,8 @@ mockNuxtImport('useRuntimeConfig', () => {
     public: { turnstileSiteKey: mocks.turnstileSiteKey },
   })
 })
+
+mockNuxtImport('useScript', () => mocks.useScript)
 
 function createFakeTurnstileApi(
   onRender?: (el: HTMLElement, options: any) => void,
@@ -29,17 +32,33 @@ function createFakeTurnstileApi(
   }
 }
 
+function mockScriptResolvingTo(turnstileApi: unknown) {
+  const load = vi.fn(() => Promise.resolve(turnstileApi))
+  const scriptInstance = {
+    load,
+    status: 'awaitingLoad',
+    onLoaded: vi.fn(),
+    onError: vi.fn(),
+    remove: vi.fn(),
+    reload: vi.fn(),
+  }
+
+  mocks.useScript.mockReturnValue(scriptInstance)
+
+  return scriptInstance
+}
+
 describe('useTurnstile', () => {
   beforeEach(() => {
     mocks.turnstileSiteKey = 'test-sitekey'
-    document.head.innerHTML = ''
-    ;(window as any).happyDOM.settings.disableJavaScriptFileLoading = true
-    ;(window as any).happyDOM.settings.handleDisabledFileLoadingAsSuccess
-      = true
+    mocks.useScript.mockReset()
+    delete (window as any).turnstile
   })
 
   it('is disabled and resolves execute() to an empty token with no sitekey configured', async () => {
     mocks.turnstileSiteKey = ''
+
+    const scriptInstance = mockScriptResolvingTo(createFakeTurnstileApi())
 
     const turnstile = useTurnstile()
 
@@ -48,12 +67,24 @@ describe('useTurnstile', () => {
     const token = await turnstile.execute('widget-1')
 
     expect(token).toBe('')
-    expect(document.head.querySelectorAll('script')).toHaveLength(0)
+    expect(scriptInstance.load).not.toHaveBeenCalled()
   })
 
-  it('injects the Turnstile script exactly once across repeated renderWidget calls', async () => {
-    delete (window as any).turnstile
-    delete (window as any).onloadTurnstileCallback
+  it('loads the Turnstile script exactly once across repeated renderWidget calls', async () => {
+    let resolveLoad: (api: unknown) => void = () => {}
+    const loadPromise = new Promise((resolve) => {
+      resolveLoad = resolve
+    })
+    const scriptInstance = {
+      load: vi.fn(() => loadPromise),
+      status: 'awaitingLoad',
+      onLoaded: vi.fn(),
+      onError: vi.fn(),
+      remove: vi.fn(),
+      reload: vi.fn(),
+    }
+
+    mocks.useScript.mockReturnValue(scriptInstance)
 
     const turnstile = useTurnstile()
     const fakeTurnstile = createFakeTurnstileApi()
@@ -69,15 +100,17 @@ describe('useTurnstile', () => {
     })
 
     window.turnstile = fakeTurnstile as any
-    window.onloadTurnstileCallback?.()
+    resolveLoad(fakeTurnstile)
 
     await renderOnePromise
     await renderTwoPromise
 
-    const scripts = document.head.querySelectorAll('script')
-
-    expect(scripts).toHaveLength(1)
-    expect(scripts[0]?.getAttribute('src')).toContain('turnstile/v0/api.js')
+    expect(mocks.useScript).toHaveBeenCalledTimes(1)
+    expect(mocks.useScript).toHaveBeenCalledWith(
+      expect.stringContaining('turnstile/v0/api.js'),
+      expect.objectContaining({ trigger: 'manual' }),
+    )
+    expect(scriptInstance.load).toHaveBeenCalledTimes(2)
     expect(fakeTurnstile.render).toHaveBeenCalledTimes(2)
     expect(fakeTurnstile.render).toHaveBeenCalledWith(
       containerOne,
@@ -89,64 +122,90 @@ describe('useTurnstile', () => {
   })
 
   it('resolves execute() with the token passed to the render callback', async () => {
-    const turnstile = useTurnstile()
     let capturedCallback: ((token: string) => void) | undefined
 
-    window.turnstile = createFakeTurnstileApi((_el, options) => {
+    const fakeTurnstile = createFakeTurnstileApi((_el, options) => {
       capturedCallback = options.callback
-    }) as any
+    })
+
+    window.turnstile = fakeTurnstile as any
+    mockScriptResolvingTo(fakeTurnstile)
+
+    const turnstile = useTurnstile()
 
     const container = document.createElement('div')
     const widgetId = await turnstile.renderWidget(container, {
       action: 'auth',
     })
-    const executePromise = turnstile.execute(widgetId)
+    const executePromise = turnstile.execute(widgetId!)
 
     capturedCallback?.('captcha-token')
 
     await expect(executePromise).resolves.toBe('captcha-token')
+    expect(fakeTurnstile.execute).toHaveBeenCalledWith(widgetId)
   })
 
   it('resolves execute() to an empty token when the widget times out', async () => {
-    const turnstile = useTurnstile()
     let capturedTimeoutCallback: (() => void) | undefined
 
-    window.turnstile = createFakeTurnstileApi((_el, options) => {
+    const fakeTurnstile = createFakeTurnstileApi((_el, options) => {
       capturedTimeoutCallback = options['timeout-callback']
-    }) as any
+    })
+
+    window.turnstile = fakeTurnstile as any
+    mockScriptResolvingTo(fakeTurnstile)
+
+    const turnstile = useTurnstile()
 
     const container = document.createElement('div')
     const widgetId = await turnstile.renderWidget(container, {
       action: 'auth',
     })
-    const executePromise = turnstile.execute(widgetId)
+    const executePromise = turnstile.execute(widgetId!)
 
     capturedTimeoutCallback?.()
 
     await expect(executePromise).resolves.toBe('')
   })
 
-  it('reset() clears the pending token so a stale callback cannot resolve a later execute()', async () => {
-    const turnstile = useTurnstile()
-    let capturedCallback: ((token: string) => void) | undefined
+  it('resolves renderWidget() to null when the script fails to load', async () => {
+    mockScriptResolvingTo(false)
 
-    window.turnstile = createFakeTurnstileApi((_el, options) => {
-      capturedCallback = options.callback
-    }) as any
+    const turnstile = useTurnstile()
 
     const container = document.createElement('div')
     const widgetId = await turnstile.renderWidget(container, {
       action: 'auth',
     })
 
-    turnstile.execute(widgetId)
-    turnstile.reset(widgetId)
+    expect(widgetId).toBeNull()
+  })
 
-    expect(window.turnstile?.reset).toHaveBeenCalledWith(widgetId)
+  it('reset() clears the pending token so a stale callback cannot resolve a later execute()', async () => {
+    let capturedCallback: ((token: string) => void) | undefined
+
+    const fakeTurnstile = createFakeTurnstileApi((_el, options) => {
+      capturedCallback = options.callback
+    })
+
+    window.turnstile = fakeTurnstile as any
+    mockScriptResolvingTo(fakeTurnstile)
+
+    const turnstile = useTurnstile()
+
+    const container = document.createElement('div')
+    const widgetId = await turnstile.renderWidget(container, {
+      action: 'auth',
+    })
+
+    turnstile.execute(widgetId!)
+    turnstile.reset(widgetId!)
+
+    expect(fakeTurnstile.reset).toHaveBeenCalledWith(widgetId)
 
     capturedCallback?.('stale-token')
 
-    const secondExecute = turnstile.execute(widgetId)
+    const secondExecute = turnstile.execute(widgetId!)
 
     capturedCallback?.('fresh-token')
 

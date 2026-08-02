@@ -23,5 +23,4 @@ interface TurnstileApi {
 
 interface Window {
   turnstile?: TurnstileApi
-  onloadTurnstileCallback?: () => void
 }

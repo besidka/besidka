@@ -26,13 +26,9 @@ onMounted(async () => {
     return
   }
 
-  try {
-    widgetId.value = await renderWidget(containerRef.value, {
-      action: props.action,
-    })
-  } catch {
-    widgetId.value = null
-  }
+  widgetId.value = await renderWidget(containerRef.value, {
+    action: props.action,
+  })
 })
 
 onUnmounted(() => {

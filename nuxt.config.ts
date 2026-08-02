@@ -23,6 +23,7 @@ const modules = [
   '@nuxt/eslint',
   '@nuxt/icon',
   '@nuxt/image',
+  '@nuxt/scripts',
   '@nuxtjs/color-mode',
   '@nuxtjs/device',
   '@nuxtjs/mdc',

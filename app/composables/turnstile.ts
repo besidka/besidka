@@ -1,46 +1,11 @@
 const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0'
-  + '/api.js?render=explicit&onload=onloadTurnstileCallback'
+  + '/api.js?render=explicit'
 
 interface TurnstileRenderWidgetOptions {
   action: string
 }
 
-let scriptLoadPromise: Promise<void> | null = null
-
 const pendingExecutions = new Map<string, (token: string) => void>()
-
-function loadTurnstileScript(): Promise<void> {
-  if (!import.meta.client) {
-    return Promise.resolve()
-  }
-
-  if (window.turnstile) {
-    return Promise.resolve()
-  }
-
-  if (scriptLoadPromise) {
-    return scriptLoadPromise
-  }
-
-  scriptLoadPromise = new Promise<void>((resolve, reject) => {
-    window.onloadTurnstileCallback = () => {
-      resolve()
-    }
-
-    const script = document.createElement('script')
-
-    script.src = TURNSTILE_SCRIPT_URL
-    script.async = true
-    script.defer = true
-    script.addEventListener('error', () => {
-      reject(new Error('Failed to load the Turnstile script'))
-    })
-
-    document.head.appendChild(script)
-  })
-
-  return scriptLoadPromise
-}
 
 export function useTurnstile() {
   const config = useRuntimeConfig()
@@ -48,18 +13,27 @@ export function useTurnstile() {
 
   const isEnabled = computed<boolean>(() => Boolean(siteKey))
 
+  const turnstileScript = useScript(TURNSTILE_SCRIPT_URL, {
+    trigger: 'manual',
+    use: () => window.turnstile,
+  })
+
   async function renderWidget(
     el: HTMLElement,
     opts: TurnstileRenderWidgetOptions,
-  ): Promise<string> {
-    await loadTurnstileScript()
+  ): Promise<string | null> {
+    const turnstile = await turnstileScript.load()
+
+    if (!turnstile) {
+      return null
+    }
 
     function settleWithEmptyToken() {
       pendingExecutions.get(widgetId)?.('')
       pendingExecutions.delete(widgetId)
     }
 
-    const widgetId = window.turnstile!.render(el, {
+    const widgetId = turnstile.render(el, {
       'sitekey': siteKey,
       'action': opts.action,
       'appearance': 'interaction-only',
