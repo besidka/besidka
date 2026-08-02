@@ -9,7 +9,7 @@ benefits:
     body: Your conversations live in your Cloudflare D1 database. Cancel, self-host, or switch deployments — your data moves with you, no export required.
   - icon: lucide:shuffle
     title: Pick the best model for each job
-    body: GPT-5 for creative work, Gemini Flash for quick drafts, a nano model for high-volume tasks — switch freely across providers in the same interface.
+    body: Claude Opus for hard reasoning, GPT-5 for creative work, Gemini Flash for quick drafts, a nano model for high-volume tasks — switch freely across providers in the same interface.
 carousel:
   - src: /preview-light-desktop.svg
     alt: Besidka chat interface in light theme — a conversation using GPT-5 showing a markdown response with syntax-highlighted code.
@@ -18,7 +18,7 @@ carousel:
     alt: Besidka chat interface in dark theme — file attachments panel open with a PDF selected for the current chat.
     caption: Dark theme — desktop
   - src: /preview-light-mobile.svg
-    alt: Besidka chat interface on a mobile device — model selector open, switching between GPT and Gemini flagship models.
+    alt: Besidka chat interface on a mobile device — model selector open, switching between Claude, GPT and Gemini flagship models.
     caption: Mobile — model switcher
 comparison:
   caption: How Besidka compares to popular AI chat subscriptions
@@ -108,12 +108,12 @@ comparison:
         - no
   note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup. Image generation is billed separately at the provider's published image rates.
   priceDate: June 2026
-description: Besidka is an open-source, self-hostable AI chat app. Bring your own OpenAI or Google API key and pay the provider directly. No subscriptions, no markup, no lock-in.
+description: Besidka is an open-source, self-hostable AI chat app. Bring your own Anthropic, OpenAI or Google API key and pay the provider directly. No subscriptions, no markup, no lock-in.
 faqs:
   - question: What does BYOK mean?
-    answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from OpenAI or Google AI Studio directly. You pay the provider at their published rates — Besidka adds no markup.
+    answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from Anthropic, OpenAI or Google AI Studio directly. You pay the provider at their published rates — Besidka adds no markup.
   - question: Which AI providers are supported?
-    answer: Currently OpenAI (GPT-5 and the full GPT model family) and Google AI Studio (Gemini models including Gemini 2.5 Pro and Gemini 3 series). More providers are planned. Check the GitHub repository for the latest list.
+    answer: Currently Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5 and the full GPT model family), and Google AI Studio (Gemini models including Gemini 2.5 Pro and the Gemini 3 series). More providers are planned. Check the GitHub repository for the latest list.
   - question: Can Besidka generate images and documents?
     answer: Yes for images. Select Create image with a supported OpenAI or Google chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
   - question: Do you store my API keys?
@@ -125,9 +125,9 @@ faqs:
   - question: Can I share a chat?
     answer: Yes. Any chat can be shared via a public, unguessable link — recipients view a read-only copy without needing an account, and can branch it into their own chats. You control per-share options like link expiry, search-engine indexing, and whether images, file names, message details, or your avatar are visible, and you can revoke a share at any time. Shared files are served through short-lived, revocable tokens rather than a public bucket.
   - question: Does Besidka support deep research like ChatGPT?
-    answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key like every other model, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
+    answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. Anthropic does not currently offer a dedicated deep-research agent model, so this is not available on a Claude key. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
   - question: How is pricing calculated?
-    answer: Besidka itself is free to use and open-source. You pay the AI provider (OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
+    answer: Besidka itself is free to use and open-source. You pay the AI provider (Anthropic, OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
   - question: How to pronounce Besidka?
     answer: |-
       Besidka is pronounced “beh-SEED-kah”.
@@ -138,7 +138,7 @@ faqs:
 features:
   - icon: lucide:layers
     title: Multiple AI models
-    body: Switch between the latest GPT and Gemini models in one place without creating separate accounts.
+    body: Switch between the latest Claude, GPT and Gemini models in one place without creating separate accounts.
   - icon: lucide:globe
     title: Web search
     body: Ground AI answers with real-time web context. Besidka can search the web and cite sources inline.
@@ -166,7 +166,7 @@ features:
 hero:
   eyebrow: OPEN SOURCE · BYOK · SELF-HOSTABLE
   headline: Besidka — open-source AI chat. Your keys, your costs.
-  subheadline: Self-host it or use besidka.com. Switch between GPT and Gemini models on your own API key — pay per use, no subscriptions, no markup, no lock-in.
+  subheadline: Self-host it or use besidka.com. Switch between Claude, GPT and Gemini models on your own API key — pay per use, no subscriptions, no markup, no lock-in.
   primaryCta:
     label: Start chatting
     href: /signup
@@ -181,7 +181,7 @@ steps:
     body: Create a free account with email and password, or sign in with Google or GitHub. No credit card required.
   - icon: lucide:key
     title: 2. Add your API key
-    body: Paste your OpenAI or Google AI Studio API key into your profile. Keys are encrypted at rest and never shared.
+    body: Paste your Anthropic, OpenAI or Google AI Studio API key into your profile. Keys are encrypted at rest and never shared.
   - icon: lucide:message-square
     title: 3. Start chatting
     body: Open a new chat, pick your model, and go. You pay the provider's rate directly — Besidka adds nothing on top.
@@ -196,7 +196,7 @@ useCases:
     payoff: Every byte of chat history stays in infrastructure they control — no third-party reads their conversations.
   - icon: lucide:briefcase
     persona: Occasional AI user
-    scenario: Skips the flat monthly subscription and pays only for the tokens they actually use, switching between GPT and Gemini flagships depending on the task.
+    scenario: Skips the flat monthly subscription and pays only for the tokens they actually use, switching between Claude, GPT and Gemini flagships depending on the task.
     payoff: A typical light-use month costs a few dollars instead of twenty.
 video:
   src: /videos/demo.mp4
@@ -272,7 +272,7 @@ sr-label: BYOK solution summary and call to action
 ---
 Your keys, your costs, your data.
 
-Connect an OpenAI or Google AI Studio key and pay only for what you use — no monthly fee, no per-seat charge, no markup. Switch between the latest GPT and Gemini models in one place. Add or remove keys any time from your profile. Because Besidka is open-source and self-hostable, you are never locked in.
+Connect an Anthropic, OpenAI or Google AI Studio key and pay only for what you use — no monthly fee, no per-seat charge, no markup. Switch between the latest Claude, GPT and Gemini models in one place. Add or remove keys any time from your profile. Because Besidka is open-source and self-hostable, you are never locked in.
 
   :::home-cta
   ---
