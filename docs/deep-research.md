@@ -33,7 +33,16 @@ Runs are billed to the user's own key. `assistModel` in the same config block
 names the cheap chat model used for the two pre-calls (clarifying questions
 via `generateObject`, brief rewrite via `generateText`). Anthropic has no
 deep-research API, so none of its models declare a `research` block — the
-trigger never renders for them.
+trigger never renders for them. This isn't a temporary gap: Anthropic has no
+first-party hosted async "deep research" agent model equivalent to OpenAI's
+`o3-deep-research`/`o4-mini-deep-research` or Google's Gemini Deep Research
+models. Anthropic's Managed Agents platform (session/agent hosting with its
+own SDK surface) is architecturally a different shape — a stateful hosted
+agent session with an event stream you steer turn by turn, not a single
+async job against a purpose-built research model — and it doesn't fit this
+feature's `start → {providerJobId, status} → poll → result` job pattern.
+That's why `shared/types/research.d.ts`'s `ResearchProviderId` stays
+`'openai' | 'google'` rather than widening to include Anthropic.
 
 Selecting a research model hides web search, reasoning controls, and file
 attachments in `ChatInput` — the agents do their own browsing, and attachments
