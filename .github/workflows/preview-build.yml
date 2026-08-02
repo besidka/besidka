@@ -2,6 +2,7 @@ name: Preview Build
 
 on:
   pull_request:
+    branches: [main]
     types: [opened, synchronize, reopened]
     paths-ignore:
       # NOTE: do not ignore '**/*.md' — content/*.md is the landing page
