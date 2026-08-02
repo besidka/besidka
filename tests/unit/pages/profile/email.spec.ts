@@ -123,4 +123,35 @@ describe('profile email page', () => {
       })
     },
   )
+
+  it(
+    'shows a failure message instead of a success message when '
+    + 'resending verification resolves with an error',
+    async () => {
+      state.user = {
+        email: 'unverified@example.com',
+        emailVerified: false,
+      }
+      mocks.sendVerificationEmail.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Too many requests' },
+      } as any)
+
+      const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+      const useSuccessMessage = vi.spyOn(messagesComposable, 'useSuccessMessage')
+
+      const wrapper = await mountSuspended(EmailPage)
+
+      await wrapper.get('[data-testid="email-resend-verification"]')
+        .trigger('click')
+      await flushPromises()
+
+      expect(mocks.sendVerificationEmail).toHaveBeenCalledWith({
+        email: 'unverified@example.com',
+        callbackURL: '/profile/email',
+      })
+      expect(useErrorMessage).toHaveBeenCalledWith('Too many requests')
+      expect(useSuccessMessage).not.toHaveBeenCalled()
+    },
+  )
 })

@@ -224,28 +224,37 @@ function createAuth() {
           // so it is distinguished here by counting the user's accounts
           // after this row landed: exactly one means this was the first.
           async after(account, context) {
-            if (!context) {
-              return
+            try {
+              if (!context) {
+                return
+              }
+
+              const existingAccounts = await context.context.internalAdapter
+                .findAccounts(account.userId)
+
+              if (existingAccounts.length <= 1) {
+                return
+              }
+
+              const user = await context.context.internalAdapter
+                .findUserById(account.userId)
+
+              if (!user) {
+                return
+              }
+
+              await sendSignInMethodConnectedEmail({
+                user,
+                providerId: account.providerId,
+              })
+            } catch (exception) {
+              resolveServerLogger().set({
+                securityNotificationHook: {
+                  path: 'databaseHooks.account.create.after',
+                  error: exceptionMessage(exception),
+                },
+              })
             }
-
-            const existingAccounts = await context.context.internalAdapter
-              .findAccounts(account.userId)
-
-            if (existingAccounts.length <= 1) {
-              return
-            }
-
-            const user = await context.context.internalAdapter
-              .findUserById(account.userId)
-
-            if (!user) {
-              return
-            }
-
-            await sendSignInMethodConnectedEmail({
-              user,
-              providerId: account.providerId,
-            })
           },
         },
       },

@@ -1,4 +1,5 @@
 import { createError } from 'evlog'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export default defineEventHandler(async (event) => {
   const session = await useUserSession()
@@ -38,13 +39,21 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await useServerAuth().api.revokeSession({
-    body: {
-      token: row.token,
-    },
-    // @ts-ignore
-    headers: getHeaders(event),
-  })
+  try {
+    await useServerAuth().api.revokeSession({
+      body: {
+        token: row.token,
+      },
+      // @ts-ignore
+      headers: getHeaders(event),
+    })
+  } catch (exception) {
+    throw createError({
+      message: 'Failed to end session',
+      status: 500,
+      why: exceptionMessage(exception),
+    })
+  }
 
   return setResponseStatus(event, 204, 'Session revoked successfully')
 })

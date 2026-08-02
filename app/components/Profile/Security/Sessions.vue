@@ -77,7 +77,8 @@ const sortedSessions = computed<SessionRow[]>(() => {
 async function endSession(row: SessionRow) {
   const result = await useConfirm({
     text: 'End this session?',
-    subtitle: 'The device will be signed out immediately.',
+    subtitle: 'This will end the session — it may take a few minutes to '
+      + 'fully log the device out everywhere.',
     actions: ['End session'],
     labelDecline: 'Cancel',
   })
@@ -109,7 +110,8 @@ async function endSession(row: SessionRow) {
 async function revokeAllOthers() {
   const result = await useConfirm({
     text: 'Sign out of all other sessions?',
-    subtitle: 'Every other signed-in device will be signed out immediately.',
+    subtitle: 'This will end every other session — it may take a few '
+      + 'minutes to fully log those devices out everywhere.',
     actions: ['Sign out others'],
     labelDecline: 'Cancel',
   })
@@ -121,7 +123,16 @@ async function revokeAllOthers() {
   isProcessing.value = true
 
   try {
-    await $auth.client.revokeOtherSessions()
+    const { error } = await $auth.client.revokeOtherSessions()
+
+    if (error) {
+      useErrorMessage(
+        error.message || 'Failed to sign out other sessions',
+      )
+
+      return
+    }
+
     await refresh()
     useSuccessMessage('Signed out of all other sessions')
   } catch (exception) {

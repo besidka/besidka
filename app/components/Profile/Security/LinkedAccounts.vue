@@ -196,11 +196,15 @@ async function connect(provider: LinkableProvider) {
   isProcessing.value = true
 
   try {
-    await $auth.client.linkSocial({
+    const { error } = await $auth.client.linkSocial({
       provider,
       callbackURL: `/profile/security?linked=${provider}`,
       errorCallbackURL: '/profile/security',
     })
+
+    if (error) {
+      useErrorMessage(error.message || 'Failed to connect account')
+    }
   } finally {
     isProcessing.value = false
   }

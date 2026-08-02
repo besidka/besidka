@@ -189,7 +189,7 @@ describe('profile sessions API', () => {
       })
 
       const where = vi.fn()
-      const orderBy = vi.fn().mockResolvedValue([currentRow, otherRow])
+      const limit = vi.fn().mockResolvedValue([currentRow, otherRow])
       const selectChain = {
         from: vi.fn(() => selectChain),
         where: vi.fn((condition: unknown) => {
@@ -197,7 +197,8 @@ describe('profile sessions API', () => {
 
           return selectChain
         }),
-        orderBy,
+        orderBy: vi.fn(() => selectChain),
+        limit,
       }
 
       vi.stubGlobal('useDb', () => ({
@@ -219,6 +220,7 @@ describe('profile sessions API', () => {
 
       expect(renderedWhere).toMatch(/user_id\s+=\s+1\b/)
       expect(renderedWhere).toMatch(/expires_at\s+>\s+\S/)
+      expect(limit).toHaveBeenCalledWith(100)
     })
 
   it('does not return expired sessions', async () => {
@@ -229,11 +231,12 @@ describe('profile sessions API', () => {
 
     const activeRow = createSessionRow({ id: 1, token: 'current-token' })
 
-    const orderBy = vi.fn().mockResolvedValue([activeRow])
+    const limit = vi.fn().mockResolvedValue([activeRow])
     const selectChain = {
       from: vi.fn(() => selectChain),
       where: vi.fn(() => selectChain),
-      orderBy,
+      orderBy: vi.fn(() => selectChain),
+      limit,
     }
 
     vi.stubGlobal('useDb', () => ({
@@ -316,5 +319,30 @@ describe('profile sessions API', () => {
       body: { token: 'target-token' },
     }))
     expect(dbDelete).not.toHaveBeenCalled()
+  })
+
+  it('rethrows a structured error when revokeSession fails', async () => {
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: '1' },
+      session: { token: 'current-token' },
+    }))
+
+    const findFirst = vi.fn().mockResolvedValue({ token: 'target-token' })
+
+    vi.stubGlobal('useDb', () => ({
+      query: { sessions: { findFirst } },
+    }))
+
+    mocks.revokeSession.mockRejectedValueOnce(new Error('E_REVOKE_FAILED'))
+
+    const handler = await getRevokeHandler()
+
+    await expect(handler({
+      params: { id: '2' },
+    } as any)).rejects.toMatchObject({
+      message: 'Failed to end session',
+      status: 500,
+      why: 'E_REVOKE_FAILED',
+    })
   })
 })

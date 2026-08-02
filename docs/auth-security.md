@@ -253,4 +253,24 @@ branches in `server/utils/auth.ts` and `security-emails.ts` do
 `console.log` the raw address, but only to the local dev console, never
 through evlog and never in a deployed Worker.
 
+## Ending a session doesn't revoke access on every device instantly
+
+`/profile/security`'s "End session" and "Sign out of all other sessions"
+actions (`Sessions.vue`, `/api/v1/profiles/sessions/:id/revoke`,
+`revokeOtherSessions`) delete the underlying session row immediately —
+that part is instant and unconditional. It is not the same as instantly
+logging every open browser tab out everywhere, though: `session.cookieCache`
+in `server/utils/auth.ts` (`maxAge: 60 * 5`) caches an already-verified
+session in a signed cookie for up to 5 minutes. A device that already
+holds that cookie can keep working with it — and keep passing the
+cookie-cache check — until the cache window expires, even though the
+session record it was verified against is already gone.
+
+This is accepted as a documented limitation, not fixed with a faster
+path (e.g. checking a live revocation list in KV on every cached-session
+read): that would undo the point of the cache and is a much larger change
+to the core session-verification path than this fix-up pass warrants. The
+confirmation copy in `Sessions.vue` is worded to reflect this honestly
+("it may take a few minutes to fully log the device out everywhere")
+instead of promising immediate revocation.
 

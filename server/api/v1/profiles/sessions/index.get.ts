@@ -26,6 +26,7 @@ export default defineEventHandler(async () => {
       gt(schema.sessions.expiresAt, new Date()),
     ))
     .orderBy(desc(schema.sessions.createdAt))
+    .limit(100)
 
   const currentToken = session.session.token
 

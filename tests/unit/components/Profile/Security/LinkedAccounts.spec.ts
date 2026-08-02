@@ -181,4 +181,36 @@ describe('Profile/Security/LinkedAccounts', () => {
 
       expect(wrapper.vm.$route.query).toEqual({})
     })
+
+  it('shows a failure message when linkSocial resolves with an error',
+    async () => {
+      mocks.listAccounts.mockResolvedValue({
+        data: [createAccount({ id: '1', providerId: 'credential' })],
+        error: null,
+      })
+      mocks.linkSocial.mockResolvedValue({
+        data: null,
+        error: { message: 'Too many requests' },
+      })
+
+      const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+      const wrapper = await mountSuspended(LinkedAccounts)
+
+      await flushPromises()
+
+      const connectButton = wrapper.find('[aria-label="Connect"]')
+
+      expect(connectButton.exists()).toBe(true)
+
+      await connectButton.trigger('click')
+      await flushPromises()
+
+      expect(mocks.linkSocial).toHaveBeenCalledWith({
+        provider: 'google',
+        callbackURL: '/profile/security?linked=google',
+        errorCallbackURL: '/profile/security',
+      })
+      expect(useErrorMessage).toHaveBeenCalledWith('Too many requests')
+    })
 })

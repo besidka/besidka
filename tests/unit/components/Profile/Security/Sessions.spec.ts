@@ -1,10 +1,14 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as messagesComposable from '../../../../../app/composables/messages'
 import Sessions from '../../../../../app/components/Profile/Security/Sessions.vue'
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
-  revokeOtherSessions: vi.fn(async () => ({ status: true })),
+  revokeOtherSessions: vi.fn(async () => ({
+    data: { status: true },
+    error: null,
+  })),
   confirm: vi.fn(async () => ({ label: 'Confirm', index: 0 })),
 }))
 
@@ -161,5 +165,44 @@ describe('Profile/Security/Sessions', () => {
     expect(mocks.fetch.mock.calls.length).toBeGreaterThan(
       fetchCallsBeforeRevoke,
     )
+  })
+
+  it('shows a failure message and does not refresh the list when '
+    + 'revokeOtherSessions resolves with an error', async () => {
+    mocks.revokeOtherSessions.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'Too many requests' },
+    } as any)
+    mocks.fetch.mockImplementation((url: string) => {
+      if (url === '/api/v1/profiles/sessions') {
+        return Promise.resolve([
+          createSessionRow({ id: 1, current: true }),
+          createSessionRow({ id: 2, current: false }),
+        ])
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+    const useSuccessMessage = vi.spyOn(messagesComposable, 'useSuccessMessage')
+
+    const wrapper = await mountSuspended(Sessions)
+
+    await flushPromises()
+
+    const fetchCallsBeforeRevoke = mocks.fetch.mock.calls.length
+
+    const revokeAllButton = wrapper.find(
+      '[aria-label="Sign out of all other sessions"]',
+    )
+
+    await revokeAllButton.trigger('click')
+    await flushPromises()
+
+    expect(mocks.revokeOtherSessions).toHaveBeenCalledTimes(1)
+    expect(useErrorMessage).toHaveBeenCalledWith('Too many requests')
+    expect(useSuccessMessage).not.toHaveBeenCalled()
+    expect(mocks.fetch.mock.calls.length).toBe(fetchCallsBeforeRevoke)
   })
 })

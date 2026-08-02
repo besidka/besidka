@@ -175,6 +175,77 @@ describe('server/utils/auth.ts security notification wiring', () => {
 
         expect(mocks.sendSignInMethodConnectedEmail).not.toHaveBeenCalled()
       })
+
+    it(
+      'catches a findAccounts failure and logs it instead of throwing',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.databaseHooks!.account!.create!.after!
+        const loggerSet = vi.fn()
+
+        vi.stubGlobal('resolveServerLogger', () => ({ set: loggerSet }))
+
+        const findAccounts = vi.fn(async () => {
+          throw new Error('E_FIND_ACCOUNTS_FAILED')
+        })
+        const findUserById = vi.fn()
+        const account = createDatabaseHookAccount({
+          userId: '1',
+          providerId: 'google',
+        })
+        const context = createDatabaseHookContext({
+          findAccounts,
+          findUserById,
+        })
+
+        await expect(after(account as any, context as any))
+          .resolves.toBeUndefined()
+
+        expect(findUserById).not.toHaveBeenCalled()
+        expect(mocks.sendSignInMethodConnectedEmail).not.toHaveBeenCalled()
+        expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+          securityNotificationHook: expect.objectContaining({
+            path: 'databaseHooks.account.create.after',
+            error: 'E_FIND_ACCOUNTS_FAILED',
+          }),
+        }))
+      },
+    )
+
+    it(
+      'catches a findUserById failure and logs it instead of throwing',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.databaseHooks!.account!.create!.after!
+        const loggerSet = vi.fn()
+
+        vi.stubGlobal('resolveServerLogger', () => ({ set: loggerSet }))
+
+        const findAccounts = vi.fn(async () => [{ id: 'a1' }, { id: 'a2' }])
+        const findUserById = vi.fn(async () => {
+          throw new Error('E_FIND_USER_FAILED')
+        })
+        const account = createDatabaseHookAccount({
+          userId: '1',
+          providerId: 'google',
+        })
+        const context = createDatabaseHookContext({
+          findAccounts,
+          findUserById,
+        })
+
+        await expect(after(account as any, context as any))
+          .resolves.toBeUndefined()
+
+        expect(mocks.sendSignInMethodConnectedEmail).not.toHaveBeenCalled()
+        expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+          securityNotificationHook: expect.objectContaining({
+            path: 'databaseHooks.account.create.after',
+            error: 'E_FIND_USER_FAILED',
+          }),
+        }))
+      },
+    )
   })
 
   describe('hooks.after', () => {

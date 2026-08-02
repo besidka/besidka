@@ -144,10 +144,18 @@ async function resendVerification() {
   isResending.value = true
 
   try {
-    await $auth.client.sendVerificationEmail({
+    const { error } = await $auth.client.sendVerificationEmail({
       email: currentEmail.value,
       callbackURL: '/profile/email',
     })
+
+    if (error) {
+      useErrorMessage(
+        error.message || 'Failed to resend verification email.',
+      )
+
+      return
+    }
 
     useSuccessMessage('Verification email sent')
   } catch (exception) {
