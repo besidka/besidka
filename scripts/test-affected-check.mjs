@@ -237,6 +237,16 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/email.spec.ts',
   ]
 
+  const authSecurityTests = [
+    'tests/unit/utils/auth-rate-limit.spec.ts',
+    'tests/unit/utils/auth-captcha.spec.ts',
+  ]
+
+  const turnstileTests = [
+    'tests/unit/composables/turnstile.spec.ts',
+    'tests/unit/components/Auth/Turnstile.client.spec.ts',
+  ]
+
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
   ]
@@ -313,8 +323,21 @@ export function getAffectedTests(changedFiles) {
       tests: pushNotificationTests,
     },
     {
-      pattern: /^server\/utils\/(email|auth)\.ts$/,
-      tests: emailTests,
+      pattern:
+        /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts)\.ts$/,
+      tests: [...emailTests, ...authSecurityTests],
+    },
+    {
+      pattern: /^app\/composables\/turnstile\.ts$/,
+      tests: turnstileTests,
+    },
+    {
+      pattern: /^app\/components\/Auth\/Turnstile\.client\.vue$/,
+      tests: turnstileTests,
+    },
+    {
+      pattern: /^app\/types\/turnstile\.d\.ts$/,
+      tests: turnstileTests,
     },
     {
       pattern: /^nuxt\.config\.ts$/,

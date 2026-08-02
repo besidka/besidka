@@ -1,8 +1,10 @@
+import type { BetterAuthPlugin } from 'better-auth'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
+import { captcha, lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
+import { getAllowedHosts } from './auth-hosts'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -21,10 +23,19 @@ function createAuth() {
   const db = useDb()
   const kv = useKV()
   const dataKey = 'auth'
-  const rateLimitTtl = 60
   const deleteAccountTokenTtl = 60 * 60
 
   const allowedHosts = getAllowedHosts(config.public.baseUrl)
+  const captchaOptions = getCaptchaOptions(config)
+
+  const plugins: BetterAuthPlugin[] = [
+    oAuthProxy({ productionURL: config.public.baseUrl }),
+    lastLoginMethod({ storeInDatabase: true }),
+  ]
+
+  if (captchaOptions) {
+    plugins.push(captcha(captchaOptions))
+  }
 
   return betterAuth({
     secret: config.betterAuthSecret,
@@ -61,30 +72,13 @@ function createAuth() {
       },
     },
     rateLimit: {
-      customStorage: {
-        async get(key) {
-          const value = await kv.get(`${dataKey}:rate-limit:${key}`)
-
-          if (!value) {
-            return null
-          }
-
-          try {
-            return JSON.parse(value)
-          } catch {
-            return null
-          }
-        },
-        async set(key, value) {
-          await kv.put(
-            `${dataKey}:rate-limit:${key}`,
-            JSON.stringify(value),
-            {
-              expirationTtl: rateLimitTtl,
-            },
-          )
-        },
-      },
+      window: authRateLimitDefaults.window,
+      max: authRateLimitDefaults.max,
+      customRules: authRateLimitRules,
+      customStorage: createAuthRateLimitStorage(
+        kv,
+        `${dataKey}:rate-limit`,
+      ),
     },
     advanced: {
       database: {
@@ -182,39 +176,6 @@ function createAuth() {
         allowDifferentEmails: false,
       },
     },
-    plugins: [
-      oAuthProxy({ productionURL: config.public.baseUrl }),
-      lastLoginMethod({ storeInDatabase: true }),
-    ],
+    plugins,
   })
-}
-
-function getAllowedHosts(baseUrl: string): string[] {
-  if (!baseUrl) {
-    return []
-  }
-
-  const url = new URL(baseUrl)
-  const host = url.host
-  const hostname = url.hostname
-
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return [host, 'localhost:*', '127.0.0.1:*']
-  }
-
-  const parts = hostname.split('.')
-  const twoPartDomain = parts.slice(-2).join('.')
-
-  if (hostname === twoPartDomain) {
-    return [host, `www.${hostname}`]
-  }
-
-  if (hostname === `www.${twoPartDomain}`) {
-    return [host, twoPartDomain]
-  }
-
-  const subdomain = parts[0]
-  const rest = parts.slice(1).join('.')
-
-  return [host, `*-${subdomain}.${rest}`]
 }

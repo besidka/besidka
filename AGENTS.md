@@ -184,6 +184,12 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   curated-id-driven join can't pull in junk/legacy/open-weights models;
   the `EXEMPT_IDS` hard-fail behavior; DB-persisted cross-device favorites;
   owner action items and known trade-offs
+- `docs/auth-security.md` - Turnstile captcha (Better Auth's `captcha`
+  plugin) and hardened rate limits: why `expectedAction`/`allowedHostnames`
+  are gated on `turnstileEnforced` and not `import.meta.dev`, the
+  `captchaEnabled` both-keys-required gate, the per-endpoint rate-limit
+  table and reasoning, the KV `consume`/TTL fix and its remaining
+  best-effort-under-concurrency caveat, and the Turnstile owner checklist
 
 ### Tech Stack
 

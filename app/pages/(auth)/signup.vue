@@ -219,6 +219,7 @@
           :disabled="pending"
         />
       </UiFormFieldset>
+      <AuthTurnstile ref="turnstile" action="auth" />
     </UiForm>
     <p class="py-2 text-center">
       Already have an account? <NuxtLink to="/signin" class="underline hover:no-underline">Sign in</NuxtLink>
@@ -230,6 +231,7 @@ import type { ValidationRule } from '~/types/validation.d'
 import type { EstimateCrack } from '~/types/password'
 import { TimeUnits } from '~/types/password'
 import UiForm from '~/components/ui/Form.vue'
+import AuthTurnstile from '~/components/Auth/Turnstile.client.vue'
 
 interface Data {
   name: string
@@ -352,6 +354,7 @@ const timeToCrackHighlight = computed(() => {
 
 const { signUp } = useAuth()
 
+const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
 const pending = shallowRef<boolean>(false)
 const isSocialOAuthDisabled = computed<boolean>(() => {
   if (!import.meta.client) {
@@ -378,12 +381,15 @@ async function onSubmit() {
   pending.value = true
 
   try {
+    const token = await turnstile.value?.execute()
+
     await signUp.email({
       name: data.name,
       email: data.email,
       password: data.password,
       callbackURL: '/signin',
       fetchOptions: {
+        headers: token ? { 'x-captcha-response': token } : {},
         onSuccess() {
           useSuccessMessage('Account created successfully! Please check your email to confirm your account.')
         },
@@ -391,6 +397,7 @@ async function onSubmit() {
     })
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
+    turnstile.value?.reset()
     throw createError(exception)
   } finally {
     pending.value = false

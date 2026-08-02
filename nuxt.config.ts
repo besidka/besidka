@@ -131,6 +131,8 @@ export default defineNuxtConfig({
     googleClientSecret: '',
     githubClientId: '',
     githubClientSecret: '',
+    turnstileSecretKey: '',
+    turnstileEnforced: false,
     filesHardMaxStorageBytes: 1 * 1024 * 1024 * 1024, // 1GB
     filesGlobalTransformLimitMonthly: 1000,
     enableAssistantFilePersistence: false,
@@ -168,6 +170,7 @@ export default defineNuxtConfig({
       maxFilesPerMessage: 10,
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
       vapidPublicKey: '',
+      turnstileSiteKey: '',
     },
   },
   site: {

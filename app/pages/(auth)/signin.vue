@@ -134,6 +134,7 @@
           />
         </AuthLastUsedContainer>
       </UiFormFieldset>
+      <AuthTurnstile ref="turnstile" action="auth" />
     </UiForm>
     <p class="py-2 text-center">
       Don't have an account? <NuxtLink to="/signup" class="underline hover:no-underline">Sign up</NuxtLink>
@@ -142,6 +143,7 @@
 </template>
 <script setup lang="ts">
 import UiForm from '~/components/ui/Form.vue'
+import AuthTurnstile from '~/components/Auth/Turnstile.client.vue'
 
 interface Data {
   email: string
@@ -194,6 +196,7 @@ const data = shallowReactive<Data>({
 
 const { signIn, errorCodes: _errorCodes, lastLoginMethod } = useAuth()
 
+const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
 const pending = shallowRef<boolean>(false)
 
 const isSocialOAuthDisabled = computed<boolean>(() => {
@@ -220,12 +223,15 @@ async function socialSignIn(provider: 'google' | 'github') {
 async function onSubmit() {
   pending.value = true
 
+  const token = await turnstile.value?.execute()
+
   const { error } = await signIn.email({
     email: data.email,
     password: data.password,
     rememberMe: data.rememberMe,
     callbackURL: '/chats/new',
     fetchOptions: {
+      headers: token ? { 'x-captcha-response': token } : {},
       onSuccess() {
         useSuccessMessage('Successfully signed in')
       },
@@ -239,6 +245,7 @@ async function onSubmit() {
     // } else {
     //   useErrorMessage(error.message)
     // }
+    turnstile.value?.reset()
   }
 
   pending.value = false
