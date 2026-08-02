@@ -199,6 +199,14 @@ export function getAffectedTests(changedFiles) {
   const accountDeletionTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
     'tests/unit/composables/auth.spec.ts',
+    'tests/unit/pages/profile/security.spec.ts',
+  ]
+
+  const accountSecurityHubTests = [
+    'tests/unit/pages/profile/security.spec.ts',
+    'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
+    'tests/unit/components/Profile/Security/Sessions.spec.ts',
+    'tests/integration/api/profiles-sessions.spec.ts',
   ]
 
   const landingTests = [
@@ -643,8 +651,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/settings\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
+        /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Profile\/Security\/.*\.vue|server\/api\/v1\/profiles\/sessions\/.*\.ts|server\/db\/schemas\/auth\.ts)$/,
+      tests: accountSecurityHubTests,
+    },
+    {
+      pattern: /^app\/layouts\/profile\.vue$/,
+      tests: ['tests/unit/layouts/profile.spec.ts'],
     },
     {
       pattern: /^server\/utils\/session\.ts$/,

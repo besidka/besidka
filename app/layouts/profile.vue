@@ -106,6 +106,7 @@ const isSigningOut = shallowRef<boolean>(false)
 
 const tabs = [
   { to: '/profile/settings', label: 'Account' },
+  { to: '/profile/security', label: 'Security' },
   { to: '/profile/keys', label: 'API Keys' },
 ]
 
