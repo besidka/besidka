@@ -435,7 +435,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Apply migrations to preview database
         uses: cloudflare/wrangler-action@v4
