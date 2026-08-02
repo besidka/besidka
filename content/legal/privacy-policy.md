@@ -27,7 +27,7 @@ Besidka does not process personal data on the scale that requires a data protect
 
 ## How Besidka works, in one paragraph
 
-Besidka is a free AI chat app. You bring your own API key from an AI provider (OpenAI or Google AI Studio), and you pay that provider directly for the usage. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
+Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI or Google AI Studio), and you pay that provider directly for the usage. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
 
 ## What I store
 
@@ -89,7 +89,7 @@ This is the most important section of this policy, so please read it.
 
 When you send a message, I send your prompt, the message history of that chat and any attachments to the AI provider whose API key you supplied. I send it **with your own API key**, on your instruction.
 
-Those providers are **independent controllers**, not my processors. I have no contract with them about your data. Your relationship is directly with them, under the terms of your own OpenAI or Google account. What they do with your content, how long they keep it and how you delete it is governed by their terms, not mine.
+Those providers are **independent controllers**, not my processors. I have no contract with them about your data. Your relationship is directly with them, under the terms of your own Anthropic, OpenAI or Google account. What they do with your content, how long they keep it and how you delete it is governed by their terms, not mine.
 
 ### If you use a free Google Gemini key
 
@@ -100,6 +100,10 @@ Most people using their own Google AI Studio key are on that free tier. If that 
 ### If you use an OpenAI key
 
 OpenAI states that it does not use data submitted through its API to train its models by default. It does retain logs for abuse monitoring, and those logs can contain your prompts, for **up to 30 days**.
+
+### If you use an Anthropic key
+
+Anthropic states that it does not train its models on content submitted through its API. It automatically deletes API inputs and outputs from its backend within **30 days** of receipt or generation, except content flagged for a Usage Policy violation, which it may retain longer for safety enforcement. There is no self-service option to delete this data sooner — deletion relies on that automatic 30-day window.
 
 ### I never train on your data
 
@@ -113,7 +117,7 @@ Whether the **provider** trains on your content is a matter between you and that
 | --- | --- | --- | --- |
 | Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
 | Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
-| OpenAI or Google AI Studio | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
+| Anthropic, OpenAI or Google AI Studio | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
 | Google FCM, Apple APNs, Mozilla autopush | The push endpoint your browser issued, plus the encrypted notification | Depends on your browser vendor | Necessary to deliver a push notification you asked for. |
 | Google or GitHub | Only if you use them to sign in. I request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
 | Search engines | A shared chat, and only if you turned on the separate indexing option for that share | Worldwide | Your consent. |
@@ -263,7 +267,7 @@ Open that link in the same browser you are signed in to. The link is tied to you
 Two honest limits:
 
 1. **Backups.** As described under [Backups](#backups), Cloudflare D1 keeps point-in-time backups for up to 30 days. Deleted data can persist there for that window before rolling off. Those backups exist only for disaster recovery.
-2. **Your AI provider.** I **cannot** erase anything from OpenAI or Google. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings.
+2. **Your AI provider.** I **cannot** erase anything from Anthropic, OpenAI or Google. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — Anthropic automatically deletes API data within 30 days, OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings.
 
 ### Complaining
 

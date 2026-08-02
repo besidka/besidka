@@ -29,7 +29,7 @@ By creating an account or using the service you accept these terms. If you do no
 
 Besidka is a chat interface to third-party AI models. I provide the interface, the storage for your chats and files, and the plumbing that talks to the model.
 
-**I do not provide the AI model.** You supply your own API key from an AI provider (currently OpenAI or Google AI Studio), and your prompts are sent to that provider using your key.
+**I do not provide the AI model.** You supply your own API key from an AI provider (currently Anthropic, OpenAI or Google AI Studio), and your prompts are sent to that provider using your key.
 
 ## There is no payment
 
