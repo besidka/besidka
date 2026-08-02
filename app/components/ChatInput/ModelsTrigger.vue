@@ -23,6 +23,10 @@
         v-if="getModel(toValue(userModel)).provider?.id === 'openai'"
         class="w-4 fill-base-content/40"
       />
+      <SvgoAnthropic
+        v-if="getModel(toValue(userModel)).provider?.id === 'anthropic'"
+        class="w-4 fill-base-content/40"
+      />
       <span class="block truncate text-left min-w-0">
         {{ getModelName(toValue(userModel)) }}
       </span>

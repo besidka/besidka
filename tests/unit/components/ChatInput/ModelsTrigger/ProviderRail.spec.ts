@@ -109,7 +109,12 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
   })
 
   it('renders brand marks for the known providers', async () => {
-    const wrapper = await mountRail()
+    const wrapper = await mountRail({
+      providers: [
+        ...providers,
+        { id: 'anthropic', name: 'Anthropic', models: [] },
+      ],
+    })
 
     expect(
       wrapper.get('[data-testid="models-picker-rail-openai"]').find('svg')
@@ -119,18 +124,22 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
       wrapper.get('[data-testid="models-picker-rail-google"]').find('svg')
         .exists(),
     ).toBe(true)
+    expect(
+      wrapper.get('[data-testid="models-picker-rail-anthropic"]').find('svg')
+        .exists(),
+    ).toBe(true)
   })
 
   it('falls back to the first two letters of an unknown provider', async () => {
     const wrapper = await mountRail({
-      providers: [{ id: 'anthropic', name: 'Anthropic', models: [] }],
+      providers: [{ id: 'mistral', name: 'Mistral', models: [] }],
     })
-    const anthropic = wrapper.get(
-      '[data-testid="models-picker-rail-anthropic"]',
+    const mistral = wrapper.get(
+      '[data-testid="models-picker-rail-mistral"]',
     )
 
-    expect(anthropic.text()).toBe('An')
-    expect(anthropic.get('span').classes()).toContain('uppercase')
-    expect(anthropic.find('svg').exists()).toBe(false)
+    expect(mistral.text()).toBe('Mi')
+    expect(mistral.get('span').classes()).toContain('uppercase')
+    expect(mistral.find('svg').exists()).toBe(false)
   })
 })

@@ -14,6 +14,11 @@
     v-if="providers.length"
     class="grid gap-4"
   >
+    <li v-if="isAnthropicEnabled">
+      <UiBubble>
+        <LazyProfileKeysAnthropic />
+      </UiBubble>
+    </li>
     <li v-if="isGoogleEnabled">
       <UiBubble>
         <LazyProfileKeysGoogle />
@@ -50,6 +55,12 @@ const providers = computed<Providers>(() => {
 const isOpenAiEnabled = computed<boolean>(() => {
   return providers.value.some((provider: Provider) => {
     return provider.id === 'openai'
+  })
+})
+
+const isAnthropicEnabled = computed<boolean>(() => {
+  return providers.value.some((provider: Provider) => {
+    return provider.id === 'anthropic'
   })
 })
 
