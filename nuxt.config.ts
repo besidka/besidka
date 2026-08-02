@@ -56,6 +56,9 @@ export default defineNuxtConfig({
     experimental: {
       asyncContext: true,
     },
+    moduleSideEffects: [
+      'reflect-metadata/',
+    ],
     cloudflare: {
       deployConfig: false,
     },
