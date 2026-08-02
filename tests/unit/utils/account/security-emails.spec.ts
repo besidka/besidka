@@ -96,6 +96,34 @@ describe('security-emails', () => {
     }))
   })
 
+  it('sends the passkey-added email to the account address', async () => {
+    const { sendPasskeyAddedEmail } = await importSecurityEmails()
+
+    await sendPasskeyAddedEmail({
+      user: { email: 'user@example.com' },
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'user@example.com',
+      subject: 'New passkey added',
+    }))
+  })
+
+  it('sends the passkey-removed email to the account address', async () => {
+    const { sendPasskeyRemovedEmail } = await importSecurityEmails()
+
+    await sendPasskeyRemovedEmail({
+      user: { email: 'user@example.com' },
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'user@example.com',
+      subject: 'Passkey removed',
+    }))
+  })
+
   it('falls back to the raw provider id when it has no display label',
     async () => {
       const { sendSignInMethodDisconnectedEmail }

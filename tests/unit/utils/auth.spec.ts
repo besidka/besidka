@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   sendSignInMethodDisconnectedEmail: vi.fn(async () => undefined),
   sendTwoFactorEnabledEmail: vi.fn(async () => undefined),
   sendTwoFactorDisabledEmail: vi.fn(async () => undefined),
+  sendPasskeyAddedEmail: vi.fn(async () => undefined),
+  sendPasskeyRemovedEmail: vi.fn(async () => undefined),
 }))
 
 const dbMocks = vi.hoisted(() => ({
@@ -432,6 +434,70 @@ describe('server/utils/auth.ts security notification wiring', () => {
         expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
       })
 
+    it(
+      'sends the passkey-added email for /passkey/verify-registration',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/passkey/verify-registration',
+          user,
+        }) as any)
+
+        expect(mocks.sendPasskeyAddedEmail).toHaveBeenCalledWith({ user })
+        expect(mocks.sendPasskeyRemovedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'skips notifying for /passkey/verify-registration on an API error',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+
+        await after(createHookCtx({
+          path: '/passkey/verify-registration',
+          returned: { name: 'APIError' },
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)
+
+        expect(mocks.sendPasskeyAddedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it('sends the passkey-removed email for /passkey/delete-passkey',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/passkey/delete-passkey',
+          user,
+        }) as any)
+
+        expect(mocks.sendPasskeyRemovedEmail).toHaveBeenCalledWith({ user })
+        expect(mocks.sendPasskeyAddedEmail).not.toHaveBeenCalled()
+      })
+
+    it(
+      'skips notifying for /passkey/delete-passkey on an API error',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+
+        await after(createHookCtx({
+          path: '/passkey/delete-passkey',
+          returned: { name: 'APIError' },
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)
+
+        expect(mocks.sendPasskeyRemovedEmail).not.toHaveBeenCalled()
+      },
+    )
+
     it('ignores every other path', async () => {
       const options = await importAuthOptions()
       const after = options.hooks!.after!
@@ -445,6 +511,8 @@ describe('server/utils/auth.ts security notification wiring', () => {
       expect(mocks.sendSignInMethodDisconnectedEmail).not.toHaveBeenCalled()
       expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
       expect(mocks.sendTwoFactorDisabledEmail).not.toHaveBeenCalled()
+      expect(mocks.sendPasskeyAddedEmail).not.toHaveBeenCalled()
+      expect(mocks.sendPasskeyRemovedEmail).not.toHaveBeenCalled()
     })
 
     it(

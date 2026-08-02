@@ -28,6 +28,17 @@ export function getAllowedHosts(baseUrl: string): string[] {
   return [host, `*-${subdomain}.${rest}`]
 }
 
+/**
+ * WebAuthn requires the relying-party ID to equal the origin's effective
+ * domain, or be a registrable-domain suffix of it that is not itself a
+ * public suffix (browsers reject a bare public suffix as an RP ID, since it
+ * would let unrelated tenants of a shared domain share a WebAuthn scope).
+ * Stripping only a leading `www.` satisfies both constraints for every host
+ * this app serves: apex and `www` intentionally share credentials in
+ * production, while every other host — including multi-label public
+ * suffixes such as `*.workers.dev` — keeps its full hostname, which trivially
+ * equals the effective domain and can never be a bare public suffix.
+ */
 export function getRelyingPartyId(baseUrl: string): string {
   if (!baseUrl) {
     return 'localhost'
@@ -39,7 +50,9 @@ export function getRelyingPartyId(baseUrl: string): string {
     return 'localhost'
   }
 
-  const parts = hostname.split('.')
+  if (hostname.startsWith('www.')) {
+    return hostname.slice('www.'.length)
+  }
 
-  return parts.slice(-2).join('.')
+  return hostname
 }

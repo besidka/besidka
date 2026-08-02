@@ -142,3 +142,37 @@ export async function sendTwoFactorDisabledEmail({
     logger,
   })
 }
+
+export async function sendPasskeyAddedEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'New passkey added',
+    html: 'A new passkey was just added to your Besidka account. If this '
+      + 'was not you, remove it from your account security settings and '
+      + 'change your password immediately.',
+    logger,
+  })
+}
+
+export async function sendPasskeyRemovedEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'Passkey removed',
+    html: 'A passkey was just removed from your Besidka account. If this '
+      + 'was not you, review your account security settings and change '
+      + 'your password immediately.',
+    logger,
+  })
+}

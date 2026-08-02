@@ -62,8 +62,21 @@ describe('getRelyingPartyId', () => {
     expect(getRelyingPartyId('https://www.besidka.com')).toBe('besidka.com')
   })
 
-  it('returns the bare apex domain for an arbitrary subdomain', () => {
+  it('returns the full hostname for an arbitrary subdomain', () => {
     expect(getRelyingPartyId('https://pr-123.besidka.com'))
-      .toBe('besidka.com')
+      .toBe('pr-123.besidka.com')
   })
+
+  it(
+    'returns the full hostname for a multi-label public-suffix host '
+    + 'instead of collapsing to the bare public suffix',
+    () => {
+      const rpId = getRelyingPartyId(
+        'https://besidka-preview.chernenko.workers.dev',
+      )
+
+      expect(rpId).toBe('besidka-preview.chernenko.workers.dev')
+      expect(rpId).not.toBe('workers.dev')
+    },
+  )
 })

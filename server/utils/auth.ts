@@ -12,6 +12,8 @@ import { passkey } from '@better-auth/passkey'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
 import {
+  sendPasskeyAddedEmail,
+  sendPasskeyRemovedEmail,
   sendPasswordChangedEmail,
   sendSignInMethodConnectedEmail,
   sendSignInMethodDisconnectedEmail,
@@ -331,6 +333,18 @@ function createAuth() {
 
           if (ctx.path === '/two-factor/disable') {
             await sendTwoFactorDisabledEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/passkey/verify-registration') {
+            await sendPasskeyAddedEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/passkey/delete-passkey') {
+            await sendPasskeyRemovedEmail({ user })
           }
         } catch (exception) {
           resolveServerLogger().set({
