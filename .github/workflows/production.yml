@@ -35,7 +35,6 @@ jobs:
     outputs:
       pr-number: ${{ steps.pr.outputs.number }}
       is-direct: ${{ steps.direct-push.outputs.is-direct }}
-      drizzle-changed: ${{ steps.detect-drizzle.outputs.changed }}
     permissions:
       contents: read
 
@@ -70,18 +69,6 @@ jobs:
           else
             echo "is-direct=false" >> $GITHUB_OUTPUT
             echo "ℹ️ Merge commit from PR #${{ steps.pr.outputs.number }}"
-          fi
-
-      - name: Detect drizzle changes
-        id: detect-drizzle
-        run: |
-          CHANGED_FILES=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")
-          if echo "$CHANGED_FILES" | grep -q '^\.drizzle/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "✅ .drizzle changes detected"
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No .drizzle changes detected"
           fi
 
   build-production:
@@ -267,7 +254,6 @@ jobs:
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Apply migrations to production database
-        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -278,7 +264,6 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote --env production
 
       - name: Apply consent migrations to production database
-        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -450,7 +435,6 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Apply migrations to preview database
-        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -461,7 +445,6 @@ jobs:
           postCommands: yes | pnpm exec wrangler d1 migrations apply DB --remote
 
       - name: Apply consent migrations to preview database
-        if: needs.resolve-preview-context.outputs.drizzle-changed == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
