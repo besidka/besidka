@@ -27,3 +27,19 @@ export function getAllowedHosts(baseUrl: string): string[] {
 
   return [host, `*-${subdomain}.${rest}`]
 }
+
+export function getRelyingPartyId(baseUrl: string): string {
+  if (!baseUrl) {
+    return 'localhost'
+  }
+
+  const hostname = new URL(baseUrl).hostname
+
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'localhost'
+  }
+
+  const parts = hostname.split('.')
+
+  return parts.slice(-2).join('.')
+}

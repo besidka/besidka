@@ -8,6 +8,7 @@ import {
   twoFactor,
 } from 'better-auth/plugins'
 import { createAuthMiddleware } from 'better-auth/api'
+import { passkey } from '@better-auth/passkey'
 import * as schema from '../server/db/schema'
 import {
   authRateLimitDefaults,
@@ -33,6 +34,14 @@ const plugins: BetterAuthPlugin[] = [
       amount: 10,
       length: 10,
       storeBackupCodes: 'encrypted',
+    },
+  }),
+  passkey({
+    rpID: 'localhost',
+    rpName: 'Besidka',
+    authenticatorSelection: {
+      residentKey: 'preferred',
+      userVerification: 'preferred',
     },
   }),
 ]

@@ -17,7 +17,7 @@
       heading="Passkeys"
       description="Sign in without a password using your device."
     >
-      <p class="badge badge-neutral">Coming soon</p>
+      <ProfileSecurityPasskeys />
     </ProfileSecuritySectionCard>
     <ProfileSecuritySectionCard
       heading="Active sessions"

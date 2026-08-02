@@ -8,6 +8,7 @@ import {
   twoFactor,
 } from 'better-auth/plugins'
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { passkey } from '@better-auth/passkey'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
 import {
@@ -17,7 +18,7 @@ import {
   sendTwoFactorDisabledEmail,
   sendTwoFactorEnabledEmail,
 } from './account/security-emails'
-import { getAllowedHosts } from './auth-hosts'
+import { getAllowedHosts, getRelyingPartyId } from './auth-hosts'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -54,6 +55,14 @@ function createAuth() {
         amount: 10,
         length: 10,
         storeBackupCodes: 'encrypted',
+      },
+    }),
+    passkey({
+      rpID: getRelyingPartyId(config.public.baseUrl),
+      rpName: 'Besidka',
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'preferred',
       },
     }),
   ]

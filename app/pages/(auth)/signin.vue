@@ -45,6 +45,20 @@
           </UiButton>
         </AuthLastUsedContainer>
       </li>
+      <li>
+        <UiButton
+          text="Sign in with a passkey"
+          block
+          mode="primary"
+          :disabled="pending"
+          data-testid="signin-passkey"
+          @click="signInWithPasskey"
+        >
+          <template #icon>
+            <Icon name="lucide:fingerprint" size="20" />
+          </template>
+        </UiButton>
+      </li>
     </ul>
     <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
     <div class="divider max-sm:my-2">or continue with</div>
@@ -55,7 +69,7 @@
       <UiFormFieldset>
         <UiFormInput
           v-model="data.email"
-          autocomplete="email"
+          autocomplete="email webauthn"
           type="email"
           placeholder="example@example.com"
           :rules="[Validation.required(), Validation.email()]"
@@ -210,11 +224,49 @@ const displayEmbeddedBrowserWarning = computed<boolean>(() => {
   return isSocialOAuthDisabled.value
 })
 
+onMounted(async () => {
+  try {
+    const supportsAutofill = await browserSupportsWebAuthnAutofill()
+
+    if (!supportsAutofill) {
+      return
+    }
+
+    await signIn.passkey({ autoFill: true })
+  } catch {
+    return
+  }
+})
+
 async function socialSignIn(provider: 'google' | 'github') {
   pending.value = true
 
   try {
     await signInWithSocialOAuth(provider, '/chats/new')
+  } finally {
+    pending.value = false
+  }
+}
+
+async function signInWithPasskey() {
+  pending.value = true
+
+  try {
+    const { error } = await signIn.passkey()
+
+    if (error) {
+      const errorCode = 'code' in error ? error.code : undefined
+
+      if (isPasskeyCeremonyCancelled(errorCode)) {
+        return
+      }
+
+      useErrorMessage(error.message || 'Failed to sign in with passkey')
+
+      return
+    }
+
+    useSuccessMessage('Successfully signed in')
   } finally {
     pending.value = false
   }

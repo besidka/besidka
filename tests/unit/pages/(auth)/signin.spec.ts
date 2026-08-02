@@ -1,11 +1,15 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../../app/composables/messages'
 import SigninPage from '../../../../app/pages/(auth)/signin.vue'
 
 const mocks = vi.hoisted(() => ({
   signInEmail: vi.fn(async () => ({
     data: { redirect: false, token: 'session-token', user: {} },
+    error: null,
+  })),
+  signInPasskey: vi.fn(async () => ({
+    data: { session: {}, user: {} },
     error: null,
   })),
   navigateTo: vi.fn(async () => undefined),
@@ -20,7 +24,7 @@ const errorCodes = {
 
 mockNuxtImport('useAuth', () => {
   return () => ({
-    signIn: { email: mocks.signInEmail },
+    signIn: { email: mocks.signInEmail, passkey: mocks.signInPasskey },
     errorCodes,
     lastLoginMethod: { value: null },
   })
@@ -64,11 +68,20 @@ describe('signin page', () => {
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
     mocks.signInEmail.mockClear()
+    mocks.signInPasskey.mockClear()
     mocks.navigateTo.mockClear()
     mocks.signInEmail.mockResolvedValue({
       data: { redirect: false, token: 'session-token', user: {} },
       error: null,
     })
+    mocks.signInPasskey.mockResolvedValue({
+      data: { session: {}, user: {} },
+      error: null,
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('shows the success message and does not redirect to /2fa on a '
@@ -134,4 +147,108 @@ describe('signin page', () => {
     expect(useErrorMessage).toHaveBeenCalledWith('Invalid email or password')
     expect(mocks.navigateTo).not.toHaveBeenCalled()
   })
+
+  it('sets the webauthn-enabled autocomplete value on the email field',
+    async () => {
+      const wrapper = await mountSuspended(SigninPage, {
+        global: { stubs: stubs() },
+      })
+
+      expect(emailInput(wrapper).attributes('autocomplete'))
+        .toBe('email webauthn')
+    })
+
+  it('attempts passkey autofill on mount when the browser reports '
+    + 'conditional-mediation support', async () => {
+    vi.stubGlobal('PublicKeyCredential', {
+      isConditionalMediationAvailable: vi.fn(async () => true),
+    })
+
+    await mountSuspended(SigninPage, { global: { stubs: stubs() } })
+    await flushPromises()
+
+    expect(mocks.signInPasskey).toHaveBeenCalledWith({ autoFill: true })
+  })
+
+  it('does not attempt passkey autofill when the browser has no '
+    + 'WebAuthn support', async () => {
+    await mountSuspended(SigninPage, { global: { stubs: stubs() } })
+    await flushPromises()
+
+    expect(mocks.signInPasskey).not.toHaveBeenCalled()
+  })
+
+  it('never surfaces an error when the autofill attempt rejects',
+    async () => {
+      vi.stubGlobal('PublicKeyCredential', {
+        isConditionalMediationAvailable: vi.fn(async () => true),
+      })
+      mocks.signInPasskey.mockRejectedValueOnce(new Error('aborted'))
+
+      const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+      await mountSuspended(SigninPage, { global: { stubs: stubs() } })
+      await flushPromises()
+
+      expect(useErrorMessage).not.toHaveBeenCalled()
+    })
+
+  it('renders a visible passkey sign-in button that signs in on click',
+    async () => {
+      const useSuccessMessage
+        = vi.spyOn(messagesComposable, 'useSuccessMessage')
+
+      const wrapper = await mountSuspended(SigninPage, {
+        global: { stubs: stubs() },
+      })
+
+      await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
+      await flushPromises()
+
+      expect(mocks.signInPasskey).toHaveBeenCalledWith()
+      expect(useSuccessMessage).toHaveBeenCalledWith('Successfully signed in')
+    })
+
+  it('does not show an error toast when the user cancels the passkey '
+    + 'prompt from the visible button', async () => {
+    mocks.signInPasskey.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY',
+        message: 'The operation either timed out or was not allowed.',
+      },
+    })
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs() },
+    })
+
+    await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
+    await flushPromises()
+
+    expect(useErrorMessage).not.toHaveBeenCalled()
+  })
+
+  it('shows an error message for a genuine passkey sign-in failure',
+    async () => {
+      mocks.signInPasskey.mockResolvedValue({
+        data: null,
+        error: { message: 'No passkey found for this device' },
+      })
+
+      const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+      const wrapper = await mountSuspended(SigninPage, {
+        global: { stubs: stubs() },
+      })
+
+      await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
+      await flushPromises()
+
+      expect(useErrorMessage).toHaveBeenCalledWith(
+        'No passkey found for this device',
+      )
+    })
 })

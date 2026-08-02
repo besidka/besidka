@@ -11,6 +11,7 @@ import {
   lastLoginMethodClient,
   twoFactorClient,
 } from 'better-auth/client/plugins'
+import { passkeyClient } from '@better-auth/passkey/client'
 import { defu } from 'defu'
 
 interface RuntimeAuthConfig {
@@ -32,7 +33,11 @@ export function useAuth() {
     fetchOptions: {
       headers,
     },
-    plugins: [lastLoginMethodClient(), twoFactorClient()],
+    plugins: [
+      lastLoginMethodClient(),
+      twoFactorClient(),
+      passkeyClient(),
+    ],
   })
 
   const options = defu(

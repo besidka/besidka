@@ -39,6 +39,9 @@ function stubs() {
     ProfileSecurityTwoFactor: {
       template: '<div data-testid="two-factor-stub" />',
     },
+    ProfileSecurityPasskeys: {
+      template: '<div data-testid="passkeys-stub" />',
+    },
   }
 }
 
