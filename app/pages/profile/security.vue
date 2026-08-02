@@ -11,7 +11,7 @@
       heading="Two-factor authentication"
       description="Add a second sign-in step to protect your account."
     >
-      <p class="badge badge-neutral">Coming soon</p>
+      <ProfileSecurityTwoFactor />
     </ProfileSecuritySectionCard>
     <ProfileSecuritySectionCard
       heading="Passkeys"

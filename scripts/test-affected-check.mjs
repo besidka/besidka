@@ -216,6 +216,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/password.spec.ts',
   ]
 
+  const twoFactorTests = [
+    'tests/unit/components/ui/Form/Otp.spec.ts',
+    'tests/unit/pages/(auth)/2fa.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/components/Profile/Security/TwoFactor.spec.ts',
+    'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
+    'tests/unit/pages/profile/security.spec.ts',
+    'tests/unit/utils/qr-code.spec.ts',
+  ]
+
   const landingTests = [
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
@@ -669,6 +679,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/pages\/profile\/(email|password)\.vue$/,
       tests: accountEmailPasswordTests,
+    },
+    {
+      pattern:
+        /^(server\/db\/schemas\/two-factor\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/qr-code\.ts)$/,
+      tests: twoFactorTests,
     },
     {
       pattern: /^app\/layouts\/profile\.vue$/,

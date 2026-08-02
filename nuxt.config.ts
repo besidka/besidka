@@ -184,8 +184,10 @@ export default defineNuxtConfig({
   },
   // /signin, /signup and /reset-password are crawler-reachable and rely on a
   // useSeoMeta `noindex` instead — a Disallow-ed URL is never fetched, so its
-  // noindex is never read. /new-password stays disallowed: nothing crawlable
-  // links to it, and its URLs carry tokens. See docs/seo.md.
+  // noindex is never read. /new-password and /2fa stay disallowed: nothing
+  // crawlable links to either — /2fa is only reached via a client-side
+  // redirect after a password sign-in that requires a second factor. See
+  // docs/seo.md.
   robots: {
     disallow: [
       '/api/',
@@ -193,6 +195,7 @@ export default defineNuxtConfig({
       '/files/',
       '/profile/',
       '/new-password',
+      '/2fa',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/',
@@ -208,6 +211,7 @@ export default defineNuxtConfig({
       '/signup',
       '/new-password',
       '/reset-password',
+      '/2fa',
       '/_studio',
       '/__nuxt_studio',
       '/__nuxt_content/**',

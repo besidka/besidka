@@ -1,7 +1,12 @@
 import type { BetterAuthPlugin } from 'better-auth'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { captcha, lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
+import {
+  captcha,
+  lastLoginMethod,
+  oAuthProxy,
+  twoFactor,
+} from 'better-auth/plugins'
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
@@ -37,6 +42,18 @@ function createAuth() {
   const plugins: BetterAuthPlugin[] = [
     oAuthProxy({ productionURL: config.public.baseUrl }),
     lastLoginMethod({ storeInDatabase: true }),
+    twoFactor({
+      issuer: 'Besidka',
+      totpOptions: {
+        digits: 6,
+        period: 30,
+      },
+      backupCodeOptions: {
+        amount: 10,
+        length: 10,
+        storeBackupCodes: 'encrypted',
+      },
+    }),
   ]
 
   if (captchaOptions) {

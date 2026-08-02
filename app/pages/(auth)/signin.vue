@@ -225,16 +225,13 @@ async function onSubmit() {
 
   const token = await turnstile.value?.execute()
 
-  const { error } = await signIn.email({
+  const { data: result, error } = await signIn.email({
     email: data.email,
     password: data.password,
     rememberMe: data.rememberMe,
     callbackURL: '/chats/new',
     fetchOptions: {
       headers: token ? { 'x-captcha-response': token } : {},
-      onSuccess() {
-        useSuccessMessage('Successfully signed in')
-      },
     },
   })
 
@@ -246,8 +243,19 @@ async function onSubmit() {
     //   useErrorMessage(error.message)
     // }
     turnstile.value?.reset()
+    pending.value = false
+
+    return
   }
 
+  if (result && 'twoFactorRedirect' in result && result.twoFactorRedirect) {
+    pending.value = false
+    await navigateTo('/2fa')
+
+    return
+  }
+
+  useSuccessMessage('Successfully signed in')
   pending.value = false
 }
 </script>
