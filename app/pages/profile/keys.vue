@@ -1,5 +1,5 @@
 <template>
-  <div class="mb-8">
+  <div class="mb-8 text-center">
     <h1 class="text-4xl font-bold">API Keys</h1>
     <h2 class="mt-2">Bringing your API keys to use LLMs from different providers</h2>
   </div>

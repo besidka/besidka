@@ -46,7 +46,7 @@
             </UiButton>
           </div>
         </div>
-        <div class="grid gap-8 md:grid-cols-3">
+        <div class="grid gap-8">
           <div
             class="flex flex-col items-center gap-3 text-center"
           >
@@ -71,13 +71,13 @@
             </div>
             <div class="grid gap-1">
               <p class="text-lg font-bold">{{ user?.name }}</p>
-              <p class="text-sm break-all text-base-content/70">{{ user?.email }}</p>
+              <p class="badge badge-primary">{{ user?.email }}</p>
             </div>
           </div>
-          <div class="md:col-span-2">
+          <div>
             <nav
               aria-label="Account sections"
-              class="tabs tabs-box tabs-sm mb-6 w-full"
+              class="tabs tabs-box tabs-sm mb-12 w-full"
             >
               <NuxtLink
                 v-for="tab in tabs"

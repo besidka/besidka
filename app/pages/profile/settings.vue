@@ -1,5 +1,5 @@
 <template>
-  <h1 class="mb-4 text-2xl font-bold">Account</h1>
+  <h1 class="mb-8 text-4xl font-bold text-center">Account</h1>
   <div class="rounded-box border border-error bg-base-100 p-6">
     <h2 class="text-lg font-bold text-error">Danger Zone</h2>
     <p class="mt-2 text-sm text-base-content/70">
