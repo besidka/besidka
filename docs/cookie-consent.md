@@ -681,8 +681,9 @@ main `DB`, mirroring the existing migration pipeline:
 - **Merge / push to `main`** → `production.yml` (`build-production`) applies
   `CONSENT_DB --remote --env production`, gated on any change under
   `.drizzle/`, regenerating first via `pnpm run db:consents:generate`.
-- **Direct push to `main` without a PR** → `production.yml`
-  (`deploy-preview-direct-push`) applies `CONSENT_DB --remote` to preview.
+- **Direct push to `main`, or a PR merge with no preview alias found** →
+  `production.yml` (`deploy-preview-fallback`) applies `CONSENT_DB --remote`
+  to preview.
 
 `wrangler d1 migrations apply` is idempotent, so these steps only run
 migrations not yet recorded in `CONSENT_DB`'s `d1_migrations` table. See

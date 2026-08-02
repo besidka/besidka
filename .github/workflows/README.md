@@ -40,9 +40,13 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      │   ├─ Build application                                    │
 │      │   └─ Deploy to production                                 │
 │      │                                                           │
-│      └─ update-preview job (parallel)                            │
-│          ├─ Get merged PR number                                 │
-│          └─ Promote PR version to preview                        │
+│      ├─ update-preview job (parallel)                            │
+│      │   ├─ Get merged PR number                                 │
+│      │   └─ Promote PR version to preview (if alias found)       │
+│      │                                                           │
+│      └─ deploy-preview-fallback job (after update-preview)        │
+│          Direct push OR no PR-alias version found: build+deploy  │
+│          the fallback build fresh instead of silently skipping   │
 │                                                                  │
 │  Preview URLs:                                                   │
 │    https://{hash}-besidka-preview.chernenko.workers.dev          │
@@ -97,21 +101,44 @@ Triggers when a maintainer comments `/deploy-preview` on a fork PR.
 
 Triggers on push to `main`. Two parallel jobs:
 
-**build-production**: Full test suite, build, deploy to production. When
-`.drizzle/` changed, applies remote migrations to both production databases
-(`DB`, then `CONSENT_DB`) before deploy.
+**build-production**: Full test suite, build, deploy to production. Applies
+remote migrations to both production databases (`DB`, then `CONSENT_DB`)
+before deploy, unconditionally on every run (see below).
 
-**update-preview**: Finds the PR version by alias and promotes it to the
-preview environment. For direct pushes to `main` (no PR), the
-`deploy-preview-direct-push` job runs a plain preview deploy and, when
-`.drizzle/` changed, applies remote migrations to both preview databases
-(`DB`, then `CONSENT_DB`). If a PR exists but no version alias is found, it
-skips promotion gracefully.
+**update-preview**: Finds the PR version by alias (`pr-{number}`) and, when
+found, promotes it to the preview environment — reusing the exact build that
+was already deployed and reviewed on the PR, instead of rebuilding.
 
-Both databases are gated on the same `drizzle-changed` detection (any change
-under `.drizzle/`). `wrangler d1 migrations apply` is idempotent — it only
-runs migrations not yet recorded in each database's `d1_migrations` table, so
-applying both when only one changed is a harmless no-op.
+**deploy-preview-fallback**: Runs after `update-preview` when either (a) the
+push was direct to `main` with no associated PR, or (b) a PR was found but no
+`pr-{number}` alias exists for it. Case (b) is not just a theoretical edge
+case: `resolve-preview-context` resolves `github.sha` — the HEAD commit of
+the push — to find "the" merged PR. When several squash-merge commits land
+on `main` in one push (e.g. a stack of PRs merged back-to-back), only the
+*last* commit's PR is ever consulted, even though earlier commits' PRs may
+have their own valid, unrelated aliases. That last PR can easily have no
+alias of its own: restack churn on a stacked branch can get its preview
+build cancelled outright, or get a successful build's deploy cancelled
+mid-upload by `preview-deploy.yml`'s own concurrency group when a later
+restack push supersedes it before the upload finishes. Either way, this job
+builds+deploys the `preview-build` artifact from `build-production` fresh —
+the same artifact already validated by the full test suite for this exact
+`main` HEAD — rather than silently leaving `besidka-preview` on stale code.
+It regenerates and applies remote migrations to both preview databases
+(`DB`, then `CONSENT_DB`) unconditionally, same as `build-production`. This
+job installs dependencies with a plain `pnpm install --frozen-lockfile` (not
+`--ignore-scripts`) specifically so `postinstall`'s `nuxt prepare` runs and
+`.nuxt/tsconfig.json` exists — `drizzle-kit generate` loads the root
+`tsconfig.json`, which `extends` that file, and hard-fails without it.
+
+Both `build-production` and `deploy-preview-fallback` apply migrations to
+`DB` and `CONSENT_DB` unconditionally on every run — an earlier git-diff-based
+`drizzle-changed` gate was removed because a diff of only the current push's
+before/after SHAs could permanently miss a migration if an unrelated prior
+run failed before reaching the migration step. `wrangler d1 migrations apply`
+is idempotent — it only runs migrations not yet recorded in each database's
+`d1_migrations` table, so applying both every time (even when neither
+changed) is a harmless no-op.
 
 ### `cleanup-runs.yml` - Workflow Run Cleanup
 
@@ -297,18 +324,22 @@ migrated with a separate step so a failure is attributable to one database:
 |----------------|---------|---------|-----------------|--------|
 | `preview-deploy.yml` → `deploy` | Same-repo PR build success | `wrangler d1 migrations apply DB --remote` | `wrangler d1 migrations apply CONSENT_DB --remote` | Downloaded `preview-drizzle` artifact (committed migrations) |
 | `production.yml` → `build-production` | Merge / push to `main` | `… apply DB --remote --env production` | `… apply CONSENT_DB --remote --env production` | Regenerated in-step via `preCommands` |
-| `production.yml` → `deploy-preview-direct-push` | Direct push to `main` (no PR) | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
+| `production.yml` → `deploy-preview-fallback` | Direct push, or PR merge with no preview alias found | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
 
 **Regeneration source.** Preview-deploy applies the exact migration files from
 the uploaded `.drizzle` artifact (no regeneration). The production jobs
 regenerate before applying via `preCommands`: `pnpm run db:generate` for `DB`
 and `pnpm run db:consents:generate` for `CONSENT_DB`.
 
-**Gating.** Both DB and CONSENT_DB apply steps in `production.yml` share the
-`drizzle-changed` output (true when any file under `.drizzle/` changed in the
-push). Because `wrangler d1 migrations apply` only runs migrations missing
-from each database's `d1_migrations` tracking table, running both steps when
-only one database changed is an idempotent no-op.
+**Gating.** Both DB and CONSENT_DB apply steps in `production.yml` run
+unconditionally on every push, in both `build-production` and
+`deploy-preview-fallback` — there is no `.drizzle/`-change gate. An earlier
+git-diff-based gate (comparing only the current push's before/after SHAs)
+was removed because it could permanently miss a migration if an unrelated
+prior run failed before reaching the migration step. Because
+`wrangler d1 migrations apply` only runs migrations missing from each
+database's `d1_migrations` tracking table, running both steps on every push
+regardless of what changed is an idempotent no-op.
 
 **Local commands** (mirror the CI steps; run these yourself for remote DBs —
 never let CI touch a remote DB you have not migrated locally first):
