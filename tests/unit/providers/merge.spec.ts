@@ -126,6 +126,31 @@ describe('mergeModelMetadata', () => {
     expect(model.description).toBe('Fetched description')
   })
 
+  it('keeps an explicit curated name over a distinct fetched name', () => {
+    const model = mergeModelMetadata(
+      {
+        ...chatModel,
+        name: 'Claude Haiku 4.5',
+      },
+      {
+        ...snapshotEntry,
+        name: 'Claude Haiku 4.5 (latest)',
+      },
+    )
+
+    expect(model.name).toBe('Claude Haiku 4.5')
+    expect(model.description).toBe('Fetched description')
+  })
+
+  it('falls back to the fetched name when curated sets none', () => {
+    const model = mergeModelMetadata(chatModel, {
+      ...snapshotEntry,
+      name: 'Fetched Only',
+    })
+
+    expect(model.name).toBe('Fetched Only')
+  })
+
   it('keeps the curated per-image price display', () => {
     const model = mergeModelMetadata(
       {
@@ -368,6 +393,14 @@ describe('merged catalog', () => {
         expect(model.priceTier).toMatch(/^\$+\+?$/)
         expect(model.modalities.input.length).toBeGreaterThan(0)
         expect(model.modalities.output.length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('never displays a models.dev alias-tracking suffix like "(latest)"', () => {
+    for (const provider of providers) {
+      for (const model of provider.models) {
+        expect(model.name).not.toMatch(/\(latest\)/i)
       }
     }
   })

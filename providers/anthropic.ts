@@ -28,6 +28,7 @@ export default {
     },
     {
       id: 'claude-haiku-4-5',
+      name: 'Claude Haiku 4.5',
       price: {
         tokens: 1_000_000,
       },

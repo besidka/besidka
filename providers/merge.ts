@@ -126,15 +126,6 @@ export function formatPrice(amount: number, tiered?: boolean): string {
   return tiered ? `from $${formatted}` : `$${formatted}`
 }
 
-/**
- * models.dev falls back to the bare model id when a provider publishes no
- * marketing name (`gpt-image-2`). Such an entry is worse than the curated
- * name, so it never wins the merge.
- */
-function isPlaceholderName(name: string, modelId: string): boolean {
-  return name.toLowerCase() === modelId.toLowerCase()
-}
-
 function resolvePriceTier(
   curated: CuratedModel,
   snapshot: ModelSnapshotEntry | undefined,
@@ -253,7 +244,10 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
  * for research-agent models, whose name, description and price deliberately
  * encode per-task billing that no per-token figure can express. Everything
  * objective — specs, modalities, release date, status, per-token cost —
- * comes from the snapshot.
+ * comes from the snapshot, unless a curated `name` is explicitly set, which
+ * always wins: it means models.dev's name is worse than the curated one
+ * (a placeholder equal to the bare id, a stale alias suffix like
+ * `(latest)`), not that the model itself is curated content.
  * A model with no snapshot entry is fully curated by necessity; see
  * `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs`.
  */
@@ -266,12 +260,10 @@ export function mergeModelMetadata(
   }
 
   const keepCuratedPrice = !!curated.research
-  const keepCuratedName = !!curated.research
-    || isPlaceholderName(snapshot.name, curated.id)
 
   return {
     id: curated.id,
-    name: keepCuratedName ? curated.name ?? snapshot.name : snapshot.name,
+    name: curated.name ?? snapshot.name,
     description: curated.research
       ? curated.description ?? snapshot.description
       : snapshot.description,
