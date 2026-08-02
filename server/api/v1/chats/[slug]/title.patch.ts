@@ -115,6 +115,17 @@ export default defineEventHandler(async (event) => {
         title = await generateChatTitle(initialMessages)
         break
       }
+      case 'anthropic': {
+        const { generateChatTitle } = await useAnthropic(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
     }
   }
 

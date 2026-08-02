@@ -1,4 +1,73 @@
 {
+  "claude-opus-5": {
+    "name": "Claude Opus 5",
+    "description": "Strongest Claude Opus model for coding, agents, and professional work",
+    "releaseDate": "2026-07-24",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-sonnet-5": {
+    "name": "Claude Sonnet 5",
+    "description": "Everyday Claude agent model for coding, planning, browsing, and general work",
+    "releaseDate": "2026-06-29",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 10
+    }
+  },
+  "claude-haiku-4-5": {
+    "name": "Claude Haiku 4.5 (latest)",
+    "description": "Fast Claude lane for lightweight agents, office tasks, and responsive chat",
+    "releaseDate": "2025-10-15",
+    "limit": {
+      "context": 200000,
+      "output": 64000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1,
+      "output": 5
+    }
+  },
   "deep-research-max-preview-04-2026": {
     "name": "Deep Research Max Preview (Apr-21-2026)",
     "description": "Maximum-comprehensiveness agentic researcher for multi-step investigation, synthesis, and cited reports",

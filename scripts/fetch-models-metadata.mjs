@@ -6,8 +6,8 @@
  * date, context and output limits, modalities and per-million-token cost.
  * The curated
  * half — which tools, reasoning, research and image-generation capabilities
- * a model is offered with — stays hand-written in providers/google.ts and
- * providers/openai.ts and is never touched here.
+ * a model is offered with — stays hand-written in providers/anthropic.ts,
+ * providers/google.ts and providers/openai.ts and is never touched here.
  *
  * The join only ever looks curated ids UP in models.dev; it never iterates
  * the remote catalog outward, so embedding, video, music, TTS and realtime
@@ -35,6 +35,7 @@ import {
   formatDeprecatedCuratedModelsWarning,
   formatUncuratedModelsReport,
 } from './audit-curated-models.mjs'
+import anthropic from '../providers/anthropic.ts'
 import google from '../providers/google.ts'
 import openai from '../providers/openai.ts'
 
@@ -51,7 +52,7 @@ const EXEMPT_IDS = ['o3-deep-research', 'o4-mini-deep-research']
 
 const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']
 
-const curatedProviders = [google, openai]
+const curatedProviders = [anthropic, google, openai]
 
 const catalog = await fetchCatalog()
 const snapshot = {}
