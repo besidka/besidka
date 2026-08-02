@@ -70,9 +70,18 @@ export async function useAnthropic(
 
       result.tools['web_search_preview'] = anthropic.tools.webSearch_20250305({})
 
-      result.toolChoice = {
-        type: 'tool',
-        toolName: 'web_search_preview',
+      /**
+       * Anthropic rejects a forced tool_choice while extended thinking is
+       * enabled ("Thinking may not be enabled when tool_choice forces tool
+       * use"), so the tool is only forced when reasoning is off. With
+       * reasoning on, leaving tool_choice unset (provider default `auto`)
+       * keeps web search usable instead of hard-failing the request.
+       */
+      if (reasoningLevel === 'off') {
+        result.toolChoice = {
+          type: 'tool',
+          toolName: 'web_search_preview',
+        }
       }
     }
 
