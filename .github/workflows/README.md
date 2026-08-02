@@ -101,9 +101,9 @@ Triggers when a maintainer comments `/deploy-preview` on a fork PR.
 
 Triggers on push to `main`. Two parallel jobs:
 
-**build-production**: Full test suite, build, deploy to production. When
-`.drizzle/` changed, applies remote migrations to both production databases
-(`DB`, then `CONSENT_DB`) before deploy.
+**build-production**: Full test suite, build, deploy to production. Applies
+remote migrations to both production databases (`DB`, then `CONSENT_DB`)
+before deploy, unconditionally on every run (see below).
 
 **update-preview**: Finds the PR version by alias (`pr-{number}`) and, when
 found, promotes it to the preview environment — reusing the exact build that
@@ -124,13 +124,21 @@ restack push supersedes it before the upload finishes. Either way, this job
 builds+deploys the `preview-build` artifact from `build-production` fresh —
 the same artifact already validated by the full test suite for this exact
 `main` HEAD — rather than silently leaving `besidka-preview` on stale code.
-It applies remote migrations to both preview databases (`DB`, then
-`CONSENT_DB`) when `.drizzle/` changed.
+It regenerates and applies remote migrations to both preview databases
+(`DB`, then `CONSENT_DB`) unconditionally, same as `build-production`. This
+job installs dependencies with a plain `pnpm install --frozen-lockfile` (not
+`--ignore-scripts`) specifically so `postinstall`'s `nuxt prepare` runs and
+`.nuxt/tsconfig.json` exists — `drizzle-kit generate` loads the root
+`tsconfig.json`, which `extends` that file, and hard-fails without it.
 
-Both databases are gated on the same `drizzle-changed` detection (any change
-under `.drizzle/`). `wrangler d1 migrations apply` is idempotent — it only
-runs migrations not yet recorded in each database's `d1_migrations` table, so
-applying both when only one changed is a harmless no-op.
+Both `build-production` and `deploy-preview-fallback` apply migrations to
+`DB` and `CONSENT_DB` unconditionally on every run — an earlier git-diff-based
+`drizzle-changed` gate was removed because a diff of only the current push's
+before/after SHAs could permanently miss a migration if an unrelated prior
+run failed before reaching the migration step. `wrangler d1 migrations apply`
+is idempotent — it only runs migrations not yet recorded in each database's
+`d1_migrations` table, so applying both every time (even when neither
+changed) is a harmless no-op.
 
 ### `cleanup-runs.yml` - Workflow Run Cleanup
 
@@ -323,11 +331,15 @@ the uploaded `.drizzle` artifact (no regeneration). The production jobs
 regenerate before applying via `preCommands`: `pnpm run db:generate` for `DB`
 and `pnpm run db:consents:generate` for `CONSENT_DB`.
 
-**Gating.** Both DB and CONSENT_DB apply steps in `production.yml` share the
-`drizzle-changed` output (true when any file under `.drizzle/` changed in the
-push). Because `wrangler d1 migrations apply` only runs migrations missing
-from each database's `d1_migrations` tracking table, running both steps when
-only one database changed is an idempotent no-op.
+**Gating.** Both DB and CONSENT_DB apply steps in `production.yml` run
+unconditionally on every push, in both `build-production` and
+`deploy-preview-fallback` — there is no `.drizzle/`-change gate. An earlier
+git-diff-based gate (comparing only the current push's before/after SHAs)
+was removed because it could permanently miss a migration if an unrelated
+prior run failed before reaching the migration step. Because
+`wrangler d1 migrations apply` only runs migrations missing from each
+database's `d1_migrations` tracking table, running both steps on every push
+regardless of what changed is an idempotent no-op.
 
 **Local commands** (mirror the CI steps; run these yourself for remote DBs —
 never let CI touch a remote DB you have not migrated locally first):
