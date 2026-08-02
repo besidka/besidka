@@ -1,8 +1,23 @@
 // Cloudflare's test-key siteverify response has no `action` field and always
 // reports hostname "example.com" — this gate must never collapse to "always
 // enforce" (see docs/auth-security.md).
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getCaptchaOptions } from '../../../server/utils/auth-captcha'
+
+const mocks = vi.hoisted(() => ({
+  loggerSet: vi.fn(),
+  loggerEmit: vi.fn(() => ({ message: 'captcha misconfigured' })),
+  createRequestLogger: vi.fn(),
+  shipWideEventToAxiom: vi.fn(async () => undefined),
+}))
+
+vi.mock('evlog', () => ({
+  createRequestLogger: mocks.createRequestLogger,
+}))
+
+vi.mock('../../../server/utils/evlog-drains', () => ({
+  shipWideEventToAxiom: mocks.shipWideEventToAxiom,
+}))
 
 function createConfig(overrides: Partial<{
   turnstileSecretKey: string
@@ -28,6 +43,17 @@ function createConfig(overrides: Partial<{
 }
 
 describe('getCaptchaOptions', () => {
+  beforeEach(() => {
+    mocks.loggerSet.mockClear()
+    mocks.loggerEmit.mockClear()
+    mocks.createRequestLogger.mockClear()
+    mocks.shipWideEventToAxiom.mockClear()
+    mocks.createRequestLogger.mockReturnValue({
+      set: mocks.loggerSet,
+      emit: mocks.loggerEmit,
+    })
+  })
+
   it('returns null when the secret key is empty even if the sitekey is set', () => {
     const options = getCaptchaOptions(
       createConfig({ turnstileSecretKey: '' }),
@@ -106,5 +132,93 @@ describe('getCaptchaOptions', () => {
     expect(options?.allowedHostnames?.some((host: string) => {
       return host.includes(':')
     })).toBe(false)
+  })
+})
+
+describe('getCaptchaOptions captcha misconfiguration logging', () => {
+  beforeEach(() => {
+    mocks.loggerSet.mockClear()
+    mocks.loggerEmit.mockClear()
+    mocks.createRequestLogger.mockClear()
+    mocks.shipWideEventToAxiom.mockClear()
+    mocks.createRequestLogger.mockReturnValue({
+      set: mocks.loggerSet,
+      emit: mocks.loggerEmit,
+    })
+  })
+
+  it('fires when enforced is true and the secret key is empty', () => {
+    getCaptchaOptions(createConfig({
+      turnstileEnforced: true,
+      turnstileSecretKey: '',
+    }))
+
+    expect(mocks.createRequestLogger).toHaveBeenCalledTimes(1)
+    expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      authCaptcha: expect.objectContaining({
+        turnstileEnforced: true,
+        hasSecretKey: false,
+        hasSiteKey: true,
+      }),
+    }))
+    expect(mocks.loggerEmit).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'captcha misconfigured: enforced=true but keys missing',
+    }))
+    expect(mocks.shipWideEventToAxiom).toHaveBeenCalledTimes(1)
+  })
+
+  it('fires when enforced is true and the sitekey is empty', () => {
+    getCaptchaOptions(createConfig({
+      turnstileEnforced: true,
+      turnstileSiteKey: '',
+    }))
+
+    expect(mocks.createRequestLogger).toHaveBeenCalledTimes(1)
+    expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      authCaptcha: expect.objectContaining({
+        turnstileEnforced: true,
+        hasSecretKey: true,
+        hasSiteKey: false,
+      }),
+    }))
+  })
+
+  it('fires when enforced is true and both keys are empty', () => {
+    getCaptchaOptions(createConfig({
+      turnstileEnforced: true,
+      turnstileSecretKey: '',
+      turnstileSiteKey: '',
+    }))
+
+    expect(mocks.createRequestLogger).toHaveBeenCalledTimes(1)
+    expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      authCaptcha: expect.objectContaining({
+        turnstileEnforced: true,
+        hasSecretKey: false,
+        hasSiteKey: false,
+      }),
+    }))
+  })
+
+  it('does not fire when enforced is false, even with missing keys', () => {
+    getCaptchaOptions(createConfig({
+      turnstileEnforced: false,
+      turnstileSecretKey: '',
+      turnstileSiteKey: '',
+    }))
+
+    expect(mocks.createRequestLogger).not.toHaveBeenCalled()
+    expect(mocks.shipWideEventToAxiom).not.toHaveBeenCalled()
+  })
+
+  it('does not fire when enforced is true but both keys are present', () => {
+    getCaptchaOptions(createConfig({
+      turnstileEnforced: true,
+      turnstileSecretKey: 'my-secret',
+      turnstileSiteKey: 'my-sitekey',
+    }))
+
+    expect(mocks.createRequestLogger).not.toHaveBeenCalled()
+    expect(mocks.shipWideEventToAxiom).not.toHaveBeenCalled()
   })
 })

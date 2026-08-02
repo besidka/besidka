@@ -80,6 +80,28 @@ describe('authRateLimitRules', () => {
   it('computes a max window of 900 seconds', () => {
     expect(authRateLimitMaxWindow).toBe(900)
   })
+
+  it('rate-limits /verify-password tighter than the generic default', () => {
+    expect(authRateLimitRules['/verify-password']).toEqual({
+      window: 300,
+      max: 5,
+    })
+  })
+
+  it('covers parameterized sibling routes with wildcard rules', () => {
+    expect(authRateLimitRules['/reset-password/*']).toEqual({
+      window: 900,
+      max: 10,
+    })
+    expect(authRateLimitRules['/delete-user/*']).toEqual({
+      window: 900,
+      max: 10,
+    })
+    expect(authRateLimitRules['/callback/*']).toEqual({
+      window: 300,
+      max: 30,
+    })
+  })
 })
 
 describe('authRateLimitDefaults', () => {

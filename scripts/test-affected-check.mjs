@@ -240,6 +240,7 @@ export function getAffectedTests(changedFiles) {
   const authSecurityTests = [
     'tests/unit/utils/auth-rate-limit.spec.ts',
     'tests/unit/utils/auth-captcha.spec.ts',
+    'tests/unit/utils/auth-hosts.spec.ts',
   ]
 
   const turnstileTests = [

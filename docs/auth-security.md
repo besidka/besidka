@@ -48,12 +48,22 @@ local dev, and CI all keep it `false`, so `expectedAction`/
 `allowedHostnames` are only ever asserted where a human has explicitly
 confirmed the deployed hostname and action match — production.
 
-`allowedHostnames`, when enforced, reuses `getAllowedHosts()` (already
-in `server/utils/auth.ts`, used for Better Auth's `baseURL.allowedHosts`)
-but strips any `:port` suffix and any entry containing `*` — Turnstile
-matches bare hostnames only, and `getAllowedHosts()` can return
-port/wildcard entries (`localhost:*`, `*-branch.rest`) for other,
-legitimate reasons that don't apply to Turnstile's hostname check.
+`allowedHostnames`, when enforced, reuses `getAllowedHosts()` (in
+`server/utils/auth-hosts.ts`, used for Better Auth's
+`baseURL.allowedHosts`) but strips any `:port` suffix and any entry
+containing `*` — Turnstile matches bare hostnames only, and
+`getAllowedHosts()` can return port/wildcard entries (`localhost:*`,
+`*-branch.rest`) for other, legitimate reasons that don't apply to
+Turnstile's hostname check.
+
+**Known limitation**: `getAllowedHosts()`'s apex/`www.` detection uses a
+`parts.slice(-2)` heuristic (last two dot-separated labels = the
+registrable domain). This is correct for `besidka.com` — the only
+domain shape this app is ever deployed under — but would misclassify a
+multi-label-TLD domain like `example.co.uk` (it would treat `co.uk` as
+the "domain" and `example` as a subdomain). Fixing this generally
+requires a public-suffix-list lookup, which is out of scope for a
+single-domain app; this is accepted, not fixed.
 
 ## Plugin registration: `captchaEnabled` requires both keys
 
@@ -89,12 +99,16 @@ abuse containment instead of raw burst suppression.
 | `/sign-in/email` | 300s | 10 |
 | `/sign-up/email` | 900s | 5 |
 | `/sign-in/social` | 300s | 20 |
+| `/callback/*` (catch-all) | 300s | 30 |
 | `/request-password-reset` | 900s | 3 |
 | `/reset-password` | 900s | 5 |
+| `/reset-password/*` (catch-all) | 900s | 10 |
 | `/send-verification-email` | 900s | 3 |
 | `/change-password` | 900s | 5 |
+| `/verify-password` | 300s | 5 |
 | `/change-email` | 900s | 3 |
 | `/delete-user` | 900s | 3 |
+| `/delete-user/*` (catch-all) | 900s | 10 |
 | `/verify-email` | 300s | 20 |
 | `/two-factor/verify-totp` | 300s | 5 |
 | `/two-factor/verify-otp` | 300s | 5 |
@@ -119,6 +133,20 @@ abuse containment instead of raw burst suppression.
 endpoints don't ship until PR3/PR4 — unmatched rules are inert, and it
 keeps the entire policy reviewable in one file
 (`server/utils/auth-rate-limit.ts`) instead of splitting it across PRs.
+
+`/verify-password` is gated only by `sensitiveSessionMiddleware` (any
+valid session cookie), takes a plaintext `{ password }` body, and
+responds `200`/`400 INVALID_PASSWORD` — a password-guessing oracle with
+no dedicated rule before this fix, silently falling through to the
+generic 60-per-60s default (3600 guesses/hour). It now gets its own row,
+tighter than `/sign-in/email`'s.
+
+`/reset-password/*`, `/delete-user/*`, and `/callback/*` are wildcard
+rows for parameterized sibling routes (`GET /reset-password/:token`,
+`GET /delete-user/callback`, `GET /callback/:id`) that `customRules`
+cannot match by exact path. These are protected by high-entropy tokens
+regardless, so the practical risk was already low — the wildcards exist
+for table completeness rather than to close a real gap.
 
 Better Auth resolves `customRules` with `Object.keys(...).find(...)`,
 matching the **first** key (in object-literal insertion order) whose

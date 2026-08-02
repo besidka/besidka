@@ -61,4 +61,23 @@ describe('Auth/Turnstile.client', () => {
 
     expect(mocks.reset).toHaveBeenCalledWith('widget-1')
   })
+
+  it('renders without a widget when the script fails to load, without throwing', async () => {
+    mocks.renderWidget.mockRejectedValueOnce(
+      new Error('Failed to load the Turnstile script'),
+    )
+
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('div').exists()).toBe(true)
+
+    const token = await (wrapper.vm as any).execute()
+
+    expect(token).toBe('')
+    expect(mocks.execute).not.toHaveBeenCalled()
+  })
 })

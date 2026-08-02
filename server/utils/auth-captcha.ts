@@ -1,5 +1,7 @@
 import type { CloudflareTurnstileOptions } from 'better-auth/plugins'
+import { createRequestLogger } from 'evlog'
 import { getAllowedHosts } from './auth-hosts'
+import { shipWideEventToAxiom } from './evlog-drains'
 
 const authCaptchaEndpoints = [
   '/sign-up/email',
@@ -22,6 +24,10 @@ export function getCaptchaOptions(
     && Boolean(config.public.turnstileSiteKey)
 
   if (!captchaEnabled) {
+    if (config.turnstileEnforced === true) {
+      logCaptchaMisconfigured(config)
+    }
+
     return null
   }
 
@@ -35,5 +41,31 @@ export function getCaptchaOptions(
     allowedHostnames: enforced
       ? toTurnstileHostnames(getAllowedHosts(config.public.baseUrl))
       : undefined,
+  }
+}
+
+function logCaptchaMisconfigured(
+  config: ReturnType<typeof useRuntimeConfig>,
+): void {
+  const logger = createRequestLogger({
+    method: 'BOOT',
+    path: '/internal/auth-captcha',
+  })
+
+  logger.set({
+    authCaptcha: {
+      turnstileEnforced: config.turnstileEnforced,
+      hasSecretKey: Boolean(config.turnstileSecretKey),
+      hasSiteKey: Boolean(config.public.turnstileSiteKey),
+    },
+  })
+
+  const wideEvent = logger.emit({
+    message: 'captcha misconfigured: enforced=true but keys missing',
+    status: 500,
+  })
+
+  if (wideEvent) {
+    shipWideEventToAxiom(wideEvent)
   }
 }
