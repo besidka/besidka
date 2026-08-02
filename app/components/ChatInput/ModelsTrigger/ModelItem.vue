@@ -38,6 +38,10 @@
             v-else-if="providerId === 'openai'"
             class="w-3.5 shrink-0 fill-base-content/40"
           />
+          <SvgoAnthropic
+            v-else-if="providerId === 'anthropic'"
+            class="w-3.5 shrink-0 fill-base-content/40"
+          />
           <span
             class="truncate text-sm font-medium"
             :class="{ 'text-accent': isSelected }"

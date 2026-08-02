@@ -49,6 +49,10 @@
         v-else-if="provider.id === 'openai'"
         class="w-4 fill-current"
       />
+      <SvgoAnthropic
+        v-else-if="provider.id === 'anthropic'"
+        class="w-4 fill-current"
+      />
       <span
         v-else
         class="text-xs font-semibold uppercase"
