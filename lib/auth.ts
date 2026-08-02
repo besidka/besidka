@@ -2,6 +2,7 @@ import type { BetterAuthPlugin } from 'better-auth'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { captcha, lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
+import { createAuthMiddleware } from 'better-auth/api'
 import * as schema from '../server/db/schema'
 import {
   authRateLimitDefaults,
@@ -72,12 +73,28 @@ export const auth = betterAuth({
       clientSecret: '',
     },
   },
+  user: {
+    changeEmail: {
+      enabled: true,
+      async sendChangeEmailConfirmation() {},
+    },
+  },
   account: {
     accountLinking: {
       enabled: true,
       trustedProviders: ['google', 'github', 'email-password'],
       allowDifferentEmails: false,
     },
+  },
+  databaseHooks: {
+    account: {
+      create: {
+        async after() {},
+      },
+    },
+  },
+  hooks: {
+    after: createAuthMiddleware(async () => {}),
   },
   plugins,
 })

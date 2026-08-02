@@ -223,3 +223,34 @@ production `vars`, but inert until real keys exist):
       (`VERIFICATION_FAILED`/`MISSING_RESPONSE`) in the first days after
       enabling — that signals either a hostname mismatch or a client
       bundling issue where the widget script failed to load.
+
+## Changing an account's email address cannot lose any account data
+
+`/change-email` (wired via `user.changeEmail` in `server/utils/auth.ts`,
+consumed by `/profile/email`) never deletes or recreates anything. It
+resolves to `internalAdapter.updateUserByEmail(oldEmail, { email:
+newEmail })` — a single in-place `UPDATE` of the existing user row's
+`email` column (or, for the already-registered-elsewhere case, no row
+change at all until the confirmation link is opened) — the account's
+underlying identity (its `id`, sessions, chats, projects, files, keys)
+never changes. The session refresh that follows a change rewrites only
+KV entries keyed by `active-sessions-${userId}` and the session token,
+never by email.
+
+`email` exists as a column on exactly one table in this codebase
+(`users`, `server/db/schemas/auth.ts`); every foreign key across
+`server/db/schemas/*.ts` references `users.id` (an integer), never
+`users.email`. No other table, KV key, cache key, or storage key is
+built from or looked up by a user's email address anywhere in `server/`
+or `app/` — every other reference to a user is by numeric `id`.
+
+The only place a user's email reaches structured logging is
+`server/middleware/evlog-auth.ts`'s `maskEmail: true` option, passed to
+evlog's own `better-auth` integration, which masks the address before
+it is ever set on the logger — raw email is never passed to
+`logger.set()`/`useLogger()` anywhere in `server/`. The `import.meta.dev`
+branches in `server/utils/auth.ts` and `security-emails.ts` do
+`console.log` the raw address, but only to the local dev console, never
+through evlog and never in a deployed Worker.
+
+

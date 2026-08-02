@@ -198,6 +198,8 @@ export function getAffectedTests(changedFiles) {
 
   const accountDeletionTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/utils/account/security-emails.spec.ts',
+    'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/auth.spec.ts',
     'tests/unit/pages/profile/security.spec.ts',
   ]
@@ -207,6 +209,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
     'tests/unit/components/Profile/Security/Sessions.spec.ts',
     'tests/integration/api/profiles-sessions.spec.ts',
+  ]
+
+  const accountEmailPasswordTests = [
+    'tests/unit/pages/profile/email.spec.ts',
+    'tests/unit/pages/profile/password.spec.ts',
   ]
 
   const landingTests = [
@@ -658,6 +665,10 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/components\/Profile\/Security\/.*\.vue|server\/api\/v1\/profiles\/sessions\/.*\.ts|server\/db\/schemas\/auth\.ts)$/,
       tests: accountSecurityHubTests,
+    },
+    {
+      pattern: /^app\/pages\/profile\/(email|password)\.vue$/,
+      tests: accountEmailPasswordTests,
     },
     {
       pattern: /^app\/layouts\/profile\.vue$/,

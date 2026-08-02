@@ -2,8 +2,14 @@ import type { BetterAuthPlugin } from 'better-auth'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { captcha, lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
+import { createAuthMiddleware, isAPIError } from 'better-auth/api'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
+import {
+  sendPasswordChangedEmail,
+  sendSignInMethodConnectedEmail,
+  sendSignInMethodDisconnectedEmail,
+} from './account/security-emails'
 import { getAllowedHosts } from './auth-hosts'
 
 type ServerAuth = ReturnType<typeof createAuth>
@@ -102,6 +108,13 @@ function createAuth() {
           text: `Click the link to reset your password: ${url}`,
         })
       },
+      // The forgot-password flow has no session to key the
+      // '/change-password' hooks.after notification off of, so Better
+      // Auth's own post-reset callback (resolved user, not just a token)
+      // is the notification hook for this specific flow.
+      async onPasswordReset({ user }) {
+        await sendPasswordChangedEmail({ user })
+      },
     },
     emailVerification: {
       sendOnSignUp: !import.meta.dev,
@@ -134,6 +147,31 @@ function createAuth() {
       },
     },
     user: {
+      changeEmail: {
+        enabled: true,
+        // Without this, '/change-email' only ever emails the *new*
+        // address, never confirming via the address the account owner is
+        // presumed to currently control. Configuring it makes the current,
+        // already-verified address the one that authorizes the change.
+        async sendChangeEmailConfirmation({ user, newEmail, url }) {
+          if (import.meta.dev) {
+            // eslint-disable-next-line no-console
+            console.log(
+              `Change email confirmation for ${user.email} -> ${newEmail}: ${url}`,
+            )
+            return
+          }
+
+          const { send: sendEmail } = useEmail()
+
+          await sendEmail({
+            to: user.email,
+            subject: 'Confirm your new email address',
+            html: `Click the link to confirm changing your account email to ${newEmail}: ${url}`,
+            text: `Click the link to confirm changing your account email to ${newEmail}: ${url}`,
+          })
+        },
+      },
       deleteUser: {
         enabled: true,
         deleteTokenExpiresIn: deleteAccountTokenTtl,
@@ -175,6 +213,78 @@ function createAuth() {
         trustedProviders: ['google', 'github', 'email-password'],
         allowDifferentEmails: false,
       },
+    },
+    databaseHooks: {
+      account: {
+        create: {
+          // Fires for both a brand-new signup's first account row and every
+          // subsequent OAuth link. Only the latter is a "new sign-in method
+          // connected" event worth notifying about — the former is already
+          // covered by the signup flow itself (verification/welcome email),
+          // so it is distinguished here by counting the user's accounts
+          // after this row landed: exactly one means this was the first.
+          async after(account, context) {
+            if (!context) {
+              return
+            }
+
+            const existingAccounts = await context.context.internalAdapter
+              .findAccounts(account.userId)
+
+            if (existingAccounts.length <= 1) {
+              return
+            }
+
+            const user = await context.context.internalAdapter
+              .findUserById(account.userId)
+
+            if (!user) {
+              return
+            }
+
+            await sendSignInMethodConnectedEmail({
+              user,
+              providerId: account.providerId,
+            })
+          },
+        },
+      },
+    },
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        try {
+          if (isAPIError(ctx.context.returned)) {
+            return
+          }
+
+          const user = ctx.context.session?.user
+
+          if (!user) {
+            return
+          }
+
+          if (ctx.path === '/change-password') {
+            await sendPasswordChangedEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/unlink-account') {
+            const providerId = ctx.body?.providerId
+
+            if (typeof providerId === 'string') {
+              await sendSignInMethodDisconnectedEmail({ user, providerId })
+            }
+          }
+        } catch (exception) {
+          resolveServerLogger().set({
+            securityNotificationHook: {
+              path: ctx.path,
+              error: exceptionMessage(exception),
+            },
+          })
+        }
+      }),
     },
     plugins,
   })
