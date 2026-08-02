@@ -57,7 +57,11 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 
 ### `preview-build.yml` - PR Build & Test
 
-Triggers on `pull_request` events. Runs in the PR author's context without access to secrets.
+Triggers on `pull_request` events targeting `main` only (`branches: [main]`). A
+stacked PR whose base is another feature branch never triggers this workflow,
+and since `preview-deploy.yml` only runs off this workflow's `workflow_run`
+completion, stacked sub-PRs get no build or deploy — only the PR targeting
+`main` does. Runs in the PR author's context without access to secrets.
 
 1. Check PR is still open
 2. Install dependencies
