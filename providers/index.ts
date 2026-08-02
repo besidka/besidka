@@ -2,13 +2,12 @@ import type { Providers } from '../shared/types/providers.d'
 import type { ModelSnapshot } from './merge'
 import snapshot from './data/models-dev-snapshot.json'
 import { mergeProvider } from './merge'
-// import anthropic from './anthropic'
+import anthropic from './anthropic'
 import google from './google'
 import openai from './openai'
 
 const curatedProviders = [
-  // @TODO Anthropic is under development yet
-  // anthropic,
+  anthropic,
   google,
   openai,
 ]

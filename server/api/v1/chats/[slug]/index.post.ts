@@ -480,6 +480,28 @@ export default defineEventHandler(async (event) => {
 
         break
       }
+      case 'anthropic': {
+        const {
+          instance: anthropicInstance,
+          tools: anthropicTools,
+          providerOptions: anthropicProviderOptions,
+          reasoning: anthropicReasoning,
+        } = await useAnthropic(
+          session.user.id,
+          model.id,
+          requestedTools,
+          body.data.reasoning,
+        )
+
+        instance = anthropicInstance
+        parsedTools = anthropicTools
+        reasoningEffort = anthropicReasoning
+        Object.assign(providerOptions, {
+          anthropic: anthropicProviderOptions,
+        })
+
+        break
+      }
       case 'google': {
         const {
           instance: googleInstance,
@@ -1039,7 +1061,7 @@ async function persistAssistantMessageFromStream(input: {
   db: ReturnType<typeof useDb>
   event: H3Event
   providerId: string
-  supportedProviderId: 'openai' | 'google' | undefined
+  supportedProviderId: 'openai' | 'google' | 'anthropic' | undefined
   userId: number
   chatId: string
   projectId: string | null
@@ -1257,10 +1279,11 @@ function buildChatInstructions(
 
 function toSupportedProviderId(
   providerId: string,
-): 'openai' | 'google' | undefined {
+): 'openai' | 'google' | 'anthropic' | undefined {
   if (
     providerId !== 'openai'
     && providerId !== 'google'
+    && providerId !== 'anthropic'
   ) {
     return undefined
   }

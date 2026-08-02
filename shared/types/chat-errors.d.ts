@@ -26,6 +26,6 @@ export interface ChatErrorPayload {
   fix?: string
   status?: number
   requestId?: string
-  providerId?: 'openai' | 'google'
+  providerId?: 'openai' | 'google' | 'anthropic'
   providerRequestId?: string
 }

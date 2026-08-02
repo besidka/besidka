@@ -29,7 +29,7 @@ const chatErrorCodes: ChatErrorCode[] = [
 interface NormalizeChatErrorInput {
   error: unknown
   event?: H3Event
-  providerId?: 'openai' | 'google'
+  providerId?: 'openai' | 'google' | 'anthropic'
   code?: ChatErrorCode
   message?: string
   why?: string

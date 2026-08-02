@@ -62,6 +62,7 @@
 		"bench:files-index": "node scripts/bench/files-user-id-index.mjs"
 	},
 	"dependencies": {
+		"@ai-sdk/anthropic": "^4.0.27",
 		"@ai-sdk/google": "^4.0.24",
 		"@ai-sdk/openai": "^4.0.20",
 		"@ai-sdk/provider": "^4.0.3",

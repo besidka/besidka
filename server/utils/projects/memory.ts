@@ -8,7 +8,7 @@ import { providers } from '~~/providers'
 import * as schema from '~~/server/db/schema'
 
 interface ProjectMemoryModelSelection {
-  providerId: 'google' | 'openai'
+  providerId: 'google' | 'openai' | 'anthropic'
   modelId: string
   modelName: string
 }
@@ -71,7 +71,7 @@ export async function resolveProjectMemoryModel(
     }
 
     return {
-      providerId: provider.id as 'google' | 'openai',
+      providerId: provider.id as 'google' | 'openai' | 'anthropic',
       modelId: memoryModel.id,
       modelName: memoryModel.name,
     }
@@ -250,6 +250,12 @@ async function getProjectMemoryModelInstance(
 
   if (providerId === 'openai') {
     const { instance } = await useOpenAI(userId, modelId, [], 'off')
+
+    return instance
+  }
+
+  if (providerId === 'anthropic') {
+    const { instance } = await useAnthropic(userId, modelId, [], 'off')
 
     return instance
   }

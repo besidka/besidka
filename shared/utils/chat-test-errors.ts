@@ -34,7 +34,7 @@ export interface ChatTestErrorConfig {
   message: string
   why?: string
   fix?: string
-  providerId?: 'openai' | 'google'
+  providerId?: 'openai' | 'google' | 'anthropic'
   providerRequestId?: string
 }
 
