@@ -51,7 +51,7 @@
       </UiFormFieldset>
       <UiFormFieldset
         :inputs="false"
-        class="flex gap-2 justify-end mt-4"
+        class="!flex !gap-2 justify-end mt-4"
       >
         <UiButton
           mode="neutral"
@@ -86,11 +86,31 @@
         <p class="text-xs text-base-content/70">
           Can't scan? Enter this code manually:
         </p>
-        <code
-          class="block text-center break-all bg-base-200 rounded-box
-            px-3 py-2 text-sm"
-          data-testid="two-factor-manual-secret"
-        >{{ manualSecret }}</code>
+        <div
+          class="mockup-browser w-full bg-base-100/50
+            dark:bg-base-100/50 shadow overflow-x-hidden overscroll-contain"
+        >
+          <div class="flex items-center justify-between">
+            <div class="mockup-browser-toolbar" />
+            <div class="flex gap-2 py-2 pr-4">
+              <UiButton
+                mode="default"
+                ghost
+                :icon-name="secretCopied ? 'lucide:check' : 'lucide:copy'"
+                :icon-size="14"
+                size="xs"
+                :text="secretCopied ? 'Copied!' : 'Copy'"
+                @click="copySecret"
+              />
+            </div>
+          </div>
+          <div class="p-4 overflow-x-auto text-sm">
+            <code
+              class="font-mono break-all"
+              data-testid="two-factor-manual-secret"
+            >{{ manualSecret }}</code>
+          </div>
+        </div>
       </div>
       <UiForm @submit="submitVerify">
         <UiFormFieldset class="items-center">
@@ -104,7 +124,7 @@
         </UiFormFieldset>
         <UiFormFieldset
           :inputs="false"
-          class="flex gap-2 justify-end mt-4"
+          class="!flex !gap-2 justify-end mt-4"
         >
           <UiButton
             mode="neutral"
@@ -140,7 +160,7 @@
       </UiFormFieldset>
       <UiFormFieldset
         :inputs="false"
-        class="flex gap-2 justify-end mt-4"
+        class="!flex !gap-2 justify-end mt-4"
       >
         <UiButton
           mode="neutral"
@@ -221,6 +241,7 @@ type PasswordGatedAction = 'disable' | 'regenerate'
 
 const { Validation } = useValidation()
 const { client, user, errorCodes, fetchSession, signOut } = useAuth()
+const clipboard = useClipboard()
 
 const {
   isLoadingInitial: isLoadingAccounts,
@@ -243,6 +264,8 @@ const actionPassword = shallowRef<string>('')
 
 const backupCodes = shallowRef<string[]>([])
 const showBackupCodesModal = shallowRef<boolean>(false)
+
+const secretCopied = shallowRef<boolean>(false)
 
 const twoFactorEnabled = computed<boolean>(() => {
   return !!user.value?.twoFactorEnabled
@@ -294,6 +317,16 @@ function cancelEnable() {
 function cancelAction() {
   activeAction.value = null
   actionPassword.value = ''
+}
+
+function copySecret() {
+  clipboard.copy(manualSecret.value)
+
+  secretCopied.value = true
+
+  setTimeout(() => {
+    secretCopied.value = false
+  }, 2000)
 }
 
 async function submitPassword() {

@@ -95,17 +95,23 @@
         >
           <UiButton
             text="Rename"
+            icon-name="lucide:pencil"
             size="sm"
             outline
+            circle
+            icon-only-mobile
             :disabled="isProcessing"
             :data-testid="`passkeys-rename-${passkeyRow.id}`"
             @click="startRename(passkeyRow)"
           />
           <UiButton
             text="Delete"
+            icon-name="lucide:trash"
             mode="error"
             outline
             size="sm"
+            circle
+            icon-only-mobile
             :disabled="isProcessing"
             :data-testid="`passkeys-delete-${passkeyRow.id}`"
             @click="deletePasskeyRow(passkeyRow)"
@@ -128,7 +134,7 @@
       </UiFormFieldset>
       <UiFormFieldset
         :inputs="false"
-        class="flex gap-2 justify-end mt-4"
+        class="!flex !gap-2 justify-end mt-4"
       >
         <UiButton
           mode="neutral"
@@ -159,7 +165,7 @@
       </p>
       <UiButton
         v-else
-        text="Add a passkey"
+        text="Add passkey"
         size="sm"
         data-testid="passkeys-add"
         @click="startAdd"
