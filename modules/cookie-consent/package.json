@@ -31,8 +31,8 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nuxt/module-builder": "^1.0.3",
-    "@nuxt/schema": "^4.5.0",
-    "@nuxt/test-utils": "^4.0.3",
+    "@nuxt/schema": "^4.5.1",
+    "@nuxt/test-utils": "^4.1.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^10.8.0",
