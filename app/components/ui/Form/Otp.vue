@@ -1,7 +1,8 @@
 <template>
+  <div class="flex justify-center">
   <label
     v-if="variant === 'totp'"
-    class="otp otp-lg"
+    class="otp otp-lg [--radius-field:0.5rem]"
   >
     <span />
     <span />
@@ -34,6 +35,7 @@
     :disabled="disabled"
     @input="onInput"
   >
+  </div>
 </template>
 
 <script setup lang="ts">
