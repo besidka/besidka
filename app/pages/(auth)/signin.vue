@@ -46,18 +46,23 @@
         </AuthLastUsedContainer>
       </li>
       <li>
-        <UiButton
-          text="Sign in with a passkey"
-          block
-          mode="primary"
-          :disabled="pending"
-          data-testid="signin-passkey"
-          @click="signInWithPasskey"
-        >
-          <template #icon>
-            <Icon name="lucide:fingerprint" size="20" />
-          </template>
-        </UiButton>
+        <AuthLastUsedContainer>
+          <Transition name="slide-fade">
+            <LazyAuthLastUsedBadge v-if="lastLoginMethod === 'passkey'" />
+          </Transition>
+          <UiButton
+            text="Sign in with passkey"
+            block
+            :mode="lastLoginMethod === 'passkey' ? 'accent' : 'primary'"
+            :disabled="pending"
+            data-testid="signin-passkey"
+            @click="signInWithPasskey"
+          >
+            <template #icon>
+              <Icon name="lucide:fingerprint" size="20" />
+            </template>
+          </UiButton>
+        </AuthLastUsedContainer>
       </li>
     </ul>
     <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
@@ -208,7 +213,13 @@ const data = shallowReactive<Data>({
   rememberMe: true,
 })
 
-const { signIn, errorCodes: _errorCodes, lastLoginMethod, options } = useAuth()
+const {
+  signIn,
+  errorCodes: _errorCodes,
+  lastLoginMethod,
+  options,
+  fetchSession,
+} = useAuth()
 
 const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
 const pending = shallowRef<boolean>(false)
@@ -246,6 +257,7 @@ onMounted(async () => {
       return
     }
 
+    await fetchSession()
     await navigateTo(options.redirectUserTo)
   } catch {
     return
@@ -288,6 +300,7 @@ async function signInWithPasskey() {
       return
     }
 
+    await fetchSession()
     await navigateTo(options.redirectUserTo)
   } finally {
     pending.value = false

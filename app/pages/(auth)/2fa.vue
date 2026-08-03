@@ -36,6 +36,7 @@
       >
         <UiButton
           type="submit"
+          block
           :text="pending ? 'Verifying...' : 'Verify'"
           icon-name="lucide:shield-check"
           :disabled="pending || code.length < requiredLength"

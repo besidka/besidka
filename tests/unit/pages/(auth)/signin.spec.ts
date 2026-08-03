@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     data: { session: {}, user: {} },
     error: null,
   })),
+  fetchSession: vi.fn(async () => undefined),
   navigateTo: vi.fn(async () => undefined),
 }))
 
@@ -31,6 +32,7 @@ mockNuxtImport('useAuth', () => {
       redirectUserTo: '/chats/new',
       redirectGuestTo: '/signin',
     },
+    fetchSession: mocks.fetchSession,
   })
 })
 
@@ -73,6 +75,7 @@ describe('signin page', () => {
     vi.stubGlobal('useSeoMeta', vi.fn())
     mocks.signInEmail.mockClear()
     mocks.signInPasskey.mockClear()
+    mocks.fetchSession.mockClear()
     mocks.navigateTo.mockClear()
     mocks.signInEmail.mockResolvedValue({
       data: { redirect: false, token: 'session-token', user: {} },
@@ -172,6 +175,7 @@ describe('signin page', () => {
     await flushPromises()
 
     expect(mocks.signInPasskey).toHaveBeenCalledWith({ autoFill: true })
+    expect(mocks.fetchSession).toHaveBeenCalled()
     expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
   })
 
@@ -228,6 +232,7 @@ describe('signin page', () => {
 
       expect(mocks.signInPasskey).toHaveBeenCalledWith()
       expect(useSuccessMessage).toHaveBeenCalledWith('Successfully signed in')
+      expect(mocks.fetchSession).toHaveBeenCalled()
       expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
     })
 
