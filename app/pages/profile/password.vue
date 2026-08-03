@@ -215,7 +215,7 @@
           :text="pending ? 'Updating...' : 'Update password'"
           icon-name="lucide:key"
           :disabled="pending"
-          class="max-sm:btn-block sm:btn-wide"
+          class="max-sm:btn-block sm:btn-wide sm:w-64"
           data-testid="password-submit"
         />
       </UiFormFieldset>

@@ -56,7 +56,7 @@
             :text="pending ? 'Sending...' : 'Send confirmation link'"
             icon-name="lucide:mail"
             :disabled="pending"
-            class="max-sm:btn-block sm:btn-wide"
+            class="max-sm:btn-block sm:btn-wide sm:w-64"
             data-testid="email-submit"
           />
         </UiFormFieldset>
