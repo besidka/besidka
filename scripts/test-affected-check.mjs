@@ -705,6 +705,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/layouts/profile.spec.ts'],
     },
     {
+      pattern: /^app\/components\/ui\/Button\.vue$/,
+      tests: ['tests/unit/components/ui/Button.spec.ts'],
+    },
+    {
       pattern: /^server\/utils\/session\.ts$/,
       tests: [
         'tests/integration/server/session.spec.ts',
