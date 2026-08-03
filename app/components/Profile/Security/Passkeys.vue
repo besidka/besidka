@@ -7,6 +7,26 @@
     v-else
     class="grid gap-4"
   >
+    <div
+      v-if="freshnessNotice"
+      role="alert"
+      class="alert alert-soft alert-warning !items-start"
+    >
+      <Icon name="lucide:triangle-alert" size="20" class="mt-0.5 shrink-0" />
+      <div class="grid gap-2">
+        <p class="font-bold">{{ freshnessNotice.title }}</p>
+        <p class="text-sm">{{ freshnessNotice.description }}</p>
+        <div>
+          <UiButton
+            text="Sign out"
+            size="sm"
+            mode="error"
+            :disabled="isProcessing"
+            @click="sessionFreshness.signOutForFreshSession"
+          />
+        </div>
+      </div>
+    </div>
     <p
       v-if="!passkeys.length"
       class="text-sm text-base-content/70"
@@ -149,6 +169,8 @@
 </template>
 
 <script setup lang="ts">
+import type { SessionFreshnessNotice } from '~/composables/session-freshness'
+
 interface PasskeyRow {
   id: string
   name?: string | null
@@ -158,11 +180,13 @@ interface PasskeyRow {
 
 const { Validation } = useValidation()
 const { client } = useAuth()
+const sessionFreshness = useSessionFreshnessError()
 
 const isLoading = shallowRef<boolean>(true)
 const supportsWebAuthn = shallowRef<boolean>(false)
 const passkeys = shallowRef<PasskeyRow[]>([])
 const isProcessing = shallowRef<boolean>(false)
+const freshnessNotice = shallowRef<SessionFreshnessNotice | null>(null)
 
 const isAdding = shallowRef<boolean>(false)
 const newPasskeyName = shallowRef<string>('')
@@ -212,6 +236,15 @@ async function submitAdd() {
       const errorCode = 'code' in error ? error.code : undefined
 
       if (isPasskeyCeremonyCancelled(errorCode)) {
+        return
+      }
+
+      if (sessionFreshness.isSessionNotFresh(errorCode)) {
+        isAdding.value = false
+        newPasskeyName.value = ''
+        freshnessNotice.value
+          = sessionFreshness.describeSessionFreshnessNotice()
+
         return
       }
 

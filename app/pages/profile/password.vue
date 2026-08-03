@@ -11,14 +11,17 @@
         <p class="font-bold">No password on this account</p>
         <p class="text-sm">
           Your account signs in with Google or GitHub only, so there's no
-          password to change. Connect email &amp; password sign-in from the
-          security page first if you want to set one.
+          password to change. Sign out and use "Forgot password?" on the
+          sign-in page to set one — that flow creates a password for your
+          account.
         </p>
         <div>
           <UiButton
-            to="/profile/security"
-            text="Go to security"
+            text="Sign out"
             size="sm"
+            mode="error"
+            :disabled="pending"
+            @click="signOutToSetPassword"
           />
         </div>
       </div>
@@ -270,12 +273,15 @@ const { estimateTimeToCrack } = usePassword()
 const $auth = useAuth()
 const { errorCodes } = $auth
 
+const {
+  isLoadingInitial: isLoadingAccounts,
+  hasCredentialAccount,
+  fetchLinkedAccounts,
+} = useLinkedAccounts()
+
 const form = ref<InstanceType<typeof UiForm> | null>()
 const isNewPasswordFocused = shallowRef<boolean>(false)
 const pending = shallowRef<boolean>(false)
-
-const isLoadingAccounts = shallowRef<boolean>(true)
-const hasCredentialAccount = shallowRef<boolean>(false)
 
 const currentPasswordVisibility = createPasswordVisibility()
 const newPasswordVisibility = createPasswordVisibility()
@@ -329,23 +335,15 @@ const timeToCrackHighlight = computed(() => {
   }
 })
 
-async function loadAccounts() {
-  isLoadingAccounts.value = true
-
-  const { data: accounts, error } = await $auth.client.listAccounts()
-
-  if (!error && accounts) {
-    hasCredentialAccount.value = accounts.some((account) => {
-      return account.providerId === 'credential'
-    })
-  }
-
-  isLoadingAccounts.value = false
-}
-
 onMounted(async () => {
-  await loadAccounts()
+  await fetchLinkedAccounts()
 })
+
+async function signOutToSetPassword() {
+  await $auth.signOut({
+    redirectTo: '/signin',
+  })
+}
 
 async function onSubmit() {
   pending.value = true

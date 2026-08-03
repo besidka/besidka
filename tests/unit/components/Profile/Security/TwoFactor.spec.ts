@@ -1,5 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useLinkedAccounts } from '../../../../../app/composables/linked-accounts'
 import TwoFactor from '../../../../../app/components/Profile/Security/TwoFactor.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     error: null,
   })),
   confirm: vi.fn(async () => ({ label: 'Confirm', index: 0 })),
+  signOut: vi.fn(),
 }))
 
 const errorCodes = {
@@ -50,6 +52,7 @@ function createAuthMock(twoFactorEnabled: boolean) {
     user: { value: { twoFactorEnabled } },
     errorCodes,
     fetchSession: vi.fn(async () => undefined),
+    signOut: mocks.signOut,
     client: {
       listAccounts: mocks.listAccounts,
       twoFactor: {
@@ -106,7 +109,9 @@ describe('Profile/Security/TwoFactor', () => {
     mocks.disable.mockClear()
     mocks.generateBackupCodes.mockClear()
     mocks.confirm.mockReset()
+    mocks.signOut.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Confirm', index: 0 })
+    useLinkedAccounts().resetLinkedAccounts()
     mocks.listAccounts.mockResolvedValue({
       data: [createAccount('credential')],
       error: null,
@@ -145,6 +150,35 @@ describe('Profile/Security/TwoFactor', () => {
       expect(wrapper.text()).toContain('No password on this account')
       expect(wrapper.find('[data-testid="two-factor-enable"]').exists())
         .toBe(false)
+    },
+  )
+
+  it(
+    'points a Google/GitHub-only account at signing out to set a '
+    + 'password instead of a nonexistent connect flow',
+    async () => {
+      mocks.listAccounts.mockResolvedValue({
+        data: [createAccount('google')],
+        error: null,
+      })
+      authMock = createAuthMock(false)
+
+      const wrapper = await mountSuspended(TwoFactor, {
+        global: { stubs: stubs() },
+      })
+
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Forgot password?')
+
+      const signOutButton = wrapper.find('[aria-label="Sign out"]')
+
+      expect(signOutButton.exists()).toBe(true)
+
+      await signOutButton.trigger('click')
+      await flushPromises()
+
+      expect(mocks.signOut).toHaveBeenCalledWith({ redirectTo: '/signin' })
     },
   )
 

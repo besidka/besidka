@@ -208,7 +208,7 @@ const data = shallowReactive<Data>({
   rememberMe: true,
 })
 
-const { signIn, errorCodes: _errorCodes, lastLoginMethod } = useAuth()
+const { signIn, errorCodes: _errorCodes, lastLoginMethod, options } = useAuth()
 
 const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
 const pending = shallowRef<boolean>(false)
@@ -224,6 +224,13 @@ const displayEmbeddedBrowserWarning = computed<boolean>(() => {
   return isSocialOAuthDisabled.value
 })
 
+// Conditional-mediation autofill can resolve arbitrarily late (or after the
+// user gives up and clicks the visible button instead), so both passkey
+// entry points share this counter — mirroring the latestSessionFetchId
+// pattern in useAuth() — to detect when their own attempt has been
+// superseded and skip navigating on a stale result.
+let latestPasskeySignInAttemptId = 0
+
 onMounted(async () => {
   try {
     const supportsAutofill = await browserSupportsWebAuthnAutofill()
@@ -232,7 +239,14 @@ onMounted(async () => {
       return
     }
 
-    await signIn.passkey({ autoFill: true })
+    const attemptId = ++latestPasskeySignInAttemptId
+    const { error } = await signIn.passkey({ autoFill: true })
+
+    if (error || attemptId !== latestPasskeySignInAttemptId) {
+      return
+    }
+
+    await navigateTo(options.redirectUserTo)
   } catch {
     return
   }
@@ -251,6 +265,8 @@ async function socialSignIn(provider: 'google' | 'github') {
 async function signInWithPasskey() {
   pending.value = true
 
+  const attemptId = ++latestPasskeySignInAttemptId
+
   try {
     const { error } = await signIn.passkey()
 
@@ -267,6 +283,12 @@ async function signInWithPasskey() {
     }
 
     useSuccessMessage('Successfully signed in')
+
+    if (attemptId !== latestPasskeySignInAttemptId) {
+      return
+    }
+
+    await navigateTo(options.redirectUserTo)
   } finally {
     pending.value = false
   }

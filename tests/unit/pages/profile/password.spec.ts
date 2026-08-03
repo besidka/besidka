@@ -2,11 +2,13 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import * as messagesComposable from '../../../../app/composables/messages'
+import { useLinkedAccounts } from '../../../../app/composables/linked-accounts'
 import PasswordPage from '../../../../app/pages/profile/password.vue'
 
 const mocks = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   changePassword: vi.fn(async () => ({ data: { status: true }, error: null })),
+  signOut: vi.fn(),
 }))
 
 const errorCodes = {
@@ -36,6 +38,7 @@ mockNuxtImport('useAuth', () => {
     lastLoginMethod: ref(null),
     fetchSession: vi.fn(),
     errorCodes,
+    signOut: mocks.signOut,
     options: {
       redirectUserTo: '/chats/new',
       redirectGuestTo: '/signin',
@@ -94,6 +97,7 @@ describe('profile password page', () => {
     vi.stubGlobal('useSeoMeta', vi.fn())
     mocks.listAccounts.mockReset()
     mocks.changePassword.mockReset()
+    mocks.signOut.mockReset()
     mocks.changePassword.mockResolvedValue({
       data: { status: true },
       error: null,
@@ -102,6 +106,7 @@ describe('profile password page', () => {
       data: [createAccount('credential')],
       error: null,
     })
+    useLinkedAccounts().resetLinkedAccounts()
   })
 
   it(
@@ -187,6 +192,32 @@ describe('profile password page', () => {
       expect(wrapper.find('[data-testid="password-submit"]').exists())
         .toBe(false)
       expect(mocks.changePassword).not.toHaveBeenCalled()
+    },
+  )
+
+  it(
+    'points a Google/GitHub-only account at signing out to set a '
+    + 'password instead of a nonexistent connect flow',
+    async () => {
+      mocks.listAccounts.mockResolvedValue({
+        data: [createAccount('google')],
+        error: null,
+      })
+
+      const wrapper = await mountSuspended(PasswordPage)
+
+      await waitForCard(wrapper)
+
+      expect(wrapper.text()).toContain('Forgot password?')
+
+      const signOutButton = wrapper.find('[aria-label="Sign out"]')
+
+      expect(signOutButton.exists()).toBe(true)
+
+      await signOutButton.trigger('click')
+      await flushPromises()
+
+      expect(mocks.signOut).toHaveBeenCalledWith({ redirectTo: '/signin' })
     },
   )
 })

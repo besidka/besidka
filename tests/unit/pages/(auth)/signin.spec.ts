@@ -27,6 +27,10 @@ mockNuxtImport('useAuth', () => {
     signIn: { email: mocks.signInEmail, passkey: mocks.signInPasskey },
     errorCodes,
     lastLoginMethod: { value: null },
+    options: {
+      redirectUserTo: '/chats/new',
+      redirectGuestTo: '/signin',
+    },
   })
 })
 
@@ -168,6 +172,23 @@ describe('signin page', () => {
     await flushPromises()
 
     expect(mocks.signInPasskey).toHaveBeenCalledWith({ autoFill: true })
+    expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
+  })
+
+  it('does not navigate when the autofill attempt resolves with an '
+    + 'error', async () => {
+    vi.stubGlobal('PublicKeyCredential', {
+      isConditionalMediationAvailable: vi.fn(async () => true),
+    })
+    mocks.signInPasskey.mockResolvedValue({
+      data: null,
+      error: { message: 'No credential available' },
+    })
+
+    await mountSuspended(SigninPage, { global: { stubs: stubs() } })
+    await flushPromises()
+
+    expect(mocks.navigateTo).not.toHaveBeenCalled()
   })
 
   it('does not attempt passkey autofill when the browser has no '
@@ -207,6 +228,7 @@ describe('signin page', () => {
 
       expect(mocks.signInPasskey).toHaveBeenCalledWith()
       expect(useSuccessMessage).toHaveBeenCalledWith('Successfully signed in')
+      expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
     })
 
   it('does not show an error toast when the user cancels the passkey '
@@ -229,6 +251,7 @@ describe('signin page', () => {
     await flushPromises()
 
     expect(useErrorMessage).not.toHaveBeenCalled()
+    expect(mocks.navigateTo).not.toHaveBeenCalled()
   })
 
   it('shows an error message for a genuine passkey sign-in failure',
@@ -250,5 +273,40 @@ describe('signin page', () => {
       expect(useErrorMessage).toHaveBeenCalledWith(
         'No passkey found for this device',
       )
+      expect(mocks.navigateTo).not.toHaveBeenCalled()
     })
+
+  it('ignores a late-resolving autofill success once the visible '
+    + 'button has already completed a newer sign-in attempt', async () => {
+    vi.stubGlobal('PublicKeyCredential', {
+      isConditionalMediationAvailable: vi.fn(async () => true),
+    })
+
+    let resolveAutofillSignIn: (value: {
+      data: { session: object, user: object } | null
+      error: null
+    }) => void = () => {}
+
+    mocks.signInPasskey.mockImplementationOnce(() => {
+      return new Promise((resolve) => {
+        resolveAutofillSignIn = resolve
+      })
+    })
+
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs() },
+    })
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.navigateTo).toHaveBeenCalledTimes(1)
+
+    resolveAutofillSignIn({ data: { session: {}, user: {} }, error: null })
+    await flushPromises()
+
+    expect(mocks.navigateTo).toHaveBeenCalledTimes(1)
+  })
 })

@@ -53,8 +53,31 @@ describe('ui/Form/Otp', () => {
       expect(input.attributes('maxlength')).toBe('11')
       expect(input.attributes('pattern')).toBe('[A-Za-z0-9]{5}-[A-Za-z0-9]{5}')
       expect(wrapper.findAll('input')).toHaveLength(1)
-      expect(wrapper.findAll('span')).toHaveLength(6)
+      expect(wrapper.findAll('span')).toHaveLength(0)
     })
+
+  it(
+    'renders the backup-code variant as a plain input instead of the '
+    + 'daisyUI multi-cell otp box, since that box only supports up to 8 '
+    + 'cells and would clip an 11-character backup code',
+    async () => {
+      const wrapper = await mountSuspended(UiFormOtp, {
+        props: { variant: 'backup-code' },
+      })
+
+      expect(wrapper.find('label.otp').exists()).toBe(false)
+      expect(wrapper.get('input').element.tagName).toBe('INPUT')
+    },
+  )
+
+  it('keeps the daisyUI six-cell otp box for the totp variant', async () => {
+    const wrapper = await mountSuspended(UiFormOtp, {
+      props: { variant: 'totp' },
+    })
+
+    expect(wrapper.find('label.otp').exists()).toBe(true)
+    expect(wrapper.findAll('span')).toHaveLength(6)
+  })
 
   it('strips non-digit characters for the totp variant', async () => {
     const wrapper = await mountSuspended(UiFormOtp)

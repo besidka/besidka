@@ -16,10 +16,19 @@
     <div class="grid gap-2">
       <p class="font-bold">No password on this account</p>
       <p class="text-sm">
-        Two-factor authentication needs a password to protect. Connect
-        email &amp; password sign-in from the security page first if you
-        want to turn it on.
+        Two-factor authentication needs a password to protect. Sign out
+        and use "Forgot password?" on the sign-in page to set one — that
+        flow creates a password for your account.
       </p>
+      <div>
+        <UiButton
+          text="Sign out"
+          size="sm"
+          mode="error"
+          :disabled="pending"
+          @click="signOutToSetPassword"
+        />
+      </div>
     </div>
   </div>
   <div
@@ -210,12 +219,16 @@ type EnableStep = 'password' | 'setup'
 type PasswordGatedAction = 'disable' | 'regenerate'
 
 const { Validation } = useValidation()
-const { client, user, errorCodes, fetchSession } = useAuth()
+const { client, user, errorCodes, fetchSession, signOut } = useAuth()
+
+const {
+  isLoadingInitial: isLoadingAccounts,
+  hasCredentialAccount,
+  fetchLinkedAccounts,
+} = useLinkedAccounts()
 
 const setupOtpField = ref<InstanceType<typeof UiFormOtp> | null>(null)
 
-const isLoadingAccounts = shallowRef<boolean>(true)
-const hasCredentialAccount = shallowRef<boolean>(false)
 const pending = shallowRef<boolean>(false)
 
 const isEnabling = shallowRef<boolean>(false)
@@ -252,23 +265,15 @@ const qrCodeSvg = computed<string>(() => {
   }
 })
 
-async function loadAccounts() {
-  isLoadingAccounts.value = true
-
-  const { data, error } = await client.listAccounts()
-
-  if (!error && data) {
-    hasCredentialAccount.value = data.some((account) => {
-      return account.providerId === 'credential'
-    })
-  }
-
-  isLoadingAccounts.value = false
-}
-
 onMounted(async () => {
-  await loadAccounts()
+  await fetchLinkedAccounts()
 })
+
+async function signOutToSetPassword() {
+  await signOut({
+    redirectTo: '/signin',
+  })
+}
 
 function startEnable() {
   isEnabling.value = true

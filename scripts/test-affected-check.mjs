@@ -689,6 +689,18 @@ export function getAffectedTests(changedFiles) {
       tests: twoFactorTests,
     },
     {
+      pattern: /^app\/composables\/session-freshness\.ts$/,
+      tests: [...accountSecurityHubTests, ...twoFactorTests],
+    },
+    {
+      pattern: /^app\/composables\/linked-accounts\.ts$/,
+      tests: [
+        ...accountSecurityHubTests,
+        ...twoFactorTests,
+        ...accountEmailPasswordTests,
+      ],
+    },
+    {
       pattern: /^app\/layouts\/profile\.vue$/,
       tests: ['tests/unit/layouts/profile.spec.ts'],
     },

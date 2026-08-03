@@ -9,7 +9,15 @@ const mocks = vi.hoisted(() => ({
   updatePasskey: vi.fn(),
   deletePasskey: vi.fn(),
   confirm: vi.fn(async () => ({ label: 'Delete', index: 0 })),
+  signOut: vi.fn(),
 }))
+
+const errorCodes = {
+  SESSION_NOT_FRESH: {
+    code: 'SESSION_NOT_FRESH',
+    message: 'Session is not fresh',
+  },
+}
 
 function createPasskeyRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -23,6 +31,8 @@ function createPasskeyRow(overrides: Record<string, unknown> = {}) {
 
 mockNuxtImport('useAuth', () => {
   return () => ({
+    errorCodes,
+    signOut: mocks.signOut,
     client: {
       passkey: {
         listUserPasskeys: mocks.listUserPasskeys,
@@ -61,6 +71,7 @@ describe('Profile/Security/Passkeys', () => {
     mocks.updatePasskey.mockReset()
     mocks.deletePasskey.mockReset()
     mocks.confirm.mockReset()
+    mocks.signOut.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Delete', index: 0 })
     mocks.listUserPasskeys.mockResolvedValue({ data: [], error: null })
     mocks.addPasskey.mockResolvedValue({
@@ -206,6 +217,40 @@ describe('Profile/Security/Passkeys', () => {
         expect(useErrorMessage).toHaveBeenCalledWith('Something went wrong')
       })
     })
+
+  it('shows a recent-sign-in fallback with a working sign-out button when '
+    + 'addPasskey rejects with SESSION_NOT_FRESH', async () => {
+    stubWebAuthnSupport()
+    mocks.addPasskey.mockResolvedValue({
+      data: null,
+      error: { code: 'SESSION_NOT_FRESH', message: 'Session is not fresh' },
+    })
+
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    const wrapper = await mountSuspended(Passkeys)
+
+    await waitForLoaded(wrapper)
+    await addButton(wrapper).trigger('click')
+    await wrapper.get('form').trigger('submit')
+
+    await vi.waitFor(() => {
+      expect(mocks.addPasskey).toHaveBeenCalled()
+    })
+    expect(useErrorMessage).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Recent sign-in required')
+    expect(nameInput(wrapper).exists()).toBe(false)
+
+    const signOutButton = wrapper.find('[aria-label="Sign out"]')
+
+    expect(signOutButton.exists()).toBe(true)
+
+    await signOutButton.trigger('click')
+
+    await vi.waitFor(() => {
+      expect(mocks.signOut).toHaveBeenCalledWith({ redirectTo: '/signin' })
+    })
+  })
 
   it('renames a passkey', async () => {
     stubWebAuthnSupport()
