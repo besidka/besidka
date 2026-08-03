@@ -214,23 +214,27 @@ scope for this PR.
 ## Turnstile owner checklist
 
 Manual steps needed before `turnstileEnforced` can be safely flipped to
-`true` in a real deployment (already set in `wrangler.jsonc`'s
-production `vars`, but inert until real keys exist):
+`true` in a real deployment (already set to `true` in `wrangler.jsonc`'s
+production `vars`; the sitekeys below already exist in both
+environments, but the flag stays practically inert until the secret
+key is set):
 
-- [ ] Create a Turnstile widget in the Cloudflare dashboard for
-      `besidka.com` (and `www.besidka.com`), widget mode "Managed" or
-      "Invisible".
+- [x] Create a Turnstile widget in the Cloudflare dashboard for
+      `besidka.com` (and `www.besidka.com`), widget mode **Managed** —
+      not Invisible. See "Turnstile: verified against Cloudflare's
+      official docs" below for why Invisible mode is the wrong choice
+      here.
 - [ ] Set the real secret key: `wrangler secret put NUXT_TURNSTILE_SECRET_KEY
       --env production` (never commit it to `wrangler.jsonc`).
-- [ ] Set the real sitekey in `wrangler.jsonc`'s production `vars` as
+- [x] Set the real sitekey in `wrangler.jsonc`'s production `vars` as
       `NUXT_PUBLIC_TURNSTILE_SITE_KEY` (safe to commit — it's
       client-visible by design).
-- [ ] Confirm the widget's configured hostnames match exactly what
-      `getAllowedHosts()` returns for `https://www.besidka.com`
-      (`www.besidka.com`, `besidka.com`) — a mismatch here is exactly
-      the failure mode `allowedHostnames` exists to prevent, so it will
-      403 real users if the widget's dashboard hostname list drifts
-      from this.
+- [ ] Confirm the widget's configured hostnames include
+      `www.besidka.com` — a mismatch here is exactly the failure mode
+      `allowedHostnames` exists to prevent, so it will 403 real users if
+      the widget's dashboard hostname list drifts from this. Registering
+      the bare apex (`besidka.com`) too is harmless but, per the
+      verification note below, not required.
 - [ ] Any preview/staging environment that ever gets its own
       `turnstileSecretKey`/`turnstileSiteKey` for testing must NOT also
       get `turnstileEnforced: true` (already the default in this repo:
@@ -244,6 +248,66 @@ production `vars`, but inert until real keys exist):
       (`VERIFICATION_FAILED`/`MISSING_RESPONSE`) in the first days after
       enabling — that signals either a hostname mismatch or a client
       bundling issue where the widget script failed to load.
+
+## Turnstile: verified against Cloudflare's official docs
+
+The client and server halves of this integration were checked
+directly against Cloudflare's published Turnstile documentation, not
+assumed from general knowledge:
+
+- **Client-side rendering.** `app/composables/turnstile.ts` renders
+  the widget with `appearance: 'interaction-only'` and
+  `execution: 'execute'`, and `app/components/Auth/Turnstile.client.vue`
+  only calls `window.turnstile.execute(widgetId)` once the surrounding
+  form is actually submitted. This is Cloudflare's documented
+  deferred-render pattern for a widget that stays invisible on a
+  normal visit and only runs its challenge at the moment of
+  submission — not a workaround.
+- **Server-side validation.** The resulting token travels to the
+  server as the `x-captcha-response` request header (set in
+  `app/pages/(auth)/signin.vue`, `signup.vue` and
+  `reset-password.vue`). That header name is **Better Auth's
+  `captcha` plugin contract, not a Cloudflare requirement** —
+  Cloudflare's own `siteverify` API expects the token under a
+  `response` field in the POST body. Verified directly against the
+  installed package: `plugins/captcha/index.mjs` reads
+  `x-captcha-response` off the incoming request, and
+  `verify-handlers/cloudflare-turnstile.mjs` forwards it to
+  `siteverify` as `body: { secret, response: captchaResponse, ... }`.
+  Nothing in this app talks to `siteverify` directly.
+
+**Confirmed: Managed mode, not Invisible.** The dashboard widget
+backing both sitekeys above is configured in **Managed** mode. This
+matters because `appearance: 'interaction-only'` only has an effect —
+escalating to a visible challenge for a visitor Cloudflare's risk
+model flags — under Managed mode. Under Invisible mode,
+`interaction-only` has no effect at all, so keeping the widget in
+Managed mode is what makes this appearance setting do anything.
+
+**Preview does not exercise strict enforcement.**
+`NUXT_TURNSTILE_ENFORCED` (→ `runtimeConfig.turnstileEnforced`) is
+`true` only in production's `wrangler.jsonc` `env` block. The preview
+deploy's top-level `vars` carries its own
+`NUXT_PUBLIC_TURNSTILE_SITE_KEY` but leaves `turnstileEnforced` at its
+`false` default. A sign-up/sign-in/reset-password flow that passes on
+the preview deployment only proves the widget renders and a token
+reaches the server — it does **not** exercise
+`expectedAction`/`allowedHostnames` enforcement, since Better Auth
+only asserts those where `turnstileEnforced` is `true`. Treat a
+working preview test as proof of wiring, not as proof that production
+enforcement works — only a production test does that.
+
+**The bare apex doesn't need its own hostname entry.** The
+`wrangler.jsonc` production `routes` block binds the Worker to both
+`besidka.com` and `www.besidka.com/*`, but a zone-level Cloudflare
+redirect rule (see `docs/seo.md`) 301s the apex to `www.besidka.com`
+ahead of that binding, before any HTML or JS loads. The Turnstile
+widget itself is therefore never served from the apex — every real
+`siteverify` response's `hostname` field will read
+`www.besidka.com`, never `besidka.com`. Registering the apex as an
+allowed hostname in the Cloudflare dashboard anyway is harmless
+(hostname allowlisting only widens acceptance, never narrows it) but
+not required for challenges to validate.
 
 ## Changing an account's email address cannot lose any account data
 

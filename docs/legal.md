@@ -25,6 +25,15 @@ Structural facts worth knowing before editing:
 - `updatedAt` is a real editorial date. Bump it when the substance changes.
 - `server/api/v1/events/index.post.ts` has a `CLIENT_ALLOWED_PATHS` allowlist
   that must track these slugs, or client analytics events from a legal page 400.
+- **The Turnstile Privacy Addendum link is a compliance obligation, not
+  a nice-to-have.** Enabling Cloudflare Turnstile (the `captcha` plugin —
+  see `docs/auth-security.md`) requires this site's Privacy Policy to
+  reference Cloudflare's Turnstile Privacy Addendum
+  (https://www.cloudflare.com/en-gb/turnstile-privacy-policy/). It lives
+  in the "Who else receives your data" section, right after the
+  recipients table. A future edit to that section must keep this link —
+  removing it silently breaks the condition Cloudflare attaches to using
+  Turnstile at all.
 
 ## Why no postal address is published
 
