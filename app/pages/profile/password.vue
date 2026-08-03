@@ -1,5 +1,10 @@
 <template>
-  <h1 class="mb-8 text-4xl font-bold text-center">Password</h1>
+  <h1 class="mb-2 text-4xl font-bold text-center">
+    Change your password
+  </h1>
+  <p class="mb-8 text-sm text-base-content/70 text-center">
+    Choose a new password to keep your account secure.
+  </p>
   <UiBubble>
     <div
       v-if="!isLoadingAccounts && !hasCredentialAccount"
@@ -201,12 +206,16 @@
           Sign out on all other devices
         </UiFormCheckbox>
       </UiFormFieldset>
-      <UiFormFieldset :inputs="false" class="flex justify-center mt-4">
+      <UiFormFieldset
+        :inputs="false"
+        class="!flex flex-col sm:items-center mt-4"
+      >
         <UiButton
           type="submit"
           :text="pending ? 'Updating...' : 'Update password'"
           icon-name="lucide:key"
           :disabled="pending"
+          class="max-sm:btn-block sm:btn-wide"
           data-testid="password-submit"
         />
       </UiFormFieldset>
