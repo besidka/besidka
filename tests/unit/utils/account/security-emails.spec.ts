@@ -96,6 +96,40 @@ describe('security-emails', () => {
     }))
   })
 
+  it('sends the email-changed email to the previous address', async () => {
+    const { sendEmailChangedEmail } = await importSecurityEmails()
+
+    await sendEmailChangedEmail({
+      user: { email: 'old@example.com' },
+      newEmail: 'new@example.com',
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'old@example.com',
+      subject: 'Your account email address was changed',
+      html: expect.stringContaining('new@example.com'),
+    }))
+  })
+
+  it(
+    'sends the backup-codes-regenerated email to the account address',
+    async () => {
+      const { sendTwoFactorBackupCodesRegeneratedEmail }
+        = await importSecurityEmails()
+
+      await sendTwoFactorBackupCodesRegeneratedEmail({
+        user: { email: 'user@example.com' },
+        logger: { set: vi.fn() },
+      })
+
+      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+        to: 'user@example.com',
+        subject: 'Two-factor backup codes regenerated',
+      }))
+    },
+  )
+
   it('sends the passkey-added email to the account address', async () => {
     const { sendPasskeyAddedEmail } = await importSecurityEmails()
 

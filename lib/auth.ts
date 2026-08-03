@@ -2,7 +2,6 @@ import type { BetterAuthPlugin } from 'better-auth'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import {
-  captcha,
   lastLoginMethod,
   oAuthProxy,
   twoFactor,
@@ -15,11 +14,6 @@ import {
   authRateLimitRules,
   createAuthRateLimitStorage,
 } from '../server/utils/auth-rate-limit'
-
-const turnstileSecretKey = ''
-const turnstileSiteKey = ''
-const turnstileEnforced = false
-const captchaEnabled = Boolean(turnstileSecretKey) && Boolean(turnstileSiteKey)
 
 const plugins: BetterAuthPlugin[] = [
   oAuthProxy({ productionURL: '' }),
@@ -45,20 +39,6 @@ const plugins: BetterAuthPlugin[] = [
     },
   }),
 ]
-
-if (captchaEnabled) {
-  plugins.push(captcha({
-    provider: 'cloudflare-turnstile',
-    secretKey: turnstileSecretKey,
-    endpoints: [
-      '/sign-up/email',
-      '/sign-in/email',
-      '/request-password-reset',
-    ],
-    expectedAction: turnstileEnforced ? 'auth' : undefined,
-    allowedHostnames: turnstileEnforced ? [] : undefined,
-  }))
-}
 
 export const auth = betterAuth({
   database: drizzleAdapter({} as any, {

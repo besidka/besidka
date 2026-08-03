@@ -123,6 +123,9 @@ importers:
       hashids:
         specifier: ^2.3.0
         version: 2.3.0
+      jose:
+        specifier: 6.2.4
+        version: 6.2.4
       nuxt:
         specifier: ^4.5.0
         version: 4.5.0(7a5e7597d4936493fe0caa04c2634057)

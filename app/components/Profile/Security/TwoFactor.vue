@@ -166,7 +166,8 @@
       <p class="font-medium">Enabled</p>
       <p class="text-sm text-base-content/70">
         Your account requires a code from your authenticator app when
-        signing in.
+        signing in with your password. Signing in with a passkey or a
+        linked account skips this step.
       </p>
     </div>
     <div class="flex gap-2">

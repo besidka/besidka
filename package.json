@@ -96,6 +96,7 @@
 		"eslint": "^10.8.0",
 		"evlog": "2.22.4",
 		"hashids": "^2.3.0",
+		"jose": "6.2.4",
 		"nuxt": "^4.5.0",
 		"nuxt-studio": "^1.7.0",
 		"nuxt-svgo": "^5.3.0",

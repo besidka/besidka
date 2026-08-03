@@ -37,7 +37,8 @@
         <div>
           <p class="font-bold">Security</p>
           <p class="mt-1 text-sm text-base-content/70">
-            Manage sign-in methods, sessions, and account removal.
+            Manage two-factor authentication, passkeys, sign-in methods,
+            sessions, and account removal.
           </p>
         </div>
         <Icon name="lucide:chevron-right" size="20" />
