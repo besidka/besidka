@@ -69,21 +69,22 @@
           </template>
           <template #labelAfter>
             <span
-              class="tooltip tooltip-right"
+              class="tooltip tooltip-left"
+              :class="lastLoginMethod === 'passkey' ? 'tooltip-accent' : ''"
               data-tip="Sign in with passkey"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
+                :class="lastLoginMethod === 'passkey' ? 'btn-accent' : 'btn-primary'"
                 :disabled="pending"
                 data-testid="signin-passkey"
-                :aria-label="'Sign in with passkey'"
+                aria-label="Sign in with passkey"
                 @click="signInWithPasskey"
               >
                 <Icon
                   name="lucide:fingerprint"
                   size="16"
-                  :class="lastLoginMethod === 'passkey' ? 'text-accent' : ''"
                 />
                 <span class="sr-only">Sign in with passkey</span>
               </button>
