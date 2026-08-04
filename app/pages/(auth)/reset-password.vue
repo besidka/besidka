@@ -90,6 +90,7 @@ async function onSubmit() {
 
     await requestPasswordReset({
       email: data.email,
+      redirectTo: '/new-password',
       fetchOptions: {
         headers: token ? { 'x-captcha-response': token } : {},
         async onSuccess() {
