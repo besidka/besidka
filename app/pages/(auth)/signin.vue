@@ -45,25 +45,6 @@
           </UiButton>
         </AuthLastUsedContainer>
       </li>
-      <li>
-        <AuthLastUsedContainer>
-          <Transition name="slide-fade">
-            <LazyAuthLastUsedBadge v-if="lastLoginMethod === 'passkey'" />
-          </Transition>
-          <UiButton
-            text="Sign in with passkey"
-            block
-            :mode="lastLoginMethod === 'passkey' ? 'accent' : 'primary'"
-            :disabled="pending"
-            data-testid="signin-passkey"
-            @click="signInWithPasskey"
-          >
-            <template #icon>
-              <Icon name="lucide:fingerprint" size="20" />
-            </template>
-          </UiButton>
-        </AuthLastUsedContainer>
-      </li>
     </ul>
     <LazyAuthInAppAlert v-if="displayEmbeddedBrowserWarning" />
     <div class="divider max-sm:my-2">or continue with</div>
@@ -85,6 +66,28 @@
               name="lucide:at-sign"
               size="16"
             />
+          </template>
+          <template #labelAfter>
+            <span
+              class="tooltip tooltip-right"
+              data-tip="Sign in with passkey"
+            >
+              <button
+                type="button"
+                class="btn btn-ghost btn-circle btn-sm"
+                :disabled="pending"
+                data-testid="signin-passkey"
+                :aria-label="'Sign in with passkey'"
+                @click="signInWithPasskey"
+              >
+                <Icon
+                  name="lucide:fingerprint"
+                  size="16"
+                  :class="lastLoginMethod === 'passkey' ? 'text-accent' : ''"
+                />
+                <span class="sr-only">Sign in with passkey</span>
+              </button>
+            </span>
           </template>
         </UiFormInput>
         <UiFormInput
