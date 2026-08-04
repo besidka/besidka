@@ -188,8 +188,8 @@ export function useAuth() {
               return
             }
 
-            await reloadNuxtApp({
-              path: redirectTo.toString(),
+            reloadNuxtApp({
+              path: typeof redirectTo === 'string' ? redirectTo : redirectTo?.path,
               force: true,
             })
           },

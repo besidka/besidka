@@ -218,7 +218,6 @@ const {
   errorCodes: _errorCodes,
   lastLoginMethod,
   options,
-  fetchSession,
 } = useAuth()
 
 const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
@@ -250,19 +249,42 @@ onMounted(async () => {
       return
     }
 
-    const attemptId = ++latestPasskeySignInAttemptId
-    const { error } = await signIn.passkey({ autoFill: true })
-
-    if (error || attemptId !== latestPasskeySignInAttemptId) {
-      return
-    }
-
-    await fetchSession()
-    await navigateTo(options.redirectUserTo)
+    await runPasskeySignIn({ autoFill: true })
   } catch {
     return
   }
 })
+
+async function runPasskeySignIn(
+  { autoFill = false }: { autoFill?: boolean } = {},
+) {
+  const attemptId = ++latestPasskeySignInAttemptId
+  const { error } = await signIn.passkey({ autoFill })
+
+  if (error) {
+    if (!autoFill) {
+      const errorCode = 'code' in error ? error.code : undefined
+
+      if (!isPasskeyCeremonyCancelled(errorCode)) {
+        useErrorMessage(error.message || 'Failed to sign in with passkey')
+      }
+    }
+
+    return
+  }
+
+  if (attemptId !== latestPasskeySignInAttemptId) {
+    return
+  }
+
+  useSuccessMessage('Successfully signed in')
+
+  const path = typeof options.redirectUserTo === 'string'
+    ? options.redirectUserTo
+    : options.redirectUserTo?.path
+
+  reloadNuxtApp({ path: path || '/chats/new', force: true })
+}
 
 async function socialSignIn(provider: 'google' | 'github') {
   pending.value = true
@@ -277,31 +299,8 @@ async function socialSignIn(provider: 'google' | 'github') {
 async function signInWithPasskey() {
   pending.value = true
 
-  const attemptId = ++latestPasskeySignInAttemptId
-
   try {
-    const { error } = await signIn.passkey()
-
-    if (error) {
-      const errorCode = 'code' in error ? error.code : undefined
-
-      if (isPasskeyCeremonyCancelled(errorCode)) {
-        return
-      }
-
-      useErrorMessage(error.message || 'Failed to sign in with passkey')
-
-      return
-    }
-
-    useSuccessMessage('Successfully signed in')
-
-    if (attemptId !== latestPasskeySignInAttemptId) {
-      return
-    }
-
-    await fetchSession()
-    await navigateTo(options.redirectUserTo)
+    await runPasskeySignIn()
   } finally {
     pending.value = false
   }
