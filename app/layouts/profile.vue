@@ -83,7 +83,7 @@
                 v-for="tab in tabs"
                 :key="tab.to"
                 :to="tab.to"
-                class="tab grow"
+                class="tab grow gap-1"
                 :class="{ 'tab-active': isTabActive(tab) }"
               >
                 <Icon :name="tab.icon" size="16" />
