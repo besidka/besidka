@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   })),
   fetchSession: vi.fn(async () => undefined),
   navigateTo: vi.fn(async () => undefined),
+  reloadNuxtApp: vi.fn(async () => undefined),
 }))
 
 const errorCodes = {
@@ -37,6 +38,7 @@ mockNuxtImport('useAuth', () => {
 })
 
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
+mockNuxtImport('reloadNuxtApp', () => mocks.reloadNuxtApp)
 
 function stubs() {
   return {
@@ -77,6 +79,7 @@ describe('signin page', () => {
     mocks.signInPasskey.mockClear()
     mocks.fetchSession.mockClear()
     mocks.navigateTo.mockClear()
+    mocks.reloadNuxtApp.mockClear()
     mocks.signInEmail.mockResolvedValue({
       data: { redirect: false, token: 'session-token', user: {} },
       error: null,
@@ -175,8 +178,8 @@ describe('signin page', () => {
     await flushPromises()
 
     expect(mocks.signInPasskey).toHaveBeenCalledWith({ autoFill: true })
-    expect(mocks.fetchSession).toHaveBeenCalled()
-    expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
+    expect(mocks.reloadNuxtApp)
+      .toHaveBeenCalledWith({ path: '/chats/new', force: true })
   })
 
   it('does not navigate when the autofill attempt resolves with an '
@@ -192,7 +195,7 @@ describe('signin page', () => {
     await mountSuspended(SigninPage, { global: { stubs: stubs() } })
     await flushPromises()
 
-    expect(mocks.navigateTo).not.toHaveBeenCalled()
+    expect(mocks.reloadNuxtApp).not.toHaveBeenCalled()
   })
 
   it('does not attempt passkey autofill when the browser has no '
@@ -230,10 +233,10 @@ describe('signin page', () => {
       await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
       await flushPromises()
 
-      expect(mocks.signInPasskey).toHaveBeenCalledWith()
+      expect(mocks.signInPasskey).toHaveBeenCalledWith({ autoFill: false })
       expect(useSuccessMessage).toHaveBeenCalledWith('Successfully signed in')
-      expect(mocks.fetchSession).toHaveBeenCalled()
-      expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/new')
+      expect(mocks.reloadNuxtApp)
+        .toHaveBeenCalledWith({ path: '/chats/new', force: true })
     })
 
   it('does not show an error toast when the user cancels the passkey '
@@ -256,7 +259,7 @@ describe('signin page', () => {
     await flushPromises()
 
     expect(useErrorMessage).not.toHaveBeenCalled()
-    expect(mocks.navigateTo).not.toHaveBeenCalled()
+    expect(mocks.reloadNuxtApp).not.toHaveBeenCalled()
   })
 
   it('shows an error message for a genuine passkey sign-in failure',
@@ -278,7 +281,7 @@ describe('signin page', () => {
       expect(useErrorMessage).toHaveBeenCalledWith(
         'No passkey found for this device',
       )
-      expect(mocks.navigateTo).not.toHaveBeenCalled()
+      expect(mocks.reloadNuxtApp).not.toHaveBeenCalled()
     })
 
   it('ignores a late-resolving autofill success once the visible '
@@ -307,11 +310,11 @@ describe('signin page', () => {
     await wrapper.get('[data-testid="signin-passkey"]').trigger('click')
     await flushPromises()
 
-    expect(mocks.navigateTo).toHaveBeenCalledTimes(1)
+    expect(mocks.reloadNuxtApp).toHaveBeenCalledTimes(1)
 
     resolveAutofillSignIn({ data: { session: {}, user: {} }, error: null })
     await flushPromises()
 
-    expect(mocks.navigateTo).toHaveBeenCalledTimes(1)
+    expect(mocks.reloadNuxtApp).toHaveBeenCalledTimes(1)
   })
 })
