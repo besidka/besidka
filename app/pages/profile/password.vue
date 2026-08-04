@@ -55,13 +55,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.currentPassword.length,
+                'tooltip tooltip-left': data.currentPassword.length,
               }"
               :data-tip="currentPasswordVisibility.revealTip.value"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.currentPassword.length"
                 @click="currentPasswordVisibility.toggle"
               >
@@ -95,13 +95,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.newPassword.length,
+                'tooltip tooltip-left': data.newPassword.length,
               }"
               :data-tip="newPasswordVisibility.revealTip.value"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.newPassword.length"
                 @click="newPasswordVisibility.toggle"
               >
@@ -178,13 +178,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.newPasswordConfirmation.length,
+                'tooltip tooltip-left': data.newPasswordConfirmation.length,
               }"
               :data-tip="confirmPasswordVisibility.revealTip.value"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.newPasswordConfirmation.length"
                 @click="confirmPasswordVisibility.toggle"
               >
