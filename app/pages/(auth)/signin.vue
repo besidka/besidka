@@ -71,7 +71,10 @@
             <span
               class="tooltip tooltip-left"
               :class="lastLoginMethod === 'passkey' ? 'tooltip-accent' : ''"
-              data-tip="Sign in with passkey"
+              :data-tip="`Sign in with passkey${lastLoginMethod === 'passkey'
+                ? ' (last used)'
+                : ''}`
+              "
             >
               <button
                 type="button"
@@ -108,13 +111,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.password.length,
+                'tooltip tooltip-left': data.password.length,
               }"
               :data-tip="revealTip"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.password.length"
                 @click="displayPassword = !displayPassword"
               >
