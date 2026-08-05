@@ -38,7 +38,8 @@
 		"NUXT_RESEARCH_SWEEP_ENABLED": true,
 		"NUXT_RESEARCH_SWEEP_BATCH_SIZE": 20,
 		"NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
-		"NUXT_RESEARCH_MOCK_ENABLED": true
+		"NUXT_RESEARCH_MOCK_ENABLED": true,
+		"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
 	},
 	"d1_databases": [
 		{
@@ -157,7 +158,8 @@
 				"NUXT_TURNSTILE_ENFORCED": true,
 				"NUXT_AXIOM_DATASET": "besidka-prod",
 				"NUXT_AXIOM_AUDIT_DATASET": "besidka-audit-prod",
-				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod"
+				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod",
+				"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAEFMAZiwbUuiy0qi"
 			},
 			"d1_databases": [
 				{

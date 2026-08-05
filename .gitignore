@@ -49,6 +49,7 @@ stats.html
 .claude/plans
 .pi/*
 !.pi/mcp.json
+.pi-subagents
 .herdr
 
 # Snyk Security Extension - AI Rules (auto-generated)

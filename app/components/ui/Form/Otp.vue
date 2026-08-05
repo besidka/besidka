@@ -1,5 +1,9 @@
 <template>
-  <label class="otp otp-lg">
+  <div class="flex justify-center">
+  <label
+    v-if="variant === 'totp'"
+    class="otp otp-lg [--radius-field:0.5rem]"
+  >
     <span />
     <span />
     <span />
@@ -18,6 +22,20 @@
       @input="onInput"
     >
   </label>
+  <input
+    v-else
+    ref="field"
+    :value="value"
+    type="text"
+    class="input input-lg w-full text-center font-mono tracking-widest"
+    :autocomplete="autocomplete"
+    :inputmode="inputmode"
+    :maxlength="maxlength"
+    :pattern="pattern"
+    :disabled="disabled"
+    @input="onInput"
+  >
+  </div>
 </template>
 
 <script setup lang="ts">

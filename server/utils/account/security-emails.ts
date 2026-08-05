@@ -142,3 +142,74 @@ export async function sendTwoFactorDisabledEmail({
     logger,
   })
 }
+
+export async function sendEmailChangedEmail({
+  user,
+  newEmail,
+  logger,
+}: {
+  user: SecurityEmailUser
+  newEmail: string
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'Your account email address was changed',
+    html: 'Your Besidka account email address was just changed to '
+      + `${newEmail}. If this was not you, contact support immediately.`,
+    logger,
+  })
+}
+
+export async function sendTwoFactorBackupCodesRegeneratedEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'Two-factor backup codes regenerated',
+    html: 'Your two-factor authentication backup codes were just '
+      + 'regenerated on your Besidka account, invalidating every previous '
+      + 'code. If this was not you, turn off two-factor authentication '
+      + 'from your account security settings and change your password '
+      + 'immediately.',
+    logger,
+  })
+}
+
+export async function sendPasskeyAddedEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'New passkey added',
+    html: 'A new passkey was just added to your Besidka account. If this '
+      + 'was not you, remove it from your account security settings and '
+      + 'change your password immediately.',
+    logger,
+  })
+}
+
+export async function sendPasskeyRemovedEmail({
+  user,
+  logger,
+}: {
+  user: SecurityEmailUser
+  logger?: LoggerLike
+}): Promise<void> {
+  await sendSecurityNotificationEmail({
+    user,
+    subject: 'Passkey removed',
+    html: 'A passkey was just removed from your Besidka account. If this '
+      + 'was not you, review your account security settings and change '
+      + 'your password immediately.',
+    logger,
+  })
+}

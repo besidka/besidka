@@ -2,7 +2,7 @@
   <div class="grid gap-4">
     <div
       v-if="sessions.length > 1"
-      class="flex justify-end"
+      class="flex justify-center"
     >
       <UiButton
         text="Sign out of all other sessions"
@@ -13,7 +13,7 @@
         @click="revokeAllOthers"
       />
     </div>
-    <ul class="grid gap-2">
+    <ul class="grid gap-2 max-h-96 overflow-y-auto overflow-x-hidden">
       <li
         v-for="row in sortedSessions"
         :key="row.id"
@@ -37,6 +37,7 @@
         <UiButton
           v-if="!row.current"
           text="End session"
+          mobile-text="End"
           mode="error"
           outline
           size="sm"

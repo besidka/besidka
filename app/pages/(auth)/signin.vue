@@ -55,7 +55,7 @@
       <UiFormFieldset>
         <UiFormInput
           v-model="data.email"
-          autocomplete="email"
+          autocomplete="email webauthn"
           type="email"
           placeholder="example@example.com"
           :rules="[Validation.required(), Validation.email()]"
@@ -66,6 +66,32 @@
               name="lucide:at-sign"
               size="16"
             />
+          </template>
+          <template #labelAfter>
+            <span
+              class="tooltip tooltip-left"
+              :class="lastLoginMethod === 'passkey' ? 'tooltip-accent' : ''"
+              :data-tip="`Sign in with passkey${lastLoginMethod === 'passkey'
+                ? ' (last used)'
+                : ''}`
+              "
+            >
+              <button
+                type="button"
+                class="btn btn-ghost btn-ghost-legacy btn-circle btn-xs hitslop"
+                :class="lastLoginMethod === 'passkey' ? 'btn-accent' : 'btn-primary'"
+                :disabled="pending"
+                data-testid="signin-passkey"
+                aria-label="Sign in with passkey"
+                @click="signInWithPasskey"
+              >
+                <Icon
+                  name="lucide:fingerprint"
+                  size="16"
+                />
+                <span class="sr-only">Sign in with passkey</span>
+              </button>
+            </span>
           </template>
         </UiFormInput>
         <UiFormInput
@@ -85,13 +111,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.password.length,
+                'tooltip tooltip-left': data.password.length,
               }"
               :data-tip="revealTip"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.password.length"
                 @click="displayPassword = !displayPassword"
               >
@@ -194,7 +220,12 @@ const data = shallowReactive<Data>({
   rememberMe: true,
 })
 
-const { signIn, errorCodes: _errorCodes, lastLoginMethod } = useAuth()
+const {
+  signIn,
+  errorCodes: _errorCodes,
+  lastLoginMethod,
+  options,
+} = useAuth()
 
 const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
 const pending = shallowRef<boolean>(false)
@@ -210,11 +241,73 @@ const displayEmbeddedBrowserWarning = computed<boolean>(() => {
   return isSocialOAuthDisabled.value
 })
 
+// Conditional-mediation autofill can resolve arbitrarily late (or after the
+// user gives up and clicks the visible button instead), so both passkey
+// entry points share this counter — mirroring the latestSessionFetchId
+// pattern in useAuth() — to detect when their own attempt has been
+// superseded and skip navigating on a stale result.
+let latestPasskeySignInAttemptId = 0
+
+onMounted(async () => {
+  try {
+    const supportsAutofill = await browserSupportsWebAuthnAutofill()
+
+    if (!supportsAutofill) {
+      return
+    }
+
+    await runPasskeySignIn({ autoFill: true })
+  } catch {
+    return
+  }
+})
+
+async function runPasskeySignIn(
+  { autoFill = false }: { autoFill?: boolean } = {},
+) {
+  const attemptId = ++latestPasskeySignInAttemptId
+  const { error } = await signIn.passkey({ autoFill })
+
+  if (error) {
+    if (!autoFill) {
+      const errorCode = 'code' in error ? error.code : undefined
+
+      if (!isPasskeyCeremonyCancelled(errorCode)) {
+        useErrorMessage(error.message || 'Failed to sign in with passkey')
+      }
+    }
+
+    return
+  }
+
+  if (attemptId !== latestPasskeySignInAttemptId) {
+    return
+  }
+
+  useSuccessMessage('Successfully signed in')
+
+  const path = typeof options.redirectUserTo === 'string'
+    ? options.redirectUserTo
+    : options.redirectUserTo?.path
+
+  reloadNuxtApp({ path: path || '/chats/new', force: true })
+}
+
 async function socialSignIn(provider: 'google' | 'github') {
   pending.value = true
 
   try {
     await signInWithSocialOAuth(provider, '/chats/new')
+  } finally {
+    pending.value = false
+  }
+}
+
+async function signInWithPasskey() {
+  pending.value = true
+
+  try {
+    await runPasskeySignIn()
   } finally {
     pending.value = false
   }

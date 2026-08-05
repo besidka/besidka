@@ -1,5 +1,12 @@
 <template>
-  <div class="grid gap-4">
+  <div
+    v-if="isLoadingInitial"
+    class="skeleton skeleton--default h-16"
+  />
+  <div
+    v-else
+    class="grid gap-4"
+  >
     <div
       v-if="notice"
       role="alert"
@@ -66,15 +73,7 @@
   </div>
 </template>
 <script setup lang="ts">
-interface LinkedAccount {
-  id: string
-  providerId: string
-  accountId: string
-  userId: string
-  createdAt: string | Date
-  updatedAt: string | Date
-  scopes: string[]
-}
+import type { LinkedAccount } from '~/composables/linked-accounts'
 
 interface LinkedAccountsNotice {
   variant: 'error' | 'warning'
@@ -104,12 +103,18 @@ const $auth = useAuth()
 const { errorCodes } = $auth
 const route = useRoute()
 const router = useRouter()
+const sessionFreshness = useSessionFreshnessError()
+
+const {
+  accounts,
+  isLoading,
+  isLoadingInitial,
+  fetchLinkedAccounts,
+} = useLinkedAccounts()
 
 const initialErrorCode = route.query.error as string | undefined
 const initialLinkedProvider = route.query.linked as string | undefined
 
-const accounts = shallowRef<LinkedAccount[]>([])
-const isLoading = shallowRef<boolean>(true)
 const isProcessing = shallowRef<boolean>(false)
 const notice = shallowRef<LinkedAccountsNotice | null>(null)
 
@@ -134,18 +139,6 @@ function accountStatus(providerId: string): string {
   }
 
   return `Connected since ${new Date(account.createdAt).toLocaleDateString()}`
-}
-
-async function loadAccounts() {
-  isLoading.value = true
-
-  const { data, error } = await $auth.client.listAccounts()
-
-  if (!error && data) {
-    accounts.value = data
-  }
-
-  isLoading.value = false
 }
 
 function clearRedirectQuery() {
@@ -189,7 +182,7 @@ function applyRedirectOutcome() {
 
 onMounted(async () => {
   applyRedirectOutcome()
-  await loadAccounts()
+  await fetchLinkedAccounts()
 })
 
 async function connect(provider: LinkableProvider) {
@@ -241,12 +234,10 @@ async function disconnect(providerId: 'credential' | LinkableProvider) {
           'This is your only sign-in method',
           'Connect another sign-in method before disconnecting this one.',
         )
-      } else if (error.code === errorCodes.SESSION_NOT_FRESH.code) {
+      } else if (sessionFreshness.isSessionNotFresh(error.code)) {
         notice.value = {
           variant: 'warning',
-          title: 'Recent sign-in required',
-          description: 'For your security, this action needs a recent '
-            + 'sign-in. Please sign out and sign back in, then try again.',
+          ...sessionFreshness.describeSessionFreshnessNotice(),
           action: 'sign-out',
         }
       } else {
@@ -257,15 +248,13 @@ async function disconnect(providerId: 'credential' | LinkableProvider) {
     }
 
     useSuccessMessage(`Disconnected ${providerLabels[providerId]}`)
-    await loadAccounts()
+    await fetchLinkedAccounts({ force: true })
   } finally {
     isProcessing.value = false
   }
 }
 
 async function handleSignOut() {
-  await $auth.signOut({
-    redirectTo: '/signin',
-  })
+  await sessionFreshness.signOutForFreshSession()
 }
 </script>

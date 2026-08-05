@@ -1,7 +1,7 @@
 <template>
   <section
-    class="rounded-box p-6"
-    :class="danger ? 'border border-error bg-base-100' : 'bubble'"
+    class="bubble rounded-box p-6"
+    :class="{ 'bg-error/10 border-error/35': danger }"
   >
     <h2
       class="text-lg font-bold"

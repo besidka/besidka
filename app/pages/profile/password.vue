@@ -1,5 +1,10 @@
 <template>
-  <h1 class="mb-8 text-4xl font-bold text-center">Password</h1>
+  <h1 class="mb-2 text-4xl font-bold text-center">
+    Change your password
+  </h1>
+  <p class="mb-8 text-sm text-base-content/70 text-center">
+    Choose a new password to keep your account secure.
+  </p>
   <UiBubble>
     <div
       v-if="!isLoadingAccounts && !hasCredentialAccount"
@@ -11,14 +16,17 @@
         <p class="font-bold">No password on this account</p>
         <p class="text-sm">
           Your account signs in with Google or GitHub only, so there's no
-          password to change. Connect email &amp; password sign-in from the
-          security page first if you want to set one.
+          password to change. Sign out and use "Forgot password?" on the
+          sign-in page to set one — that flow creates a password for your
+          account.
         </p>
         <div>
           <UiButton
-            to="/profile/security"
-            text="Go to security"
+            text="Sign out"
             size="sm"
+            mode="error"
+            :disabled="pending"
+            @click="signOutToSetPassword"
           />
         </div>
       </div>
@@ -47,13 +55,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.currentPassword.length,
+                'tooltip tooltip-left': data.currentPassword.length,
               }"
               :data-tip="currentPasswordVisibility.revealTip.value"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.currentPassword.length"
                 @click="currentPasswordVisibility.toggle"
               >
@@ -87,13 +95,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.newPassword.length,
+                'tooltip tooltip-left': data.newPassword.length,
               }"
               :data-tip="newPasswordVisibility.revealTip.value"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.newPassword.length"
                 @click="newPasswordVisibility.toggle"
               >
@@ -170,13 +178,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.newPasswordConfirmation.length,
+                'tooltip tooltip-left': data.newPasswordConfirmation.length,
               }"
               :data-tip="confirmPasswordVisibility.revealTip.value"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.newPasswordConfirmation.length"
                 @click="confirmPasswordVisibility.toggle"
               >
@@ -198,12 +206,16 @@
           Sign out on all other devices
         </UiFormCheckbox>
       </UiFormFieldset>
-      <UiFormFieldset :inputs="false" class="flex justify-center mt-4">
+      <UiFormFieldset
+        :inputs="false"
+        class="!flex flex-col sm:items-center mt-4"
+      >
         <UiButton
           type="submit"
           :text="pending ? 'Updating...' : 'Update password'"
           icon-name="lucide:key"
           :disabled="pending"
+          class="max-sm:btn-block sm:btn-wide sm:w-64"
           data-testid="password-submit"
         />
       </UiFormFieldset>
@@ -270,12 +282,15 @@ const { estimateTimeToCrack } = usePassword()
 const $auth = useAuth()
 const { errorCodes } = $auth
 
+const {
+  isLoadingInitial: isLoadingAccounts,
+  hasCredentialAccount,
+  fetchLinkedAccounts,
+} = useLinkedAccounts()
+
 const form = ref<InstanceType<typeof UiForm> | null>()
 const isNewPasswordFocused = shallowRef<boolean>(false)
 const pending = shallowRef<boolean>(false)
-
-const isLoadingAccounts = shallowRef<boolean>(true)
-const hasCredentialAccount = shallowRef<boolean>(false)
 
 const currentPasswordVisibility = createPasswordVisibility()
 const newPasswordVisibility = createPasswordVisibility()
@@ -329,23 +344,15 @@ const timeToCrackHighlight = computed(() => {
   }
 })
 
-async function loadAccounts() {
-  isLoadingAccounts.value = true
-
-  const { data: accounts, error } = await $auth.client.listAccounts()
-
-  if (!error && accounts) {
-    hasCredentialAccount.value = accounts.some((account) => {
-      return account.providerId === 'credential'
-    })
-  }
-
-  isLoadingAccounts.value = false
-}
-
 onMounted(async () => {
-  await loadAccounts()
+  await fetchLinkedAccounts()
 })
+
+async function signOutToSetPassword() {
+  await $auth.signOut({
+    redirectTo: '/signin',
+  })
+}
 
 async function onSubmit() {
   pending.value = true

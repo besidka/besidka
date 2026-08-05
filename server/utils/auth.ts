@@ -8,16 +8,22 @@ import {
   twoFactor,
 } from 'better-auth/plugins'
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { passkey } from '@better-auth/passkey'
+import { jwtVerify } from 'jose'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
 import {
+  sendEmailChangedEmail,
+  sendPasskeyAddedEmail,
+  sendPasskeyRemovedEmail,
   sendPasswordChangedEmail,
   sendSignInMethodConnectedEmail,
   sendSignInMethodDisconnectedEmail,
+  sendTwoFactorBackupCodesRegeneratedEmail,
   sendTwoFactorDisabledEmail,
   sendTwoFactorEnabledEmail,
 } from './account/security-emails'
-import { getAllowedHosts } from './auth-hosts'
+import { getAllowedHosts, getRelyingPartyId } from './auth-hosts'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -54,6 +60,14 @@ function createAuth() {
         amount: 10,
         length: 10,
         storeBackupCodes: 'encrypted',
+      },
+    }),
+    passkey({
+      rpID: getRelyingPartyId(config.public.baseUrl),
+      rpName: 'Besidka',
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'preferred',
       },
     }),
   ]
@@ -281,6 +295,58 @@ function createAuth() {
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
         try {
+          if (ctx.path === '/verify-email') {
+            const token = ctx.query?.token
+
+            if (typeof token !== 'string') {
+              return
+            }
+
+            let payload: Record<string, unknown>
+
+            try {
+              const verified = await jwtVerify(
+                token,
+                new TextEncoder().encode(config.betterAuthSecret),
+                { algorithms: ['HS256'] },
+              )
+
+              payload = verified.payload
+            } catch {
+              return
+            }
+
+            if (payload.requestType !== 'change-email-verification') {
+              return
+            }
+
+            const previousEmail = payload.email
+            const newEmail = payload.updateTo
+
+            if (
+              typeof previousEmail !== 'string'
+              || typeof newEmail !== 'string'
+            ) {
+              return
+            }
+
+            const updatedUser = await db.query.users.findFirst({
+              where: { email: newEmail },
+              columns: { email: true },
+            })
+
+            if (!updatedUser) {
+              return
+            }
+
+            await sendEmailChangedEmail({
+              user: { email: previousEmail },
+              newEmail,
+            })
+
+            return
+          }
+
           if (isAPIError(ctx.context.returned)) {
             return
           }
@@ -322,6 +388,24 @@ function createAuth() {
 
           if (ctx.path === '/two-factor/disable') {
             await sendTwoFactorDisabledEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/two-factor/generate-backup-codes') {
+            await sendTwoFactorBackupCodesRegeneratedEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/passkey/verify-registration') {
+            await sendPasskeyAddedEmail({ user })
+
+            return
+          }
+
+          if (ctx.path === '/passkey/delete-passkey') {
+            await sendPasskeyRemovedEmail({ user })
           }
         } catch (exception) {
           resolveServerLogger().set({

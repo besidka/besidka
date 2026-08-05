@@ -1,6 +1,7 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../../../app/composables/messages'
+import { useLinkedAccounts } from '../../../../../app/composables/linked-accounts'
 import LinkedAccounts from '../../../../../app/components/Profile/Security/LinkedAccounts.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -72,6 +73,7 @@ describe('Profile/Security/LinkedAccounts', () => {
     mocks.signOut.mockReset()
     mocks.confirm.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Disconnect', index: 0 })
+    useLinkedAccounts().resetLinkedAccounts()
   })
 
   it('maps the email_doesn\'t_match redirect error to a notice with a '

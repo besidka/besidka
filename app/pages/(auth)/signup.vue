@@ -97,13 +97,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.password.length,
+                'tooltip tooltip-left': data.password.length,
               }"
               :data-tip="revealTip"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.password.length"
                 @click="displayPassword = !displayPassword"
               >
@@ -180,13 +180,13 @@
           <template #labelAfter>
             <span
               :class="{
-                'tooltip tooltip-right': data.passwordConfirmation.length,
+                'tooltip tooltip-left': data.passwordConfirmation.length,
               }"
               :data-tip="revealTipConfirmation"
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-sm"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
                 :disabled="!data.passwordConfirmation.length"
                 @click="
                   displayPasswordConfirmation = !displayPasswordConfirmation

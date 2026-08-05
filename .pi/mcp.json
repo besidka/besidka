@@ -1,20 +1,21 @@
 {
-    "mcpServers": {
-        "axiom": {
-            "command": "npx",
-            "args": [
-                "-y",
-                "mcp-remote",
-                "https://mcp.axiom.co/mcp"
-            ]
-        },
-        "nuxt": {
-            "command": "npx",
-            "args": [
-                "-y",
-                "mcp-remote",
-                "https://nuxt.com/mcp"
-            ]
-        }
+  "mcpServers": {
+    "axiom": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.axiom.co/mcp"
+      ]
+    },
+    "nuxt": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://nuxt.com/mcp"
+      ],
+      "directTools": true
     }
+  }
 }

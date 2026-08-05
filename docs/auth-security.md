@@ -1,9 +1,11 @@
-# Auth security — Turnstile captcha + Better Auth rate limits
+# Auth security — rate limits, Turnstile, 2FA, and passkeys
 
-PR1 of a 4-PR stacked series (rate-limit + Turnstile → security hub →
-2FA → passkeys). This document covers what shipped here; the later PRs
-extend the rate-limit table (`/two-factor/*`, `/passkey/*` rows already
-exist below, inert until those endpoints exist).
+Covers the account-security surface built across a 4-PR stacked series:
+hardened per-endpoint rate limits and Turnstile captcha, the security
+hub (sessions, linked accounts, account removal), two-factor
+authentication (TOTP + backup codes), and passkeys (WebAuthn). All four
+have landed; every section below, including the `/two-factor/*` and
+`/passkey/*` rate-limit rows, reflects what is live today.
 
 ## Why the built-in `captcha` plugin, not a hand-rolled hook
 
@@ -131,10 +133,20 @@ abuse containment instead of raw burst suppression.
 | `/revoke-other-sessions` | 900s | 5 |
 | everything else (default) | 60s | 60 |
 
-`/two-factor/*` and `/passkey/*` rows exist now even though those
-endpoints don't ship until PR3/PR4 — unmatched rules are inert, and it
-keeps the entire policy reviewable in one file
-(`server/utils/auth-rate-limit.ts`) instead of splitting it across PRs.
+`/two-factor/*` and `/passkey/*` rows are active now that both plugins
+are registered — keeping the entire policy in one file
+(`server/utils/auth-rate-limit.ts`) rather than splitting it across
+PRs made this straightforward to extend as each plugin shipped.
+
+`/revoke-session`'s row above bounds requests that hit Better Auth's
+HTTP router directly, but this app's own session-revoke route
+(`server/api/v1/profiles/sessions/[id]/revoke.post.ts`) calls
+`useServerAuth().api.revokeSession()` in-process rather than making an
+HTTP request — Better Auth's rate limiting is applied at the HTTP
+router level, so it never sees these calls, and the row currently has
+no effect on this app's own revoke path. Practical exposure is low: the
+route already scopes session lookups to the caller's own sessions, so
+this can't be used to affect another account regardless.
 
 `/verify-password` is gated only by `sensitiveSessionMiddleware` (any
 valid session cookie), takes a plaintext `{ password }` body, and
@@ -202,23 +214,27 @@ scope for this PR.
 ## Turnstile owner checklist
 
 Manual steps needed before `turnstileEnforced` can be safely flipped to
-`true` in a real deployment (already set in `wrangler.jsonc`'s
-production `vars`, but inert until real keys exist):
+`true` in a real deployment (already set to `true` in `wrangler.jsonc`'s
+production `vars`; the sitekeys below already exist in both
+environments, but the flag stays practically inert until the secret
+key is set):
 
-- [ ] Create a Turnstile widget in the Cloudflare dashboard for
-      `besidka.com` (and `www.besidka.com`), widget mode "Managed" or
-      "Invisible".
+- [x] Create a Turnstile widget in the Cloudflare dashboard for
+      `besidka.com` (and `www.besidka.com`), widget mode **Managed** —
+      not Invisible. See "Turnstile: verified against Cloudflare's
+      official docs" below for why Invisible mode is the wrong choice
+      here.
 - [ ] Set the real secret key: `wrangler secret put NUXT_TURNSTILE_SECRET_KEY
       --env production` (never commit it to `wrangler.jsonc`).
-- [ ] Set the real sitekey in `wrangler.jsonc`'s production `vars` as
+- [x] Set the real sitekey in `wrangler.jsonc`'s production `vars` as
       `NUXT_PUBLIC_TURNSTILE_SITE_KEY` (safe to commit — it's
       client-visible by design).
-- [ ] Confirm the widget's configured hostnames match exactly what
-      `getAllowedHosts()` returns for `https://www.besidka.com`
-      (`www.besidka.com`, `besidka.com`) — a mismatch here is exactly
-      the failure mode `allowedHostnames` exists to prevent, so it will
-      403 real users if the widget's dashboard hostname list drifts
-      from this.
+- [ ] Confirm the widget's configured hostnames include
+      `www.besidka.com` — a mismatch here is exactly the failure mode
+      `allowedHostnames` exists to prevent, so it will 403 real users if
+      the widget's dashboard hostname list drifts from this. Registering
+      the bare apex (`besidka.com`) too is harmless but, per the
+      verification note below, not required.
 - [ ] Any preview/staging environment that ever gets its own
       `turnstileSecretKey`/`turnstileSiteKey` for testing must NOT also
       get `turnstileEnforced: true` (already the default in this repo:
@@ -232,6 +248,66 @@ production `vars`, but inert until real keys exist):
       (`VERIFICATION_FAILED`/`MISSING_RESPONSE`) in the first days after
       enabling — that signals either a hostname mismatch or a client
       bundling issue where the widget script failed to load.
+
+## Turnstile: verified against Cloudflare's official docs
+
+The client and server halves of this integration were checked
+directly against Cloudflare's published Turnstile documentation, not
+assumed from general knowledge:
+
+- **Client-side rendering.** `app/composables/turnstile.ts` renders
+  the widget with `appearance: 'interaction-only'` and
+  `execution: 'execute'`, and `app/components/Auth/Turnstile.client.vue`
+  only calls `window.turnstile.execute(widgetId)` once the surrounding
+  form is actually submitted. This is Cloudflare's documented
+  deferred-render pattern for a widget that stays invisible on a
+  normal visit and only runs its challenge at the moment of
+  submission — not a workaround.
+- **Server-side validation.** The resulting token travels to the
+  server as the `x-captcha-response` request header (set in
+  `app/pages/(auth)/signin.vue`, `signup.vue` and
+  `reset-password.vue`). That header name is **Better Auth's
+  `captcha` plugin contract, not a Cloudflare requirement** —
+  Cloudflare's own `siteverify` API expects the token under a
+  `response` field in the POST body. Verified directly against the
+  installed package: `plugins/captcha/index.mjs` reads
+  `x-captcha-response` off the incoming request, and
+  `verify-handlers/cloudflare-turnstile.mjs` forwards it to
+  `siteverify` as `body: { secret, response: captchaResponse, ... }`.
+  Nothing in this app talks to `siteverify` directly.
+
+**Confirmed: Managed mode, not Invisible.** The dashboard widget
+backing both sitekeys above is configured in **Managed** mode. This
+matters because `appearance: 'interaction-only'` only has an effect —
+escalating to a visible challenge for a visitor Cloudflare's risk
+model flags — under Managed mode. Under Invisible mode,
+`interaction-only` has no effect at all, so keeping the widget in
+Managed mode is what makes this appearance setting do anything.
+
+**Preview does not exercise strict enforcement.**
+`NUXT_TURNSTILE_ENFORCED` (→ `runtimeConfig.turnstileEnforced`) is
+`true` only in production's `wrangler.jsonc` `env` block. The preview
+deploy's top-level `vars` carries its own
+`NUXT_PUBLIC_TURNSTILE_SITE_KEY` but leaves `turnstileEnforced` at its
+`false` default. A sign-up/sign-in/reset-password flow that passes on
+the preview deployment only proves the widget renders and a token
+reaches the server — it does **not** exercise
+`expectedAction`/`allowedHostnames` enforcement, since Better Auth
+only asserts those where `turnstileEnforced` is `true`. Treat a
+working preview test as proof of wiring, not as proof that production
+enforcement works — only a production test does that.
+
+**The bare apex doesn't need its own hostname entry.** The
+`wrangler.jsonc` production `routes` block binds the Worker to both
+`besidka.com` and `www.besidka.com/*`, but a zone-level Cloudflare
+redirect rule (see `docs/seo.md`) 301s the apex to `www.besidka.com`
+ahead of that binding, before any HTML or JS loads. The Turnstile
+widget itself is therefore never served from the apex — every real
+`siteverify` response's `hostname` field will read
+`www.besidka.com`, never `besidka.com`. Registering the apex as an
+allowed hostname in the Cloudflare dashboard anyway is harmless
+(hostname allowlisting only widens acceptance, never narrows it) but
+not required for challenges to validate.
 
 ## Changing an account's email address cannot lose any account data
 
@@ -282,4 +358,140 @@ to the core session-verification path than this fix-up pass warrants. The
 confirmation copy in `Sessions.vue` is worded to reflect this honestly
 ("it may take a few minutes to fully log the device out everywhere")
 instead of promising immediate revocation.
+
+## Two-factor authentication: TOTP and backup codes
+
+Configured via Better Auth's `twoFactor` plugin in `server/utils/auth.ts`
+(`totpOptions: { digits: 6, period: 30 }`, `backupCodeOptions: { amount:
+10, length: 10, storeBackupCodes: 'encrypted' }`).
+
+`storeBackupCodes: 'encrypted'` symmetrically encrypts the stored backup
+codes using the same secret Better Auth uses everywhere else
+(`config.betterAuthSecret`) — there is no separate 2FA-specific key. The
+plugin's own schema stores the TOTP secret encrypted the same way. This
+has one sharp edge: **rotating `betterAuthSecret` makes every already
+-enrolled user's stored TOTP secret and backup codes permanently
+undecryptable.** The plugin has no re-encryption or migration path for a
+secret rotation — every 2FA-enabled account's authenticator codes would
+stop validating and its backup codes could never be decrypted again.
+Rotating this app's auth secret is not a routine operation as long as
+any account has two-factor authentication enabled; it would need a
+forced disable-and-re-enroll for every 2FA user, not a transparent key
+swap.
+
+The Security page's TOTP setup QR is rendered by a from-scratch,
+dependency-free client-side QR encoder (`app/utils/qr-code.ts`): byte
+mode only (input is always UTF-8), error correction levels L and M
+only, versions 1 through 10 only — enough for a `totpauth://` URI, not a
+general-purpose encoder. `encodeQrCode()` returns a boolean matrix,
+`qrMatrixToSvg()` renders it as an inline SVG in `TwoFactor.vue`. Both
+run entirely in the browser: the freshly-issued TOTP secret returned by
+`/two-factor/enable` is encoded straight into the QR and the
+manual-entry fallback text without ever leaving the client or crossing
+any additional network hop.
+
+Regenerating backup codes (`/two-factor/generate-backup-codes`) requires
+the account password — the same trust level as `/two-factor/enable`
+and `/two-factor/disable` — and immediately invalidates every
+previously issued code. Like every other security-sensitive action in
+this file, it notifies the account owner by email
+(`sendTwoFactorBackupCodesRegeneratedEmail`).
+
+## Passkeys (WebAuthn)
+
+Configured via `@better-auth/passkey` in `server/utils/auth.ts`, with
+`rpID` derived per environment by `getRelyingPartyId()` and resident/
+preferred user verification. The plugin's own `/passkey/*` endpoints
+handle registration and sign-in; `Profile/Security` surfaces add,
+list, and remove.
+
+### Known limitation: passkeys don't work on versioned preview URLs
+
+`server/utils/auth-hosts.ts` has two functions that both derive a trust
+decision from the same `baseUrl`, for two different purposes, and they
+deliberately disagree on any host that isn't the apex domain or `www`:
+
+- `getRelyingPartyId()` returns the **bare hostname** for any host that
+  isn't `localhost`/`127.0.0.1` and doesn't start with `www.` — it only
+  ever strips a leading `www.`. For a branch-level preview host such as
+  `preview-feat-x.<subdomain>.workers.dev`, the RP ID is that exact
+  hostname, unchanged.
+- `getAllowedHosts()` for that same host instead returns a **wildcard**
+  entry, `*-${subdomain}.${rest}`, built by treating the hostname's
+  first label as an arbitrary-prefix wildcard. This is what lets Better
+  Auth's `baseURL.allowedHosts` trust request Origins from Cloudflare's
+  per-commit/per-version preview URLs
+  (`<version-hash>-preview-feat-x.<subdomain>.workers.dev`) as the same
+  logical preview, without listing every version explicitly.
+
+WebAuthn's relying-party-ID check has no concept of a wildcard: the
+navigator's actual origin hostname must equal the RP ID, or be a
+registrable-domain suffix of it at a whole-label boundary. A version
+hash prepended to the branch host's first label
+(`<hash>-preview-feat-x...`) is a different first label, not a label
+-boundary suffix of `preview-feat-x...` — so the browser rejects the RP
+ID for that origin and the WebAuthn ceremony never starts. The two
+functions aren't out of sync with each other by mistake; they solve
+different problems that happen to diverge here (`allowedHosts` widens
+deliberately to cover every version of one preview; `getRelyingPartyId`
+answers a spec-constrained question that cannot be widened the same
+way). The accepted consequence: **passkey registration and sign-in only
+work on the stable branch-level preview host and in production — never
+on a per-commit/per-version preview URL.** Test passkeys against the
+branch preview host or production, not a version-pinned preview link.
+
+## The 2FA requirement gates password sign-in only
+
+This app's two-factor requirement does not apply to every sign-in on a
+2FA-enabled account — only to signing in with a password. Verified
+directly against the installed `better-auth` package
+(`node_modules/better-auth/dist/plugins/two-factor/index.mjs`): the
+plugin's own `hooks.after` matcher that redirects a sign-in into the 2FA
+challenge is
+
+```js
+matcher(context) {
+  return context.path === "/sign-in/email"
+    || context.path === "/sign-in/username"
+    || context.path === "/sign-in/phone-number"
+}
+```
+
+Signing in with a passkey (`/passkey/verify-authentication`) or a linked
+OAuth provider (`/sign-in/social`, `/callback/*`) never passes through
+this matcher, so neither path ever triggers a 2FA challenge — even for
+an account that has two-factor authentication enabled. This is Better
+Auth's own by-design behavior, not a gap introduced by this app's
+configuration. The same hook also skips the challenge outright when a
+valid "trust this device" cookie is present from an earlier password
+sign-in — a second, independent reason a 2FA-enabled account may not
+see a challenge on a given sign-in.
+
+This is a deliberate, accepted trade-off, not a gap to close:
+
+- A passkey already requires possession of a specific hardware- or
+  platform-bound credential — a strong factor on its own, arguably a
+  stronger guarantee than a TOTP code copied out of an app that could be
+  running on any device.
+- A linked OAuth provider is trusted to have already authenticated the
+  same principal: this app's account linking (`account.accountLinking`
+  in `server/utils/auth.ts`) only links a provider to an existing
+  account when its email matches and is verified
+  (`allowDifferentEmails: false`), so signing in via Google or GitHub is
+  never a weaker authentication path than the credential one, just a
+  different one.
+
+Closing this would mean reimplementing a meaningful slice of the
+two-factor plugin's own private session-handling internals — the
+pending-2FA cookie, the trust-device verification flow, the redirect
+contract with the client — outside of what the plugin exposes for
+exactly that purpose. That is judged disproportionate for the security
+benefit here, especially given both bypass paths already require a
+strong, independent credential of their own.
+
+The Security page's own copy (`app/components/Profile/Security/
+TwoFactor.vue`) is worded to match this: it states the code is required
+"when signing in with your password," not on every sign-in, so a user
+who has also added a passkey isn't told something that would be
+misleading for their account.
 

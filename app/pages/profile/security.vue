@@ -1,6 +1,30 @@
 <template>
   <h1 class="mb-8 text-4xl font-bold text-center">Security</h1>
   <div class="grid gap-6">
+    <NuxtLink
+      to="/profile/email"
+      class="bubble flex items-center justify-between gap-4 p-6 hover:opacity-80"
+    >
+      <div>
+        <p class="font-bold">Email address</p>
+        <p class="mt-1 text-sm text-base-content/70">
+          Change the email address used to sign in.
+        </p>
+      </div>
+      <Icon name="lucide:chevron-right" size="20" />
+    </NuxtLink>
+    <NuxtLink
+      to="/profile/password"
+      class="bubble flex items-center justify-between gap-4 p-6 hover:opacity-80"
+    >
+      <div>
+        <p class="font-bold">Password</p>
+        <p class="mt-1 text-sm text-base-content/70">
+          Change your account password.
+        </p>
+      </div>
+      <Icon name="lucide:chevron-right" size="20" />
+    </NuxtLink>
     <ProfileSecuritySectionCard
       heading="Sign-in methods"
       description="Connect or disconnect ways to sign in to your account."
@@ -17,7 +41,7 @@
       heading="Passkeys"
       description="Sign in without a password using your device."
     >
-      <p class="badge badge-neutral">Coming soon</p>
+      <ProfileSecurityPasskeys />
     </ProfileSecuritySectionCard>
     <ProfileSecuritySectionCard
       heading="Active sessions"

@@ -208,6 +208,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/profile/security.spec.ts',
     'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
     'tests/unit/components/Profile/Security/Sessions.spec.ts',
+    'tests/unit/components/Profile/Security/Passkeys.spec.ts',
     'tests/integration/api/profiles-sessions.spec.ts',
   ]
 
@@ -222,8 +223,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/pages/(auth)/signin.spec.ts',
     'tests/unit/components/Profile/Security/TwoFactor.spec.ts',
     'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
+    'tests/unit/components/Profile/Security/Passkeys.spec.ts',
     'tests/unit/pages/profile/security.spec.ts',
     'tests/unit/utils/qr-code.spec.ts',
+    'tests/unit/utils/webauthn.spec.ts',
   ]
 
   const landingTests = [
@@ -682,12 +685,28 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/db\/schemas\/two-factor\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/qr-code\.ts)$/,
+        /^(server\/db\/schemas\/(two-factor|passkeys)\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes|Passkeys)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/(qr-code|webauthn)\.ts)$/,
       tests: twoFactorTests,
+    },
+    {
+      pattern: /^app\/composables\/session-freshness\.ts$/,
+      tests: [...accountSecurityHubTests, ...twoFactorTests],
+    },
+    {
+      pattern: /^app\/composables\/linked-accounts\.ts$/,
+      tests: [
+        ...accountSecurityHubTests,
+        ...twoFactorTests,
+        ...accountEmailPasswordTests,
+      ],
     },
     {
       pattern: /^app\/layouts\/profile\.vue$/,
       tests: ['tests/unit/layouts/profile.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/ui\/Button\.vue$/,
+      tests: ['tests/unit/components/ui/Button.spec.ts'],
     },
     {
       pattern: /^server\/utils\/session\.ts$/,
