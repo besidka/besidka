@@ -198,7 +198,35 @@ export function getAffectedTests(changedFiles) {
 
   const accountDeletionTests = [
     'tests/unit/utils/account/purge-user-data.spec.ts',
+    'tests/unit/utils/account/security-emails.spec.ts',
+    'tests/unit/utils/auth.spec.ts',
     'tests/unit/composables/auth.spec.ts',
+    'tests/unit/pages/profile/security.spec.ts',
+  ]
+
+  const accountSecurityHubTests = [
+    'tests/unit/pages/profile/security.spec.ts',
+    'tests/unit/components/Profile/Security/LinkedAccounts.spec.ts',
+    'tests/unit/components/Profile/Security/Sessions.spec.ts',
+    'tests/unit/components/Profile/Security/Passkeys.spec.ts',
+    'tests/integration/api/profiles-sessions.spec.ts',
+  ]
+
+  const accountEmailPasswordTests = [
+    'tests/unit/pages/profile/email.spec.ts',
+    'tests/unit/pages/profile/password.spec.ts',
+  ]
+
+  const twoFactorTests = [
+    'tests/unit/components/ui/Form/Otp.spec.ts',
+    'tests/unit/pages/(auth)/2fa.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/components/Profile/Security/TwoFactor.spec.ts',
+    'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
+    'tests/unit/components/Profile/Security/Passkeys.spec.ts',
+    'tests/unit/pages/profile/security.spec.ts',
+    'tests/unit/utils/qr-code.spec.ts',
+    'tests/unit/utils/webauthn.spec.ts',
   ]
 
   const landingTests = [
@@ -643,8 +671,42 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/settings\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
+        /^(server\/utils\/account\/.*\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/profile\/security\.vue|app\/components\/Sidebar\/AuthCta\.vue)$/,
       tests: accountDeletionTests,
+    },
+    {
+      pattern:
+        /^(app\/components\/Profile\/Security\/.*\.vue|server\/api\/v1\/profiles\/sessions\/.*\.ts|server\/db\/schemas\/auth\.ts)$/,
+      tests: accountSecurityHubTests,
+    },
+    {
+      pattern: /^app\/pages\/profile\/(email|password)\.vue$/,
+      tests: accountEmailPasswordTests,
+    },
+    {
+      pattern:
+        /^(server\/db\/schemas\/(two-factor|passkeys)\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes|Passkeys)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/(qr-code|webauthn)\.ts)$/,
+      tests: twoFactorTests,
+    },
+    {
+      pattern: /^app\/composables\/session-freshness\.ts$/,
+      tests: [...accountSecurityHubTests, ...twoFactorTests],
+    },
+    {
+      pattern: /^app\/composables\/linked-accounts\.ts$/,
+      tests: [
+        ...accountSecurityHubTests,
+        ...twoFactorTests,
+        ...accountEmailPasswordTests,
+      ],
+    },
+    {
+      pattern: /^app\/layouts\/profile\.vue$/,
+      tests: ['tests/unit/layouts/profile.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/ui\/Button\.vue$/,
+      tests: ['tests/unit/components/ui/Button.spec.ts'],
     },
     {
       pattern: /^server\/utils\/session\.ts$/,

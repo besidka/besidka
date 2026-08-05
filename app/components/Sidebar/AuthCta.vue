@@ -35,12 +35,12 @@
       circle
     />
     <UiButton
-      to="/profile/settings"
-      :disabled="$route.path === '/profile/settings'"
+      to="/profile/security"
+      :disabled="$route.path === '/profile/security'"
       ghost
-      icon-name="lucide:settings"
+      icon-name="lucide:shield-check"
       :icon-only="true"
-      title="Settings"
+      title="Security"
       circle
     />
     <LazySidebarPushToggle />

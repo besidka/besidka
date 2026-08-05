@@ -52,7 +52,8 @@ function runTests(tests, testType) {
 
   if (unitTests.length > 0 && (testType === 'unit' || testType === 'all')) {
     console.log('📝 Running unit tests...\n')
-    execSync(`pnpm exec vitest run --reporter=verbose --run ${unitTests.join(' ')}`, {
+    const quotedTests = unitTests.map(test => `'${test}'`).join(' ')
+    execSync(`pnpm exec vitest run --reporter=verbose --run ${quotedTests}`, {
       stdio: 'inherit',
       shell: true,
     })
@@ -60,7 +61,8 @@ function runTests(tests, testType) {
 
   if (integrationTests.length > 0 && (testType === 'integration' || testType === 'all')) {
     console.log('🔗 Running integration tests...\n')
-    execSync(`pnpm exec vitest run --reporter=verbose --run ${integrationTests.join(' ')}`, {
+    const quotedTests = integrationTests.map(test => `'${test}'`).join(' ')
+    execSync(`pnpm exec vitest run --reporter=verbose --run ${quotedTests}`, {
       stdio: 'inherit',
       shell: true,
     })
@@ -69,7 +71,7 @@ function runTests(tests, testType) {
   if (e2eTests.length > 0 && (testType === 'e2e' || testType === 'all')) {
     console.log('\n🎭 Running e2e tests...\n')
     e2eTests.forEach((test) => {
-      execSync(`pnpm exec playwright test ${test}`, { stdio: 'inherit' })
+      execSync(`pnpm exec playwright test '${test}'`, { stdio: 'inherit' })
     })
   }
 }

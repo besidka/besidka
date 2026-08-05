@@ -73,7 +73,7 @@ PRAGMA foreign_keys=ON;
 
 These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
 
-- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped).
 
@@ -185,11 +185,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   the `EXEMPT_IDS` hard-fail behavior; DB-persisted cross-device favorites;
   owner action items and known trade-offs
 - `docs/auth-security.md` - Turnstile captcha (Better Auth's `captcha`
-  plugin) and hardened rate limits: why `expectedAction`/`allowedHostnames`
-  are gated on `turnstileEnforced` and not `import.meta.dev`, the
-  `captchaEnabled` both-keys-required gate, the per-endpoint rate-limit
-  table and reasoning, the KV `consume`/TTL fix and its remaining
-  best-effort-under-concurrency caveat, and the Turnstile owner checklist
+  plugin), hardened per-endpoint rate limits (including the inert
+  `/revoke-session` row), two-factor authentication (TOTP + encrypted
+  backup codes, the auth-secret-rotation undecryptability trap, the
+  from-scratch client-side QR encoder), passkeys (the RP-ID vs.
+  `allowedHosts` mismatch that blocks versioned preview URLs), and why
+  password-only 2FA gating (no challenge via passkey/OAuth sign-in) is a
+  confirmed, accepted design decision rather than a gap
 
 ### Tech Stack
 

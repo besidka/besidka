@@ -57,6 +57,18 @@ describe('auth pages set a crawlable noindex meta', () => {
       expect(source).toMatch(NOINDEX_NOFOLLOW_PATTERN)
     },
   )
+
+  it(
+    'sets robots: noindex, nofollow on 2fa.vue as a second layer of '
+    + 'defense — the route is still disallowed in robots.txt, but this '
+    + 'test guards against that disallow rule being removed without '
+    + 'this meta being added',
+    () => {
+      const source = readPageSource('app/pages/(auth)/2fa.vue')
+
+      expect(source).toMatch(NOINDEX_NOFOLLOW_PATTERN)
+    },
+  )
 })
 
 const LEGAL_DOCUMENTS = [
