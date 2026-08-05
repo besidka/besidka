@@ -78,7 +78,7 @@
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-circle btn-xs hitslop"
+                class="btn btn-ghost btn-ghost-legacy btn-circle btn-xs hitslop"
                 :class="lastLoginMethod === 'passkey' ? 'btn-accent' : 'btn-primary'"
                 :disabled="pending"
                 data-testid="signin-passkey"
