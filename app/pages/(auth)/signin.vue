@@ -78,8 +78,8 @@
             >
               <button
                 type="button"
-                class="btn btn-ghost btn-ghost-legacy btn-circle btn-xs hitslop"
-                :class="lastLoginMethod === 'passkey' ? 'btn-accent' : 'btn-primary'"
+                class="btn btn-ghost btn-circle btn-xs hitslop"
+                :class="lastLoginMethod === 'passkey' ? 'btn-accent' : 'btn-primary dark:btn-ghost-legacy'"
                 :disabled="pending"
                 data-testid="signin-passkey"
                 aria-label="Sign in with passkey"
