@@ -14,6 +14,7 @@ export const users = snakeCase.table('users', {
   emailVerified: integer({ mode: 'boolean' }).notNull(),
   image: text(),
   lastLoginMethod: text(),
+  twoFactorEnabled: integer({ mode: 'boolean' }).$defaultFn(() => false),
 })
 
 export const sessions = snakeCase.table(

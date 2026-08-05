@@ -264,6 +264,23 @@ global.IntersectionObserver = class IntersectionObserver {
 } as any
 
 /**
+ * Mock MutationObserver
+ *
+ * happy-dom's native MutationObserver throws
+ * "Cannot read private member #destroyed from an object whose class did
+ * not declare it" when constructed from within a mounted component in this
+ * test environment (hit by UiFormInput's 1Password-autofill workaround).
+ * A minimal stub avoids the cross-realm private-field mismatch.
+ */
+global.MutationObserver = class MutationObserver {
+  disconnect() {}
+  observe() {}
+  takeRecords() {
+    return []
+  }
+} as any
+
+/**
  * Mock matchMedia for theme tests
  */
 Object.defineProperty(window, 'matchMedia', {

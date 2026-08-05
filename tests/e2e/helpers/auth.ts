@@ -105,6 +105,7 @@ export async function postAuthRequest(
   for (const endpoint of endpoints) {
     const response = await page.request.post(endpoint, {
       data: payload,
+      headers: { 'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX' },
       failOnStatusCode: false,
     })
     const headers = response.headers()

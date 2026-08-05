@@ -30,6 +30,17 @@ NUXT_GOOGLE_CLIENT_SECRET=
 NUXT_GITHUB_CLIENT_ID=
 NUXT_GITHUB_CLIENT_SECRET=
 
+# Cloudflare Turnstile
+# https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+# Always-pass test pair (safe default for local dev/CI):
+NUXT_TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+NUXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000BB
+# Always-fail test pair, for manual negative testing:
+#   secret 2x0000000000000000000000000000000AA
+#   sitekey 2x00000000000000000000BB
+# NUXT_TURNSTILE_ENFORCED is intentionally NOT set here — it defaults to
+# false, which is correct for dev; see docs/auth-security.md.
+
 # Files retention cleanup
 NUXT_FILES_RETENTION_CLEANUP_ENABLED=false
 NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100

@@ -83,9 +83,10 @@
                 v-for="tab in tabs"
                 :key="tab.to"
                 :to="tab.to"
-                class="tab grow"
-                exact-active-class="tab-active"
+                class="tab grow gap-1"
+                :class="{ 'tab-active': isTabActive(tab) }"
               >
+                <Icon :name="tab.icon" size="16" />
                 {{ tab.label }}
               </NuxtLink>
             </nav>
@@ -101,13 +102,36 @@ import { parseError } from 'evlog'
 
 const $auth = useAuth()
 const { user } = $auth
+const currentRoute = useRoute()
 
 const isSigningOut = shallowRef<boolean>(false)
 
 const tabs = [
-  { to: '/profile/settings', label: 'Account' },
-  { to: '/profile/keys', label: 'API Keys' },
+  {
+    to: '/profile/security',
+    label: 'Security',
+    icon: 'lucide:shield-check',
+    childRoutes: ['/profile/email', '/profile/password'],
+  },
+  {
+    to: '/profile/keys',
+    label: 'API Keys',
+    icon: 'lucide:key-round',
+    childRoutes: [],
+  },
 ]
+
+function isTabActive(tab: typeof tabs[number]) {
+  if (currentRoute.path === tab.to) {
+    return true
+  }
+
+  if (currentRoute.path.startsWith(`${tab.to}/`)) {
+    return true
+  }
+
+  return tab.childRoutes.includes(currentRoute.path)
+}
 
 async function signOut() {
   isSigningOut.value = true

@@ -1,7 +1,44 @@
+import type { BetterAuthPlugin } from 'better-auth'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { lastLoginMethod, oAuthProxy } from 'better-auth/plugins'
+import {
+  lastLoginMethod,
+  oAuthProxy,
+  twoFactor,
+} from 'better-auth/plugins'
+import { createAuthMiddleware } from 'better-auth/api'
+import { passkey } from '@better-auth/passkey'
 import * as schema from '../server/db/schema'
+import {
+  authRateLimitDefaults,
+  authRateLimitRules,
+  createAuthRateLimitStorage,
+} from '../server/utils/auth-rate-limit'
+
+const plugins: BetterAuthPlugin[] = [
+  oAuthProxy({ productionURL: '' }),
+  lastLoginMethod({ storeInDatabase: true }),
+  twoFactor({
+    issuer: 'Besidka',
+    totpOptions: {
+      digits: 6,
+      period: 30,
+    },
+    backupCodeOptions: {
+      amount: 10,
+      length: 10,
+      storeBackupCodes: 'encrypted',
+    },
+  }),
+  passkey({
+    rpID: 'localhost',
+    rpName: 'Besidka',
+    authenticatorSelection: {
+      residentKey: 'preferred',
+      userVerification: 'preferred',
+    },
+  }),
+]
 
 export const auth = betterAuth({
   database: drizzleAdapter({} as any, {
@@ -9,6 +46,15 @@ export const auth = betterAuth({
     schema,
     usePlural: true,
   }),
+  rateLimit: {
+    window: authRateLimitDefaults.window,
+    max: authRateLimitDefaults.max,
+    customRules: authRateLimitRules,
+    customStorage: createAuthRateLimitStorage(
+      {} as any,
+      'auth:rate-limit',
+    ),
+  },
   advanced: {
     database: {
       generateId: 'serial',
@@ -33,6 +79,12 @@ export const auth = betterAuth({
       clientSecret: '',
     },
   },
+  user: {
+    changeEmail: {
+      enabled: true,
+      async sendChangeEmailConfirmation() {},
+    },
+  },
   account: {
     accountLinking: {
       enabled: true,
@@ -40,8 +92,15 @@ export const auth = betterAuth({
       allowDifferentEmails: false,
     },
   },
-  plugins: [
-    oAuthProxy({ productionURL: '' }),
-    lastLoginMethod({ storeInDatabase: true }),
-  ],
+  databaseHooks: {
+    account: {
+      create: {
+        async after() {},
+      },
+    },
+  },
+  hooks: {
+    after: createAuthMiddleware(async () => {}),
+  },
+  plugins,
 })

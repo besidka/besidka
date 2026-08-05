@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-07-26
+updatedAt: 2026-08-03
 summary: "Besidka stores your account, chats, files, settings and your encrypted AI provider API key on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied — that provider is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
@@ -115,12 +115,14 @@ Whether the **provider** trains on your content is a matter between you and that
 
 | Recipient | What they receive | Where | Safeguard |
 | --- | --- | --- | --- |
-| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
+| Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
 | Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
 | Anthropic, OpenAI or Google AI Studio | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
 | Google FCM, Apple APNs, Mozilla autopush | The push endpoint your browser issued, plus the encrypted notification | Depends on your browser vendor | Necessary to deliver a push notification you asked for. |
 | Google or GitHub | Only if you use them to sign in. I request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
 | Search engines | A shared chat, and only if you turned on the separate indexing option for that share | Worldwide | Your consent. |
+
+Sign-in, sign-up and password reset forms are protected by **Cloudflare Turnstile**, a bot-detection check that runs as part of Cloudflare, the same infrastructure provider listed above. On most visits it runs without any action from you; if a visit looks automated, it may present a challenge before letting the form through. To do this, Turnstile looks at signals about your browser and device. See Cloudflare's [Turnstile Privacy Addendum](https://www.cloudflare.com/en-gb/turnstile-privacy-policy/) for what a Turnstile check itself collects from your visit.
 
 I do not sell your data. I do not share it with advertisers, data brokers or analytics networks. There are no advertising or tracking scripts on the site.
 

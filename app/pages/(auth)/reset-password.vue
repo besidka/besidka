@@ -39,6 +39,7 @@
           :disabled="pending"
         />
       </UiFormFieldset>
+      <AuthTurnstile ref="turnstile" action="auth" />
     </UiForm>
     <p class="flex items-center justify-center gap-2 py-2 text-center">
       <Icon
@@ -51,6 +52,7 @@
 </template>
 <script setup lang="ts">
 import UiForm from '~/components/ui/Form.vue'
+import AuthTurnstile from '~/components/Auth/Turnstile.client.vue'
 
 interface Data {
   email: string
@@ -72,6 +74,7 @@ const { Validation } = useValidation()
 const { requestPasswordReset } = useAuth()
 
 const form = ref<InstanceType<typeof UiForm> | null>()
+const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
 
 const data = shallowReactive<Data>({
   email: '',
@@ -83,9 +86,13 @@ async function onSubmit() {
   pending.value = true
 
   try {
+    const token = await turnstile.value?.execute()
+
     await requestPasswordReset({
       email: data.email,
+      redirectTo: '/new-password',
       fetchOptions: {
+        headers: token ? { 'x-captcha-response': token } : {},
         async onSuccess() {
           useSuccessMessage(
             'If an account with that email exists, we have sent you reset instructions. Please check your inbox.',
@@ -96,6 +103,7 @@ async function onSubmit() {
     })
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
+    turnstile.value?.reset()
     throw createError(exception)
   } finally {
     pending.value = false
