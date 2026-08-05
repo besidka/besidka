@@ -7,7 +7,11 @@ import type {
 import type { RouteLocationRaw } from 'vue-router'
 import type { User } from '#shared/types/auth.d'
 import { createAuthClient } from 'better-auth/vue'
-import { lastLoginMethodClient } from 'better-auth/client/plugins'
+import {
+  lastLoginMethodClient,
+  twoFactorClient,
+} from 'better-auth/client/plugins'
+import { passkeyClient } from '@better-auth/passkey/client'
 import { defu } from 'defu'
 
 interface RuntimeAuthConfig {
@@ -29,7 +33,11 @@ export function useAuth() {
     fetchOptions: {
       headers,
     },
-    plugins: [lastLoginMethodClient()],
+    plugins: [
+      lastLoginMethodClient(),
+      twoFactorClient(),
+      passkeyClient(),
+    ],
   })
 
   const options = defu(
@@ -124,6 +132,7 @@ export function useAuth() {
           banReason: null,
           banned: null,
           banExpires: null,
+          twoFactorEnabled: false,
         })
         : null
 
@@ -179,8 +188,8 @@ export function useAuth() {
               return
             }
 
-            await reloadNuxtApp({
-              path: redirectTo.toString(),
+            reloadNuxtApp({
+              path: typeof redirectTo === 'string' ? redirectTo : redirectTo?.path,
               force: true,
             })
           },

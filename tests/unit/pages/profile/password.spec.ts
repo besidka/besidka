@@ -2,11 +2,13 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import * as messagesComposable from '../../../../app/composables/messages'
+import { useLinkedAccounts } from '../../../../app/composables/linked-accounts'
 import PasswordPage from '../../../../app/pages/profile/password.vue'
 
 const mocks = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   changePassword: vi.fn(async () => ({ data: { status: true }, error: null })),
+  signOut: vi.fn(),
 }))
 
 const errorCodes = {
@@ -36,6 +38,7 @@ mockNuxtImport('useAuth', () => {
     lastLoginMethod: ref(null),
     fetchSession: vi.fn(),
     errorCodes,
+    signOut: mocks.signOut,
     options: {
       redirectUserTo: '/chats/new',
       redirectGuestTo: '/signin',
@@ -52,12 +55,22 @@ async function flushPromises() {
   for (let tick = 0; tick < 6; tick += 1) {
     await Promise.resolve()
   }
+}
 
-  await new Promise(resolve => setTimeout(resolve, 50))
+function checkboxInput(wrapper: any) {
+  return wrapper.find('input[type="checkbox"]')
+}
 
-  for (let tick = 0; tick < 6; tick += 1) {
-    await Promise.resolve()
-  }
+async function waitForForm(wrapper: any) {
+  await vi.waitFor(() => {
+    expect(checkboxInput(wrapper).exists()).toBe(true)
+  })
+}
+
+async function waitForCard(wrapper: any) {
+  await vi.waitFor(() => {
+    expect(wrapper.text()).toContain('No password on this account')
+  })
 }
 
 function currentPasswordInput(wrapper: any) {
@@ -84,6 +97,7 @@ describe('profile password page', () => {
     vi.stubGlobal('useSeoMeta', vi.fn())
     mocks.listAccounts.mockReset()
     mocks.changePassword.mockReset()
+    mocks.signOut.mockReset()
     mocks.changePassword.mockResolvedValue({
       data: { status: true },
       error: null,
@@ -92,6 +106,7 @@ describe('profile password page', () => {
       data: [createAccount('credential')],
       error: null,
     })
+    useLinkedAccounts().resetLinkedAccounts()
   })
 
   it(
@@ -100,11 +115,10 @@ describe('profile password page', () => {
     async () => {
       const wrapper = await mountSuspended(PasswordPage)
 
-      await flushPromises()
+      await waitForForm(wrapper)
 
-      const checkbox = wrapper.find('input[type="checkbox"]')
-
-      expect((checkbox.element as HTMLInputElement).checked).toBe(true)
+      expect((checkboxInput(wrapper).element as HTMLInputElement).checked)
+        .toBe(true)
 
       await newPasswordInput(wrapper).trigger('focus')
       await flushPromises()
@@ -114,12 +128,13 @@ describe('profile password page', () => {
 
       await fillValidForm(wrapper)
       await wrapper.get('form').trigger('submit')
-      await flushPromises()
 
-      expect(mocks.changePassword).toHaveBeenCalledWith({
-        currentPassword: 'CurrentPass1!',
-        newPassword: 'NewPassword1!',
-        revokeOtherSessions: true,
+      await vi.waitFor(() => {
+        expect(mocks.changePassword).toHaveBeenCalledWith({
+          currentPassword: 'CurrentPass1!',
+          newPassword: 'NewPassword1!',
+          revokeOtherSessions: true,
+        })
       })
     },
   )
@@ -128,16 +143,17 @@ describe('profile password page', () => {
     async () => {
       const wrapper = await mountSuspended(PasswordPage)
 
-      await flushPromises()
+      await waitForForm(wrapper)
 
-      await wrapper.find('input[type="checkbox"]').setValue(false)
+      await checkboxInput(wrapper).setValue(false)
       await fillValidForm(wrapper)
       await wrapper.get('form').trigger('submit')
-      await flushPromises()
 
-      expect(mocks.changePassword).toHaveBeenCalledWith(
-        expect.objectContaining({ revokeOtherSessions: false }),
-      )
+      await vi.waitFor(() => {
+        expect(mocks.changePassword).toHaveBeenCalledWith(
+          expect.objectContaining({ revokeOtherSessions: false }),
+        )
+      })
     })
 
   it('maps a wrong current password to a plain-language message', async () => {
@@ -149,14 +165,15 @@ describe('profile password page', () => {
     const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
     const wrapper = await mountSuspended(PasswordPage)
 
-    await flushPromises()
+    await waitForForm(wrapper)
     await fillValidForm(wrapper)
     await wrapper.get('form').trigger('submit')
-    await flushPromises()
 
-    expect(useErrorMessage).toHaveBeenCalledWith(
-      'Your current password is incorrect',
-    )
+    await vi.waitFor(() => {
+      expect(useErrorMessage).toHaveBeenCalledWith(
+        'Your current password is incorrect',
+      )
+    })
   })
 
   it(
@@ -170,12 +187,37 @@ describe('profile password page', () => {
 
       const wrapper = await mountSuspended(PasswordPage)
 
-      await flushPromises()
+      await waitForCard(wrapper)
 
       expect(wrapper.find('[data-testid="password-submit"]').exists())
         .toBe(false)
-      expect(wrapper.text()).toContain('No password on this account')
       expect(mocks.changePassword).not.toHaveBeenCalled()
+    },
+  )
+
+  it(
+    'points a Google/GitHub-only account at signing out to set a '
+    + 'password instead of a nonexistent connect flow',
+    async () => {
+      mocks.listAccounts.mockResolvedValue({
+        data: [createAccount('google')],
+        error: null,
+      })
+
+      const wrapper = await mountSuspended(PasswordPage)
+
+      await waitForCard(wrapper)
+
+      expect(wrapper.text()).toContain('Forgot password?')
+
+      const signOutButton = wrapper.find('[aria-label="Sign out"]')
+
+      expect(signOutButton.exists()).toBe(true)
+
+      await signOutButton.trigger('click')
+      await flushPromises()
+
+      expect(mocks.signOut).toHaveBeenCalledWith({ redirectTo: '/signin' })
     },
   )
 })

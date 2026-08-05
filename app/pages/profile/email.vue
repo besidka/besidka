@@ -1,5 +1,11 @@
 <template>
-  <h1 class="mb-8 text-4xl font-bold text-center">Email address</h1>
+  <h1 class="mb-2 text-4xl font-bold text-center">
+    Change your email address
+  </h1>
+  <p class="mb-8 text-sm text-base-content/70 text-center">
+    We'll send a confirmation link to your current email address
+    to verify this change before it takes effect.
+  </p>
   <UiBubble>
     <div
       v-if="!isCurrentEmailVerified"
@@ -26,10 +32,6 @@
       </div>
     </div>
     <template v-else>
-      <p class="mb-1 text-sm text-base-content/70">
-        Current email address
-      </p>
-      <p class="mb-6 font-medium">{{ currentEmail }}</p>
       <UiForm class="w-full" @submit="onSubmit">
         <UiFormFieldset>
           <UiFormInput
@@ -45,12 +47,16 @@
             </template>
           </UiFormInput>
         </UiFormFieldset>
-        <UiFormFieldset :inputs="false" class="flex justify-center mt-4">
+        <UiFormFieldset
+          :inputs="false"
+          class="!flex flex-col sm:items-center mt-4"
+        >
           <UiButton
             type="submit"
             :text="pending ? 'Sending...' : 'Send confirmation link'"
             icon-name="lucide:mail"
             :disabled="pending"
+            class="max-sm:btn-block sm:btn-wide sm:w-64"
             data-testid="email-submit"
           />
         </UiFormFieldset>

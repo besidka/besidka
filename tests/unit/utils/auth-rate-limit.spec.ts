@@ -88,6 +88,20 @@ describe('authRateLimitRules', () => {
     })
   })
 
+  it('rate-limits get-totp-uri and send-otp as tightly as enable/disable', () => {
+    expect(authRateLimitRules['/two-factor/get-totp-uri']).toEqual({
+      window: 900,
+      max: 5,
+    })
+    expect(authRateLimitRules['/two-factor/send-otp']).toEqual({
+      window: 900,
+      max: 5,
+    })
+    expect(authRateLimitRules['/two-factor/get-totp-uri']).toEqual(
+      authRateLimitRules['/two-factor/enable'],
+    )
+  })
+
   it('covers parameterized sibling routes with wildcard rules', () => {
     expect(authRateLimitRules['/reset-password/*']).toEqual({
       window: 900,

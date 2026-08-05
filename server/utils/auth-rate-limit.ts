@@ -51,6 +51,8 @@ export const authRateLimitRules: Record<string, AuthRateLimitRule> = {
   '/two-factor/generate-backup-codes': { window: 900, max: 3 },
   '/two-factor/enable': { window: 900, max: 5 },
   '/two-factor/disable': { window: 900, max: 5 },
+  '/two-factor/get-totp-uri': { window: 900, max: 5 },
+  '/two-factor/send-otp': { window: 900, max: 5 },
   '/two-factor/*': { window: 300, max: 10 },
   '/passkey/verify-authentication': { window: 300, max: 10 },
   '/passkey/verify-registration': { window: 900, max: 10 },

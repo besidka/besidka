@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SignJWT } from 'jose'
 import { resolveServerLogger } from '../../../server/utils/files/logger'
 import { exceptionMessage } from '../../../server/utils/evlog-attributes'
 
@@ -6,6 +7,36 @@ const mocks = vi.hoisted(() => ({
   sendPasswordChangedEmail: vi.fn(async () => undefined),
   sendSignInMethodConnectedEmail: vi.fn(async () => undefined),
   sendSignInMethodDisconnectedEmail: vi.fn(async () => undefined),
+  sendTwoFactorEnabledEmail: vi.fn(async () => undefined),
+  sendTwoFactorDisabledEmail: vi.fn(async () => undefined),
+  sendTwoFactorBackupCodesRegeneratedEmail: vi.fn(async () => undefined),
+  sendEmailChangedEmail: vi.fn(async () => undefined),
+  sendPasskeyAddedEmail: vi.fn(async () => undefined),
+  sendPasskeyRemovedEmail: vi.fn(async () => undefined),
+}))
+
+const betterAuthSecret = 'secret'
+
+async function createEmailVerificationToken(
+  payload: Record<string, unknown>,
+  overrides: { secret?: string, expiresInSeconds?: number } = {},
+): Promise<string> {
+  const secret = overrides.secret ?? betterAuthSecret
+  const token = new SignJWT(payload).setProtectedHeader({ alg: 'HS256' })
+
+  if (overrides.expiresInSeconds !== undefined) {
+    token.setExpirationTime(
+      Math.floor(Date.now() / 1000) + overrides.expiresInSeconds,
+    )
+  }
+
+  return token.sign(new TextEncoder().encode(secret))
+}
+
+const dbMocks = vi.hoisted(() => ({
+  findFirstUser: vi.fn(async (): Promise<
+    { twoFactorEnabled?: boolean, email?: string } | null
+  > => null),
 }))
 
 vi.mock('~~/server/utils/account/security-emails', () => mocks)
@@ -32,7 +63,14 @@ function stubBindings() {
     githubClientId: '',
     githubClientSecret: '',
   }))
-  vi.stubGlobal('useDb', () => ({}))
+  useRuntimeConfig().betterAuthSecret = betterAuthSecret
+  vi.stubGlobal('useDb', () => ({
+    query: {
+      users: {
+        findFirst: dbMocks.findFirstUser,
+      },
+    },
+  }))
   vi.stubGlobal('useKV', () => ({}))
   vi.stubGlobal('getCaptchaOptions', () => null)
   vi.stubGlobal('authRateLimitDefaults', { window: 60, max: 60 })
@@ -62,12 +100,17 @@ async function importAuthOptions() {
 function createHookCtx(overrides: {
   path: string
   body?: Record<string, unknown>
+  query?: Record<string, unknown>
   returned?: unknown
-  user?: { email: string } | null
+  user?: {
+    id?: string
+    email: string
+  } | null
 }) {
   return {
     path: overrides.path,
     body: overrides.body,
+    query: overrides.query,
     context: {
       returned: overrides.returned,
       session: overrides.user ? { user: overrides.user } : undefined,
@@ -92,6 +135,10 @@ function createDatabaseHookContext(overrides: {
 describe('server/utils/auth.ts security notification wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    useRuntimeConfig().betterAuthSecret = ''
   })
 
   describe('databaseHooks.account.create.after', () => {
@@ -325,6 +372,197 @@ describe('server/utils/auth.ts security notification wiring', () => {
       },
     )
 
+    it(
+      'skips notifying for /two-factor/enable while unverified',
+      async () => {
+        dbMocks.findFirstUser.mockResolvedValueOnce({
+          twoFactorEnabled: false,
+        })
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/enable',
+          returned: { totpURI: 'otpauth://totp/x', backupCodes: ['a'] },
+          user,
+        }) as any)
+
+        expect(dbMocks.findFirstUser).toHaveBeenCalledWith({
+          where: { id: 1 },
+          columns: { twoFactorEnabled: true },
+        })
+        expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'sends the two-factor-enabled email once /two-factor/enable '
+      + 'actually finished verification',
+      async () => {
+        dbMocks.findFirstUser.mockResolvedValueOnce({
+          twoFactorEnabled: true,
+        })
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/enable',
+          user,
+        }) as any)
+
+        expect(mocks.sendTwoFactorEnabledEmail).toHaveBeenCalledWith({ user })
+      },
+    )
+
+    it(
+      'catches a /two-factor/enable lookup failure and logs it',
+      async () => {
+        dbMocks.findFirstUser.mockRejectedValueOnce(
+          new Error('E_LOOKUP_FAILED'),
+        )
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const loggerSet = vi.fn()
+
+        vi.stubGlobal('resolveServerLogger', () => ({ set: loggerSet }))
+
+        await expect(after(createHookCtx({
+          path: '/two-factor/enable',
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)).resolves.toBeUndefined()
+
+        expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+        expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+          securityNotificationHook: expect.objectContaining({
+            path: '/two-factor/enable',
+            error: 'E_LOOKUP_FAILED',
+          }),
+        }))
+      },
+    )
+
+    it('sends the two-factor-disabled email for /two-factor/disable',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/disable',
+          user,
+        }) as any)
+
+        expect(mocks.sendTwoFactorDisabledEmail)
+          .toHaveBeenCalledWith({ user })
+        expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+      })
+
+    it(
+      'sends the backup-codes-regenerated email for '
+      + '/two-factor/generate-backup-codes',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/two-factor/generate-backup-codes',
+          user,
+        }) as any)
+
+        expect(mocks.sendTwoFactorBackupCodesRegeneratedEmail)
+          .toHaveBeenCalledWith({ user })
+        expect(mocks.sendTwoFactorDisabledEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'skips notifying for /two-factor/generate-backup-codes on an API '
+      + 'error',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+
+        await after(createHookCtx({
+          path: '/two-factor/generate-backup-codes',
+          returned: { name: 'APIError' },
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)
+
+        expect(mocks.sendTwoFactorBackupCodesRegeneratedEmail)
+          .not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'sends the passkey-added email for /passkey/verify-registration',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/passkey/verify-registration',
+          user,
+        }) as any)
+
+        expect(mocks.sendPasskeyAddedEmail).toHaveBeenCalledWith({ user })
+        expect(mocks.sendPasskeyRemovedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'skips notifying for /passkey/verify-registration on an API error',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+
+        await after(createHookCtx({
+          path: '/passkey/verify-registration',
+          returned: { name: 'APIError' },
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)
+
+        expect(mocks.sendPasskeyAddedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it('sends the passkey-removed email for /passkey/delete-passkey',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const user = { id: '1', email: 'user@example.com' }
+
+        await after(createHookCtx({
+          path: '/passkey/delete-passkey',
+          user,
+        }) as any)
+
+        expect(mocks.sendPasskeyRemovedEmail).toHaveBeenCalledWith({ user })
+        expect(mocks.sendPasskeyAddedEmail).not.toHaveBeenCalled()
+      })
+
+    it(
+      'skips notifying for /passkey/delete-passkey on an API error',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+
+        await after(createHookCtx({
+          path: '/passkey/delete-passkey',
+          returned: { name: 'APIError' },
+          user: { id: '1', email: 'user@example.com' },
+        }) as any)
+
+        expect(mocks.sendPasskeyRemovedEmail).not.toHaveBeenCalled()
+      },
+    )
+
     it('ignores every other path', async () => {
       const options = await importAuthOptions()
       const after = options.hooks!.after!
@@ -336,6 +574,12 @@ describe('server/utils/auth.ts security notification wiring', () => {
 
       expect(mocks.sendPasswordChangedEmail).not.toHaveBeenCalled()
       expect(mocks.sendSignInMethodDisconnectedEmail).not.toHaveBeenCalled()
+      expect(mocks.sendTwoFactorEnabledEmail).not.toHaveBeenCalled()
+      expect(mocks.sendTwoFactorDisabledEmail).not.toHaveBeenCalled()
+      expect(mocks.sendTwoFactorBackupCodesRegeneratedEmail)
+        .not.toHaveBeenCalled()
+      expect(mocks.sendPasskeyAddedEmail).not.toHaveBeenCalled()
+      expect(mocks.sendPasskeyRemovedEmail).not.toHaveBeenCalled()
     })
 
     it(
@@ -362,6 +606,151 @@ describe('server/utils/auth.ts security notification wiring', () => {
             error: 'E_SEND_FAILED',
           }),
         }))
+      },
+    )
+  })
+
+  describe('hooks.after — /verify-email', () => {
+    it('does nothing when the request has no token', async () => {
+      const options = await importAuthOptions()
+      const after = options.hooks!.after!
+
+      await after(createHookCtx({
+        path: '/verify-email',
+        query: {},
+      }) as any)
+
+      expect(mocks.sendEmailChangedEmail).not.toHaveBeenCalled()
+      expect(dbMocks.findFirstUser).not.toHaveBeenCalled()
+    })
+
+    it(
+      'does not notify for a plain signup email-verification token',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const token = await createEmailVerificationToken({
+          email: 'user@example.com',
+        })
+
+        await after(createHookCtx({
+          path: '/verify-email',
+          query: { token },
+        }) as any)
+
+        expect(mocks.sendEmailChangedEmail).not.toHaveBeenCalled()
+        expect(dbMocks.findFirstUser).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'does not notify for the first, confirmation-step token',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const token = await createEmailVerificationToken({
+          email: 'old@example.com',
+          updateTo: 'new@example.com',
+          requestType: 'change-email-confirmation',
+        })
+
+        await after(createHookCtx({
+          path: '/verify-email',
+          query: { token },
+        }) as any)
+
+        expect(mocks.sendEmailChangedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'does not notify when the token signature is invalid',
+      async () => {
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const token = await createEmailVerificationToken({
+          email: 'old@example.com',
+          updateTo: 'new@example.com',
+          requestType: 'change-email-verification',
+        }, { secret: 'a-different-secret' })
+
+        await after(createHookCtx({
+          path: '/verify-email',
+          query: { token },
+        }) as any)
+
+        expect(mocks.sendEmailChangedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it('does not notify when the token has expired', async () => {
+      const options = await importAuthOptions()
+      const after = options.hooks!.after!
+      const token = await createEmailVerificationToken({
+        email: 'old@example.com',
+        updateTo: 'new@example.com',
+        requestType: 'change-email-verification',
+      }, { expiresInSeconds: -10 })
+
+      await after(createHookCtx({
+        path: '/verify-email',
+        query: { token },
+      }) as any)
+
+      expect(mocks.sendEmailChangedEmail).not.toHaveBeenCalled()
+    })
+
+    it(
+      'does not notify when the email change never actually applied',
+      async () => {
+        dbMocks.findFirstUser.mockResolvedValueOnce(null)
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const token = await createEmailVerificationToken({
+          email: 'old@example.com',
+          updateTo: 'new@example.com',
+          requestType: 'change-email-verification',
+        })
+
+        await after(createHookCtx({
+          path: '/verify-email',
+          query: { token },
+        }) as any)
+
+        expect(dbMocks.findFirstUser).toHaveBeenCalledWith({
+          where: { email: 'new@example.com' },
+          columns: { email: true },
+        })
+        expect(mocks.sendEmailChangedEmail).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
+      'notifies the previous address once a change-email-verification '
+      + 'token completes',
+      async () => {
+        dbMocks.findFirstUser.mockResolvedValueOnce({
+          email: 'new@example.com',
+        })
+
+        const options = await importAuthOptions()
+        const after = options.hooks!.after!
+        const token = await createEmailVerificationToken({
+          email: 'old@example.com',
+          updateTo: 'new@example.com',
+          requestType: 'change-email-verification',
+        })
+
+        await after(createHookCtx({
+          path: '/verify-email',
+          query: { token },
+        }) as any)
+
+        expect(mocks.sendEmailChangedEmail).toHaveBeenCalledWith({
+          user: { email: 'old@example.com' },
+          newEmail: 'new@example.com',
+        })
       },
     )
   })

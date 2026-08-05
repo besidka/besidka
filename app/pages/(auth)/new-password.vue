@@ -310,6 +310,7 @@ async function onSubmit() {
   try {
     await resetPassword({
       newPassword: data.password,
+      token: token.value,
       fetchOptions: {
         async onSuccess() {
           useSuccessMessage('Password updated successfully!')
