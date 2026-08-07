@@ -9,14 +9,14 @@ Companion reading: `docs/landing-studio.md` for how the landing copy is edited,
 
 ## Canonical host
 
-Canonical host is `www.besidka.com`. A Cloudflare redirect rule 301s the apex
-(`besidka.com`) to `https://www.besidka.com/`, so every crawler-facing URL must
-use `www` to match the post-redirect host — advertising apex URLs would publish
-links that immediately redirect and split the signal.
+Canonical host is the bare apex `besidka.com`. A Cloudflare redirect rule 301s
+`www.besidka.com` to the apex (`https://besidka.com/`), so every crawler-facing
+URL must use the apex to match the post-redirect host — advertising `www` URLs
+would publish links that immediately redirect and split the signal.
 
-`site.url` in `nuxt.config.ts` defaults to `https://www.besidka.com` and is
+`site.url` in `nuxt.config.ts` defaults to `https://besidka.com` and is
 overridden at runtime by `NUXT_PUBLIC_BASE_URL`. **That variable must be set to
-`https://www.besidka.com` in the production Worker env**, or sitemap, robots and
+`https://besidka.com` in the production Worker env**, or sitemap, robots and
 canonical all resolve to the wrong host.
 
 Verified DNS state (no action needed): Cloudflare nameservers, SPF via
@@ -45,7 +45,7 @@ Two properties this deliberately buys:
   `ogUrl: baseUrl`, so all 15 routes advertised the home page as their `og:url`,
   and `/privacy` + `/terms` shipped no canonical at all.
 - **Trailing-slash agreement.** `new URL('/', base).href` normalises to
-  `https://www.besidka.com/` — byte-identical to the `<loc>` that
+  `https://besidka.com/` — byte-identical to the `<loc>` that
   `@nuxtjs/sitemap` emits. The two used to disagree (canonical had no slash),
   which is exactly the signal split canonicalisation exists to prevent.
 
@@ -297,7 +297,7 @@ preview host rather than to production, which is harmless precisely because the
 header keeps them out of the index.
 
 Note the asymmetry when reading preview output: `robots.txt` and `sitemap.xml`
-on a preview host correctly advertise the **production** `https://www.besidka.com`
+on a preview host correctly advertise the **production** `https://besidka.com`
 URLs (they come from `site.url`), while the in-page canonical comes from the
 runtime `baseUrl` and therefore shows the preview host. Both are expected.
 
@@ -322,9 +322,9 @@ confirming manually:
 - Property type: a **Domain** property (`besidka.com`) covers apex + `www` +
   all subdomains; a URL-prefix property covers only the exact host. If only a
   URL-prefix property for one host exists, data is partial.
-- `https://www.besidka.com/sitemap.xml` is submitted and last read without
+- `https://besidka.com/sitemap.xml` is submitted and last read without
   errors.
-- The apex reporting "Page with redirect" is **expected and correct** — it is
-  the 301 to `www` working as designed, not an indexing failure.
+- `www` reporting "Page with redirect" is **expected and correct** — it is
+  the 301 to the apex working as designed, not an indexing failure.
 - Watch the `besidka` and `besidka ai` queries specifically for impressions and
   average position, which is how the entity work above gets measured.

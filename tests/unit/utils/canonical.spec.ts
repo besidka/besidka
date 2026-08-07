@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { buildCanonicalUrl } from '../../../app/utils/canonical'
 
-const ORIGIN = 'https://www.besidka.com'
+const ORIGIN = 'https://besidka.com'
 
 describe('buildCanonicalUrl', () => {
   it('preserves the trailing slash on the root path', () => {
     const canonicalUrl = buildCanonicalUrl(ORIGIN, '/')
 
-    expect(canonicalUrl).toBe('https://www.besidka.com/')
+    expect(canonicalUrl).toBe('https://besidka.com/')
   })
 
   it('builds a canonical URL for a plain path', () => {
     const canonicalUrl = buildCanonicalUrl(ORIGIN, '/privacy')
 
-    expect(canonicalUrl).toBe('https://www.besidka.com/privacy')
+    expect(canonicalUrl).toBe('https://besidka.com/privacy')
   })
 
   it(
@@ -22,14 +22,14 @@ describe('buildCanonicalUrl', () => {
     () => {
       const canonicalUrl = buildCanonicalUrl(ORIGIN, '/privacy/')
 
-      expect(canonicalUrl).toBe('https://www.besidka.com/privacy')
+      expect(canonicalUrl).toBe('https://besidka.com/privacy')
     },
   )
 
   it('strips multiple trailing slashes down to one path', () => {
     const canonicalUrl = buildCanonicalUrl(ORIGIN, '/privacy///')
 
-    expect(canonicalUrl).toBe('https://www.besidka.com/privacy')
+    expect(canonicalUrl).toBe('https://besidka.com/privacy')
   })
 
   it(
@@ -38,7 +38,7 @@ describe('buildCanonicalUrl', () => {
     () => {
       const canonicalUrlWithoutSlash = buildCanonicalUrl(ORIGIN, '/privacy')
       const canonicalUrlWithSlash = buildCanonicalUrl(
-        'https://www.besidka.com/',
+        'https://besidka.com/',
         '/privacy',
       )
 
@@ -56,11 +56,11 @@ describe('buildCanonicalUrl', () => {
     + 'into the canonical URL',
     () => {
       const canonicalUrl = buildCanonicalUrl(
-        'https://www.besidka.com/?ref=x#frag',
+        'https://besidka.com/?ref=x#frag',
         '/privacy',
       )
 
-      expect(canonicalUrl).toBe('https://www.besidka.com/privacy')
+      expect(canonicalUrl).toBe('https://besidka.com/privacy')
     },
   )
 
@@ -76,7 +76,7 @@ describe('buildCanonicalUrl', () => {
       )
       const canonicalUrlHost = new URL(canonicalUrl).host
 
-      expect(canonicalUrlHost).toBe('www.besidka.com')
+      expect(canonicalUrlHost).toBe('besidka.com')
     },
   )
 
@@ -88,7 +88,7 @@ describe('buildCanonicalUrl', () => {
       const canonicalUrl = buildCanonicalUrl(ORIGIN, '//evil.com/foo')
       const canonicalUrlHost = new URL(canonicalUrl).host
 
-      expect(canonicalUrlHost).toBe('www.besidka.com')
+      expect(canonicalUrlHost).toBe('besidka.com')
     },
   )
 
@@ -96,6 +96,6 @@ describe('buildCanonicalUrl', () => {
     const path = '/shared/01KYFB1TAKRQNHJKAFR5MJR2WD'
     const canonicalUrl = buildCanonicalUrl(ORIGIN, path)
 
-    expect(canonicalUrl).toBe(`https://www.besidka.com${path}`)
+    expect(canonicalUrl).toBe(`https://besidka.com${path}`)
   })
 })

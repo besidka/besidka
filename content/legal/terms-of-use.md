@@ -7,7 +7,7 @@ summary: "Besidka is a free AI chat app run by one person in Poland. You bring y
 
 ## Who I am
 
-The hosted Besidka service at **www.besidka.com** is provided by **Serhii Chernenko**, an individual resident in Poland (European Union). Besidka is a personal, non-commercial project and **not a registered business** — there is no company, no sole proprietorship and no VAT registration behind it.
+The hosted Besidka service at **besidka.com** is provided by **Serhii Chernenko**, an individual resident in Poland (European Union). Besidka is a personal, non-commercial project and **not a registered business** — there is no company, no sole proprietorship and no VAT registration behind it.
 
 - Name: **Serhii Chernenko**
 - Email: **:privacy-email-link{}**
@@ -19,7 +19,7 @@ In these terms, "I" and "me" mean the person above, and "you" means the person u
 
 ## What these terms cover
 
-These terms are an agreement between you and me about the **hosted service at www.besidka.com**.
+These terms are an agreement between you and me about the **hosted service at besidka.com**.
 
 They do not cover copies of Besidka that other people run. If you run your own copy, you set your own terms, you are the data controller for it, and under the EU AI Act you are the provider or deployer of that system. I have no access to and no responsibility for it.
 
@@ -194,7 +194,7 @@ Besidka's source code is published under the **MIT licence**. You are free to us
 
 Two things follow that people often get wrong:
 
-1. **The MIT licence covers the source code, not this hosted service.** The MIT "AS IS" disclaimer applies to the code you obtain under that licence. It does not disclaim anything about the service at www.besidka.com. My disclaimers for the service are the ones set out below, and they are subject to the mandatory law described there.
+1. **The MIT licence covers the source code, not this hosted service.** The MIT "AS IS" disclaimer applies to the code you obtain under that licence. It does not disclaim anything about the service at besidka.com. My disclaimers for the service are the ones set out below, and they are subject to the mandatory law described there.
 2. **The MIT licence does not license the "Besidka" name, logo or brand.** You may run your own copy; please do not present it as being Besidka, or use the name or logo in a way that suggests I run it or endorse it.
 
 If you self-host, you are the operator: your users' data is yours to protect, these terms do not apply to your deployment, and you must write your own.

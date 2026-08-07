@@ -29,7 +29,7 @@ function createConfig(overrides: Partial<{
     turnstileSecretKey = 'test-secret',
     turnstileEnforced = false,
     turnstileSiteKey = 'test-sitekey',
-    baseUrl = 'https://www.besidka.com',
+    baseUrl = 'https://besidka.com',
   } = overrides
 
   return {
@@ -109,15 +109,32 @@ describe('getCaptchaOptions', () => {
   it('sets expectedAction and allowedHostnames when enforced', () => {
     const options = getCaptchaOptions(createConfig({
       turnstileEnforced: true,
-      baseUrl: 'https://www.besidka.com',
+      baseUrl: 'https://besidka.com',
     }))
 
     expect(options?.expectedAction).toBe('auth')
     expect(options?.allowedHostnames).toEqual([
-      'www.besidka.com',
       'besidka.com',
+      'www.besidka.com',
     ])
   })
+
+  it(
+    'sets the same allowedHostnames pair when the configured base URL '
+    + 'is still the legacy www host',
+    () => {
+      const options = getCaptchaOptions(createConfig({
+        turnstileEnforced: true,
+        baseUrl: 'https://www.besidka.com',
+      }))
+
+      expect(options?.expectedAction).toBe('auth')
+      expect(options?.allowedHostnames).toEqual([
+        'www.besidka.com',
+        'besidka.com',
+      ])
+    },
+  )
 
   it('strips ports and wildcards getAllowedHosts would otherwise produce', () => {
     const options = getCaptchaOptions(createConfig({

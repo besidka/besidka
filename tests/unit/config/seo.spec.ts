@@ -64,10 +64,10 @@ describe('robots and sitemap configuration contract', () => {
   )
 
   it(
-    'falls back the canonical site URL to the www host when '
+    'falls back the canonical site URL to the apex host when '
     + 'NUXT_PUBLIC_BASE_URL is unset',
     () => {
-      expect(configuration.site?.url).toBe('https://www.besidka.com')
+      expect(configuration.site?.url).toBe('https://besidka.com')
     },
   )
 })

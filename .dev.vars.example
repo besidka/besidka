@@ -71,9 +71,9 @@ NUXT_AXIOM_CONSENT_TOKEN=
 # dev. These credentials only power the deployed editor at /_studio, where
 # editors sign in with GitHub and changes are committed to the repo.
 # Setup: GitHub → Settings → Developer settings → OAuth Apps → New OAuth App
-#   Homepage URL:               https://www.besidka.com
-#   Authorization callback URL: https://www.besidka.com/_studio
-#   (use the canonical www host — prod redirects besidka.com → www.besidka.com,
+#   Homepage URL:               https://besidka.com
+#   Authorization callback URL: https://besidka.com/_studio
+#   (use the canonical apex host — prod redirects www.besidka.com → besidka.com,
 #    and the OAuth callback must match the final host exactly)
 STUDIO_GITHUB_CLIENT_ID=
 STUDIO_GITHUB_CLIENT_SECRET=

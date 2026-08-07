@@ -34,7 +34,7 @@ pnpm run db:reset         # Reset local D1 database and regenerate
 npx wrangler d1 time-travel info <db-name>
 npx wrangler d1 time-travel info <db-name> --timestamp=<ISO8601>
 npx wrangler d1 time-travel restore <db-name> --bookmark=<bookmark>
-# Production DB: chat   |   Preview DB: chat-preview
+# Production DB: besidka (needs --env production)  |  Preview DB: besidka-preview
 
 # Cloudflare
 pnpm run cf-typegen       # Generate Cloudflare env types
@@ -97,13 +97,13 @@ Before running `pnpm run db:migrate` or `wrangler d1 migrations apply ... --remo
 
 - Always take a Time Travel bookmark **before** applying, save it somewhere retrievable:
   ```bash
-  npx wrangler d1 time-travel info chat
-  npx wrangler d1 time-travel info chat-preview
+  npx wrangler d1 time-travel info besidka --env production
+  npx wrangler d1 time-travel info besidka-preview
   ```
-- Apply to `chat-preview` first, verify data integrity, then `chat`.
+- Apply to `besidka-preview` first, verify data integrity, then `besidka`.
 - Verify row counts before/after on cascade-children:
   ```bash
-  npx wrangler d1 execute chat --remote --command="SELECT
+  npx wrangler d1 execute besidka --env production --remote --command="SELECT
     (SELECT COUNT(*) FROM chats) AS chats,
     (SELECT COUNT(*) FROM messages) AS messages,
     (SELECT COUNT(*) FROM projects) AS projects,
@@ -116,10 +116,10 @@ D1 Time Travel keeps point-in-time bookmarks for **30 days** (Workers Paid) / **
 
 ```bash
 # Find a pre-disaster bookmark by walking back timestamps
-npx wrangler d1 time-travel info chat --timestamp=2026-05-15T16:00:00Z
+npx wrangler d1 time-travel info besidka --env production --timestamp=2026-05-15T16:00:00Z
 
 # Restore (overwrites current state — irreversible without the undo bookmark it prints)
-npx wrangler d1 time-travel restore chat --bookmark=<bookmark>
+npx wrangler d1 time-travel restore besidka --env production --bookmark=<bookmark>
 ```
 
 The first bookmark whose timestamp predates the migration is **not necessarily safe** — the migration may have been applied minutes before it became the "active" bookmark for that timestamp window. **Always verify row counts after each restore and walk further back if cascade-children are still empty.**
@@ -192,6 +192,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `allowedHosts` mismatch that blocks versioned preview URLs), and why
   password-only 2FA gating (no challenge via passkey/OAuth sign-in) is a
   confirmed, accepted design decision rather than a gap
+- `docs/domain-migration-www-to-apex.md` - The `www.besidka.com` →
+  `besidka.com` canonical-host migration: D1 Time Travel bookmarks and
+  read-only scan, blast radius for existing sessions/push/passkeys, and the
+  ordered manual runbook for the Cloudflare redirect rule flip and OAuth
+  app callback updates that can't be automated from this repo
 
 ### Tech Stack
 
@@ -207,10 +212,10 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 
 ### SEO and canonical host
 
-- **Canonical host is `www.besidka.com`.** A Cloudflare redirect rule sends the
-  apex (`besidka.com`) to `www.besidka.com`, so all crawler-facing URLs must use
-  the `www` subdomain to match the post-redirect host. Pointing them at the apex
-  would advertise URLs that immediately 301, splitting SEO signals.
+- **Canonical host is the bare apex `besidka.com`.** A Cloudflare redirect rule
+  sends `www.besidka.com` to the apex (`besidka.com`), so all crawler-facing
+  URLs must use the apex to match the post-redirect host. Pointing them at
+  `www` would advertise URLs that immediately 301, splitting SEO signals.
 - `robots.txt` and `sitemap.xml` are **auto-generated** by `@nuxtjs/robots` and
   `@nuxtjs/sitemap` — there is NO static `public/robots.txt` (it was removed; a
   static file would conflict with the module-owned route). Edit the `robots`
@@ -219,13 +224,14 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
     create one; it silently overrides the config (this resurrected a stale `www`
     sitemap line and a dead `/projects/` rule during setup).
 - The canonical URL comes from `site.url` in `nuxt.config.ts`, which defaults to
-  `https://www.besidka.com` and is overridden at runtime by
-  `NUXT_PUBLIC_BASE_URL`. **Set `NUXT_PUBLIC_BASE_URL=https://www.besidka.com`
-  in the production Worker env** so sitemap/robots/canonical all resolve to www.
+  `https://besidka.com` and is overridden at runtime by
+  `NUXT_PUBLIC_BASE_URL`. **Set `NUXT_PUBLIC_BASE_URL=https://besidka.com`
+  in the production Worker env** so sitemap/robots/canonical all resolve to the
+  apex.
 - Robots indexing is blocked in dev (the module's default); verify production
   rules locally with `curl 'http://localhost:3000/robots.txt?mockProductionEnv'`.
-- Studio OAuth callback URL must also use the `www` host
-  (`https://www.besidka.com/_studio`).
+- Studio OAuth callback URL must also use the apex host
+  (`https://besidka.com/_studio`).
 - **Canonical and `og:url` are derived per route in `app/app.vue`** from
   `useRoute()` — a single source of truth that every page inherits. Do NOT add a
   per-page `canonical` or `ogUrl`; the global one is already correct and a second

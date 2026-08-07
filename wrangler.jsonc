@@ -141,7 +141,7 @@
 				}
 			},
 			"vars": {
-				"NUXT_PUBLIC_BASE_URL": "https://www.besidka.com",
+				"NUXT_PUBLIC_BASE_URL": "https://besidka.com",
 				"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
 				"NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE": "https://github.com/serhii-chernenko",
 				"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",

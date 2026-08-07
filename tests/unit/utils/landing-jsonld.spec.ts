@@ -8,7 +8,7 @@ import {
   buildWebSiteLd,
 } from '../../../app/utils/landing-jsonld'
 
-const BASE_URL = 'https://www.besidka.com'
+const BASE_URL = 'https://besidka.com'
 
 const INPUT = {
   baseUrl: BASE_URL,
@@ -37,23 +37,23 @@ function collectGraphIdReferences(node: Record<string, unknown>) {
 
 describe('buildLandingLdIds', () => {
   it('normalises a base URL without a trailing slash to siteUrl with one', () => {
-    const ids = buildLandingLdIds('https://www.besidka.com')
+    const ids = buildLandingLdIds('https://besidka.com')
 
-    expect(ids.siteUrl).toBe('https://www.besidka.com/')
+    expect(ids.siteUrl).toBe('https://besidka.com/')
   })
 
   it('is idempotent when the base URL already has a trailing slash', () => {
-    const ids = buildLandingLdIds('https://www.besidka.com/')
+    const ids = buildLandingLdIds('https://besidka.com/')
 
-    expect(ids.siteUrl).toBe('https://www.besidka.com/')
+    expect(ids.siteUrl).toBe('https://besidka.com/')
   })
 
   it('derives @id values from the normalised siteUrl', () => {
     const ids = buildLandingLdIds(BASE_URL)
 
-    expect(ids.organizationId).toBe('https://www.besidka.com/#organization')
-    expect(ids.websiteId).toBe('https://www.besidka.com/#website')
-    expect(ids.applicationId).toBe('https://www.besidka.com/#software')
+    expect(ids.organizationId).toBe('https://besidka.com/#organization')
+    expect(ids.websiteId).toBe('https://besidka.com/#website')
+    expect(ids.applicationId).toBe('https://besidka.com/#software')
   })
 })
 

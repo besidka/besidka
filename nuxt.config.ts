@@ -178,11 +178,12 @@ export default defineNuxtConfig({
     },
   },
   site: {
-    // Canonical host is the www subdomain: a Cloudflare redirect rule sends
-    // the apex (besidka.com) to www.besidka.com, so robots/sitemap/canonical
-    // URLs must use www to match the post-redirect host. Override at runtime
-    // with NUXT_PUBLIC_BASE_URL (set it to https://www.besidka.com in prod).
-    url: process.env.NUXT_PUBLIC_BASE_URL || 'https://www.besidka.com',
+    // Canonical host is the apex: a Cloudflare redirect rule sends
+    // www.besidka.com to the apex (besidka.com), so robots/sitemap/canonical
+    // URLs must use the apex to match the post-redirect host. Override at
+    // runtime with NUXT_PUBLIC_BASE_URL (set it to https://besidka.com in
+    // prod).
+    url: process.env.NUXT_PUBLIC_BASE_URL || 'https://besidka.com',
     name: 'Besidka',
   },
   // /signin, /signup and /reset-password are crawler-reachable and rely on a

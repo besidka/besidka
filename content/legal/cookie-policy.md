@@ -7,7 +7,7 @@ summary: "Besidka uses a handful of cookies and browser storage keys, and nothin
 
 ## What this policy covers
 
-This policy explains what Besidka stores in your browser on the hosted service at **www.besidka.com**, and why. It sits alongside the [Privacy Policy](/privacy-policy), which covers everything I store on the server.
+This policy explains what Besidka stores in your browser on the hosted service at **besidka.com**, and why. It sits alongside the [Privacy Policy](/privacy-policy), which covers everything I store on the server.
 
 If you run your own copy of Besidka, this policy does not describe your deployment. You are the operator of it and you set your own policy.
 

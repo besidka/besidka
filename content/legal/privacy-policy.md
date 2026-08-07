@@ -7,7 +7,7 @@ summary: "Besidka stores your account, chats, files, settings and your encrypted
 
 ## What this policy covers
 
-This policy applies to the hosted service at **www.besidka.com** only.
+This policy applies to the hosted service at **besidka.com** only.
 
 Besidka is open-source software. If you run your own copy of it, **you** are the data controller for that deployment. I have no access to it, and this policy does not apply to it. Under the EU AI Act you would also be the provider or deployer of that system, not me.
 
