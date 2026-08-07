@@ -13,10 +13,10 @@ Project board is available [here](https://github.com/orgs/besidka/projects/2).
 
 ## How to try?
 
-1. You are welcome to visit the production site [www.besidka.com](https://www.besidka.com).
+1. You are welcome to visit the production site [besidka.com](https://besidka.com).
 2. Please choose any option of authentication such as Google sign in, GitHub sign in or more common way of the Email + Password flow.
-3. When you are authorized, please put your API keys there: [www.besidka.com/profile/keys](https://www.besidka.com/profile/keys).
-4. You are welcome to start a new chat: [https://www.besidka.com/chats/new](https://www.besidka.com/chats/new)
+3. When you are authorized, please put your API keys there: [besidka.com/profile/keys](https://besidka.com/profile/keys).
+4. You are welcome to start a new chat: [https://besidka.com/chats/new](https://besidka.com/chats/new)
 
 ## Tech stack
 
@@ -161,8 +161,8 @@ Nuxt Content manages its own schema inside `CONTENT_DB` at runtime — no Drizzl
 Studio is optional. The landing page renders and all content is editable via Git without it. Studio adds a `/_studio` route to the deployed site so editors can make changes through a browser UI.
 
 1. Go to GitHub → Settings → Developer settings → OAuth Apps → New OAuth App.
-2. Set **Homepage URL** to `https://www.besidka.com` (the canonical `www` host — a Cloudflare redirect sends the apex `besidka.com` to `www.besidka.com`).
-3. Set **Authorization callback URL** to `https://www.besidka.com/_studio` (production) or `http://localhost:3000/_studio` (development).
+2. Set **Homepage URL** to `https://besidka.com` (the canonical apex host — a Cloudflare redirect sends `www.besidka.com` to `besidka.com`).
+3. Set **Authorization callback URL** to `https://besidka.com/_studio` (production) or `http://localhost:3000/_studio` (development).
 4. Copy the Client ID and generate a Client Secret.
 5. Add them to `.dev.vars` for local development:
    ```

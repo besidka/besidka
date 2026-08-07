@@ -230,10 +230,10 @@ key is set):
       `NUXT_PUBLIC_TURNSTILE_SITE_KEY` (safe to commit — it's
       client-visible by design).
 - [ ] Confirm the widget's configured hostnames include
-      `www.besidka.com` — a mismatch here is exactly the failure mode
+      `besidka.com` — a mismatch here is exactly the failure mode
       `allowedHostnames` exists to prevent, so it will 403 real users if
       the widget's dashboard hostname list drifts from this. Registering
-      the bare apex (`besidka.com`) too is harmless but, per the
+      `www.besidka.com` too is harmless but, per the
       verification note below, not required.
 - [ ] Any preview/staging environment that ever gets its own
       `turnstileSecretKey`/`turnstileSiteKey` for testing must NOT also
@@ -297,15 +297,15 @@ only asserts those where `turnstileEnforced` is `true`. Treat a
 working preview test as proof of wiring, not as proof that production
 enforcement works — only a production test does that.
 
-**The bare apex doesn't need its own hostname entry.** The
+**The `www` host doesn't need its own hostname entry.** The
 `wrangler.jsonc` production `routes` block binds the Worker to both
 `besidka.com` and `www.besidka.com/*`, but a zone-level Cloudflare
-redirect rule (see `docs/seo.md`) 301s the apex to `www.besidka.com`
+redirect rule (see `docs/seo.md`) 301s `www.besidka.com` to the apex
 ahead of that binding, before any HTML or JS loads. The Turnstile
-widget itself is therefore never served from the apex — every real
+widget itself is therefore never served from `www` — every real
 `siteverify` response's `hostname` field will read
-`www.besidka.com`, never `besidka.com`. Registering the apex as an
-allowed hostname in the Cloudflare dashboard anyway is harmless
+`besidka.com`, never `www.besidka.com`. Registering `www.besidka.com`
+as an allowed hostname in the Cloudflare dashboard anyway is harmless
 (hostname allowlisting only widens acceptance, never narrows it) but
 not required for challenges to validate.
 

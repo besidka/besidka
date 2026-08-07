@@ -120,11 +120,11 @@ The production environment is **`env.production`** in `wrangler.jsonc`.
     resulting server-side data storage.
 - [ ] **Carousel mockups**: replace the placeholder SVG mockups
   (`public/preview-*.svg`) with real product screenshots.
-- [ ] **Canonical host**: a Cloudflare redirect rule sends the apex
-  (`besidka.com`) to `www.besidka.com`, so the canonical host is the **www
-  subdomain**. The SEO modules plus robots/sitemap standardize on
-  `https://www.besidka.com`, sourced from `NUXT_PUBLIC_BASE_URL`. Set
-  `NUXT_PUBLIC_BASE_URL` to `https://www.besidka.com` in the production Worker
-  env so sitemap, robots, and canonical URLs match the post-redirect host.
-  (`nuxt.config.ts` `site.url` already defaults to `https://www.besidka.com`;
-  the env var is the runtime override.)
+- [ ] **Canonical host**: a Cloudflare redirect rule sends `www.besidka.com`
+  to the apex (`besidka.com`), so the canonical host is the **bare apex**. The
+  SEO modules plus robots/sitemap standardize on `https://besidka.com`,
+  sourced from `NUXT_PUBLIC_BASE_URL`. Set `NUXT_PUBLIC_BASE_URL` to
+  `https://besidka.com` in the production Worker env so sitemap, robots, and
+  canonical URLs match the post-redirect host. (`nuxt.config.ts` `site.url`
+  already defaults to `https://besidka.com`; the env var is the runtime
+  override.)

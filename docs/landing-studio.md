@@ -72,9 +72,9 @@ The `/_studio` GitHub sign-in requires a **GitHub OAuth App**. Dev has no
 Worker:
 
 1. GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**.
-2. **Authorization callback URL**: `https://www.besidka.com/_studio`
-   (production — use the `www` host, since a Cloudflare redirect sends the apex
-   to `www.besidka.com`) or the preview Worker URL + `/_studio`.
+2. **Authorization callback URL**: `https://besidka.com/_studio`
+   (production — use the apex host, since a Cloudflare redirect sends
+   `www.besidka.com` to the apex) or the preview Worker URL + `/_studio`.
    `http://localhost:3000/_studio` is **not** needed — dev has no `/_studio`
    route.
 3. Provide the client id/secret to the deployed Worker as wrangler secrets:

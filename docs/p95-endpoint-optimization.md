@@ -170,9 +170,9 @@ cannot be pushed below Google's own round-trip time. **Not fixed.**
 The gap between the two observed samples (3220ms vs 1530ms) is plausibly
 explained by Better Auth's `oAuthProxy({ productionURL })` plugin: its
 `checkSkipProxy` logic forces the entire OAuth exchange onto
-`productionURL`'s origin (`https://www.besidka.com`) with an extra redirect
+`productionURL`'s origin (`https://besidka.com`) with an extra redirect
 round-trip whenever the request's current origin differs — e.g. a sign-in
-starting on the bare apex domain or a preview URL. This is **unverified** —
+starting on the `www` subdomain or a preview URL. This is **unverified** —
 it requires checking which origins the slow samples in Axiom actually came
 from, which needs Axiom access this work didn't have. **Investigate before
 touching** — don't change `baseURL`/proxy config on this hypothesis alone.
