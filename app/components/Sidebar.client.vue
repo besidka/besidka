@@ -12,7 +12,7 @@
       'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
       'max-sm:translate-y-[var(--sab)]':
         visible && !isKeyboardVisible && hasSafeAreaBottom,
-      'sidebar-hoverable': isDesktop && !sidebarPinned,
+      'sidebar-hoverable': isDesktop && !sidebarPinned && !isModalOpen,
     }"
   >
     <div class="sidebar-clip">
@@ -46,6 +46,7 @@
             title="Search"
             circle
             tooltip-position="left"
+            :class="{ 'btn-active': isModalOpen }"
             @click="openSearchModal"
           />
           <LazySidebarDevelopment />
@@ -61,7 +62,7 @@ const { isDesktop } = useDevice()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { sidebarPinned } = useUserSetting()
-const { openSearchModal } = useSearchModal()
+const { isModalOpen, openSearchModal } = useSearchModal()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 

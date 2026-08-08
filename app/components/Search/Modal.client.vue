@@ -12,6 +12,7 @@
           <UiSearchInput
             ref="searchInputRef"
             v-model="query"
+            class="input-sm"
             :is-searching="isSearching"
             :show-keyboard-hint="false"
             placeholder="Search chats and actions..."
@@ -169,7 +170,6 @@ async function goTo(path: string) {
 }
 
 function toggleTheme() {
-  dismiss()
   toggle()
 }
 

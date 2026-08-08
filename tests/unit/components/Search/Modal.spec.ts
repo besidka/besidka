@@ -191,7 +191,7 @@ describe('Search/Modal.client', () => {
     expect(closeSpy).toHaveBeenCalled()
   })
 
-  it('closes the modal and calls toggle() for the theme row', async () => {
+  it('calls toggle() for the theme row without closing the modal', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -199,7 +199,7 @@ describe('Search/Modal.client', () => {
     await wrapper.find('#search-option-theme').trigger('click')
 
     expect(mocks.toggleThemeMock).toHaveBeenCalledTimes(1)
-    expect(useSearchModal().isModalOpen.value).toBe(false)
+    expect(useSearchModal().isModalOpen.value).toBe(true)
   })
 
   it('shows the theme icon matching the current preference', async () => {

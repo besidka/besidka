@@ -80,6 +80,31 @@ describe('Sidebar.client', () => {
     expect(isModalOpen.value).toBe(true)
   })
 
+  it('carries btn-active on the search trigger while the modal is open', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountSidebar()
+    const trigger = wrapper.get('[data-testid="sidebar-search-trigger"]')
+
+    expect(trigger.classes()).toContain('btn-active')
+  })
+
+  it('does not carry btn-active on the search trigger while the modal is closed', async () => {
+    const wrapper = await mountSidebar()
+    const trigger = wrapper.get('[data-testid="sidebar-search-trigger"]')
+
+    expect(trigger.classes()).not.toContain('btn-active')
+  })
+
+  it('omits sidebar-hoverable from the root element while the modal is open', async () => {
+    useSearchModal().isModalOpen.value = true
+
+    const wrapper = await mountSidebar()
+
+    expect(wrapper.get('[data-testid="sidebar"]').classes())
+      .not.toContain('sidebar-hoverable')
+  })
+
   it('does not render a history icon trigger anymore', async () => {
     const wrapper = await mountSidebar()
     const iconClasses = wrapper.findAll('.iconify')
