@@ -214,7 +214,7 @@ jobs:
         id: build-app
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
-          NODE_OPTIONS: --max-old-space-size=3072
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           set -o pipefail
           START=$(date +%s)
