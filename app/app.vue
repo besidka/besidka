@@ -33,6 +33,7 @@
     <UiConfirmation />
     <UiMessages />
     <LazyChatShareModal />
+    <LazySearchModal />
     <LazyNotificationPrompt />
     <Sidebar v-if="hasSidebar" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />

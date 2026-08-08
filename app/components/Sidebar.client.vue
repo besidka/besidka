@@ -39,14 +39,14 @@
         <template v-if="loggedIn">
           <LazySidebarNewChat />
           <UiButton
-            to="/chats/history"
+            data-testid="sidebar-search-trigger"
             ghost
-            :disabled="$route.path === '/chats/history'"
-            icon-name="lucide:history"
+            icon-name="lucide:search"
             :icon-only="true"
-            title="History"
+            title="Search"
             circle
             tooltip-position="left"
+            @click="openSearchModal"
           />
           <LazySidebarDevelopment />
         </template>
@@ -61,6 +61,7 @@ const { isDesktop } = useDevice()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { sidebarPinned } = useUserSetting()
+const { openSearchModal } = useSearchModal()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 

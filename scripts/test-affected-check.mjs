@@ -81,6 +81,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
@@ -128,6 +129,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/project-chats.spec.ts',
     'tests/unit/components/History/ChatSections.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
+    'tests/unit/pages/chats/history/index.spec.ts',
     'tests/unit/pages/projects-index.spec.ts',
     'tests/unit/utils/date-groups.spec.ts',
     'tests/unit/utils/project-activity.spec.ts',
@@ -280,6 +282,15 @@ export function getAffectedTests(changedFiles) {
 
   const seoTests = [
     'tests/unit/config/seo.spec.ts',
+  ]
+
+  const searchModalTests = [
+    'tests/unit/composables/search-modal.spec.ts',
+    'tests/unit/composables/files-modal-handoff.spec.ts',
+    'tests/unit/components/Search/Modal.spec.ts',
+    'tests/unit/components/Search/ResultRow.spec.ts',
+    'tests/unit/components/Sidebar.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
   ]
 
   const deepResearchTests = [
@@ -544,11 +555,28 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^app\/components\/Sidebar\/ThemeSwitcher\.vue$/,
+        /^(app\/components\/Sidebar\/ThemeSwitcher\.vue|app\/composables\/theme-toggle\.ts)$/,
       tests: [
         'tests/unit/components/ThemeSwitcher.spec.ts',
+        'tests/unit/composables/theme-toggle.spec.ts',
         'tests/e2e/settings/theme.spec.ts',
         'tests/e2e/settings/theme-tokens.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/Sidebar\.client\.vue$/,
+      tests: ['tests/unit/components/Sidebar.spec.ts'],
+    },
+    {
+      pattern:
+        /^(app\/composables\/(search-modal|files-modal-handoff)\.ts|app\/components\/Search\/.*\.vue)$/,
+      tests: searchModalTests,
+    },
+    {
+      pattern: /^shared\/utils\/search\.ts$/,
+      tests: [
+        ...searchModalTests,
+        'tests/unit/pages/chats/history/index.spec.ts',
       ],
     },
     {
@@ -668,7 +696,7 @@ export function getAffectedTests(changedFiles) {
       tests: historyProjectsTests,
     },
     {
-      pattern: /^app\/pages\/chats\/(history|new)\.vue$/,
+      pattern: /^app\/pages\/chats\/(history\/index|new)\.vue$/,
       tests: historyProjectsTests,
     },
     {
