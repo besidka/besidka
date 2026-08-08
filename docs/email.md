@@ -10,10 +10,25 @@ This document is the source of truth for transactional email:
 - migration history (Resend → Cloudflare, PR #284);
 - a detailed runbook for **reverting to Resend** if that decision changes.
 
-The app sends only two kinds of transactional email — password reset and
-email verification — both triggered by Better Auth. There is no marketing or
-bulk email. Keep it that way: Cloudflare Email Sending is for transactional
-mail only.
+The app sends transactional email only — there is no marketing or bulk
+email. Keep it that way: Cloudflare Email Sending is for transactional mail
+only.
+
+As of the styled-emails work, that transactional mail spans 13 flows built
+from 2 Vue SFC template shapes rendered by `nuxt-email-renderer`
+(see [Templates](#templates) below):
+
+- **4 action-link emails** (`ActionEmail.vue`): reset password, verify
+  email, confirm a new email address, confirm account deletion. All
+  triggered by Better Auth callbacks in `server/utils/auth.ts`.
+- **9 security notices** (`NoticeEmail.vue`), sent via
+  `server/utils/account/security-emails.ts`: password changed, sign-in
+  method connected/disconnected, two-factor turned on/off, two-factor
+  backup codes regenerated, account email changed, passkey added/removed.
+
+Both shapes are sent through a single helper, `sendTemplateEmail()`, which
+wraps `nuxt-email-renderer`'s `renderEmailComponent()` and `useEmail().send()`
+(see [Templates](#templates)).
 
 ## Current architecture (Cloudflare Email Sending)
 
@@ -25,12 +40,17 @@ exactly like the `DB`, `KV`, and `DATA_BUCKET` bindings.
 
 | File | Role |
 |------|------|
-| `server/utils/email.ts` | `useEmail().send()` — the single send path |
-| `server/utils/auth.ts` | Better Auth `sendResetPassword` / `sendVerificationEmail` callers |
+| `server/utils/email.ts` | `useEmail().send()` — the single low-level send path |
+| `server/utils/email-template.ts` | `sendTemplateEmail()` — renders an `ActionEmail`/`NoticeEmail` template (html + plain text) and hands both to `useEmail().send()` |
+| `app/emails/**` | The two Vue SFC templates (`ActionEmail.vue`, `NoticeEmail.vue`) plus shared layout pieces (`components/EmailLayout.vue`, `EmailHeader.vue`, `EmailFooter.vue`, `theme.ts`) |
+| `server/utils/auth.ts` | Better Auth `sendResetPassword` / `sendVerificationEmail` / `sendChangeEmailConfirmation` / `sendDeleteAccountVerification` callers, all via `sendTemplateEmail()` with `ActionEmail` |
+| `server/utils/account/security-emails.ts` | The 9 security-notice senders, all via `sendTemplateEmail()` with `NoticeEmail` |
 | `wrangler.jsonc` | `send_email` binding + `NUXT_EMAIL_SENDER_*` vars (preview + production) |
-| `nuxt.config.ts` / `index.d.ts` | `emailNoopEnabled`, `emailSenderNoreply`, `emailSenderPersonalized` runtime config |
+| `nuxt.config.ts` / `index.d.ts` | `emailNoopEnabled`, `emailSenderNoreply`, `emailSenderPersonalized` runtime config; the `nuxtEmailRenderer` module options block and the `forceInlineVueI18nForEmailRenderer` local module (see [Templates](#templates)) |
 | `.dev.vars.example` | documents `NUXT_EMAIL_NOOP_ENABLED` |
-| `tests/integration/server/email.spec.ts` | unit coverage (injects a fake binding) |
+| `tests/integration/server/email.spec.ts` | unit coverage for `useEmail()` (injects a fake binding) |
+| `tests/integration/server/email-templates.spec.ts` | real Vue SSR render coverage for `ActionEmail`/`NoticeEmail` (see [Templates](#templates)) |
+| `tests/unit/utils/email-template.spec.ts` | unit coverage for `sendTemplateEmail()`'s union-narrowing and argument passthrough (mocks `renderEmailComponent`) |
 | `vitest.config.mts` + `tests/setup/mocks/cloudflare-workers.ts` | resolves `cloudflare:workers` under Vitest |
 
 ### Send path
@@ -67,13 +87,76 @@ Cloudflare docs):
 - The object form needs **no** `nodejs_compat` and **no** `mimetext` (those are
   only for the legacy `EmailMessage` raw-MIME path).
 
+### Templates
+
+Both template shapes live under `app/emails/`:
+
+- `ActionEmail.vue` — heading, intro text, a CTA button/link, a raw-URL
+  fallback line, and a footnote. Used for every flow that needs the
+  recipient to click through (password reset, email verification, email
+  change confirmation, account deletion confirmation).
+- `NoticeEmail.vue` — heading and a body paragraph, no CTA. Used for
+  after-the-fact security notices that only inform, never require action.
+
+Both wrap `components/EmailLayout.vue`, which renders the shared
+`nuxt-email-renderer` chrome (`EHtml`, `EHead`, `EBody`, `EContainer`) plus
+`EmailHeader.vue` (the "Besidka" wordmark) and `EmailFooter.vue` (besidka.com
+/ Privacy policy / Terms of use / GitHub links). `components/theme.ts` is the
+single source of color/typography constants — a light value and a matching
+`*Dark` value per token (`accent`, `surface`, `page`, `text`, `body`, `muted`,
+`subtle`, `border`) plus a shared `fontFamily`.
+
+Dark mode is CSS-only (`prefers-color-scheme: dark`), since email clients
+can't run JS: `EmailLayout.vue` builds a `darkModeCss` string in
+`<script setup>` by interpolating the `*Dark` constants into a
+`@media (prefers-color-scheme: dark) { ... }` template literal, then renders
+it with `{{ darkModeCss }}` inside `<EStyle>`. `<EStyle>` resolves a single
+text child with mixed static text and `{{ }}` interpolations into one
+already-interpolated string at render time, so this is a plain, non-reactive
+string substitution, not a runtime binding — verified against
+`node_modules/nuxt-email-renderer/dist/runtime/components/style/EStyle.vue`.
+Light-mode colors are applied directly as inline `:style` bindings on each
+element (email clients strip `<style>` classes unpredictably, so light mode
+can't rely on the class-based override the dark-mode block uses). The
+`color-scheme: light dark;` `:root` rule and the `<meta name=
+"supported-color-schemes" content="light dark">` tag in `<EHead>` are what
+actually opt email clients into dark mode — `supported-color-schemes` is
+*not* a real CSS property, so it must be the `<meta>` tag only, never
+duplicated inside the `:root {}` block.
+
+`server/utils/email-template.ts` exports `sendTemplateEmail({ to, subject,
+template, props, from })`, which calls `renderEmailComponent(template,
+props)` for the HTML body and `renderEmailComponent(template, props,
+{ plainText: true })` for the plain-text body, then passes both to
+`useEmail().send()`.
+
+The dev-only render endpoint (`nuxt-email-renderer`'s own
+`POST /api/emails/render`) is useful for manually inspecting a template
+without sending a real email:
+
+```bash
+curl -s http://localhost:3000/api/emails/render \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"ActionEmail","props":{"preview":"p","heading":"h","intro":"i","ctaLabel":"Go","url":"https://besidka.com","footnote":"f"}}'
+```
+
+Pass `"plainText": true` in the body to get the plain-text render instead.
+
 ### Plain-text fallback
 
-Callers should pass an explicit `text` part. When they don't, `send()` derives
-one from the HTML via `htmlToText()`, which is link-aware (it rewrites
-`<a href="URL">label</a>` to `label (URL)` so plaintext MUAs keep the link)
-and decodes common HTML entities. Both current callers pass `text` explicitly,
-so the fallback is a safety net for future HTML templates.
+`sendTemplateEmail()` — the path every current template uses — gets its
+plain-text body from `nuxt-email-renderer`'s own renderer
+(`renderEmailComponent(template, props, { plainText: true })`), which is
+itself backed by `html-to-text`. It does **not** go through `email.ts`'s
+`htmlToText()`.
+
+`email.ts`'s `htmlToText()` fallback only fires for a caller that calls
+`useEmail().send()` directly without passing `text` — today, no caller does
+that (every caller goes through `sendTemplateEmail()`, which always passes an
+explicit `text`). It remains in place as a safety net for any future direct
+`useEmail().send()` caller that skips the template renderer, and is
+link-aware (it rewrites `<a href="URL">label</a>` to `label (URL)` so
+plaintext MUAs keep the link) and decodes common HTML entities.
 
 ## Configuration
 

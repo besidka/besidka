@@ -19,12 +19,14 @@ function providerLabel(providerId: string): string {
 async function sendSecurityNotificationEmail({
   user,
   subject,
-  html,
+  heading,
+  body,
   logger,
 }: {
   user: SecurityEmailUser
   subject: string
-  html: string
+  heading: string
+  body: string
   logger?: LoggerLike
 }): Promise<void> {
   try {
@@ -35,13 +37,15 @@ async function sendSecurityNotificationEmail({
       return
     }
 
-    const { send: sendEmail } = useEmail()
-
-    await sendEmail({
+    await sendTemplateEmail({
       to: user.email,
       subject,
-      html,
-      text: html,
+      template: 'NoticeEmail',
+      props: {
+        preview: subject,
+        heading,
+        body,
+      },
     })
   } catch (exception) {
     resolveServerLogger(logger).set({
@@ -63,7 +67,8 @@ export async function sendPasswordChangedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Your password was changed',
-    html: 'Your Besidka account password was just changed. If this was '
+    heading: 'Your password was changed',
+    body: 'Your Besidka account password was just changed. If this was '
       + 'not you, reset your password immediately and review your '
       + 'account’s active sessions.',
     logger,
@@ -82,7 +87,8 @@ export async function sendSignInMethodConnectedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'New sign-in method connected',
-    html: `${providerLabel(providerId)} was just connected as a sign-in `
+    heading: 'New sign-in method connected',
+    body: `${providerLabel(providerId)} was just connected as a sign-in `
       + 'method on your Besidka account. If this was not you, disconnect '
       + 'it from your account security settings and change your password.',
     logger,
@@ -101,7 +107,8 @@ export async function sendSignInMethodDisconnectedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Sign-in method disconnected',
-    html: `${providerLabel(providerId)} was just disconnected as a `
+    heading: 'Sign-in method disconnected',
+    body: `${providerLabel(providerId)} was just disconnected as a `
       + 'sign-in method from your Besidka account. If this was not you, '
       + 'contact support immediately.',
     logger,
@@ -118,7 +125,8 @@ export async function sendTwoFactorEnabledEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Two-factor authentication turned on',
-    html: 'Two-factor authentication was just turned on for your Besidka '
+    heading: 'Two-factor authentication turned on',
+    body: 'Two-factor authentication was just turned on for your Besidka '
       + 'account. If this was not you, turn it off from your account '
       + 'security settings and change your password immediately.',
     logger,
@@ -135,7 +143,8 @@ export async function sendTwoFactorDisabledEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Two-factor authentication turned off',
-    html: 'Two-factor authentication was just turned off for your '
+    heading: 'Two-factor authentication turned off',
+    body: 'Two-factor authentication was just turned off for your '
       + 'Besidka account. If this was not you, turn it back on from '
       + 'your account security settings and change your password '
       + 'immediately.',
@@ -155,7 +164,8 @@ export async function sendEmailChangedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Your account email address was changed',
-    html: 'Your Besidka account email address was just changed to '
+    heading: 'Your account email address was changed',
+    body: 'Your Besidka account email address was just changed to '
       + `${newEmail}. If this was not you, contact support immediately.`,
     logger,
   })
@@ -171,7 +181,8 @@ export async function sendTwoFactorBackupCodesRegeneratedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Two-factor backup codes regenerated',
-    html: 'Your two-factor authentication backup codes were just '
+    heading: 'Two-factor backup codes regenerated',
+    body: 'Your two-factor authentication backup codes were just '
       + 'regenerated on your Besidka account, invalidating every previous '
       + 'code. If this was not you, turn off two-factor authentication '
       + 'from your account security settings and change your password '
@@ -190,7 +201,8 @@ export async function sendPasskeyAddedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'New passkey added',
-    html: 'A new passkey was just added to your Besidka account. If this '
+    heading: 'New passkey added',
+    body: 'A new passkey was just added to your Besidka account. If this '
       + 'was not you, remove it from your account security settings and '
       + 'change your password immediately.',
     logger,
@@ -207,7 +219,8 @@ export async function sendPasskeyRemovedEmail({
   await sendSecurityNotificationEmail({
     user,
     subject: 'Passkey removed',
-    html: 'A passkey was just removed from your Besidka account. If this '
+    heading: 'Passkey removed',
+    body: 'A passkey was just removed from your Besidka account. If this '
       + 'was not you, review your account security settings and change '
       + 'your password immediately.',
     logger,

@@ -133,13 +133,20 @@ function createAuth() {
       autoSignIn: import.meta.dev || isCiEnvironment,
       requireEmailVerification: !import.meta.dev && !isCiEnvironment,
       async sendResetPassword({ user, url }) {
-        const { send: sendEmail } = useEmail()
-
-        await sendEmail({
+        await sendTemplateEmail({
           to: user.email,
           subject: 'Reset your password',
-          html: `Click the link to reset your password: ${url}`,
-          text: `Click the link to reset your password: ${url}`,
+          template: 'ActionEmail',
+          props: {
+            preview: 'Reset your Besidka account password',
+            heading: 'Reset your password',
+            intro: 'We received a request to reset your Besidka account '
+              + 'password.',
+            ctaLabel: 'Reset password',
+            url,
+            footnote: 'If you didn\'t request this, you can safely ignore '
+              + 'this email.',
+          },
         })
       },
       // The forgot-password flow has no session to key the
@@ -160,13 +167,20 @@ function createAuth() {
           return
         }
 
-        const { send: sendEmail } = useEmail()
-
-        await sendEmail({
+        await sendTemplateEmail({
           to: user.email,
           subject: 'Verify your email address',
-          html: `Click the link to verify your email: ${url}`,
-          text: `Click the link to verify your email: ${url}`,
+          template: 'ActionEmail',
+          props: {
+            preview: 'Verify your Besidka email address',
+            heading: 'Verify your email address',
+            intro: 'Confirm this is your email address to finish setting '
+              + 'up your Besidka account.',
+            ctaLabel: 'Verify email',
+            url,
+            footnote: 'If you didn\'t create a Besidka account, you can '
+              + 'safely ignore this email.',
+          },
         })
       },
     },
@@ -196,13 +210,20 @@ function createAuth() {
             return
           }
 
-          const { send: sendEmail } = useEmail()
-
-          await sendEmail({
+          await sendTemplateEmail({
             to: user.email,
             subject: 'Confirm your new email address',
-            html: `Click the link to confirm changing your account email to ${newEmail}: ${url}`,
-            text: `Click the link to confirm changing your account email to ${newEmail}: ${url}`,
+            template: 'ActionEmail',
+            props: {
+              preview: 'Confirm your new Besidka email address',
+              heading: 'Confirm your new email address',
+              intro: 'We received a request to change your Besidka '
+                + `account email address to ${newEmail}.`,
+              ctaLabel: 'Confirm change',
+              url,
+              footnote: 'If you didn\'t request this, you can safely '
+                + 'ignore this email.',
+            },
           })
         },
       },
@@ -222,13 +243,22 @@ function createAuth() {
             return
           }
 
-          const { send: sendEmail } = useEmail()
-
-          await sendEmail({
+          await sendTemplateEmail({
             to: user.email,
             subject: 'Confirm deleting your account',
-            html: `Click the link to permanently delete your account and all associated data: ${url}`,
-            text: `Click the link to permanently delete your account and all associated data: ${url}`,
+            template: 'ActionEmail',
+            props: {
+              preview: 'Confirm deleting your Besidka account',
+              heading: 'Confirm deleting your account',
+              intro: 'We received a request to permanently delete your '
+                + 'Besidka account.',
+              ctaLabel: 'Delete my account',
+              url,
+              footnote: 'This permanently deletes your account and all '
+                + 'associated data - chats, files, and settings - and '
+                + 'cannot be undone. If you didn\'t request this, you can '
+                + 'safely ignore this email.',
+            },
           })
         },
         async beforeDelete(user) {
