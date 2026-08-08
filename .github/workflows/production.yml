@@ -74,6 +74,7 @@ jobs:
     name: Build and Deploy to Production
     needs: resolve-preview-context
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
@@ -227,6 +228,7 @@ jobs:
 
       - name: Run all E2E tests
         id: test-e2e
+        timeout-minutes: 15
         run: |
           START=$(date +%s)
           pnpm run test:e2e
