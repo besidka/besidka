@@ -114,6 +114,7 @@ jobs:
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 25
     permissions:
       contents: read
       statuses: write
@@ -260,6 +261,7 @@ jobs:
       - name: Run affected E2E tests
         id: test-e2e
         if: steps.check-e2e.outputs.has-tests == 'true'
+        timeout-minutes: 12
         run: |
           START=$(date +%s)
           node scripts/test-affected.mjs --base=origin/${{ github.base_ref }} --type=e2e
