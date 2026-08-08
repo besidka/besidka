@@ -33,6 +33,7 @@ defineProps<{
         letterSpacing: '-0.4px',
         lineHeight: '30px',
         margin: '0 0 14px 0',
+        textAlign: 'center',
       }"
     >
       {{ heading }}
@@ -45,12 +46,13 @@ defineProps<{
         fontSize: '15px',
         lineHeight: '25px',
         margin: '0 0 28px 0',
+        textAlign: 'center',
       }"
     >
       {{ intro }}
     </EText>
     <ERow>
-      <EColumn :style="{ padding: '0' }">
+      <EColumn :style="{ padding: '0', textAlign: 'center' }">
         <EButton
           class="email-button"
           :href="url"
@@ -96,9 +98,9 @@ defineProps<{
       Or copy this link into your browser:
     </EText>
     <EText
-      class="email-text"
+      class="email-copy-link"
       :style="{
-        color: bodyLight,
+        color: accentLight,
         fontFamily,
         fontSize: '13px',
         lineHeight: '21px',

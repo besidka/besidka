@@ -4,7 +4,6 @@ import EmailHeader from './EmailHeader.vue'
 import {
   accentContentDark,
   accentDark,
-  accentLight,
   bodyDark,
   borderDark,
   borderLight,
@@ -44,6 +43,9 @@ const darkModeCss = `
     }
     .email-text {
       color: ${bodyDark} !important;
+    }
+    .email-copy-link {
+      color: ${accentDark} !important;
     }
     .email-muted {
       color: ${mutedDark} !important;
@@ -103,7 +105,6 @@ const darkModeCss = `
             :style="{
               backgroundColor: surfaceLight,
               border: `1px solid ${borderLight}`,
-              borderTop: `3px solid ${accentLight}`,
               borderRadius: '14px',
               padding: '36px 32px',
             }"
