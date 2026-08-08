@@ -1,5 +1,4 @@
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import ActionEmail from '../../../app/emails/ActionEmail.vue'
@@ -7,22 +6,26 @@ import NoticeEmail from '../../../app/emails/NoticeEmail.vue'
 
 /**
  * `nuxt-email-renderer`'s `package.json` `exports` map only lists "." and
- * "./components", so importing `dist/runtime/server/utils/render.js` by its
- * package specifier is blocked by Vite's exports enforcement. Separately,
- * the module's public `renderEmailComponent` resolves templates through the
- * `#email-templates` virtual module, which is only registered inside a
- * Nitro build and does not exist under Vitest. Resolving the package's main
- * entry first, then rewriting to the runtime file's absolute filesystem
- * path, sidesteps both problems: exports enforcement only applies to bare
- * specifiers, and `render()` accepts an already-imported component
- * directly, bypassing the virtual template registry entirely. The result is
- * the real Vue SSR render path (`vue/server-renderer` + the module's own
- * email component registration), not a mock.
+ * "./components", and "." has no `require` condition, so resolving the
+ * package specifier through Node/Vite's exports algorithm is unreliable
+ * across dependency versions (works under some, throws
+ * `ERR_PACKAGE_PATH_NOT_EXPORTED` under others). The deep runtime file
+ * (`dist/runtime/server/utils/render.js`) isn't in `exports` at all either.
+ * Separately, the module's public `renderEmailComponent` resolves templates
+ * through the `#email-templates` virtual module, which is only registered
+ * inside a Nitro build and does not exist under Vitest. Locating the
+ * package root as a plain filesystem path from `process.cwd()` (pnpm
+ * symlinks direct dependencies at the workspace root's `node_modules`;
+ * `import.meta.url` is unreliable here because Vitest's module runner does
+ * not always give it a real `file:` URL) and importing the runtime file
+ * directly bypasses exports resolution entirely, and `render()` accepts an
+ * already-imported component directly, bypassing the virtual template
+ * registry too. The result is the real Vue SSR render path
+ * (`vue/server-renderer` + the module's own email component registration),
+ * not a mock.
  */
 async function importRealRender() {
-  const require = createRequire(import.meta.url)
-  const entry = require.resolve('nuxt-email-renderer')
-  const packageRoot = dirname(dirname(entry))
+  const packageRoot = join(process.cwd(), 'node_modules/nuxt-email-renderer')
   const renderPath = join(packageRoot, 'dist/runtime/server/utils/render.js')
 
   return import(pathToFileURL(renderPath).href)
