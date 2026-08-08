@@ -25,8 +25,8 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@nuxt/kit": "^4.5.0",
-    "@nuxtjs/i18n": "^10.5.0"
+    "@nuxt/kit": "^4.5.2",
+    "@nuxtjs/i18n": "^10.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -37,10 +37,10 @@
     "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^10.8.0",
     "happy-dom": "^20.11.1",
-    "nuxt": "^4.5.0",
+    "nuxt": "^4.5.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
     "vitest-environment-nuxt": "^2.0.0",
-    "vue": "^3.5.40"
+    "vue": "^3.5.41"
   }
 }
