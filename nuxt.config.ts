@@ -175,6 +175,7 @@ export default defineNuxtConfig({
       maxMessageFilesBytes: 1000 * 1024 * 1024, // 1GB
       vapidPublicKey: '',
       turnstileSiteKey: '',
+      e2eTestHooksEnabled: false,
     },
   },
   site: {

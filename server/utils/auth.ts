@@ -43,6 +43,7 @@ function createAuth() {
   const kv = useKV()
   const dataKey = 'auth'
   const deleteAccountTokenTtl = 60 * 60
+  const isCiEnvironment: boolean = process.env.CI === 'true'
 
   const allowedHosts = getAllowedHosts(config.public.baseUrl)
   const captchaOptions = getCaptchaOptions(config)
@@ -129,8 +130,8 @@ function createAuth() {
     },
     emailAndPassword: {
       enabled: true,
-      autoSignIn: import.meta.dev,
-      requireEmailVerification: !import.meta.dev,
+      autoSignIn: import.meta.dev || isCiEnvironment,
+      requireEmailVerification: !import.meta.dev && !isCiEnvironment,
       async sendResetPassword({ user, url }) {
         const { send: sendEmail } = useEmail()
 
@@ -150,7 +151,7 @@ function createAuth() {
       },
     },
     emailVerification: {
-      sendOnSignUp: !import.meta.dev,
+      sendOnSignUp: !import.meta.dev && !isCiEnvironment,
       autoSignInAfterVerification: true,
       async sendVerificationEmail({ user, url }) {
         if (import.meta.dev) {

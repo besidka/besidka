@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 340" font-family="ui-monospace, Menlo, Consolas, monospace">
+  <rect x="0" y="0" width="820" height="340" rx="8" fill="#ffffff" stroke="#d8dbe2" stroke-width="1" />
+  <text x="20" y="30" font-size="14" font-weight="600" fill="#14161c">production.yml — measured vs. projected (per step)</text>
+
+  <g transform="translate(20,55)" font-size="11">
+    <text x="0" y="7" text-anchor="start" fill="#14161c">e2e tests</text>
+    <rect x="140" y="0" width="500" height="14" rx="4" fill="#2a78d6" />
+    <text x="648" y="10" fill="#14161c">489s measured</text>
+    <rect x="140" y="18" width="205" height="14" rx="4" fill="#c9581c" />
+    <text x="353" y="28" fill="#14161c">~150–250s projected*</text>
+
+    <text x="0" y="55" fill="#14161c">unit tests</text>
+    <rect x="140" y="48" width="97" height="14" rx="4" fill="#2a78d6" />
+    <text x="245" y="58" fill="#14161c">95s</text>
+
+    <text x="0" y="83" fill="#14161c">build</text>
+    <rect x="140" y="76" width="94" height="14" rx="4" fill="#2a78d6" />
+    <text x="242" y="86" fill="#14161c">92s</text>
+
+    <text x="0" y="111" fill="#14161c">other overhead</text>
+    <rect x="140" y="104" width="132" height="14" rx="4" fill="#2a78d6" />
+    <text x="280" y="114" fill="#14161c">129s — checkout, install, cache, migrations</text>
+
+    <text x="0" y="139" fill="#14161c">integration tests</text>
+    <rect x="140" y="132" width="39" height="14" rx="4" fill="#2a78d6" />
+    <text x="187" y="142" fill="#14161c">38s</text>
+
+    <text x="0" y="167" fill="#14161c">deploy</text>
+    <rect x="140" y="160" width="30" height="14" rx="4" fill="#2a78d6" />
+    <text x="178" y="170" fill="#14161c">29s</text>
+
+    <rect x="0" y="196" width="9" height="9" rx="2" fill="#2a78d6" />
+    <text x="15" y="204" fill="#5b5f6b">measured today</text>
+    <rect x="150" y="196" width="9" height="9" rx="2" fill="#c9581c" />
+    <text x="165" y="204" fill="#5b5f6b">projected — not yet validated</text>
+  </g>
+
+  <text x="20" y="290" font-size="11" fill="#14161c" font-weight="600">14m32s measured → ~9m43s projected (saves ~4m49s, ≈33%)</text>
+  <text x="20" y="308" font-size="10.5" fill="#5b5f6b">* e2e range requires raising `workers` above 1 and a clean live-CI validation run — not done yet.</text>
+  <text x="20" y="322" font-size="10.5" fill="#5b5f6b">Every other row is expected to stay exactly as measured; this fix only touches e2e.</text>
+</svg>

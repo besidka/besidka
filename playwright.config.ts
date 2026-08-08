@@ -46,7 +46,10 @@ export default defineConfig({
   // progressively so fragile specs run after their deps are optimized. It does
   // not stop an in-page reload landing mid-interaction (see signIn's toPass in
   // helpers/auth.ts), which the lone local retry above covers. Dev-only: a
-  // production build never pre-bundles or reloads.
+  // production build never pre-bundles or reloads. CI now serves the built
+  // app via `wrangler dev` (see webServer.command below), which removes the
+  // root cause, but workers stays at 1 pending a live-CI flake-validation
+  // round before raising it.
   workers: 1,
   // Reporter to use.
   // See https://playwright.dev/docs/test-reporters
@@ -107,7 +110,9 @@ export default defineConfig({
     // },
   ],
   webServer: {
-    command: 'pnpm run db:migrate && pnpm run dev',
+    command: process.env.CI
+      ? `pnpm exec wrangler dev --port ${E2E_PORT}`
+      : 'pnpm run db:migrate && pnpm run dev',
     env: WEB_SERVER_ENV,
     url: E2E_BASE_URL,
     timeout: 120_000,

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 340" font-family="ui-monospace, Menlo, Consolas, monospace">
+  <rect x="0" y="0" width="1080" height="340" rx="8" fill="#ffffff" stroke="#d8dbe2" stroke-width="1" />
+  <text x="20" y="30" font-size="14" font-weight="600" fill="#14161c">What changed in the CI YAML</text>
+
+  <defs>
+    <marker id="arrow3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#14161c" />
+    </marker>
+    <marker id="arrow3accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c9581c" />
+    </marker>
+  </defs>
+
+  <g transform="translate(20,50)" font-size="11">
+    <text x="0" y="10" font-size="11" letter-spacing="1" fill="#5b5f6b">BEFORE</text>
+    <g>
+      <rect x="0" y="24" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="65" y="43" text-anchor="middle" fill="#14161c">setup + lint</text>
+      <text x="65" y="57" text-anchor="middle" fill="#5b5f6b">+ typecheck</text>
+
+      <line x1="130" y1="47" x2="146" y2="47" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="148" y="24" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="213" y="43" text-anchor="middle" fill="#14161c">unit +</text>
+      <text x="213" y="57" text-anchor="middle" fill="#5b5f6b">integration tests</text>
+
+      <line x1="278" y1="47" x2="294" y2="47" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="296" y="24" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="361" y="43" text-anchor="middle" fill="#14161c">apply D1</text>
+      <text x="361" y="57" text-anchor="middle" fill="#5b5f6b">migrations</text>
+
+      <line x1="426" y1="47" x2="442" y2="47" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="444" y="24" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="509" y="43" text-anchor="middle" fill="#14161c">e2e tests</text>
+      <text x="509" y="57" text-anchor="middle" fill="#5b5f6b">vs. dev server</text>
+
+      <line x1="574" y1="47" x2="590" y2="47" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="592" y="24" width="130" height="46" rx="5" fill="#fbe3d3" stroke="#c9581c" stroke-width="1.6" />
+      <text x="657" y="43" text-anchor="middle" fill="#c9581c" font-weight="600">build</text>
+      <text x="657" y="57" text-anchor="middle" fill="#c9581c" font-weight="600">→ .output/</text>
+
+      <line x1="722" y1="47" x2="738" y2="47" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="740" y="24" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="805" y="43" text-anchor="middle" fill="#14161c">upload +</text>
+      <text x="805" y="57" text-anchor="middle" fill="#5b5f6b">deploy</text>
+    </g>
+
+    <text x="0" y="160" font-size="11" letter-spacing="1" fill="#5b5f6b">AFTER</text>
+    <g>
+      <rect x="0" y="174" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="65" y="193" text-anchor="middle" fill="#14161c">setup + lint</text>
+      <text x="65" y="207" text-anchor="middle" fill="#5b5f6b">+ typecheck</text>
+
+      <line x1="130" y1="197" x2="146" y2="197" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="148" y="174" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="213" y="193" text-anchor="middle" fill="#14161c">unit +</text>
+      <text x="213" y="207" text-anchor="middle" fill="#5b5f6b">integration tests</text>
+
+      <line x1="278" y1="197" x2="294" y2="197" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="296" y="174" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="361" y="193" text-anchor="middle" fill="#14161c">apply D1</text>
+      <text x="361" y="207" text-anchor="middle" fill="#5b5f6b">migrations</text>
+
+      <line x1="426" y1="197" x2="442" y2="197" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="444" y="174" width="130" height="46" rx="5" fill="#fbe3d3" stroke="#c9581c" stroke-width="1.6" />
+      <text x="509" y="193" text-anchor="middle" fill="#c9581c" font-weight="600">build</text>
+      <text x="509" y="207" text-anchor="middle" fill="#c9581c" font-weight="600">→ .output/</text>
+
+      <line x1="574" y1="197" x2="590" y2="197" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="592" y="174" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="657" y="193" text-anchor="middle" fill="#14161c">write</text>
+      <text x="657" y="207" text-anchor="middle" fill="#5b5f6b">.dev.vars</text>
+
+      <line x1="722" y1="197" x2="738" y2="197" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="740" y="174" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="805" y="193" text-anchor="middle" fill="#14161c">e2e tests</text>
+      <text x="805" y="207" text-anchor="middle" fill="#5b5f6b">vs. wrangler dev</text>
+
+      <line x1="870" y1="197" x2="886" y2="197" stroke="#14161c" stroke-width="1.2" marker-end="url(#arrow3)" />
+      <rect x="888" y="174" width="130" height="46" rx="5" fill="#ffffff" stroke="#14161c" stroke-width="1.1" />
+      <text x="953" y="193" text-anchor="middle" fill="#14161c">upload +</text>
+      <text x="953" y="207" text-anchor="middle" fill="#5b5f6b">deploy</text>
+    </g>
+
+    <path d="M657,70 Q590,120 509,172" fill="none" stroke="#c9581c" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow3accent)" />
+    <text x="690" y="105" font-size="10.5" fill="#c9581c" font-weight="600">build moves</text>
+    <text x="690" y="118" font-size="10.5" fill="#c9581c" font-weight="600">earlier</text>
+  </g>
+</svg>

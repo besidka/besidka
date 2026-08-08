@@ -32,7 +32,7 @@ concurrency:
 jobs:
   check-pr-state:
     name: Check PR state
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -50,7 +50,7 @@ jobs:
   check-latest-commit:
     name: Check latest commit paths
     needs: check-pr-state
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       should-skip: ${{ steps.paths.outputs.should-skip }}
     steps:
@@ -210,6 +210,51 @@ jobs:
         if: steps.check-e2e.outputs.has-tests == 'true'
         run: yes | pnpm exec wrangler d1 migrations apply CONSENT_DB --local
 
+      - name: Build application
+        id: build-app
+        env:
+          ROLLDOWN_OPTIONS_VALIDATION: loose
+        run: |
+          START=$(date +%s)
+          pnpm run build 2>&1 | tee build-output.log
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
+          echo "✅ Build completed in ${DURATION}s"
+
+      - name: Extract bundle size
+        id: bundle-size
+        run: |
+          SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
+          echo "Bundle Size: $SIZE_INFO"
+          echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
+
+      - name: Verify build output exists
+        run: |
+          if [ ! -d ".output" ]; then
+            echo "❌ ERROR: .output/ directory not found!"
+            exit 1
+          fi
+          echo "✅ Build successful"
+          ls -lah .output/
+
+      - name: Write .dev.vars for CI e2e
+        if: steps.check-e2e.outputs.has-tests == 'true'
+        run: |
+          cat > .dev.vars <<'EOF'
+          CI=true
+          NUXT_PUBLIC_BASE_URL=http://localhost:3000
+          NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true
+          NUXT_ENCRYPTION_HASHIDS=secret
+          NUXT_ENCRYPTION_KEY=secret
+          NUXT_BETTER_AUTH_SECRET=secret
+          NUXT_EMAIL_NOOP_ENABLED=true
+          NUXT_FILES_RETENTION_CLEANUP_ENABLED=true
+          NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE=100
+          NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS=20000
+          NUXT_FILES_MAINTENANCE_TOKEN=token
+          EOF
+
       - name: Run affected E2E tests
         id: test-e2e
         if: steps.check-e2e.outputs.has-tests == 'true'
@@ -239,34 +284,6 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
-
-      - name: Build application
-        id: build-app
-        env:
-          ROLLDOWN_OPTIONS_VALIDATION: loose
-        run: |
-          START=$(date +%s)
-          pnpm run build 2>&1 | tee build-output.log
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
-          echo "✅ Build completed in ${DURATION}s"
-
-      - name: Extract bundle size
-        id: bundle-size
-        run: |
-          SIZE_INFO=$(grep -E "Total size:.*MB.*gzip" build-output.log | sed 's/\x1b\[[0-9;]*m//g' | sed 's/Σ Total size: //' || echo "Size information not found")
-          echo "Bundle Size: $SIZE_INFO"
-          echo "bundle-size=$SIZE_INFO" >> $GITHUB_OUTPUT
-
-      - name: Verify build output exists
-        run: |
-          if [ ! -d ".output" ]; then
-            echo "❌ ERROR: .output/ directory not found!"
-            exit 1
-          fi
-          echo "✅ Build successful"
-          ls -lah .output/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

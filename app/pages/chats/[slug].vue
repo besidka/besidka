@@ -224,9 +224,11 @@ useSeoMeta({
 })
 
 const route = useRoute()
+const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
 
 const isTestChat = computed<boolean>(() => {
-  return import.meta.dev && route.path === '/chats/test'
+  return (import.meta.dev || isE2eTestHooksEnabled)
+    && route.path === '/chats/test'
 })
 
 const key = computed<string>(() => {
@@ -743,7 +745,7 @@ const selectedMessageInfo = computed(() => {
 
 if (import.meta.client) {
   onMounted(() => {
-    if (!import.meta.dev) {
+    if (!import.meta.dev && !isE2eTestHooksEnabled) {
       return
     }
 
@@ -759,7 +761,7 @@ if (import.meta.client) {
   })
 
   onUnmounted(() => {
-    if (!import.meta.dev) {
+    if (!import.meta.dev && !isE2eTestHooksEnabled) {
       return
     }
 
