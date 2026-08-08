@@ -23,7 +23,8 @@ on:
       - '.*rc'
       - '*.md'
       - 'skills-lock.json'
-    
+  workflow_dispatch:
+
 concurrency:
   group: production
   cancel-in-progress: true
