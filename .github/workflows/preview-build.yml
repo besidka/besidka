@@ -214,7 +214,9 @@ jobs:
         id: build-app
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
+          NODE_OPTIONS: --max-old-space-size=3072
         run: |
+          set -o pipefail
           START=$(date +%s)
           pnpm run build 2>&1 | tee build-output.log
           END=$(date +%s)
@@ -231,8 +233,8 @@ jobs:
 
       - name: Verify build output exists
         run: |
-          if [ ! -d ".output" ]; then
-            echo "❌ ERROR: .output/ directory not found!"
+          if [ ! -f ".output/server/index.mjs" ]; then
+            echo "❌ ERROR: .output/server/index.mjs not found!"
             exit 1
           fi
           echo "✅ Build successful"
