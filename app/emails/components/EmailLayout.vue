@@ -33,7 +33,6 @@ const darkModeCss = `
     .email-card {
       background-color: ${surfaceDark} !important;
       border-color: ${borderDark} !important;
-      border-top-color: ${accentDark} !important;
     }
     .email-wordmark {
       color: ${accentDark} !important;
