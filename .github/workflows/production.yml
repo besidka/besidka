@@ -211,6 +211,7 @@ jobs:
           cat > .dev.vars <<'EOF'
           CI=true
           NUXT_PUBLIC_BASE_URL=http://localhost:3000
+          NUXT_PUBLIC_E2E_TEST_HOOKS_ENABLED=true
           NUXT_ENCRYPTION_HASHIDS=secret
           NUXT_ENCRYPTION_KEY=secret
           NUXT_BETTER_AUTH_SECRET=secret

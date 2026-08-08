@@ -424,9 +424,11 @@ function clearMessageSelection() {
   resetMessageSelection()
 }
 
+const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
+
 if (import.meta.client) {
   onMounted(() => {
-    if (!import.meta.dev) {
+    if (!import.meta.dev && !isE2eTestHooksEnabled) {
       return
     }
 
@@ -442,7 +444,7 @@ if (import.meta.client) {
   })
 
   onUnmounted(() => {
-    if (!import.meta.dev) {
+    if (!import.meta.dev && !isE2eTestHooksEnabled) {
       return
     }
 

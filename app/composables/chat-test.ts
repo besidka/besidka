@@ -12,9 +12,11 @@ export function useChatTest(
 ) {
   const route = useRoute()
   const router = useRouter()
+  const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
 
   const isTestChat = computed<boolean>(() => {
-    return import.meta.dev && route.path === '/chats/test'
+    return (import.meta.dev || isE2eTestHooksEnabled)
+      && route.path === '/chats/test'
   })
 
   const query = computed(() => {
