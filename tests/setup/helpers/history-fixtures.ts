@@ -16,6 +16,7 @@ export function createHistoryChat(
     pinnedAt: overrides.pinnedAt ?? null,
     projectId: overrides.projectId ?? null,
     projectName: overrides.projectName ?? null,
+    shared: overrides.shared ?? false,
   }
 }
 

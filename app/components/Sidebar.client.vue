@@ -12,7 +12,7 @@
       'max-sm:translate-y-0': visible && !hasSafeAreaBottom,
       'max-sm:translate-y-[var(--sab)]':
         visible && !isKeyboardVisible && hasSafeAreaBottom,
-      'sidebar-hoverable': isDesktop && !sidebarPinned,
+      'sidebar-hoverable': isDesktop && !sidebarPinned && !isModalOpen,
     }"
   >
     <div class="sidebar-clip">
@@ -39,14 +39,15 @@
         <template v-if="loggedIn">
           <LazySidebarNewChat />
           <UiButton
-            to="/chats/history"
+            data-testid="sidebar-search-trigger"
             ghost
-            :disabled="$route.path === '/chats/history'"
-            icon-name="lucide:history"
+            icon-name="lucide:search"
             :icon-only="true"
-            title="History"
+            title="Search"
             circle
             tooltip-position="left"
+            :class="{ 'btn-active': isModalOpen }"
+            @click="openSearchModal"
           />
           <LazySidebarDevelopment />
         </template>
@@ -61,6 +62,7 @@ const { isDesktop } = useDevice()
 const { visible } = useAnimateAppear()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { sidebarPinned } = useUserSetting()
+const { isModalOpen, openSearchModal } = useSearchModal()
 
 const isHomePage = computed<boolean>(() => route.fullPath === '/')
 

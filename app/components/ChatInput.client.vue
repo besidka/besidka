@@ -737,6 +737,21 @@ function openFilesModal(tab: 'select' | 'upload', source?: FileSourceFilter) {
   filesModalRef.value?.open(tab, source)
 }
 
+const { pendingOpen, clearPendingOpen } = useFilesModalHandoff()
+
+watch([pendingOpen, filesModalRef], () => {
+  if (!pendingOpen.value || !filesModalRef.value) {
+    return
+  }
+
+  if (pendingOpen.value.targetPath !== route.path) {
+    return
+  }
+
+  filesModalRef.value.open(pendingOpen.value.tab, pendingOpen.value.source)
+  clearPendingOpen()
+}, { immediate: true, flush: 'post' })
+
 const chatInputRef = useTemplateRef<HTMLDivElement>('chatInputRef')
 const { height: chatInputHeight } = useElementSize(chatInputRef)
 const isSentHeightOnMounted = shallowRef<boolean>(false)
@@ -770,11 +785,11 @@ onStartTyping(() => {
 })
 
 function onPaste(event: ClipboardEvent) {
-  const isFilesModalOpen = !!document.querySelector(
-    'dialog.js-files-modal[open]',
+  const isBlockingModalOpen = !!document.querySelector(
+    'dialog.js-files-modal[open], dialog.js-search-modal[open]',
   )
 
-  if (isFilesModalOpen) {
+  if (isBlockingModalOpen) {
     return
   }
 

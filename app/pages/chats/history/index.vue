@@ -35,7 +35,9 @@
       :is-loading-initial="isLoadingInitial && !hasCachedData"
       :is-selection-mode="isSelectionMode"
       :selected-ids="selectedIds"
-      :empty-state-mode="search.length >= 2 ? 'search' : 'history'"
+      :empty-state-mode="search.length >= MIN_SEARCH_LENGTH
+        ? 'search'
+        : 'history'"
       empty-action-to="/chats/new"
       empty-action-label="New chat"
       @pin="togglePin"
@@ -73,6 +75,7 @@
 
 <script setup lang="ts">
 import type { HistoryChat } from '#shared/types/history.d'
+import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
 
 definePageMeta({
   auth: {
@@ -121,9 +124,25 @@ if (import.meta.client && !nuxtApp.isHydrating) {
   groupedAt.value = new Date().toISOString()
 }
 
+const route = useRoute()
+
+watch(() => route.query.search, (searchParam) => {
+  if (typeof searchParam !== 'string' || !searchParam.trim()) {
+    return
+  }
+
+  search.value = searchParam.trim()
+}, { immediate: true })
+
 if (import.meta.server && !hasCachedData.value) {
   const requestFetch = useRequestFetch()
-  const response = await requestFetch('/api/v1/chats/history')
+  const response = await requestFetch('/api/v1/chats/history', {
+    query: {
+      ...(search.value.length >= MIN_SEARCH_LENGTH
+        ? { search: search.value }
+        : {}),
+    },
+  })
 
   prime(response)
 }
