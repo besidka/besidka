@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Get merged PR number
         id: pr
@@ -93,7 +93,7 @@ jobs:
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v6
@@ -101,7 +101,7 @@ jobs:
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'
@@ -140,7 +140,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
@@ -245,7 +245,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: '!cancelled()'
         with:
           name: playwright-report
@@ -253,7 +253,7 @@ jobs:
           retention-days: 30
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: preview-build
           path: .output/
@@ -362,7 +362,7 @@ jobs:
 
     steps:
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -427,7 +427,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -441,7 +441,7 @@ jobs:
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'

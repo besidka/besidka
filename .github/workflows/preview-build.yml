@@ -55,7 +55,7 @@ jobs:
       should-skip: ${{ steps.paths.outputs.should-skip }}
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
           ref: ${{ github.event.pull_request.head.sha }}
@@ -124,7 +124,7 @@ jobs:
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Checkout PR code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -134,7 +134,7 @@ jobs:
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'
@@ -185,7 +185,7 @@ jobs:
       - name: Cache Playwright browsers
         id: playwright-cache
         if: steps.check-e2e.outputs.has-tests == 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
@@ -278,7 +278,7 @@ jobs:
           NUXT_FILES_MAINTENANCE_TOKEN: token
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: "!cancelled() && steps.check-e2e.outputs.has-tests == 'true'"
         with:
           name: playwright-report
@@ -286,7 +286,7 @@ jobs:
           retention-days: 30
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: preview-build
           path: .output/
@@ -295,7 +295,7 @@ jobs:
           retention-days: 1
 
       - name: Upload drizzle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: preview-drizzle
           path: .drizzle/
