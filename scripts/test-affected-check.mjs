@@ -263,6 +263,8 @@ export function getAffectedTests(changedFiles) {
 
   const emailTests = [
     'tests/integration/server/email.spec.ts',
+    'tests/integration/server/email-templates.spec.ts',
+    'tests/unit/utils/email-template.spec.ts',
   ]
 
   const authSecurityTests = [
@@ -355,6 +357,14 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts)\.ts$/,
       tests: [...emailTests, ...authSecurityTests],
+    },
+    {
+      pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,
+      tests: [
+        ...emailTests,
+        'tests/unit/utils/account/security-emails.spec.ts',
+        'tests/unit/utils/auth.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/turnstile\.ts$/,

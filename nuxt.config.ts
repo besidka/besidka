@@ -1,9 +1,52 @@
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { defineNuxtModule } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
 import { providers, defaultModel } from './providers'
 
 const enableFonts = process.env.CI !== 'true'
+
+// nuxt-email-renderer only inlines `vue-i18n` into the Nitro bundle when it
+// detects the literal string '@nuxtjs/i18n' in `nuxt.options.modules` (see
+// its `hasI18n` check). `@nuxtjs/i18n` is active here, but only as a
+// `moduleDependency` of `@besidka/nuxt-cookie-consent`, never as a literal
+// entry in this file's `modules` array, so that check misses it and
+// nuxt-email-renderer instead marks `vue-i18n` as a Rollup `external`. On
+// Cloudflare Workers there is no runtime package resolution, so the bare
+// `await import('vue-i18n')` inside its email-rendering path throws on every
+// send. This module runs after `nuxt-email-renderer` (module setup order
+// follows the `modules` array) and corrects that decision.
+//
+// This only fixes Nitro's build-time externalization decision for the
+// `vue-i18n` import itself. It does NOT fix nuxt-email-renderer's separate
+// locale-message-loading hook, which is gated by the same `hasI18n` check
+// and is therefore also inert here. Today that's harmless because neither
+// `ActionEmail.vue` nor `NoticeEmail.vue` calls `useI18n()`/`$t()`. If a
+// future email template adds real i18n calls, it will render with empty
+// message catalogs rather than throw — a latent gap, not a bug today.
+const forceInlineVueI18nForEmailRenderer = defineNuxtModule({
+  meta: { name: 'force-inline-vue-i18n-for-email-renderer' },
+  setup(_options, nuxt) {
+    nuxt.hook('nitro:config', (nitroConfig) => {
+      if (Array.isArray(nitroConfig.rollupConfig?.external)) {
+        nitroConfig.rollupConfig.external = nitroConfig.rollupConfig.external
+          .filter(external => external !== 'vue-i18n')
+      }
+
+      nitroConfig.externals ||= {}
+
+      const inline = Array.isArray(nitroConfig.externals.inline)
+        ? nitroConfig.externals.inline
+        : []
+
+      if (!inline.includes('vue-i18n')) {
+        inline.push('vue-i18n')
+      }
+
+      nitroConfig.externals.inline = inline
+    })
+  },
+})
 
 // Stable per-build identifier, shared by Nuxt's app manifest
 // (runtimeConfig.app.buildId) and the '/' SWR cache key. In CI this is the
@@ -34,6 +77,8 @@ const modules = [
   '@vite-pwa/nuxt',
   'evlog/nuxt',
   '@besidka/nuxt-cookie-consent',
+  'nuxt-email-renderer',
+  forceInlineVueI18nForEmailRenderer,
 ]
 
 if (enableFonts) {
@@ -237,6 +282,10 @@ export default defineNuxtConfig({
       enabled: true,
       endpoint: '/api/_evlog/ingest',
     },
+  },
+  nuxtEmailRenderer: {
+    emailsDir: 'app/emails',
+    codeHighlighting: false,
   },
   eslint: {
     checker: process.env.CI !== 'true'

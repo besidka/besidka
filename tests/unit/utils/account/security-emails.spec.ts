@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  send: vi.fn(async () => ({ messageId: 'm1' })),
+  sendTemplateEmail: vi.fn(async () => undefined),
 }))
 
-function stubUseEmail() {
-  vi.stubGlobal('useEmail', () => ({ send: mocks.send }))
+function stubSendTemplateEmail() {
+  vi.stubGlobal('sendTemplateEmail', mocks.sendTemplateEmail)
 }
 
 async function importSecurityEmails() {
@@ -15,7 +15,7 @@ async function importSecurityEmails() {
 describe('security-emails', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    stubUseEmail()
+    stubSendTemplateEmail()
   })
 
   it('sends the password-changed email to the account address', async () => {
@@ -26,11 +26,14 @@ describe('security-emails', () => {
       logger: { set: vi.fn() },
     })
 
-    expect(mocks.send).toHaveBeenCalledTimes(1)
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'user@example.com',
-      subject: 'Your password was changed',
-    }))
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledTimes(1)
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'user@example.com',
+        subject: 'Your password was changed',
+        template: 'NoticeEmail',
+      }),
+    )
   })
 
   it('sends the sign-in-method-connected email with the provider label',
@@ -43,11 +46,16 @@ describe('security-emails', () => {
         logger: { set: vi.fn() },
       })
 
-      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-        to: 'user@example.com',
-        subject: 'New sign-in method connected',
-        html: expect.stringContaining('Google'),
-      }))
+      expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          subject: 'New sign-in method connected',
+          template: 'NoticeEmail',
+          props: expect.objectContaining({
+            body: expect.stringContaining('Google'),
+          }),
+        }),
+      )
     })
 
   it('sends the sign-in-method-disconnected email with the provider label',
@@ -61,11 +69,16 @@ describe('security-emails', () => {
         logger: { set: vi.fn() },
       })
 
-      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-        to: 'user@example.com',
-        subject: 'Sign-in method disconnected',
-        html: expect.stringContaining('GitHub'),
-      }))
+      expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          subject: 'Sign-in method disconnected',
+          template: 'NoticeEmail',
+          props: expect.objectContaining({
+            body: expect.stringContaining('GitHub'),
+          }),
+        }),
+      )
     })
 
   it('sends the two-factor-enabled email to the account address', async () => {
@@ -76,10 +89,13 @@ describe('security-emails', () => {
       logger: { set: vi.fn() },
     })
 
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'user@example.com',
-      subject: 'Two-factor authentication turned on',
-    }))
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'user@example.com',
+        subject: 'Two-factor authentication turned on',
+        template: 'NoticeEmail',
+      }),
+    )
   })
 
   it('sends the two-factor-disabled email to the account address', async () => {
@@ -90,10 +106,13 @@ describe('security-emails', () => {
       logger: { set: vi.fn() },
     })
 
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'user@example.com',
-      subject: 'Two-factor authentication turned off',
-    }))
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'user@example.com',
+        subject: 'Two-factor authentication turned off',
+        template: 'NoticeEmail',
+      }),
+    )
   })
 
   it('sends the email-changed email to the previous address', async () => {
@@ -105,11 +124,16 @@ describe('security-emails', () => {
       logger: { set: vi.fn() },
     })
 
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'old@example.com',
-      subject: 'Your account email address was changed',
-      html: expect.stringContaining('new@example.com'),
-    }))
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'old@example.com',
+        subject: 'Your account email address was changed',
+        template: 'NoticeEmail',
+        props: expect.objectContaining({
+          body: expect.stringContaining('new@example.com'),
+        }),
+      }),
+    )
   })
 
   it(
@@ -123,10 +147,13 @@ describe('security-emails', () => {
         logger: { set: vi.fn() },
       })
 
-      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-        to: 'user@example.com',
-        subject: 'Two-factor backup codes regenerated',
-      }))
+      expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          subject: 'Two-factor backup codes regenerated',
+          template: 'NoticeEmail',
+        }),
+      )
     },
   )
 
@@ -138,10 +165,13 @@ describe('security-emails', () => {
       logger: { set: vi.fn() },
     })
 
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'user@example.com',
-      subject: 'New passkey added',
-    }))
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'user@example.com',
+        subject: 'New passkey added',
+        template: 'NoticeEmail',
+      }),
+    )
   })
 
   it('sends the passkey-removed email to the account address', async () => {
@@ -152,10 +182,13 @@ describe('security-emails', () => {
       logger: { set: vi.fn() },
     })
 
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'user@example.com',
-      subject: 'Passkey removed',
-    }))
+    expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'user@example.com',
+        subject: 'Passkey removed',
+        template: 'NoticeEmail',
+      }),
+    )
   })
 
   it('falls back to the raw provider id when it has no display label',
@@ -169,13 +202,19 @@ describe('security-emails', () => {
         logger: { set: vi.fn() },
       })
 
-      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
-        html: expect.stringContaining('custom-provider'),
-      }))
+      expect(mocks.sendTemplateEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          props: expect.objectContaining({
+            body: expect.stringContaining('custom-provider'),
+          }),
+        }),
+      )
     })
 
   it('catches a send failure and logs it instead of throwing', async () => {
-    mocks.send.mockRejectedValueOnce(new Error('E_DELIVERY_FAILED'))
+    mocks.sendTemplateEmail.mockRejectedValueOnce(
+      new Error('E_DELIVERY_FAILED'),
+    )
 
     const logger = { set: vi.fn() }
     const { sendPasswordChangedEmail } = await importSecurityEmails()
