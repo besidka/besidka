@@ -167,7 +167,9 @@ jobs:
         id: build-app
         env:
           ROLLDOWN_OPTIONS_VALIDATION: loose
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
+          set -o pipefail
           START=$(date +%s)
           pnpm run build 2>&1 | tee build-output.log
           END=$(date +%s)
@@ -184,9 +186,9 @@ jobs:
 
       - name: Verify build output exists
         run: |
-          echo "Checking if .output/ directory exists..."
-          if [ ! -d ".output" ]; then
-            echo "❌ ERROR: .output/ directory not found!"
+          echo "Checking if .output/server/index.mjs exists..."
+          if [ ! -f ".output/server/index.mjs" ]; then
+            echo "❌ ERROR: .output/server/index.mjs not found!"
             echo "Build may have failed silently."
             echo ""
             echo "Current directory contents:"
@@ -198,7 +200,7 @@ jobs:
             exit 1
           fi
 
-          echo "✅ .output/ directory exists"
+          echo "✅ .output/server/index.mjs exists"
           echo ""
           echo "Contents of .output/:"
           ls -lah .output/
