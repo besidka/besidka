@@ -3,7 +3,7 @@
     <dialog
       ref="modal"
       data-testid="search-modal"
-      class="js-search-modal modal modal-middle"
+      class="js-search-modal modal modal-bottom sm:modal-middle"
       aria-label="Search"
       @close="onDialogClosed"
     >
