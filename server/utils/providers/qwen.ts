@@ -83,29 +83,44 @@ export async function useQwen(
     requestedReasoning,
   )
   const isToggleCapability = modelData.reasoning?.mode === 'toggle'
+  const isWebSearchRequested = requestedTools.includes('web_search')
 
   /**
-   * DashScope's `enable_thinking` is a plain boolean toggle sent directly in
-   * the request body (not an OpenAI-style `reasoning_effort` string).
-   * `@ai-sdk/openai-compatible` forwards any `providerOptions.qwen` key it
-   * doesn't itself recognize (`user`, `reasoningEffort`, `textVerbosity`,
-   * `strictJsonSchema`) straight into the JSON body, so this is the only
-   * place that needs to know the field name. Every currently curated Qwen
-   * model also exposes a `budget_tokens` option alongside the toggle, left
-   * deliberately unused here; none exposes adjustable effort levels, so the
-   * top-level `reasoning` streamText option is never set for this provider.
+   * DashScope's `enable_thinking` and `enable_search` are plain flags sent
+   * directly in the request body (not OpenAI-style tool or reasoning
+   * options). `@ai-sdk/openai-compatible` forwards any `providerOptions.qwen`
+   * key it doesn't itself recognize (`user`, `reasoningEffort`,
+   * `textVerbosity`, `strictJsonSchema`) straight into the JSON body, so
+   * this is the only place that needs to know the field names. Every
+   * currently curated Qwen model also exposes a `budget_tokens` option
+   * alongside the toggle, left deliberately unused here; none exposes
+   * adjustable effort levels, so the top-level `reasoning` streamText option
+   * is never set for this provider. Web search is pinned to
+   * `search_strategy: 'agent'` because that is the only strategy Alibaba
+   * documents for the Singapore region this app's `dashscope-intl` endpoint
+   * resolves to (`turbo`/`max` are China-mainland-only), and `forced_search`
+   * is documented as inert under the agent strategy — the toggle therefore
+   * means "let the model search," not "force a search."
    * @see https://www.alibabacloud.com/help/en/model-studio/deep-thinking
+   * @see https://www.alibabacloud.com/help/en/model-studio/web-search
    */
   function getProviderOptions(): SharedV2ProviderOptions {
     const result: SharedV2ProviderOptions = {}
 
-    if (!isToggleCapability) {
-      return result
+    if (isToggleCapability) {
+      Object.assign(result, {
+        enable_thinking: reasoningLevel !== 'off',
+      })
     }
 
-    Object.assign(result, {
-      enable_thinking: reasoningLevel !== 'off',
-    })
+    if (isWebSearchRequested) {
+      Object.assign(result, {
+        enable_search: true,
+        search_options: {
+          search_strategy: 'agent',
+        },
+      })
+    }
 
     return result
   }

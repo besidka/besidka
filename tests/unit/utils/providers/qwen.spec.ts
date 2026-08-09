@@ -166,11 +166,12 @@ describe('useQwen instance shape', () => {
     )
   })
 
-  it('exposes no tools, matching every other Qwen model', async () => {
-    stubModel(createModel())
+  it('exposes no AI SDK tools even when web search is requested — DashScope '
+    + 'web search is a body flag, not a tool declaration', async () => {
+    stubModel(createModel({ tools: ['web_search'] }))
 
     const useQwen = await importUseQwen()
-    const result = await useQwen('1', 'qwen3.7-plus', [], 'off')
+    const result = await useQwen('1', 'qwen3.7-plus', ['web_search'], 'off')
 
     expect(result.tools).toEqual({})
   })
@@ -194,6 +195,87 @@ describe('useQwen instance shape', () => {
         'Plan a trip to Kyoto',
       )
     })
+})
+
+describe('useQwen web search wiring', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('sends enable_search with the agent strategy when web search is '
+    + 'requested', async () => {
+    stubModel(createModel({
+      tools: ['web_search'],
+      reasoning: undefined,
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwen3.7-plus', ['web_search'], 'off')
+
+    expect(result.providerOptions).toEqual({
+      enable_search: true,
+      search_options: {
+        search_strategy: 'agent',
+      },
+    })
+  })
+
+  it('sends enable_search and enable_thinking together when both are '
+    + 'requested', async () => {
+    stubModel(createModel({
+      tools: ['web_search'],
+      reasoning: { mode: 'toggle' },
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen(
+      '1',
+      'qwen3.7-plus',
+      ['web_search'],
+      'medium',
+    )
+
+    expect(result.providerOptions).toEqual({
+      enable_thinking: true,
+      enable_search: true,
+      search_options: {
+        search_strategy: 'agent',
+      },
+    })
+  })
+
+  it('keeps the thinking toggle off alongside a search request when the '
+    + 'requested level is off', async () => {
+    stubModel(createModel({
+      tools: ['web_search'],
+      reasoning: { mode: 'toggle' },
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwen3.7-plus', ['web_search'], 'off')
+
+    expect(result.providerOptions).toEqual({
+      enable_thinking: false,
+      enable_search: true,
+      search_options: {
+        search_strategy: 'agent',
+      },
+    })
+  })
+
+  it('sends no search flags when web search is not requested', async () => {
+    stubModel(createModel({
+      tools: ['web_search'],
+      reasoning: undefined,
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwen3.7-plus', [], 'off')
+
+    expect(result.providerOptions).toEqual({})
+  })
 })
 
 describe('useQwen reasoning wiring', () => {

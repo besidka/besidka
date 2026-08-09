@@ -32,9 +32,20 @@ describe('curated qwen provider', () => {
     }
   })
 
-  it('has no model exposing any tool', () => {
+  it('declares web search on exactly the models whose chat-completions '
+    + 'support DashScope documents for the international endpoint', () => {
+    const toolsById = new Map(
+      qwen.models.map(model => [model.id, model.tools]),
+    )
+
+    expect(toolsById.get('qwen3.7-plus')).toEqual(['web_search'])
+    expect(toolsById.get('qwen3.6-flash')).toEqual(['web_search'])
+    expect(toolsById.get('qwen3.7-max')).toEqual([])
+  })
+
+  it('has no model exposing image generation', () => {
     for (const model of qwen.models) {
-      expect(model.tools).toEqual([])
+      expect(model.tools).not.toContain('image_generation')
       expect(model.imageGeneration).toBeUndefined()
     }
   })
