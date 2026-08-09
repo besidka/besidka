@@ -1193,7 +1193,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
       const apiKeyHash = await sha256Hex('token-1')
 
       await cache.setItem(
-        `gateway-catalog:cloudflare:account-1:${apiKeyHash}`,
+        `gateway-catalog:v2:cloudflare:account-1:${apiKeyHash}`,
         {
           models: staleModels,
           cachedAt: Date.now() - (60 * 60 * 1000),

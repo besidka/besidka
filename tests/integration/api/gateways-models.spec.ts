@@ -391,7 +391,7 @@ describe('gateway models API', () => {
         name: 'GPT-4o (stale)',
       }]
 
-      await cache.setItem('gateway-catalog:vercel', {
+      await cache.setItem('gateway-catalog:v2:vercel', {
         models: staleModels,
         cachedAt: Date.now() - (2 * 60 * 60 * 1000),
       })

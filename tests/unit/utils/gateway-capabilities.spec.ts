@@ -24,18 +24,23 @@ describe('isGatewayToolAllowed', () => {
 })
 
 describe('resolveGatewayWebSearchSupport', () => {
-  it('resolves native when the raw catalog signal is present, even for '
-    + 'cloudflare', () => {
+  it('resolves native when the raw catalog signal is present on a gateway '
+    + 'whose policy allows web_search', () => {
     expect(resolveGatewayWebSearchSupport({
       gatewayId: 'openrouter',
       hasNativeSignal: true,
       isImageGenerationModel: false,
     })).toBe('native')
+  })
+
+  it('never resolves native for cloudflare, whose policy denies '
+    + 'web_search, even if a raw catalog signal were ever reported',
+  () => {
     expect(resolveGatewayWebSearchSupport({
       gatewayId: 'cloudflare',
       hasNativeSignal: true,
       isImageGenerationModel: false,
-    })).toBe('native')
+    })).toBeUndefined()
   })
 
   it('resolves universal for openrouter/vercel when there is no native '

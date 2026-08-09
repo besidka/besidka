@@ -13,6 +13,14 @@ const CLOUDFLARE_MODEL_SEARCH_PAGE_SIZE = 1000
 const TOKENS_PER_MILLION = 1_000_000
 const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
 /**
+ * Bump whenever `GatewayModel`'s shape changes in a way old cached entries
+ * don't carry (e.g. round 4 added `supportsImageGeneration` and changed
+ * `supportsWebSearch` from a boolean to a resolution string) — a KV entry
+ * written under the old schema would otherwise keep serving stale-shaped
+ * data for up to `GATEWAY_CATALOG_CACHE_TTL_MS` after deploy.
+ */
+const GATEWAY_CATALOG_SCHEMA_VERSION = 'v2'
+/**
  * Cloudflare's catalog is a per-account resource (it requires the caller's
  * own account id + token), not a shared public one like Vercel's or
  * OpenRouter's — a much shorter freshness window bounds how long a user
@@ -785,8 +793,9 @@ async function sha256Hex(value: string): Promise<string> {
  * the public gateways.
  *
  * The cache key includes a hash of the caller's own `apiKey`
- * (`gateway-catalog:cloudflare:${accountId}:${sha256Hex(apiKey)}`), not just
- * the `accountId`. The POST route that saves these credentials never
+ * (`gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:cloudflare:` +
+ * `${accountId}:${sha256Hex(apiKey)}`), not just the `accountId`. The POST
+ * route that saves these credentials never
  * validates the accountId+apiKey pair against Cloudflare, so a user could
  * save someone else's real (or guessed) `accountId` alongside their own
  * fake `apiKey`. Keying the cache on `accountId` alone would let that user
@@ -804,7 +813,8 @@ export async function getCachedCloudflareGatewayCatalog(
 ): Promise<GatewayModel[]> {
   const cache = useStorage('cache')
   const apiKeyHash = await sha256Hex(credentials.apiKey)
-  const cacheKey = `gateway-catalog:cloudflare:${credentials.accountId}:${apiKeyHash}`
+  const cacheKey = `gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:`
+    + `cloudflare:${credentials.accountId}:${apiKeyHash}`
   const cached = await cache.getItem<CloudflareGatewayCatalogCacheEntry>(
     cacheKey,
   )
@@ -892,7 +902,8 @@ export async function getCachedGatewayCatalog(
   options: GetCachedGatewayCatalogOptions = {},
 ): Promise<GatewayModel[]> {
   const cache = useStorage('cache')
-  const cacheKey = `gateway-catalog:${gatewayId}`
+  const cacheKey = `gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:`
+    + gatewayId
   const cached = await cache.getItem<GatewayCatalogCacheEntry>(cacheKey)
   const now = Date.now()
 
