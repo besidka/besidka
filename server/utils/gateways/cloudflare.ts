@@ -55,10 +55,11 @@ function parseCloudflareCredentials(
  * every other provider/gateway in this app — the shared `keys` table has one
  * `apiKey` text column, and `useEncryptText`/`useDecryptText` are
  * shape-agnostic string encryptors, so this is the only place that needs to
- * know about the compound shape. A stored blob that fails to parse or is
- * missing a required field is treated the same as no key at all, so a
- * corrupted row surfaces as "credentials not found" rather than an
- * unhandled exception. Shared by the chat builder below and the gateway
+ * know about the compound shape. A stored blob that fails to parse, fails to
+ * decrypt (for example after an encryption-key rotation, or a corrupted
+ * row), or is missing a required field is treated the same as no key at
+ * all, so none of those cases surface as an unhandled exception — only as
+ * "credentials not found". Shared by the chat builder below and the gateway
  * catalog route, which both need the user's own Cloudflare account id +
  * token before they can call Cloudflare's API on the user's behalf.
  */
@@ -79,7 +80,13 @@ export async function getCloudflareGatewayCredentials(
     return undefined
   }
 
-  const decrypted = await useDecryptText(data.apiKey)
+  let decrypted: string
+
+  try {
+    decrypted = await useDecryptText(data.apiKey)
+  } catch {
+    return undefined
+  }
 
   return parseCloudflareCredentials(decrypted)
 }

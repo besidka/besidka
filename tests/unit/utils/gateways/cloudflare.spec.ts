@@ -120,6 +120,18 @@ describe('getCloudflareGatewayCredentials', () => {
     expect(await getCloudflareGatewayCredentials('1')).toBeUndefined()
   })
 
+  it('returns undefined instead of throwing when decryption fails', async () => {
+    stubKeyLookup('encrypted-blob')
+    vi.stubGlobal('useDecryptText', vi.fn(async () => {
+      throw new Error('Decryption key rotated')
+    }))
+
+    const { getCloudflareGatewayCredentials } = await importCloudflareGateway()
+
+    await expect(getCloudflareGatewayCredentials('1'))
+      .resolves.toBeUndefined()
+  })
+
   it('returns undefined when required fields are missing from the blob', async () => {
     stubKeyLookup('encrypted-blob')
     stubDecrypt(JSON.stringify({ accountId: 'account-123' }))
