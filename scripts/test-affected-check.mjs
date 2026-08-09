@@ -289,6 +289,12 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/gateways-models.spec.ts',
   ]
 
+  const keysApiTests = [
+    'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
+    'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/integration/api/profile-keys-summary.spec.ts',
+  ]
+
   const turnstileTests = [
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
@@ -400,6 +406,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|app\/composables\/gateway-catalog\.ts)$/,
       tests: gatewayCatalogTests,
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/profiles\/keys(\/.*)?\.ts|server\/utils\/keys-rate-limit\.ts|server\/db\/schemas\/keys\.ts|app\/pages\/profile\/keys\.vue|app\/components\/Profile\/Keys\/.*\.vue)$/,
+      tests: keysApiTests,
     },
     {
       pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,

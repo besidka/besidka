@@ -9,6 +9,9 @@ const knownProviderIds = [
   'xai',
   'deepseek',
   'moonshotai',
+  'vercel',
+  'openrouter',
+  'cloudflare',
 ]
 
 describe('ProviderIcon', () => {
