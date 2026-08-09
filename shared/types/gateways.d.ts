@@ -1,5 +1,7 @@
 export type GatewayId = 'vercel' | 'cloudflare' | 'openrouter'
 
+export type GatewayFavoriteModels = Partial<Record<GatewayId, string[]>>
+
 export interface GatewayModel {
   id: string
   name: string

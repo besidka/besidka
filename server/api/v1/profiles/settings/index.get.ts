@@ -16,6 +16,7 @@ export default defineEventHandler(async () => {
       notificationPromptState: true,
       sidebarPinned: true,
       favoriteModels: true,
+      favoriteGatewayModels: true,
     },
   })
 
@@ -26,5 +27,6 @@ export default defineEventHandler(async () => {
     notificationPromptState: settings?.notificationPromptState ?? null,
     sidebarPinned: settings?.sidebarPinned ?? false,
     favoriteModels: settings?.favoriteModels ?? [],
+    favoriteGatewayModels: settings?.favoriteGatewayModels ?? {},
   }
 })
