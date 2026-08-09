@@ -473,6 +473,16 @@ Prerequisite for LW2/LW3. What it actually requires:
   sends carrying client-executed tools, so every existing single-step
   path keeps its current behavior and its `stopWhen: isStepCount(1)`
   default.
+  > **Corrected during implementation (Wave B).** "Sends carrying
+  > client-executed tools" is the wrong trigger and would have been a
+  > regression: `createImageGenerationTool()` is a client-executed tool
+  > with a real `execute()`, and the AI SDK's continuation condition
+  > counts exactly those, so a client-executed-tool trigger would have
+  > looped image generation into a second billed model turn narrating an
+  > image the user can already see. The shipped trigger is an explicit
+  > opt-in marker on the tool definition (`withFollowUpTurn()` →
+  > `requiresFollowUpTurn: true`), which nothing in the codebase sets
+  > today. See `docs/gateways.md`'s "Multi-step tool loop" section.
 - **Cost-capture rework — the hidden blast radius.** The live OpenRouter
   cost fix documented in `docs/gateways.md` reads `providerMetadata` off
   the per-step `finish-step` chunk and its correctness note says
@@ -482,6 +492,14 @@ Prerequisite for LW2/LW3. What it actually requires:
   last-chunk-wins or summing, and usage/token aggregation across steps
   needs the same review (`persistAssistantMessageFromStream`,
   `estimateGatewayMessageCost`).
+  > **Resolved during implementation (Wave B): summing.** Each step is a
+  > separate OpenRouter request with its own billed cost, so the three
+  > capture sites (`messageMetadata`, `persistAssistantMessageFromStream`,
+  > and `onEnd`'s telemetry — the plan missed the third) now fold with
+  > `sumOpenRouterStepCosts()`. Token aggregation needed no change at all:
+  > `finish.totalUsage`, `result.usage` and `onEnd`'s `usage` are already
+  > summed across steps by the SDK, so `estimateGatewayMessageCost()`
+  > receives correct totals unchanged.
 - Persistence & UI: intermediate tool-call/tool-result parts land in
   `messages.parts` — verify the renderer tolerates unknown tool parts
   (today only `generate_image` tool parts exist) and decide whether

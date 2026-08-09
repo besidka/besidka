@@ -62,6 +62,7 @@ import {
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
+import { resolveToolLoopOptions } from '~~/server/utils/ai/tool-loop'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
@@ -806,6 +807,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const toolLoopOptions = resolveToolLoopOptions(parsedTools.tools)
+
   const stream = createUIMessageStream({
     onError(error) {
       return JSON.stringify(normalizeChatError({
@@ -888,9 +891,10 @@ export default defineEventHandler(async (event) => {
             // never set this either, so they keep their existing uncapped
             // behavior unchanged.
             maxOutputTokens: gatewayMaxOutputTokens,
-            onEnd({ usage, providerMetadata }) {
+            onEnd({ usage, providerMetadata, steps }) {
               const textCost = gatewayId
-                ? readOpenRouterCost(providerMetadata)
+                ? sumOpenRouterStepCosts(steps)
+                ?? readOpenRouterCost(providerMetadata)
                 : computeModelCost(modelId, telemetryProviderId, usage)
               const imageCost = generatedImage
                 ? getImageGenerationCost(
@@ -915,6 +919,7 @@ export default defineEventHandler(async (event) => {
               })
             },
             ...parsedTools,
+            ...(toolLoopOptions ?? {}),
             providerOptions,
           })
         } catch (exception) {
@@ -947,7 +952,7 @@ export default defineEventHandler(async (event) => {
           throw chatError
         }
 
-        let latestGatewayStepProviderMetadata: ProviderMetadata | undefined
+        let streamedGatewayCost: number | undefined
 
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
@@ -957,7 +962,11 @@ export default defineEventHandler(async (event) => {
           sendReasoning: reasoningLevel !== 'off',
           messageMetadata({ part }) {
             if (part.type === 'finish-step') {
-              latestGatewayStepProviderMetadata = part.providerMetadata
+              const stepCost = readOpenRouterCost(part.providerMetadata)
+
+              if (stepCost !== undefined) {
+                streamedGatewayCost = (streamedGatewayCost ?? 0) + stepCost
+              }
 
               return undefined
             }
@@ -968,7 +977,7 @@ export default defineEventHandler(async (event) => {
 
             const gatewayCost = resolveLiveGatewayCost({
               gatewayId,
-              providerMetadata: latestGatewayStepProviderMetadata,
+              openRouterCost: streamedGatewayCost,
               pricing: gatewayPricing,
               usage: part.totalUsage,
             })
@@ -1143,10 +1152,47 @@ export default defineEventHandler(async (event) => {
 })
 
 /**
+ * Sums the per-step OpenRouter cost across every step of one send.
+ *
+ * Each AI SDK step is its own `doStream()` call — a separate OpenRouter
+ * request with its own generation id and its own billed `usage.cost` — so a
+ * multi-step send reports N independent costs that must be added, never
+ * last-wins. For the single-step sends that are the only ones reachable
+ * without a `withFollowUpTurn()` tool, the sum of one element is exactly the
+ * value the previous `finalStep`-only read produced.
+ *
+ * Stays `undefined` (never 0) when no step reported a cost, so an unpriced
+ * send omits `totalCost` instead of displaying a fabricated free generation.
+ */
+function sumOpenRouterStepCosts(
+  steps: readonly { providerMetadata?: ProviderMetadata }[] | undefined,
+): number | undefined {
+  if (!steps) {
+    return undefined
+  }
+
+  let total: number | undefined
+
+  for (const step of steps) {
+    const stepCost = readOpenRouterCost(step.providerMetadata)
+
+    if (stepCost === undefined) {
+      continue
+    }
+
+    total = (total ?? 0) + stepCost
+  }
+
+  return total
+}
+
+/**
  * Resolves the one gateway cost figure that's genuinely available at
  * generation-finish time, shared by the live streamed metadata
  * (`messageMetadata`'s finish branch) and the persisted DB write
- * (`persistAssistantMessageFromStream`) so both paths agree.
+ * (`persistAssistantMessageFromStream`) so both paths agree. `openRouterCost`
+ * arrives already summed across steps by the caller — live from the
+ * `finish-step` chunks, persisted from `result.steps`.
  *
  * OpenRouter reports its billed cost synchronously — never estimated.
  * Cloudflare has no per-request cost API, so its figure is a token-based
@@ -1161,12 +1207,12 @@ export default defineEventHandler(async (event) => {
  */
 function resolveLiveGatewayCost(input: {
   gatewayId: GatewayId | undefined
-  providerMetadata: ProviderMetadata | undefined
+  openRouterCost: number | undefined
   pricing: GatewayModel['pricing'] | undefined
   usage: LanguageModelUsage
 }): { totalCost: number, costEstimated: boolean } | undefined {
   if (input.gatewayId === 'openrouter') {
-    const totalCost = readOpenRouterCost(input.providerMetadata)
+    const totalCost = input.openRouterCost
 
     return totalCost === undefined
       ? undefined
@@ -1421,13 +1467,15 @@ async function persistAssistantMessageFromStream(input: {
 
     try {
       const finalStep = await input.result.finalStep
+      const steps = await input.result.steps
       const resolvedUsage = await input.result.usage
 
       vercelGenerationId = readVercelGenerationId(finalStep.providerMetadata)
 
       const gatewayCost = resolveLiveGatewayCost({
         gatewayId: input.gatewayId,
-        providerMetadata: finalStep.providerMetadata,
+        openRouterCost: sumOpenRouterStepCosts(steps)
+          ?? readOpenRouterCost(finalStep.providerMetadata),
         pricing: input.gatewayPricing,
         usage: resolvedUsage,
       })
