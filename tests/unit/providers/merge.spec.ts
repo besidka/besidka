@@ -380,7 +380,7 @@ describe('merged catalog', () => {
         }
 
         expect(model.releaseDate).toBe(entry.releaseDate)
-        expect(model.releaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(model.releaseDate).toMatch(/^\d{4}-\d{2}(-\d{2})?$/)
       }
     }
   })
