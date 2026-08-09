@@ -260,19 +260,18 @@
                 mode="accent"
                 soft
                 circle
-                title="Regenerate"
+                :title="regenerateButtonTitle"
                 icon-name="lucide:refresh-ccw"
                 icon-only
                 tooltip-position="left"
-                @click="regenerate"
+                @click="onRegenerate"
               />
               <UiButton
                 v-show="!displayStop && !canShowRegenerate"
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage || isClarifying || researchJobActive
-                  || isSelectedModelKeyless"
+                :disabled="!hasMessage || isClarifying || researchJobActive"
                 :title="sendButtonTitle"
                 icon-name="lucide:arrow-up"
                 icon-only
@@ -380,6 +379,34 @@ const isReasoningActive = computed<boolean>(() => {
 const missingKeyWarning = computed<string>(() => {
   return `Add your ${selectedModelKeyOwnerLabel.value} API key to send this message`
 })
+
+const regenerateButtonTitle = computed<string>(() => {
+  if (isSelectedModelKeyless.value) {
+    return missingKeyWarning.value
+  }
+
+  return 'Regenerate'
+})
+
+/**
+ * Kept clickable rather than disabled: a dead button explains nothing on
+ * touch, where the title never surfaces, and this is a state the user has to
+ * leave deliberately by adding a key.
+ */
+function warnAboutMissingKey() {
+  useWarningMessage(
+    `${missingKeyWarning.value}.`,
+    'Open Profile → API Keys to add it, or pick a model you have a key for.',
+  )
+}
+
+function onRegenerate() {
+  if (isSelectedModelKeyless.value) {
+    return warnAboutMissingKey()
+  }
+
+  props.regenerate()
+}
 
 const sendButtonTitle = computed<string>(() => {
   if (isSelectedModelKeyless.value) {
@@ -719,10 +746,7 @@ function sendMessage() {
   }
 
   if (isSelectedModelKeyless.value) {
-    return useWarningMessage(
-      `${missingKeyWarning.value}.`,
-      'Open Profile → API Keys to add it, or pick a model you have a key for.',
-    )
+    return warnAboutMissingKey()
   }
 
   if (props.isClarifying) {

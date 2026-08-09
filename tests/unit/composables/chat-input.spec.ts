@@ -1,7 +1,15 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, defineComponent, h, shallowRef } from 'vue'
 import { useChatInput } from '../../../app/composables/chat-input'
+
+const mocks = vi.hoisted(() => ({
+  useUserKeys: vi.fn(),
+}))
+
+mockNuxtImport('useUserKeys', () => mocks.useUserKeys)
+
+const keyedProviderIds = shallowRef<string[]>([])
 
 function createHost() {
   return defineComponent({
@@ -9,6 +17,12 @@ function createHost() {
       const chatInput = useChatInput()
 
       return () => h('div', [
+        h('span', { 'data-testid': 'is-selected-model-keyless' }, [
+          String(chatInput.isSelectedModelKeyless.value),
+        ]),
+        h('span', { 'data-testid': 'selected-model-key-owner-label' }, [
+          chatInput.selectedModelKeyOwnerLabel.value,
+        ]),
         h('span', { 'data-testid': 'is-image-generation-supported' }, [
           String(chatInput.isImageGenerationSupported.value),
         ]),
@@ -28,6 +42,90 @@ function createHost() {
     },
   })
 }
+
+beforeEach(() => {
+  keyedProviderIds.value = ['openai', 'google', 'anthropic', 'vercel']
+
+  mocks.useUserKeys.mockReturnValue({
+    pending: shallowRef(false),
+    error: shallowRef(null),
+    hasKey: vi.fn(),
+    hasKeyForProvider: (providerOrGatewayId: string) => {
+      return keyedProviderIds.value.includes(providerOrGatewayId)
+    },
+    hasAnyKey: computed(() => keyedProviderIds.value.length > 0),
+    refresh: vi.fn(),
+  })
+})
+
+describe('useChatInput missing-key resolution', () => {
+  it('reports a provider model as keyless once its key is gone', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('false')
+
+    keyedProviderIds.value = ['google']
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
+    ).toBe('OpenAI')
+  })
+
+  it('resolves a gateway selection through its gateway id, not the catalog', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'anthropic/claude-sonnet-4',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
+    ).toBe('Vercel AI Gateway')
+
+    keyedProviderIds.value = ['openai']
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('true')
+  })
+
+  it('leaves an unresolvable model ungated rather than blocking send', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'not-a-real-model'
+    keyedProviderIds.value = []
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
+    ).toBe('this provider')
+  })
+})
 
 describe('useChatInput image model capability', () => {
   it('requires image generation for a purpose-built image model', async () => {

@@ -254,7 +254,7 @@ describe('ChatInput.client', () => {
       })
     }
 
-    it('disables send and names the key the selection now depends on', async () => {
+    it('names the key the selection depends on without deadening the button', async () => {
       useKeylessSelection()
 
       const wrapper = await mountChatInput()
@@ -263,9 +263,70 @@ describe('ChatInput.client', () => {
 
       const sendButton = wrapper.get('[data-testid="send-message"]')
 
-      expect(sendButton.attributes('disabled')).toBeDefined()
       expect(sendButton.attributes('title'))
         .toBe('Add your Anthropic API key to send this message')
+      expect(sendButton.attributes('disabled')).toBeUndefined()
+    })
+
+    it('warns instead of sending when the send button is pressed', async () => {
+      useKeylessSelection()
+
+      const wrapper = await mountChatInput()
+
+      await wrapper.get('textarea').setValue('hello')
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'Add your Anthropic API key to send this message.',
+        'Open Profile → API Keys to add it, or pick a model you have a key for.',
+      )
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('warns instead of regenerating against the same missing key', async () => {
+      useKeylessSelection()
+
+      const regenerate = vi.fn()
+      const wrapper = await mountSuspended(ChatInput, {
+        props: {
+          messagesLength: 2,
+          stop: vi.fn(),
+          regenerate,
+          displayRegenerate: true,
+        },
+        attachTo: document.body,
+        global: {
+          stubs: {
+            ChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesDropZone: true,
+            LazyChatScroll: true,
+            LazyChatInputFilesAttachedPreview: true,
+            LazyChatInputModelsTrigger: true,
+            LazyChatInputFilesTrigger: true,
+            LazyChatInputReasoningTrigger: true,
+            LazyChatInputDeepResearchTrigger: true,
+            LazyChatInputToolbarMore: true,
+            UiBubble: {
+              template: '<div><slot /></div>',
+            },
+            UiButton: uiButtonStub,
+          },
+        },
+      })
+
+      const regenerateButton = wrapper.get('[data-testid="regenerate"]')
+
+      expect(regenerateButton.attributes('title'))
+        .toBe('Add your Anthropic API key to send this message')
+
+      await regenerateButton.trigger('click')
+
+      expect(regenerate).not.toHaveBeenCalled()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'Add your Anthropic API key to send this message.',
+        'Open Profile → API Keys to add it, or pick a model you have a key for.',
+      )
     })
 
     it('warns with the keys-page guidance when Enter bypasses the button', async () => {
@@ -297,6 +358,39 @@ describe('ChatInput.client', () => {
 
       expect(mocks.useWarningMessage).not.toHaveBeenCalled()
       expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('leaves the regenerate title alone when a key is present', async () => {
+      const wrapper = await mountSuspended(ChatInput, {
+        props: {
+          messagesLength: 2,
+          stop: vi.fn(),
+          regenerate: vi.fn(),
+          displayRegenerate: true,
+        },
+        attachTo: document.body,
+        global: {
+          stubs: {
+            ChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesDropZone: true,
+            LazyChatScroll: true,
+            LazyChatInputFilesAttachedPreview: true,
+            LazyChatInputModelsTrigger: true,
+            LazyChatInputFilesTrigger: true,
+            LazyChatInputReasoningTrigger: true,
+            LazyChatInputDeepResearchTrigger: true,
+            LazyChatInputToolbarMore: true,
+            UiBubble: {
+              template: '<div><slot /></div>',
+            },
+            UiButton: uiButtonStub,
+          },
+        },
+      })
+
+      expect(wrapper.get('[data-testid="regenerate"]').attributes('title'))
+        .toBe('Regenerate')
     })
   })
 })
