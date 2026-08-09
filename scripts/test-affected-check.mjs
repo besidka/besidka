@@ -100,6 +100,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderStrip.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [
@@ -436,7 +439,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|shared\/utils\/gateway-(pricing|model-id)\.ts)$/,
-      tests: [...gatewayCatalogTests, ...gatewayChatTests],
+      tests: [
+        ...gatewayCatalogTests,
+        ...gatewayChatTests,
+        ...modelsTriggerTests,
+      ],
     },
     {
       pattern: /^app\/composables\/gateway-catalog\.ts$/,

@@ -1,7 +1,7 @@
 <template>
   <div
     data-testid="models-picker-gateway-rail"
-    class="shrink-0 flex items-center gap-2 px-2 py-1.5 border-t border-base-content/10 bg-base-200/40"
+    class="shrink-0 flex items-center gap-2 px-2 py-1.5 rounded-b-2xl border-t border-base-content/10 bg-base-200/40"
   >
     <span
       class="shrink-0 px-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-50"

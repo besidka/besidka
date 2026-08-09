@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
+import type { GatewayModel } from '#shared/types/gateways.d'
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
 import {
-  formatGatewayPrice,
   formatGatewayPriceDetail,
   formatModelTokenLimit,
   formatReleaseDate,
+  gatewayModelCategoryOptions,
+  getGatewayProviderGroups,
   getModelCategory,
   getModelPriceTip,
   getPriceTierClass,
   hasImageGenerationCapability,
   modelCategoryOptions,
+  sortGatewayModelsByProvider,
 } from '../../../app/utils/models-picker'
+
+function createGatewayModel(id: string, name: string): GatewayModel {
+  return { id, name }
+}
 
 function createModel(overrides: Partial<Model> = {}): Model {
   return {
@@ -242,24 +249,19 @@ describe('modelCategoryOptions', () => {
 })
 
 describe('gateway pricing', () => {
-  it('scales per-token gateway prices up to a per-million figure', () => {
-    expect(formatGatewayPrice({ input: '0.0000025', output: '0.00001' }))
-      .toBe('$2.50/$10.00 per 1M')
-  })
-
   it('absorbs the float error the scale-up introduces', () => {
     expect(Number('0.0000029') * 1_000_000).toBe(2.9000000000000004)
-    expect(formatGatewayPrice({ input: '0.0000029', output: '0.0000029' }))
-      .toBe('$2.90/$2.90 per 1M')
+    expect(formatGatewayPriceDetail({ input: '0.0000029', output: '0.0000029' }))
+      .toBe('$2.90 in / $2.90 out per 1M tokens')
   })
 
   it('keeps sub-dollar prices readable', () => {
-    expect(formatGatewayPrice({ input: '0.00000005', output: '0.0000002' }))
-      .toBe('$0.050/$0.200 per 1M')
+    expect(
+      formatGatewayPriceDetail({ input: '0.00000005', output: '0.0000002' }),
+    ).toBe('$0.050 in / $0.200 out per 1M tokens')
   })
 
   it('labels a zero-cost model as free', () => {
-    expect(formatGatewayPrice({ input: '0', output: '0' })).toBe('Free')
     expect(formatGatewayPriceDetail({ input: '0', output: '0' })).toBe('Free')
   })
 
@@ -269,9 +271,81 @@ describe('gateway pricing', () => {
   })
 
   it('returns nothing when pricing is missing or unparseable', () => {
-    expect(formatGatewayPrice(undefined)).toBeUndefined()
-    expect(formatGatewayPrice({ input: 'n/a', output: '0.001' }))
-      .toBeUndefined()
     expect(formatGatewayPriceDetail(undefined)).toBeUndefined()
+    expect(formatGatewayPriceDetail({ input: 'n/a', output: '0.001' }))
+      .toBeUndefined()
+  })
+})
+
+describe('gateway provider grouping', () => {
+  const catalog = [
+    createGatewayModel('openai/gpt-5.4', 'GPT-5.4'),
+    createGatewayModel('anthropic/claude-opus-5', 'Claude Opus 5'),
+    createGatewayModel('openai/gpt-5.4-mini', 'GPT-5.4 mini'),
+    createGatewayModel('zzz-labs/only-model', 'Only model'),
+    createGatewayModel('anthropic/claude-haiku-4.5', 'Claude Haiku 4.5'),
+    createGatewayModel('aaa-labs/only-model', 'Only model'),
+  ]
+
+  it('counts models per underlying provider, most stocked first', () => {
+    expect(getGatewayProviderGroups(catalog)).toEqual([
+      { prefix: 'anthropic', count: 2 },
+      { prefix: 'openai', count: 2 },
+      { prefix: 'aaa-labs', count: 1 },
+      { prefix: 'zzz-labs', count: 1 },
+    ])
+  })
+
+  it('treats an id without a separator as its own provider', () => {
+    const groups = getGatewayProviderGroups([
+      createGatewayModel('@cf/meta/llama-4', 'Llama 4'),
+      createGatewayModel('bare-model-id', 'Bare'),
+    ])
+
+    expect(groups).toEqual([
+      { prefix: '@cf', count: 1 },
+      { prefix: 'bare-model-id', count: 1 },
+    ])
+  })
+
+  it('reports a single group for a uniformly prefixed catalog', () => {
+    const groups = getGatewayProviderGroups([
+      createGatewayModel('@cf/meta/llama-4', 'Llama 4'),
+      createGatewayModel('@cf/openai/gpt-oss', 'GPT OSS'),
+    ])
+
+    expect(groups).toEqual([{ prefix: '@cf', count: 2 }])
+  })
+
+  it('clusters models by provider, then by name inside a cluster', () => {
+    expect(sortGatewayModelsByProvider(catalog).map((model) => {
+      return model.id
+    })).toEqual([
+      'anthropic/claude-haiku-4.5',
+      'anthropic/claude-opus-5',
+      'openai/gpt-5.4',
+      'openai/gpt-5.4-mini',
+      'aaa-labs/only-model',
+      'zzz-labs/only-model',
+    ])
+  })
+
+  it('leaves the source catalog untouched', () => {
+    const source = [...catalog]
+
+    sortGatewayModelsByProvider(source)
+
+    expect(source.map((model) => {
+      return model.id
+    })).toEqual(catalog.map((model) => {
+      return model.id
+    }))
+  })
+
+  it('offers only the free category in gateway mode', () => {
+    expect(gatewayModelCategoryOptions.map((option) => {
+      return option.value
+    })).toEqual(['free'])
+    expect(gatewayModelCategoryOptions[0]?.icon).toBe('lucide:banknote-x')
   })
 })

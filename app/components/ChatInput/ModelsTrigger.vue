@@ -56,7 +56,7 @@
             <div
               v-if="activeGateway"
               data-testid="models-picker-gateway-banner"
-              class="shrink-0 flex items-center gap-2 px-2.5 py-2 border-b border-accent/30 bg-accent/10"
+              class="shrink-0 flex items-center gap-2 px-2.5 py-2 rounded-t-2xl border-b border-accent/30 bg-accent/10"
             >
               <ProviderIcon
                 :provider-id="activeGateway.id"
@@ -82,6 +82,8 @@
               </button>
             </div>
             <div
+              v-if="!isActiveGatewayKeyless"
+              data-testid="models-picker-search-row"
               class="shrink-0 flex items-center gap-1 p-2 border-b border-base-content/10"
             >
               <ChatInputModelsTriggerSearch
@@ -93,10 +95,16 @@
                 @keydown="onSearchKeydown"
               />
               <ChatInputModelsTriggerFilterDropdown
-                v-if="!activeGateway"
                 v-model="activeCategory"
+                :options="filterCategoryOptions"
               />
             </div>
+            <ChatInputModelsTriggerGatewayProviderStrip
+              v-if="isGatewayProviderStripVisible"
+              :providers="gatewayProviderGroups"
+              :active-provider-prefix="activeGatewayProviderPrefix"
+              @toggle-provider="toggleGatewayProvider"
+            />
             <div class="flex flex-1 min-h-0">
               <ChatInputModelsTriggerProviderRail
                 v-if="isRailVisible"
@@ -128,6 +136,8 @@
                   :gateway-label="activeGateway.label"
                   :search-term="searchTerm"
                   :is-favorites-only="isFavoritesOnly"
+                  :is-free-only="isFreeOnly"
+                  :active-provider-prefix="activeGatewayProviderPrefix"
                   :favorite-model-ids="activeGatewayFavorites"
                   :selected-model-id="selectedGatewayModelId"
                   :detail-model-id="detailModelId"
@@ -136,8 +146,10 @@
                   @toggle-favorite="toggleGatewayFavorite"
                   @toggle-detail="toggleDetail"
                   @close-detail="closeDetail"
+                  @clear-filters="clearFilters"
                   @highlight="onGatewayHighlight"
                   @pending-change="onGatewayPendingChange"
+                  @provider-groups-change="onGatewayProviderGroupsChange"
                 />
                 <template v-else>
                   <div
@@ -310,7 +322,9 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { Providers } from '#shared/types/providers.d'
 import type {
+  GatewayProviderGroup,
   ModelCategory,
+  ModelCategoryOption,
   PickerMode,
   PickerModel,
   PickerSection,
@@ -346,6 +360,8 @@ const { hasKeyForProvider, hasAnyKey } = useUserKeys()
 
 const pickerMode = shallowRef<PickerMode>({ source: 'provider' })
 const gatewayHighlightedOptionId = shallowRef<string | null>(null)
+const gatewayProviderGroups = shallowRef<GatewayProviderGroup[]>([])
+const activeGatewayProviderPrefix = shallowRef<string | null>(null)
 const isGatewayCatalogPending = shallowRef<boolean>(false)
 const gatewayList = useTemplateRef<GatewayListHandle>('gatewayList')
 const isOpen = shallowRef<boolean>(false)
@@ -500,7 +516,36 @@ const isRailFilterApplied = computed<boolean>(() => {
 })
 
 const hasActiveFilters = computed<boolean>(() => {
-  return activeCategory.value !== null || isRailFilterApplied.value
+  return activeCategory.value !== null
+    || isRailFilterApplied.value
+    || !!activeGatewayProviderPrefix.value
+})
+
+/**
+ * A gateway catalog carries none of the curated chat/research/image-generation
+ * classification the direct options filter on, so the two modes offer
+ * different categories through the same control rather than showing one that
+ * can only ever match nothing.
+ */
+const filterCategoryOptions = computed<ModelCategoryOption[]>(() => {
+  return activeGateway.value
+    ? gatewayModelCategoryOptions
+    : modelCategoryOptions
+})
+
+const isFreeOnly = computed<boolean>(() => {
+  return activeCategory.value === 'free'
+})
+
+/**
+ * A single-provider catalog has nothing to filter by — Cloudflare's ids are
+ * all prefixed `@cf`, so its strip would be one chip selecting everything.
+ */
+const isGatewayProviderStripVisible = computed<boolean>(() => {
+  return !!activeGateway.value
+    && !isActiveGatewayKeyless.value
+    && !isSearching.value
+    && gatewayProviderGroups.value.length > 1
 })
 
 function matchesActiveFilters({ model, providerId }: PickerModel): boolean {
@@ -670,6 +715,8 @@ function switchMode(mode: PickerMode) {
   pickerMode.value = mode
   isGatewayCatalogPending.value = false
   gatewayHighlightedOptionId.value = null
+  gatewayProviderGroups.value = []
+  activeGatewayProviderPrefix.value = null
   searchQuery.value = ''
   activeCategory.value = null
   activeProviderId.value = null
@@ -730,8 +777,34 @@ function toggleFavoritesOnly() {
 function clearFilters() {
   activeCategory.value = null
   activeProviderId.value = null
+  activeGatewayProviderPrefix.value = null
   isFavoritesOnly.value = false
   searchQuery.value = ''
+}
+
+function toggleGatewayProvider(prefix: string) {
+  closeDetail()
+  activeGatewayProviderPrefix.value
+    = activeGatewayProviderPrefix.value === prefix ? null : prefix
+}
+
+/**
+ * A prefix the narrowed catalog no longer offers — the free filter or a
+ * favorites-only view can drop one entirely — would otherwise keep filtering
+ * the list down to nothing with no chip left to switch it off.
+ */
+function onGatewayProviderGroupsChange(groups: GatewayProviderGroup[]) {
+  gatewayProviderGroups.value = groups
+
+  const isActiveStillOffered = groups.some((group) => {
+    return group.prefix === activeGatewayProviderPrefix.value
+  })
+
+  if (isActiveStillOffered) {
+    return
+  }
+
+  activeGatewayProviderPrefix.value = null
 }
 
 function closeDetail() {

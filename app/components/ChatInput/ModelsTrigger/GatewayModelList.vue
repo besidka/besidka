@@ -100,19 +100,35 @@
       <p class="text-xs opacity-60">
         {{ emptyMessage }}
       </p>
+      <button
+        v-if="hasActiveFilters"
+        type="button"
+        data-testid="gateway-models-clear-filters"
+        class="btn btn-ghost btn-xs rounded-full text-accent"
+        @click="emit('clearFilters')"
+      >
+        Clear filters
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
-import type { GatewayPickerSection } from '~/types/models-picker'
+import type {
+  GatewayPickerSection,
+  GatewayProviderGroup,
+} from '~/types/models-picker'
+import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
+import { isGatewayModelFree } from '#shared/utils/gateway-pricing'
 
 const props = defineProps<{
   gatewayId: GatewayId
   gatewayLabel: string
   searchTerm: string
   isFavoritesOnly: boolean
+  isFreeOnly: boolean
+  activeProviderPrefix: string | null
   favoriteModelIds: string[]
   selectedModelId: string | null
   detailModelId: string | null
@@ -124,8 +140,10 @@ const emit = defineEmits<{
   toggleFavorite: [modelId: string]
   toggleDetail: [modelId: string]
   closeDetail: []
+  clearFilters: []
   highlight: [optionId: string | null]
   pendingChange: [isPending: boolean]
+  providerGroupsChange: [groups: GatewayProviderGroup[]]
 }>()
 
 const { models, pending, error, refresh } = useGatewayCatalog(
@@ -140,11 +158,21 @@ const isPending = computed<boolean>(() => {
   return pending.value && !models.value.length
 })
 
-const filteredModels = computed<GatewayModel[]>(() => {
+/**
+ * Everything the picker filters on EXCEPT the provider strip's own choice —
+ * the strip's counts have to describe the list the user would get by picking
+ * a provider, so narrowing by the currently picked one would make every count
+ * but that one read zero.
+ */
+const matchingModels = computed<GatewayModel[]>(() => {
   const term = props.searchTerm.trim().toLowerCase()
 
   return models.value.filter((model) => {
     if (props.isFavoritesOnly && !props.favoriteModelIds.includes(model.id)) {
+      return false
+    }
+
+    if (props.isFreeOnly && !isGatewayModelFree(model)) {
       return false
     }
 
@@ -155,6 +183,28 @@ const filteredModels = computed<GatewayModel[]>(() => {
     return model.name.toLowerCase().includes(term)
       || model.id.toLowerCase().includes(term)
   })
+})
+
+const providerGroups = computed<GatewayProviderGroup[]>(() => {
+  return getGatewayProviderGroups(matchingModels.value)
+})
+
+const filteredModels = computed<GatewayModel[]>(() => {
+  const prefix = props.activeProviderPrefix
+  const matching = prefix
+    ? matchingModels.value.filter((model) => {
+      return getGatewayModelProviderPrefix(model.id) === prefix
+    })
+    : matchingModels.value
+
+  return sortGatewayModelsByProvider(matching, providerGroups.value)
+})
+
+const hasActiveFilters = computed<boolean>(() => {
+  return props.isFreeOnly
+    || props.isFavoritesOnly
+    || !!props.activeProviderPrefix
+    || !!props.searchTerm.trim()
 })
 
 const sections = computed<GatewayPickerSection[]>(() => {
@@ -175,6 +225,17 @@ const sections = computed<GatewayPickerSection[]>(() => {
   ]
 })
 
+/**
+ * The rendered order, which the favorites section reshuffles away from the
+ * provider clustering — arrow keys and Enter walk this, so the highlight
+ * follows the rows the user can actually see moving.
+ */
+const orderedModels = computed<GatewayModel[]>(() => {
+  return sections.value.flatMap((section) => {
+    return section.entries
+  })
+})
+
 const emptyMessage = computed<string>(() => {
   if (props.isFavoritesOnly) {
     return `No favorite ${props.gatewayLabel} models yet.`
@@ -182,6 +243,10 @@ const emptyMessage = computed<string>(() => {
 
   if (props.searchTerm.trim()) {
     return `No models match “${props.searchTerm.trim()}”.`
+  }
+
+  if (hasActiveFilters.value) {
+    return 'No models match the selected filters.'
   }
 
   return `${props.gatewayLabel} returned no models.`
@@ -208,17 +273,17 @@ function setHighlight(modelId: string | null) {
 }
 
 function highlightFirst() {
-  setHighlight(filteredModels.value[0]?.id ?? null)
+  setHighlight(orderedModels.value[0]?.id ?? null)
 }
 
 function highlightLast() {
-  const entries = filteredModels.value
+  const entries = orderedModels.value
 
   setHighlight(entries[entries.length - 1]?.id ?? null)
 }
 
 function moveHighlight(step: number) {
-  const entries = filteredModels.value
+  const entries = orderedModels.value
 
   if (!entries.length) {
     return
@@ -251,7 +316,11 @@ watch(isPending, (value) => {
   emit('pendingChange', value)
 }, { immediate: true })
 
-watch(filteredModels, (entries) => {
+watch(providerGroups, (groups) => {
+  emit('providerGroupsChange', groups)
+}, { immediate: true })
+
+watch(orderedModels, (entries) => {
   const stillVisible = entries.some((model) => {
     return model.id === highlightedModelId.value
   })

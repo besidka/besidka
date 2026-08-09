@@ -2,7 +2,7 @@
   <div
     v-if="compact"
     data-testid="models-picker-key-banner"
-    class="shrink-0 flex items-center gap-2 px-2.5 py-2 border-b border-warning/30 bg-warning/10"
+    class="shrink-0 flex items-center gap-2 px-2.5 py-2 rounded-t-2xl border-b border-warning/30 bg-warning/10"
   >
     <Icon
       name="lucide:key-round"
