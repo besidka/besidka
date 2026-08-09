@@ -2,6 +2,10 @@ import { createGateway, type GatewayProvider } from '@ai-sdk/gateway'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  findGatewayCatalogModel,
+  getCachedGatewayCatalog,
+} from './catalog'
 import type { GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
@@ -10,6 +14,7 @@ const GENERATION_INFO_RETRY_DELAY_MS = 1500
 export async function useVercelGateway(
   userId: string,
   model: string,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -31,13 +36,24 @@ export async function useVercelGateway(
   const client = createGateway({
     apiKey: await useDecryptText(data.apiKey),
   })
+  const catalogModel = await findGatewayCatalogModel(
+    () => getCachedGatewayCatalog('vercel', { logger }),
+    model,
+    logger,
+  )
 
   function getInstance() {
     return client(model)
   }
 
   async function generateChatTitle(message: string) {
-    return await useChatTitle(getInstance(), message)
+    return catalogModel?.maxOutputTokens === undefined
+      ? await useChatTitle(getInstance(), message)
+      : await useChatTitle(
+        getInstance(),
+        message,
+        catalogModel.maxOutputTokens,
+      )
   }
 
   return {
@@ -46,6 +62,7 @@ export async function useVercelGateway(
     tools: {},
     providerOptions: {},
     client,
+    maxOutputTokens: catalogModel?.maxOutputTokens,
   }
 }
 

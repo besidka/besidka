@@ -19,6 +19,7 @@ async function getFetchers() {
     fetchCloudflareGatewayCatalog: module.fetchCloudflareGatewayCatalog,
     getCachedCloudflareGatewayCatalog:
       module.getCachedCloudflareGatewayCatalog,
+    findGatewayCatalogModel: module.findGatewayCatalogModel,
   }
 }
 
@@ -671,5 +672,53 @@ describe('getCachedCloudflareGatewayCatalog', () => {
           },
         }),
       )
+    })
+})
+
+describe('findGatewayCatalogModel', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('returns the matching model from the fetched catalog', async () => {
+    const { findGatewayCatalogModel } = await getFetchers()
+    const models = [
+      { id: 'model-a', name: 'Model A' },
+      { id: 'model-b', name: 'Model B' },
+    ]
+
+    const found = await findGatewayCatalogModel(
+      async () => models,
+      'model-b',
+    )
+
+    expect(found).toEqual({ id: 'model-b', name: 'Model B' })
+  })
+
+  it('returns undefined when no model in the catalog matches the id',
+    async () => {
+      const { findGatewayCatalogModel } = await getFetchers()
+
+      const found = await findGatewayCatalogModel(
+        async () => [{ id: 'model-a', name: 'Model A' }],
+        'model-missing',
+      )
+
+      expect(found).toBeUndefined()
+    })
+
+  it('returns undefined instead of throwing when the catalog fetch fails',
+    async () => {
+      const { findGatewayCatalogModel } = await getFetchers()
+
+      const found = await findGatewayCatalogModel(
+        async () => {
+          throw new Error('upstream unavailable')
+        },
+        'model-a',
+      )
+
+      expect(found).toBeUndefined()
     })
 })

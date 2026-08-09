@@ -3,6 +3,7 @@ import type {
   UIMessage,
   InferUIMessageChunk,
   LanguageModelUsage,
+  ProviderMetadata,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { GatewayProvider } from '@ai-sdk/gateway'
@@ -16,10 +17,11 @@ import type {
   Provider,
   SupportedProviderId,
 } from '#shared/types/providers.d'
-import type { GatewayId } from '#shared/types/gateways.d'
+import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -507,6 +509,8 @@ export default defineEventHandler(async (event) => {
     aspectRatio: ImageGenerationAspectRatio
   } | undefined
   let vercelGatewayClient: GatewayProvider | undefined
+  let gatewayMaxOutputTokens: number | undefined
+  let gatewayPricing: GatewayModel['pricing'] | undefined
 
   try {
     if (gatewayId) {
@@ -514,11 +518,14 @@ export default defineEventHandler(async (event) => {
         gatewayId,
         session.user.id,
         modelId,
+        logger,
       )
 
       instance = gatewayResult.instance
       parsedTools = gatewayResult.tools
       Object.assign(providerOptions, gatewayResult.providerOptions)
+      gatewayMaxOutputTokens = gatewayResult.maxOutputTokens
+      gatewayPricing = gatewayResult.pricing
 
       if (gatewayId === 'vercel') {
         vercelGatewayClient = gatewayResult.client
@@ -839,6 +846,17 @@ export default defineEventHandler(async (event) => {
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
+            // Only Vercel/Cloudflare populate gatewayMaxOutputTokens (from
+            // the model's own catalog entry — see GatewayChatResult in
+            // server/utils/gateways/index.ts). OpenRouter's builder leaves
+            // this undefined on purpose: it already self-negotiates a safe
+            // max_tokens per routed upstream, and OpenRouter's own
+            // advertised max_completion_tokens can be LOWER than a model's
+            // real capacity on some upstreams, so capping it here would risk
+            // truncating outputs that work fine today. Direct-provider sends
+            // never set this either, so they keep their existing uncapped
+            // behavior unchanged.
+            maxOutputTokens: gatewayMaxOutputTokens,
             onEnd({ usage, providerMetadata }) {
               const textCost = gatewayId
                 ? readOpenRouterCost(providerMetadata)
@@ -898,6 +916,8 @@ export default defineEventHandler(async (event) => {
           throw chatError
         }
 
+        let latestGatewayStepProviderMetadata: ProviderMetadata | undefined
+
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
           originalMessages: messagesForAI,
@@ -905,14 +925,28 @@ export default defineEventHandler(async (event) => {
           sendSources: true,
           sendReasoning: reasoningLevel !== 'off',
           messageMetadata({ part }) {
+            if (part.type === 'finish-step') {
+              latestGatewayStepProviderMetadata = part.providerMetadata
+
+              return undefined
+            }
+
             if (part.type !== 'finish') {
               return undefined
             }
+
+            const gatewayCost = resolveLiveGatewayCost({
+              gatewayId,
+              providerMetadata: latestGatewayStepProviderMetadata,
+              pricing: gatewayPricing,
+              usage: part.totalUsage,
+            })
 
             const baseUsage = buildMessageUsage(
               part.totalUsage,
               modelId,
               telemetryProviderId,
+              gatewayCost?.totalCost,
             )
             const imageGenerationCost = generatedImage
               ? getImageGenerationCost(
@@ -920,10 +954,13 @@ export default defineEventHandler(async (event) => {
                 generatedImage.aspectRatio,
               )
               : undefined
-            const usage = addImageGenerationCostToUsage(
+            const usageWithImageCost = addImageGenerationCostToUsage(
               baseUsage,
               imageGenerationCost,
             )
+            const usage = usageWithImageCost && gatewayCost?.costEstimated
+              ? { ...usageWithImageCost, costEstimated: true }
+              : usageWithImageCost
 
             return {
               createdAt: new Date().toISOString(),
@@ -979,6 +1016,8 @@ export default defineEventHandler(async (event) => {
           tools: requestedTools,
           publicId: messagePublicId,
           logger,
+          gatewayId,
+          gatewayPricing,
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
         })
@@ -1071,6 +1110,54 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
+
+/**
+ * Resolves the one gateway cost figure that's genuinely available at
+ * generation-finish time, shared by the live streamed metadata
+ * (`messageMetadata`'s finish branch) and the persisted DB write
+ * (`persistAssistantMessageFromStream`) so both paths agree.
+ *
+ * OpenRouter reports its billed cost synchronously — never estimated.
+ * Cloudflare has no per-request cost API, so its figure is a token-based
+ * estimate from the catalog's per-token `pricing` (see
+ * `estimateGatewayMessageCost`), flagged `costEstimated: true`. Vercel is
+ * deliberately excluded: its real cost is only knowable via an async
+ * follow-up call scheduled well after the stream finishes (see
+ * `persistVercelGenerationCost` in `server/utils/gateways/vercel.ts`), so
+ * there is nothing to read here yet. Direct-provider sends (`gatewayId`
+ * undefined) also resolve to `undefined`, leaving their existing
+ * `inputCost`/`outputCost` split untouched.
+ */
+function resolveLiveGatewayCost(input: {
+  gatewayId: GatewayId | undefined
+  providerMetadata: ProviderMetadata | undefined
+  pricing: GatewayModel['pricing'] | undefined
+  usage: LanguageModelUsage
+}): { totalCost: number, costEstimated: boolean } | undefined {
+  if (input.gatewayId === 'openrouter') {
+    const totalCost = readOpenRouterCost(input.providerMetadata)
+
+    return totalCost === undefined
+      ? undefined
+      : { totalCost, costEstimated: false }
+  }
+
+  if (input.gatewayId === 'cloudflare' && input.pricing) {
+    const totalCost = estimateGatewayMessageCost(
+      { pricing: input.pricing },
+      {
+        inputTokens: input.usage.inputTokens ?? 0,
+        outputTokens: input.usage.outputTokens ?? 0,
+      },
+    )
+
+    return totalCost === undefined
+      ? undefined
+      : { totalCost, costEstimated: true }
+  }
+
+  return undefined
+}
 
 // Dollars spent on a single generation, derived from the same per-1M-token
 // pricing `buildMessageUsage()` uses for persisted/streamed usage. Returns
@@ -1249,6 +1336,8 @@ async function persistAssistantMessageFromStream(input: {
   }
   vercelGatewayClient?: GatewayProvider
   scheduleBackgroundWork?: (promise: Promise<unknown>) => void
+  gatewayId?: GatewayId
+  gatewayPricing?: GatewayModel['pricing']
 }): Promise<boolean> {
   let isAborted = false
   let responseMessage: UIMessage | null = null
@@ -1301,21 +1390,34 @@ async function persistAssistantMessageFromStream(input: {
 
     try {
       const finalStep = await input.result.finalStep
-      const openRouterCost = readOpenRouterCost(finalStep.providerMetadata)
+      const resolvedUsage = await input.result.usage
 
       vercelGenerationId = readVercelGenerationId(finalStep.providerMetadata)
 
+      const gatewayCost = resolveLiveGatewayCost({
+        gatewayId: input.gatewayId,
+        providerMetadata: finalStep.providerMetadata,
+        pricing: input.gatewayPricing,
+        usage: resolvedUsage,
+      })
+
       const baseUsage = buildMessageUsage(
-        await input.result.usage,
+        resolvedUsage,
         input.modelId,
         input.providerId,
-        openRouterCost,
+        gatewayCost?.totalCost,
       )
       const imageGenerationCost = getGeneratedImageCostFromParts(
         responseMessage.parts as UIMessage['parts'],
       )
+      const usageWithImageCost = addImageGenerationCostToUsage(
+        baseUsage,
+        imageGenerationCost,
+      )
 
-      usage = addImageGenerationCostToUsage(baseUsage, imageGenerationCost)
+      usage = usageWithImageCost && gatewayCost?.costEstimated
+        ? { ...usageWithImageCost, costEstimated: true }
+        : usageWithImageCost
     } catch (exception) {
       input.logger.set({
         attributes: {

@@ -733,6 +733,60 @@ describe('chat error helpers', () => {
       expect(result.why).toBeUndefined()
     })
 
+  it('rewrites an OpenRouter "no endpoints found" image rejection into a '
+    + 'friendly message', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error(
+        'No endpoints found that support image input.',
+      ),
+      status: 400,
+    })
+
+    expect(result.message).toBe(
+      'This model does not support image input. Remove the attached'
+      + ' image or switch to a vision-capable model.',
+    )
+    expect(result.why).toBe('No endpoints found that support image input.')
+  })
+
+  it('rewrites a "does not support image" rejection into a friendly '
+    + 'message', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error(
+        'Bad Request: this model does not support image inputs.',
+      ),
+      status: 400,
+    })
+
+    expect(result.message).toBe(
+      'This model does not support image input. Remove the attached'
+      + ' image or switch to a vision-capable model.',
+    )
+  })
+
+  it('leaves an unrelated 400 error message untouched', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error('Invalid request: missing required field "model".'),
+      status: 400,
+    })
+
+    expect(result.message).toBe(
+      'Invalid request: missing required field "model".',
+    )
+  })
+
   it('reads cf-ray from the H3 event when available', async () => {
     const { normalizeChatError } = await import(
       '../../../server/utils/chats/errors'

@@ -1,4 +1,8 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import {
+  findGatewayCatalogModel,
+  getCachedCloudflareGatewayCatalog,
+} from './catalog'
 import type { GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
@@ -103,6 +107,7 @@ export async function getCloudflareGatewayCredentials(
 export async function useCloudflareGateway(
   userId: string,
   model: string,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const credentials = await getCloudflareGatewayCredentials(userId)
 
@@ -122,13 +127,24 @@ export async function useCloudflareGateway(
         ?? CLOUDFLARE_DEFAULT_GATEWAY_ID,
     },
   })
+  const catalogModel = await findGatewayCatalogModel(
+    () => getCachedCloudflareGatewayCatalog(credentials, { logger }),
+    model,
+    logger,
+  )
 
   function getInstance() {
     return client.chatModel(model)
   }
 
   async function generateChatTitle(message: string) {
-    return await useChatTitle(getInstance(), message)
+    return catalogModel?.maxOutputTokens === undefined
+      ? await useChatTitle(getInstance(), message)
+      : await useChatTitle(
+        getInstance(),
+        message,
+        catalogModel.maxOutputTokens,
+      )
   }
 
   return {
@@ -136,5 +152,7 @@ export async function useCloudflareGateway(
     generateChatTitle,
     tools: {},
     providerOptions: {},
+    maxOutputTokens: catalogModel?.maxOutputTokens,
+    pricing: catalogModel?.pricing,
   }
 }

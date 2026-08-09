@@ -4,7 +4,7 @@ import { resolvePriceTierFromPerMillion } from '~~/providers/merge'
 
 const TOKENS_PER_MILLION = 1_000_000
 
-function parsePerTokenPrice(value: string | undefined): number | null {
+export function parsePerTokenPrice(value: string | undefined): number | null {
   if (!value) {
     return null
   }
@@ -57,4 +57,28 @@ export function isGatewayModelFree(
   }
 
   return inputPrice === 0 && outputPrice === 0
+}
+
+/**
+ * Token-based cost estimate for gateways with no per-request cost API
+ * (Cloudflare AI Gateway — see `docs/gateways.md`'s cost-capture section).
+ * Multiplies the raw usage token counts by the catalog's per-token
+ * `pricing.input`/`pricing.output` strings. Returns `undefined` when either
+ * price is missing or unparseable, never a guessed or partial total — the
+ * caller is expected to leave `totalCost` unset in that case, the same as
+ * today's Cloudflare behavior, rather than display a fabricated number.
+ */
+export function estimateGatewayMessageCost(
+  model: Pick<GatewayModel, 'pricing'>,
+  usage: { inputTokens: number, outputTokens: number },
+): number | undefined {
+  const inputPricePerToken = parsePerTokenPrice(model.pricing?.input)
+  const outputPricePerToken = parsePerTokenPrice(model.pricing?.output)
+
+  if (inputPricePerToken === null || outputPricePerToken === null) {
+    return undefined
+  }
+
+  return usage.inputTokens * inputPricePerToken
+    + usage.outputTokens * outputPricePerToken
 }

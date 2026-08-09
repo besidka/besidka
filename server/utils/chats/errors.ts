@@ -108,6 +108,31 @@ function looksLikeHeaderValueLeak(message: string): boolean {
     || HEADER_VALUE_ERROR_PATTERN.test(message)
 }
 
+const IMAGE_INPUT_UNSUPPORTED_PATTERN = /image input|does not support image/i
+const NO_ENDPOINTS_FOUND_PATTERN = /no endpoints found/i
+const IMAGE_TERM_PATTERN = /image/i
+const IMAGE_INPUT_REJECTION_MESSAGE = 'This model does not support image'
+  + ' input. Remove the attached image or switch to a vision-capable model.'
+
+/**
+ * Some gateways/providers reject an image attachment at request time with a
+ * raw, unhelpful upstream message instead of a normal 400 the client-side
+ * vision gate would have already caught before sending (see
+ * `docs/gateways.md` — Cloudflare's catalog exposes no modality data at all,
+ * so the client-side gate fails open for it specifically; OpenRouter has
+ * also been observed returning this for some routed models). Detected by
+ * content rather than status code or provider, since the same wording can
+ * come from either gateway.
+ */
+function looksLikeImageInputRejection(message: string): boolean {
+  if (IMAGE_INPUT_UNSUPPORTED_PATTERN.test(message)) {
+    return true
+  }
+
+  return NO_ENDPOINTS_FOUND_PATTERN.test(message)
+    && IMAGE_TERM_PATTERN.test(message)
+}
+
 function getPreferredChatMessage(input: {
   code: ChatErrorCode
   errorMessage: string | undefined
@@ -115,6 +140,10 @@ function getPreferredChatMessage(input: {
 }): string | undefined {
   if (!input.errorMessage || input.code === 'provider-auth') {
     return undefined
+  }
+
+  if (looksLikeImageInputRejection(input.errorMessage)) {
+    return IMAGE_INPUT_REJECTION_MESSAGE
   }
 
   if (input.code === 'chat-request-invalid') {
