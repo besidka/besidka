@@ -26,6 +26,7 @@ function readInstanceSettings(instance: unknown) {
       usage?: { include: boolean }
       plugins?: unknown[]
       reasoning?: { effort?: string }
+      extraBody?: Record<string, unknown>
     }
   })
 }
@@ -228,5 +229,91 @@ describe('useOpenRouterGateway', () => {
 
       expect(titleInstance.settings.reasoning).toBeUndefined()
     })
+  })
+
+  describe('image generation requested', () => {
+    it('sends modalities: [image, text] via extraBody, keeping tools '
+      + 'empty', async () => {
+      stubKeyLookup()
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5-image',
+        ['image_generation'],
+        'off',
+      )
+
+      const instance = readInstanceSettings(result.instance)
+
+      expect(instance.settings.extraBody).toEqual({
+        modalities: ['image', 'text'],
+      })
+      expect(result.tools).toEqual({})
+      expect(result.providerOptions).toEqual({})
+    })
+
+    it('leaves extraBody unset when image generation was not requested',
+      async () => {
+        stubKeyLookup()
+
+        const useOpenRouterGateway = await importUseOpenRouterGateway()
+        const result = await useOpenRouterGateway(
+          '1',
+          'openai/gpt-5-image',
+          [],
+          'off',
+        )
+
+        const instance = readInstanceSettings(result.instance)
+
+        expect(instance.settings.extraBody).toBeUndefined()
+      })
+
+    it('never carries modalities into the title-generation instance, so '
+      + 'titles never trigger an unwanted generated image', async () => {
+      stubKeyLookup()
+
+      const useChatTitleMock = vi.fn(async () => 'A title')
+
+      vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5-image',
+        ['image_generation'],
+        'off',
+      )
+
+      await result.generateChatTitle('Plan a trip to Kyoto')
+
+      const titleInstance = readInstanceSettings(
+        useChatTitleMock.mock.calls[0]?.[0],
+      )
+
+      expect(titleInstance.settings.extraBody).toBeUndefined()
+    })
+
+    it('can combine with web search and reasoning on the same send',
+      async () => {
+        stubKeyLookup()
+
+        const useOpenRouterGateway = await importUseOpenRouterGateway()
+        const result = await useOpenRouterGateway(
+          '1',
+          'openai/gpt-5-image',
+          ['image_generation', 'web_search'],
+          'medium',
+        )
+
+        const instance = readInstanceSettings(result.instance)
+
+        expect(instance.settings.extraBody).toEqual({
+          modalities: ['image', 'text'],
+        })
+        expect(instance.settings.plugins).toEqual([{ id: 'web' }])
+        expect(instance.settings.reasoning).toEqual({ effort: 'medium' })
+      })
   })
 })

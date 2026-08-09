@@ -33,6 +33,9 @@ export async function useOpenRouterGateway(
     compatibility: 'strict',
   })
   const isWebSearchRequested = requestedTools.includes('web_search')
+  const isImageGenerationRequested = requestedTools.includes(
+    'image_generation',
+  )
   const reasoningEffort = toReasoningEffort(requestedReasoning)
 
   /**
@@ -59,21 +62,43 @@ export async function useOpenRouterGateway(
    * that top-level option anyway, for symmetry with every direct-provider
    * builder, but it is inert here — this settings-level field is what
    * actually reaches OpenRouter's API.
+   *
+   * `modalities: ['image', 'text']` is OpenRouter's chat-completions request
+   * param for image output (verified against OpenRouter's current API
+   * reference — `send-chat-completion-request` documents `modalities` as an
+   * array of `'text' | 'image' | 'audio'`). It is not a typed field on the
+   * installed `@openrouter/ai-sdk-provider@3.0.0`'s `OpenRouterChatSettings`
+   * (confirmed absent from the package's `dist/index.d.ts`), so it goes
+   * through `extraBody`, which the provider's `getArgs()` spreads onto the
+   * outgoing request body verbatim (verified in `dist/index.js`) — the same
+   * mechanism that already carries any other raw body field this typed SDK
+   * doesn't model. Like `plugins`, this is a request param, not an AI SDK
+   * tool: `tools` stays `{}`, no `toolChoice`. The model itself decides
+   * whether to actually return an image; a non-image-capable model routed
+   * with this flag simply never populates `choice.message.images`, which
+   * `@openrouter/ai-sdk-provider` maps to `file` content parts (verified in
+   * the installed package's `dist/index.js`) — the same generic UI file-part
+   * rendering path this app already uses for attachments and direct-provider
+   * generated images.
    */
   function getInstance() {
     return openrouter.chat(model, {
       usage: { include: true },
       ...(isWebSearchRequested ? { plugins: [{ id: 'web' }] } : {}),
       ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
+      ...(isImageGenerationRequested
+        ? { extraBody: { modalities: ['image', 'text'] } }
+        : {}),
     })
   }
 
   /**
-   * Deliberately built without `plugins` or `reasoning`, even when the chat
-   * send requested web search or reasoning — title generation is a separate,
-   * second billable request, and carrying either setting there would charge
-   * an extra per-search fee or extra reasoning tokens for a title prompt that
-   * never needs them.
+   * Deliberately built without `plugins`, `reasoning` or `extraBody`, even
+   * when the chat send requested web search, reasoning or image generation —
+   * title generation is a separate, second billable request, and carrying
+   * any of those settings there would charge an extra per-search fee, extra
+   * reasoning tokens, or an unwanted generated image for a title prompt that
+   * never needs any of them.
    */
   function getTitleInstance() {
     return openrouter.chat(model, { usage: { include: true } })

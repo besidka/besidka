@@ -1,5 +1,8 @@
 import type { ReasoningCapability } from '#shared/types/reasoning.d'
-import { isGatewayReasoningSupported } from '#shared/utils/gateway-capabilities'
+import {
+  isGatewayReasoningSupported,
+  isGatewayToolAllowed,
+} from '#shared/utils/gateway-capabilities'
 import { providerMeta } from '#shared/utils/provider-meta'
 
 export function useChatInput() {
@@ -45,7 +48,25 @@ export function useChatInput() {
     return !!selectedModel.value?.tools.includes('web_search')
   })
 
+  /**
+   * Gateway models resolve image generation from the shared catalog signal
+   * (`GatewayModel.supportsImageGeneration`, derived from the model's own
+   * OUTPUT modalities — see `shared/utils/gateway-capabilities.ts`) gated
+   * through `isGatewayToolAllowed`, the same server-side send-gate policy —
+   * a model's catalog entry can report `supportsImageGeneration: true` on a
+   * gateway whose policy still rejects the tool (Cloudflare's `@cf/` catalog
+   * derives the same output-modalities signal but has no working image
+   * generation mechanism), and the toggle must never appear for a send the
+   * server would then 400.
+   */
   const isImageGenerationSupported = computed<boolean>(() => {
+    const current = selection.value
+
+    if (current.source === 'gateway') {
+      return gatewayModel.value?.supportsImageGeneration === true
+        && isGatewayToolAllowed(current.gatewayId, 'image_generation')
+    }
+
     return !!(
       selectedModel.value?.tools.includes('image_generation')
       || isImageGenerationModel(selectedModel.value)

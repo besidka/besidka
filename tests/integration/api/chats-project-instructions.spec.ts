@@ -145,6 +145,12 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
     return input.parts
   }),
+  persistGatewayGeneratedImageParts: vi.fn(
+    async (input: { parts: unknown }) => ({
+      parts: input.parts,
+      fileIds: [],
+    }),
+  ),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({

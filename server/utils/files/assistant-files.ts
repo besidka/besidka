@@ -3,12 +3,16 @@ import type { ImageGenerationReady } from '#shared/types/image-generation.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   extractLocalFileStorageKey,
+  getPreferredFileExtension,
   isSafeFileStorageKey,
   markUrlAsGeneratedFile,
 } from '#shared/utils/files'
+import { validateGeneratedImage } from '~~/server/utils/ai/image-generation'
 import {
   getPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { persistFile } from '~~/server/utils/files/persist-file'
 
 export interface NormalizeAssistantMessagePartsInput {
   parts: UIMessage['parts']
@@ -190,6 +194,174 @@ export async function normalizeAssistantMessagePartsForPersistence(
   })
 
   return normalizedParts
+}
+
+export interface PersistGatewayImageOutputInput {
+  parts: UIMessage['parts']
+  userId: number
+  chatId: string
+  gatewayId: string
+  modelId: string
+  logger: LoggerLike
+}
+
+export interface PersistGatewayImageOutputResult {
+  parts: UIMessage['parts']
+  fileIds: string[]
+}
+
+const gatewayGeneratedImageFailureText
+  = 'An image was generated but could not be saved.'
+
+/**
+ * Gateway image output (OpenRouter's `modalities` request param, Vercel's
+ * Gemini `*-image` models) has no tool wrapper the way direct-provider image
+ * generation does — it arrives as a plain `file` UI part carrying a raw
+ * `data:` URL, straight from the AI SDK's own file-chunk-to-UI-part mapping.
+ * Left alone, that inline base64 blob would land verbatim in the persisted
+ * `messages.parts` JSON column — unbounded row growth, no R2 offload, no
+ * `files` table record, no storage-quota accounting.
+ *
+ * This runs unconditionally for every gateway send's assistant response
+ * (never gated on `requestedTools` including `image_generation`): an
+ * inline-image `file` part can only ever originate from the model's own
+ * output on an assistant message, so there is no legitimate case where one
+ * should be left unpersisted. It runs BEFORE
+ * `normalizeAssistantMessagePartsForPersistence`, which is deliberately left
+ * untouched — by the time that function's `assistantFileParts` filter looks
+ * for parts whose URL isn't already `/files/`-prefixed, this step has
+ * already rewritten every gateway-generated image part, so the
+ * `enableAssistantFilePersistence` stub (for the unrelated, still-unbuilt
+ * general assistant-file-persistence feature) never even sees them.
+ *
+ * `originProvider` is set to the same `telemetryProviderId` the call site
+ * already threads through everything else (`'openrouter'`/`'vercel-gateway'`
+ * — `keyProviderIdForGateway(gatewayId)`, not the bare `GatewayId`), so the
+ * existing `originMessageId`-linking `UPDATE ... WHERE originProvider = ...`
+ * in `index.post.ts` matches these rows the same way it already matches
+ * direct-provider generated files.
+ *
+ * See `reconstructGeneratedImageParts` in
+ * `reconstruct-generated-image-parts.ts` for the read-path half of this: a
+ * persisted gateway-origin file must never be reconstructed into a
+ * `tool-generate_image` part, since the client's `getGenerateImageOutput()`
+ * only recognizes `provider: 'openai' | 'google'` and would silently drop
+ * anything else, making the image disappear on reload.
+ */
+export async function persistGatewayGeneratedImageParts(
+  input: PersistGatewayImageOutputInput,
+): Promise<PersistGatewayImageOutputResult> {
+  const fileIds: string[] = []
+  const persistedParts: UIMessage['parts'] = []
+  let hasGeneratedImagePart = false
+
+  for (const part of input.parts) {
+    if (
+      part.type !== 'file'
+      || !part.mediaType.startsWith('image/')
+      || !part.url.startsWith('data:')
+    ) {
+      persistedParts.push(part)
+      continue
+    }
+
+    hasGeneratedImagePart = true
+
+    const decodedImage = decodeBase64DataUrl(part.url)
+
+    if (!decodedImage) {
+      persistedParts.push({
+        type: 'text',
+        text: gatewayGeneratedImageFailureText,
+      })
+      continue
+    }
+
+    try {
+      const validatedImage = validateGeneratedImage(
+        decodedImage,
+        part.mediaType,
+      )
+      const persistedFile = await persistFile({
+        userId: input.userId,
+        fileName: buildGatewayGeneratedImageFileName(
+          validatedImage.mediaType,
+        ),
+        mediaType: validatedImage.mediaType,
+        fileData: validatedImage.data,
+        source: 'assistant',
+        originProvider: input.gatewayId,
+        originModel: input.modelId,
+        logger: input.logger,
+      })
+
+      fileIds.push(persistedFile.id)
+
+      persistedParts.push({
+        type: 'file',
+        mediaType: persistedFile.type,
+        filename: persistedFile.name,
+        url: markUrlAsGeneratedFile(`/files/${persistedFile.storageKey}`),
+      })
+    } catch (exception) {
+      input.logger.set({
+        assistantFiles: {
+          action: 'gateway-image-persist-failed',
+          chatId: input.chatId,
+          userId: input.userId,
+        },
+        attributes: {
+          assistantFiles: {
+            providerId: input.gatewayId,
+            error: exceptionMessage(exception),
+          },
+        },
+      })
+
+      persistedParts.push({
+        type: 'text',
+        text: gatewayGeneratedImageFailureText,
+      })
+    }
+  }
+
+  return {
+    parts: hasGeneratedImagePart ? persistedParts : input.parts,
+    fileIds,
+  }
+}
+
+function decodeBase64DataUrl(url: string): Uint8Array | null {
+  const commaIndex = url.indexOf(',')
+
+  if (!url.startsWith('data:') || commaIndex === -1) {
+    return null
+  }
+
+  const meta = url.slice('data:'.length, commaIndex)
+
+  if (!meta.endsWith(';base64')) {
+    return null
+  }
+
+  try {
+    const binary = atob(url.slice(commaIndex + 1))
+    const bytes = new Uint8Array(binary.length)
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+
+    return bytes
+  } catch {
+    return null
+  }
+}
+
+function buildGatewayGeneratedImageFileName(mediaType: string): string {
+  const extension = getPreferredFileExtension(mediaType)
+
+  return `generated-image-${Date.now()}.${extension}`
 }
 
 export function getGeneratedImageFileIds(

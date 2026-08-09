@@ -5,21 +5,27 @@ import type { ModelTool } from '#shared/types/providers.d'
  * The single source of truth for which tools a gateway send may carry.
  * `web_search` is a universal capability on OpenRouter and Vercel (their own
  * plugin/tool works on any routed model) and does not exist at all on
- * Cloudflare. `image_generation` stays rejected everywhere gateways are
- * concerned — actually generating images through a gateway is separate,
- * not-yet-built functionality.
+ * Cloudflare. `image_generation` is now also allowed for OpenRouter (the
+ * `modalities: ['image', 'text']` chat-completions request param) and Vercel
+ * (its Gemini `*-image` models return image content parts from a plain
+ * `generateText`/`streamText` call, no extra request param needed) — see
+ * `docs/gateways.md`'s "Gateway image generation" section. Cloudflare stays
+ * rejected for both tools: it has no web-search mechanism and no
+ * image-output mechanism for the `@cf/` catalog this app surfaces.
  *
  * Deliberately per-gateway, not per-model: it does not know whether the
  * specific routed model is a confirmed image-generation model (see
- * `resolveGatewayWebSearchSupport`'s badge-only exclusion for that case). A
- * request can attach `web_search` to an image-generation model on
- * OpenRouter/Vercel and it will be forwarded and billed on the user's own
- * key — self-directed spend, not a privilege escalation, so this is an
- * accepted trade-off rather than a gap to close.
+ * `resolveGatewayWebSearchSupport`'s badge-only exclusion for that case, and
+ * `GatewayModel.supportsImageGeneration` for the client-side picker gate). A
+ * request can attach either tool to a model whose catalog entry doesn't
+ * confirm the matching capability and it will simply be forwarded and billed
+ * on the user's own key with no image produced — self-directed spend, not a
+ * privilege escalation, so this is an accepted trade-off rather than a gap
+ * to close.
  */
 const GATEWAY_TOOL_POLICY: Record<GatewayId, ModelTool[]> = {
-  openrouter: ['web_search'],
-  vercel: ['web_search'],
+  openrouter: ['web_search', 'image_generation'],
+  vercel: ['web_search', 'image_generation'],
   cloudflare: [],
 }
 

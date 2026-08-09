@@ -163,6 +163,29 @@ describe('useVercelGateway', () => {
     })
   })
 
+  describe('image generation requested', () => {
+    it('needs no special request configuration at all — Gemini *-image '
+      + 'models return image content parts from a plain instance built the '
+      + 'same way as any other model', async () => {
+      stubKeyLookup()
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway(
+        '1',
+        'google/gemini-3.1-flash-image-preview',
+        ['image_generation'],
+        'off',
+      )
+
+      expect(result.tools).toEqual({})
+      expect(result.providerOptions).toEqual({})
+
+      const instance = result.instance as unknown as { modelId: string }
+
+      expect(instance.modelId).toBe('google/gemini-3.1-flash-image-preview')
+    })
+  })
+
   describe('reasoning requested', () => {
     it('returns the mapped reasoning effort for the top-level streamText '
       + 'option, with no per-provider providerOptions needed', async () => {

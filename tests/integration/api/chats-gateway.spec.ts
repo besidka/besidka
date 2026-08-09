@@ -130,6 +130,12 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,
   ),
+  persistGatewayGeneratedImageParts: vi.fn(
+    async (input: { parts: unknown }) => ({
+      parts: input.parts,
+      fileIds: [],
+    }),
+  ),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -424,29 +430,81 @@ describe('gateway chat completion routing', () => {
     expect(mocks.streamTextOptions[0]?.reasoning).toBeUndefined()
   })
 
-  it('rejects image_generation through the vercel gateway', async () => {
-    const useGatewayCalls = vi.fn()
+  it('allows image_generation through the vercel gateway and threads it '
+    + 'into useGateway', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    }))
 
-    vi.stubGlobal('useGateway', useGatewayCalls)
+    vi.stubGlobal('useGateway', useGatewayMock)
 
     const handler = await getHandler()
-    const { db, insertValues } = createDb()
+    const { db } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
-    await expect(handler({
+    const result = await handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
+        model: 'google/gemini-3.1-flash-image-preview',
         gateway: 'vercel',
         tools: ['image_generation'],
       }),
-    } as any)).rejects.toMatchObject({ status: 400 })
+    } as any)
 
-    expect(useGatewayCalls).not.toHaveBeenCalled()
-    expect(insertValues).not.toHaveBeenCalled()
+    await result.ready
+
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'vercel',
+      '1',
+      'google/gemini-3.1-flash-image-preview',
+      ['image_generation'],
+      'off',
+      expect.anything(),
+    )
   })
 
-  it('rejects image_generation through the openrouter gateway', async () => {
+  it('allows image_generation through the openrouter gateway and threads '
+    + 'it into useGateway', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'openai/gpt-5-image',
+        gateway: 'openrouter',
+        tools: ['image_generation'],
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'openrouter',
+      '1',
+      'openai/gpt-5-image',
+      ['image_generation'],
+      'off',
+      expect.anything(),
+    )
+  })
+
+  it('rejects image_generation through the cloudflare gateway', async () => {
     const useGatewayCalls = vi.fn()
 
     vi.stubGlobal('useGateway', useGatewayCalls)
@@ -459,7 +517,8 @@ describe('gateway chat completion routing', () => {
     await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
-        gateway: 'openrouter',
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
         tools: ['image_generation'],
       }),
     } as any)).rejects.toMatchObject({ status: 400 })
@@ -566,7 +625,9 @@ describe('gateway chat completion routing', () => {
   })
 
   it('rejects a gateway request when the first turn already persisted an '
-    + 'unsupported tool', async () => {
+    + 'unsupported tool — the known-limitation edge case, Cloudflare-only '
+    + 'since round 4/5 accepted both web_search and image_generation on '
+    + 'OpenRouter/Vercel', async () => {
     const useGatewayCalls = vi.fn()
 
     vi.stubGlobal('useGateway', useGatewayCalls)
@@ -586,7 +647,8 @@ describe('gateway chat completion routing', () => {
     await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
-        gateway: 'vercel',
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
         tools: [],
       }),
     } as any)).rejects.toMatchObject({ status: 400 })

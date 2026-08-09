@@ -17,9 +17,13 @@ describe('isGatewayToolAllowed', () => {
     expect(isGatewayToolAllowed('cloudflare', 'web_search')).toBe(false)
   })
 
-  it('rejects image_generation on every gateway', () => {
-    expect(isGatewayToolAllowed('openrouter', 'image_generation')).toBe(false)
-    expect(isGatewayToolAllowed('vercel', 'image_generation')).toBe(false)
+  it('allows image_generation on openrouter and vercel', () => {
+    expect(isGatewayToolAllowed('openrouter', 'image_generation')).toBe(true)
+    expect(isGatewayToolAllowed('vercel', 'image_generation')).toBe(true)
+  })
+
+  it('rejects image_generation on cloudflare, which has no image-output '
+    + 'mechanism for the @cf/ catalog', () => {
     expect(isGatewayToolAllowed('cloudflare', 'image_generation')).toBe(false)
   })
 })

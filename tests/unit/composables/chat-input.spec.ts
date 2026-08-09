@@ -289,6 +289,107 @@ describe('useChatInput gateway web search capability', () => {
     })
 })
 
+describe('useChatInput gateway image generation capability', () => {
+  it('supports image generation for a gateway model the catalog confirms '
+    + 'on an image-generation-allowed gateway', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {
+      openrouter: [{
+        id: 'openai/gpt-5-image',
+        name: 'GPT-5 Image',
+        supportsImageGeneration: true,
+      }],
+    }
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="is-image-generation-required"]').text(),
+    ).toBe('false')
+  })
+
+  it('blocks image generation for a gateway model the catalog does not '
+    + 'confirm', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {
+      openrouter: [{
+        id: 'openai/gpt-4o',
+        name: 'GPT-4o',
+      }],
+    }
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-4o',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('blocks image generation on cloudflare even when the catalog reports '
+    + 'it, since cloudflare has no image-output mechanism wired', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {
+      cloudflare: [{
+        id: '@cf/google/gemini-image',
+        name: 'Gemini Image',
+        supportsImageGeneration: true,
+      }],
+    }
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/google/gemini-image',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('fails closed for a gateway model whose catalog is not cached yet',
+    async () => {
+      const wrapper = await mountSuspended(createHost())
+
+      const { selection } = useUserModel()
+
+      useGatewayCatalogCache().value = {}
+      selection.value = {
+        source: 'gateway',
+        gatewayId: 'openrouter',
+        modelId: 'openai/gpt-5-image',
+      }
+      await wrapper.vm.$nextTick()
+
+      expect(
+        wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+      ).toBe('false')
+    })
+})
+
 describe('useChatInput gateway reasoning capability', () => {
   it('supports reasoning levels for a gateway model with a resolved '
     + 'capability on a reasoning-supported gateway', async () => {
