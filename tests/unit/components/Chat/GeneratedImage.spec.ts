@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import {
   computed,
@@ -25,6 +25,12 @@ const LazyImagePreview = defineAsyncComponent(() => {
   return Promise.resolve(ImagePreview)
 })
 
+const mocks = vi.hoisted(() => ({
+  useImageInputSupport: vi.fn(),
+}))
+
+mockNuxtImport('useImageInputSupport', () => mocks.useImageInputSupport)
+
 describe('Chat/GeneratedImage', () => {
   beforeEach(() => {
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
@@ -37,6 +43,9 @@ describe('Chat/GeneratedImage', () => {
         this.dispatchEvent(new Event('close'))
       })
     useState<number>('image-preview-guard-count', () => 0).value = 0
+    mocks.useImageInputSupport.mockReturnValue({
+      isImageInputSupported: shallowRef(true),
+    })
   })
 
   afterEach(() => {
@@ -332,6 +341,43 @@ describe('Chat/GeneratedImage', () => {
       size: 2048,
       type: 'image/webp',
     })
+  })
+
+  it('hides the attach shortcut when image input is unsupported', async () => {
+    mocks.useImageInputSupport.mockReturnValue({
+      isImageInputSupported: shallowRef(false),
+    })
+
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: {
+            status: 'ready',
+            provider: 'openai',
+            model: 'gpt-image-2',
+            file: {
+              id: 'file-1',
+              storageKey: 'generated.webp',
+              name: 'sunset.webp',
+              size: 2048,
+              type: 'image/webp',
+              source: 'assistant',
+              url: '/files/generated.webp',
+              downloadUrl: '/files/generated.webp?download=1',
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="generated-image-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="generated-image-open"]').exists())
+      .toBe(true)
+    expect(wrapper.find('a').exists()).toBe(true)
   })
 
   it('renders fixed actionable text for a structured failure', async () => {

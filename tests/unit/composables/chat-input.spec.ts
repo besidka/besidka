@@ -32,6 +32,9 @@ function createHost() {
         h('span', { 'data-testid': 'is-web-search-supported' }, [
           String(chatInput.isWebSearchSupported.value),
         ]),
+        h('span', { 'data-testid': 'is-image-input-supported' }, [
+          String(chatInput.isImageInputSupported.value),
+        ]),
         h('span', { 'data-testid': 'is-deep-research-model' }, [
           String(chatInput.isDeepResearchModel.value),
         ]),
@@ -183,6 +186,139 @@ describe('useChatInput image model capability', () => {
     expect(
       wrapper.get('[data-testid="is-web-search-supported"]').text(),
     ).toBe('false')
+  })
+})
+
+describe('useChatInput image input capability', () => {
+  it('supports image input for a vision-capable provider model', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('blocks image input for a provider model with no vision modality', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'deepseek-chat'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('fails open when the provider model cannot be resolved', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'not-a-real-model'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('supports image input for a gateway model whose catalog says so', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {
+      vercel: [{
+        id: 'anthropic/claude-sonnet-4',
+        name: 'Claude Sonnet 4',
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      }],
+    }
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'anthropic/claude-sonnet-4',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('blocks image input for a gateway model whose catalog excludes it', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {
+      openrouter: [{
+        id: 'deepseek/deepseek-chat',
+        name: 'DeepSeek Chat',
+        modalities: { input: ['text'], output: ['text'] },
+      }],
+    }
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'deepseek/deepseek-chat',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('fails open for a gateway model with no modality data at all', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {
+      cloudflare: [{
+        id: '@cf/meta/llama-4',
+        name: 'Llama 4',
+      }],
+    }
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/meta/llama-4',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('fails open for a gateway model whose catalog is not cached yet', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    useGatewayCatalogCache().value = {}
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
   })
 })
 

@@ -1,3 +1,4 @@
+import type { Ref } from 'vue'
 import { computed, defineComponent, nextTick, reactive, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { enableAutoUnmount } from '@vue/test-utils'
@@ -111,6 +112,7 @@ describe('ChatInput.client', () => {
       isWebSearchSupported: shallowRef(false),
       isImageGenerationSupported: shallowRef(false),
       isImageGenerationRequired: shallowRef(false),
+      isImageInputSupported: shallowRef(true),
       isReasoningSupported: shallowRef(false),
       reasoningCapability: shallowRef(null),
       reasoningMode: shallowRef('none'),
@@ -244,6 +246,7 @@ describe('ChatInput.client', () => {
         isWebSearchSupported: shallowRef(false),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
@@ -391,6 +394,97 @@ describe('ChatInput.client', () => {
 
       expect(wrapper.get('[data-testid="regenerate"]').attributes('title'))
         .toBe('Regenerate')
+    })
+  })
+
+  describe('image-input gating', () => {
+    const imageFile = {
+      id: '1',
+      storageKey: 'image-key',
+      name: 'a.png',
+      size: 10,
+      type: 'image/png',
+    }
+    const textFile = {
+      id: '2',
+      storageKey: 'text-key',
+      name: 'a.txt',
+      size: 10,
+      type: 'text/plain',
+    }
+    const expectedWarning = 'This model does not support image input. '
+      + 'Attach a PDF or text file instead, or switch models.'
+
+    function useSelection(
+      isImageInputSupported: Ref<boolean> = shallowRef(true),
+    ) {
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isImageGenerationSupported: shallowRef(false),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported,
+        isReasoningSupported: shallowRef(false),
+        reasoningCapability: shallowRef(null),
+        reasoningMode: shallowRef('none'),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+      })
+
+      return isImageInputSupported
+    }
+
+    function attachedFileNames(wrapper: Awaited<ReturnType<
+      typeof mountChatInput
+    >>): string[] {
+      return wrapper.findAll('[data-testid="carousel-item"]').map((item) => {
+        return item.attributes('data-file-name')
+      }) as string[]
+    }
+
+    it('drops an attached image and warns when unsupported', async () => {
+      useSelection(shallowRef(false))
+
+      const wrapper = await mountChatInput()
+      const filesModal = wrapper.findComponent(filesModalStub)
+
+      filesModal.vm.$emit('attach', [imageFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual([])
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(expectedWarning)
+    })
+
+    it('keeps a non-image file when image input is unsupported', async () => {
+      useSelection(shallowRef(false))
+
+      const wrapper = await mountChatInput()
+      const filesModal = wrapper.findComponent(filesModalStub)
+
+      filesModal.vm.$emit('attach', [textFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual(['a.txt'])
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+    })
+
+    it('strips an already-attached image after the model loses support', async () => {
+      const isImageInputSupported = useSelection()
+
+      const wrapper = await mountChatInput()
+      const filesModal = wrapper.findComponent(filesModalStub)
+
+      filesModal.vm.$emit('attach', [imageFile])
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual(['a.png'])
+
+      isImageInputSupported.value = false
+      await nextTick()
+
+      expect(attachedFileNames(wrapper)).toEqual([])
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(expectedWarning)
     })
   })
 })

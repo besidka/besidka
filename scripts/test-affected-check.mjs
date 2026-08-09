@@ -53,6 +53,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Trigger.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/utils/files.spec.ts',
@@ -371,6 +372,14 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/ai\/image-generation(-lock|-cost)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/components\/ChatInput(\.client\.vue|\/ToolbarMore\.client\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
+    },
+    {
+      pattern: /^app\/composables\/image-input-support\.ts$/,
+      tests: [
+        ...imageGenerationTests,
+        ...filesModuleTests,
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/ai\/image-generation-cost\.ts$/,

@@ -199,6 +199,19 @@ export default defineEventHandler(async (event) => {
     provider = resolved.provider
     model = resolved.model
 
+    const hasImageAttachment = newMessage.parts.some((part) => {
+      return part.type === 'file' && part.mediaType.startsWith('image/')
+    })
+
+    if (hasImageAttachment && !model.modalities.input.includes('image')) {
+      throw createError({
+        message: `${model.name} does not support image input.`,
+        status: 400,
+        why: 'The message includes an image attachment, but the selected model does not advertise image support.',
+        fix: 'Remove the image attachment, or switch to a vision-capable model.',
+      })
+    }
+
     const requiredTools = getRequiredModelTools(model)
     const supportedTools = [...model.tools, ...requiredTools]
     const unsupportedTool = selectedTools.find((selectedTool) => {

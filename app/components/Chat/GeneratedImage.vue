@@ -93,6 +93,7 @@
             @click="openImagePreview"
           />
           <UiButton
+            v-if="isImageInputSupported"
             icon-only
             circle
             ghost
@@ -171,6 +172,7 @@ const { messageRole, part } = defineProps<{
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+const { isImageInputSupported } = useImageInputSupport()
 
 const isImageLoaded = shallowRef<boolean>(false)
 const hasImageLoadError = shallowRef<boolean>(false)
