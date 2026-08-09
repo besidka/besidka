@@ -38,9 +38,27 @@
       </UiBubble>
     </li>
   </ul>
+  <div class="mt-12 mb-8 text-center">
+    <h2 class="text-2xl font-bold">Gateways</h2>
+    <p class="mt-2">
+      Gateways proxy to many models using your own gateway account,
+      instead of a single provider's key
+    </p>
+  </div>
+  <ul class="grid gap-4">
+    <li
+      v-for="gatewayId in enabledGateways"
+      :key="gatewayId"
+    >
+      <UiBubble>
+        <LazyProfileKeysProviderKeyCard :provider-id="gatewayId" />
+      </UiBubble>
+    </li>
+  </ul>
 </template>
 <script setup lang="ts">
 import type { Providers, Provider } from '#shared/types/providers.d'
+import { enabledGateways } from '#shared/utils/provider-meta'
 
 const directKeyCardProviderIds = ['xai', 'deepseek', 'moonshotai']
 
