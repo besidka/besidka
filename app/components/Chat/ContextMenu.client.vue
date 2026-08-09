@@ -41,6 +41,28 @@
               </span>
             </div>
             <div
+              v-if="info.providerLabel"
+              data-testid="message-menu-provider"
+              class="flex items-center justify-between gap-3 text-xs"
+            >
+              <span class="shrink-0 font-normal text-base-content/50">Provider</span>
+              <span class="flex min-w-0 items-center justify-end gap-1.5 font-normal text-base-content">
+                <Icon
+                  v-if="info.providerKind === 'provider'"
+                  name="lucide:key-round"
+                  size="14"
+                  class="shrink-0"
+                />
+                <ProviderIcon
+                  v-else-if="info.providerId"
+                  :provider-id="info.providerId"
+                  :label="info.providerLabel"
+                  class="size-3.5 shrink-0"
+                />
+                <span class="min-w-0 truncate">{{ providerDisplayLabel }}</span>
+              </span>
+            </div>
+            <div
               v-if="info.reasoning && info.reasoning !== 'off'"
               data-testid="message-menu-reasoning"
               class="flex items-center justify-between gap-3 text-xs"
@@ -254,6 +276,16 @@ const modelDisplayName = computed<string>(() => {
   const { model } = getModel(props.info.model)
 
   return model ? getModelName(props.info.model) : props.info.model
+})
+
+const providerDisplayLabel = computed<string>(() => {
+  if (!props.info?.providerLabel) {
+    return ''
+  }
+
+  return props.info.providerKind === 'provider'
+    ? `${props.info.providerLabel} (direct)`
+    : props.info.providerLabel
 })
 
 const reasoningIconName = computed<string>(() => {

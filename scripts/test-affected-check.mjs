@@ -431,10 +431,12 @@ export function getAffectedTests(changedFiles) {
         /^(app\/components\/ProviderIcon\.vue|shared\/utils\/provider-meta\.ts)$/,
       tests: [
         'tests/unit/components/ProviderIcon.spec.ts',
+        'tests/unit/utils/provider-meta.spec.ts',
         ...userKeysTests,
         ...keysApiTests,
         ...gatewayCatalogTests,
         ...gatewayChatTests,
+        ...messageUsageTests,
       ],
     },
     {

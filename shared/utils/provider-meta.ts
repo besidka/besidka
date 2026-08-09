@@ -130,6 +130,23 @@ export const providerMeta: Record<string, ProviderMeta> = {
 }
 
 /**
+ * Resolves a persisted `MessageUsage.provider` value back to its
+ * `providerMeta` entry. That value is NOT always a `providerMeta` key: gateway
+ * sends persist `keyProviderIdForGateway(gatewayId)` instead (e.g.
+ * `'cloudflare-gateway'`, `'vercel-gateway'`), which only equals the key for
+ * OpenRouter. Direct-provider sends persist the `providerMeta` key itself, so
+ * matching against every entry's `keyProviderId` resolves both cases
+ * uniformly instead of assuming the persisted string IS the key.
+ */
+export function resolveProviderMetaByKeyProviderId(
+  keyProviderId: string,
+): ProviderMeta | undefined {
+  return Object.values(providerMeta).find((meta) => {
+    return meta.keyProviderId === keyProviderId
+  })
+}
+
+/**
  * Every `GatewayId` this app can actually route a chat send through and
  * fetch a catalog for. Gateway-rail/keys UI iterates this array (mapped
  * through `providerMeta`) rather than assuming every `GatewayId` value is
