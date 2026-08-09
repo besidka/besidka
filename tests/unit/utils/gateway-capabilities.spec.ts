@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   deriveGatewayImageGenerationSupport,
+  isGatewayReasoningSupported,
   isGatewayToolAllowed,
   resolveGatewayWebSearchSupport,
   WEB_SEARCH_TOOLTIP,
@@ -16,10 +17,26 @@ describe('isGatewayToolAllowed', () => {
     expect(isGatewayToolAllowed('cloudflare', 'web_search')).toBe(false)
   })
 
-  it('rejects image_generation on every gateway', () => {
-    expect(isGatewayToolAllowed('openrouter', 'image_generation')).toBe(false)
-    expect(isGatewayToolAllowed('vercel', 'image_generation')).toBe(false)
+  it('allows image_generation on openrouter and vercel', () => {
+    expect(isGatewayToolAllowed('openrouter', 'image_generation')).toBe(true)
+    expect(isGatewayToolAllowed('vercel', 'image_generation')).toBe(true)
+  })
+
+  it('rejects image_generation on cloudflare, which has no image-output '
+    + 'mechanism for the @cf/ catalog', () => {
     expect(isGatewayToolAllowed('cloudflare', 'image_generation')).toBe(false)
+  })
+})
+
+describe('isGatewayReasoningSupported', () => {
+  it('allows reasoning on openrouter and vercel', () => {
+    expect(isGatewayReasoningSupported('openrouter')).toBe(true)
+    expect(isGatewayReasoningSupported('vercel')).toBe(true)
+  })
+
+  it('rejects reasoning on cloudflare, which has no functional mechanism '
+    + 'wired', () => {
+    expect(isGatewayReasoningSupported('cloudflare')).toBe(false)
   })
 })
 

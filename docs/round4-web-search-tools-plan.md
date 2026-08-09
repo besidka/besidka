@@ -539,6 +539,19 @@ selections + persisted `reasoning` on the message row (schema already
 stores it). Un-force the `'off'` at `index.post.ts:97-99` behind the same
 per-gateway policy module.
 
+> **Corrected during implementation (Wave C-2).** This entry's difficulty
+> assessment was backwards. Vercel needed **zero** custom code: direct
+> inspection of the installed `@ai-sdk/gateway@4.0.46` source shows
+> `GatewayLanguageModel.getArgs()` forwards the whole call-options object,
+> including the standardized top-level `reasoning` option, verbatim to the
+> backend for server-side translation — a transparent proxy, not a mapping
+> problem. OpenRouter was the actually-bespoke one: its provider silently
+> **ignores** the top-level `reasoning` option entirely (confirmed in
+> compiled `dist/index.js`) and requires the settings-level
+> `reasoning: { effort }` field this entry already anticipated. See
+> `docs/gateways.md`'s "Gateway reasoning" section for the full mechanism
+> writeup and citations.
+
 **LW5 — Actual image generation through gateways (optional, furthest
 out).** OpenRouter supports image output on chat completions via the
 `modalities` request param for its 11 image models; Vercel's 5 Gemini
@@ -546,6 +559,28 @@ image models similarly. Needs an image-part persistence path equivalent
 to `createImageGenerationTool`'s R2 upload, plus pricing/estimation
 handling. Recommend deferring until the badges (QW3) have been right for
 a while and demand is proven.
+
+> **Shipped (Wave C-2).** Both gateways now emit real images: OpenRouter
+> via `extraBody: { modalities: ['image', 'text'] }` (untyped in the
+> installed provider, sent as a raw body field), Vercel with no request
+> change at all — its Gemini `*-image` models return files from a plain
+> `generateText`/`streamText` call. The image-part persistence path is
+> `persistGatewayGeneratedImageParts()`
+> (`server/utils/files/assistant-files.ts`), reusing
+> `validateGeneratedImage()`/`persistFile()` rather than duplicating them.
+> Pricing/estimation needed no new code: OpenRouter's `usage.cost` and
+> Vercel's `getGenerationInfo()` are already generation-scoped, so an
+> image-output surcharge is already folded into the existing total —
+> adding a separate line item would double-count. One real bug was caught
+> and fixed while building the read-path half of this:
+> `reconstructGeneratedImageParts()`'s origin-metadata guard would have
+> reconstructed a gateway-origin file into a `tool-generate_image` part
+> that the client
+> only renders for `openai`/`google` origins, silently vanishing the image
+> on reload; it now allowlists those two origins explicitly. No
+> aspect-ratio control exists for gateway image generation (no tool, no
+> input schema to carry it) — a disclosed gap, not an oversight. Full
+> writeup in `docs/gateways.md`'s "Gateway image generation" section.
 
 ---
 

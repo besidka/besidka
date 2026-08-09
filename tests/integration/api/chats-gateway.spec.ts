@@ -130,6 +130,12 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,
   ),
+  persistGatewayGeneratedImageParts: vi.fn(
+    async (input: { parts: unknown }) => ({
+      parts: input.parts,
+      fileIds: [],
+    }),
+  ),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -355,29 +361,150 @@ describe('gateway chat completion routing', () => {
     expect(mocks.streamTextOptions[0]?.toolChoice).toBeUndefined()
   })
 
-  it('rejects image_generation through the vercel gateway', async () => {
-    const useGatewayCalls = vi.fn()
-
-    vi.stubGlobal('useGateway', useGatewayCalls)
-
+  it('threads a requested reasoning level into the streamText call for '
+    + 'an openrouter send', async () => {
     const handler = await getHandler()
-    const { db, insertValues } = createDb()
+    const { db } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
-    await expect(handler({
+    const result = await handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+        reasoning: 'high',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.reasoning).toBe('high')
+  })
+
+  it('threads a requested reasoning level into the streamText call for '
+    + 'a vercel send', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'openai/gpt-4o',
+        gateway: 'vercel',
+        reasoning: 'medium',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.reasoning).toBe('medium')
+  })
+
+  it('forces reasoning off for a cloudflare send even when requested, '
+    + 'since cloudflare has no functional reasoning mechanism wired',
+  async () => {
+    vi.stubGlobal('useDecryptText', vi.fn(async () => JSON.stringify({
+      accountId: 'account-1',
+      apiKey: 'cf-token',
+    })))
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
+        reasoning: 'high',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.reasoning).toBeUndefined()
+  })
+
+  it('allows image_generation through the vercel gateway and threads it '
+    + 'into useGateway', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'google/gemini-3.1-flash-image-preview',
         gateway: 'vercel',
         tools: ['image_generation'],
       }),
-    } as any)).rejects.toMatchObject({ status: 400 })
+    } as any)
 
-    expect(useGatewayCalls).not.toHaveBeenCalled()
-    expect(insertValues).not.toHaveBeenCalled()
+    await result.ready
+
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'vercel',
+      '1',
+      'google/gemini-3.1-flash-image-preview',
+      ['image_generation'],
+      'off',
+      expect.anything(),
+    )
   })
 
-  it('rejects image_generation through the openrouter gateway', async () => {
+  it('allows image_generation through the openrouter gateway and threads '
+    + 'it into useGateway', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'openai/gpt-5-image',
+        gateway: 'openrouter',
+        tools: ['image_generation'],
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'openrouter',
+      '1',
+      'openai/gpt-5-image',
+      ['image_generation'],
+      'off',
+      expect.anything(),
+    )
+  })
+
+  it('rejects image_generation through the cloudflare gateway', async () => {
     const useGatewayCalls = vi.fn()
 
     vi.stubGlobal('useGateway', useGatewayCalls)
@@ -390,7 +517,8 @@ describe('gateway chat completion routing', () => {
     await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
-        gateway: 'openrouter',
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
         tools: ['image_generation'],
       }),
     } as any)).rejects.toMatchObject({ status: 400 })
@@ -454,6 +582,7 @@ describe('gateway chat completion routing', () => {
       '1',
       'openai/gpt-4o',
       ['web_search'],
+      'off',
       expect.anything(),
     )
   })
@@ -490,12 +619,15 @@ describe('gateway chat completion routing', () => {
       '1',
       'anthropic/claude-opus-5',
       ['web_search'],
+      'off',
       expect.anything(),
     )
   })
 
   it('rejects a gateway request when the first turn already persisted an '
-    + 'unsupported tool', async () => {
+    + 'unsupported tool — the known-limitation edge case, Cloudflare-only '
+    + 'since round 4/5 accepted both web_search and image_generation on '
+    + 'OpenRouter/Vercel', async () => {
     const useGatewayCalls = vi.fn()
 
     vi.stubGlobal('useGateway', useGatewayCalls)
@@ -515,7 +647,8 @@ describe('gateway chat completion routing', () => {
     await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
-        gateway: 'vercel',
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
         tools: [],
       }),
     } as any)).rejects.toMatchObject({ status: 400 })

@@ -21,7 +21,10 @@ import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
+import {
+  isGatewayReasoningSupported,
+  isGatewayToolAllowed,
+} from '#shared/utils/gateway-capabilities'
 import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -59,6 +62,7 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   getGeneratedImageFileIds,
   isKnownImageGenerationModel,
+  persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
@@ -97,6 +101,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const reasoningLevel: ReasoningLevel = body.data.gateway
+    && !isGatewayReasoningSupported(body.data.gateway)
     ? 'off'
     : body.data.reasoning
 
@@ -528,11 +533,13 @@ export default defineEventHandler(async (event) => {
         session.user.id,
         modelId,
         requestedTools,
+        reasoningLevel,
         logger,
       )
 
       instance = gatewayResult.instance
       parsedTools = gatewayResult.tools
+      reasoningEffort = gatewayResult.reasoning
       Object.assign(providerOptions, gatewayResult.providerOptions)
       gatewayMaxOutputTokens = gatewayResult.maxOutputTokens
       gatewayPricing = gatewayResult.pricing
@@ -877,6 +884,7 @@ export default defineEventHandler(async (event) => {
             instructions: buildChatInstructions(
               projectSystemPrompt,
               requestedTools,
+              gatewayId,
             ),
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
@@ -1440,8 +1448,20 @@ async function persistAssistantMessageFromStream(input: {
   }
 
   try {
+    const responseParts = responseMessage.parts as UIMessage['parts']
+    const gatewayImageResult = input.gatewayId
+      ? await persistGatewayGeneratedImageParts({
+        parts: responseParts,
+        userId: input.userId,
+        chatId: input.chatId,
+        gatewayId: input.providerId,
+        modelId: input.modelId,
+        logger: input.logger,
+      })
+      : undefined
+    const partsAfterGatewayImages = gatewayImageResult?.parts ?? responseParts
     const normalizationInput = {
-      parts: responseMessage.parts as UIMessage['parts'],
+      parts: partsAfterGatewayImages,
       providerId: input.providerId,
       chatId: input.chatId,
       userId: input.userId,
@@ -1450,18 +1470,21 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
-    const generatedFileIds = getGeneratedImageFileIds(
-      responseMessage.parts as UIMessage['parts'],
-      input.providerId,
-      normalizedParts,
-    )
-    const usedImageGeneration = responseMessage.parts.some((part) => {
+    const generatedFileIds = [
+      ...getGeneratedImageFileIds(
+        partsAfterGatewayImages,
+        input.providerId,
+        normalizedParts,
+      ),
+      ...(gatewayImageResult?.fileIds ?? []),
+    ]
+    const usedImageGeneration = responseParts.some((part) => {
       return part.type === 'tool-generate_image'
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
         )
-    })
+    }) || (gatewayImageResult?.fileIds.length ?? 0) > 0
 
     let usage: MessageUsage | undefined
     let vercelGenerationId: string | undefined
@@ -1488,7 +1511,7 @@ async function persistAssistantMessageFromStream(input: {
         gatewayCost?.totalCost,
       )
       const imageGenerationCost = getGeneratedImageCostFromParts(
-        responseMessage.parts as UIMessage['parts'],
+        responseParts,
       )
       const usageWithImageCost = addImageGenerationCostToUsage(
         baseUsage,
@@ -1640,19 +1663,36 @@ function generationInProgressKvKey(
   return `chat-generating:${chatId}:${userMessageId}`
 }
 
+/**
+ * Gateway image generation has no tool to call at all — OpenRouter's
+ * `modalities` request param and Vercel's Gemini `*-image` models both
+ * return image content parts directly from an ordinary completion, the same
+ * way any other multimodal LLM output works. Sending the direct-provider
+ * instruction's "Call generate_image exactly once" text to a gateway send
+ * would actively mislead the model into looking for a tool that was never
+ * registered, so the two paths get distinct wording.
+ */
 function buildChatInstructions(
   projectSystemPrompt: string | null,
   requestedTools: ModelTool[],
+  gatewayId: GatewayId | undefined,
 ): string | undefined {
   const instructions = [projectSystemPrompt]
 
   if (requestedTools.includes('image_generation')) {
-    instructions.push([
-      'Image generation mode is active. Call generate_image exactly once',
-      'with a complete visual prompt based on the user request. Do not',
-      'decline a valid image request or claim image generation is unavailable.',
-      'The tool saves the result in the user private file library.',
-    ].join(' '))
+    instructions.push(gatewayId
+      ? [
+        'Image generation mode is active. Generate an image that fulfills',
+        'the user request as part of your response, alongside a short text',
+        'reply. Do not decline a valid image request or claim image',
+        'generation is unavailable.',
+      ].join(' ')
+      : [
+        'Image generation mode is active. Call generate_image exactly once',
+        'with a complete visual prompt based on the user request. Do not',
+        'decline a valid image request or claim image generation is unavailable.',
+        'The tool saves the result in the user private file library.',
+      ].join(' '))
   }
 
   return instructions.filter(Boolean).join('\n\n') || undefined

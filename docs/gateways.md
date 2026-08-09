@@ -562,13 +562,19 @@ three can never drift apart again:
   nothing for `@cf/` Workers AI models specifically (re-verified 2026-08-09,
   `docs/round4-web-search-tools-plan.md` section 1.6).
 
-`GatewayModel.supportsReasoning` is unaffected by this round — still a plain
-best-effort boolean from Vercel's `tags` (`'reasoning'`), OpenRouter's
+`GatewayModel.supportsReasoning` itself is unaffected by round 4/5 — still a
+plain best-effort boolean from Vercel's `tags` (`'reasoning'`), OpenRouter's
 `supported_parameters` (`'reasoning'`), or Cloudflare's default-format
 `reasoning` property (see "Cloudflare's two-format join" above). A property
 that is simply absent for a model also leaves the flag `undefined` —
 `undefined` always means "unknown," never "no," across every advisory signal
-in this section.
+in this section. **What changed in round 5 (2026-08-10) is what the badge now
+implies**: for OpenRouter and Vercel the reasoning control is functional (see
+"Gateway reasoning" below), so `supportsReasoning: true` on those two
+gateways now gates a real `low`/`medium`/`high` control in the chat input,
+the same way it always has for direct providers. Cloudflare's badge stays
+exactly as advisory-only as before — no functional reasoning mechanism was
+wired for it this round.
 
 **Badge policy (product decision, 2026-08-09).** Every model that resolves
 to either `'native'` or `'universal'` earns the globe chip — the picker no
@@ -626,18 +632,19 @@ capability roster is the point, on the deprioritized `badge-neutral`.
 Re-adding a row-level wrench re-creates the exact "everything looks the
 same" complaint this replaced.
 
-### Tool calling through gateways: web search wired for OpenRouter and Vercel
+### Tool calling through gateways: web search and image generation wired for OpenRouter and Vercel
 
-**As of round 4 (2026-08-09), the blanket gate is gone.** `index.post.ts`
-now checks a per-gateway, per-tool policy — `isGatewayToolAllowed()` in
-`shared/utils/gateway-capabilities.ts` — instead of rejecting any tool
-request routed through a gateway outright: `web_search` is allowed for
-OpenRouter and Vercel, `image_generation` stays rejected for every gateway
-(actual image generation through a gateway is separate, not-yet-built
-functionality — see `docs/round4-web-search-tools-plan.md` LW5), and
-Cloudflare rejects everything, matching its `supportsWebSearch: undefined`
-badge. The two allowed paths use different mechanics, both single-step-safe
-(no `stopWhen`, no tool-execution loop):
+**As of round 4 (2026-08-09), the blanket gate is gone**, and round 5
+(2026-08-10) extended the same per-gateway, per-tool policy —
+`isGatewayToolAllowed()` in `shared/utils/gateway-capabilities.ts` — to
+`image_generation`. `index.post.ts` checks that policy instead of rejecting
+any tool request routed through a gateway outright: `web_search` and
+`image_generation` are both allowed for OpenRouter and Vercel now (see
+"Gateway image generation" below for the image mechanics), and Cloudflare
+rejects everything, matching its `supportsWebSearch: undefined` badge and
+its lack of any image-output mechanism for the `@cf/` catalog. All allowed
+paths use different mechanics per capability, all single-step-safe (no
+`stopWhen`, no tool-execution loop):
 
 - **OpenRouter** passes a *model setting*, not an AI SDK tool:
   `useOpenRouterGateway()` builds the chat instance with
@@ -669,6 +676,217 @@ nothing downstream reads it to enable tool calling, and Cloudflare's
 on — the round-3 observation that "Cloudflare has still no supported tools"
 remains accurate for Cloudflare specifically, while OpenRouter and Vercel
 have moved on from it.
+
+### Gateway reasoning (round 5, 2026-08-10)
+
+Gateway sends previously forced `reasoningLevel` to `'off'` unconditionally
+in `index.post.ts`, regardless of what the client requested — the reasoning
+badge existed in the picker (see above) but had no working control behind
+it, the same "advertised but inert" shape web search had before round 4.
+`isGatewayReasoningSupported()` in `shared/utils/gateway-capabilities.ts` is
+now the single policy both the chat-input toggle/levels gating and the
+server-side `reasoningLevel` resolution consume: `true` for OpenRouter and
+Vercel, `false` for Cloudflare (which keeps the forced-`'off'` behavior
+exactly as before). The mechanism is genuinely different per gateway —
+**and the opposite of what the round-4 plan document assumed**:
+
+- **OpenRouter needs a settings-level chat field**, not the standardized
+  top-level `streamText({ reasoning })` option every direct provider uses.
+  Verified directly in the installed `@openrouter/ai-sdk-provider@3.0.0`'s
+  `dist/index.js`: its `getArgs()` builds the outgoing request body by
+  destructuring only `LanguageModelV4CallOptions`' well-known fields
+  (`temperature`, `tools`, `stopSequences`, …) — `reasoning` is not among
+  them, so the SDK's standardized reasoning-effort option is silently
+  dropped for OpenRouter. `useOpenRouterGateway()` instead builds
+  `reasoning: { effort }` as a **chat setting** on the `openrouter.chat(model,
+  settings)` instance (`OpenRouterProviderOptions.reasoning` in the
+  package's `dist/index.d.ts`, `effort: 'none'|'minimal'|'low'|'medium'|
+  'high'|'xhigh'`) — the same mechanism `plugins` already uses for web
+  search. `toReasoningEffort()` (`server/utils/providers/reasoning.ts`, the
+  exact function every direct provider already calls) maps this app's
+  `ReasoningLevel` (`'off'|'low'|'medium'|'high'`) down to
+  `'low'|'medium'|'high'|undefined` for the `effort` field. Title generation
+  deliberately builds a separate instance with no `reasoning` setting, for
+  the same reason it already excludes `plugins`.
+- **Vercel needs *no* per-provider mapping at all — this is the opposite of
+  the round-4 plan's assumption** ("Vercel needs per-underlying-provider
+  `providerOptions` mapping — messier, decide scope separately"). Current
+  Vercel docs (`/docs/ai-gateway/models-and-providers/reasoning`, fetched
+  2026-08-10, `last_updated: 2026-07-28`) describe a first-class top-level
+  `reasoning` option "available in AI SDK 7 and later" (this app is on
+  `ai@7`) that "works across providers" — OpenAI, Anthropic (adaptive effort
+  on Claude 4.6+, token-budget conversion on 4.5 and earlier), Google/Vertex
+  (`thinkingLevel`/`thinkingBudget`), and Amazon Bedrock — with the
+  translation happening **on Vercel's backend**, not in the npm package.
+  This was verified against the installed `@ai-sdk/gateway@4.0.46` source,
+  not just the docs: `GatewayLanguageModel.doStream()`/`doGenerate()` call
+  `getArgs()`, which returns `optionsWithoutSignal` — the *entire*
+  standardized `LanguageModelV4CallOptions` object, `reasoning` field
+  included — spread verbatim into the JSON POST body
+  (`postJsonToApi({ body: args, ... })`). `GatewayLanguageModelSpecification`
+  is typed as `Pick<LanguageModelV4, 'specificationVersion' | 'provider' |
+  'modelId'>` — the class is a transparent proxy with no provider-specific
+  logic of its own. `useVercelGateway()` therefore makes zero changes to
+  `getInstance()`; it only returns `reasoning: toReasoningEffort(...)` for
+  the call site to pass through the *same* top-level `streamText()` option
+  every direct-provider builder already sets. xAI is notably **absent**
+  from Vercel's own supported-provider table for this feature — the docs
+  say unsupported providers "ignore the option and emit an `unsupported`
+  warning" rather than erroring, so a reasoning request routed to an xAI
+  model via Vercel is expected to degrade gracefully, but this was not
+  independently confirmed against a live xAI-via-Vercel send (no key in
+  this environment — see "Known gaps requiring live verification" below).
+- **Cloudflare** gets no functional change. `useCloudflareGateway()`'s
+  signature does not even accept a reasoning parameter; `useGateway()`'s
+  dispatcher never passes one to it, and `GatewayChatResult.reasoning` stays
+  `undefined` for every Cloudflare send, identical to the pre-round-5 forced
+  `'off'` outcome.
+
+### Gateway image generation (round 5, 2026-08-10)
+
+`image_generation` is now a real, working tool for OpenRouter and Vercel —
+not routed through an AI SDK tool call the way direct-provider image
+generation is, but through each gateway's own native multimodal-output
+mechanism. Both are single-step by construction (no tool, no `stopWhen`):
+
+- **OpenRouter**: the chat-completions request param `modalities: ['image',
+  'text']` (verified against OpenRouter's current API reference —
+  `send-chat-completion-request` documents `modalities` as an array of
+  `'text' | 'image' | 'audio'` — and its multimodal-capabilities guide,
+  fetched 2026-08-10). This is **not** a typed field on the installed
+  `@openrouter/ai-sdk-provider@3.0.0`'s `OpenRouterChatSettings` (confirmed
+  absent from the package's `dist/index.d.ts`), so `useOpenRouterGateway()`
+  sends it through `extraBody`, which the provider's `getArgs()` spreads
+  onto the outgoing request body verbatim (confirmed in `dist/index.js`) —
+  the same escape hatch a typed SDK needs for any raw body field it doesn't
+  model. `tools` stays `{}`, no `toolChoice`; title generation never
+  receives `extraBody`, for the same reason it never receives `plugins` or
+  `reasoning`. A returned image arrives in the response as
+  `choice.message.images[]` (or the `delta.images` streaming equivalent),
+  which the installed provider maps to ordinary AI SDK `file` content parts
+  (confirmed in `dist/index.js`) — the exact same generic UI file-part
+  rendering path this app already uses for attachments and (post-
+  normalization) direct-provider generated images, so no client rendering
+  changes were needed at all.
+- **Vercel**: **no request parameter of any kind.** Current Vercel docs
+  (`/docs/ai-gateway/modalities/image-generation/ai-sdk`, fetched
+  2026-08-10) show Gemini `*-image` models (`google/gemini-2.5-flash-image`,
+  `google/gemini-3.1-flash-image-preview`, `google/gemini-3-pro-image`)
+  returning generated images from a plain `generateText`/`streamText` call
+  with nothing beyond `model` and `prompt` — the model id itself is the only
+  "configuration." Images surface in `result.files` (an array of
+  `GeneratedFile`, each with `.base64`/`.uint8Array`/`.mediaType`) and, at
+  the streaming-chunk level, as the same `file`-type chunks the OpenRouter
+  path produces — so `useVercelGateway()`'s `getInstance()` needed zero
+  changes for this either.
+- **Instructions**: `buildChatInstructions()` in `index.post.ts` now branches
+  on whether the send is a gateway send. Direct providers still get the
+  original "call `generate_image` exactly once" wording, which would
+  actively mislead a gateway send — there is no tool to call at all, so
+  gateway sends get a different instruction describing native image output
+  in prose instead.
+- **Persistence — the real work.** Gateway image output has no tool
+  wrapper, so it arrives as a plain `file` UI part carrying an inline
+  `data:<mediaType>;base64,<...>` URL straight from the AI SDK's own
+  file-chunk-to-UI-part mapping (`toUIMessageChunk()` in the installed `ai`
+  package builds exactly that URL shape). Left alone, that base64 blob would
+  land verbatim in the persisted `messages.parts` JSON column — unbounded
+  row growth, no R2 offload, no `files` table record, no storage-quota
+  accounting. `persistGatewayGeneratedImageParts()`
+  (`server/utils/files/assistant-files.ts`) closes this: it runs
+  unconditionally for every gateway send's assistant response (not gated on
+  `requestedTools` including `image_generation` — an inline-image `file`
+  part on an assistant message can only ever be genuine model output),
+  decodes the `data:` URL, reuses `validateGeneratedImage()` (the same
+  PNG/JPEG/WebP signature-sniffing direct-provider image generation already
+  uses — no duplicated validation logic) and `persistFile()` (the same R2
+  upload + `files` row insert direct-provider image generation already
+  uses), and rewrites the part to a `markUrlAsGeneratedFile()`-tagged
+  `/files/<storageKey>` URL. It runs **before**
+  `normalizeAssistantMessagePartsForPersistence()`, which is deliberately
+  left untouched: by the time that function's `assistantFileParts` filter
+  looks for parts whose URL isn't already `/files/`-prefixed, this step has
+  already rewritten every gateway-generated image part, so the
+  `enableAssistantFilePersistence` stub (an unrelated, still-unbuilt
+  general-purpose feature) never sees them and its existing pinned test
+  keeps passing unmodified. `originProvider` is set to the same
+  `telemetryProviderId` every other call in `persistAssistantMessageFromStream`
+  already threads through (`'openrouter'`/`'vercel-gateway'`, not the bare
+  `GatewayId`), so the existing `originMessageId`-linking `UPDATE ... WHERE
+  originProvider = ...` matches these rows for free, and the persisted file
+  ids fold into the same `generatedFileIds` array and `usedImageGeneration`
+  flag the direct-provider `tool-generate_image` path already populates.
+- **The read-path half of the same fix.** `reconstructGeneratedImageParts()`
+  (`server/utils/files/reconstruct-generated-image-parts.ts`) runs on every
+  chat-history load and rewrites a persisted `file` part with generated-image
+  origin metadata back into a richer `tool-generate_image` part for the
+  interactive image-generation card UI. Before round 5 its `hasOriginMetadata()`
+  guard only checked that `originProvider`/`originModel` were non-null — it
+  would have happily reconstructed a gateway-origin file too. That would have
+  been a real regression: the client's `getGenerateImageOutput()`
+  (`app/utils/generated-images.ts`) only recognizes `output.provider ===
+  'openai' | 'google'` and returns `null` for anything else, so a
+  reconstructed gateway-origin part would render as **nothing** —
+  the image would silently vanish on reload. `hasOriginMetadata()` now
+  allowlists `originProvider === 'openai' | 'google'` explicitly; a
+  gateway-origin file simply never gets reconstructed and keeps rendering
+  through the plain `file`-part path it already used, which this app's
+  message-part rendering already treats as first-class image content
+  (`shouldFitMessageBubble()`/`shouldFitMessageContent()` in
+  `app/utils/generated-images.ts` / `app/composables/chat-image-ui.ts`
+  already special-case any `type: 'file'` part whose `mediaType` starts with
+  `image/`, independent of whether it came from a tool or a gateway).
+- **Cost — no new code needed.** Unlike direct-provider image generation
+  (which needs `getImageGenerationCost()`'s static per-model price table,
+  because OpenAI/Google's SDKs report no per-request USD figure for
+  `generateImage()` calls), gateway image cost requires **zero new
+  computation**. OpenRouter's `usage.cost` — already read synchronously by
+  `readOpenRouterCost()`/`sumOpenRouterStepCosts()` for every gateway send —
+  is documented as "what the request cost," a whole-generation figure that
+  already includes any image-output surcharge (OpenRouter's own docs:
+  "per-image pricing on low-cost models starts around a cent, and each
+  response's `usage.cost` reports what the request cost"; billing is
+  all-or-nothing per generation, "either completed and billed in full, or
+  ... not billed"). Vercel's async `getGenerationInfo()` hop
+  (`persistVercelGenerationCost()`) is equally generation-scoped, not
+  token-scoped, so it already reflects whatever Vercel actually billed for
+  that generation regardless of modality mix. Concretely: `generatedImage`
+  (the variable that triggers the direct-provider `getImageGenerationCost()`
+  add-on in `index.post.ts`) is simply never set for gateway sends, so no
+  separate image cost is ever added on top of `resolveLiveGatewayCost()`'s
+  already-inclusive total — doing so would double-count. Neither
+  synchronous OpenRouter cost nor async Vercel cost was live-verified for an
+  actual image-output send in this environment (no keys here); see "Known
+  gaps requiring live verification" below.
+- **No aspect-ratio control.** Direct-provider image generation exposes
+  `aspectRatio` through the `generate_image` tool's own input schema
+  (`1:1`/`2:3`/`3:2`). Gateway image generation has no tool and therefore no
+  input schema to carry that parameter — the model picks its own output
+  dimensions from the prompt alone. This is a real, disclosed capability
+  gap versus the direct-provider path, not an oversight; closing it would
+  need OpenRouter/Vercel-specific request-shape research of its own (e.g.
+  OpenRouter's Gemini-specific `image_config` extension mentioned in its own
+  multimodal docs) and was out of scope for this round.
+- **No per-user concurrency lease/cooldown, unlike direct-provider
+  generation — flagged for explicit product-owner sign-off, not silently
+  decided.** Direct-provider image generation acquires
+  `acquireImageGenerationLease(userId)` before generating (one at a time per
+  account, `IMAGE_GENERATION_COOLDOWN_MS` after release) via
+  `server/utils/ai/image-generation-lock.ts`. `persistGatewayGeneratedImageParts()`
+  has no equivalent, because by the time it runs the image has already been
+  generated and billed on the user's own gateway key — rejecting the *save*
+  under a lease conflict would throw away something the user already paid
+  for, which is a materially different trade-off than the direct-provider
+  case (where the lease blocks *before* any spend happens). What this diff
+  does add: a per-image size bound (`maxGeneratedImageBase64Length`, checked
+  before base64 decode, not after) and a per-message image-count cap
+  (`maxGatewayGeneratedImagePartsPerMessage = 4`), so a single request's
+  decode/R2-write cost is bounded even without a cross-request lease. A
+  user firing many concurrent gateway chat sends with image generation
+  enabled is not throttled beyond that — accept as-is, or add a lighter
+  advisory rate-limit (e.g. per-user requests-per-minute) that logs/delays
+  rather than discards, are both reasonable; this needs a product decision,
+  not an engineering guess.
 
 ### Picker: grouping by underlying provider
 
@@ -810,6 +1028,10 @@ overlap the model name it sat next to.
   or has no `pricing` (a catalog miss, an unpriced model, an upstream
   outage), the estimate — and `totalCost` — stays unset exactly as before;
   no fallback number is ever guessed.
+
+None of the three mechanisms above add a separate line item for gateway
+image output — see the "Cost — no new code needed" bullet under "Gateway
+image generation" above for why that is deliberate and not a gap.
 
 `MessageUsage.totalCost` is a new optional field read by
 `shared/utils/message-metadata.ts`'s cost-display logic in preference to the
@@ -1110,6 +1332,44 @@ by its own PR's review and confirmed still open by the final cross-PR review:
     declaration was cached), but it would still need the cache key scoped
     per-account like Cloudflare's catalog cache already is.
 
+14. **OpenRouter reasoning and image-generation request shapes** (round 5,
+    2026-08-10) — `reasoning: { effort }` and `extraBody: { modalities:
+    ['image', 'text'] }` are both verified against the installed
+    `@openrouter/ai-sdk-provider@3.0.0`'s type definitions and compiled
+    source (confirmed the fields are read/forwarded correctly), and against
+    OpenRouter's current public docs for the wire-level request shape, but
+    neither was ever sent to OpenRouter's real API. Verify with one
+    reasoning-toggled send (any model reporting `supported_parameters:
+    'reasoning'`) and one image-generation send (a model reporting
+    `output_modalities` including `image`, e.g. `openai/gpt-5-image`),
+    confirming reasoning text streams for the first and an actual image
+    renders for the second.
+15. **Vercel reasoning translation and Gemini image output** (round 5,
+    2026-08-10) — the top-level `reasoning` passthrough was verified by
+    reading the installed `@ai-sdk/gateway@4.0.46` source directly
+    (`GatewayLanguageModel.getArgs()` forwards the whole call-options object
+    verbatim), and Gemini image output was verified against Vercel's own
+    current docs and example code, but neither was ever sent to Vercel's
+    real API. Additionally unconfirmed: whether xAI models routed through
+    Vercel actually degrade gracefully (docs say "ignore + warn") rather
+    than erroring when a reasoning level is requested, since xAI is absent
+    from Vercel's documented reasoning-provider table. Verify with a
+    reasoning-toggled send per underlying provider family (at minimum
+    OpenAI, Anthropic, Google via Vercel; xAI if reachable) and one
+    `google/gemini-*-image` send, confirming an image renders and, per item
+    16, that its cost is captured.
+16. **Gateway image-generation cost capture** (round 5, 2026-08-10) — no new
+    code was written for this (see "Gateway image generation" above): the
+    claim is that OpenRouter's existing synchronous `usage.cost` read and
+    Vercel's existing async `getGenerationInfo()` hop already report a
+    generation-scoped total inclusive of any image-output surcharge, based
+    on OpenRouter's own billing documentation and the pre-existing,
+    already-shipped cost-capture mechanism (nothing modality-specific in
+    either). Never confirmed against a real billed image-generation
+    request. Verify by sending one image-generation turn per gateway and
+    checking the context-menu cost is non-zero and roughly matches the
+    provider's own dashboard/billing figure for that generation.
+
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom
 event with the expected `attributes.chat.gateway*` fields — closes items 1-7
@@ -1123,7 +1383,10 @@ web-search toggle on: an OpenRouter model with no native `web_search_options`
 (any GPT-5.x) and a Vercel model without the `web-search` tag, each asked a
 current-events question — pass criteria are a current-facts answer, a
 visibly higher cost than the same prompt without the toggle, and (per item
-10) no hang waiting for a second turn.
+10) no hang waiting for a second turn. Items 14-16 (round 5) need their own
+pass, described inline above: one reasoning-toggled send and one
+image-generation send per gateway, checked for correct output and a
+non-zero, correctly-attributed cost.
 
 **Partially closed since**: the Vercel and OpenRouter *catalog* halves were
 driven end-to-end against the live upstream APIs (both are public and
@@ -1147,16 +1410,18 @@ direct-provider model (sent with tools requested) to a gateway model can hit
 the tool-rejection 400, because the server reads `selectedTools` from the
 *persisted first message* when the conversation has exactly one message —
 even though the client-side capability watcher already cleared the tools
-toggle for gateway mode. **Round 4 partially dissolved this**: `web_search`
-is now accepted for OpenRouter and Vercel, so this edge case only remains
-reachable for `image_generation` (still rejected on every gateway) or for a
-regenerate landing on Cloudflare (which rejects everything). Narrow (only
-the very first message of a conversation, only when switching models
-mid-session, only for a still-rejected tool) and graceful (a clear error,
-not a crash or silent failure), left as a known edge case rather than fixed,
-since closing it fully requires stripping first-turn tools server-side
-specifically for a gateway-model regenerate — a small feature in its own
-right.
+toggle for gateway mode. **Round 4 partially dissolved this** (`web_search`
+accepted for OpenRouter and Vercel), **and round 5 finished the job for
+OpenRouter/Vercel**: `image_generation` is accepted there too now, so
+neither tool this app currently has can trigger this edge case on those two
+gateways anymore. It remains reachable only for a regenerate landing on
+Cloudflare, which still rejects every tool. Narrow (only the very first
+message of a conversation, only when switching models mid-session, only
+when landing on the one gateway that rejects everything) and graceful (a
+clear error, not a crash or silent failure), left as a known edge case
+rather than fixed, since closing it fully requires stripping first-turn
+tools server-side specifically for a gateway-model regenerate — a small
+feature in its own right.
 
 An image attached earlier in a conversation under a vision-capable model can
 still reach the provider raw on a *later* turn if the user regenerates that

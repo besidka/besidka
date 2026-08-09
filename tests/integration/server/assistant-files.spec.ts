@@ -4,8 +4,43 @@ import { convertToModelMessages } from 'ai'
 import {
   getGeneratedImageFileIds,
   normalizeAssistantMessagePartsForPersistence,
+  persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
 } from '../../../server/utils/files/assistant-files'
+
+const mocks = vi.hoisted(() => ({
+  persistFile: vi.fn(),
+}))
+
+// assistant-files.ts statically imports persistFile for
+// persistGatewayGeneratedImageParts. The real persist-file.ts transitively
+// imports server/api/v1/storage/index.get.ts, a Nitro route file whose
+// module body calls the auto-imported defineEventHandler() at the top
+// level — unavailable in this bare (non-Nuxt-environment) test file, so it
+// must be mocked out before assistant-files.ts is ever imported for real,
+// exactly like tests/integration/server/image-generation.spec.ts already
+// does for the same import chain.
+vi.mock('~~/server/utils/files/persist-file', () => ({
+  persistFile: mocks.persistFile,
+}))
+
+function createWebPBytes(): Uint8Array {
+  return new Uint8Array([
+    0x52, 0x49, 0x46, 0x46,
+    0x12, 0x00, 0x00, 0x00,
+    0x57, 0x45, 0x42, 0x50,
+    0x56, 0x50, 0x38, 0x4c,
+    0x06, 0x00, 0x00, 0x00,
+    0x2f, 0x00, 0x00, 0x00,
+    0x00, 0x00,
+  ])
+}
+
+function buildImageDataUrl(bytes: Uint8Array, mediaType: string): string {
+  const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('')
+
+  return `data:${mediaType};base64,${btoa(binary)}`
+}
 
 function createGeneratedImageFileRow(
   overrides: Record<string, unknown> = {},
@@ -836,5 +871,268 @@ describe('assistant files scaffolding', () => {
     ])
     expect(JSON.stringify(normalizedParts)).not.toContain('sk-secret')
     expect(JSON.stringify(normalizedParts)).not.toContain('javascript:')
+  })
+})
+
+describe('persistGatewayGeneratedImageParts', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    mocks.persistFile.mockReset()
+  })
+
+  it('uploads an inline data: URL image part to R2 and rewrites it to a '
+    + '/files/ URL, tracking the persisted file id', async () => {
+    mocks.persistFile.mockResolvedValue({
+      id: 'file-42',
+      storageKey: 'generated-42.webp',
+      name: 'generated-image-1.webp',
+      size: 26,
+      type: 'image/webp',
+      source: 'assistant',
+      expiresAt: null,
+    })
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        url: buildImageDataUrl(createWebPBytes(), 'image/webp'),
+      },
+      {
+        type: 'text',
+        text: 'Here is your generated image.',
+      },
+    ] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-1',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.fileIds).toEqual(['file-42'])
+    expect(result.parts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'generated-image-1.webp',
+        url: '/files/generated-42.webp?generated=1',
+      },
+      {
+        type: 'text',
+        text: 'Here is your generated image.',
+      },
+    ])
+    expect(mocks.persistFile).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 7,
+      mediaType: 'image/webp',
+      source: 'assistant',
+      originProvider: 'openrouter',
+      originModel: 'openai/gpt-5-image',
+    }))
+  })
+
+  it('leaves parts untouched when the response has no gateway image parts',
+    async () => {
+      const parts: UIMessage['parts'] = [
+        { type: 'text', text: 'Just text, no image.' },
+      ] as any
+
+      const result = await persistGatewayGeneratedImageParts({
+        parts,
+        userId: 7,
+        chatId: 'chat-gateway-2',
+        gatewayId: 'vercel-gateway',
+        modelId: 'google/gemini-3.1-flash-image-preview',
+        logger: { set: vi.fn() },
+      })
+
+      expect(result.parts).toEqual(parts)
+      expect(result.fileIds).toEqual([])
+      expect(mocks.persistFile).not.toHaveBeenCalled()
+    })
+
+  it('replaces a malformed inline image with a failure text part instead '
+    + 'of throwing', async () => {
+    const parts: UIMessage['parts'] = [{
+      type: 'file',
+      mediaType: 'image/webp',
+      url: 'data:image/webp;base64,bm90LWFuLWltYWdl',
+    }] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-3',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.parts).toEqual([{
+      type: 'text',
+      text: 'An image was generated but could not be saved.',
+    }])
+    expect(result.fileIds).toEqual([])
+    expect(mocks.persistFile).not.toHaveBeenCalled()
+  })
+
+  it('replaces the part with a failure text and logs when persistFile '
+    + 'rejects (e.g. storage quota exceeded)', async () => {
+    const loggerSet = vi.fn()
+
+    mocks.persistFile.mockRejectedValue(new Error('quota exceeded'))
+
+    const parts: UIMessage['parts'] = [{
+      type: 'file',
+      mediaType: 'image/webp',
+      url: buildImageDataUrl(createWebPBytes(), 'image/webp'),
+    }] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-4',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+      logger: { set: loggerSet },
+    })
+
+    expect(result.parts).toEqual([{
+      type: 'text',
+      text: 'An image was generated but could not be saved.',
+    }])
+    expect(result.fileIds).toEqual([])
+    expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      assistantFiles: expect.objectContaining({
+        action: 'gateway-image-persist-failed',
+        chatId: 'chat-gateway-4',
+        userId: 7,
+      }),
+      attributes: {
+        assistantFiles: {
+          providerId: 'openrouter',
+          error: 'quota exceeded',
+        },
+      },
+    }))
+  })
+
+  it('ignores a non-image file part, e.g. one already persisted as a '
+    + '/files/ URL', async () => {
+    const parts: UIMessage['parts'] = [{
+      type: 'file',
+      mediaType: 'application/pdf',
+      filename: 'notes.pdf',
+      url: '/files/notes.pdf',
+    }] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-5',
+      gatewayId: 'vercel-gateway',
+      modelId: 'anthropic/claude-opus-5',
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.parts).toEqual(parts)
+    expect(result.fileIds).toEqual([])
+    expect(mocks.persistFile).not.toHaveBeenCalled()
+  })
+
+  it('rejects an inline image whose base64 payload exceeds the size bound '
+    + 'before ever calling atob(), instead of decoding it first', async () => {
+    const oversizedBase64 = 'A'.repeat(15 * 1024 * 1024)
+
+    const parts: UIMessage['parts'] = [{
+      type: 'file',
+      mediaType: 'image/webp',
+      url: `data:image/webp;base64,${oversizedBase64}`,
+    }] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-6',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.parts).toEqual([{
+      type: 'text',
+      text: 'An image was generated but could not be saved.',
+    }])
+    expect(result.fileIds).toEqual([])
+    expect(mocks.persistFile).not.toHaveBeenCalled()
+  })
+
+  it('caps the number of inline images persisted from a single response, '
+    + 'so one turn cannot force unbounded decode/R2-write work', async () => {
+    mocks.persistFile.mockImplementation(async (input: any) => ({
+      id: `file-${input.originModel}`,
+      storageKey: `${input.originModel}.webp`,
+      name: input.fileName,
+      size: 26,
+      type: 'image/webp',
+      source: 'assistant',
+      expiresAt: null,
+    }))
+
+    const imageUrl = buildImageDataUrl(createWebPBytes(), 'image/webp')
+    const parts: UIMessage['parts'] = Array.from({ length: 6 }, () => ({
+      type: 'file',
+      mediaType: 'image/webp',
+      url: imageUrl,
+    })) as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-7',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.persistFile).toHaveBeenCalledTimes(4)
+    expect(result.fileIds).toHaveLength(4)
+
+    const failureParts = result.parts.filter((part) => {
+      return part.type === 'text'
+        && part.text === 'An image was generated but could not be saved.'
+    })
+
+    expect(failureParts).toHaveLength(2)
+  })
+
+  it('replaces a non-image inline data: URL part with a failure text '
+    + 'placeholder instead of persisting the raw blob into messages.parts',
+  async () => {
+    const parts: UIMessage['parts'] = [{
+      type: 'file',
+      mediaType: 'audio/mpeg',
+      url: 'data:audio/mpeg;base64,bm90LWFuLWltYWdl',
+    }] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-8',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5-image',
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.parts).toEqual([{
+      type: 'text',
+      text: 'The model returned a file this app does not yet support saving.',
+    }])
+    expect(result.fileIds).toEqual([])
+    expect(mocks.persistFile).not.toHaveBeenCalled()
   })
 })

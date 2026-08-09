@@ -91,7 +91,13 @@ describe('useGateway dispatch', () => {
     }))
 
     const { useGateway } = await importGatewaysIndex()
-    const result = await useGateway('vercel', '1', 'openai/gpt-4o', [])
+    const result = await useGateway(
+      'vercel',
+      '1',
+      'openai/gpt-4o',
+      [],
+      'off',
+    )
 
     expect(result).toBe(vercelResult)
   })
@@ -119,6 +125,7 @@ describe('useGateway dispatch', () => {
       '1',
       'anthropic/claude-opus-5',
       [],
+      'off',
     )
 
     expect(result).toBe(openRouterResult)
@@ -142,7 +149,13 @@ describe('useGateway dispatch', () => {
     }))
 
     const { useGateway } = await importGatewaysIndex()
-    const result = await useGateway('cloudflare', '1', 'llama-3.3-70b', [])
+    const result = await useGateway(
+      'cloudflare',
+      '1',
+      'llama-3.3-70b',
+      [],
+      'off',
+    )
 
     expect(result).toBe(cloudflareResult)
   })
@@ -171,12 +184,81 @@ describe('useGateway dispatch', () => {
 
     const { useGateway } = await importGatewaysIndex()
 
-    await useGateway('cloudflare', '1', 'llama-3.3-70b', ['web_search'])
+    await useGateway(
+      'cloudflare',
+      '1',
+      'llama-3.3-70b',
+      ['web_search'],
+      'high',
+    )
 
     expect(cloudflareGatewayMock).toHaveBeenCalledWith(
       '1',
       'llama-3.3-70b',
       undefined,
+    )
+  })
+
+  it('threads requestedReasoning into the Vercel builder', async () => {
+    const vercelGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    }))
+
+    vi.doMock('../../../../server/utils/gateways/vercel', () => ({
+      useVercelGateway: vercelGatewayMock,
+    }))
+    vi.doMock('../../../../server/utils/gateways/openrouter', () => ({
+      useOpenRouterGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
+
+    const { useGateway } = await importGatewaysIndex()
+
+    await useGateway('vercel', '1', 'openai/gpt-4o', [], 'medium')
+
+    expect(vercelGatewayMock).toHaveBeenCalledWith(
+      '1',
+      'openai/gpt-4o',
+      [],
+      'medium',
+      undefined,
+    )
+  })
+
+  it('threads requestedReasoning into the OpenRouter builder', async () => {
+    const openRouterGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    }))
+
+    vi.doMock('../../../../server/utils/gateways/vercel', () => ({
+      useVercelGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
+    vi.doMock('../../../../server/utils/gateways/openrouter', () => ({
+      useOpenRouterGateway: openRouterGatewayMock,
+    }))
+
+    const { useGateway } = await importGatewaysIndex()
+
+    await useGateway(
+      'openrouter',
+      '1',
+      'anthropic/claude-opus-5',
+      [],
+      'low',
+    )
+
+    expect(openRouterGatewayMock).toHaveBeenCalledWith(
+      '1',
+      'anthropic/claude-opus-5',
+      [],
+      'low',
     )
   })
 })

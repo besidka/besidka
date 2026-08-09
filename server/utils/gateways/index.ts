@@ -3,6 +3,7 @@ import type { LanguageModel, ProviderMetadata } from 'ai'
 import type { GatewayProvider } from '@ai-sdk/gateway'
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ModelTool } from '#shared/types/providers.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import { useVercelGateway } from './vercel'
@@ -40,6 +41,17 @@ export interface GatewayChatResult {
    * in `shared/utils/gateway-pricing.ts`).
    */
   pricing?: GatewayModel['pricing']
+  /**
+   * Mirrors the direct-provider builders' `reasoning` field
+   * (`toReasoningEffort()`'s output): the value the call site assigns to
+   * `streamText`'s top-level `reasoning` option. Only ever set by the
+   * OpenRouter and Vercel builders — Cloudflare has no functional reasoning
+   * mechanism wired (see `isGatewayReasoningSupported` in
+   * `shared/utils/gateway-capabilities.ts`), so its result never carries
+   * this field and `reasoningEffort` stays `undefined` at the call site,
+   * same as before this field existed.
+   */
+  reasoning?: 'low' | 'medium' | 'high'
 }
 
 /**
@@ -47,22 +59,38 @@ export interface GatewayChatResult {
  * the per-provider `switch` in the chat route. Reuses `provider-meta.ts`'s
  * `keyProviderId` field for the DB key lookup instead of re-declaring a
  * `GatewayId -> keys.provider` mapping here. `requestedTools` is only ever
- * `web_search` at this point (the gate in `index.post.ts` already rejected
- * anything else) — Cloudflare's builder ignores it entirely since it has no
- * tool it could wire.
+ * `web_search` or `image_generation` at this point (the gate in
+ * `index.post.ts` already rejected anything a gateway's policy disallows) —
+ * Cloudflare's builder ignores it entirely since it has no tool it could
+ * wire. `requestedReasoning` is threaded to OpenRouter and Vercel only, per
+ * `isGatewayReasoningSupported()` — Cloudflare's builder has no equivalent
+ * parameter and simply never reasons functionally, matching its `undefined`
+ * `GatewayChatResult.reasoning`.
  */
 export async function useGateway(
   gatewayId: ChatGatewayId,
   userId: string,
   modelId: string,
   requestedTools: ModelTool[],
+  requestedReasoning: ReasoningLevel,
   logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   switch (gatewayId) {
     case 'vercel':
-      return await useVercelGateway(userId, modelId, requestedTools, logger)
+      return await useVercelGateway(
+        userId,
+        modelId,
+        requestedTools,
+        requestedReasoning,
+        logger,
+      )
     case 'openrouter':
-      return await useOpenRouterGateway(userId, modelId, requestedTools)
+      return await useOpenRouterGateway(
+        userId,
+        modelId,
+        requestedTools,
+        requestedReasoning,
+      )
     case 'cloudflare':
       return await useCloudflareGateway(userId, modelId, logger)
   }

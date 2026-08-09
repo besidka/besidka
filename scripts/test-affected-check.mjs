@@ -64,6 +64,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/files-index.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
+    'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
     'tests/integration/server/file-download.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
@@ -971,7 +972,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
-      tests: ['tests/integration/api/chats-detail.spec.ts'],
+      tests: [
+        'tests/integration/api/chats-detail.spec.ts',
+        'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,

@@ -96,6 +96,7 @@ export default defineEventHandler(async (event) => {
       session.user.id,
       body.data.model,
       [],
+      'off',
     )
 
     title = await generateChatTitle(initialMessages)
