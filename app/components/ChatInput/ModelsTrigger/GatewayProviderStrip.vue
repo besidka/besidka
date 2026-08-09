@@ -28,7 +28,7 @@
         <ProviderIcon
           :provider-id="provider.prefix"
           :label="provider.prefix"
-          class="size-3.5 shrink-0"
+          class="!size-3.5 shrink-0"
         />
         <span class="truncate">
           {{ provider.prefix }}
