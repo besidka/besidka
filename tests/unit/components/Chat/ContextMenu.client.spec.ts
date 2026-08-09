@@ -1503,4 +1503,22 @@ describe('Chat/ContextMenu.client', () => {
       anchorElB.remove()
     })
   })
+
+  describe('overflow containment', () => {
+    it('opts out of the daisyUI menu column wrap so tall content scrolls vertically', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const classes = wrapper.find('ul').classes()
+
+      expect(classes).toContain('flex-nowrap')
+      expect(classes).toContain('overflow-y-auto')
+      expect(classes).toContain('overflow-x-hidden')
+    })
+  })
 })
