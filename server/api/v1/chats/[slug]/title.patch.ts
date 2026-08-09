@@ -170,6 +170,17 @@ export default defineEventHandler(async (event) => {
         title = await generateChatTitle(initialMessages)
         break
       }
+      case 'qwen': {
+        const { generateChatTitle } = await useQwen(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
     }
   }
 

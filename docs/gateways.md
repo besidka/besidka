@@ -1,4 +1,4 @@
-# Providers and gateways: xAI/DeepSeek/Moonshot AI + Vercel/Cloudflare/OpenRouter
+# Providers and gateways: xAI/DeepSeek/Moonshot AI/Qwen + Vercel/Cloudflare/OpenRouter
 
 Besidka's BYOK model catalog has two independent halves that must never be
 merged into one data structure: **direct providers** (curated, build-time,
@@ -8,12 +8,12 @@ behind it — it replaces a temporary planning document
 (`docs/_wip-plan-providers-gateways.md`) used during development and deleted
 once the last PR in the stack landed.
 
-## Direct providers: xAI, DeepSeek, Moonshot AI
+## Direct providers: xAI, DeepSeek, Moonshot AI, Qwen
 
 Added alongside the pre-existing Anthropic/Google/OpenAI providers, following
 the exact same pattern documented in `docs/models-data-fetching.md`:
-`providers/{xai,deepseek,moonshotai}.ts` hold curated capabilities, merged at
-import time against `providers/data/models-dev-snapshot.json`.
+`providers/{xai,deepseek,moonshotai,qwen}.ts` hold curated capabilities,
+merged at import time against `providers/data/models-dev-snapshot.json`.
 
 - **xAI**: `grok-4.20-0309-non-reasoning` (default/first-listed),
   `grok-4.20-0309-reasoning`, `grok-4.5`. Note the dated model ids — the
@@ -40,19 +40,109 @@ import time against `providers/data/models-dev-snapshot.json`.
   `reasoningAlwaysOn: true` rather than a `reasoning` toggle; see the xAI
   entry above for the parallel case and `providers/merge.ts`'s
   `curatedCapabilities()` for how the flag is threaded.
+- **Qwen**: `qwen3.7-plus` (default/first-listed), `qwen3.7-max`,
+  `qwen3.6-flash`. All three get a toggle-only `reasoning` capability
+  (`enable_thinking`, see below) and no tools. Deliberately **not** curated
+  with the bare `qwen-max`/`qwen-plus`/`qwen-flash`/`qwen-turbo` ids Alibaba's
+  own docs lead with: Alibaba's own release notices confirm those unversioned
+  names are rolling aliases that get silently repointed to a newer dated
+  snapshot over time (e.g. `qwen-plus` → `qwen-plus-2025-07-28`), the same
+  "moving target" problem `docs/models-data-fetching.md` already rejected
+  OpenAI's `-latest` aliases for. The numbered `qwen3.x` releases are fixed
+  point releases instead. The very latest `qwen3.8-max` (released days before
+  this was written) was deliberately left out too — its reasoning is a
+  three-way `toggle`/`effort` (`low`/`medium`/`xhigh`)/`budget_tokens` choice,
+  and mapping this app's `low`/`medium`/`high` levels onto DashScope's
+  `xhigh` would need a dedicated translation this app's `ReasoningLevel` type
+  doesn't have prior art for; all three curated models exclusively expose the
+  simpler toggle, avoiding that risk entirely for this initial pass.
 
-Server-side wiring lives in `server/utils/providers/{xai,deepseek,moonshotai}.ts`,
-matching the existing `use<Provider>()` contract. **Moonshot needs one
-non-obvious guard**: its API rejects a request that sends both a `thinking`
-param and an auto-derived `reasoning_effort` — this app avoids the conflict by
-never setting the top-level `reasoning` streamText option for Moonshot
-models, only `providerOptions.moonshotai.thinking` directly.
+Server-side wiring lives in
+`server/utils/providers/{xai,deepseek,moonshotai,qwen}.ts`, matching the
+existing `use<Provider>()` contract. **Moonshot needs one non-obvious
+guard**: its API rejects a request that sends both a `thinking` param and an
+auto-derived `reasoning_effort` — this app avoids the conflict by never
+setting the top-level `reasoning` streamText option for Moonshot models,
+only `providerOptions.moonshotai.thinking` directly.
 
 **Package version note**: `@ai-sdk/deepseek@3.x` and `@ai-sdk/moonshotai@3.x`
 ship on a lower major than this app's `ai@7`/`@ai-sdk/provider@4` line
 (`@ai-sdk/xai@4.x` matches). Verified compatible via typecheck/build/full test
 suite, but this was never proven with a real live API call — see "Owner
 action items" below.
+
+### Qwen: openai-compatible mechanism, not a dedicated SDK
+
+Alibaba's community `qwen-ai-provider` npm package pins `zod@^3.25.49`
+(confirmed via `npm view qwen-ai-provider peerDependencies` at the time this
+was added), which conflicts with this app's `zod@^4` line — the same
+incompatibility a prior round of this initiative already found and rejected.
+DashScope (Alibaba's Model Studio API) has a genuine OpenAI-compatible mode,
+so Qwen is wired through the generic `@ai-sdk/openai-compatible` package
+instead — the exact same SDK mechanism `server/utils/gateways/cloudflare.ts`
+already uses for the Cloudflare AI Gateway, but with `useXai`/`useDeepSeek`'s
+direct-provider function contract (its own `keys` table lookup scoped to
+`provider: 'qwen'`, returning `{ instance, generateChatTitle, tools,
+providerOptions, reasoning }`) rather than the gateway builders' `useVercelGateway`
+/`useCloudflareGateway`-style `GatewayChatResult` shape.
+
+The base URL is `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
+(`server/utils/providers/qwen.ts`'s `QWEN_BASE_URL`), Alibaba's international
+region endpoint. Verified three ways: Alibaba's own current docs
+(`https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope`),
+which confirm this exact domain is "fully functional" even though a newer
+per-workspace domain (`https://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com`)
+is now recommended for performance; a third-party mirror (liteLLM's DashScope
+provider docs) independently listing the same URL; and — most decisively —
+models.dev's own `alibaba` provider entry, whose `api` field is literally
+`https://dashscope-intl.aliyuncs.com/compatible-mode/v1` with `npm:
+"@ai-sdk/openai-compatible"`. The newer per-workspace domain was deliberately
+not used: it needs a Workspace ID collected as a second credential field,
+while the existing domain keeps Qwen on the single-`apiKey`-field shape every
+other direct provider in this app uses. DashScope's China-mainland endpoint
+(`https://dashscope.aliyuncs.com/compatible-mode/v1`) is not used — Besidka
+is not China-region-specific.
+
+DashScope's thinking mode is a plain `enable_thinking` boolean forwarded
+directly in the request body (via `extra_body` in Alibaba's own Python/Node
+SDK examples, but just a normal body field over raw HTTP), not an
+OpenAI-style `reasoning_effort` string. `@ai-sdk/openai-compatible` forwards
+any `providerOptions.qwen` key it doesn't itself recognize (`user`,
+`reasoningEffort`, `textVerbosity`, `strictJsonSchema`) straight into the
+JSON body untouched, so `useQwen()` sets `providerOptions.qwen.enable_thinking`
+directly — same `Object.assign`-into-a-typed-`{}` pattern `useXai()` uses to
+route around `SharedV2ProviderOptions`'s `Record<string, Record<string,
+JSONValue>>` shape rejecting a flat boolean value at the type level.
+
+### models.dev catalog key: `alibaba`, not `qwen`
+
+`scripts/fetch-models-metadata.mjs` looks up each curated provider's
+models.dev entry via `catalog[provider.id]?.models` for every other
+provider, but models.dev lists Qwen's models under the top-level key
+`alibaba` (confirmed via `curl -s https://models.dev/api.json | jq
+'keys'`), not `qwen` — this app's own `provider.id` is `qwen` for good
+reason (it's also the DB `keys.provider` value, the `keyProviderId`, and the
+`ProviderIcon`/`provider-meta` lookup key, all of which have real blast
+radius if renamed). `providers/merge.ts`'s `CuratedProvider` interface
+gained an optional `modelsDevKey?: string` field for exactly this
+divergence; `providers/qwen.ts` sets `modelsDevKey: 'alibaba'`, and the fetch
+script now resolves `provider.modelsDevKey ?? provider.id` at both of its
+two `catalog[...]` lookup sites instead of assuming `provider.id` always
+matches. No other curated provider needs this override today — xAI,
+DeepSeek, Moonshot AI, OpenAI, Anthropic and Google all use identical ids on
+both sides.
+
+### Missing brand icon (disclosed gap)
+
+`app/components/ProviderIcon.vue` has no Qwen/Alibaba brand SVG — none
+exists anywhere in this codebase's icon assets, and the component's own
+comment already lists `qwen` as an example of a vendor slug with no matching
+icon (from gateway-model rows, before Qwen was a direct provider here). No
+new branch was added to the component: the existing generic two-letter-badge
+fallback (`Qw`, from `providerMeta.qwen.label`) already covers it correctly,
+the same accepted pattern this initiative's WP0 established for unmatched
+gateway-model vendor prefixes. A real Qwen/Alibaba brand asset is left for
+the product owner to add later.
 
 `providers/index.ts`'s default-model resolution had a latent bug fixed while
 adding these three: a later provider's `default: true` model would silently
@@ -364,8 +454,11 @@ None of these were verified against a real account/credential in the
 development environment (no live API keys were available). Each was flagged
 by its own PR's review and confirmed still open by the final cross-PR review:
 
-1. **Real streamed chat completions** through all 8 new direct-provider
-   models and all 3 gateways — `pnpm run preview` (workerd) with real keys.
+1. **Real streamed chat completions** through all 11 new direct-provider
+   models (8 xAI/DeepSeek/Moonshot AI + 3 Qwen) and all 3 gateways —
+   `pnpm run preview` (workerd) with real keys. Qwen carries the same
+   unverified-`enable_thinking` risk category as the other three providers'
+   reasoning wiring below.
 2. **Cloudflare's catalog response shape** — the normalizer is built against
    OpenRouter's own published OpenAPI schema for the "marketplace" format
    Cloudflare's docs say `format=openrouter` returns, but this was never hit
@@ -447,9 +540,11 @@ other model whose vision support this app doesn't yet know.
 Nothing is required to deploy. Specifically:
 
 - No new secrets or environment variables — this remains 100% BYOK.
-- No destructive migrations — every schema change across all 7 PRs was a
-  purely additive `ALTER TABLE ADD COLUMN` or a TS-only enum widening with no
-  SQL-level change.
+- No destructive migrations — every schema change across all 8 PRs (Qwen
+  included) was a purely additive `ALTER TABLE ADD COLUMN` or a TS-only enum
+  widening with no SQL-level change; Qwen's `keys.provider` addition
+  generated no migration file at all (`pnpm run db:generate` reported "No
+  schema changes, nothing to migrate").
 - The live-verification gate above is a strong recommendation, not a hard
   deploy blocker — BYOK means a failure only affects the specific user
   testing a specific gateway, not the app as a whole.

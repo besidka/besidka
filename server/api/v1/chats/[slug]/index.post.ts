@@ -728,6 +728,28 @@ export default defineEventHandler(async (event) => {
 
           break
         }
+        case 'qwen': {
+          const {
+            instance: qwenInstance,
+            tools: qwenTools,
+            providerOptions: qwenProviderOptions,
+            reasoning: qwenReasoning,
+          } = await useQwen(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
+
+          instance = qwenInstance
+          parsedTools = qwenTools
+          reasoningEffort = qwenReasoning
+          Object.assign(providerOptions, {
+            qwen: qwenProviderOptions,
+          })
+
+          break
+        }
         default:
           throw createError({
             message: 'Unsupported provider',
@@ -1585,6 +1607,7 @@ const supportedProviderIds: SupportedProviderId[] = [
   'xai',
   'deepseek',
   'moonshotai',
+  'qwen',
 ]
 
 function toSupportedProviderId(

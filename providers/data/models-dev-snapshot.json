@@ -925,5 +925,73 @@
       "input": 3,
       "output": 15
     }
+  },
+  "qwen3.7-plus": {
+    "name": "Qwen3.7 Plus",
+    "description": "Multimodal Qwen workhorse for long-context agents, visual inputs, and coding",
+    "releaseDate": "2026-06-02",
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.5,
+      "output": 3
+    },
+    "tieredPricing": true
+  },
+  "qwen3.7-max": {
+    "name": "Qwen3.7 Max",
+    "description": "Qwen frontier model tuned for agent frameworks, coding assistants, and long tasks",
+    "releaseDate": "2026-05-21",
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2.5,
+      "output": 7.5
+    }
+  },
+  "qwen3.6-flash": {
+    "name": "Qwen3.6 Flash",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-04-27",
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.1875,
+      "output": 1.125
+    }
   }
 }

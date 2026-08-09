@@ -4,7 +4,7 @@ The model catalog is split in two halves that are merged at import time.
 
 | Half | Lives in | Owner |
 |---|---|---|
-| Capabilities and product decisions | `providers/{anthropic,google,openai,xai,deepseek,moonshotai}.ts` | hand-curated |
+| Capabilities and product decisions | `providers/{anthropic,google,openai,xai,deepseek,moonshotai,qwen}.ts` | hand-curated |
 | Objective metadata | `providers/data/models-dev-snapshot.json` | generated from [models.dev](https://models.dev) |
 
 `providers/index.ts` joins them through `mergeModelMetadata()` in

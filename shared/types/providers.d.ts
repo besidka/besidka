@@ -8,6 +8,7 @@ export type SupportedProviderId
     | 'xai'
     | 'deepseek'
     | 'moonshotai'
+    | 'qwen'
 
 export type ModelTool = 'web_search' | 'image_generation'
 
