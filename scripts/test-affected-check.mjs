@@ -275,6 +275,11 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-hosts.spec.ts',
   ]
 
+  const gatewayCatalogTests = [
+    'tests/unit/utils/gateway-catalog-normalize.spec.ts',
+    'tests/integration/api/gateways-models.spec.ts',
+  ]
+
   const turnstileTests = [
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
@@ -368,6 +373,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts)\.ts$/,
       tests: [...emailTests, ...authSecurityTests],
+    },
+    {
+      pattern:
+        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|app\/composables\/gateway-catalog\.ts)$/,
+      tests: gatewayCatalogTests,
     },
     {
       pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,
