@@ -174,15 +174,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (gatewayId === 'cloudflare') {
-    throw createError({
-      message: 'Cloudflare AI Gateway is not yet supported.',
-      status: 400,
-      why: 'Cloudflare AI Gateway execution ships in a later release.',
-      fix: 'Choose a different gateway or a direct provider model.',
-    })
-  }
-
   const selectedTools = chat.messages.length === 1
     ? chat.messages[0]?.tools || []
     : body.data.tools

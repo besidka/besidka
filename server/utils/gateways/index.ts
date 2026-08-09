@@ -6,8 +6,9 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import { useVercelGateway } from './vercel'
 import { useOpenRouterGateway } from './openrouter'
+import { useCloudflareGateway } from './cloudflare'
 
-export type ChatGatewayId = Exclude<GatewayId, 'cloudflare'>
+export type ChatGatewayId = GatewayId
 
 export interface GatewayChatResult {
   instance: LanguageModel
@@ -25,10 +26,9 @@ export interface GatewayChatResult {
 
 /**
  * Dispatches to the per-gateway builder by `keyProviderId` lookup — mirrors
- * the per-provider `switch` in the chat route, but scoped to the two
- * gateways that can actually execute a completion today. Reuses
- * `provider-meta.ts`'s `keyProviderId` field for the DB key lookup instead
- * of re-declaring a `GatewayId -> keys.provider` mapping here.
+ * the per-provider `switch` in the chat route. Reuses `provider-meta.ts`'s
+ * `keyProviderId` field for the DB key lookup instead of re-declaring a
+ * `GatewayId -> keys.provider` mapping here.
  */
 export async function useGateway(
   gatewayId: ChatGatewayId,
@@ -40,11 +40,16 @@ export async function useGateway(
       return await useVercelGateway(userId, modelId)
     case 'openrouter':
       return await useOpenRouterGateway(userId, modelId)
+    case 'cloudflare':
+      return await useCloudflareGateway(userId, modelId)
   }
 }
 
 export function keyProviderIdForGateway(gatewayId: 'vercel'): 'vercel-gateway'
 export function keyProviderIdForGateway(gatewayId: 'openrouter'): 'openrouter'
+export function keyProviderIdForGateway(
+  gatewayId: 'cloudflare',
+): 'cloudflare-gateway'
 export function keyProviderIdForGateway(gatewayId: GatewayId): string
 export function keyProviderIdForGateway(gatewayId: GatewayId): string {
   return providerMeta[gatewayId]?.keyProviderId ?? gatewayId
