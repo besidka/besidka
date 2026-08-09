@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
 import {
+  formatGatewayPrice,
+  formatGatewayPriceDetail,
   formatModelTokenLimit,
   formatReleaseDate,
   getModelCategory,
@@ -236,5 +238,40 @@ describe('modelCategoryOptions', () => {
     for (const category of categories) {
       expect(optionValues).toContain(category)
     }
+  })
+})
+
+describe('gateway pricing', () => {
+  it('scales per-token gateway prices up to a per-million figure', () => {
+    expect(formatGatewayPrice({ input: '0.0000025', output: '0.00001' }))
+      .toBe('$2.50/$10.00 per 1M')
+  })
+
+  it('absorbs the float error the scale-up introduces', () => {
+    expect(Number('0.0000029') * 1_000_000).toBe(2.9000000000000004)
+    expect(formatGatewayPrice({ input: '0.0000029', output: '0.0000029' }))
+      .toBe('$2.90/$2.90 per 1M')
+  })
+
+  it('keeps sub-dollar prices readable', () => {
+    expect(formatGatewayPrice({ input: '0.00000005', output: '0.0000002' }))
+      .toBe('$0.050/$0.200 per 1M')
+  })
+
+  it('labels a zero-cost model as free', () => {
+    expect(formatGatewayPrice({ input: '0', output: '0' })).toBe('Free')
+    expect(formatGatewayPriceDetail({ input: '0', output: '0' })).toBe('Free')
+  })
+
+  it('spells out the unit in the detail form', () => {
+    expect(formatGatewayPriceDetail({ input: '0.0000025', output: '0.00001' }))
+      .toBe('$2.50 in / $10.00 out per 1M tokens')
+  })
+
+  it('returns nothing when pricing is missing or unparseable', () => {
+    expect(formatGatewayPrice(undefined)).toBeUndefined()
+    expect(formatGatewayPrice({ input: 'n/a', output: '0.001' }))
+      .toBeUndefined()
+    expect(formatGatewayPriceDetail(undefined)).toBeUndefined()
   })
 })
