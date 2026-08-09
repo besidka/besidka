@@ -4,6 +4,7 @@ export function useChatInput() {
   const { selection, userModel } = useUserModel()
   const { hasKeyForProvider } = useUserKeys()
   const { isImageInputSupported } = useImageInputSupport()
+  const { gatewayModel } = useSelectedModelInfo()
 
   const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
@@ -23,7 +24,22 @@ export function useChatInput() {
     return !!researchConfig.value
   })
 
+  /**
+   * Gateway models resolve web search through the shared catalog signal
+   * (`GatewayModel.supportsWebSearch`, `'native' | 'universal' | undefined`)
+   * instead of a curated `tools` array — any resolved value means the send
+   * gate (`isGatewayToolAllowed` in `#shared/utils/gateway-capabilities`)
+   * will accept the request. Reads from the already-cached catalog only, so
+   * a persisted gateway selection resolves to `false` until the picker has
+   * fetched that gateway's catalog at least once this session — the same
+   * fail-closed shape the gateway image-input check avoids by failing open,
+   * but web search has no safe "assume yes" default the way vision does.
+   */
   const isWebSearchSupported = computed<boolean>(() => {
+    if (selection.value.source === 'gateway') {
+      return gatewayModel.value?.supportsWebSearch !== undefined
+    }
+
     return !!selectedModel.value?.tools.includes('web_search')
   })
 

@@ -127,6 +127,38 @@ and Moonshot AI ("I don't believe it doesn't support web_search. their docs
 mentioned they do"). Each was verified against the provider's official docs
 on 2026-08-09; the outcomes deliberately differ per provider.
 
+**Round 4 re-verification (2026-08-09, QW4).** The user raised the same
+suspicion again for Qwen's `qwen3.7-max` exclusion, prompting a fresh,
+independent re-check against current vendor docs rather than trusting the
+round-3 record — see `docs/round4-web-search-tools-plan.md` sections 1.1
+(Qwen), 1.3 (DeepSeek) and 1.6 (Cloudflare) for the full evidence trail. All
+three conclusions below held with no code change required:
+
+- **Qwen `qwen3.7-max`** — Alibaba's current docs still state
+  `qwen3.7-max` supports web search "only" through the Responses API, a
+  different surface from the `/compatible-mode/v1/chat/completions`
+  endpoint this app calls via `@ai-sdk/openai-compatible` (which has no
+  Responses API support at all). The exclusion is a real, verified
+  per-tier capability difference, not a mapping bug — closing it for real
+  would mean a bespoke second DashScope Responses wiring for one model's
+  badge, out of scope.
+- **DeepSeek** — the API changelog now extends through 2026-07-31
+  (DeepSeek-V4-Flash public beta) and still announces no search, grounding,
+  or `enable_search` capability of any kind. Nothing changed since round 3;
+  `providers/deepseek.ts` correctly keeps `tools: []`.
+- **Cloudflare AI Gateway** — Cloudflare's own web-search documentation
+  (fetched 2026-08-09) confirms search now exists through AI Gateway, but
+  **only for proxied third-party providers** (Anthropic, OpenAI/xAI via
+  Responses API only, Alibaba/Qwen) — explicitly stating "AI Gateway does
+  not provide a provider-agnostic web search abstraction." Nothing exists
+  for `@cf/` Workers AI models, which are the entire catalog this app's
+  Cloudflare integration surfaces (`/ai/models/search`) and sends through.
+  The never-badge, always-`undefined` `supportsWebSearch` behavior remains
+  the correct, honest representation of a real vendor gap.
+
+None of these three needed a code change; this record exists so round 5
+doesn't re-litigate the same question a third time.
+
 **Qwen — implemented.** DashScope's built-in web search is a plain
 `enable_search: true` body flag on the same chat-completions endpoint this
 app already calls, with an optional `search_options` sibling object — not an
@@ -237,8 +269,9 @@ therefore keeps `tools: []`; don't revisit without new docs evidence.
    every provider — out of scope for this round, and the documented path if
    this is revisited.
 
-**Cloudflare AI Gateway** — see "Tool calling through gateways: signal-only
-today" in the gateway half of this doc.
+**Cloudflare AI Gateway** — see "Tool calling through gateways: web search
+wired for OpenRouter and Vercel" in the gateway half of this doc, and the
+round-4 re-verification above.
 
 ### models.dev catalog key: `alibaba`, not `qwen`
 
@@ -414,65 +447,143 @@ spelled-out per-million figures live only in the badge's tooltip and in
 A free model shows a green `banknote-x` badge **instead of** the tier badge,
 never both.
 
-`GatewayModel.supportsReasoning`/`supportsWebSearch` are advisory,
-best-effort flags populated per gateway from whatever real signal each raw
-catalog exposes: Vercel's `tags` array (`'reasoning'`/`'web-search'` —
-also the only field surfacing web-search at all, since Vercel's
-`supported_parameters` never does) and OpenRouter's `supported_parameters`
-array (`'reasoning'`/`'web_search_options'`).
+**Round 4 (2026-08-09) rewrote `supportsWebSearch` from a plain boolean into
+a `WebSearchResolution` (`'native' | 'universal' | undefined`)**, because the
+round-3 boolean was reading the wrong signal on OpenRouter and Vercel — see
+`docs/round4-web-search-tools-plan.md` sections 1.4/1.5/3 for the full
+investigation and evidence trail. The policy lives in one shared module,
+`shared/utils/gateway-capabilities.ts`, consumed identically by the picker
+badge, the chat-input toggle, and the server-side send gate below, so the
+three can never drift apart again:
 
-For Cloudflare both come from the default-format `properties[]` array
-described under "Cloudflare's two-format join" above: `reasoning` populates
-`supportsReasoning` and `function_calling` populates `supportsTools`.
-**Cloudflare exposes no web-search signal in either format**, so
-`supportsWebSearch` stays `undefined` there rather than guessed. A property
-that is simply absent for a model (many carry neither `reasoning` nor
-`function_calling`) also leaves the flag `undefined` — `undefined` always
-means "unknown," never "no," across all three gateways.
+- `'native'` means the gateway's own raw catalog signals that the *routed*
+  provider itself supports search — Vercel's `tags` array (`'web-search'`)
+  or OpenRouter's `supported_parameters` array (`'web_search_options'`).
+  `web_search_options` was previously (mis)read as "can this model search at
+  all"; it is documented as a native-search context-size parameter, i.e.
+  "this model's provider offers server-side search" — a `'native'` signal,
+  nothing more.
+- `'universal'` means the *gateway itself* can search on behalf of any
+  routed model via its own plugin/tool, billed separately per search:
+  OpenRouter's `web` plugin (`plugins: [{ id: 'web' }]`, works on literally
+  any model) and Vercel's gateway-executed search tools
+  (`client.tools.perplexitySearch()` and friends). Absent a native signal,
+  every OpenRouter/Vercel model resolves to `'universal'` unless it is a
+  confirmed image-generation model (see below) — a globe on an image model
+  would recreate the exact "Image input badge on a generation model"
+  mislabeling this same round fixed for the input side.
+- `undefined` means neither mechanism exists — always true for Cloudflare,
+  whose AI Gateway documents no provider-agnostic web-search abstraction and
+  nothing for `@cf/` Workers AI models specifically (re-verified 2026-08-09,
+  `docs/round4-web-search-tools-plan.md` section 1.6).
 
-Only an explicit `true` ever earns a picker badge. A gateway row renders a
-`brain`/`text-warning` chip for `supportsReasoning` and a `globe`/`text-info`
-chip for `supportsWebSearch`, matching the direct-provider `ModelItem.vue`
-palette, and renders nothing at all for `false` or `undefined` — the picker
-never claims a capability is absent, only that one is confirmed present.
+`GatewayModel.supportsReasoning` is unaffected by this round — still a plain
+best-effort boolean from Vercel's `tags` (`'reasoning'`), OpenRouter's
+`supported_parameters` (`'reasoning'`), or Cloudflare's default-format
+`reasoning` property (see "Cloudflare's two-format join" above). A property
+that is simply absent for a model also leaves the flag `undefined` —
+`undefined` always means "unknown," never "no," across every advisory signal
+in this section.
+
+**Badge policy (product decision, 2026-08-09).** Every model that resolves
+to either `'native'` or `'universal'` earns the globe chip — the picker no
+longer separates "confirmed native search" from "gateway can search this
+too" by hiding the badge, since that read as a mapping bug to users
+(`docs/round4-feedback.md`). Instead the two are differentiated by
+label/tooltip, via `WEB_SEARCH_TOOLTIP` in `gateway-capabilities.ts`:
+`GatewayModelItem.vue`'s compact row chip keeps the short "Web search" label
+and puts the differentiated string in its `data-tip`; `GatewayModelDetail.vue`
+uses the full string as the badge's own visible label, since that panel has
+the room and no existing tooltip mechanism. **There is deliberately no
+separate cost-hint UI element** — the "via gateway, billed per search"
+wording IS the cost hint, matching the existing Qwen search toggle, which
+also ships without one.
+
+The chat-input toggle reads the same signal off the cached catalog
+(`isWebSearchSupported` in `app/composables/chat-input.ts`), not a fresh
+fetch — it is deliberately fail-closed, unlike the vision check, which fails
+open. This means a persisted gateway selection (page reload, or resuming a
+chat) shows no web-search toggle at all until the picker has fetched that
+gateway's catalog at least once in the session; opening the model picker
+once is enough, since the fetched catalog is cached across the session.
+
+`GatewayModel.supportsImageGeneration` is a new advisory boolean, derived
+from each gateway's own OUTPUT modalities containing `'image'` (Vercel
+`modalities.output`, OpenRouter `architecture.output_modalities`, Cloudflare
+`output_modalities[].type`) — a genuine image-*generation* model, never
+conflated with `modalities.input` (vision, i.e. the model can *receive*
+image/video/PDF input). Both lists now separate the two: a violet
+`image-plus`/"Image generation" chip for `supportsImageGeneration` (gateway
+list) or `hasImageGenerationCapability()` (curated list, unchanged), and an
+`eye`/"Vision" chip — deliberately `text-secondary`/`badge-secondary`, not
+violet, so the two capabilities never share a color again — for image input,
+in **both** the gateway lists (`modalities.input.includes('image')`) and the
+curated list (`hasVisionCapability()` in `app/utils/models-picker.ts`, same
+underlying `model.modalities.input` data the models.dev merge already
+populates). Accepted trade-off: most modern curated models are vision-capable,
+so the eye chip now appears on nearly every curated row — a deliberate
+product decision (`docs/round4-web-search-tools-plan.md` OQ3), not scope
+creep.
+
+Only an explicit `true` (or a resolved web-search value) ever earns a picker
+badge. A gateway row renders a `brain`/`text-warning` chip for
+`supportsReasoning`, a `globe`/`text-info` chip for `supportsWebSearch`, a
+violet `image-plus` chip for `supportsImageGeneration`, and a `secondary`
+`eye` chip for vision, matching the direct-provider `ModelItem.vue` palette
+for the first two — the picker never claims a capability is absent, only
+that one is confirmed present.
 
 **`supportsTools` is deliberately not a row badge.** Measured live, 333 of
 OpenRouter's 400 models and 197 of Vercel's 209 report it, so a wrench on
 four rows in five separates nothing; it also collided with web search on
 `text-info`. It survives in `GatewayModelDetail.vue`, where a full
-capability roster is the point, on the deprioritized `badge-neutral`. For
-contrast, `supportsWebSearch` lands on 16 of OpenRouter's 400 — the signal
-worth the pixels. Re-adding a row-level wrench re-creates the exact
-"everything looks the same" complaint this replaced.
+capability roster is the point, on the deprioritized `badge-neutral`.
+Re-adding a row-level wrench re-creates the exact "everything looks the
+same" complaint this replaced.
 
-### Tool calling through gateways: signal-only today
+### Tool calling through gateways: web search wired for OpenRouter and Vercel
 
-`index.post.ts` rejects any tool request routed through a gateway with a
-400 ("Tools are not yet supported for models routed through a gateway")
-before any builder runs, and every gateway builder returns `tools: {}`. The
-catalog's `supportsTools` flag — including Cloudflare's, parsed from the
-marketplace schema's `supported_parameters.tools` key — is a display-only
-enrichment consumed exclusively by `GatewayModelDetail.vue`'s capability
-roster; nothing downstream reads it to enable tool calling. The round-3
-observation that the Cloudflare gateway has "still no any supported tools"
-is therefore accurate, but it describes the deliberate current state of ALL
-three gateways, not a Cloudflare-specific regression or a missing catalog
-signal.
+**As of round 4 (2026-08-09), the blanket gate is gone.** `index.post.ts`
+now checks a per-gateway, per-tool policy — `isGatewayToolAllowed()` in
+`shared/utils/gateway-capabilities.ts` — instead of rejecting any tool
+request routed through a gateway outright: `web_search` is allowed for
+OpenRouter and Vercel, `image_generation` stays rejected for every gateway
+(actual image generation through a gateway is separate, not-yet-built
+functionality — see `docs/round4-web-search-tools-plan.md` LW5), and
+Cloudflare rejects everything, matching its `supportsWebSearch: undefined`
+badge. The two allowed paths use different mechanics, both single-step-safe
+(no `stopWhen`, no tool-execution loop):
 
-For web search specifically, no passthrough could deliver it for Cloudflare
-even if the gate were lifted: Workers AI's chat-completions API exposes no
-server-side web-search tool for a `tools` array to name (unlike OpenRouter,
-whose catalog does advertise `web_search_options` on some models — equally
-unused today). What a real fix requires, in dependency order: (1) the
-live-account verification of Cloudflare's catalog shape and model ids
-already tracked as items 2-3 under "Known gaps"; (2) replacing the blanket
-400 with a per-gateway, per-model policy driven by `supportsTools`; (3) for
-generic function calling, a multi-step tool loop in the chat pipeline —
-this app's `streamText` is single-step today (see the Moonshot Formula API
-note in the direct-provider half for the same blocker); and (4) for web
-search, an upstream mechanism that actually exists on the routed provider.
-None of that fits this round's scope, and partially lifting the gate
-without (3) would produce tool calls the pipeline cannot complete.
+- **OpenRouter** passes a *model setting*, not an AI SDK tool:
+  `useOpenRouterGateway()` builds the chat instance with
+  `plugins: [{ id: 'web' }]` when `web_search` is requested, and the
+  returned `GatewayChatResult.tools` stays `{}` — no `toolChoice`. No
+  explicit `engine` override is set, so the plugin uses its own
+  native-or-Exa default (product decision, 2026-08-09). Title generation
+  deliberately builds a *separate* instance with no `plugins` — carrying the
+  plugin into title generation would silently charge a second, unwanted
+  per-search fee and inject search results into a prompt that never needs
+  them.
+- **Vercel** returns a *provider-executed tool* in
+  `GatewayChatResult.tools`: `useVercelGateway()` attaches
+  `client.tools.perplexitySearch()` under the `web_search` key when
+  requested, with no `toolChoice` — letting the model decide whether to
+  search, the same policy Qwen's `enable_search` toggle already uses. This
+  is genuinely single-step: `perplexitySearch()`'s underlying
+  `ProviderExecutedTool` is built with no `supportsDeferredResults` flag, so
+  it defaults `false` and returns its result in the same generation step
+  rather than requiring a follow-up turn — confirmed by reading the
+  installed `@ai-sdk/gateway` package source, not assumed. Perplexity is the
+  default engine per the product decision recorded above (Vercel's own lead
+  option).
+
+The catalog's `supportsTools` flag remains a display-only enrichment
+consumed exclusively by `GatewayModelDetail.vue`'s capability roster;
+nothing downstream reads it to enable tool calling, and Cloudflare's
+`@cf/` catalog still exposes no web-search mechanism of any kind to gate
+on — the round-3 observation that "Cloudflare has still no supported tools"
+remains accurate for Cloudflare specifically, while OpenRouter and Vercel
+have moved on from it.
 
 ### Picker: grouping by underlying provider
 
@@ -747,6 +858,31 @@ by its own PR's review and confirmed still open by the final cross-PR review:
    inflates the prompt by hundreds-to-thousands of tokens). Verify on
    `qwen3.7-plus` and `qwen3.6-flash`, and confirm a flagged request is
    not rejected when the model chooses not to search.
+9. **OpenRouter's `web` plugin cost landing in `usage.cost`** (round 4,
+   2026-08-09) — `readOpenRouterCost()` reads
+   `providerMetadata.openrouter.usage.cost` the same way it already does for
+   token costs, and OpenRouter's docs say the plugin charge is billed on the
+   same generation, but this was never sent against a real OpenRouter
+   account. Verify the search-toggled send's context-menu cost is visibly
+   higher than the same prompt without the toggle.
+10. **Vercel's universal search tools actually executing in a single step
+    live** — the installed `@ai-sdk/gateway` package's
+    `perplexitySearch()`/`exaSearch()`/`parallelSearch()` factories are built
+    with no `supportsDeferredResults` flag (defaults `false`, meaning
+    same-turn results per the type's own doc comment), which is strong
+    static evidence this is genuinely provider-executed and single-step —
+    but it was never exercised against a live Vercel account. If a real send
+    stalls waiting for a second turn after the tool result, this pivots into
+    Wave B's multi-step-loop scope instead of staying a Wave A quick win —
+    see `docs/round4-web-search-tools-plan.md` section 6's "QW2 pivot
+    condition."
+11. **Whether Vercel's universal search tool emits source parts or only
+    tool-call/tool-result parts** — OpenRouter's provider maps `url_citation`
+    annotations to AI SDK `source` parts (confirmed in the installed
+    package's dist source), so its context-menu "Web search" indicator and
+    source chips are expected to render for free; Vercel's gateway tools have
+    no equivalent confirmed mapping. Not blocking (the send itself still
+    works either way), but affects which chips a Vercel search turn shows.
 
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom
@@ -756,14 +892,23 @@ at once (send through Vercel/Cloudflare with a model whose catalog
 watch the OpenRouter message's context menu before reloading to exercise
 item 7). Item 8 needs one extra pair of Qwen sends — the same prompt with
 the web-search toggle on and off — comparing the two input-token counts in
-the context menu.
+the context menu. Items 9-11 need one more pair of sends per gateway with the
+web-search toggle on: an OpenRouter model with no native `web_search_options`
+(any GPT-5.x) and a Vercel model without the `web-search` tag, each asked a
+current-events question — pass criteria are a current-facts answer, a
+visibly higher cost than the same prompt without the toggle, and (per item
+10) no hang waiting for a second turn.
 
 **Partially closed since**: the Vercel and OpenRouter *catalog* halves were
 driven end-to-end against the live upstream APIs (both are public and
 unauthenticated, so a dummy stored key is enough to pass the picker's
 presence gate — the route never validates it). Both rendered their real
 catalogs through the picker: OpenRouter 400 models / 58 prefixes / 268
-reasoning / 16 web-search / 17 free, Vercel 209 / 28 / 154 / 70 / 2. That
+reasoning / 16 web-search / 17 free, Vercel 209 / 28 / 154 / 70 / 2 (the
+web-search count reflects the pre-round-4 boolean derivation; round 4
+rewrote `supportsWebSearch` into `'native' | 'universal' | undefined`
+afterward, so this probe no longer measures what the badge shows today —
+the new derivation is fixture-verified only, not re-run live). That
 closes catalog fetching, normalization, price tiering and capability
 signalling for those two gateways. It closes **nothing** for Cloudflare
 (items 2, 3 and 5 need real account credentials) and nothing about sending a
@@ -776,12 +921,16 @@ direct-provider model (sent with tools requested) to a gateway model can hit
 the tool-rejection 400, because the server reads `selectedTools` from the
 *persisted first message* when the conversation has exactly one message —
 even though the client-side capability watcher already cleared the tools
-toggle for gateway mode. Narrow (only the very first message of a
-conversation, only when switching models mid-session) and graceful (a clear
-error, not a crash or silent failure), left as a known edge case rather than
-fixed, since closing it fully requires stripping first-turn tools
-server-side specifically for a gateway-model regenerate — a small feature in
-its own right.
+toggle for gateway mode. **Round 4 partially dissolved this**: `web_search`
+is now accepted for OpenRouter and Vercel, so this edge case only remains
+reachable for `image_generation` (still rejected on every gateway) or for a
+regenerate landing on Cloudflare (which rejects everything). Narrow (only
+the very first message of a conversation, only when switching models
+mid-session, only for a still-rejected tool) and graceful (a clear error,
+not a crash or silent failure), left as a known edge case rather than fixed,
+since closing it fully requires stripping first-turn tools server-side
+specifically for a gateway-model regenerate — a small feature in its own
+right.
 
 An image attached earlier in a conversation under a vision-capable model can
 still reach the provider raw on a *later* turn if the user regenerates that

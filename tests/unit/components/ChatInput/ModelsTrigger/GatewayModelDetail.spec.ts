@@ -34,13 +34,22 @@ describe('ChatInput/ModelsTrigger/GatewayModelDetail', () => {
     async () => {
       const wrapper = await mountDetail(createModel({
         supportsReasoning: true,
-        supportsWebSearch: true,
+        supportsWebSearch: 'native',
         supportsTools: true,
       }))
 
       expect(getCapabilityLabels(wrapper))
-        .toEqual(['Reasoning', 'Web search', 'Tool calling'])
+        .toEqual(['Reasoning', 'Web search (native)', 'Tool calling'])
     })
+
+  it('differentiates the universal web-search label from native', async () => {
+    const wrapper = await mountDetail(createModel({
+      supportsWebSearch: 'universal',
+    }))
+
+    expect(getCapabilityLabels(wrapper))
+      .toEqual(['Web search (via gateway, billed per search)'])
+  })
 
   it('keeps tool calling here even though the row drops it', async () => {
     const wrapper = await mountDetail(createModel({ supportsTools: true }))
@@ -48,20 +57,34 @@ describe('ChatInput/ModelsTrigger/GatewayModelDetail', () => {
     expect(getCapabilityLabels(wrapper)).toEqual(['Tool calling'])
   })
 
+  it('lists image generation and vision as separate capabilities',
+    async () => {
+      const wrapper = await mountDetail(createModel({
+        supportsImageGeneration: true,
+        modalities: { input: ['text', 'image'], output: ['image'] },
+      }))
+
+      expect(getCapabilityLabels(wrapper))
+        .toEqual(['Image generation', 'Vision'])
+    })
+
   it('never asserts an unreported capability', async () => {
     const wrapper = await mountDetail(createModel({
       supportsReasoning: undefined,
       supportsWebSearch: undefined,
+      supportsImageGeneration: undefined,
     }))
 
     expect(getCapabilityLabels(wrapper)).not.toContain('Reasoning')
-    expect(getCapabilityLabels(wrapper)).not.toContain('Web search')
+    expect(getCapabilityLabels(wrapper).join(' ')).not.toContain('Web search')
+    expect(getCapabilityLabels(wrapper)).not.toContain('Image generation')
   })
 
   it('never asserts a capability reported as absent', async () => {
     const wrapper = await mountDetail(createModel({
       supportsReasoning: false,
-      supportsWebSearch: false,
+      supportsWebSearch: undefined,
+      supportsImageGeneration: false,
     }))
 
     expect(wrapper.find('[data-testid="gateway-model-detail-capabilities"]')

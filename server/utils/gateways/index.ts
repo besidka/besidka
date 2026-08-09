@@ -2,6 +2,7 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { LanguageModel, ProviderMetadata } from 'ai'
 import type { GatewayProvider } from '@ai-sdk/gateway'
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
+import type { ModelTool } from '#shared/types/providers.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import { useVercelGateway } from './vercel'
@@ -45,19 +46,23 @@ export interface GatewayChatResult {
  * Dispatches to the per-gateway builder by `keyProviderId` lookup — mirrors
  * the per-provider `switch` in the chat route. Reuses `provider-meta.ts`'s
  * `keyProviderId` field for the DB key lookup instead of re-declaring a
- * `GatewayId -> keys.provider` mapping here.
+ * `GatewayId -> keys.provider` mapping here. `requestedTools` is only ever
+ * `web_search` at this point (the gate in `index.post.ts` already rejected
+ * anything else) — Cloudflare's builder ignores it entirely since it has no
+ * tool it could wire.
  */
 export async function useGateway(
   gatewayId: ChatGatewayId,
   userId: string,
   modelId: string,
+  requestedTools: ModelTool[],
   logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   switch (gatewayId) {
     case 'vercel':
-      return await useVercelGateway(userId, modelId, logger)
+      return await useVercelGateway(userId, modelId, requestedTools, logger)
     case 'openrouter':
-      return await useOpenRouterGateway(userId, modelId)
+      return await useOpenRouterGateway(userId, modelId, requestedTools)
     case 'cloudflare':
       return await useCloudflareGateway(userId, modelId, logger)
   }

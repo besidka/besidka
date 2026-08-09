@@ -307,6 +307,7 @@ export function getAffectedTests(changedFiles) {
 
   const gatewayCatalogTests = [
     'tests/unit/utils/gateway-catalog-normalize.spec.ts',
+    'tests/unit/utils/gateway-capabilities.spec.ts',
     'tests/unit/utils/gateway-pricing.spec.ts',
     'tests/unit/utils/gateway-model-id.spec.ts',
     'tests/integration/api/gateways-models.spec.ts',
@@ -456,7 +457,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|shared\/utils\/gateway-(pricing|model-id)\.ts)$/,
+        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|shared\/utils\/gateway-(pricing|model-id|capabilities)\.ts)$/,
       tests: [
         'tests/unit/components/ProviderIcon.spec.ts',
         ...gatewayCatalogTests,

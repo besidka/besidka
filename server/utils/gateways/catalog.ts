@@ -1,5 +1,9 @@
 import { createError } from 'evlog'
 import type { GatewayModel } from '#shared/types/gateways.d'
+import {
+  deriveGatewayImageGenerationSupport,
+  resolveGatewayWebSearchSupport,
+} from '#shared/utils/gateway-capabilities'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const VERCEL_GATEWAY_MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models'
@@ -8,6 +12,14 @@ const CLOUDFLARE_ACCOUNTS_URL = 'https://api.cloudflare.com/client/v4/accounts'
 const CLOUDFLARE_MODEL_SEARCH_PAGE_SIZE = 1000
 const TOKENS_PER_MILLION = 1_000_000
 const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
+/**
+ * Bump whenever `GatewayModel`'s shape changes in a way old cached entries
+ * don't carry (e.g. round 4 added `supportsImageGeneration` and changed
+ * `supportsWebSearch` from a boolean to a resolution string) — a KV entry
+ * written under the old schema would otherwise keep serving stale-shaped
+ * data for up to `GATEWAY_CATALOG_CACHE_TTL_MS` after deploy.
+ */
+const GATEWAY_CATALOG_SCHEMA_VERSION = 'v2'
 /**
  * Cloudflare's catalog is a per-account resource (it requires the caller's
  * own account id + token), not a shared public one like Vercel's or
@@ -102,14 +114,21 @@ export async function fetchVercelGatewayCatalog(): Promise<GatewayModel[]> {
 
 /**
  * `tags` is Vercel's own coarse capability roster (also carries `'free'`,
- * `'vision'`, `'tool-use'`, …) and the only field that surfaces web-search
- * support at all — `supported_parameters` never includes a web-search entry,
- * unlike OpenRouter's `web_search_options`. Used for both reasoning and
- * web-search here so both signals come from one source.
+ * `'vision'`, `'tool-use'`, …) and the only field that surfaces *native*
+ * web-search support — `supported_parameters` never includes a web-search
+ * entry, unlike OpenRouter's `web_search_options`. Absent a native tag,
+ * every Vercel model (short of a confirmed image-generation one) resolves to
+ * `'universal'`: Vercel's gateway-executed search tools
+ * (`perplexitySearch()` and friends) work regardless of the underlying
+ * model — see `resolveGatewayWebSearchSupport`.
  */
 function normalizeVercelGatewayModel(
   model: VercelGatewayRawModel,
 ): GatewayModel {
+  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
+    model.modalities?.output,
+  )
+
   return {
     id: model.id,
     name: model.name,
@@ -122,7 +141,12 @@ function normalizeVercelGatewayModel(
     modalities: model.modalities,
     supportsTools: model.supported_parameters?.includes('tools'),
     supportsReasoning: model.tags?.includes('reasoning'),
-    supportsWebSearch: model.tags?.includes('web-search'),
+    supportsWebSearch: resolveGatewayWebSearchSupport({
+      gatewayId: 'vercel',
+      hasNativeSignal: Boolean(model.tags?.includes('web-search')),
+      isImageGenerationModel: supportsImageGeneration,
+    }),
+    supportsImageGeneration,
   }
 }
 
@@ -143,7 +167,19 @@ export async function fetchOpenRouterCatalog(): Promise<GatewayModel[]> {
   return payload.data.map(normalizeOpenRouterModel)
 }
 
+/**
+ * `web_search_options` is documented as a native-search context-size
+ * parameter (`low`/`medium`/`high`), i.e. "this model's own provider offers
+ * server-side search" — a `'native'` signal, not "can this model search at
+ * all". OpenRouter's universal `web` plugin (`plugins: [{ id: 'web' }]`)
+ * works on any routed model regardless of that flag, so every model short
+ * of a confirmed image-generation one resolves to at least `'universal'`.
+ */
 function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
+  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
+    model.architecture?.output_modalities,
+  )
+
   return {
     id: model.id,
     name: model.name,
@@ -161,9 +197,14 @@ function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
       : undefined,
     supportsTools: model.supported_parameters?.includes('tools'),
     supportsReasoning: model.supported_parameters?.includes('reasoning'),
-    supportsWebSearch: model.supported_parameters?.includes(
-      'web_search_options',
-    ),
+    supportsWebSearch: resolveGatewayWebSearchSupport({
+      gatewayId: 'openrouter',
+      hasNativeSignal: Boolean(model.supported_parameters?.includes(
+        'web_search_options',
+      )),
+      isImageGenerationModel: supportsImageGeneration,
+    }),
+    supportsImageGeneration,
   }
 }
 
@@ -244,14 +285,18 @@ interface CloudflareGatewayModelsResponse {
  * unexpected shape degrades to a `{id, name}`-only `GatewayModel` rather
  * than throwing.
  *
- * `supportsReasoning`/`supportsWebSearch` are deliberately never set from
- * this shape: unlike `supportsTools`, whose `tools` key this schema
- * documents landing in a text output modality's `supported_parameters` map,
- * nothing in the published schema names a reasoning or web-search parameter
- * key. `supportsReasoning` is backfilled from the default-format `reasoning`
- * property by `fetchCloudflareGatewayCatalog` instead; web search stays
- * `undefined` on both shapes, keeping the "unknown, not unsupported"
- * contract rather than guessing a key name with no evidence behind it.
+ * `supportsReasoning` is deliberately never set from this shape: unlike
+ * `supportsTools`, whose `tools` key this schema documents landing in a text
+ * output modality's `supported_parameters` map, nothing in the published
+ * schema names a reasoning parameter key — it is backfilled from the
+ * default-format `reasoning` property by `fetchCloudflareGatewayCatalog`
+ * instead. `supportsWebSearch` always resolves to `undefined` here too: no
+ * `@cf/` model has any web-search mechanism, native or universal (Cloudflare
+ * AI Gateway itself states it provides no provider-agnostic web-search
+ * abstraction) — `resolveGatewayWebSearchSupport` is still called, for the
+ * same "one shared policy everywhere" reason the other two gateways use it,
+ * but Cloudflare's tool policy admits no gateway-side `web_search`, so it can
+ * only ever fall through to `undefined`.
  */
 async function fetchCloudflareMarketplaceCatalog(
   credentials: CloudflareGatewayCatalogCredentials,
@@ -358,6 +403,12 @@ function normalizeCloudflareGatewayModel(
     textOutputModality?.pricing,
     'completion',
   )
+  const outputModalityTypes = model.output_modalities
+    ?.map(modality => modality.type)
+    .filter((type): type is string => Boolean(type))
+  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
+    outputModalityTypes,
+  )
 
   return {
     id: model.id,
@@ -374,9 +425,7 @@ function normalizeCloudflareGatewayModel(
         input: (model.input_modalities || [])
           .map(modality => modality.type)
           .filter((type): type is string => Boolean(type)),
-        output: (model.output_modalities || [])
-          .map(modality => modality.type)
-          .filter((type): type is string => Boolean(type)),
+        output: outputModalityTypes || [],
       }
       : undefined,
     supportsTools: model.output_modalities
@@ -384,6 +433,12 @@ function normalizeCloudflareGatewayModel(
         return Boolean(modality.supported_parameters?.tools)
       })
       : undefined,
+    supportsWebSearch: resolveGatewayWebSearchSupport({
+      gatewayId: 'cloudflare',
+      hasNativeSignal: false,
+      isImageGenerationModel: supportsImageGeneration,
+    }),
+    supportsImageGeneration,
   }
 }
 
@@ -738,8 +793,9 @@ async function sha256Hex(value: string): Promise<string> {
  * the public gateways.
  *
  * The cache key includes a hash of the caller's own `apiKey`
- * (`gateway-catalog:cloudflare:${accountId}:${sha256Hex(apiKey)}`), not just
- * the `accountId`. The POST route that saves these credentials never
+ * (`gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:cloudflare:` +
+ * `${accountId}:${sha256Hex(apiKey)}`), not just the `accountId`. The POST
+ * route that saves these credentials never
  * validates the accountId+apiKey pair against Cloudflare, so a user could
  * save someone else's real (or guessed) `accountId` alongside their own
  * fake `apiKey`. Keying the cache on `accountId` alone would let that user
@@ -757,7 +813,8 @@ export async function getCachedCloudflareGatewayCatalog(
 ): Promise<GatewayModel[]> {
   const cache = useStorage('cache')
   const apiKeyHash = await sha256Hex(credentials.apiKey)
-  const cacheKey = `gateway-catalog:cloudflare:${credentials.accountId}:${apiKeyHash}`
+  const cacheKey = `gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:`
+    + `cloudflare:${credentials.accountId}:${apiKeyHash}`
   const cached = await cache.getItem<CloudflareGatewayCatalogCacheEntry>(
     cacheKey,
   )
@@ -845,7 +902,8 @@ export async function getCachedGatewayCatalog(
   options: GetCachedGatewayCatalogOptions = {},
 ): Promise<GatewayModel[]> {
   const cache = useStorage('cache')
-  const cacheKey = `gateway-catalog:${gatewayId}`
+  const cacheKey = `gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:`
+    + gatewayId
   const cached = await cache.getItem<GatewayCatalogCacheEntry>(cacheKey)
   const now = Date.now()
 

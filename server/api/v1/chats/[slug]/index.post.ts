@@ -21,6 +21,7 @@ import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
 import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -180,13 +181,19 @@ export default defineEventHandler(async (event) => {
     ? chat.messages[0]?.tools || []
     : body.data.tools
 
-  if (gatewayId && selectedTools.length > 0) {
-    throw createError({
-      message: 'Tools are not yet supported for models routed through a gateway.',
-      status: 400,
-      why: 'Gateway chat completions do not support tool calling in this release.',
-      fix: 'Turn off web search / image generation, or choose a direct provider model.',
+  if (gatewayId) {
+    const unsupportedGatewayTool = selectedTools.find((selectedTool) => {
+      return !isGatewayToolAllowed(gatewayId, selectedTool)
     })
+
+    if (unsupportedGatewayTool) {
+      throw createError({
+        message: 'The selected tool is not supported for models routed through this gateway.',
+        status: 400,
+        why: `${gatewayId} does not support ${unsupportedGatewayTool} for gateway chat completions.`,
+        fix: 'Turn off that tool, or choose a direct provider model.',
+      })
+    }
   }
 
   let provider: Provider | undefined
@@ -194,6 +201,7 @@ export default defineEventHandler(async (event) => {
   let requestedTools: ModelTool[] = []
 
   if (gatewayId) {
+    requestedTools = selectedTools
     logger.set({ tools: requestedTools })
   } else {
     const resolved = useChatProvider(userModel)
@@ -518,6 +526,7 @@ export default defineEventHandler(async (event) => {
         gatewayId,
         session.user.id,
         modelId,
+        requestedTools,
         logger,
       )
 

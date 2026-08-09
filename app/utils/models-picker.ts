@@ -59,6 +59,14 @@ export function hasImageGenerationCapability(model: Model): boolean {
     || isImageGenerationModel(model)
 }
 
+/**
+ * Vision covers image/video/PDF *input*, fully separate from image
+ * *generation* above — a model can have either, both, or neither.
+ */
+export function hasVisionCapability(model: Model): boolean {
+  return model.modalities.input.includes('image')
+}
+
 export function getModelPriceTip(model: Model): string | undefined {
   if (model.research) {
     return `${model.research.costEstimate} · ${model.research.timeEstimate}`

@@ -1,5 +1,7 @@
 import { createGateway, type GatewayProvider } from '@ai-sdk/gateway'
 import { eq } from 'drizzle-orm'
+import type { ModelTool } from '#shared/types/providers.d'
+import type { FormattedTools } from '~~/server/types/tools.d'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
@@ -14,6 +16,7 @@ const GENERATION_INFO_RETRY_DELAY_MS = 1500
 export async function useVercelGateway(
   userId: string,
   model: string,
+  requestedTools: ModelTool[],
   logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
@@ -56,10 +59,32 @@ export async function useVercelGateway(
       )
   }
 
+  /**
+   * Vercel's gateway-executed search tools run provider-side within the same
+   * generation step — `client.tools.perplexitySearch()` is a
+   * `ProviderExecutedTool`, built with no `supportsDeferredResults` flag
+   * (defaults `false`), so its result returns in the same turn rather than
+   * requiring a follow-up step. No `toolChoice` is set, matching the
+   * "let the model decide whether to search" policy the Qwen/OpenRouter
+   * integrations already use. Defaults to Perplexity per the product
+   * decision recorded in docs/gateways.md — Vercel's own lead option.
+   */
+  function getTools(): FormattedTools {
+    if (!requestedTools.includes('web_search')) {
+      return {}
+    }
+
+    return {
+      tools: {
+        web_search: client.tools.perplexitySearch(),
+      },
+    }
+  }
+
   return {
     instance: getInstance(),
     generateChatTitle,
-    tools: {},
+    tools: getTools(),
     providerOptions: {},
     client,
     maxOutputTokens: catalogModel?.maxOutputTokens,

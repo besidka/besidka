@@ -80,18 +80,27 @@
             data-testid="gateway-model-web-search-capability"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-info"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
-            data-tip="Web search"
+            :data-tip="webSearchTooltip"
           >
             <Icon name="lucide:globe" />
           </span>
           <span
-            v-if="supportsImageInput"
-            data-testid="gateway-model-image-input-capability"
+            v-if="model.supportsImageGeneration"
+            data-testid="gateway-model-image-generation-capability"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-violet-700 dark:text-violet-200"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
-            data-tip="Image input"
+            data-tip="Image generation"
           >
-            <Icon name="lucide:image" />
+            <Icon name="lucide:image-plus" />
+          </span>
+          <span
+            v-if="supportsVision"
+            data-testid="gateway-model-vision-capability"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-secondary"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
+            data-tip="Vision"
+          >
+            <Icon name="lucide:eye" />
           </span>
         </span>
       </button>
@@ -145,6 +154,7 @@
 <script setup lang="ts">
 import type { GatewayModel } from '#shared/types/gateways.d'
 import type { ModelPriceTier } from '#shared/types/providers.d'
+import { WEB_SEARCH_TOOLTIP } from '#shared/utils/gateway-capabilities'
 import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 import {
   isGatewayModelFree,
@@ -191,20 +201,27 @@ const priceTip = computed<string | undefined>(() => {
   return formatGatewayPriceDetail(props.model.pricing)
 })
 
-const supportsImageInput = computed<boolean>(() => {
+const supportsVision = computed<boolean>(() => {
   return !!props.model.modalities?.input.includes('image')
 })
 
+const webSearchTooltip = computed<string | undefined>(() => {
+  const resolution = props.model.supportsWebSearch
+
+  return resolution ? WEB_SEARCH_TOOLTIP[resolution] : undefined
+})
+
 /**
- * `supportsReasoning`/`supportsWebSearch` are advisory and `undefined` means
- * "this gateway does not report it", so only an explicit `true` earns a chip
- * — an unreported capability is never rendered as absent, and never as
- * present.
+ * `supportsReasoning`/`supportsWebSearch`/`supportsImageGeneration` are
+ * advisory and `undefined` means "this gateway does not report it", so only
+ * an explicit `true` (or a resolved web-search value) earns a chip — an
+ * unreported capability is never rendered as absent, and never as present.
  */
 const hasCapabilities = computed<boolean>(() => {
   return props.model.supportsReasoning === true
-    || props.model.supportsWebSearch === true
-    || supportsImageInput.value
+    || !!props.model.supportsWebSearch
+    || props.model.supportsImageGeneration === true
+    || supportsVision.value
 })
 
 const optionId = computed<string>(() => {
