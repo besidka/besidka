@@ -1,18 +1,32 @@
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 
-type SupportedGatewayId = Exclude<GatewayId, 'cloudflare'>
-
 interface GatewayModelsResponse {
   gateway: GatewayId
   models: GatewayModel[]
 }
 
+/**
+ * Shared catalog state, readable without mounting a fetch — lets UI that only
+ * needs a label for an already-selected gateway model (the picker trigger)
+ * avoid pulling a whole catalog on every page load.
+ */
+export function useGatewayCatalogCache() {
+  return useState<Partial<Record<GatewayId, GatewayModel[]>>>(
+    'gateway-catalog-cache',
+    () => ({}),
+  )
+}
+
+/**
+ * Accepts any `GatewayId`: the models route, not this wrapper, decides which
+ * gateways it can serve, and answers an unsupported one with an error the
+ * caller already renders. Keeping the narrower type here would only force a
+ * cast at every call site that iterates `enabledGateways`.
+ */
 export function useGatewayCatalog(
-  gatewayId: Ref<SupportedGatewayId> | SupportedGatewayId,
+  gatewayId: Ref<GatewayId> | GatewayId,
 ) {
-  const gatewayCatalogCache = useState<
-    Partial<Record<GatewayId, GatewayModel[]>>
-  >('gateway-catalog-cache', () => ({}))
+  const gatewayCatalogCache = useGatewayCatalogCache()
 
   const { data, pending, error, refresh } = useLazyFetch<
     GatewayModelsResponse
