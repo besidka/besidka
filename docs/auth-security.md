@@ -178,6 +178,25 @@ that wildcard for this reason — reordering the object breaks the
 per-endpoint overrides silently, falling back to the wildcard's looser
 limit.
 
+## Reused outside Better Auth: the gateway catalog route
+
+`GET /api/v1/gateways/[gateway]/models` (providers/gateways initiative)
+isn't a Better Auth endpoint and isn't in the table above, but it reuses
+the same `createAuthRateLimitStorage()` KV-backed limiter with its own
+key prefix (`gateway-catalog:rate-limit`) and a dedicated per-user rule:
+
+| Path | Window | Max |
+| --- | --- | --- |
+| `GET /api/v1/gateways/[gateway]/models` | 60s | 20 |
+
+Unlike the table above, this rule is keyed by the authenticated
+`session.user.id`, not by IP. It exists because the route triggers an
+upstream fetch to Vercel AI Gateway or OpenRouter on every cache miss
+(the catalog is cached in KV for 1 hour, with no request coalescing —
+see `server/utils/gateways/catalog.ts`), so an unbounded client could
+drive repeated concurrent upstream fetches. This is a cost/availability
+concern for those upstreams rather than an auth-sensitive action.
+
 ## KV rate-limit storage: the TTL fix and the `consume` caveat
 
 The previous `customStorage` implemented only `get`/`set`, with `set`

@@ -98,13 +98,17 @@ describe('gateway models API', () => {
 
   it('rejects unauthenticated requests', async () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue(null))
-    vi.stubGlobal('fetch', vi.fn())
+
+    const fetchMock = vi.fn()
+
+    vi.stubGlobal('fetch', fetchMock)
 
     const handler = await getHandler()
 
     await expect(handler({
       params: { gateway: 'vercel' },
     } as never)).rejects.toThrow('Unauthorized')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('rejects an invalid gateway param', async () => {
@@ -241,4 +245,33 @@ describe('gateway models API', () => {
         'Failed to fetch Vercel AI Gateway model catalog',
       )
     })
+
+  it('returns 429 once the per-user rate limit is exceeded', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => vercelCatalogPayload,
+    })
+    const setResponseHeaderMock = vi.fn()
+
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('setResponseHeader', setResponseHeaderMock)
+
+    const handler = await getHandler()
+
+    for (let call = 0; call < 20; call++) {
+      await handler({ params: { gateway: 'vercel' } } as never)
+    }
+
+    await expect(handler({
+      params: { gateway: 'vercel' },
+    } as never)).rejects.toMatchObject({
+      message: 'Too many requests',
+      status: 429,
+    })
+    expect(setResponseHeaderMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'Retry-After',
+      expect.any(Number),
+    )
+  })
 })

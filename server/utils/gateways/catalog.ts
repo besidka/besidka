@@ -165,7 +165,8 @@ interface GetCachedGatewayCatalogOptions {
  * variance) with a 1-hour freshness window. The cache entry itself never
  * expires in storage — freshness is decided entirely by comparing `cachedAt`
  * against the TTL — so a stale copy always remains available as a fallback
- * if the upstream fetch fails.
+ * if the upstream fetch fails. A cache-write failure never discards a valid
+ * freshly-fetched catalog — it is logged as non-fatal context instead.
  */
 export async function getCachedGatewayCatalog(
   gatewayId: CachedGatewayId,
@@ -180,15 +181,10 @@ export async function getCachedGatewayCatalog(
     return cached.models
   }
 
+  let models: GatewayModel[]
+
   try {
-    const models = await gatewayCatalogFetchers[gatewayId]()
-
-    await cache.setItem<GatewayCatalogCacheEntry>(cacheKey, {
-      models,
-      cachedAt: now,
-    })
-
-    return models
+    models = await gatewayCatalogFetchers[gatewayId]()
   } catch (exception) {
     if (!cached) {
       throw exception
@@ -208,4 +204,22 @@ export async function getCachedGatewayCatalog(
 
     return cached.models
   }
+
+  try {
+    await cache.setItem<GatewayCatalogCacheEntry>(cacheKey, {
+      models,
+      cachedAt: now,
+    })
+  } catch (exception) {
+    options.logger?.set({
+      attributes: {
+        gatewayCatalogCacheWrite: {
+          gateway: gatewayId,
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+
+  return models
 }

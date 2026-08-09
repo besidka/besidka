@@ -1,11 +1,15 @@
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 
+type SupportedGatewayId = Exclude<GatewayId, 'cloudflare'>
+
 interface GatewayModelsResponse {
   gateway: GatewayId
   models: GatewayModel[]
 }
 
-export function useGatewayCatalog(gatewayId: Ref<GatewayId> | GatewayId) {
+export function useGatewayCatalog(
+  gatewayId: Ref<SupportedGatewayId> | SupportedGatewayId,
+) {
   const gatewayCatalogCache = useState<
     Partial<Record<GatewayId, GatewayModel[]>>
   >('gateway-catalog-cache', () => ({}))
