@@ -29,7 +29,7 @@
         <ProviderIcon
           :provider-id="gateway.id"
           :label="gateway.label"
-          class="w-3.5 shrink-0 fill-current"
+          class="!size-3.5 shrink-0"
         />
         <span class="truncate">
           {{ gateway.label }}

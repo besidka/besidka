@@ -117,14 +117,19 @@ describe('ChatInput/ModelsTrigger/GatewayRail', () => {
   it('renders brand marks for the known gateways', async () => {
     const wrapper = await mountRail()
 
-    expect(
-      wrapper.get('[data-testid="models-picker-gateway-vercel"]').find('svg')
-        .exists(),
-    ).toBe(true)
-    expect(
-      wrapper.get('[data-testid="models-picker-gateway-openrouter"]')
-        .find('svg').exists(),
-    ).toBe(true)
+    const expectedIconNames: Record<string, string> = {
+      vercel: 'simple-icons:vercel',
+      openrouter: 'simple-icons:openrouter',
+    }
+
+    for (const [gatewayId, iconName] of Object.entries(expectedIconNames)) {
+      const button = wrapper.get(
+        `[data-testid="models-picker-gateway-${gatewayId}"]`,
+      )
+
+      expect(button.findComponent({ name: 'NuxtIcon' }).props('name'))
+        .toBe(iconName)
+    }
   })
 
   describe('keyless gateways', () => {

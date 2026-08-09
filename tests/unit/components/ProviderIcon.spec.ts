@@ -2,94 +2,112 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
 import ProviderIcon from '../../../app/components/ProviderIcon.vue'
 
-const knownProviderIds = [
-  'google',
-  'openai',
-  'anthropic',
-  'xai',
-  'deepseek',
-  'moonshotai',
-  'vercel',
-  'openrouter',
-  'cloudflare',
-]
+const expectedIconNames: Record<string, string> = {
+  google: 'simple-icons:googlegemini',
+  openai: 'simple-icons:openai',
+  anthropic: 'simple-icons:anthropic',
+  xai: 'logos:grok-icon',
+  deepseek: 'simple-icons:deepseek',
+  moonshotai: 'simple-icons:moonshotai',
+  qwen: 'simple-icons:qwen',
+  vercel: 'simple-icons:vercel',
+  openrouter: 'simple-icons:openrouter',
+  cloudflare: 'simple-icons:cloudflare',
+}
+
+async function getIconName(providerId: string): Promise<string | undefined> {
+  const wrapper = await mountSuspended(ProviderIcon, {
+    props: { providerId },
+  })
+  const icon = wrapper.findComponent({ name: 'NuxtIcon' })
+
+  return icon.exists() ? (icon.props('name') as string) : undefined
+}
 
 describe('ProviderIcon', () => {
-  it('renders a brand svg for every known provider id', async () => {
-    for (const providerId of knownProviderIds) {
-      const wrapper = await mountSuspended(ProviderIcon, {
-        props: { providerId },
-      })
-
-      expect(wrapper.find('svg').exists()).toBe(true)
-      expect(wrapper.find('span').exists()).toBe(false)
-    }
-  })
-
-  it('falls back to a two-letter badge from provider-meta for an '
-    + 'unrecognized id with no label prop', async () => {
-    const wrapper = await mountSuspended(ProviderIcon, {
-      props: { providerId: 'mistral' },
+  it('renders the expected brand icon for every known provider id',
+    async () => {
+      for (const [providerId, iconName] of Object.entries(expectedIconNames)) {
+        expect(await getIconName(providerId)).toBe(iconName)
+      }
     })
 
-    expect(wrapper.find('svg').exists()).toBe(false)
+  it('renders a single-color simple-icons glyph for every provider except '
+    + 'xai, which has no monochrome Grok mark in any collection', () => {
+    const nonSimpleIcons = Object.entries(expectedIconNames).filter(
+      ([, iconName]) => {
+        return !iconName.startsWith('simple-icons:')
+      },
+    )
+
+    expect(nonSimpleIcons).toEqual([['xai', 'logos:grok-icon']])
+  })
+
+  it('falls back to a two-letter badge from the raw id for an unmapped '
+    + 'provider with no label prop', async () => {
+    const wrapper = await mountSuspended(ProviderIcon, {
+      props: { providerId: 'nousresearch' },
+    })
+
+    expect(wrapper.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
     const badge = wrapper.get('span')
 
-    expect(badge.text()).toBe('mi')
+    expect(badge.text()).toBe('no')
     expect(badge.classes()).toContain('uppercase')
-  })
-
-  it('falls back to a two-letter badge for qwen, which has no brand icon '
-    + 'asset yet', async () => {
-    const wrapper = await mountSuspended(ProviderIcon, {
-      props: { providerId: 'qwen' },
-    })
-
-    expect(wrapper.find('svg').exists()).toBe(false)
-    const badge = wrapper.get('span')
-
-    expect(badge.text()).toBe('Qw')
   })
 
   it('prefers an explicit label prop over provider-meta or the raw id',
     async () => {
       const wrapper = await mountSuspended(ProviderIcon, {
-        props: { providerId: 'mistral', label: 'Mistral' },
+        props: { providerId: 'nousresearch', label: 'Nous Research' },
       })
 
-      const badge = wrapper.get('span')
-
-      expect(badge.text()).toBe('Mi')
+      expect(wrapper.get('span').text()).toBe('No')
     })
 
   it('renders the xai icon for the OpenRouter vendor slug "x-ai"',
     async () => {
-      const wrapper = await mountSuspended(ProviderIcon, {
-        props: { providerId: 'x-ai' },
-      })
-
-      expect(wrapper.find('svg').exists()).toBe(true)
-      expect(wrapper.find('span').exists()).toBe(false)
+      expect(await getIconName('x-ai')).toBe('logos:grok-icon')
     })
 
   it('renders the matching icon for every tilde-prefixed "latest" alias',
     async () => {
-      const tildeAliasProviderIds = [
-        '~anthropic',
-        '~deepseek',
-        '~google',
-        '~moonshotai',
-        '~openai',
-        '~x-ai',
-      ]
+      const tildeAliases: Record<string, string> = {
+        '~anthropic': 'simple-icons:anthropic',
+        '~deepseek': 'simple-icons:deepseek',
+        '~google': 'simple-icons:googlegemini',
+        '~moonshotai': 'simple-icons:moonshotai',
+        '~openai': 'simple-icons:openai',
+        '~x-ai': 'logos:grok-icon',
+      }
 
-      for (const providerId of tildeAliasProviderIds) {
-        const wrapper = await mountSuspended(ProviderIcon, {
-          props: { providerId },
-        })
-
-        expect(wrapper.find('svg').exists()).toBe(true)
-        expect(wrapper.find('span').exists()).toBe(false)
+      for (const [providerId, iconName] of Object.entries(tildeAliases)) {
+        expect(await getIconName(providerId)).toBe(iconName)
       }
     })
+
+  it('resolves raw Cloudflare vendor slugs through the shared override table',
+    async () => {
+      const cloudflareSlugs: Record<string, string> = {
+        'deepseek-ai': 'simple-icons:deepseek',
+        'ibm-granite': 'simple-icons:ibm',
+        'meta-llama': 'simple-icons:meta',
+        'mistralai': 'simple-icons:mistralai',
+        'zai-org': 'thesvg:zhipu',
+      }
+
+      for (const [providerId, iconName] of Object.entries(cloudflareSlugs)) {
+        expect(await getIconName(providerId)).toBe(iconName)
+      }
+    })
+
+  it('leaves a Cloudflare vendor with no verified brand icon on the badge '
+    + 'rather than borrowing a wrong logo', async () => {
+    const wrapper = await mountSuspended(ProviderIcon, {
+      props: { providerId: 'black-forest-labs' },
+    })
+
+    expect(wrapper.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
+    expect(wrapper.get('span').text()).toBe('bl')
+  })
 })

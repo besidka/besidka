@@ -18,7 +18,7 @@
       <ProviderIcon
         v-if="selectedIconProviderId"
         :provider-id="selectedIconProviderId"
-        class="w-4 fill-base-content/40"
+        class="!size-4 text-base-content/40"
       />
       <span class="block truncate text-left min-w-0">
         {{ selectedModelName }}
@@ -61,7 +61,7 @@
               <ProviderIcon
                 :provider-id="activeGateway.id"
                 :label="activeGateway.label"
-                class="w-4 shrink-0 fill-accent"
+                class="!size-4 shrink-0 text-accent"
               />
               <span
                 class="grow min-w-0 truncate text-xs font-semibold text-accent"

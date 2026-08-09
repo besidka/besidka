@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
+import {
+  cloudflareVendorIconOverrides,
+  getGatewayModelProviderPrefix,
+} from '#shared/utils/gateway-model-id'
 
 describe('getGatewayModelProviderPrefix', () => {
   it('returns everything before the first slash', () => {
@@ -29,4 +32,48 @@ describe('getGatewayModelProviderPrefix', () => {
       ),
     ).toBe('@cf')
   })
+})
+
+describe('cloudflareVendorIconOverrides', () => {
+  it('folds every Meta vendor slug onto one icon key', () => {
+    expect(cloudflareVendorIconOverrides.meta).toBe('meta')
+    expect(cloudflareVendorIconOverrides['meta-llama']).toBe('meta')
+    expect(cloudflareVendorIconOverrides.facebook).toBe('meta')
+  })
+
+  it('folds both Mistral vendor slugs onto one icon key', () => {
+    expect(cloudflareVendorIconOverrides.mistral).toBe('mistral')
+    expect(cloudflareVendorIconOverrides.mistralai).toBe('mistral')
+  })
+
+  it('maps suffixed vendor slugs onto their parent brand', () => {
+    expect(cloudflareVendorIconOverrides['deepseek-ai']).toBe('deepseek')
+    expect(cloudflareVendorIconOverrides['ibm-granite']).toBe('ibm')
+    expect(cloudflareVendorIconOverrides['zai-org']).toBe('zhipu')
+    expect(cloudflareVendorIconOverrides['pipecat-ai']).toBe('pipecat')
+  })
+
+  it('omits vendors with no verified brand icon so they reach the badge',
+    () => {
+      const unmapped = [
+        'baai',
+        'black-forest-labs',
+        'defog',
+        'nousresearch',
+        'stabilityai',
+      ]
+
+      for (const vendor of unmapped) {
+        expect(cloudflareVendorIconOverrides[vendor]).toBeUndefined()
+      }
+    })
+
+  it('is keyed by raw Cloudflare slugs, so a split prefix resolves directly',
+    () => {
+      const vendor = getGatewayModelProviderPrefix(
+        'deepseek-ai/deepseek-r1-distill-qwen-32b',
+      )
+
+      expect(cloudflareVendorIconOverrides[vendor]).toBe('deepseek')
+    })
 })

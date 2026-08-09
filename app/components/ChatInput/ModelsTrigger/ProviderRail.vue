@@ -44,7 +44,7 @@
       <ProviderIcon
         :provider-id="provider.id"
         :label="provider.name"
-        class="w-4 fill-current"
+        class="!size-4"
         :class="{ 'opacity-40': isKeyless(provider.id) }"
       />
       <span

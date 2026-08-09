@@ -117,31 +117,33 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
       ],
     })
 
-    expect(
-      wrapper.get('[data-testid="models-picker-rail-openai"]').find('svg')
-        .exists(),
-    ).toBe(true)
-    expect(
-      wrapper.get('[data-testid="models-picker-rail-google"]').find('svg')
-        .exists(),
-    ).toBe(true)
-    expect(
-      wrapper.get('[data-testid="models-picker-rail-anthropic"]').find('svg')
-        .exists(),
-    ).toBe(true)
+    const expectedIconNames: Record<string, string> = {
+      openai: 'simple-icons:openai',
+      google: 'simple-icons:googlegemini',
+      anthropic: 'simple-icons:anthropic',
+    }
+
+    for (const [providerId, iconName] of Object.entries(expectedIconNames)) {
+      const button = wrapper.get(
+        `[data-testid="models-picker-rail-${providerId}"]`,
+      )
+
+      expect(button.findComponent({ name: 'NuxtIcon' }).props('name'))
+        .toBe(iconName)
+    }
   })
 
   it('falls back to the first two letters of an unknown provider', async () => {
     const wrapper = await mountRail({
-      providers: [{ id: 'mistral', name: 'Mistral', models: [] }],
+      providers: [{ id: 'nousresearch', name: 'Nous Research', models: [] }],
     })
-    const mistral = wrapper.get(
-      '[data-testid="models-picker-rail-mistral"]',
+    const unknown = wrapper.get(
+      '[data-testid="models-picker-rail-nousresearch"]',
     )
 
-    expect(mistral.text()).toBe('Mi')
-    expect(mistral.get('span').classes()).toContain('uppercase')
-    expect(mistral.find('svg').exists()).toBe(false)
+    expect(unknown.text()).toBe('No')
+    expect(unknown.get('span').classes()).toContain('uppercase')
+    expect(unknown.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
   })
 
   describe('keyless providers', () => {
