@@ -75,6 +75,12 @@ export async function useXai(
 
       result.tools['web_search_preview'] = xai.tools.webSearch({})
 
+      /**
+       * Unlike Anthropic, forcing toolChoice here is currently a no-op on
+       * xAI's Responses API: the SDK detects web_search as a server-side
+       * tool and silently falls back to auto tool_choice regardless of
+       * what's requested.
+       */
       if (reasoningLevel === 'off') {
         result.toolChoice = {
           type: 'tool',

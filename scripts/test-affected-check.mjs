@@ -113,6 +113,11 @@ export function getAffectedTests(changedFiles) {
     ...modelsTriggerTests,
     'tests/e2e/chat/scroll-spacer.spec.ts',
   ]
+  const providerReasoningWiringTests = [
+    'tests/unit/utils/providers/deepseek.spec.ts',
+    'tests/unit/utils/providers/moonshotai.spec.ts',
+    'tests/unit/utils/providers/xai.spec.ts',
+  ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/utils/filter-ui-message-stream.spec.ts',
@@ -339,6 +344,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|reasoning)\.ts|shared\/utils\/reasoning\.ts|shared\/types\/reasoning\.d\.ts)$/,
+      tests: providerReasoningWiringTests,
     },
     {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,

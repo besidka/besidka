@@ -1,3 +1,9 @@
+/**
+ * The `gateway` kind, `accountId`/`gatewayId` field names, and
+ * `enabledGateways` below are forward scaffolding for gateway support
+ * landing in a later PR of this stack — intentionally unwired here, not
+ * dead code.
+ */
 export interface ProviderMetaKeyField {
   name: 'apiKey' | 'accountId' | 'gatewayId'
   label: string
