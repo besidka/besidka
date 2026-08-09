@@ -2,7 +2,7 @@ import type { Chat } from '#shared/types/chats.d'
 
 export function useSetChatTitle(title?: Chat['title']) {
   const route = useRoute()
-  const { userModel } = useUserModel()
+  const { selection, userModel } = useUserModel()
 
   const {
     data: chatTitle,
@@ -16,6 +16,7 @@ export function useSetChatTitle(title?: Chat['title']) {
       immediate: !title,
       body: {
         model: userModel.value,
+        gateway: getSelectionGatewayId(selection.value),
       },
       default: () => title || null,
     },

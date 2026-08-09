@@ -13,11 +13,17 @@ import { getModelCostMap } from '~~/server/utils/ai/cost-map'
  * misrepresent an unknown cost as a free one. Cost fields are likewise
  * omitted (never fabricated as `0`) when the model has no known price in
  * `getModelCostMap()`.
+ *
+ * `totalCost` is an optional, separately-sourced override for gateway sends
+ * (OpenRouter/Vercel AI Gateway report their own billed cost; gateway model
+ * ids never appear in `getModelCostMap()`, so `inputCost`/`outputCost` stay
+ * unset for them and this is the only cost field populated instead).
  */
 export function buildMessageUsage(
   usage: LanguageModelUsage,
   modelId: string,
   providerId: string,
+  totalCost?: number,
 ): MessageUsage | undefined {
   const isIncompleteUsage = usage.inputTokens === undefined
     && usage.outputTokens === undefined
@@ -50,6 +56,7 @@ export function buildMessageUsage(
     ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
     ...(inputCost === undefined ? {} : { inputCost }),
     ...(outputCost === undefined ? {} : { outputCost }),
+    ...(totalCost === undefined ? {} : { totalCost }),
   }
 }
 

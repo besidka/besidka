@@ -238,4 +238,24 @@ describe('useChatInput research config', () => {
       wrapper.get('[data-testid="research-assist-model"]').text(),
     ).toBe('')
   })
+
+  it('reports no research config for a gateway selection', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-deep-research-model"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="research-assist-model"]').text(),
+    ).toBe('')
+  })
 })

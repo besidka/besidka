@@ -5,12 +5,20 @@ import type {
   LanguageModelUsage,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
+import type { GatewayProvider } from '@ai-sdk/gateway'
 import type { H3Event } from 'h3'
 import { getRequestURL } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
-import type { ModelTool, SupportedProviderId } from '#shared/types/providers.d'
+import type {
+  Model,
+  ModelTool,
+  Provider,
+  SupportedProviderId,
+} from '#shared/types/providers.d'
+import type { GatewayId } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -70,6 +78,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
+    gateway: z.enum(['vercel', 'cloudflare', 'openrouter']).optional(),
     tools: z.array(chatToolSchema),
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
     messages: z.array(incomingUserMessageSchema).length(1),
@@ -82,6 +91,10 @@ export default defineEventHandler(async (event) => {
       why: body.error.message,
     })
   }
+
+  const reasoningLevel: ReasoningLevel = body.data.gateway
+    ? 'off'
+    : body.data.reasoning
 
   const session = await useUserSession()
 
@@ -143,11 +156,15 @@ export default defineEventHandler(async (event) => {
     userId,
     chatId: chat.id,
     projectId: chat.projectId,
-    reasoning: body.data.reasoning,
+    reasoning: reasoningLevel,
     tools: body.data.tools,
   })
 
-  const { messages: newMessages, model: userModel } = body.data
+  const {
+    messages: newMessages,
+    model: userModel,
+    gateway: gatewayId,
+  } = body.data
   const newMessage = newMessages[0]
 
   if (!newMessage) {
@@ -157,31 +174,62 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { provider, model } = useChatProvider(userModel)
-  const selectedTools = chat.messages.length === 1
-    ? chat.messages[0]?.tools || []
-    : body.data.tools
-  const requiredTools = getRequiredModelTools(model)
-  const supportedTools = [...model.tools, ...requiredTools]
-  const unsupportedTool = selectedTools.find((selectedTool) => {
-    return !supportedTools.includes(selectedTool)
-  })
-
-  if (unsupportedTool) {
+  if (gatewayId === 'cloudflare') {
     throw createError({
-      message: 'The selected model does not support the requested tool.',
+      message: 'Cloudflare AI Gateway is not yet supported.',
       status: 400,
-      why: `${model.name} does not advertise ${unsupportedTool}.`,
-      fix: 'Choose a supported model or turn off that tool.',
+      why: 'Cloudflare AI Gateway execution ships in a later release.',
+      fix: 'Choose a different gateway or a direct provider model.',
     })
   }
 
-  const requestedTools = [...new Set([
-    ...selectedTools,
-    ...requiredTools,
-  ])]
+  const selectedTools = chat.messages.length === 1
+    ? chat.messages[0]?.tools || []
+    : body.data.tools
 
-  logger.set({ tools: requestedTools })
+  if (gatewayId && selectedTools.length > 0) {
+    throw createError({
+      message: 'Tools are not yet supported for models routed through a gateway.',
+      status: 400,
+      why: 'Gateway chat completions do not support tool calling in this release.',
+      fix: 'Turn off web search / image generation, or choose a direct provider model.',
+    })
+  }
+
+  let provider: Provider | undefined
+  let model: Model | undefined
+  let requestedTools: ModelTool[] = []
+
+  if (gatewayId) {
+    logger.set({ tools: requestedTools })
+  } else {
+    const resolved = useChatProvider(userModel)
+
+    provider = resolved.provider
+    model = resolved.model
+
+    const requiredTools = getRequiredModelTools(model)
+    const supportedTools = [...model.tools, ...requiredTools]
+    const unsupportedTool = selectedTools.find((selectedTool) => {
+      return !supportedTools.includes(selectedTool)
+    })
+
+    if (unsupportedTool) {
+      throw createError({
+        message: 'The selected model does not support the requested tool.',
+        status: 400,
+        why: `${model.name} does not advertise ${unsupportedTool}.`,
+        fix: 'Choose a supported model or turn off that tool.',
+      })
+    }
+
+    requestedTools = [...new Set([
+      ...selectedTools,
+      ...requiredTools,
+    ])]
+
+    logger.set({ tools: requestedTools })
+  }
 
   const previousMessages = chat.messages
     .filter((message) => {
@@ -344,11 +392,11 @@ export default defineEventHandler(async (event) => {
         parts: newMessage.parts as UIMessage['parts'],
       },
       tools: requestedTools,
-      reasoning: body.data.reasoning,
+      reasoning: reasoningLevel,
     })
   }
 
-  if (model.research) {
+  if (model?.research) {
     throw createError({
       message: 'This model only runs deep research.',
       status: 400,
@@ -356,6 +404,37 @@ export default defineEventHandler(async (event) => {
       fix: 'Send this message through the deep research flow instead.',
     })
   }
+
+  let modelId: string
+  let telemetryProviderId: string
+  let errorProviderId: SupportedProviderId | GatewayId | undefined
+
+  if (gatewayId) {
+    modelId = userModel
+    telemetryProviderId = keyProviderIdForGateway(gatewayId)
+    errorProviderId = gatewayId
+  } else if (provider && model) {
+    modelId = model.id
+    telemetryProviderId = provider.id
+    errorProviderId = toSupportedProviderId(provider.id)
+  } else {
+    throw createError({
+      message: 'Current model is not supported by any provider. Please select a different model.',
+      status: 400,
+    })
+  }
+
+  const gatewayTelemetryAttributes = gatewayId
+    ? {
+      attributes: {
+        chat: {
+          gateway: gatewayId,
+          gatewayProvider: modelId.split('/')[0],
+          gatewayModel: modelId,
+        },
+      },
+    }
+    : {}
 
   // Nuxt/Nitro emits the parent request wide event the moment this handler
   // returns the streaming Response — BEFORE the AI stream finishes — so the
@@ -396,10 +475,11 @@ export default defineEventHandler(async (event) => {
     _parentRequestId: parentRequestId,
     chatId: chat.id,
     userId,
-    modelId: model.id,
-    providerId: provider.id,
-    reasoning: body.data.reasoning,
+    modelId,
+    providerId: telemetryProviderId,
+    reasoning: reasoningLevel,
     tools: requestedTools,
+    ...gatewayTelemetryAttributes,
   })
 
   // Mirror Cloudflare edge metadata (colo, country, ASN, etc.) onto the
@@ -408,11 +488,10 @@ export default defineEventHandler(async (event) => {
   // standalone child loggers don't inherit so we attach explicitly.
   attachCloudflareMeta(aiLogger, event)
 
-  const providerId = toSupportedProviderId(provider.id)
-
   logger.set({
-    providerId: provider.id,
-    modelId: model.id,
+    providerId: telemetryProviderId,
+    modelId,
+    ...gatewayTelemetryAttributes,
   })
 
   let instance: LanguageModel
@@ -423,216 +502,238 @@ export default defineEventHandler(async (event) => {
     modelId: string
     aspectRatio: ImageGenerationAspectRatio
   } | undefined
+  let vercelGatewayClient: GatewayProvider | undefined
 
   try {
-    switch (provider.id) {
-      case 'openai': {
-        const {
-          instance: openAiInstance,
-          imageModel: openAiImageModel,
-          imageModelId: openAiImageModelId,
-          tools: openAiTools,
-          providerOptions: openAiProviderOptions,
-          reasoning: openAiReasoning,
-        } = await useOpenAI(
-          session.user.id,
-          model.id,
-          requestedTools,
-          body.data.reasoning,
-        )
+    if (gatewayId) {
+      const gatewayResult = await useGateway(
+        gatewayId,
+        session.user.id,
+        modelId,
+      )
 
-        instance = openAiInstance
-        parsedTools = openAiTools
-        reasoningEffort = openAiReasoning
-        Object.assign(providerOptions, {
-          openai: openAiProviderOptions,
-        })
+      instance = gatewayResult.instance
+      parsedTools = gatewayResult.tools
+      Object.assign(providerOptions, gatewayResult.providerOptions)
 
-        if (requestedTools.includes('image_generation')) {
-          if (!openAiImageModel) {
-            throw createError({
-              message: 'Image generation is unavailable for this provider.',
-              status: 400,
-            })
-          }
-
-          const imageGenerationTool = createImageGenerationTool({
-            userId,
-            provider: 'openai',
-            model: openAiImageModelId,
+      if (gatewayId === 'vercel') {
+        vercelGatewayClient = gatewayResult.client
+      }
+    } else if (provider && model) {
+      switch (provider.id) {
+        case 'openai': {
+          const {
+            instance: openAiInstance,
             imageModel: openAiImageModel,
-            logger: aiLogger,
-            requestId: getRequestId(event),
-            onGenerated: ({ aspectRatio }) => {
-              generatedImage = { modelId: openAiImageModelId, aspectRatio }
-            },
+            imageModelId: openAiImageModelId,
+            tools: openAiTools,
+            providerOptions: openAiProviderOptions,
+            reasoning: openAiReasoning,
+          } = await useOpenAI(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
+
+          instance = openAiInstance
+          parsedTools = openAiTools
+          reasoningEffort = openAiReasoning
+          Object.assign(providerOptions, {
+            openai: openAiProviderOptions,
           })
-          parsedTools = {
-            tools: {
-              generate_image: imageGenerationTool,
-            },
-            toolChoice: {
-              type: 'tool',
-              toolName: 'generate_image',
-            },
-          }
-        }
 
-        break
-      }
-      case 'anthropic': {
-        const {
-          instance: anthropicInstance,
-          tools: anthropicTools,
-          providerOptions: anthropicProviderOptions,
-          reasoning: anthropicReasoning,
-        } = await useAnthropic(
-          session.user.id,
-          model.id,
-          requestedTools,
-          body.data.reasoning,
-        )
+          if (requestedTools.includes('image_generation')) {
+            if (!openAiImageModel) {
+              throw createError({
+                message: 'Image generation is unavailable for this provider.',
+                status: 400,
+              })
+            }
 
-        instance = anthropicInstance
-        parsedTools = anthropicTools
-        reasoningEffort = anthropicReasoning
-        Object.assign(providerOptions, {
-          anthropic: anthropicProviderOptions,
-        })
-
-        break
-      }
-      case 'google': {
-        const {
-          instance: googleInstance,
-          imageModel: googleImageModel,
-          imageModelId: googleImageModelId,
-          tools: googleTools,
-          providerOptions: googleProviderOptions,
-          reasoning: googleReasoning,
-        } = await useGoogle(
-          session.user.id,
-          model.id,
-          requestedTools,
-          body.data.reasoning,
-        )
-
-        instance = googleInstance
-        parsedTools = googleTools
-        reasoningEffort = googleReasoning
-        Object.assign(providerOptions, {
-          google: googleProviderOptions,
-        })
-
-        if (requestedTools.includes('image_generation')) {
-          if (!googleImageModel) {
-            throw createError({
-              message: 'Image generation is unavailable for this provider.',
-              status: 400,
+            const imageGenerationTool = createImageGenerationTool({
+              userId,
+              provider: 'openai',
+              model: openAiImageModelId,
+              imageModel: openAiImageModel,
+              logger: aiLogger,
+              requestId: getRequestId(event),
+              onGenerated: ({ aspectRatio }) => {
+                generatedImage = { modelId: openAiImageModelId, aspectRatio }
+              },
             })
+            parsedTools = {
+              tools: {
+                generate_image: imageGenerationTool,
+              },
+              toolChoice: {
+                type: 'tool',
+                toolName: 'generate_image',
+              },
+            }
           }
 
-          const imageGenerationTool = createImageGenerationTool({
-            userId,
-            provider: 'google',
-            model: googleImageModelId,
-            imageModel: googleImageModel,
-            logger: aiLogger,
-            requestId: getRequestId(event),
-            onGenerated: ({ aspectRatio }) => {
-              generatedImage = { modelId: googleImageModelId, aspectRatio }
-            },
-          })
-          parsedTools = {
-            tools: {
-              generate_image: imageGenerationTool,
-            },
-            toolChoice: {
-              type: 'tool',
-              toolName: 'generate_image',
-            },
-          }
+          break
         }
+        case 'anthropic': {
+          const {
+            instance: anthropicInstance,
+            tools: anthropicTools,
+            providerOptions: anthropicProviderOptions,
+            reasoning: anthropicReasoning,
+          } = await useAnthropic(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
 
-        break
+          instance = anthropicInstance
+          parsedTools = anthropicTools
+          reasoningEffort = anthropicReasoning
+          Object.assign(providerOptions, {
+            anthropic: anthropicProviderOptions,
+          })
+
+          break
+        }
+        case 'google': {
+          const {
+            instance: googleInstance,
+            imageModel: googleImageModel,
+            imageModelId: googleImageModelId,
+            tools: googleTools,
+            providerOptions: googleProviderOptions,
+            reasoning: googleReasoning,
+          } = await useGoogle(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
+
+          instance = googleInstance
+          parsedTools = googleTools
+          reasoningEffort = googleReasoning
+          Object.assign(providerOptions, {
+            google: googleProviderOptions,
+          })
+
+          if (requestedTools.includes('image_generation')) {
+            if (!googleImageModel) {
+              throw createError({
+                message: 'Image generation is unavailable for this provider.',
+                status: 400,
+              })
+            }
+
+            const imageGenerationTool = createImageGenerationTool({
+              userId,
+              provider: 'google',
+              model: googleImageModelId,
+              imageModel: googleImageModel,
+              logger: aiLogger,
+              requestId: getRequestId(event),
+              onGenerated: ({ aspectRatio }) => {
+                generatedImage = { modelId: googleImageModelId, aspectRatio }
+              },
+            })
+            parsedTools = {
+              tools: {
+                generate_image: imageGenerationTool,
+              },
+              toolChoice: {
+                type: 'tool',
+                toolName: 'generate_image',
+              },
+            }
+          }
+
+          break
+        }
+        case 'xai': {
+          const {
+            instance: xaiInstance,
+            tools: xaiTools,
+            providerOptions: xaiProviderOptions,
+            reasoning: xaiReasoning,
+          } = await useXai(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
+
+          instance = xaiInstance
+          parsedTools = xaiTools
+          reasoningEffort = xaiReasoning
+          Object.assign(providerOptions, {
+            xai: xaiProviderOptions,
+          })
+
+          break
+        }
+        case 'deepseek': {
+          const {
+            instance: deepseekInstance,
+            tools: deepseekTools,
+            providerOptions: deepseekProviderOptions,
+            reasoning: deepseekReasoning,
+          } = await useDeepSeek(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
+
+          instance = deepseekInstance
+          parsedTools = deepseekTools
+          reasoningEffort = deepseekReasoning
+          Object.assign(providerOptions, {
+            deepseek: deepseekProviderOptions,
+          })
+
+          break
+        }
+        case 'moonshotai': {
+          const {
+            instance: moonshotAiInstance,
+            tools: moonshotAiTools,
+            providerOptions: moonshotAiProviderOptions,
+            reasoning: moonshotAiReasoning,
+          } = await useMoonshotAi(
+            session.user.id,
+            model.id,
+            requestedTools,
+            reasoningLevel,
+          )
+
+          instance = moonshotAiInstance
+          parsedTools = moonshotAiTools
+          reasoningEffort = moonshotAiReasoning
+          Object.assign(providerOptions, {
+            moonshotai: moonshotAiProviderOptions,
+          })
+
+          break
+        }
+        default:
+          throw createError({
+            message: 'Unsupported provider',
+            status: 400,
+          })
       }
-      case 'xai': {
-        const {
-          instance: xaiInstance,
-          tools: xaiTools,
-          providerOptions: xaiProviderOptions,
-          reasoning: xaiReasoning,
-        } = await useXai(
-          session.user.id,
-          model.id,
-          requestedTools,
-          body.data.reasoning,
-        )
-
-        instance = xaiInstance
-        parsedTools = xaiTools
-        reasoningEffort = xaiReasoning
-        Object.assign(providerOptions, {
-          xai: xaiProviderOptions,
-        })
-
-        break
-      }
-      case 'deepseek': {
-        const {
-          instance: deepseekInstance,
-          tools: deepseekTools,
-          providerOptions: deepseekProviderOptions,
-          reasoning: deepseekReasoning,
-        } = await useDeepSeek(
-          session.user.id,
-          model.id,
-          requestedTools,
-          body.data.reasoning,
-        )
-
-        instance = deepseekInstance
-        parsedTools = deepseekTools
-        reasoningEffort = deepseekReasoning
-        Object.assign(providerOptions, {
-          deepseek: deepseekProviderOptions,
-        })
-
-        break
-      }
-      case 'moonshotai': {
-        const {
-          instance: moonshotAiInstance,
-          tools: moonshotAiTools,
-          providerOptions: moonshotAiProviderOptions,
-          reasoning: moonshotAiReasoning,
-        } = await useMoonshotAi(
-          session.user.id,
-          model.id,
-          requestedTools,
-          body.data.reasoning,
-        )
-
-        instance = moonshotAiInstance
-        parsedTools = moonshotAiTools
-        reasoningEffort = moonshotAiReasoning
-        Object.assign(providerOptions, {
-          moonshotai: moonshotAiProviderOptions,
-        })
-
-        break
-      }
-      default:
-        throw createError({
-          message: 'Unsupported provider',
-          status: 400,
-        })
+    } else {
+      throw createError({
+        message: 'Unsupported provider',
+        status: 400,
+      })
     }
   } catch (exception) {
     const chatError = normalizeChatError({
       error: exception,
       event,
-      providerId,
+      providerId: errorProviderId,
     })
 
     logger.set({
@@ -650,8 +751,8 @@ export default defineEventHandler(async (event) => {
       userId,
       chatId: chat.id,
       projectId: chat.projectId,
-      modelId: model.id,
-      reasoning: body.data.reasoning,
+      modelId,
+      reasoning: reasoningLevel,
       tools: requestedTools,
     })
 
@@ -668,7 +769,7 @@ export default defineEventHandler(async (event) => {
       return JSON.stringify(normalizeChatError({
         error,
         event,
-        providerId,
+        providerId: errorProviderId,
       }))
     },
     async execute({ writer }) {
@@ -734,8 +835,10 @@ export default defineEventHandler(async (event) => {
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
-            onEnd({ usage }) {
-              const textCost = computeModelCost(model.id, provider.id, usage)
+            onEnd({ usage, providerMetadata }) {
+              const textCost = gatewayId
+                ? readOpenRouterCost(providerMetadata)
+                : computeModelCost(modelId, telemetryProviderId, usage)
               const imageCost = generatedImage
                 ? getImageGenerationCost(
                   generatedImage.modelId,
@@ -765,7 +868,7 @@ export default defineEventHandler(async (event) => {
           const chatError = normalizeChatError({
             error: exception,
             event,
-            providerId,
+            providerId: errorProviderId,
           })
 
           logger.set({
@@ -783,8 +886,8 @@ export default defineEventHandler(async (event) => {
             userId,
             chatId: chat.id,
             projectId: chat.projectId,
-            modelId: model.id,
-            reasoning: body.data.reasoning,
+            modelId,
+            reasoning: reasoningLevel,
             tools: requestedTools,
           })
 
@@ -796,7 +899,7 @@ export default defineEventHandler(async (event) => {
           originalMessages: messagesForAI,
           generateMessageId: () => messagePublicId,
           sendSources: true,
-          sendReasoning: body.data.reasoning !== 'off',
+          sendReasoning: reasoningLevel !== 'off',
           messageMetadata({ part }) {
             if (part.type !== 'finish') {
               return undefined
@@ -804,8 +907,8 @@ export default defineEventHandler(async (event) => {
 
             const baseUsage = buildMessageUsage(
               part.totalUsage,
-              model.id,
-              provider.id,
+              modelId,
+              telemetryProviderId,
             )
             const imageGenerationCost = generatedImage
               ? getImageGenerationCost(
@@ -827,7 +930,7 @@ export default defineEventHandler(async (event) => {
             const chatError = normalizeChatError({
               error,
               event,
-              providerId,
+              providerId: errorProviderId,
             })
 
             logger.set({
@@ -845,8 +948,8 @@ export default defineEventHandler(async (event) => {
               userId,
               chatId: chat.id,
               projectId: chat.projectId,
-              modelId: model.id,
-              reasoning: body.data.reasoning,
+              modelId,
+              reasoning: reasoningLevel,
               tools: requestedTools,
             })
 
@@ -862,16 +965,18 @@ export default defineEventHandler(async (event) => {
           result,
           db,
           event,
-          providerId: provider.id,
-          supportedProviderId: providerId,
+          providerId: telemetryProviderId,
+          supportedProviderId: errorProviderId,
           userId,
           chatId: chat.id,
           projectId: chat.projectId,
-          modelId: model.id,
-          reasoning: body.data.reasoning,
+          modelId,
+          reasoning: reasoningLevel,
           tools: requestedTools,
           publicId: messagePublicId,
           logger,
+          vercelGatewayClient,
+          scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
         })
 
         // There is no reliable signal here for "is the client still
@@ -1127,7 +1232,7 @@ async function persistAssistantMessageFromStream(input: {
   db: ReturnType<typeof useDb>
   event: H3Event
   providerId: string
-  supportedProviderId: SupportedProviderId | undefined
+  supportedProviderId: SupportedProviderId | GatewayId | undefined
   userId: number
   chatId: string
   projectId: string | null
@@ -1138,6 +1243,8 @@ async function persistAssistantMessageFromStream(input: {
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
+  vercelGatewayClient?: GatewayProvider
+  scheduleBackgroundWork?: (promise: Promise<unknown>) => void
 }): Promise<boolean> {
   let isAborted = false
   let responseMessage: UIMessage | null = null
@@ -1186,12 +1293,19 @@ async function persistAssistantMessageFromStream(input: {
     })
 
     let usage: MessageUsage | undefined
+    let vercelGenerationId: string | undefined
 
     try {
+      const finalStep = await input.result.finalStep
+      const openRouterCost = readOpenRouterCost(finalStep.providerMetadata)
+
+      vercelGenerationId = readVercelGenerationId(finalStep.providerMetadata)
+
       const baseUsage = buildMessageUsage(
         await input.result.usage,
         input.modelId,
         input.providerId,
+        openRouterCost,
       )
       const imageGenerationCost = getGeneratedImageCostFromParts(
         responseMessage.parts as UIMessage['parts'],
@@ -1220,6 +1334,21 @@ async function persistAssistantMessageFromStream(input: {
       },
       publicId: input.publicId,
     })
+
+    if (
+      assistantMessage
+      && input.vercelGatewayClient
+      && input.scheduleBackgroundWork
+      && vercelGenerationId
+    ) {
+      input.scheduleBackgroundWork(persistVercelGenerationCost({
+        db: input.db,
+        client: input.vercelGatewayClient,
+        generationId: vercelGenerationId,
+        publicId: input.publicId,
+        logger: input.logger,
+      }))
+    }
 
     if (assistantMessage && generatedFileIds.length > 0) {
       let filesLinked = false

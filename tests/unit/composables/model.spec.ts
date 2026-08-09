@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultModel } from '../../../providers'
 import { useUserModel } from '../../../app/composables/model'
 import {
+  getSelectionGatewayId,
   parseModelSelection,
   serializeModelSelection,
 } from '../../../shared/utils/model-selection'
@@ -80,6 +81,23 @@ describe('serializeModelSelection', () => {
 
     expect(raw.startsWith('{')).toBe(true)
     expect(parseModelSelection(raw, 'fallback-model')).toEqual(selection)
+  })
+})
+
+describe('getSelectionGatewayId', () => {
+  it('returns undefined for a provider selection', () => {
+    expect(getSelectionGatewayId({
+      source: 'provider',
+      modelId: 'gemini-2.5-flash',
+    })).toBeUndefined()
+  })
+
+  it('returns the gateway id for a gateway selection', () => {
+    expect(getSelectionGatewayId({
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'openai/gpt-4o',
+    })).toBe('vercel')
   })
 })
 

@@ -182,6 +182,43 @@ re-planning needed, just scope additions):
 
 **Definition of done**: real streamed completion through both gateways on workerd preview with real credentials; usage row persists gateway provider/model + cost; Axiom shows flat + nested fields; tool request on gateway model → clean 400; old non-gateway clients unaffected (regression test).
 
+**Implemented (2026-08-09) — disclosed deviations/decisions**:
+1. Gateway builders take `(userId, model)` only, not the full 4-arg
+   `(userId, model, requestedTools, requestedReasoning)` shape — tools are
+   hard-rejected before a gateway builder ever runs (v1 scope cut) and
+   reasoning is never wired for gateways in v1, so the extra params would be
+   permanently unused. Both builders still return the exact
+   `{instance, generateChatTitle, tools, providerOptions}` shape the route
+   destructures (`tools`/`providerOptions` always `{}`), so `title.patch.ts`
+   and `index.post.ts` both work through the same dispatcher unmodified.
+2. `keyProviderIdForGateway()` is a thin wrapper over `provider-meta.ts`'s
+   existing `keyProviderId` field (not a second mapping table), per the
+   plan's own "reuse it directly" option.
+3. `ChatErrorPayload.providerId` / `NormalizeChatErrorInput.providerId`
+   widened from `SupportedProviderId` to `SupportedProviderId | GatewayId`
+   (type-only, additive) so gateway sends get real error attribution
+   (`providerId: gatewayId`) instead of `undefined` on every error path,
+   including `persistAssistantMessageFromStream`'s catch block.
+4. OpenRouter builder sets `compatibility: 'strict'` and
+   `usage: { include: true }` on the chat model — neither is optional:
+   without `usage.include`, `providerMetadata.openrouter.usage.cost` is
+   never populated by OpenRouter's API regardless of gateway-side code,
+   silently breaking the cost DoD item. Caught via `@openrouter/ai-sdk-
+   provider`'s own compiled source, not the plan text.
+5. Vercel's `getGenerationInfo()` cost lookup is scheduled via the same
+   `cfCtx.waitUntil` mechanism the route already uses for the push
+   notification and Axiom wide-event ship — `persistVercelGenerationCost()`
+   (one retry after 1.5s, then gives up and logs non-fatally) runs
+   entirely after the assistant message row already exists, updating its
+   `usage.totalCost` in place. The initial insert never blocks on it.
+6. `providerMetadata.gateway.generationId` (Vercel) could not be verified
+   against a live account in this environment — `@ai-sdk/gateway`'s client
+   is a transparent proxy, so this field's presence is server-injected and
+   unverifiable from package source. Implemented per this plan's spec,
+   defensively guarded (absence just skips the background job, never
+   throws). **Needs a live `pnpm run preview` smoke test with a real Vercel
+   AI Gateway key before shipping** — flagged in the PR5 handoff report too.
+
 ---
 
 ### PR 6 — No-key UX gating (Opus-designed)

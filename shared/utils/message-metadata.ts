@@ -180,6 +180,12 @@ function getFollowingAssistantUsage(
     : undefined
 }
 
+// Gateway-routed turns (OpenRouter/Vercel AI Gateway) report one blended
+// `totalCost` instead of the `inputCost`/`outputCost` split direct providers
+// produce (gateway model ids never appear in getModelCostMap(), see
+// buildMessageUsage()). That total is shown in full on the assistant row,
+// the one place `usage` is actually persisted; the paired user row
+// contributes nothing so sumMessageCosts() below never double-counts it.
 function getPerMessageCost(
   messages: MenuMessage[],
   messageIndex: number,
@@ -193,6 +199,10 @@ function getPerMessageCost(
   if (message.role === 'assistant') {
     const usage = getMessageMetadata(message).usage
 
+    if (usage?.totalCost !== undefined) {
+      return resolveDisplayCost(usage, usage.totalCost)
+    }
+
     return resolveDisplayCost(usage, usage?.outputCost)
   }
 
@@ -201,6 +211,10 @@ function getPerMessageCost(
   }
 
   const usage = getFollowingAssistantUsage(messages, messageIndex)
+
+  if (usage?.totalCost !== undefined) {
+    return undefined
+  }
 
   return resolveDisplayCost(usage, usage?.inputCost)
 }

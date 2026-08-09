@@ -303,6 +303,14 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/gateways-models.spec.ts',
   ]
 
+  const gatewayChatTests = [
+    'tests/unit/utils/gateways/index.spec.ts',
+    'tests/unit/utils/gateways/vercel.spec.ts',
+    'tests/unit/utils/gateways/openrouter.spec.ts',
+    'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-title.spec.ts',
+  ]
+
   const keysApiTests = [
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
@@ -419,11 +427,20 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts)$/,
-      tests: gatewayCatalogTests,
+      tests: [...gatewayCatalogTests, ...gatewayChatTests],
     },
     {
       pattern: /^app\/composables\/gateway-catalog\.ts$/,
       tests: [...gatewayCatalogTests, ...modelsTriggerTests],
+    },
+    {
+      pattern:
+        /^server\/api\/v1\/chats\/\[slug\]\/(index\.post|title\.patch)\.ts$/,
+      tests: [...chatStreamBranchTests, ...gatewayChatTests],
+    },
+    {
+      pattern: /^app\/composables\/chat-title\.ts$/,
+      tests: ['tests/integration/api/chats-title.spec.ts'],
     },
     {
       pattern:
@@ -698,7 +715,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/chat\.ts$/,
-      tests: [...chatStreamBranchTests, ...messageUsageTests],
+      tests: [
+        ...chatStreamBranchTests,
+        ...messageUsageTests,
+        ...gatewayChatTests,
+      ],
     },
     {
       pattern: /^app\/composables\/chat-test\.ts$/,
@@ -708,6 +729,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/chats\/errors\.ts$/,
       tests: [
         ...chatStreamBranchTests,
+        ...gatewayChatTests,
         'tests/unit/utils/research/errors.spec.ts',
       ],
     },
@@ -903,7 +925,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/types\/chat-errors\.d\.ts$/,
-      tests: chatStreamBranchTests,
+      tests: [...chatStreamBranchTests, ...gatewayChatTests],
     },
     {
       pattern: /^shared\/utils\/chat-test-errors\.ts$/,

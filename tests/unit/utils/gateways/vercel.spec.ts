@@ -1,0 +1,230 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+function stubKeyLookup(apiKey: string | null = 'encrypted-key') {
+  vi.stubGlobal('useDb', () => ({
+    query: {
+      keys: {
+        findFirst: vi.fn(async () => (apiKey ? { apiKey } : undefined)),
+      },
+    },
+  }))
+  vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
+}
+
+async function importVercelGatewayModule() {
+  return await import('../../../../server/utils/gateways/vercel')
+}
+
+describe('useVercelGateway', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.stubGlobal('createError', (input: {
+      statusCode?: number
+      statusMessage?: string
+    }) => {
+      const exception = new Error(input.statusMessage || 'Error')
+
+      Object.assign(exception, input)
+
+      return exception
+    })
+  })
+
+  it('throws a 401-style error when no key is stored', async () => {
+    stubKeyLookup(null)
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+
+    await expect(useVercelGateway('1', 'openai/gpt-4o'))
+      .rejects.toMatchObject({
+        statusCode: 401,
+        statusMessage: 'Vercel AI Gateway API key not found. Please set it up in the settings.',
+      })
+  })
+
+  it('builds an instance and exposes the raw gateway client', async () => {
+    stubKeyLookup()
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway('1', 'openai/gpt-4o')
+
+    expect(result.tools).toEqual({})
+    expect(result.providerOptions).toEqual({})
+    expect(typeof result.generateChatTitle).toBe('function')
+    expect(typeof result.client?.getGenerationInfo).toBe('function')
+
+    const instance = result.instance as unknown as { modelId: string }
+
+    expect(instance.modelId).toBe('openai/gpt-4o')
+  })
+})
+
+describe('persistVercelGenerationCost', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  function createLogger() {
+    return { set: vi.fn() }
+  }
+
+  it('merges the reported cost into the existing usage row', async () => {
+    const updateWhere = vi.fn(async () => undefined)
+    const updateSet = vi.fn(() => ({ where: updateWhere }))
+    const db = {
+      query: {
+        messages: {
+          findFirst: vi.fn(async () => ({
+            usage: {
+              model: 'openai/gpt-4o',
+              provider: 'vercel-gateway',
+              inputTokens: 10,
+              outputTokens: 20,
+              totalTokens: 30,
+            },
+          })),
+        },
+      },
+      update: vi.fn(() => ({ set: updateSet })),
+    }
+
+    const client = {
+      getGenerationInfo: vi.fn(async () => ({ totalCost: 0.0123 })),
+    }
+    const logger = createLogger()
+
+    const { persistVercelGenerationCost } = await importVercelGatewayModule()
+
+    await persistVercelGenerationCost({
+      db: db as any,
+      client: client as any,
+      generationId: 'gen_123',
+      publicId: 'assistant-public-1',
+      logger,
+    })
+
+    expect(client.getGenerationInfo).toHaveBeenCalledWith({ id: 'gen_123' })
+    expect(updateSet).toHaveBeenCalledWith({
+      usage: expect.objectContaining({
+        totalCost: 0.0123,
+        inputTokens: 10,
+        outputTokens: 20,
+      }),
+    })
+    expect(logger.set).not.toHaveBeenCalled()
+  })
+
+  it('retries once when the generation record is not immediately available', async () => {
+    vi.useFakeTimers()
+
+    const updateSet = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
+    const db = {
+      query: {
+        messages: {
+          findFirst: vi.fn(async () => ({
+            usage: {
+              model: 'x', provider: 'x', inputTokens: 0, outputTokens: 0, totalTokens: 0,
+            },
+          })),
+        },
+      },
+      update: vi.fn(() => ({ set: updateSet })),
+    }
+
+    const client = {
+      getGenerationInfo: vi.fn()
+        .mockRejectedValueOnce(new Error('not found yet'))
+        .mockResolvedValueOnce({ totalCost: 0.05 }),
+    }
+    const logger = createLogger()
+
+    const { persistVercelGenerationCost } = await importVercelGatewayModule()
+
+    const pending = persistVercelGenerationCost({
+      db: db as any,
+      client: client as any,
+      generationId: 'gen_456',
+      publicId: 'assistant-public-2',
+      logger,
+    })
+
+    await vi.runAllTimersAsync()
+    await pending
+
+    expect(client.getGenerationInfo).toHaveBeenCalledTimes(2)
+    expect(updateSet).toHaveBeenCalledWith({
+      usage: expect.objectContaining({ totalCost: 0.05 }),
+    })
+
+    vi.useRealTimers()
+  })
+
+  it('logs a non-fatal error instead of throwing when both attempts fail', async () => {
+    const db = {
+      query: { messages: { findFirst: vi.fn() } },
+      update: vi.fn(),
+    }
+
+    vi.useFakeTimers()
+
+    const client = {
+      getGenerationInfo: vi.fn().mockRejectedValue(new Error('gone')),
+    }
+    const logger = createLogger()
+
+    const { persistVercelGenerationCost } = await importVercelGatewayModule()
+
+    const pending = persistVercelGenerationCost({
+      db: db as any,
+      client: client as any,
+      generationId: 'gen_789',
+      publicId: 'assistant-public-3',
+      logger,
+    })
+
+    await vi.runAllTimersAsync()
+    await expect(pending).resolves.toBeUndefined()
+
+    expect(db.query.messages.findFirst).not.toHaveBeenCalled()
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: {
+        vercelGenerationCost: {
+          error: 'gone',
+        },
+      },
+    }))
+
+    vi.useRealTimers()
+  })
+
+  it('no-ops when the message row has no usage to merge into', async () => {
+    const updateSet = vi.fn()
+    const db = {
+      query: {
+        messages: {
+          findFirst: vi.fn(async () => ({ usage: null })),
+        },
+      },
+      update: vi.fn(() => ({ set: updateSet })),
+    }
+
+    const client = {
+      getGenerationInfo: vi.fn(async () => ({ totalCost: 0.01 })),
+    }
+    const logger = createLogger()
+
+    const { persistVercelGenerationCost } = await importVercelGatewayModule()
+
+    await persistVercelGenerationCost({
+      db: db as any,
+      client: client as any,
+      generationId: 'gen_000',
+      publicId: 'assistant-public-4',
+      logger,
+    })
+
+    expect(updateSet).not.toHaveBeenCalled()
+  })
+})
