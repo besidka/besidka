@@ -121,17 +121,125 @@ describe('gateway models API', () => {
     } as never)).rejects.toThrow('Invalid request parameters')
   })
 
-  it('rejects cloudflare as not yet supported', async () => {
+  it('rejects a cloudflare request when no credentials are stored', async () => {
     vi.stubGlobal('fetch', vi.fn())
+    vi.doMock('~~/server/utils/gateways/cloudflare', () => ({
+      getCloudflareGatewayCredentials: vi.fn(async () => undefined),
+    }))
 
     const handler = await getHandler()
 
     await expect(handler({
       params: { gateway: 'cloudflare' },
-    } as never)).rejects.toThrow(
-      'Cloudflare AI Gateway is not yet supported',
-    )
+    } as never)).rejects.toMatchObject({
+      message: 'Cloudflare AI Gateway credentials not found',
+      status: 401,
+    })
   })
+
+  it('returns a normalized cloudflare catalog fetched with the account\'s own token',
+    async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [{
+            id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+            name: 'Llama 3.3 70B Instruct FP8 Fast',
+            context_length: 24000,
+            architecture: {
+              input_modalities: ['text'],
+              output_modalities: ['text'],
+            },
+            pricing: { prompt: '0.0000002', completion: '0.0000009' },
+            top_provider: { max_completion_tokens: 4096 },
+            supported_parameters: ['tools'],
+          }],
+        }),
+      })
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.doMock('~~/server/utils/gateways/cloudflare', () => ({
+        getCloudflareGatewayCredentials: vi.fn(async () => ({
+          accountId: 'account-1',
+          apiKey: 'cf-token',
+        })),
+      }))
+
+      const handler = await getHandler()
+
+      const response = await handler({
+        params: { gateway: 'cloudflare' },
+      } as never)
+
+      expect(response).toEqual({
+        gateway: 'cloudflare',
+        models: [{
+          id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          name: 'Llama 3.3 70B Instruct FP8 Fast',
+          description: undefined,
+          contextLength: 24000,
+          maxOutputTokens: 4096,
+          pricing: { input: '0.0000002', output: '0.0000009' },
+          modalities: { input: ['text'], output: ['text'] },
+          supportsTools: true,
+        }],
+      })
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.cloudflare.com/client/v4/accounts/account-1/ai/models/search?format=openrouter',
+        { headers: { Authorization: 'Bearer cf-token' } },
+      )
+    })
+
+  it('caches the cloudflare catalog per account, isolated from other accounts',
+    async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-a', name: 'Model A', context_length: 8192 }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-b', name: 'Model B', context_length: 8192 }],
+          }),
+        })
+
+      const cache = createFakeCache()
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      let accountId = 'account-1'
+
+      vi.doMock('~~/server/utils/gateways/cloudflare', () => ({
+        getCloudflareGatewayCredentials: vi.fn(async () => ({
+          accountId,
+          apiKey: `token-${accountId}`,
+        })),
+      }))
+
+      const handler = await getHandler()
+
+      const first = await handler({
+        params: { gateway: 'cloudflare' },
+      } as never)
+      const second = await handler({
+        params: { gateway: 'cloudflare' },
+      } as never)
+
+      accountId = 'account-2'
+
+      const third = await handler({
+        params: { gateway: 'cloudflare' },
+      } as never)
+
+      expect(first.models[0]?.id).toBe('model-a')
+      expect(second.models[0]?.id).toBe('model-a')
+      expect(third.models[0]?.id).toBe('model-b')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
 
   it('returns a normalized catalog for a valid gateway', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
