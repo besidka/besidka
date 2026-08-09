@@ -127,8 +127,15 @@ another user's real catalog).
 source of truth — never re-declare those ceiling numbers elsewhere.
 `isGatewayModelFree()` in the same file is a separate, stricter signal (both
 input and output must parse to exactly `0`, and missing pricing is never
-treated as free) intended for a future "free" filter/badge, not folded into
-the tier enum.
+treated as free), deliberately not folded into the tier enum: zero dollars
+resolves to `$` through the shared ceilings, so a free model would otherwise
+carry the cheapest paid tier's badge.
+
+A gateway row shows the tier badge and nothing else about price — the
+spelled-out per-million figures live only in the badge's tooltip and in
+`GatewayModelDetail.vue`'s spec rows, both via `formatGatewayPriceDetail()`.
+A free model shows a green `banknote-x` badge **instead of** the tier badge,
+never both.
 
 `GatewayModel.supportsReasoning`/`supportsWebSearch` are advisory,
 best-effort flags populated per gateway from whatever real signal each raw
@@ -143,18 +150,66 @@ nothing in that schema names a reasoning or web-search parameter key. Both
 fields are left `undefined` for Cloudflare rather than guessed; `undefined`
 always means "unknown," never "no," across all three gateways.
 
+Only an explicit `true` ever earns a picker badge. A gateway row renders a
+`brain`/`text-warning` chip for `supportsReasoning` and a `globe`/`text-info`
+chip for `supportsWebSearch`, matching the direct-provider `ModelItem.vue`
+palette, and renders nothing at all for `false` or `undefined` — the picker
+never claims a capability is absent, only that one is confirmed present.
+
+**`supportsTools` is deliberately not a row badge.** Measured live, 333 of
+OpenRouter's 400 models and 197 of Vercel's 209 report it, so a wrench on
+four rows in five separates nothing; it also collided with web search on
+`text-info`. It survives in `GatewayModelDetail.vue`, where a full
+capability roster is the point, on the deprioritized `badge-neutral`. For
+contrast, `supportsWebSearch` lands on 16 of OpenRouter's 400 — the signal
+worth the pixels. Re-adding a row-level wrench re-creates the exact
+"everything looks the same" complaint this replaced.
+
+### Picker: grouping by underlying provider
+
 `getGatewayModelProviderPrefix()` in `shared/utils/gateway-model-id.ts`
 splits a gateway model id on its first `/` (e.g. `anthropic/claude-opus-5` →
-`anthropic`) so a future picker UI can group/filter by the underlying
-proxied provider. It is a pure split with no vendor-slug normalization —
-Cloudflare's own ids are prefixed `@cf/...`, so it returns `@cf` for those,
-not the underlying provider; provider-grouping for Cloudflare needs a
-second-segment rule this WP does not add. `app/components/ProviderIcon.vue`
-separately normalizes a handful of known vendor-slug variants (OpenRouter's
-`x-ai` and its six `~`-prefixed "latest" aliases) to this app's existing icon
-keys, falling back to the two-letter badge for every other prefix
-(`mistralai`, `qwen`, `meta-llama`, …) since no matching brand icon exists in
-this codebase.
+`anthropic`). `app/utils/models-picker.ts` builds on it with
+`getGatewayProviderGroups()` (counts per prefix, most-stocked first, ties
+alphabetical) and `sortGatewayModelsByProvider()` (clusters the list in that
+same order, then by model name), and
+`ChatInput/ModelsTrigger/GatewayProviderStrip.vue` renders one chip per
+group above the list.
+
+**The strip is horizontal, not a vertical clone of `ProviderRail.vue`**, and
+that is a scale decision, not a stylistic one. The curated catalog has six
+providers; OpenRouter reports **58 distinct prefixes across 400 models** and
+Vercel 28 across 209. A 58-item icon rail is several screens of vertical
+scrolling in a ~350px column, and — since this codebase has brand icons for
+nine vendors only — most entries would be unlabelled two-letter monograms
+whose tooltips a scrolling rail would clip (`overflow-y-auto` coerces
+`overflow-x` to `auto`; see `docs/vite-css-minify.md`-adjacent overflow
+notes and the ContextMenu clipping post-mortem). Chips carry the vendor slug
+and model count inline, so they need no tooltip, and reuse the same pattern
+`GatewayRail.vue` already uses in the same panel.
+
+Two rules keep the strip honest:
+
+- It renders only when the catalog has **more than one** distinct prefix.
+  Cloudflare's ids are all `@cf/...`, so its strip would be a single chip
+  selecting everything — `getGatewayModelProviderPrefix()` is a pure split
+  with no vendor-slug normalization and returns `@cf`, not the underlying
+  provider. **Provider grouping for Cloudflare would need a second-segment
+  rule that still does not exist**; the single-prefix guard hides the
+  useless control instead of faking one.
+- It hides while a search is narrowing the list (parity with
+  `ProviderRail.vue`), and `ModelsTrigger.vue` drops an active prefix as
+  soon as the catalog stops offering it — the free filter can empty a
+  provider out from under the chip that selected it.
+
+`app/components/ProviderIcon.vue` normalizes a handful of known vendor-slug
+variants (OpenRouter's `x-ai` and its six `~`-prefixed "latest" aliases) to
+this app's existing icon keys, and falls back to a two-letter monogram for
+every other prefix (`mistralai`, `qwen`, `meta-llama`, …) since no matching
+brand icon exists here. That fallback is styled as a fixed-size tinted
+square rather than bare text **because gateway rows are its only caller** —
+every direct provider and gateway id resolves to a real icon, so an unsized
+monogram used to overlap the model name it sat next to.
 
 ### Cost capture
 
@@ -195,6 +250,14 @@ Every provider/gateway is gated generically by iterating `enabledGateways`/
 zero picker-side code changes. Server-side, the original 401-at-send-time
 remains the real enforcement backstop; the picker gating is UI guidance only.
 
+While the **active gateway** has no key, the picker drops the entire search
+and filter row (`models-picker-search-row`) along with the provider strip,
+leaving only the key prompt — there is no catalog behind them to search,
+filter or group, and an inert search box reads as a broken control rather
+than a gated one. Provider mode is unaffected: the curated catalog is always
+searchable even on a zero-key account, where the rows carry their own "Key
+required" badges instead.
+
 ## Known gaps requiring live verification
 
 None of these were verified against a real account/credential in the
@@ -221,6 +284,17 @@ by its own PR's review and confirmed still open by the final cross-PR review:
 gateway, open its catalog in the picker, send one message, confirm an Axiom
 event with the expected `attributes.chat.gateway*` fields — closes all five
 items at once.
+
+**Partially closed since**: the Vercel and OpenRouter *catalog* halves were
+driven end-to-end against the live upstream APIs (both are public and
+unauthenticated, so a dummy stored key is enough to pass the picker's
+presence gate — the route never validates it). Both rendered their real
+catalogs through the picker: OpenRouter 400 models / 58 prefixes / 268
+reasoning / 16 web-search / 17 free, Vercel 209 / 28 / 154 / 70 / 2. That
+closes catalog fetching, normalization, price tiering and capability
+signalling for those two gateways. It closes **nothing** for Cloudflare
+(items 2, 3 and 5 need real account credentials) and nothing about sending a
+chat (item 1) or Vercel's generation-id cost hop (item 4).
 
 ## Known limitation (disclosed, not fixed)
 

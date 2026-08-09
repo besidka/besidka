@@ -10,7 +10,7 @@
   <SvgoCloudflare v-else-if="resolvedProviderId === 'cloudflare'" />
   <span
     v-else
-    class="text-xs font-semibold uppercase"
+    class="inline-flex aspect-square items-center justify-center rounded-[0.25em] bg-current/10 text-[0.5rem] font-semibold uppercase leading-none tracking-tight"
   >
     {{ badgeText }}
   </span>
