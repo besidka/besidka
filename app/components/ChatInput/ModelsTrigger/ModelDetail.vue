@@ -51,6 +51,29 @@
       </span>
     </p>
     <p
+      v-if="isKeyMissing"
+      data-testid="model-detail-key-notice"
+      class="mt-2 flex items-start gap-1.5 p-2 rounded-xl text-xs text-warning capability-chip"
+    >
+      <Icon
+        name="lucide:key-round"
+        size="13"
+        class="shrink-0 mt-px"
+      />
+      <span>
+        {{ providerName }} models need your own API key before they can be
+        selected.
+        <NuxtLink
+          to="/profile/keys"
+          data-testid="model-detail-key-link"
+          class="link font-semibold"
+        >
+          Add your {{ providerName }} key
+        </NuxtLink>
+        to enable them.
+      </span>
+    </p>
+    <p
       v-if="model.description"
       class="mt-1.5 text-xs opacity-70"
     >
@@ -110,6 +133,7 @@ interface SpecRow {
 const props = defineProps<{
   model: Model
   providerName: string
+  isKeyMissing?: boolean
 }>()
 
 const emit = defineEmits<{

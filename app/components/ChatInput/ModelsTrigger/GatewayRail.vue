@@ -15,12 +15,15 @@
         type="button"
         :data-testid="`models-picker-gateway-${gateway.id}`"
         class="btn btn-xs shrink-0 gap-1.5 rounded-full"
-        :class="activeGatewayId === gateway.id ? 'btn-accent' : 'btn-ghost'"
+        :class="[
+          activeGatewayId === gateway.id ? 'btn-accent' : 'btn-ghost',
+          {
+            'opacity-60': gateway.hasKey === false
+              && activeGatewayId !== gateway.id
+          }
+        ]"
         :aria-pressed="activeGatewayId === gateway.id"
-        :aria-label="activeGatewayId === gateway.id
-          ? `Leave ${gateway.label} and show provider models`
-          : `Browse ${gateway.label} models`
-        "
+        :aria-label="getGatewayLabel(gateway)"
         @click="emit('toggleGateway', gateway.id)"
       >
         <ProviderIcon
@@ -31,6 +34,17 @@
         <span class="truncate">
           {{ gateway.label }}
         </span>
+        <Icon
+          v-if="gateway.hasKey === false"
+          :data-testid="`models-picker-gateway-${gateway.id}-keyless`"
+          name="lucide:key-round"
+          size="11"
+          class="shrink-0"
+          :class="activeGatewayId === gateway.id
+            ? 'text-current'
+            : 'text-warning'
+          "
+        />
         <span
           v-if="isPending && activeGatewayId === gateway.id"
           data-testid="models-picker-gateway-pending"
@@ -44,8 +58,14 @@
 <script setup lang="ts">
 import type { GatewayId } from '#shared/types/gateways.d'
 
-defineProps<{
-  gateways: Array<{ id: GatewayId, label: string }>
+interface GatewayRailItem {
+  id: GatewayId
+  label: string
+  hasKey?: boolean
+}
+
+const props = defineProps<{
+  gateways: GatewayRailItem[]
   activeGatewayId: GatewayId | null
   isPending: boolean
 }>()
@@ -53,4 +73,16 @@ defineProps<{
 const emit = defineEmits<{
   toggleGateway: [gatewayId: GatewayId]
 }>()
+
+function getGatewayLabel(gateway: GatewayRailItem): string {
+  if (gateway.hasKey === false) {
+    return `Browse ${gateway.label} models — API key required`
+  }
+
+  if (props.activeGatewayId === gateway.id) {
+    return `Leave ${gateway.label} and show provider models`
+  }
+
+  return `Browse ${gateway.label} models`
+}
 </script>
