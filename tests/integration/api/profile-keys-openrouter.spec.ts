@@ -190,7 +190,7 @@ describe('openrouter key API', () => {
     const postHandler = await getPostHandler()
     const deleteHandler = await getDeleteHandler()
 
-    expect(await getHandler({} as any)).toBe('')
+    expect(await getHandler({} as any)).toEqual({ hasKey: false })
 
     await postHandler({ body: { apiKey: 'sk-or-real-key' } } as any)
     expect(dbMock.spies.insert).toHaveBeenCalledTimes(1)
@@ -201,15 +201,31 @@ describe('openrouter key API', () => {
       }),
     )
 
-    expect(await getHandler({} as any)).toBe('sk-or-real-key')
+    expect(await getHandler({} as any)).toEqual({ hasKey: true })
 
     await postHandler({ body: { apiKey: 'sk-or-updated-key' } } as any)
     expect(dbMock.spies.update).toHaveBeenCalledTimes(1)
-    expect(await getHandler({} as any)).toBe('sk-or-updated-key')
+    expect(await getHandler({} as any)).toEqual({ hasKey: true })
 
     await deleteHandler({} as any)
     expect(dbMock.spies.deleteFn).toHaveBeenCalledTimes(1)
-    expect(await getHandler({} as any)).toBe('')
+    expect(await getHandler({} as any)).toEqual({ hasKey: false })
+  })
+
+  it('never returns the stored key to the client', async () => {
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+
+    const getHandler = await getGetHandler()
+    const postHandler = await getPostHandler()
+
+    await postHandler({ body: { apiKey: 'sk-or-secret-key' } } as any)
+
+    const response = await getHandler({} as any)
+
+    expect(JSON.stringify(response)).not.toContain('sk-or-secret-key')
+    expect(response).toEqual({ hasKey: true })
   })
 
   it('returns 429 once the POST rate limit is exceeded', async () => {

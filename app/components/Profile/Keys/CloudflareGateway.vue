@@ -1,14 +1,14 @@
 <template>
-  <section class="grid place-items-center gap-2 pt-4">
-    <ProviderIcon
-      provider-id="cloudflare"
-      class="!size-16"
-    />
-    <h3 class="text-2xl font-bold">{{ meta.label }}</h3>
-    <p>Manage your {{ meta.label }} credentials here</p>
+  <ProfileKeysCard
+    provider-id="cloudflare"
+    :label="meta.label"
+    :status="status"
+    :group="group"
+    :open="open"
+  >
     <UiForm
       ref="form"
-      class="w-full"
+      class="!p-0"
       @submit="updateCredentials"
     >
       <UiFormFieldset>
@@ -16,6 +16,7 @@
           v-model="accountId"
           autocomplete="off"
           label="Account ID"
+          data-testid="account-id-field"
           placeholder="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
           :rules="[Validation.required()]"
           :disabled="pending"
@@ -24,6 +25,7 @@
           v-model="gatewayId"
           autocomplete="off"
           label="Gateway ID"
+          data-testid="gateway-id-field"
           placeholder="default"
           :disabled="pending"
           note="Optional — leave blank to use your account's default gateway"
@@ -34,7 +36,8 @@
           autocomplete="off"
           type="password"
           label="API Token"
-          placeholder="xxxx..."
+          data-testid="api-key-field"
+          :placeholder="placeholder"
           :rules="[Validation.required()]"
           :disabled="pending"
         >
@@ -63,6 +66,7 @@
               find your Account ID at:
               <NuxtLink
                 :to="meta.dashboardUrl"
+                class="link"
                 external
                 target="_blank"
               >
@@ -95,12 +99,13 @@
         </div>
       </UiFormFieldset>
     </UiForm>
-  </section>
+  </ProfileKeysCard>
 </template>
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import { providerMeta } from '#shared/utils/provider-meta'
+import type { UserKeyStatus } from '~/composables/user-keys'
 import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
@@ -109,6 +114,14 @@ interface CloudflareGatewayKeyResponse {
   gatewayId: string
   hasKey: boolean
 }
+
+withDefaults(defineProps<{
+  group?: string
+  open?: boolean
+}>(), {
+  group: undefined,
+  open: false,
+})
 
 const meta = providerMeta.cloudflare!
 const keyRoute = '/api/v1/profiles/keys/cloudflare-gateway'
@@ -145,6 +158,27 @@ const apiKey = shallowRef<string>('')
 const hasKey = shallowRef<boolean>(fetchedCredentials.value?.hasKey ?? false)
 
 const pending = shallowRef<boolean>(false)
+
+/**
+ * Sourced from this gateway's own endpoint rather than `useUserKeys()`: the
+ * summary only reports that a `cloudflare-gateway` row exists, while this
+ * route additionally treats an undecryptable blob as no credentials at all.
+ */
+const status = computed<UserKeyStatus>(() => {
+  if (error.value) {
+    return 'unknown'
+  }
+
+  return hasKey.value ? 'saved' : 'missing'
+})
+
+const placeholder = computed<string>(() => {
+  if (hasKey.value) {
+    return 'Enter a new token to replace the saved one'
+  }
+
+  return 'xxxx...'
+})
 
 async function pasteApiKey() {
   apiKey.value = await paste()

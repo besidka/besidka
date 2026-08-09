@@ -27,15 +27,15 @@ function credentialResponse(overrides: Record<string, unknown> = {}) {
 }
 
 function accountIdInput(wrapper: any) {
-  return wrapper.find('input[placeholder="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"]')
+  return wrapper.find('[data-testid="account-id-field"] input')
 }
 
 function gatewayIdInput(wrapper: any) {
-  return wrapper.find('input[placeholder="default"]')
+  return wrapper.find('[data-testid="gateway-id-field"] input')
 }
 
 function apiKeyInput(wrapper: any) {
-  return wrapper.find('input[placeholder="xxxx..."]')
+  return wrapper.find('[data-testid="api-key-field"] input')
 }
 
 function deleteButton(wrapper: any) {
@@ -74,6 +74,12 @@ describe('Profile/Keys/CloudflareGateway', () => {
       expect((gatewayIdInput(wrapper).element as HTMLInputElement).value)
         .toBe('')
       expect(deleteButton(wrapper)).toBeUndefined()
+      expect(wrapper.find('[data-testid="key-status-saved"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="key-status-missing"]').exists())
+        .toBe(true)
+      expect((apiKeyInput(wrapper).element as HTMLInputElement).placeholder)
+        .toBe('xxxx...')
     })
 
   it('pre-fills accountId and gatewayId but never the API token',
@@ -105,6 +111,10 @@ describe('Profile/Keys/CloudflareGateway', () => {
       expect((apiKeyInput(wrapper).element as HTMLInputElement).value)
         .toBe('')
       expect(deleteButton(wrapper)).toBeDefined()
+      expect(wrapper.find('[data-testid="key-status-saved"]').exists())
+        .toBe(true)
+      expect((apiKeyInput(wrapper).element as HTMLInputElement).placeholder)
+        .toBe('Enter a new token to replace the saved one')
     })
 
   it('saves credentials and shows a success message', async () => {

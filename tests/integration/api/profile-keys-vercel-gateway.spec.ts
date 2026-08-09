@@ -190,7 +190,7 @@ describe('vercel-gateway key API', () => {
     const postHandler = await getPostHandler()
     const deleteHandler = await getDeleteHandler()
 
-    expect(await getHandler({} as any)).toBe('')
+    expect(await getHandler({} as any)).toEqual({ hasKey: false })
 
     await postHandler({ body: { apiKey: 'vck_real_key' } } as any)
     expect(dbMock.spies.insert).toHaveBeenCalledTimes(1)
@@ -201,15 +201,31 @@ describe('vercel-gateway key API', () => {
       }),
     )
 
-    expect(await getHandler({} as any)).toBe('vck_real_key')
+    expect(await getHandler({} as any)).toEqual({ hasKey: true })
 
     await postHandler({ body: { apiKey: 'vck_updated_key' } } as any)
     expect(dbMock.spies.update).toHaveBeenCalledTimes(1)
-    expect(await getHandler({} as any)).toBe('vck_updated_key')
+    expect(await getHandler({} as any)).toEqual({ hasKey: true })
 
     await deleteHandler({} as any)
     expect(dbMock.spies.deleteFn).toHaveBeenCalledTimes(1)
-    expect(await getHandler({} as any)).toBe('')
+    expect(await getHandler({} as any)).toEqual({ hasKey: false })
+  })
+
+  it('never returns the stored key to the client', async () => {
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+
+    const getHandler = await getGetHandler()
+    const postHandler = await getPostHandler()
+
+    await postHandler({ body: { apiKey: 'vck_secret_key' } } as any)
+
+    const response = await getHandler({} as any)
+
+    expect(JSON.stringify(response)).not.toContain('vck_secret_key')
+    expect(response).toEqual({ hasKey: true })
   })
 
   it('returns 429 once the POST rate limit is exceeded', async () => {
