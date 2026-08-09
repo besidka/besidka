@@ -1662,13 +1662,15 @@ function generationInProgressKvKey(
   return `chat-generating:${chatId}:${userMessageId}`
 }
 
-// Gateway image generation has no tool to call at all — OpenRouter's
-// `modalities` request param and Vercel's Gemini `*-image` models both
-// return image content parts directly from an ordinary completion, the same
-// way any other multimodal LLM output works. Sending the direct-provider
-// instruction's "Call generate_image exactly once" text to a gateway send
-// would actively mislead the model into looking for a tool that was never
-// registered, so the two paths get distinct wording.
+/**
+ * Gateway image generation has no tool to call at all — OpenRouter's
+ * `modalities` request param and Vercel's Gemini `*-image` models both
+ * return image content parts directly from an ordinary completion, the same
+ * way any other multimodal LLM output works. Sending the direct-provider
+ * instruction's "Call generate_image exactly once" text to a gateway send
+ * would actively mislead the model into looking for a tool that was never
+ * registered, so the two paths get distinct wording.
+ */
 function buildChatInstructions(
   projectSystemPrompt: string | null,
   requestedTools: ModelTool[],

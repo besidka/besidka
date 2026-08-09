@@ -782,6 +782,26 @@ mechanism. Both are single-step by construction (no tool, no `stopWhen`):
   need OpenRouter/Vercel-specific request-shape research of its own (e.g.
   OpenRouter's Gemini-specific `image_config` extension mentioned in its own
   multimodal docs) and was out of scope for this round.
+- **No per-user concurrency lease/cooldown, unlike direct-provider
+  generation — flagged for explicit product-owner sign-off, not silently
+  decided.** Direct-provider image generation acquires
+  `acquireImageGenerationLease(userId)` before generating (one at a time per
+  account, `IMAGE_GENERATION_COOLDOWN_MS` after release) via
+  `server/utils/ai/image-generation-lock.ts`. `persistGatewayGeneratedImageParts()`
+  has no equivalent, because by the time it runs the image has already been
+  generated and billed on the user's own gateway key — rejecting the *save*
+  under a lease conflict would throw away something the user already paid
+  for, which is a materially different trade-off than the direct-provider
+  case (where the lease blocks *before* any spend happens). What this diff
+  does add: a per-image size bound (`maxGeneratedImageBase64Length`, checked
+  before base64 decode, not after) and a per-message image-count cap
+  (`maxGatewayGeneratedImagePartsPerMessage = 4`), so a single request's
+  decode/R2-write cost is bounded even without a cross-request lease. A
+  user firing many concurrent gateway chat sends with image generation
+  enabled is not throttled beyond that — accept as-is, or add a lighter
+  advisory rate-limit (e.g. per-user requests-per-minute) that logs/delays
+  rather than discards, are both reasonable; this needs a product decision,
+  not an engineering guess.
 
 ### Picker: grouping by underlying provider
 
