@@ -278,45 +278,68 @@ splits a gateway model id on its first `/` (e.g. `anthropic/claude-opus-5` →
 `getGatewayProviderGroups()` (counts per prefix, most-stocked first, ties
 alphabetical) and `sortGatewayModelsByProvider()` (clusters the list in that
 same order, then by model name), and
-`ChatInput/ModelsTrigger/GatewayProviderStrip.vue` renders one chip per
-group above the list.
+`ChatInput/ModelsTrigger/GatewayProviderRail.vue` renders one icon button per
+group down the panel's left edge.
 
-**The strip is horizontal, not a vertical clone of `ProviderRail.vue`**, and
-that is a scale decision, not a stylistic one. The curated catalog has six
-providers; OpenRouter reports **58 distinct prefixes across 400 models** and
-Vercel 28 across 209. A 58-item icon rail is several screens of vertical
-scrolling in a ~350px column, and — since this codebase has brand icons for
-nine vendors only — most entries would be unlabelled two-letter monograms
-whose tooltips a scrolling rail would clip (`overflow-y-auto` coerces
-`overflow-x` to `auto`; see `docs/vite-css-minify.md`-adjacent overflow
-notes and the ContextMenu clipping post-mortem). Chips carry the vendor slug
-and model count inline, so they need no tooltip, and reuse the same pattern
-`GatewayRail.vue` already uses in the same panel.
+**The rail is vertical, matching `ProviderRail.vue`, by explicit user
+request** — it replaced a horizontal `GatewayProviderStrip.vue` that put the
+same chips across the top. The strip's original rationale was scale: the
+curated catalog has six providers, while OpenRouter reports **58 distinct
+prefixes across 400 models** and Vercel 28 across 209, and this codebase has
+brand icons for nine vendors only, so most entries are unlabelled two-letter
+monograms. That reasoning was overruled in favour of one consistent
+provider-separation pattern across direct providers and all three gateways;
+the trade-offs it named are real and are handled rather than avoided:
 
-Two rules keep the strip honest:
+- **Length** — the rail is `overflow-y-auto min-h-0 no-scrollbar`, so 58
+  vendors scroll inside the rail instead of stretching the panel past its
+  `max-h-[60dvh]`.
+- **Tooltips** — the rail deliberately does **not** use daisyUI's
+  `tooltip tooltip-right`, which `ProviderRail.vue` still does. A scroll
+  container force-computes `overflow-x` to `auto` (see
+  `feedback_css_overflow_axis_coercion` and the ContextMenu clipping
+  post-mortem), which clips the tooltip's `::before` bubble as it reaches
+  past the rail's right edge, with no `overflow-x: visible` escape hatch.
+  The rail uses a native `title` instead — browser chrome escapes any
+  container. Do not "restore consistency" by adding the tooltip classes
+  back; that silently breaks the tooltip rather than erroring.
 
-- It renders only when the catalog has **more than one** distinct prefix.
-  Cloudflare's ids are all `@cf/vendor/model-slug` —
-  `getGatewayModelProviderPrefix()` detects that shape and returns the real
-  vendor segment (`meta`, `google`, `mistralai`, …) instead of the shared
-  `@cf` namespace, so Cloudflare's strip now renders multiple chips like
-  every other gateway. The single-prefix guard still exists for the
-  degenerate case (a two-segment `@cf/vendor` id with no model slug, or any
-  gateway whose catalog genuinely only has one vendor) — it hides the
-  useless control instead of faking one.
+Both rails carry a count badge per icon: a `badge badge-xs` hung off the
+icon's `indicator` wrapper as an `indicator-item indicator-end
+indicator-bottom`, capped at `99+` by `formatRailCount()` so it never
+outgrows the one-icon-wide rail. In `ProviderRail.vue` a provider with no
+API key shows a plain accent dot in that slot instead of a number — there is
+nothing to count without a key, and `0` would read as "this provider is
+empty" rather than "not connected yet". The gateway rail has no such state:
+it renders only once its gateway has a key.
+
+Three rules keep the rail honest:
+
+- It renders only when the catalog has **more than one** distinct prefix, or
+  when a favorite exists (the rail also owns the favorites filter in gateway
+  mode, so exactly one rail ever occupies the left edge). Cloudflare's ids
+  are all `@cf/vendor/model-slug` — `getGatewayModelProviderPrefix()` detects
+  that shape and returns the real vendor segment (`meta`, `google`,
+  `mistralai`, …) instead of the shared `@cf` namespace, so Cloudflare's rail
+  now renders multiple buttons like every other gateway. The single-prefix
+  guard still exists for the degenerate case (a two-segment `@cf/vendor` id
+  with no model slug, or any gateway whose catalog genuinely only has one
+  vendor) — it hides the useless control instead of faking one.
 - It hides while a search is narrowing the list (parity with
-  `ProviderRail.vue`), and a hidden strip governs nothing: the search
+  `ProviderRail.vue`), and a hidden rail governs nothing: the search
   **suspends** the provider filter rather than compounding with it, exactly
   as `isRailFilterApplied` bypasses the rail in provider mode. The choice
   survives and applies again the moment the field is cleared. A filter no
   visible control can explain is worse than a wider result set.
 - `ModelsTrigger.vue` drops an active prefix as soon as the catalog stops
-  offering it — the free filter can empty a provider out from under the chip
-  that selected it. **`getGatewayProviderGroups()` must therefore be fed a
-  search-independent list** (`groupableModels`, favorites + free only): a
-  provider with no hit for the current search term would otherwise
+  offering it — the free filter can empty a provider out from under the
+  button that selected it. **`getGatewayProviderGroups()` must therefore be
+  fed a search-independent list** (`groupableModels`, favorites + free only):
+  a provider with no hit for the current search term would otherwise
   disappear from the groups, and that reset would silently discard a filter
-  the user set before they started typing.
+  the user set before they started typing. This is also why a rail count
+  holds still as the user types, but does still track the favorites and free
+  filters.
 
 `app/components/ProviderIcon.vue` normalizes a handful of known vendor-slug
 variants (OpenRouter's `x-ai` and its six `~`-prefixed "latest" aliases) to

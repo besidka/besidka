@@ -348,7 +348,7 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
         .exists()).toBe(false)
       expect(wrapper.find(
-        '[data-testid="models-picker-gateway-provider-strip"]',
+        '[data-testid="models-picker-gateway-provider-rail"]',
       ).exists()).toBe(false)
     })
 

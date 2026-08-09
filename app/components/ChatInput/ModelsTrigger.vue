@@ -99,21 +99,24 @@
                 :options="filterCategoryOptions"
               />
             </div>
-            <ChatInputModelsTriggerGatewayProviderStrip
-              v-if="isGatewayProviderStripVisible"
-              :providers="gatewayProviderGroups"
-              :active-provider-prefix="activeGatewayProviderPrefix"
-              @toggle-provider="toggleGatewayProvider"
-            />
             <div class="flex flex-1 min-h-0">
               <ChatInputModelsTriggerProviderRail
                 v-if="isRailVisible"
-                :providers="railProviders"
+                :providers="providers"
                 :active-provider-id="activeProviderId"
                 :is-favorites-only="isFavoritesOnly"
                 :has-favorites="hasFavorites"
                 :keyless-provider-ids="keylessProviderIds"
                 @toggle-provider="toggleProvider"
+                @toggle-favorites="toggleFavoritesOnly"
+              />
+              <ChatInputModelsTriggerGatewayProviderRail
+                v-if="isGatewayProviderRailVisible"
+                :providers="gatewayProviderGroups"
+                :active-provider-prefix="activeGatewayProviderPrefix"
+                :is-favorites-only="isFavoritesOnly"
+                :has-favorites="hasFavorites"
+                @toggle-provider="toggleGatewayProvider"
                 @toggle-favorites="toggleFavoritesOnly"
               />
               <div
@@ -320,7 +323,6 @@
 
 <script setup lang="ts">
 import type { GatewayId } from '#shared/types/gateways.d'
-import type { Providers } from '#shared/types/providers.d'
 import type {
   GatewayProviderGroup,
   ModelCategory,
@@ -463,10 +465,6 @@ const selectedGatewayModelId = computed<string | null>(() => {
   return current.modelId
 })
 
-const railProviders = computed<Providers>(() => {
-  return activeGateway.value ? [] : providers
-})
-
 const allModels = computed<PickerModel[]>(() => {
   return providers.flatMap((provider) => {
     return provider.models.map((model) => {
@@ -495,16 +493,13 @@ const hasFavorites = computed<boolean>(() => {
   return favoriteModels.value.length > 0
 })
 
+/**
+ * Provider mode only. A gateway hands its vendor separation to
+ * `GatewayProviderRail.vue`, which carries the favorites filter for that mode
+ * so the panel never stacks two rails against the same left edge.
+ */
 const isRailVisible = computed<boolean>(() => {
-  if (isSearching.value) {
-    return false
-  }
-
-  if (activeGateway.value) {
-    return hasFavorites.value
-  }
-
-  return true
+  return !isSearching.value && !activeGateway.value
 })
 
 const isRailFilterApplied = computed<boolean>(() => {
@@ -543,13 +538,19 @@ const isFreeOnly = computed<boolean>(() => {
  * after `getGatewayModelProviderPrefix()` (Cloudflare vendor extraction was
  * fixed in `shared/utils/gateway-model-id.ts`, so it now reports each
  * `@cf/vendor/...` model's real vendor instead of the shared `@cf`
- * namespace).
+ * namespace). The favorites filter alone still earns the rail, which is what
+ * the provider-mode rail rendered here before the vendors joined it.
  */
-const isGatewayProviderStripVisible = computed<boolean>(() => {
-  return !!activeGateway.value
-    && !isActiveGatewayKeyless.value
-    && !isSearching.value
-    && gatewayProviderGroups.value.length > 1
+const isGatewayProviderRailVisible = computed<boolean>(() => {
+  if (
+    !activeGateway.value
+    || isActiveGatewayKeyless.value
+    || isSearching.value
+  ) {
+    return false
+  }
+
+  return gatewayProviderGroups.value.length > 1 || hasFavorites.value
 })
 
 function matchesActiveFilters({ model, providerId }: PickerModel): boolean {
