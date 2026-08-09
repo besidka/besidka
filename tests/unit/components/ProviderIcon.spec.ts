@@ -1,6 +1,7 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
 import ProviderIcon from '../../../app/components/ProviderIcon.vue'
+import { providerMeta } from '#shared/utils/provider-meta'
 
 const expectedIconNames: Record<string, string> = {
   google: 'simple-icons:googlegemini',
@@ -109,5 +110,13 @@ describe('ProviderIcon', () => {
 
     expect(wrapper.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
     expect(wrapper.get('span').text()).toBe('bl')
+  })
+
+  it('resolves a real icon for every provider and gateway in providerMeta, '
+    + 'so a newly added one cannot silently fall through to the badge',
+  async () => {
+    for (const providerId of Object.keys(providerMeta)) {
+      expect(await getIconName(providerId)).toBeTruthy()
+    }
   })
 })

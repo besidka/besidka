@@ -258,17 +258,14 @@ matches. No other curated provider needs this override today — xAI,
 DeepSeek, Moonshot AI, OpenAI, Anthropic and Google all use identical ids on
 both sides.
 
-### Missing brand icon (disclosed gap)
+### Missing brand icon (closed)
 
-`app/components/ProviderIcon.vue` has no Qwen/Alibaba brand SVG — none
-exists anywhere in this codebase's icon assets, and the component's own
-comment already lists `qwen` as an example of a vendor slug with no matching
-icon (from gateway-model rows, before Qwen was a direct provider here). No
-new branch was added to the component: the existing generic two-letter-badge
-fallback (`Qw`, from `providerMeta.qwen.label`) already covers it correctly,
-the same accepted pattern this initiative's WP0 established for unmatched
-gateway-model vendor prefixes. A real Qwen/Alibaba brand asset is left for
-the product owner to add later.
+`app/components/ProviderIcon.vue` originally had no Qwen/Alibaba brand icon
+and fell back to the generic two-letter badge (`Qw`). This was closed by a
+later round's icon-system rewrite, which replaced every provider's bespoke
+SVG component with real Iconify marks resolved at runtime through
+`icon.serverBundle.remote` — Qwen now renders `simple-icons:qwen`, alongside
+every other direct provider and gateway.
 
 `providers/index.ts`'s default-model resolution had a latent bug fixed while
 adding these three: a later provider's `default: true` model would silently
@@ -549,13 +546,16 @@ Three rules keep the rail honest:
   filters.
 
 `app/components/ProviderIcon.vue` normalizes a handful of known vendor-slug
-variants (OpenRouter's `x-ai` and its six `~`-prefixed "latest" aliases) to
-this app's existing icon keys, and falls back to a two-letter monogram for
-every other prefix (`mistralai`, `qwen`, `meta-llama`, …) since no matching
-brand icon exists here. That fallback is styled as a fixed-size tinted
-square rather than bare text **because gateway rows are its only caller** —
-every direct provider and gateway id resolves to a real icon, so an unsized
-monogram used to overlap the model name it sat next to.
+variants (OpenRouter's `x-ai` and its six `~`-prefixed "latest" aliases, plus
+Cloudflare's `cloudflareVendorIconOverrides` table — `mistralai`, `qwen`,
+`meta-llama`, `deepseek-ai`, `ibm-granite`, `zai-org` and others) to this
+app's existing icon keys. A later round's icon-system rewrite gave every
+direct provider and gateway a real Iconify logo, so the two-letter-monogram
+fallback is now reachable only for a genuinely unrecognized vendor slug
+(`nousresearch`, `thebloke`, `defog`, …) with no verified brand icon at all.
+That fallback is styled as a fixed-size tinted square rather than bare text
+**because gateway rows are its only caller** — an unsized monogram used to
+overlap the model name it sat next to.
 
 ### Cost capture
 

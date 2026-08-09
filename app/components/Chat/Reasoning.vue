@@ -18,7 +18,7 @@
             class="size-4 text-base-content/80"
           />
         <span
-          class="font-medium text-xs"
+          class="flex min-w-0 items-baseline gap-1 font-medium text-xs"
           :class="[
             isReasoningStreaming
               ? 'skeleton skeleton-text reasoning-main-title-skeleton'
@@ -26,8 +26,11 @@
           ]"
         >
           <template v-if="isReasoningStreaming && activeStreamingTitle.length">
-            <span class="max-sm:hidden">Reasoning:</span>
-            <span :title="activeStreamingTitle">
+            <span class="shrink-0 max-sm:hidden">Reasoning:</span>
+            <span
+              :title="activeStreamingTitle"
+              class="min-w-0 truncate"
+            >
               {{ truncateReasoningTitle(activeStreamingTitle) }}
             </span>
           </template>
@@ -37,6 +40,7 @@
           <span
             v-if="reasoningLabel.length > 0"
             data-testid="reasoning-timer-label"
+            class="shrink-0"
           >
             ({{ reasoningLabel }})
           </span>
@@ -233,15 +237,7 @@ const latestStreamingTitleCandidate = computed<string>(() => {
 })
 
 const mainTitle = computed<string>(() => {
-  if (!isReasoningStreaming.value) {
-    return 'Reasoning process'
-  }
-
-  if (streamingTitle.value.length > 0) {
-    return streamingTitle.value
-  }
-
-  return 'Reasoning'
+  return isReasoningStreaming.value ? 'Reasoning' : 'Reasoning process'
 })
 
 const activeStreamingTitle = computed<string>(() => {
