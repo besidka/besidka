@@ -468,6 +468,89 @@ describe('resolveMessageMenuInfo', () => {
   })
 })
 
+describe('resolveMessageMenuInfo gateway totalCost', () => {
+  const gatewayUsage = {
+    model: 'openai/gpt-5.4',
+    provider: 'openrouter',
+    inputTokens: 5240,
+    outputTokens: 1180,
+    totalTokens: 6420,
+    totalCost: 0.021,
+  }
+
+  it('displays the blended totalCost on the assistant row', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: gatewayUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.021)
+    expect(info?.costToMessage).toBe(0.021)
+    expect(info?.chatTotalCost).toBe(0.021)
+  })
+
+  it('does not attribute a separate cost to the paired user message', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'sent' } },
+      { id: 'a1', role: 'assistant', metadata: { usage: gatewayUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'u1')
+
+    expect(info?.cost).toBeUndefined()
+    expect(info?.costToMessage).toBeUndefined()
+    expect(info?.chatTotalCost).toBe(0.021)
+  })
+
+  it('sums a gateway totalCost alongside a direct-provider outputCost/inputCost turn', () => {
+    const directUsage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+    }
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'turn-1-user' } },
+      { id: 'a1', role: 'assistant', metadata: { usage: directUsage } },
+      { id: 'u2', role: 'user', metadata: { createdAt: 'turn-2-user' } },
+      { id: 'a2', role: 'assistant', metadata: { usage: gatewayUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'a2')
+
+    expect(info?.chatTotalCost).toBeCloseTo(0.01 + 0.02 + 0.021)
+  })
+
+  it('leaves inputCost/outputCost-only usage unaffected by the totalCost branch', () => {
+    const directUsage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: directUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.0177)
+    expect(info?.costToMessage).toBe(0.0177)
+    expect(info?.chatTotalCost).toBe(0.0177)
+  })
+})
+
 describe('resolveMessageMenuInfo cumulative cost totals', () => {
   function buildUsage(inputCost: number, outputCost: number) {
     return {
