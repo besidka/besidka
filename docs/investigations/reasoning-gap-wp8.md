@@ -122,6 +122,16 @@ confident fix was not attempted (see Outcome below).
   separate look (are these two models/gateways actually returning a
   `reasoning` UI part on this deployment at all?) but is out of scope for
   this investigation.
+  - **Update, added after this investigation was finalized**: the
+    Grok 4.20 (Reasoning) half of this is now explained and fixed. A sibling
+    work package landed `reasoningAlwaysOn` on this model shortly before this
+    investigation ran, but its server-side wiring didn't yet request a
+    reasoning summary for always-on models — so xAI never returned any
+    reasoning content to render, matching exactly what was observed here.
+    Closed by `server/utils/providers/xai.ts`'s `reasoningSummary` fix (see
+    `docs/gateways.md`'s xAI entry). **The Gemini 3 Flash Preview half is
+    unrelated and remains genuinely open** — it does not share xAI's fix and
+    still warrants its own look.
 - The shared browser session showed clear evidence of *other concurrent
   automation* running against the same Chrome profile mid-investigation (a
   tab was unexpectedly redirected to `localhost:8931/test.html`, a Playwright
