@@ -1,20 +1,35 @@
+import type { ModelSelection } from '#shared/types/model-selection.d'
+
 export function useUserModel() {
   const { defaultModel } = useRuntimeConfig().public
   const prefStorage = usePreferenceStorage()
 
-  const userModel = customRef<string>((track, trigger) => ({
+  const selection = customRef<ModelSelection>((track, trigger) => ({
     get() {
       track()
 
-      return prefStorage.getItem('model') ?? (defaultModel as string)
+      return parseModelSelection(
+        prefStorage.getItem('model'),
+        defaultModel as string,
+      )
     },
     set(value) {
-      prefStorage.setItem('model', value)
+      prefStorage.setItem('model', serializeModelSelection(value))
       trigger()
     },
   }))
 
+  const userModel = computed<string>({
+    get() {
+      return selection.value.modelId
+    },
+    set(value) {
+      selection.value = { source: 'provider', modelId: value }
+    },
+  })
+
   return {
+    selection,
     userModel,
   }
 }

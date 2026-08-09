@@ -98,7 +98,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
+  ]
+  const modelSelectionTests = [
+    'tests/unit/composables/model.spec.ts',
+    'tests/unit/composables/selected-model-info.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/composables/chat-research.spec.ts',
   ]
   const modelCatalogTests = [
     'tests/unit/providers/merge.spec.ts',
@@ -404,8 +411,21 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|app\/composables\/gateway-catalog\.ts)$/,
+        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts)$/,
       tests: gatewayCatalogTests,
+    },
+    {
+      pattern: /^app\/composables\/gateway-catalog\.ts$/,
+      tests: [...gatewayCatalogTests, ...modelsTriggerTests],
+    },
+    {
+      pattern:
+        /^(app\/composables\/(model|selected-model-info)\.ts|shared\/utils\/model-selection\.ts|shared\/types\/model-selection\.d\.ts)$/,
+      tests: [...modelSelectionTests, ...modelsTriggerTests],
+    },
+    {
+      pattern: /^app\/composables\/user-setting\.ts$/,
+      tests: [...profileSettingsTests, ...modelsTriggerTests],
     },
     {
       pattern:

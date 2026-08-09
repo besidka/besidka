@@ -16,12 +16,12 @@
       @click="toggle"
     >
       <ProviderIcon
-        v-if="triggerProviderId"
-        :provider-id="triggerProviderId"
+        v-if="selectedIconProviderId"
+        :provider-id="selectedIconProviderId"
         class="w-4 fill-base-content/40"
       />
       <span class="block truncate text-left min-w-0">
-        {{ getModelName(toValue(userModel)) }}
+        {{ selectedModelName }}
       </span>
       <Icon
         name="lucide:chevron-down"
@@ -46,6 +46,34 @@
             class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl"
           >
             <div
+              v-if="activeGateway"
+              data-testid="models-picker-gateway-banner"
+              class="shrink-0 flex items-center gap-2 px-2.5 py-2 border-b border-accent/30 bg-accent/10"
+            >
+              <ProviderIcon
+                :provider-id="activeGateway.id"
+                :label="activeGateway.label"
+                class="w-4 shrink-0 fill-accent"
+              />
+              <span
+                class="grow min-w-0 truncate text-xs font-semibold text-accent"
+              >
+                {{ activeGateway.label }}
+              </span>
+              <button
+                type="button"
+                data-testid="models-picker-gateway-exit"
+                class="btn btn-ghost btn-xs shrink-0 gap-1 rounded-full"
+                @click="setProviderMode"
+              >
+                <Icon
+                  name="lucide:arrow-left"
+                  size="12"
+                />
+                Providers
+              </button>
+            </div>
+            <div
               class="shrink-0 flex items-center gap-1 p-2 border-b border-base-content/10"
             >
               <ChatInputModelsTriggerSearch
@@ -57,13 +85,14 @@
                 @keydown="onSearchKeydown"
               />
               <ChatInputModelsTriggerFilterDropdown
+                v-if="!activeGateway"
                 v-model="activeCategory"
               />
             </div>
             <div class="flex flex-1 min-h-0">
               <ChatInputModelsTriggerProviderRail
-                v-if="!isSearching"
-                :providers="providers"
+                v-if="isRailVisible"
+                :providers="railProviders"
                 :active-provider-id="activeProviderId"
                 :is-favorites-only="isFavoritesOnly"
                 :has-favorites="hasFavorites"
@@ -73,47 +102,132 @@
               <div
                 ref="resultsContainer"
                 class="flex-1 min-h-[14rem] overflow-y-auto p-1.5"
-                :class="{ 'pb-9': filteredModels.length }"
+                :class="{ 'pb-9': !activeGateway && filteredModels.length }"
               >
-                <div
-                  :id="listboxId"
-                  role="listbox"
-                  aria-label="Models"
-                >
-                  <template
-                    v-for="section in sections"
-                    :key="section.id"
+                <ChatInputModelsTriggerGatewayModelList
+                  v-if="activeGateway"
+                  ref="gatewayList"
+                  :key="activeGateway.id"
+                  :gateway-id="activeGateway.id"
+                  :gateway-label="activeGateway.label"
+                  :search-term="searchTerm"
+                  :is-favorites-only="isFavoritesOnly"
+                  :favorite-model-ids="activeGatewayFavorites"
+                  :selected-model-id="selectedGatewayModelId"
+                  :detail-model-id="detailModelId"
+                  :listbox-id="listboxId"
+                  @select="selectGatewayModel"
+                  @toggle-favorite="toggleGatewayFavorite"
+                  @toggle-detail="toggleDetail"
+                  @close-detail="closeDetail"
+                  @highlight="onGatewayHighlight"
+                  @pending-change="onGatewayPendingChange"
+                />
+                <template v-else>
+                  <div
+                    :id="listboxId"
+                    role="listbox"
+                    aria-label="Models"
                   >
-                    <p
-                      v-if="section.label"
-                      :id="`${section.id}-label`"
-                      class="px-2 pt-1.5 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-50"
+                    <template
+                      v-for="section in sections"
+                      :key="section.id"
                     >
-                      {{ section.label }}
-                    </p>
+                      <p
+                        v-if="section.label"
+                        :id="`${section.id}-label`"
+                        class="px-2 pt-1.5 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-50"
+                      >
+                        {{ section.label }}
+                      </p>
+                      <ul
+                        class="flex flex-col gap-0.5"
+                        :role="section.label ? 'group' : 'presentation'"
+                        :aria-labelledby="section.label
+                          ? `${section.id}-label`
+                          : undefined
+                        "
+                      >
+                        <template
+                          v-for="entry in section.entries"
+                          :key="entry.model.id"
+                        >
+                          <ChatInputModelsTriggerModelItem
+                            :model="entry.model"
+                            :provider-id="entry.providerId"
+                            :is-selected="
+                              selectedProviderModelId === entry.model.id
+                            "
+                            :is-highlighted="
+                              highlightedModelId === entry.model.id
+                            "
+                            :is-favorite="
+                              favoriteModels.includes(entry.model.id)
+                            "
+                            :is-detail-open="detailModelId === entry.model.id"
+                            @select="selectModel(entry.model.id)"
+                            @toggle-favorite="
+                              toggleFavoriteModel(entry.model.id)
+                            "
+                            @toggle-detail="toggleDetail(entry.model.id)"
+                          />
+                          <li
+                            v-if="detailModelId === entry.model.id"
+                            role="presentation"
+                            class="py-0.5"
+                          >
+                            <ChatInputModelsTriggerModelDetail
+                              :model="entry.model"
+                              :provider-name="entry.providerName"
+                              @close="closeDetail"
+                            />
+                          </li>
+                        </template>
+                      </ul>
+                    </template>
+                  </div>
+                  <div
+                    v-if="legacyModels.length"
+                    data-testid="models-picker-legacy"
+                    class="mt-1 pt-1 border-t border-base-content/10"
+                  >
+                    <button
+                      :id="legacyLabelId"
+                      type="button"
+                      data-testid="models-picker-legacy-toggle"
+                      class="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-[0.65rem] font-semibold uppercase tracking-wide opacity-50 cursor-pointer transition-colors hover:bg-base-content/5 hover:opacity-80"
+                      :aria-expanded="isLegacyExpanded"
+                      :aria-controls="legacyListId"
+                      @click="toggleLegacy"
+                    >
+                      <Icon
+                        name="lucide:chevron-right"
+                        size="12"
+                        class="transition-transform"
+                        :class="{ 'rotate-90': isLegacyExpanded }"
+                      />
+                      {{ legacyLabel }}
+                    </button>
                     <ul
+                      v-show="isLegacyExpanded"
+                      :id="legacyListId"
+                      data-testid="models-picker-legacy-list"
+                      role="listbox"
+                      :aria-labelledby="legacyLabelId"
                       class="flex flex-col gap-0.5"
-                      :role="section.label ? 'group' : 'presentation'"
-                      :aria-labelledby="section.label
-                        ? `${section.id}-label`
-                        : undefined
-                      "
                     >
                       <template
-                        v-for="entry in section.entries"
+                        v-for="entry in legacyModels"
                         :key="entry.model.id"
                       >
                         <ChatInputModelsTriggerModelItem
                           :model="entry.model"
                           :provider-id="entry.providerId"
-                          :is-selected="userModel === entry.model.id"
-                          :is-highlighted="
-                            highlightedModelId === entry.model.id
-                          "
-                          :is-favorite="favoriteModels.includes(entry.model.id)"
+                          is-legacy
+                          :is-selected="false"
+                          :is-highlighted="false"
+                          :is-favorite="false"
                           :is-detail-open="detailModelId === entry.model.id"
-                          @select="selectModel(entry.model.id)"
-                          @toggle-favorite="toggleFavoriteModel(entry.model.id)"
                           @toggle-detail="toggleDetail(entry.model.id)"
                         />
                         <li
@@ -129,91 +243,39 @@
                         </li>
                       </template>
                     </ul>
-                  </template>
-                </div>
-                <div
-                  v-if="legacyModels.length"
-                  data-testid="models-picker-legacy"
-                  class="mt-1 pt-1 border-t border-base-content/10"
-                >
-                  <button
-                    :id="legacyLabelId"
-                    type="button"
-                    data-testid="models-picker-legacy-toggle"
-                    class="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-[0.65rem] font-semibold uppercase tracking-wide opacity-50 cursor-pointer transition-colors hover:bg-base-content/5 hover:opacity-80"
-                    :aria-expanded="isLegacyExpanded"
-                    :aria-controls="legacyListId"
-                    @click="toggleLegacy"
+                  </div>
+                  <div
+                    v-if="!filteredModels.length && !legacyModels.length"
+                    data-testid="models-picker-empty"
+                    class="min-h-full flex flex-col items-center justify-center gap-2 px-4 py-10 text-center"
                   >
                     <Icon
-                      name="lucide:chevron-right"
-                      size="12"
-                      class="transition-transform"
-                      :class="{ 'rotate-90': isLegacyExpanded }"
+                      name="lucide:search-x"
+                      size="24"
+                      class="opacity-40"
                     />
-                    {{ legacyLabel }}
-                  </button>
-                  <ul
-                    v-show="isLegacyExpanded"
-                    :id="legacyListId"
-                    data-testid="models-picker-legacy-list"
-                    role="listbox"
-                    :aria-labelledby="legacyLabelId"
-                    class="flex flex-col gap-0.5"
-                  >
-                    <template
-                      v-for="entry in legacyModels"
-                      :key="entry.model.id"
+                    <p class="text-xs opacity-60">
+                      {{ emptyMessage }}
+                    </p>
+                    <button
+                      v-if="hasActiveFilters"
+                      type="button"
+                      data-testid="models-picker-clear-filters"
+                      class="btn btn-ghost btn-xs rounded-full text-accent"
+                      @click="clearFilters"
                     >
-                      <ChatInputModelsTriggerModelItem
-                        :model="entry.model"
-                        :provider-id="entry.providerId"
-                        is-legacy
-                        :is-selected="false"
-                        :is-highlighted="false"
-                        :is-favorite="false"
-                        :is-detail-open="detailModelId === entry.model.id"
-                        @toggle-detail="toggleDetail(entry.model.id)"
-                      />
-                      <li
-                        v-if="detailModelId === entry.model.id"
-                        role="presentation"
-                        class="py-0.5"
-                      >
-                        <ChatInputModelsTriggerModelDetail
-                          :model="entry.model"
-                          :provider-name="entry.providerName"
-                          @close="closeDetail"
-                        />
-                      </li>
-                    </template>
-                  </ul>
-                </div>
-                <div
-                  v-if="!filteredModels.length && !legacyModels.length"
-                  data-testid="models-picker-empty"
-                  class="min-h-full flex flex-col items-center justify-center gap-2 px-4 py-10 text-center"
-                >
-                  <Icon
-                    name="lucide:search-x"
-                    size="24"
-                    class="opacity-40"
-                  />
-                  <p class="text-xs opacity-60">
-                    {{ emptyMessage }}
-                  </p>
-                  <button
-                    v-if="hasActiveFilters"
-                    type="button"
-                    data-testid="models-picker-clear-filters"
-                    class="btn btn-ghost btn-xs rounded-full text-accent"
-                    @click="clearFilters"
-                  >
-                    Clear filters
-                  </button>
-                </div>
+                      Clear filters
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
+            <ChatInputModelsTriggerGatewayRail
+              :gateways="gatewayRailItems"
+              :active-gateway-id="activeGateway?.id ?? null"
+              :is-pending="isGatewayCatalogPending"
+              @toggle-gateway="toggleGateway"
+            />
           </div>
         </div>
       </Transition>
@@ -222,11 +284,22 @@
 </template>
 
 <script setup lang="ts">
+import type { GatewayId } from '#shared/types/gateways.d'
+import type { Providers } from '#shared/types/providers.d'
 import type {
   ModelCategory,
+  PickerMode,
   PickerModel,
   PickerSection,
 } from '~/types/models-picker'
+import { enabledGateways, providerMeta } from '#shared/utils/provider-meta'
+
+interface GatewayListHandle {
+  moveHighlight: (step: number) => void
+  highlightFirst: () => void
+  highlightLast: () => void
+  selectHighlighted: () => void
+}
 
 defineProps<{
   isWebSearchEnabled: boolean
@@ -234,10 +307,23 @@ defineProps<{
   isReasoningEnabled: boolean
 }>()
 
-const { userModel } = useUserModel()
+const { selection } = useUserModel()
 const { providers } = getProviders()
-const { favoriteModels, toggleFavoriteModel } = useUserSetting()
+const {
+  favoriteModels,
+  toggleFavoriteModel,
+  getFavoriteGatewayModels,
+  toggleFavoriteGatewayModel,
+} = useUserSetting()
+const {
+  name: selectedModelName,
+  iconProviderId: selectedIconProviderId,
+} = useSelectedModelInfo()
 
+const pickerMode = shallowRef<PickerMode>({ source: 'provider' })
+const gatewayHighlightedOptionId = shallowRef<string | null>(null)
+const isGatewayCatalogPending = shallowRef<boolean>(false)
+const gatewayList = useTemplateRef<GatewayListHandle>('gatewayList')
 const isOpen = shallowRef<boolean>(false)
 const searchQuery = shallowRef<string>('')
 const activeProviderId = shallowRef<string | null>(null)
@@ -254,8 +340,61 @@ const listboxId = useId()
 const legacyListId = useId()
 const legacyLabelId = useId()
 
-const triggerProviderId = computed<string | null>(() => {
-  return getModel(toValue(userModel)).provider?.id ?? null
+const gatewayRailItems = computed(() => {
+  return enabledGateways.map((gatewayId) => {
+    return {
+      id: gatewayId,
+      label: providerMeta[gatewayId]?.label ?? gatewayId,
+    }
+  })
+})
+
+/**
+ * Null whenever the picker is browsing the curated catalog, which includes a
+ * stored selection pointing at a gateway that is not enabled yet — that falls
+ * back to provider mode rather than rendering a rail button nothing can serve.
+ */
+const activeGateway = computed(() => {
+  const mode = pickerMode.value
+
+  if (mode.source !== 'gateway') {
+    return null
+  }
+
+  return gatewayRailItems.value.find((item) => {
+    return item.id === mode.gatewayId
+  }) ?? null
+})
+
+const activeGatewayFavorites = computed<string[]>(() => {
+  const gateway = activeGateway.value
+
+  return gateway ? getFavoriteGatewayModels(gateway.id) : []
+})
+
+const selectedProviderModelId = computed<string | null>(() => {
+  const current = selection.value
+
+  return current.source === 'provider' ? current.modelId : null
+})
+
+const selectedGatewayModelId = computed<string | null>(() => {
+  const gateway = activeGateway.value
+  const current = selection.value
+
+  if (
+    !gateway
+    || current.source !== 'gateway'
+    || current.gatewayId !== gateway.id
+  ) {
+    return null
+  }
+
+  return current.modelId
+})
+
+const railProviders = computed<Providers>(() => {
+  return activeGateway.value ? [] : providers
 })
 
 const allModels = computed<PickerModel[]>(() => {
@@ -279,7 +418,23 @@ const isSearching = computed<boolean>(() => {
 })
 
 const hasFavorites = computed<boolean>(() => {
+  if (activeGateway.value) {
+    return activeGatewayFavorites.value.length > 0
+  }
+
   return favoriteModels.value.length > 0
+})
+
+const isRailVisible = computed<boolean>(() => {
+  if (isSearching.value) {
+    return false
+  }
+
+  if (activeGateway.value) {
+    return hasFavorites.value
+  }
+
+  return true
 })
 
 const isRailFilterApplied = computed<boolean>(() => {
@@ -361,6 +516,10 @@ const sections = computed<PickerSection[]>(() => {
 })
 
 const highlightedOptionId = computed<string | undefined>(() => {
+  if (activeGateway.value) {
+    return gatewayHighlightedOptionId.value ?? undefined
+  }
+
   if (!highlightedModelId.value) {
     return undefined
   }
@@ -379,6 +538,7 @@ const emptyMessage = computed<string>(() => {
 function close() {
   isOpen.value = false
   highlightedModelId.value = null
+  gatewayHighlightedOptionId.value = null
   searchQuery.value = ''
   isLegacyExpanded.value = false
   closeDetail()
@@ -394,6 +554,24 @@ function closeAndRestoreFocus() {
   trigger.value?.focus()
 }
 
+/**
+ * Re-derived on every open rather than once at setup: the picker mounts with
+ * the chat input and stays mounted, so a selection made elsewhere would leave
+ * setup-time mode state stale.
+ */
+function getModeFromSelection(): PickerMode {
+  const current = selection.value
+
+  if (
+    current.source !== 'gateway'
+    || !enabledGateways.includes(current.gatewayId)
+  ) {
+    return { source: 'provider' }
+  }
+
+  return { source: 'gateway', gatewayId: current.gatewayId }
+}
+
 function toggle() {
   if (isOpen.value) {
     close()
@@ -401,8 +579,45 @@ function toggle() {
     return
   }
 
+  pickerMode.value = getModeFromSelection()
   isOpen.value = true
+
+  if (activeGateway.value) {
+    return
+  }
+
   setHighlight(getInitialHighlight())
+}
+
+function switchMode(mode: PickerMode) {
+  pickerMode.value = mode
+  isGatewayCatalogPending.value = false
+  gatewayHighlightedOptionId.value = null
+  searchQuery.value = ''
+  activeCategory.value = null
+  activeProviderId.value = null
+  isFavoritesOnly.value = false
+  isLegacyExpanded.value = false
+  highlightedModelId.value = null
+  closeDetail()
+
+  if (mode.source === 'gateway') {
+    return
+  }
+
+  setHighlight(getInitialHighlight())
+}
+
+function setProviderMode() {
+  switchMode({ source: 'provider' })
+}
+
+function toggleGateway(gatewayId: GatewayId) {
+  switchMode(
+    activeGateway.value?.id === gatewayId
+      ? { source: 'provider' }
+      : { source: 'gateway', gatewayId },
+  )
 }
 
 /**
@@ -411,7 +626,7 @@ function toggle() {
  * outside the listbox the search input controls.
  */
 function getInitialHighlight(): string | null {
-  const selectedId = toValue(userModel)
+  const selectedId = selectedProviderModelId.value
   const isSelectable = filteredModels.value.some(({ model }) => {
     return model.id === selectedId
   })
@@ -451,8 +666,37 @@ function toggleDetail(modelId: string) {
 }
 
 function selectModel(modelId: string) {
-  userModel.value = modelId
+  selection.value = { source: 'provider', modelId }
   closeAndRestoreFocus()
+}
+
+function selectGatewayModel(modelId: string) {
+  const gateway = activeGateway.value
+
+  if (!gateway) {
+    return
+  }
+
+  selection.value = { source: 'gateway', gatewayId: gateway.id, modelId }
+  closeAndRestoreFocus()
+}
+
+function toggleGatewayFavorite(modelId: string) {
+  const gateway = activeGateway.value
+
+  if (!gateway) {
+    return
+  }
+
+  toggleFavoriteGatewayModel(gateway.id, modelId)
+}
+
+function onGatewayHighlight(optionId: string | null) {
+  gatewayHighlightedOptionId.value = optionId
+}
+
+function onGatewayPendingChange(isPending: boolean) {
+  isGatewayCatalogPending.value = isPending
 }
 
 async function scrollHighlightedIntoView() {
@@ -515,38 +759,86 @@ function selectHighlighted() {
   selectModel(highlightedModelId.value)
 }
 
+function moveHighlightInActiveList(step: number) {
+  const list = gatewayList.value
+
+  if (list) {
+    list.moveHighlight(step)
+
+    return
+  }
+
+  moveHighlight(step)
+}
+
+function highlightFirstInActiveList() {
+  const list = gatewayList.value
+
+  if (list) {
+    list.highlightFirst()
+
+    return
+  }
+
+  highlightFirst()
+}
+
+function highlightLastInActiveList() {
+  const list = gatewayList.value
+
+  if (list) {
+    list.highlightLast()
+
+    return
+  }
+
+  highlightLast()
+}
+
+function selectHighlightedInActiveList() {
+  const list = gatewayList.value
+
+  if (list) {
+    list.selectHighlighted()
+
+    return
+  }
+
+  selectHighlighted()
+}
+
 function onSearchKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    moveHighlight(1)
+    moveHighlightInActiveList(1)
 
     return
   }
 
   if (event.key === 'ArrowUp') {
     event.preventDefault()
-    moveHighlight(-1)
+    moveHighlightInActiveList(-1)
 
     return
   }
 
   if (event.key === 'Home') {
     event.preventDefault()
-    highlightFirst()
+    highlightFirstInActiveList()
 
     return
   }
 
   if (event.key === 'End') {
     event.preventDefault()
-    highlightLast()
+    highlightLastInActiveList()
 
     return
   }
 
   if (event.key === 'Enter') {
     event.preventDefault()
-    selectHighlighted()
+    selectHighlightedInActiveList()
   }
 }
 
@@ -560,6 +852,11 @@ watch(hasFavorites, (value) => {
 
 watch([searchTerm, activeCategory, activeProviderId, isFavoritesOnly], () => {
   closeDetail()
+
+  if (activeGateway.value) {
+    return
+  }
+
   highlightedModelId.value = filteredModels.value[0]?.model.id ?? null
 })
 
