@@ -93,9 +93,32 @@ describe('getMoonshotWebSearchTools declaration caching', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.moonshot.ai/v1/formulas/moonshot/web-search:latest/tools',
-      { headers: { authorization: 'Bearer moonshot-key' } },
+      {
+        headers: { authorization: 'Bearer moonshot-key' },
+        signal: expect.any(AbortSignal),
+      },
     )
     expect(result.tools).toHaveProperty('web_search')
+  })
+
+  it('gives the declaration fetch a timeout signal, so a hanging '
+    + 'Moonshot outage degrades to a stale cache instead of stalling the '
+    + 'chat send', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse(TOOLS_ENDPOINT_RESPONSE))
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+
+    await getMoonshotWebSearchTools('moonshot-key')
+
+    const [, requestInit] = fetchMock.mock.calls[0]
+
+    expect(requestInit.signal).toBeInstanceOf(AbortSignal)
+    expect(requestInit.signal.aborted).toBe(false)
   })
 
   it('reuses the cached declaration and never refetches within the TTL',
@@ -132,29 +155,69 @@ describe('getMoonshotWebSearchTools declaration caching', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('falls back to a stale cached declaration when the live fetch fails',
-    async () => {
-      const cache = createFakeCache()
+  it('falls back to a stale cached declaration when the live fetch fails, '
+    + 'and reports it through the logger', async () => {
+    const cache = createFakeCache()
 
-      await cache.setItem(DECLARATION_CACHE_KEY, {
-        declaration: {
-          name: 'web_search',
-          description: 'Search the web for information',
-          parameters: WEB_SEARCH_PARAMETERS,
-        },
-        cachedAt: 0,
-      })
-
-      const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
-
-      vi.stubGlobal('useStorage', () => cache)
-      vi.stubGlobal('fetch', fetchMock)
-
-      const { getMoonshotWebSearchTools } = await importModule()
-      const result = await getMoonshotWebSearchTools('moonshot-key')
-
-      expect(result.tools).toHaveProperty('web_search')
+    await cache.setItem(DECLARATION_CACHE_KEY, {
+      declaration: {
+        name: 'web_search',
+        description: 'Search the web for information',
+        parameters: WEB_SEARCH_PARAMETERS,
+      },
+      cachedAt: 0,
     })
+
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
+    const logger = { set: vi.fn() }
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+    const result = await getMoonshotWebSearchTools('moonshot-key', logger)
+
+    expect(result.tools).toHaveProperty('web_search')
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        moonshotWebSearchDeclarationFetch: {
+          servedStale: true,
+          error: 'network down',
+        },
+      },
+    })
+  })
+
+  it('reports a failed cache write through the logger without failing '
+    + 'the request, since the declaration was already fetched', async () => {
+    const store = new Map<string, unknown>()
+    const cache = {
+      async getItem(key: string) {
+        return store.get(key) ?? null
+      },
+      async setItem() {
+        throw new Error('KV write failed')
+      },
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse(TOOLS_ENDPOINT_RESPONSE))
+    const logger = { set: vi.fn() }
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+    const result = await getMoonshotWebSearchTools('moonshot-key', logger)
+
+    expect(result.tools).toHaveProperty('web_search')
+    expect(logger.set).toHaveBeenCalledWith({
+      attributes: {
+        moonshotWebSearchDeclarationCacheWrite: {
+          error: 'KV write failed',
+        },
+      },
+    })
+  })
 
   it('throws when the fetch fails and there is no cache to fall back to',
     async () => {

@@ -175,10 +175,29 @@ describe('useMoonshotAi web search wiring', () => {
 
     expect(mocks.getMoonshotWebSearchTools).toHaveBeenCalledWith(
       'decrypted-key',
+      undefined,
     )
     expect(result.tools).toEqual({
       tools: { web_search: { description: 'stub tool' } },
     })
+  })
+
+  it('threads the caller\'s logger through to getMoonshotWebSearchTools, '
+    + 'for cache-degradation telemetry', async () => {
+    stubModel(createModel({ id: 'kimi-k2.6', tools: ['web_search'] }))
+    mocks.getMoonshotWebSearchTools.mockResolvedValue({
+      tools: { web_search: { description: 'stub tool' } },
+    })
+
+    const logger = { set: () => {} }
+    const useMoonshotAi = await importUseMoonshotAi()
+
+    await useMoonshotAi('1', 'kimi-k2.6', ['web_search'], 'off', logger)
+
+    expect(mocks.getMoonshotWebSearchTools).toHaveBeenCalledWith(
+      'decrypted-key',
+      logger,
+    )
   })
 
   it('builds the Formula-API search tool for kimi-k3 too', async () => {
@@ -197,6 +216,7 @@ describe('useMoonshotAi web search wiring', () => {
 
     expect(mocks.getMoonshotWebSearchTools).toHaveBeenCalledWith(
       'decrypted-key',
+      undefined,
     )
     expect(result.tools).toEqual({
       tools: { web_search: { description: 'stub tool' } },

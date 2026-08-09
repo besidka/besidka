@@ -301,20 +301,37 @@ the canonical docs host used below.
   docs only describe the *immediate* next `/chat/completions` call reusing
   this blob — they say nothing about an app like this one that keeps full
   multi-turn chat history and resends it on every subsequent turn of the
-  *same* chat, potentially for as long as the chat exists, nor about a chat
-  later being shared (this app's chat-sharing feature): the shared page's
-  underlying data payload would include the same opaque blob in
-  `messages.parts` even though `app/pages/shared/[slug].vue`'s part-type
-  `v-if` chain doesn't visually render it. Because Moonshot's actual
-  encryption scheme (algorithm, key custody, ciphertext-reuse safety) is
-  undocumented and unverifiable from outside, this repeated-resend and
-  possible-shared-page-payload exposure has **not** been independently
-  confirmed safe — it is passed through exactly as documented, but the
-  product owner should explicitly sign off on this retention/re-send
+  *same* chat, potentially for as long as the chat exists. **The shared-chat
+  path is confirmed clean, not a risk**: `server/api/v1/shared/[slug]/
+  index.get.ts`'s `filterPublicParts()` strips every `isToolUIPart` part
+  (matching this tool's `tool-web_search` result) from the public JSON
+  response before it is ever built, and `stripToolPartsFromBranchedMessage`
+  (`server/utils/chats/branch.ts`) does the same when a shared chat is
+  branched into another user's own chat — both filter on part *type*, so
+  this holds regardless of what the ciphertext actually contains. The real,
+  narrower open question is retention within the *owner's own* chat: because
+  Moonshot's actual encryption scheme (algorithm, key custody,
+  ciphertext-reuse safety) is undocumented and unverifiable from outside,
+  indefinite storage and repeated resend of this blob to Moonshot on every
+  future turn has **not** been independently confirmed safe as a
+  data-minimization matter — it is passed through exactly as documented,
+  but the product owner should explicitly sign off on this retention/re-send
   behavior rather than it being an implicit consequence of following the
   docs. Nothing is decrypted, transformed, or given any bespoke DB handling
   here; it lives in the exact same `messages.parts` JSON column every other
   tool result already uses.
+- **Cross-provider resend on a mid-chat model switch — functional gap, not
+  a security issue.** This app resolves the model fresh from each request
+  and resends the full persisted history regardless of which provider
+  handled earlier turns. If a chat has a `tool-web_search` part from a
+  Moonshot turn and the user then switches the same chat to a different
+  provider or gateway, that opaque part is resent verbatim to a backend
+  that never declared the tool and cannot interpret it — at best inert
+  (a third party never learns anything from ciphertext it has no key for),
+  at worst a provider that validates tool-call/result pairing strictly
+  could reject the request. Not verified live (no
+  provider-switch-after-search scenario has been exercised with real
+  keys); tracked here rather than guessed at.
 - **Billing — still self-contradictory as of 2026-08-10, not resolved
   here.** Two Moonshot doc pages disagree, same as round 3/4 found:
   - `use-official-tools`: "official tools are currently free for a limited
@@ -1084,7 +1101,14 @@ by its own PR's review and confirmed still open by the final cross-PR review:
     (weaker tool selection, a different result shape, or no search at all)
     rather than being a mechanical no-op; this app's reasoning toggle and
     web-search toggle are fully independent controls, so a user can select
-    that exact combination today.
+    that exact combination today; and (f) that the tool declaration is
+    genuinely account/tier-independent as assumed by the global (non-key-
+    scoped) cache — if a real account ever returns a different declaration
+    shape than another, the failure mode is a stale-but-wrong cached schema
+    served to an unrelated account, not a data leak (fiber *execution*
+    always uses the requesting user's own key regardless of which
+    declaration was cached), but it would still need the cache key scoped
+    per-account like Cloudflare's catalog cache already is.
 
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom

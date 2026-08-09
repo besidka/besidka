@@ -1,14 +1,17 @@
 import type { JSONSchema7 } from 'ai'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createError } from 'evlog'
 import { jsonSchema, tool } from 'ai'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const MOONSHOT_API_BASE_URL = 'https://api.moonshot.ai/v1'
 const MOONSHOT_WEB_SEARCH_FORMULA_URI = 'moonshot/web-search:latest'
 const MOONSHOT_WEB_SEARCH_DECLARATION_CACHE_KEY
   = 'moonshotai-web-search-tool-declaration:v1'
 const MOONSHOT_WEB_SEARCH_DECLARATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const MOONSHOT_WEB_SEARCH_DECLARATION_FETCH_TIMEOUT_MS = 10_000
 
 interface MoonshotFormulaFunctionDeclaration {
   name: string
@@ -50,6 +53,9 @@ async function fetchMoonshotWebSearchDeclaration(
       headers: {
         authorization: `Bearer ${apiKey}`,
       },
+      signal: AbortSignal.timeout(
+        MOONSHOT_WEB_SEARCH_DECLARATION_FETCH_TIMEOUT_MS,
+      ),
     },
   )
 
@@ -91,11 +97,16 @@ async function fetchMoonshotWebSearchDeclaration(
  * OpenRouter's public model catalogs. Whichever user's request misses the
  * cache pays the one live fetch (using their own key, since the endpoint
  * still requires a valid Bearer token); every other request within the TTL
- * window reuses the result.
+ * window reuses the result. A stale-serve after a failed refresh and a
+ * cache-write failure are both non-fatal — the declaration was already
+ * fetched successfully either way — but are reported through `logger` so
+ * they stay visible in Axiom, mirroring `server/utils/gateways/catalog.ts`'s
+ * gateway-catalog caching.
  * @see https://platform.kimi.ai/docs/guide/use-official-tools
  */
 async function getCachedMoonshotWebSearchDeclaration(
   apiKey: string,
+  logger?: LoggerLike,
 ): Promise<MoonshotFormulaFunctionDeclaration> {
   const cache = useStorage('cache')
   const cached = await cache.getItem<MoonshotWebSearchDeclarationCacheEntry>(
@@ -119,6 +130,15 @@ async function getCachedMoonshotWebSearchDeclaration(
       throw exception
     }
 
+    logger?.set({
+      attributes: {
+        moonshotWebSearchDeclarationFetch: {
+          servedStale: true,
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
     return cached.declaration
   }
 
@@ -127,9 +147,14 @@ async function getCachedMoonshotWebSearchDeclaration(
       MOONSHOT_WEB_SEARCH_DECLARATION_CACHE_KEY,
       { declaration, cachedAt: now },
     )
-  } catch {
-    // Non-fatal: the declaration was already fetched successfully; a failed
-    // cache write only means the next request pays the fetch again.
+  } catch (exception) {
+    logger?.set({
+      attributes: {
+        moonshotWebSearchDeclarationCacheWrite: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
   }
 
   return declaration
@@ -212,8 +237,12 @@ async function executeMoonshotWebSearchFiber(
  */
 export async function getMoonshotWebSearchTools(
   apiKey: string,
+  logger?: LoggerLike,
 ): Promise<FormattedTools> {
-  const declaration = await getCachedMoonshotWebSearchDeclaration(apiKey)
+  const declaration = await getCachedMoonshotWebSearchDeclaration(
+    apiKey,
+    logger,
+  )
 
   return {
     tools: {

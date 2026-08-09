@@ -2,6 +2,7 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createMoonshotAI } from '@ai-sdk/moonshotai'
 import { getMoonshotWebSearchTools } from './moonshotai-web-search'
 import { resolveReasoningLevelForModel } from './reasoning'
@@ -11,6 +12,7 @@ export async function useMoonshotAi(
   model: string,
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
+  logger?: LoggerLike,
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -58,7 +60,7 @@ export async function useMoonshotAi(
       return {}
     }
 
-    return await getMoonshotWebSearchTools(apiKey)
+    return await getMoonshotWebSearchTools(apiKey, logger)
   }
 
   const reasoningLevel = resolveReasoningLevelForModel(

@@ -727,6 +727,7 @@ export default defineEventHandler(async (event) => {
             model.id,
             requestedTools,
             reasoningLevel,
+            logger,
           )
 
           instance = moonshotAiInstance
