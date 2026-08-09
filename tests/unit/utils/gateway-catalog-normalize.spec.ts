@@ -64,6 +64,7 @@ describe('fetchVercelGatewayCatalog', () => {
             input_cache_read: '0.00000125',
             web_search: '10',
           },
+          tags: ['reasoning', 'web-search', 'tool-use'],
         },
       ],
     })
@@ -81,8 +82,31 @@ describe('fetchVercelGatewayCatalog', () => {
         pricing: { input: '0.0000025', output: '0.00001' },
         modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
         supportsTools: true,
+        supportsReasoning: true,
+        supportsWebSearch: true,
       },
     ])
+  })
+
+  it('reports supportsReasoning and supportsWebSearch as false when tags '
+    + 'exist but omit them', async () => {
+    mockFetchOnce({
+      data: [
+        {
+          id: 'test-provider/tool-only-model',
+          name: 'Tool Only Model',
+          type: 'language',
+          context_window: 32000,
+          tags: ['tool-use'],
+        },
+      ],
+    })
+
+    const { fetchVercelGatewayCatalog } = await getFetchers()
+    const models = await fetchVercelGatewayCatalog()
+
+    expect(models[0]?.supportsReasoning).toBe(false)
+    expect(models[0]?.supportsWebSearch).toBe(false)
   })
 
   it('excludes non-language models from the catalog', async () => {
@@ -134,6 +158,8 @@ describe('fetchVercelGatewayCatalog', () => {
         pricing: undefined,
         modalities: undefined,
         supportsTools: undefined,
+        supportsReasoning: undefined,
+        supportsWebSearch: undefined,
       },
     ])
   })
@@ -183,6 +209,8 @@ describe('fetchOpenRouterCatalog', () => {
             'tool_choice',
             'tools',
             'top_p',
+            'reasoning',
+            'web_search_options',
           ],
         },
       ],
@@ -204,6 +232,8 @@ describe('fetchOpenRouterCatalog', () => {
           output: ['text'],
         },
         supportsTools: true,
+        supportsReasoning: true,
+        supportsWebSearch: true,
       },
     ])
   })
@@ -266,6 +296,8 @@ describe('fetchOpenRouterCatalog', () => {
 
       expect(models[0]?.maxOutputTokens).toBeUndefined()
       expect(models[0]?.supportsTools).toBe(false)
+      expect(models[0]?.supportsReasoning).toBe(false)
+      expect(models[0]?.supportsWebSearch).toBe(false)
     })
 
   it('handles a model missing pricing, architecture, and top_provider',
@@ -293,6 +325,8 @@ describe('fetchOpenRouterCatalog', () => {
           pricing: undefined,
           modalities: undefined,
           supportsTools: undefined,
+          supportsReasoning: undefined,
+          supportsWebSearch: undefined,
         },
       ])
     })
@@ -368,6 +402,8 @@ describe('fetchCloudflareGatewayCatalog', () => {
           pricing: { input: '0.0000002', output: '0.0000009' },
           modalities: { input: ['text'], output: ['text'] },
           supportsTools: true,
+          supportsReasoning: undefined,
+          supportsWebSearch: undefined,
         },
       ])
     })
@@ -399,6 +435,8 @@ describe('fetchCloudflareGatewayCatalog', () => {
       })
 
       expect(models[0]?.supportsTools).toBe(false)
+      expect(models[0]?.supportsReasoning).toBeUndefined()
+      expect(models[0]?.supportsWebSearch).toBeUndefined()
     })
 
   it('handles a model missing pricing, modalities, and description',
@@ -428,6 +466,8 @@ describe('fetchCloudflareGatewayCatalog', () => {
           pricing: undefined,
           modalities: undefined,
           supportsTools: undefined,
+          supportsReasoning: undefined,
+          supportsWebSearch: undefined,
         },
       ])
     })

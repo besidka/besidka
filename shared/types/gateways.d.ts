@@ -16,4 +16,12 @@ export interface GatewayModel {
   pricing?: { input: string, output: string }
   modalities?: { input: string[], output: string[] }
   supportsTools?: boolean
+  /**
+   * Advisory, best-effort signals read from each gateway's uncurated raw
+   * catalog. `undefined` means "unknown" — a gateway that doesn't expose the
+   * underlying field, not "unsupported" — so never treat absence as `false`
+   * and never assert `true` without a concrete raw-catalog field backing it.
+   */
+  supportsReasoning?: boolean
+  supportsWebSearch?: boolean
 }

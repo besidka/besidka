@@ -49,4 +49,35 @@ describe('ProviderIcon', () => {
 
       expect(badge.text()).toBe('Mi')
     })
+
+  it('renders the xai icon for the OpenRouter vendor slug "x-ai"',
+    async () => {
+      const wrapper = await mountSuspended(ProviderIcon, {
+        props: { providerId: 'x-ai' },
+      })
+
+      expect(wrapper.find('svg').exists()).toBe(true)
+      expect(wrapper.find('span').exists()).toBe(false)
+    })
+
+  it('renders the matching icon for every tilde-prefixed "latest" alias',
+    async () => {
+      const tildeAliasProviderIds = [
+        '~anthropic',
+        '~deepseek',
+        '~google',
+        '~moonshotai',
+        '~openai',
+        '~x-ai',
+      ]
+
+      for (const providerId of tildeAliasProviderIds) {
+        const wrapper = await mountSuspended(ProviderIcon, {
+          props: { providerId },
+        })
+
+        expect(wrapper.find('svg').exists()).toBe(true)
+        expect(wrapper.find('span').exists()).toBe(false)
+      }
+    })
 })
