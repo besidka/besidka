@@ -298,6 +298,7 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       const banner = wrapper.get('[data-testid="models-picker-key-banner"]')
 
       expect(banner.text()).toContain('No API keys yet')
+      expect(banner.classes()).toContain('rounded-t-2xl')
       expect(
         banner.get('[data-testid="models-picker-key-banner-link"]')
           .attributes('href'),

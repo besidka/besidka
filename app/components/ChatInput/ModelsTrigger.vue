@@ -662,6 +662,7 @@ function close() {
   highlightedModelId.value = null
   gatewayHighlightedOptionId.value = null
   searchQuery.value = ''
+  activeCategory.value = null
   isLegacyExpanded.value = false
   closeDetail()
 }
