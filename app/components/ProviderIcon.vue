@@ -5,6 +5,9 @@
   <SvgoXai v-else-if="providerId === 'xai'" />
   <SvgoDeepseek v-else-if="providerId === 'deepseek'" />
   <SvgoMoonshot v-else-if="providerId === 'moonshotai'" />
+  <SvgoVercel v-else-if="providerId === 'vercel'" />
+  <SvgoOpenrouter v-else-if="providerId === 'openrouter'" />
+  <SvgoCloudflare v-else-if="providerId === 'cloudflare'" />
   <span
     v-else
     class="text-xs font-semibold uppercase"

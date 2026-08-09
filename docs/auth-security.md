@@ -197,6 +197,49 @@ see `server/utils/gateways/catalog.ts`), so an unbounded client could
 drive repeated concurrent upstream fetches. This is a cost/availability
 concern for those upstreams rather than an auth-sensitive action.
 
+## Reused outside Better Auth: the gateway key-management routes
+
+The gateway credential routes added alongside gateway support
+(`GET/POST/DELETE /api/v1/profiles/keys/vercel-gateway`,
+`GET/POST/DELETE /api/v1/profiles/keys/openrouter`, and the
+`GET /api/v1/profiles/keys` summary endpoint) also reuse
+`createAuthRateLimitStorage()`, via a small shared wrapper
+(`server/utils/keys-rate-limit.ts`) rather than pasting the gateway
+catalog route's inline enforcement function into each route. Every rule
+below is keyed by `session.user.id`, same as the gateway catalog rule:
+
+| Path | Window | Max |
+| --- | --- | --- |
+| `GET /api/v1/profiles/keys` | 60s | 30 |
+| `GET /api/v1/profiles/keys/vercel-gateway` | 60s | 30 |
+| `POST /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
+| `GET /api/v1/profiles/keys/openrouter` | 60s | 30 |
+| `POST /api/v1/profiles/keys/openrouter` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/openrouter` | 60s | 10 |
+
+These routes are read-mostly, user-initiated, and low-frequency — there
+is no upstream fetch on the hot path the way the gateway catalog route
+has — so the limits are looser than that 20-per-60s catalog rule.
+`GET` requests (a single DB lookup, no secret decryption cost beyond
+one `crypto-shield` call) get the same generous 30-per-60s row as the
+summary endpoint. `POST`/`DELETE` get a tighter 10-per-60s row because
+they mutate state, even though a legitimate user is very unlikely to
+hit it: the keys page's `ProviderKeyCard` triggers one `POST` followed
+by one `GET` refresh per save, and each gateway card issues one `GET`
+on page load — every one of those lands in its **own** bucket, because
+each route/method/provider combination is given a distinct
+`keyPrefix` (e.g. `keys-rate-limit:vercel-gateway:post` vs.
+`keys-rate-limit:vercel-gateway:get`). Sharing one bucket across
+methods or providers would have let a normal save-then-refresh flow, or
+loading both gateway cards at once, silently erode the mutation budget
+meant for abuse containment.
+
+The six pre-existing single-provider key routes
+(`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`) remain
+unrated-limited; extending them the same way is a follow-up, not part
+of this change.
+
 ## KV rate-limit storage: the TTL fix and the `consume` caveat
 
 The previous `customStorage` implemented only `get`/`set`, with `set`
