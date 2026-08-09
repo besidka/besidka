@@ -538,8 +538,12 @@ const isFreeOnly = computed<boolean>(() => {
 })
 
 /**
- * A single-provider catalog has nothing to filter by — Cloudflare's ids are
- * all prefixed `@cf`, so its strip would be one chip selecting everything.
+ * A single-provider catalog has nothing to filter by — this only happens
+ * when a gateway's real vendor prefixes collapse to one distinct value
+ * after `getGatewayModelProviderPrefix()` (Cloudflare vendor extraction was
+ * fixed in `shared/utils/gateway-model-id.ts`, so it now reports each
+ * `@cf/vendor/...` model's real vendor instead of the shared `@cf`
+ * namespace).
  */
 const isGatewayProviderStripVisible = computed<boolean>(() => {
   return !!activeGateway.value

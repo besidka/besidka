@@ -296,11 +296,13 @@ and model count inline, so they need no tooltip, and reuse the same pattern
 Two rules keep the strip honest:
 
 - It renders only when the catalog has **more than one** distinct prefix.
-  Cloudflare's ids are all `@cf/...`, so its strip would be a single chip
-  selecting everything — `getGatewayModelProviderPrefix()` is a pure split
-  with no vendor-slug normalization and returns `@cf`, not the underlying
-  provider. **Provider grouping for Cloudflare would need a second-segment
-  rule that still does not exist**; the single-prefix guard hides the
+  Cloudflare's ids are all `@cf/vendor/model-slug` —
+  `getGatewayModelProviderPrefix()` detects that shape and returns the real
+  vendor segment (`meta`, `google`, `mistralai`, …) instead of the shared
+  `@cf` namespace, so Cloudflare's strip now renders multiple chips like
+  every other gateway. The single-prefix guard still exists for the
+  degenerate case (a two-segment `@cf/vendor` id with no model slug, or any
+  gateway whose catalog genuinely only has one vendor) — it hides the
   useless control instead of faking one.
 - It hides while a search is narrowing the list (parity with
   `ProviderRail.vue`), and a hidden strip governs nothing: the search

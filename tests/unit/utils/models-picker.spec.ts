@@ -303,18 +303,25 @@ describe('gateway provider grouping', () => {
     ])
 
     expect(groups).toEqual([
-      { prefix: '@cf', count: 1 },
       { prefix: 'bare-model-id', count: 1 },
+      { prefix: 'meta', count: 1 },
     ])
   })
 
-  it('reports a single group for a uniformly prefixed catalog', () => {
+  it('groups a Cloudflare-style catalog by real vendor, not the shared '
+    + '@cf namespace segment', () => {
     const groups = getGatewayProviderGroups([
       createGatewayModel('@cf/meta/llama-4', 'Llama 4'),
-      createGatewayModel('@cf/openai/gpt-oss', 'GPT OSS'),
+      createGatewayModel('@cf/meta/llama-3.1-8b', 'Llama 3.1 8B'),
+      createGatewayModel('@cf/google/gemma-3-12b-it', 'Gemma 3 12B'),
+      createGatewayModel('@cf/mistralai/mistral-small-3.1', 'Mistral Small'),
     ])
 
-    expect(groups).toEqual([{ prefix: '@cf', count: 2 }])
+    expect(groups).toEqual([
+      { prefix: 'meta', count: 2 },
+      { prefix: 'google', count: 1 },
+      { prefix: 'mistralai', count: 1 },
+    ])
   })
 
   it('clusters models by provider, then by name inside a cluster', () => {
