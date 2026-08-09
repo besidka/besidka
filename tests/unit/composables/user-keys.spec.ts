@@ -191,6 +191,73 @@ describe('useUserKeys', () => {
     expect(hasKey('google')).toBe(false)
   })
 
+  it('reports a saved and a missing key status per provider and gateway', () => {
+    useSummary([
+      { provider: 'anthropic', hasKey: true },
+      { provider: 'openai', hasKey: false },
+      { provider: 'vercel-gateway', hasKey: true },
+      { provider: 'cloudflare-gateway', hasKey: false },
+    ])
+
+    const { keyStatusForProvider } = useUserKeys()
+
+    expect(keyStatusForProvider('anthropic')).toBe('saved')
+    expect(keyStatusForProvider('openai')).toBe('missing')
+    expect(keyStatusForProvider('vercel')).toBe('saved')
+    expect(keyStatusForProvider('cloudflare')).toBe('missing')
+  })
+
+  it('reports unknown rather than saved while the summary is in flight', () => {
+    useSummary(null, { pending: true })
+
+    const { keyStatusForProvider } = useUserKeys()
+
+    expect(keyStatusForProvider('anthropic')).toBe('unknown')
+  })
+
+  it('keeps the known status while a post-save refresh is in flight', () => {
+    const state = useSummary([{ provider: 'anthropic', hasKey: true }])
+
+    state.pending.value = true
+
+    const { keyStatusForProvider } = useUserKeys()
+
+    expect(keyStatusForProvider('anthropic')).toBe('saved')
+  })
+
+  it('reports unknown rather than saved when the summary request failed', () => {
+    useSummary(null, { error: new Error('offline') })
+
+    const { keyStatusForProvider } = useUserKeys()
+
+    expect(keyStatusForProvider('anthropic')).toBe('unknown')
+  })
+
+  it('reports unknown for an id no provider metadata maps', () => {
+    useSummary([{ provider: 'google', hasKey: true }])
+
+    const { keyStatusForProvider } = useUserKeys()
+
+    expect(keyStatusForProvider('not-a-provider')).toBe('unknown')
+    expect(keyStatusForProvider('anthropic')).toBe('unknown')
+  })
+
+  it('reflects a refreshed summary in the key status', async () => {
+    const state = useSummary([{ provider: 'google', hasKey: false }])
+
+    mocks.refresh.mockImplementation(async () => {
+      state.data.value = { keys: [{ provider: 'google', hasKey: true }] }
+    })
+
+    const { keyStatusForProvider, refresh } = useUserKeys()
+
+    expect(keyStatusForProvider('google')).toBe('missing')
+
+    await refresh()
+
+    expect(keyStatusForProvider('google')).toBe('saved')
+  })
+
   it('reports an account with no keys at all only when every entry is empty', () => {
     useSummary([
       { provider: 'google', hasKey: false },

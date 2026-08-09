@@ -1,14 +1,14 @@
 <template>
-  <section class="grid place-items-center gap-2 pt-4">
-    <ProviderIcon
-      :provider-id="providerId"
-      class="!size-16"
-    />
-    <h3 class="text-2xl font-bold">{{ meta.label }}</h3>
-    <p>Manage your {{ meta.label }} API key here</p>
+  <ProfileKeysCard
+    :provider-id="providerId"
+    :label="meta.label"
+    :status="status"
+    :group="group"
+    :open="open"
+  >
     <UiForm
       ref="form"
-      class="w-full"
+      class="!p-0"
       @submit="updateKey"
     >
       <UiFormFieldset>
@@ -18,7 +18,8 @@
           autocomplete="off"
           type="password"
           label="API Key"
-          placeholder="xxxx..."
+          data-testid="api-key-field"
+          :placeholder="placeholder"
           :rules="[Validation.required()]"
           :disabled="pending"
         >
@@ -42,21 +43,29 @@
             />
           </template>
           <template #noteAfter>
-            <span>
+            <span class="block">
               Get your API key from {{ meta.label }}:
               <NuxtLink
                 :to="meta.dashboardUrl"
+                class="link"
                 external
                 target="_blank"
               >
                 {{ meta.dashboardLabel || meta.dashboardUrl }}
               </NuxtLink>
             </span>
+            <span
+              v-if="status === 'saved'"
+              class="mt-1 block"
+            >
+              A saved key is never sent back to the browser — enter a new one
+              to replace it.
+            </span>
           </template>
         </UiFormInput>
         <div class="max-md:grid md:flex md:place-content-end gap-2">
           <UiButton
-            v-if="apiKey"
+            v-if="status === 'saved'"
             mode="error"
             text="Delete"
             icon-name="lucide:trash"
@@ -75,19 +84,25 @@
         </div>
       </UiFormFieldset>
     </UiForm>
-  </section>
+  </ProfileKeysCard>
 </template>
 
 <script setup lang="ts">
 import { parseError } from 'evlog'
 import type { ProviderMeta } from '#shared/utils/provider-meta'
-import { providerMeta } from '#shared/utils/provider-meta'
+import { defaultKeyPlaceholder, providerMeta } from '#shared/utils/provider-meta'
+import type { UserKeyStatus } from '~/composables/user-keys'
 import UiForm from '~/components/ui/Form.vue'
 import UiFormInput from '~/components/ui/Form/Input.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   providerId: string
-}>()
+  group?: string
+  open?: boolean
+}>(), {
+  group: undefined,
+  open: false,
+})
 
 const meta = computed<ProviderMeta>(() => {
   const providerMetaEntry = providerMeta[props.providerId]
@@ -103,31 +118,30 @@ const keyRoute = computed<string>(() => {
   return `/api/v1/profiles/keys/${meta.value.keyProviderId}`
 })
 
-const {
-  data: fetchedApiKey,
-  error,
-  refresh,
-} = await useFetch<string>(keyRoute)
-
-if (error.value) {
-  const parsedException = parseError(error.value)
-
-  useErrorMessage(
-    parsedException.message || `Failed to fetch ${meta.value.label} key`,
-    parsedException.why,
-  )
-}
-
 const form = ref<InstanceType<typeof UiForm> | null>()
 const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
-const { refresh: refreshUserKeys } = useUserKeys()
+const {
+  keyStatusForProvider,
+  refresh: refreshUserKeys,
+} = useUserKeys()
 
-const apiKey = shallowRef<string>(fetchedApiKey.value || '')
-
+const apiKey = shallowRef<string>('')
 const pending = shallowRef<boolean>(false)
+
+const status = computed<UserKeyStatus>(() => {
+  return keyStatusForProvider(props.providerId)
+})
+
+const placeholder = computed<string>(() => {
+  if (status.value === 'saved') {
+    return 'Enter a new key to replace the saved one'
+  }
+
+  return meta.value.keyPlaceholder || defaultKeyPlaceholder
+})
 
 async function pasteApiKey() {
   apiKey.value = await paste()
@@ -145,8 +159,10 @@ async function updateKey() {
         apiKey: apiKey.value,
       },
     })
-    await refresh()
     await refreshUserKeys()
+    apiKey.value = ''
+    await nextTick()
+    form.value?.resetValidation()
     useSuccessMessage(`${meta.value.label} API key updated successfully`)
   } catch (exception) {
     const parsedException = parseError(exception)
@@ -168,7 +184,6 @@ async function deleteKey() {
     await $fetch(keyRoute.value, {
       method: 'delete',
     })
-    await refresh()
     await refreshUserKeys()
     useSuccessMessage(`${meta.value.label} API key deleted successfully`)
     apiKey.value = ''

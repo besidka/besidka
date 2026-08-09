@@ -4,6 +4,8 @@ interface UserKeysResponse {
   keys: Array<{ provider: string, hasKey: boolean }>
 }
 
+export type UserKeyStatus = 'saved' | 'missing' | 'unknown'
+
 /**
  * Key presence for every provider and gateway, fetched once into shared state.
  *
@@ -55,6 +57,40 @@ export function useUserKeys() {
     return hasKey(keyProviderId)
   }
 
+  /**
+   * The keys page's counterpart to `hasKeyForProvider`, and deliberately NOT
+   * fail-open: a still-loading, failed, or unrecognised lookup reports
+   * `'unknown'` so the UI can stay silent instead of badging a keyless
+   * provider as saved. Picker gating wants the opposite trade-off — never
+   * swap one for the other.
+   *
+   * Gated on `pending` rather than the raw in-flight flag for the same reason
+   * that computed exists: the post-save/post-delete `refresh()` must resolve
+   * against the rows already held, or every card's badge, delete button and
+   * placeholder would blank out and pop back on each save.
+   */
+  function keyStatusForProvider(providerOrGatewayId: string): UserKeyStatus {
+    if (pending.value || error.value) {
+      return 'unknown'
+    }
+
+    const keyProviderId = providerMeta[providerOrGatewayId]?.keyProviderId
+
+    if (!keyProviderId) {
+      return 'unknown'
+    }
+
+    const entry = data.value?.keys.find((row) => {
+      return row.provider === keyProviderId
+    })
+
+    if (!entry) {
+      return 'unknown'
+    }
+
+    return entry.hasKey ? 'saved' : 'missing'
+  }
+
   const hasAnyKey = computed<boolean>(() => {
     const rows = data.value?.keys
 
@@ -72,6 +108,7 @@ export function useUserKeys() {
     error,
     hasKey,
     hasKeyForProvider,
+    keyStatusForProvider,
     hasAnyKey,
     refresh,
   }

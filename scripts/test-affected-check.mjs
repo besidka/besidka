@@ -321,7 +321,10 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-openrouter.spec.ts',
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
+    'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
+    'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
   ]
 
   const turnstileTests = [
@@ -471,7 +474,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/user-keys\.ts$/,
-      tests: userKeysTests,
+      tests: [...userKeysTests, ...keysApiTests],
     },
     {
       pattern:

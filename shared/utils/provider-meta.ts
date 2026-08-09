@@ -14,8 +14,11 @@ export interface ProviderMeta {
   keyProviderId: string
   dashboardUrl: string
   dashboardLabel?: string
+  keyPlaceholder?: string
   keyFields: ProviderMetaKeyField[]
 }
+
+export const defaultKeyPlaceholder = 'xxxx...'
 
 const apiKeyField: ProviderMetaKeyField = {
   name: 'apiKey',
@@ -31,6 +34,7 @@ export const providerMeta: Record<string, ProviderMeta> = {
     label: 'Anthropic',
     keyProviderId: 'anthropic',
     dashboardUrl: 'https://platform.claude.com/settings/workspaces/default/keys',
+    keyPlaceholder: 'sk-ant-api03-xxxx...-xxxx...',
     keyFields: [apiKeyField],
   },
   google: {
@@ -47,6 +51,7 @@ export const providerMeta: Record<string, ProviderMeta> = {
     label: 'OpenAI',
     keyProviderId: 'openai',
     dashboardUrl: 'https://platform.openai.com/api-keys',
+    keyPlaceholder: 'sk-proj-x-xxxx...-xxxx...',
     keyFields: [apiKeyField],
   },
   xai: {

@@ -10,61 +10,98 @@
     <Icon name="lucide:info" size="16" />
     All keys are stored securely and encrypted in database
   </div>
-  <ul
-    v-if="providers.length"
-    class="grid gap-4"
+  <nav
+    aria-label="Key sections"
+    class="tabs tabs-border mb-6"
   >
-    <li v-if="isAnthropicEnabled">
-      <UiBubble>
-        <LazyProfileKeysAnthropic />
-      </UiBubble>
-    </li>
-    <li v-if="isGoogleEnabled">
-      <UiBubble>
-        <LazyProfileKeysGoogle />
-      </UiBubble>
-    </li>
-    <li v-if="isOpenAiEnabled">
-      <UiBubble>
-        <LazyProfileKeysOpenAi />
-      </UiBubble>
-    </li>
-    <li
-      v-for="provider in enabledDirectKeyCardProviders"
-      :key="provider.id"
+    <button
+      v-for="tab in tabs"
+      :id="`key-tab-${tab.id}`"
+      :key="tab.id"
+      type="button"
+      class="tab grow gap-2"
+      :class="{ 'tab-active': activeTab === tab.id }"
+      :aria-controls="`key-panel-${tab.id}`"
+      :aria-current="activeTab === tab.id ? 'true' : undefined"
+      :aria-label="tab.label"
+      :title="tab.label"
+      :data-testid="`key-tab-${tab.id}`"
+      @click="activeTab = tab.id"
     >
-      <UiBubble>
-        <LazyProfileKeysProviderKeyCard :provider-id="provider.id" />
-      </UiBubble>
-    </li>
-  </ul>
-  <div class="mt-12 mb-8 text-center">
-    <h2 class="text-2xl font-bold">Gateways</h2>
-    <p class="mt-2">
+      <ProviderIcon
+        v-if="tab.providerId"
+        :provider-id="tab.providerId"
+        :label="tab.label"
+        class="!size-4 shrink-0"
+      />
+      <Icon
+        v-else
+        name="lucide:key-round"
+        size="16"
+        class="shrink-0"
+      />
+      <span v-if="activeTab === tab.id">{{ tab.label }}</span>
+    </button>
+  </nav>
+  <div
+    v-show="activeTab === providersTabId"
+    :id="`key-panel-${providersTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${providersTabId}`"
+    :data-testid="`key-panel-${providersTabId}`"
+  >
+    <ul class="grid gap-4">
+      <li
+        v-for="provider in enabledProviders"
+        :key="provider.id"
+      >
+        <UiBubble>
+          <LazyProfileKeysProviderKeyCard
+            :provider-id="provider.id"
+            :group="providersAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
+  <div
+    v-for="gatewayId in enabledGateways"
+    v-show="activeTab === gatewayId"
+    :id="`key-panel-${gatewayId}`"
+    :key="gatewayId"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${gatewayId}`"
+    :data-testid="`key-panel-${gatewayId}`"
+  >
+    <p class="mb-6 text-center">
       Gateways proxy to many models using your own gateway account,
       instead of a single provider's key
     </p>
+    <UiBubble>
+      <LazyProfileKeysCloudflareGateway
+        v-if="gatewayId === 'cloudflare'"
+        open
+      />
+      <LazyProfileKeysProviderKeyCard
+        v-else
+        :provider-id="gatewayId"
+        open
+      />
+    </UiBubble>
   </div>
-  <ul class="grid gap-4">
-    <li
-      v-for="gatewayId in enabledGateways"
-      :key="gatewayId"
-    >
-      <UiBubble>
-        <LazyProfileKeysCloudflareGateway v-if="gatewayId === 'cloudflare'" />
-        <LazyProfileKeysProviderKeyCard
-          v-else
-          :provider-id="gatewayId"
-        />
-      </UiBubble>
-    </li>
-  </ul>
 </template>
 <script setup lang="ts">
 import type { Providers, Provider } from '#shared/types/providers.d'
-import { enabledGateways } from '#shared/utils/provider-meta'
+import { enabledGateways, providerMeta } from '#shared/utils/provider-meta'
 
-const directKeyCardProviderIds = ['xai', 'deepseek', 'moonshotai']
+interface KeyTab {
+  id: string
+  label: string
+  providerId?: string
+}
+
+const providersTabId = 'providers'
+const providersAccordionGroup = 'profile-provider-keys'
 
 definePageMeta({
   layout: 'profile',
@@ -80,31 +117,31 @@ useSeoMeta({
 
 const config = useRuntimeConfig().public
 
+const activeTab = shallowRef<string>(providersTabId)
+
 const providers = computed<Providers>(() => {
   return config?.providers as Providers ?? []
 })
 
-const isOpenAiEnabled = computed<boolean>(() => {
-  return providers.value.some((provider: Provider) => {
-    return provider.id === 'openai'
-  })
-})
-
-const isAnthropicEnabled = computed<boolean>(() => {
-  return providers.value.some((provider: Provider) => {
-    return provider.id === 'anthropic'
-  })
-})
-
-const isGoogleEnabled = computed<boolean>(() => {
-  return providers.value.some((provider: Provider) => {
-    return provider.id === 'google'
-  })
-})
-
-const enabledDirectKeyCardProviders = computed<Providers>(() => {
+const enabledProviders = computed<Providers>(() => {
   return providers.value.filter((provider: Provider) => {
-    return directKeyCardProviderIds.includes(provider.id)
+    return !!providerMeta[provider.id]
   })
+})
+
+const tabs = computed<KeyTab[]>(() => {
+  return [
+    {
+      id: providersTabId,
+      label: 'Per provider',
+    },
+    ...enabledGateways.map((gatewayId) => {
+      return {
+        id: gatewayId,
+        label: providerMeta[gatewayId]?.label || gatewayId,
+        providerId: gatewayId,
+      }
+    }),
+  ]
 })
 </script>
