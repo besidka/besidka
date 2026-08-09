@@ -118,6 +118,44 @@ user's API key (not the raw key, and not accountId alone — a guessed account
 ID paired with an unrelated key must never produce a cache hit against
 another user's real catalog).
 
+### Price tier and capability signals
+
+`GatewayModel.pricing` (per-token USD strings) resolves to the same
+`$`/`$$`/`$$$`/`$$$+` tier enum direct-provider models use, via
+`resolveGatewayPriceTier()` in `shared/utils/gateway-pricing.ts`. It reuses
+`providers/merge.ts`'s exported `tierCeilingsPerMillionTokens` as the single
+source of truth — never re-declare those ceiling numbers elsewhere.
+`isGatewayModelFree()` in the same file is a separate, stricter signal (both
+input and output must parse to exactly `0`, and missing pricing is never
+treated as free) intended for a future "free" filter/badge, not folded into
+the tier enum.
+
+`GatewayModel.supportsReasoning`/`supportsWebSearch` are advisory,
+best-effort flags populated per gateway from whatever real signal each raw
+catalog exposes: Vercel's `tags` array (`'reasoning'`/`'web-search'` —
+also the only field surfacing web-search at all, since Vercel's
+`supported_parameters` never does) and OpenRouter's `supported_parameters`
+array (`'reasoning'`/`'web_search_options'`). **Cloudflare's
+marketplace-format catalog has no confirmed field for either** — unlike
+`supportsTools`, whose `tools` key the OpenRouter marketplace OpenAPI schema
+documents landing in a text output modality's `supported_parameters` map,
+nothing in that schema names a reasoning or web-search parameter key. Both
+fields are left `undefined` for Cloudflare rather than guessed; `undefined`
+always means "unknown," never "no," across all three gateways.
+
+`getGatewayModelProviderPrefix()` in `shared/utils/gateway-model-id.ts`
+splits a gateway model id on its first `/` (e.g. `anthropic/claude-opus-5` →
+`anthropic`) so a future picker UI can group/filter by the underlying
+proxied provider. It is a pure split with no vendor-slug normalization —
+Cloudflare's own ids are prefixed `@cf/...`, so it returns `@cf` for those,
+not the underlying provider; provider-grouping for Cloudflare needs a
+second-segment rule this WP does not add. `app/components/ProviderIcon.vue`
+separately normalizes a handful of known vendor-slug variants (OpenRouter's
+`x-ai` and its six `~`-prefixed "latest" aliases) to this app's existing icon
+keys, falling back to the two-letter badge for every other prefix
+(`mistralai`, `qwen`, `meta-llama`, …) since no matching brand icon exists in
+this codebase.
+
 ### Cost capture
 
 - **OpenRouter**: read synchronously from `providerMetadata.openrouter.usage.cost`.

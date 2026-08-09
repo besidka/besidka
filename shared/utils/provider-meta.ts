@@ -122,9 +122,14 @@ export const providerMeta: Record<string, ProviderMeta> = {
  * ready — that's how a future gateway lands without a flag day: reserve the
  * `GatewayId`/`keys.provider` values first, wire the feature, then add the
  * id here last.
+ *
+ * The order (Cloudflare, OpenRouter, Vercel) is a deliberate product
+ * decision, not an incidental default — every gateway-listing UI (keys
+ * page, picker rail) must display in this exact order, so a future gateway's
+ * id is placed deliberately, not just appended or alphabetized.
  */
 export const enabledGateways: GatewayId[] = [
-  'vercel',
-  'openrouter',
   'cloudflare',
+  'openrouter',
+  'vercel',
 ]

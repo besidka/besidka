@@ -61,7 +61,7 @@ export type ModelSnapshot = Record<string, ModelSnapshotEntry>
 
 const highestPriceTier: ModelPriceTier = '$$$+'
 
-const tierCeilingsPerMillionTokens: [number, ModelPriceTier][] = [
+export const tierCeilingsPerMillionTokens: [number, ModelPriceTier][] = [
   [0.5, '$'],
   [2, '$$'],
   [5, '$$$'],
@@ -89,6 +89,18 @@ function resolveTier(
   }
 
   return highestPriceTier
+}
+
+/**
+ * Resolves a per-million-token USD amount against
+ * `tierCeilingsPerMillionTokens`, the single source of truth for direct
+ * provider and gateway pricing tiers alike — see
+ * `resolveGatewayPriceTier()` in `shared/utils/gateway-pricing.ts`.
+ */
+export function resolvePriceTierFromPerMillion(
+  amount: number,
+): ModelPriceTier {
+  return resolveTier(amount, tierCeilingsPerMillionTokens)
 }
 
 /**
@@ -147,7 +159,7 @@ function resolvePriceTier(
   }
 
   if (snapshot) {
-    return resolveTier(snapshot.cost.input, tierCeilingsPerMillionTokens)
+    return resolvePriceTierFromPerMillion(snapshot.cost.input)
   }
 
   const curatedInput = parseUpperBoundPrice(curated.price.input ?? '')

@@ -35,6 +35,7 @@ interface VercelGatewayRawModel {
   modalities?: VercelGatewayModalities
   supported_parameters?: string[]
   pricing?: VercelGatewayPricing
+  tags?: string[]
 }
 
 interface VercelGatewayModelsResponse {
@@ -96,6 +97,13 @@ export async function fetchVercelGatewayCatalog(): Promise<GatewayModel[]> {
     .map(normalizeVercelGatewayModel)
 }
 
+/**
+ * `tags` is Vercel's own coarse capability roster (also carries `'free'`,
+ * `'vision'`, `'tool-use'`, …) and the only field that surfaces web-search
+ * support at all — `supported_parameters` never includes a web-search entry,
+ * unlike OpenRouter's `web_search_options`. Used for both reasoning and
+ * web-search here so both signals come from one source.
+ */
 function normalizeVercelGatewayModel(
   model: VercelGatewayRawModel,
 ): GatewayModel {
@@ -110,6 +118,8 @@ function normalizeVercelGatewayModel(
       : undefined,
     modalities: model.modalities,
     supportsTools: model.supported_parameters?.includes('tools'),
+    supportsReasoning: model.tags?.includes('reasoning'),
+    supportsWebSearch: model.tags?.includes('web-search'),
   }
 }
 
@@ -147,6 +157,10 @@ function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
       }
       : undefined,
     supportsTools: model.supported_parameters?.includes('tools'),
+    supportsReasoning: model.supported_parameters?.includes('reasoning'),
+    supportsWebSearch: model.supported_parameters?.includes(
+      'web_search_options',
+    ),
   }
 }
 
@@ -226,6 +240,13 @@ interface CloudflareGatewayModelsResponse {
  * defensively (optional chaining throughout, `find`-or-`undefined`) so an
  * unexpected shape degrades to a `{id, name}`-only `GatewayModel` rather
  * than throwing.
+ *
+ * `supportsReasoning`/`supportsWebSearch` are deliberately never set here:
+ * unlike `supportsTools`, whose `tools` key this schema documents landing in
+ * a text output modality's `supported_parameters` map, nothing in the
+ * published schema names a reasoning or web-search parameter key. Leaving
+ * both `undefined` keeps the "unknown, not unsupported" contract rather than
+ * guessing a key name with no schema or live-account evidence behind it.
  */
 export async function fetchCloudflareGatewayCatalog(
   credentials: CloudflareGatewayCatalogCredentials,

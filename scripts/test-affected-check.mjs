@@ -124,6 +124,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
+    'tests/unit/utils/gateway-pricing.spec.ts',
     ...modelsTriggerTests,
     'tests/e2e/chat/scroll-spacer.spec.ts',
   ]
@@ -300,6 +301,8 @@ export function getAffectedTests(changedFiles) {
 
   const gatewayCatalogTests = [
     'tests/unit/utils/gateway-catalog-normalize.spec.ts',
+    'tests/unit/utils/gateway-pricing.spec.ts',
+    'tests/unit/utils/gateway-model-id.spec.ts',
     'tests/integration/api/gateways-models.spec.ts',
   ]
 
@@ -432,7 +435,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts)$/,
+        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|shared\/utils\/gateway-(pricing|model-id)\.ts)$/,
       tests: [...gatewayCatalogTests, ...gatewayChatTests],
     },
     {
