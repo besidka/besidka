@@ -57,6 +57,40 @@ async function getHandler() {
   return module.default
 }
 
+function mockCloudflareMarketplaceSequence(payloads: unknown[]) {
+  let callIndex = 0
+
+  const fetchMock = vi.fn(async (url: string) => {
+    if (!url.includes('format=openrouter')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ result: [] }),
+      }
+    }
+
+    const payload = payloads[callIndex] ?? payloads[payloads.length - 1]
+
+    callIndex += 1
+
+    return {
+      ok: true,
+      status: 200,
+      json: async () => payload,
+    }
+  })
+
+  vi.stubGlobal('fetch', fetchMock)
+
+  return fetchMock
+}
+
+function countMarketplaceCalls(fetchMock: { mock: { calls: unknown[][] } }) {
+  return fetchMock.mock.calls.filter(([url]) => {
+    return String(url).includes('format=openrouter')
+  }).length
+}
+
 const vercelCatalogPayload = {
   data: [
     {
@@ -208,23 +242,13 @@ describe('gateway models API', () => {
 
   it('caches the cloudflare catalog per account, isolated from other accounts',
     async () => {
-      const fetchMock = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-a', name: 'Model A' }],
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-b', name: 'Model B' }],
-          }),
-        })
+      const fetchMock = mockCloudflareMarketplaceSequence([
+        { data: [{ id: 'model-a', name: 'Model A' }] },
+        { data: [{ id: 'model-b', name: 'Model B' }] },
+      ])
 
       const cache = createFakeCache()
 
-      vi.stubGlobal('fetch', fetchMock)
       vi.stubGlobal('useStorage', () => cache)
 
       let accountId = 'account-1'
@@ -254,28 +278,18 @@ describe('gateway models API', () => {
       expect(first.models[0]?.id).toBe('model-a')
       expect(second.models[0]?.id).toBe('model-a')
       expect(third.models[0]?.id).toBe('model-b')
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(countMarketplaceCalls(fetchMock)).toBe(2)
     })
 
   it('caches the cloudflare catalog per apiKey, so a guessed accountId with a different key never shares a catalog',
     async () => {
-      const fetchMock = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-a', name: 'Model A' }],
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-b', name: 'Model B' }],
-          }),
-        })
+      const fetchMock = mockCloudflareMarketplaceSequence([
+        { data: [{ id: 'model-a', name: 'Model A' }] },
+        { data: [{ id: 'model-b', name: 'Model B' }] },
+      ])
 
       const cache = createFakeCache()
 
-      vi.stubGlobal('fetch', fetchMock)
       vi.stubGlobal('useStorage', () => cache)
 
       let apiKey = 'genuine-owner-token'
@@ -301,7 +315,7 @@ describe('gateway models API', () => {
 
       expect(genuineOwnerResponse.models[0]?.id).toBe('model-a')
       expect(guessedAccountResponse.models[0]?.id).toBe('model-b')
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(countMarketplaceCalls(fetchMock)).toBe(2)
     })
 
   it('returns a normalized catalog for a valid gateway', async () => {

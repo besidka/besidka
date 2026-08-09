@@ -223,6 +223,57 @@ user's API key (not the raw key, and not accountId alone — a guessed account
 ID paired with an unrelated key must never produce a cache hit against
 another user's real catalog).
 
+#### Cloudflare's two-format join
+
+Cloudflare serves the same `/ai/models/search` endpoint in two shapes, and
+`fetchCloudflareGatewayCatalog()` fetches **both and joins them**, because
+neither is sufficient alone:
+
+- `?format=openrouter` — the marketplace projection the picker's
+  `GatewayModel` shape is built around. Carries ids, names and descriptions,
+  but **no pricing, tool-calling or reasoning data**.
+- the default format (no `format` param) — Cloudflare's own model objects,
+  whose `properties[]` array is the **only** place pricing,
+  `function_calling` and `reasoning` are exposed.
+
+**The identity relationship between the two is inverted, which is the whole
+trap.** In the marketplace shape, `id` is the real `@cf/vendor/model` string.
+In the default shape, `id` is an internal UUID and that same
+`@cf/vendor/model` string lives in `name`. The join key is therefore
+`marketplace.id === default.name` — joining on `id === id` silently matches
+nothing, and matching a UUID against a model id must never appear to succeed.
+
+Both fetches live inside the **one** cached unit: the enrichment fetch is not
+separately cached and has no TTL of its own, so a picker open costs at most
+two upstream calls, once per 15-minute window, against the Worker's
+6-simultaneous-connection budget. They are issued in parallel.
+
+Only the marketplace fetch is load-bearing. Its failure propagates so the
+stale-cache fallback still applies. The enrichment fetch is best-effort and
+degrades to an unenriched catalog on **any** problem — non-2xx, network
+throw, unexpected envelope, a model absent from the join, or a malformed
+property value. A model always renders with at least its id and name.
+Coverage is logged as `gatewayCatalogEnrichment` (`models`/`matched`/
+`priced`), with failures under `attributes.gatewayCatalogEnrichment.error`,
+since this join cannot be reproduced locally without real account
+credentials.
+
+**Property parsing is defensive by necessity.** Cloudflare declares every
+`properties[].value` as a string, but only some are: `context_window`,
+`function_calling` and `reasoning` arrive as `"128000"`/`"true"`, while
+`price` arrives as a real JSON array. Every reader coerces rather than
+trusts, and yields `undefined` on anything it does not positively recognise.
+Enrichment **backfills only** — a value the marketplace response already
+provided is never overwritten.
+
+Price entries look like
+`{"unit": "per M input tokens", "price": 0.35, "currency": "USD"}`, i.e. **USD
+per million tokens**, while `GatewayModel.pricing` is per-token — hence a
+divide by 1e6. An unrecognised unit spelling yields no price rather than a
+guess, so an unfamiliar unit costs a missing badge instead of a figure wrong
+by six orders of magnitude. Prices are only reported when **both** input and
+output resolve.
+
 ### Price tier and capability signals
 
 `GatewayModel.pricing` (per-token USD strings) resolves to the same
@@ -247,13 +298,16 @@ best-effort flags populated per gateway from whatever real signal each raw
 catalog exposes: Vercel's `tags` array (`'reasoning'`/`'web-search'` —
 also the only field surfacing web-search at all, since Vercel's
 `supported_parameters` never does) and OpenRouter's `supported_parameters`
-array (`'reasoning'`/`'web_search_options'`). **Cloudflare's
-marketplace-format catalog has no confirmed field for either** — unlike
-`supportsTools`, whose `tools` key the OpenRouter marketplace OpenAPI schema
-documents landing in a text output modality's `supported_parameters` map,
-nothing in that schema names a reasoning or web-search parameter key. Both
-fields are left `undefined` for Cloudflare rather than guessed; `undefined`
-always means "unknown," never "no," across all three gateways.
+array (`'reasoning'`/`'web_search_options'`).
+
+For Cloudflare both come from the default-format `properties[]` array
+described under "Cloudflare's two-format join" above: `reasoning` populates
+`supportsReasoning` and `function_calling` populates `supportsTools`.
+**Cloudflare exposes no web-search signal in either format**, so
+`supportsWebSearch` stays `undefined` there rather than guessed. A property
+that is simply absent for a model (many carry neither `reasoning` nor
+`function_calling`) also leaves the flag `undefined` — `undefined` always
+means "unknown," never "no," across all three gateways.
 
 Only an explicit `true` ever earns a picker badge. A gateway row renders a
 `brain`/`text-warning` chip for `supportsReasoning` and a `globe`/`text-info`
@@ -466,8 +520,24 @@ by its own PR's review and confirmed still open by the final cross-PR review:
 2. **Cloudflare's catalog response shape** — the normalizer is built against
    OpenRouter's own published OpenAPI schema for the "marketplace" format
    Cloudflare's docs say `format=openrouter` returns, but this was never hit
-   against a live Cloudflare account. Whether the endpoint paginates
-   (`page`/`per_page` params are documented) is also unconfirmed.
+   against a live Cloudflare account. The default-format enrichment half
+   (see "Cloudflare's two-format join") is built against Cloudflare's own
+   published per-model catalog JSON, also never hit live. Specifically worth
+   probing on the first real-account run, via the
+   `gatewayCatalogEnrichment` log fields:
+   - **`matched` far below `models`** — the two formats would not be
+     listing the same set, or `name` is not the join key live.
+   - **`priced` far below `matched`** — a price `unit` spelling the
+     per-million matcher does not recognise, or one-sided pricing.
+   - **Envelope** — the enrichment parser accepts both `{result: [...]}`
+     (Cloudflare's usual client/v4 envelope) and `{data: [...]}`; which one
+     the endpoint actually returns is unconfirmed.
+   - **Pagination** — the enrichment fetch requests `per_page=1000` in a
+     single call. Whether the endpoint honours, caps or ignores that
+     parameter is unconfirmed; a silent cap would truncate enrichment and
+     show up as a low `matched`.
+   - **`value` runtime types** — declared as string, but `price` is a real
+     array. Other properties could diverge the same way.
 3. **Cloudflare model id compatibility** — whether ids returned by the
    catalog endpoint match what the `/ai/v1/chat/completions` endpoint expects
    for `client.chatModel(modelId)` is unverified.

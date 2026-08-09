@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  estimateGatewayMessageCost,
+  resolveGatewayPriceTier,
+} from '#shared/utils/gateway-pricing'
 
 vi.mock('evlog', () => ({
   createError: (input: { message: string, status?: number }) => {
@@ -30,6 +34,75 @@ function mockFetchOnce(payload: unknown, ok = true, status = 200) {
     json: async () => payload,
     text: async () => JSON.stringify(payload),
   }))
+}
+
+interface CloudflareCatalogFetchMock {
+  marketplace: unknown
+  properties?: unknown
+  propertiesStatus?: number
+  propertiesThrows?: boolean
+}
+
+function mockCloudflareMarketplaceSequence(payloads: unknown[]) {
+  let callIndex = 0
+
+  const fetchMock = vi.fn(async (url: string) => {
+    if (!url.includes('format=openrouter')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ result: [] }),
+      }
+    }
+
+    const payload = payloads[callIndex] ?? payloads[payloads.length - 1]
+
+    callIndex += 1
+
+    return {
+      ok: true,
+      status: 200,
+      json: async () => payload,
+    }
+  })
+
+  vi.stubGlobal('fetch', fetchMock)
+
+  return fetchMock
+}
+
+function countMarketplaceCalls(fetchMock: { mock: { calls: unknown[][] } }) {
+  return fetchMock.mock.calls.filter(([url]) => {
+    return String(url).includes('format=openrouter')
+  }).length
+}
+
+function mockCloudflareCatalogFetch(responses: CloudflareCatalogFetchMock) {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.includes('format=openrouter')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => responses.marketplace,
+      }
+    }
+
+    if (responses.propertiesThrows) {
+      throw new Error('network unreachable')
+    }
+
+    const status = responses.propertiesStatus ?? 200
+
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => responses.properties,
+    }
+  })
+
+  vi.stubGlobal('fetch', fetchMock)
+
+  return fetchMock
 }
 
 describe('fetchVercelGatewayCatalog', () => {
@@ -495,6 +568,27 @@ describe('fetchCloudflareGatewayCatalog', () => {
       )
     })
 
+  it('also requests the default-format catalog used for enrichment',
+    async () => {
+      const fetchMock = mockCloudflareCatalogFetch({
+        marketplace: { data: [] },
+        properties: { result: [] },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+      await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.cloudflare.com/client/v4/accounts/account-1/ai/models/search?per_page=1000',
+        { headers: { Authorization: 'Bearer cf-token' } },
+      )
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
   it('throws a clean error when the upstream fetch fails', async () => {
     mockFetchOnce({}, false, 401)
 
@@ -507,6 +601,414 @@ describe('fetchCloudflareGatewayCatalog', () => {
       'Failed to fetch Cloudflare AI Gateway model catalog',
     )
   })
+})
+
+describe('fetchCloudflareGatewayCatalog default-format enrichment', () => {
+  const marketplaceCatalog = {
+    data: [
+      { id: '@cf/openai/gpt-oss-120b', name: 'gpt-oss-120b' },
+    ],
+  }
+
+  const gptOss120bProperties = {
+    id: 'f9f2250b-1048-4a52-9910-d0bf976616a1',
+    name: '@cf/openai/gpt-oss-120b',
+    properties: [
+      { property_id: 'context_window', value: '128000' },
+      {
+        property_id: 'price',
+        value: [
+          { unit: 'per M input tokens', price: 0.35, currency: 'USD' },
+          { unit: 'per M output tokens', price: 0.75, currency: 'USD' },
+        ],
+      },
+      { property_id: 'function_calling', value: 'true' },
+      { property_id: 'reasoning', value: 'true' },
+    ],
+  }
+
+  const credentials = { accountId: 'account-1', apiKey: 'cf-token' }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('joins default-format `name` onto marketplace `id`', async () => {
+    mockCloudflareCatalogFetch({
+      marketplace: marketplaceCatalog,
+      properties: { result: [gptOss120bProperties] },
+    })
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+    const models = await fetchCloudflareGatewayCatalog(credentials)
+
+    expect(models[0]).toMatchObject({
+      id: '@cf/openai/gpt-oss-120b',
+      name: 'gpt-oss-120b',
+      contextLength: 128000,
+      pricing: { input: '3.5e-7', output: '7.5e-7' },
+      supportsTools: true,
+      supportsReasoning: true,
+    })
+    expect(models[0]?.supportsWebSearch).toBeUndefined()
+  })
+
+  it('converts per-million prices into the per-token unit the pricing helpers expect',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        properties: { result: [gptOss120bProperties] },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(Number(model?.pricing?.input)).toBeCloseTo(0.35 / 1_000_000, 12)
+      expect(Number(model?.pricing?.output)).toBeCloseTo(0.75 / 1_000_000, 12)
+
+      expect(resolveGatewayPriceTier(model!)).toBe('$')
+
+      expect(estimateGatewayMessageCost(model!, {
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+      })).toBeCloseTo(1.1, 10)
+
+      expect(estimateGatewayMessageCost(model!, {
+        inputTokens: 1000,
+        outputTokens: 500,
+      })).toBeCloseTo(0.000725, 12)
+    })
+
+  it('resolves a price tier above the cheapest band for a pricier model',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: { data: [{ id: '@cf/qwen/qwq-32b', name: 'QwQ 32B' }] },
+        properties: {
+          result: [
+            {
+              id: 'b3c1f0a2-0000-4000-8000-0000000000aa',
+              name: '@cf/qwen/qwq-32b',
+              properties: [
+                {
+                  property_id: 'price',
+                  value: [
+                    { unit: 'per M input tokens', price: 0.66, currency: 'USD' },
+                    { unit: 'per M output tokens', price: 1, currency: 'USD' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(resolveGatewayPriceTier(model!)).toBe('$$')
+    })
+
+  it('accepts the `data` envelope as well as `result`', async () => {
+    mockCloudflareCatalogFetch({
+      marketplace: marketplaceCatalog,
+      properties: { data: [gptOss120bProperties] },
+    })
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+    const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+    expect(model?.supportsReasoning).toBe(true)
+  })
+
+  it('parses a JSON-encoded price value', async () => {
+    mockCloudflareCatalogFetch({
+      marketplace: marketplaceCatalog,
+      properties: {
+        result: [
+          {
+            name: '@cf/openai/gpt-oss-120b',
+            properties: [
+              {
+                property_id: 'price',
+                value: JSON.stringify([
+                  { unit: 'per M input tokens', price: 0.35, currency: 'USD' },
+                  { unit: 'per M output tokens', price: 0.75, currency: 'USD' },
+                ]),
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+    const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+    expect(Number(model?.pricing?.input)).toBeCloseTo(0.35 / 1_000_000, 12)
+  })
+
+  it('leaves a model unenriched when nothing in the default format matches',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        properties: {
+          result: [
+            {
+              id: 'a-uuid',
+              name: '@cf/meta/some-other-model',
+              properties: [{ property_id: 'reasoning', value: 'true' }],
+            },
+          ],
+        },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(models).toHaveLength(1)
+      expect(models[0]?.id).toBe('@cf/openai/gpt-oss-120b')
+      expect(models[0]?.name).toBe('gpt-oss-120b')
+      expect(models[0]?.pricing).toBeUndefined()
+      expect(models[0]?.supportsReasoning).toBeUndefined()
+      expect(models[0]?.supportsTools).toBeUndefined()
+    })
+
+  it('never mistakes the default-format UUID for a model id', async () => {
+    mockCloudflareCatalogFetch({
+      marketplace: {
+        data: [{ id: 'f9f2250b-1048-4a52-9910-d0bf976616a1', name: 'Decoy' }],
+      },
+      properties: { result: [gptOss120bProperties] },
+    })
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+    const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+    expect(model?.pricing).toBeUndefined()
+    expect(model?.supportsReasoning).toBeUndefined()
+  })
+
+  it('ignores malformed property values without dropping the model',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        properties: {
+          result: [
+            {
+              name: '@cf/openai/gpt-oss-120b',
+              properties: [
+                { property_id: 'context_window', value: 'not-a-number' },
+                { property_id: 'price', value: 'definitely not json' },
+                { property_id: 'function_calling', value: 'maybe' },
+                { property_id: 'reasoning', value: null },
+              ],
+            },
+          ],
+        },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(models).toHaveLength(1)
+      expect(models[0]?.id).toBe('@cf/openai/gpt-oss-120b')
+      expect(models[0]?.contextLength).toBeUndefined()
+      expect(models[0]?.pricing).toBeUndefined()
+      expect(models[0]?.supportsTools).toBeUndefined()
+      expect(models[0]?.supportsReasoning).toBeUndefined()
+    })
+
+  it('ignores a price entry whose unit it does not recognise', async () => {
+    mockCloudflareCatalogFetch({
+      marketplace: marketplaceCatalog,
+      properties: {
+        result: [
+          {
+            name: '@cf/openai/gpt-oss-120b',
+            properties: [
+              {
+                property_id: 'price',
+                value: [
+                  { unit: 'per 1000 input tokens', price: 0.35 },
+                  { unit: 'per 1000 output tokens', price: 0.75 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+    const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+    expect(model?.pricing).toBeUndefined()
+  })
+
+  it('drops half-priced models rather than reporting a partial pair',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        properties: {
+          result: [
+            {
+              name: '@cf/openai/gpt-oss-120b',
+              properties: [
+                {
+                  property_id: 'price',
+                  value: [
+                    { unit: 'per M input tokens', price: 0.35, currency: 'USD' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(model?.pricing).toBeUndefined()
+    })
+
+  it('returns the unenriched catalog when the default-format fetch errors',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        propertiesStatus: 403,
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(models).toHaveLength(1)
+      expect(models[0]?.id).toBe('@cf/openai/gpt-oss-120b')
+      expect(models[0]?.name).toBe('gpt-oss-120b')
+      expect(models[0]?.pricing).toBeUndefined()
+      expect(models[0]?.supportsReasoning).toBeUndefined()
+      expect(models[0]?.supportsTools).toBeUndefined()
+    })
+
+  it('returns the unenriched catalog when the default-format fetch throws',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        propertiesThrows: true,
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(models).toHaveLength(1)
+      expect(models[0]?.id).toBe('@cf/openai/gpt-oss-120b')
+    })
+
+  it('survives a default-format response with an unexpected shape',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        properties: { result: 'not-an-array' },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(models).toHaveLength(1)
+      expect(models[0]?.pricing).toBeUndefined()
+    })
+
+  it('never overwrites a value the marketplace response already provided',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: {
+          data: [
+            {
+              id: '@cf/openai/gpt-oss-120b',
+              name: 'gpt-oss-120b',
+              input_modalities: [
+                {
+                  type: 'text',
+                  supported_inputs: {
+                    max_context_length: { value: 4096, unit: 'token' },
+                  },
+                  pricing: [
+                    { type: 'prompt', unit: 'token', cost_usd: '0.000001' },
+                  ],
+                },
+              ],
+              output_modalities: [
+                {
+                  type: 'text',
+                  pricing: [
+                    {
+                      type: 'completion',
+                      unit: 'token',
+                      cost_usd: '0.000002',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        properties: { result: [gptOss120bProperties] },
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const [model] = await fetchCloudflareGatewayCatalog(credentials)
+
+      expect(model?.contextLength).toBe(4096)
+      expect(model?.pricing).toEqual({
+        input: '0.000001',
+        output: '0.000002',
+      })
+      expect(model?.supportsReasoning).toBe(true)
+    })
+
+  it('reports enrichment coverage to the logger', async () => {
+    mockCloudflareCatalogFetch({
+      marketplace: marketplaceCatalog,
+      properties: { result: [gptOss120bProperties] },
+    })
+
+    const set = vi.fn()
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+    await fetchCloudflareGatewayCatalog(credentials, { logger: { set } })
+
+    expect(set).toHaveBeenCalledWith({
+      gatewayCatalogEnrichment: {
+        gateway: 'cloudflare',
+        models: 1,
+        matched: 1,
+        priced: 1,
+      },
+    })
+  })
+
+  it('logs why enrichment degraded when the default-format fetch fails',
+    async () => {
+      mockCloudflareCatalogFetch({
+        marketplace: marketplaceCatalog,
+        propertiesStatus: 403,
+      })
+
+      const set = vi.fn()
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+      await fetchCloudflareGatewayCatalog(credentials, { logger: { set } })
+
+      expect(set).toHaveBeenCalledWith({
+        attributes: {
+          gatewayCatalogEnrichment: {
+            gateway: 'cloudflare',
+            error: 'Cloudflare returned HTTP 403',
+          },
+        },
+      })
+    })
 })
 
 async function sha256Hex(value: string): Promise<string> {
@@ -540,21 +1042,11 @@ describe('getCachedCloudflareGatewayCatalog', () => {
   it('scopes the cache key per account, so two accounts never share a catalog',
     async () => {
       const cache = createFakeCache()
-      const fetchMock = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-a', name: 'Model A' }],
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-b', name: 'Model B' }],
-          }),
-        })
+      const fetchMock = mockCloudflareMarketplaceSequence([
+        { data: [{ id: 'model-a', name: 'Model A' }] },
+        { data: [{ id: 'model-b', name: 'Model B' }] },
+      ])
 
-      vi.stubGlobal('fetch', fetchMock)
       vi.stubGlobal('useStorage', () => cache)
 
       const { getCachedCloudflareGatewayCatalog } = await getFetchers()
@@ -570,27 +1062,17 @@ describe('getCachedCloudflareGatewayCatalog', () => {
 
       expect(accountOneModels[0]?.id).toBe('model-a')
       expect(accountTwoModels[0]?.id).toBe('model-b')
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(countMarketplaceCalls(fetchMock)).toBe(2)
     })
 
   it('scopes the cache key per apiKey, so a guessed accountId with a different key never shares a catalog',
     async () => {
       const cache = createFakeCache()
-      const fetchMock = vi.fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-a', name: 'Model A' }],
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            data: [{ id: 'model-b', name: 'Model B' }],
-          }),
-        })
+      const fetchMock = mockCloudflareMarketplaceSequence([
+        { data: [{ id: 'model-a', name: 'Model A' }] },
+        { data: [{ id: 'model-b', name: 'Model B' }] },
+      ])
 
-      vi.stubGlobal('fetch', fetchMock)
       vi.stubGlobal('useStorage', () => cache)
 
       const { getCachedCloudflareGatewayCatalog } = await getFetchers()
@@ -606,19 +1088,15 @@ describe('getCachedCloudflareGatewayCatalog', () => {
 
       expect(genuineOwnerModels[0]?.id).toBe('model-a')
       expect(guessedAccountModels[0]?.id).toBe('model-b')
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(countMarketplaceCalls(fetchMock)).toBe(2)
     })
 
   it('serves the second request for the same account from cache', async () => {
     const cache = createFakeCache()
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: [{ id: 'model-a', name: 'Model A' }],
-      }),
-    })
+    const fetchMock = mockCloudflareMarketplaceSequence([
+      { data: [{ id: 'model-a', name: 'Model A' }] },
+    ])
 
-    vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('useStorage', () => cache)
 
     const { getCachedCloudflareGatewayCatalog } = await getFetchers()
@@ -629,7 +1107,8 @@ describe('getCachedCloudflareGatewayCatalog', () => {
     const second = await getCachedCloudflareGatewayCatalog(credentials)
 
     expect(first).toEqual(second)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(countMarketplaceCalls(fetchMock)).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('serves a stale per-account cache entry when the upstream fetch fails',

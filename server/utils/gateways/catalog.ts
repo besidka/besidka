@@ -4,6 +4,9 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const VERCEL_GATEWAY_MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models'
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
+const CLOUDFLARE_ACCOUNTS_URL = 'https://api.cloudflare.com/client/v4/accounts'
+const CLOUDFLARE_MODEL_SEARCH_PAGE_SIZE = 1000
+const TOKENS_PER_MILLION = 1_000_000
 const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
 /**
  * Cloudflare's catalog is a per-account resource (it requires the caller's
@@ -241,17 +244,21 @@ interface CloudflareGatewayModelsResponse {
  * unexpected shape degrades to a `{id, name}`-only `GatewayModel` rather
  * than throwing.
  *
- * `supportsReasoning`/`supportsWebSearch` are deliberately never set here:
- * unlike `supportsTools`, whose `tools` key this schema documents landing in
- * a text output modality's `supported_parameters` map, nothing in the
- * published schema names a reasoning or web-search parameter key. Leaving
- * both `undefined` keeps the "unknown, not unsupported" contract rather than
- * guessing a key name with no schema or live-account evidence behind it.
+ * `supportsReasoning`/`supportsWebSearch` are deliberately never set from
+ * this shape: unlike `supportsTools`, whose `tools` key this schema
+ * documents landing in a text output modality's `supported_parameters` map,
+ * nothing in the published schema names a reasoning or web-search parameter
+ * key. `supportsReasoning` is backfilled from the default-format `reasoning`
+ * property by `fetchCloudflareGatewayCatalog` instead; web search stays
+ * `undefined` on both shapes, keeping the "unknown, not unsupported"
+ * contract rather than guessing a key name with no evidence behind it.
  */
-export async function fetchCloudflareGatewayCatalog(
+async function fetchCloudflareMarketplaceCatalog(
   credentials: CloudflareGatewayCatalogCredentials,
 ): Promise<GatewayModel[]> {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${credentials.accountId}/ai/models/search?format=openrouter`
+  const url = buildCloudflareModelSearchUrl(credentials.accountId, {
+    format: 'openrouter',
+  })
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${credentials.apiKey}`,
@@ -269,7 +276,50 @@ export async function fetchCloudflareGatewayCatalog(
 
   const payload = await response.json() as CloudflareGatewayModelsResponse
 
-  return payload.data.map(normalizeCloudflareGatewayModel)
+  return (payload.data || []).map(normalizeCloudflareGatewayModel)
+}
+
+/**
+ * Fetches Cloudflare's model catalog in both of the shapes its search
+ * endpoint serves and joins them: the `format=openrouter` marketplace
+ * projection the picker's model shape is built around, and Cloudflare's own
+ * default format, whose `properties[]` array is the only place pricing,
+ * `function_calling` and `reasoning` are exposed. See the Cloudflare
+ * two-format join section in `docs/gateways.md`.
+ *
+ * Only the marketplace fetch is load-bearing — its failure propagates so
+ * `getCachedCloudflareGatewayCatalog` can still serve a stale catalog. The
+ * enrichment fetch is best-effort and degrades to an unenriched catalog.
+ */
+export async function fetchCloudflareGatewayCatalog(
+  credentials: CloudflareGatewayCatalogCredentials,
+  options: GetCachedGatewayCatalogOptions = {},
+): Promise<GatewayModel[]> {
+  const [models, propertiesByModelName] = await Promise.all([
+    fetchCloudflareMarketplaceCatalog(credentials),
+    fetchCloudflareModelProperties(credentials, options),
+  ])
+
+  if (!propertiesByModelName) {
+    return models
+  }
+
+  const enriched = models.map((model) => {
+    return enrichCloudflareGatewayModel(model, propertiesByModelName)
+  })
+
+  options.logger?.set({
+    gatewayCatalogEnrichment: {
+      gateway: 'cloudflare',
+      models: models.length,
+      matched: models.filter((model) => {
+        return propertiesByModelName.has(model.id)
+      }).length,
+      priced: enriched.filter(model => Boolean(model.pricing)).length,
+    },
+  })
+
+  return enriched
 }
 
 function findCloudflareTextInputModality(
@@ -337,6 +387,335 @@ function normalizeCloudflareGatewayModel(
   }
 }
 
+interface CloudflareModelProperty {
+  property_id?: string
+  value?: unknown
+}
+
+interface CloudflareModelSearchObject {
+  id?: string
+  name?: string
+  properties?: CloudflareModelProperty[]
+}
+
+interface CloudflareModelSearchResponse {
+  result?: CloudflareModelSearchObject[]
+  data?: CloudflareModelSearchObject[]
+}
+
+type CloudflareModelPropertiesByName = Map<string, CloudflareModelProperty[]>
+
+interface CloudflareModelPriceEntry {
+  unit?: unknown
+  price?: unknown
+  currency?: unknown
+}
+
+function buildCloudflareModelSearchUrl(
+  accountId: string,
+  searchParams: Record<string, string>,
+): string {
+  const url = new URL(
+    `${CLOUDFLARE_ACCOUNTS_URL}/${accountId}/ai/models/search`,
+  )
+
+  for (const [key, value] of Object.entries(searchParams)) {
+    url.searchParams.set(key, value)
+  }
+
+  return url.toString()
+}
+
+function logCloudflareEnrichmentFailure(
+  reason: string,
+  options: GetCachedGatewayCatalogOptions,
+): void {
+  options.logger?.set({
+    attributes: {
+      gatewayCatalogEnrichment: {
+        gateway: 'cloudflare',
+        error: reason,
+      },
+    },
+  })
+}
+
+/**
+ * Fetches Cloudflare's default-format model catalog, whose per-model objects
+ * carry the `properties[]` array the marketplace projection drops. Keyed by
+ * `name` (the `@cf/vendor/model` string) because the default format puts an
+ * internal UUID in `id` — the inverse of the marketplace format, where `id`
+ * holds that same `@cf/...` string. Resolves to `undefined` on any failure so
+ * the caller can serve an unenriched catalog instead of failing outright.
+ */
+async function fetchCloudflareModelProperties(
+  credentials: CloudflareGatewayCatalogCredentials,
+  options: GetCachedGatewayCatalogOptions,
+): Promise<CloudflareModelPropertiesByName | undefined> {
+  try {
+    const url = buildCloudflareModelSearchUrl(credentials.accountId, {
+      per_page: String(CLOUDFLARE_MODEL_SEARCH_PAGE_SIZE),
+    })
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${credentials.apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      logCloudflareEnrichmentFailure(
+        `Cloudflare returned HTTP ${response.status}`,
+        options,
+      )
+
+      return undefined
+    }
+
+    const payload = await response.json() as CloudflareModelSearchResponse
+    const entries = payload?.result || payload?.data
+
+    if (!Array.isArray(entries)) {
+      logCloudflareEnrichmentFailure('Unexpected response shape', options)
+
+      return undefined
+    }
+
+    return buildCloudflareModelPropertiesMap(entries)
+  } catch (exception) {
+    logCloudflareEnrichmentFailure(exceptionMessage(exception), options)
+
+    return undefined
+  }
+}
+
+function buildCloudflareModelPropertiesMap(
+  entries: CloudflareModelSearchObject[],
+): CloudflareModelPropertiesByName {
+  const propertiesByName: CloudflareModelPropertiesByName = new Map()
+
+  for (const entry of entries) {
+    if (typeof entry?.name !== 'string' || !Array.isArray(entry.properties)) {
+      continue
+    }
+
+    propertiesByName.set(entry.name, entry.properties)
+  }
+
+  return propertiesByName
+}
+
+function findCloudflarePropertyValue(
+  properties: CloudflareModelProperty[],
+  propertyId: string,
+): unknown {
+  return properties.find((property) => {
+    return property?.property_id === propertyId
+  })?.value
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Cloudflare declares every `properties[].value` as a string, but only some
+ * hold one: `context_window`, `function_calling` and `reasoning` arrive as
+ * `"128000"`/`"true"`, while `price` arrives as a real JSON array. Every
+ * reader below coerces rather than trusts, and returns `undefined` on
+ * anything it does not positively recognise.
+ */
+function coerceCloudflareBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value
+  }
+
+  if (typeof value === 'number') {
+    if (value !== 0 && value !== 1) {
+      return undefined
+    }
+
+    return value === 1
+  }
+
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true
+  }
+
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false
+  }
+
+  return undefined
+}
+
+function coerceCloudflareNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined
+  }
+
+  const amount = Number(value)
+
+  return Number.isFinite(amount) ? amount : undefined
+}
+
+function coerceCloudflareTokenCount(value: unknown): number | undefined {
+  const amount = coerceCloudflareNumber(value)
+
+  if (amount === undefined || amount <= 0) {
+    return undefined
+  }
+
+  return Math.floor(amount)
+}
+
+function parseCloudflarePriceEntries(
+  value: unknown,
+): CloudflareModelPriceEntry[] {
+  if (Array.isArray(value)) {
+    return value.filter(isPlainObject)
+  }
+
+  if (isPlainObject(value)) {
+    return [value]
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return []
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value)
+
+    if (!Array.isArray(parsed) && !isPlainObject(parsed)) {
+      return []
+    }
+
+    return parseCloudflarePriceEntries(parsed)
+  } catch {
+    return []
+  }
+}
+
+function resolveCloudflarePriceUnit(entry: CloudflareModelPriceEntry): string {
+  return typeof entry.unit === 'string' ? entry.unit.trim().toLowerCase() : ''
+}
+
+function resolveCloudflarePriceDirection(
+  entry: CloudflareModelPriceEntry,
+): 'input' | 'output' | undefined {
+  const unit = resolveCloudflarePriceUnit(entry)
+
+  if (unit.includes('input') || unit.includes('prompt')) {
+    return 'input'
+  }
+
+  if (unit.includes('output') || unit.includes('completion')) {
+    return 'output'
+  }
+
+  return undefined
+}
+
+/**
+ * Cloudflare publishes these as `"per M input tokens"` with a price of e.g.
+ * `0.35`, meaning USD per million tokens, while `GatewayModel.pricing` is
+ * per-token — hence the division. A unit this does not positively recognise
+ * yields `undefined` rather than a guess, so an unfamiliar spelling costs a
+ * missing badge instead of a price wrong by six orders of magnitude.
+ */
+function resolveCloudflarePricePerToken(
+  entry: CloudflareModelPriceEntry,
+): number | undefined {
+  const amount = coerceCloudflareNumber(entry.price)
+  const unit = resolveCloudflarePriceUnit(entry)
+
+  if (amount === undefined || amount < 0 || !unit.includes('token')) {
+    return undefined
+  }
+
+  if (
+    typeof entry.currency === 'string'
+    && entry.currency.trim().toLowerCase() !== 'usd'
+  ) {
+    return undefined
+  }
+
+  if (/\bper\s*1?\s*m(illion)?\b/.test(unit)) {
+    return amount / TOKENS_PER_MILLION
+  }
+
+  if (/\bper\s*(1\s*)?token/.test(unit)) {
+    return amount
+  }
+
+  return undefined
+}
+
+function extractCloudflarePricing(
+  value: unknown,
+): GatewayModel['pricing'] {
+  const prices: { input?: string, output?: string } = {}
+
+  for (const entry of parseCloudflarePriceEntries(value)) {
+    const direction = resolveCloudflarePriceDirection(entry)
+    const pricePerToken = resolveCloudflarePricePerToken(entry)
+
+    if (!direction || pricePerToken === undefined || prices[direction]) {
+      continue
+    }
+
+    prices[direction] = String(pricePerToken)
+  }
+
+  if (prices.input === undefined || prices.output === undefined) {
+    return undefined
+  }
+
+  return { input: prices.input, output: prices.output }
+}
+
+/**
+ * Backfills only what the marketplace response left `undefined` — a value the
+ * primary shape already provided is never overwritten, so enrichment can add
+ * signals but never contradict them.
+ */
+function enrichCloudflareGatewayModel(
+  model: GatewayModel,
+  propertiesByModelName: CloudflareModelPropertiesByName,
+): GatewayModel {
+  const properties = propertiesByModelName.get(model.id)
+
+  if (!properties) {
+    return model
+  }
+
+  return {
+    ...model,
+    contextLength: model.contextLength ?? coerceCloudflareTokenCount(
+      findCloudflarePropertyValue(properties, 'context_window'),
+    ),
+    pricing: model.pricing ?? extractCloudflarePricing(
+      findCloudflarePropertyValue(properties, 'price'),
+    ),
+    supportsTools: model.supportsTools ?? coerceCloudflareBoolean(
+      findCloudflarePropertyValue(properties, 'function_calling'),
+    ),
+    supportsReasoning: model.supportsReasoning ?? coerceCloudflareBoolean(
+      findCloudflarePropertyValue(properties, 'reasoning'),
+    ),
+  }
+}
+
 interface CloudflareGatewayCatalogCacheEntry {
   models: GatewayModel[]
   cachedAt: number
@@ -394,7 +773,7 @@ export async function getCachedCloudflareGatewayCatalog(
   let models: GatewayModel[]
 
   try {
-    models = await fetchCloudflareGatewayCatalog(credentials)
+    models = await fetchCloudflareGatewayCatalog(credentials, options)
   } catch (exception) {
     if (!cached) {
       throw exception
