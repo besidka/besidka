@@ -430,7 +430,9 @@ describe('ChatInput/ModelsTrigger', () => {
         .toContain('Vercel AI Gateway')
       expect(wrapper.find('[data-testid="models-picker-rail"]').exists())
         .toBe(false)
-      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
+      expect(wrapper.find('[data-testid="models-picker-filter-free"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="models-picker-filter-chat"]')
         .exists()).toBe(false)
       expect(wrapper.find('button[aria-label="Choose Image model"]').exists())
         .toBe(false)
@@ -527,6 +529,194 @@ describe('ChatInput/ModelsTrigger', () => {
 
       expect(wrapper.get('[data-testid="models-picker-gateway-banner"]').text())
         .toContain('Vercel AI Gateway')
+    })
+
+    it('rounds the banner and the gateway rail into the panel corners', async () => {
+      const wrapper = await openGateway()
+
+      expect(wrapper.get('[data-testid="models-picker-gateway-banner"]')
+        .classes()).toContain('rounded-t-2xl')
+      expect(wrapper.get('[data-testid="models-picker-gateway-rail"]')
+        .classes()).toContain('rounded-b-2xl')
+    })
+
+    describe('provider strip', () => {
+      const catalog = [
+        {
+          id: 'anthropic/claude-opus-5',
+          name: 'Claude Opus 5',
+          pricing: { input: '0.0000025', output: '0.00001' },
+        },
+        {
+          id: 'openai/gpt-5.4',
+          name: 'GPT-5.4',
+          pricing: { input: '0.0000012', output: '0.00001' },
+        },
+        {
+          id: 'openai/gpt-5.4-mini',
+          name: 'GPT-5.4 mini',
+          pricing: { input: '0', output: '0' },
+        },
+      ]
+
+      async function openMultiProviderGateway(
+        models: typeof catalog = catalog,
+      ) {
+        mocks.useGatewayCatalog.mockReturnValue({
+          models: shallowRef(models),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: mocks.refreshGatewayCatalog,
+        })
+
+        const wrapper = await mountPicker()
+
+        await wrapper.get('[data-testid="current-model-trigger"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+          .trigger('click')
+
+        return wrapper
+      }
+
+      function getRenderedModelNames(
+        wrapper: Awaited<ReturnType<typeof mountPicker>>,
+      ) {
+        return wrapper
+          .findAll('li[id^="gateway-model-option-"]')
+          .map((option) => {
+            return option.get('.truncate').text()
+          })
+      }
+
+      it('offers a chip per underlying provider, most stocked first', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const chips = wrapper
+          .findAll('[data-testid="models-picker-gateway-provider-strip"] button')
+          .map((chip) => {
+            return chip.attributes('data-testid')
+          })
+
+        expect(chips).toEqual([
+          'models-picker-gateway-provider-openai',
+          'models-picker-gateway-provider-anthropic',
+        ])
+      })
+
+      it('clusters the list by provider in the same order', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4', 'GPT-5.4 mini', 'Claude Opus 5'])
+      })
+
+      it('narrows the list to the picked provider and back', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const chip = wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+
+        await chip.trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+
+        await chip.trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toHaveLength(3)
+      })
+
+      it('hides the strip for a single-provider catalog', async () => {
+        const wrapper = await openMultiProviderGateway([catalog[0]!])
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-strip"]',
+        ).exists()).toBe(false)
+      })
+
+      it('hides the strip while a search is narrowing the list', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-search"]')
+          .setValue('gpt')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-strip"]',
+        ).exists()).toBe(false)
+      })
+
+      it('suspends the provider filter for the duration of a search', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await search.setValue('gpt')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4', 'GPT-5.4 mini'])
+      })
+
+      it('restores the provider filter a fruitless search cleared', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await search.setValue('gpt')
+        await search.setValue('')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+        expect(wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .attributes('aria-pressed'),
+        ).toBe('true')
+      })
+
+      it('keeps only free models under the free filter', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 mini'])
+        expect(wrapper.get('[data-testid="gateway-model-free"]').text())
+          .toContain('Free')
+      })
+
+      it('drops a provider chip the free filter emptied out', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-strip"]',
+        ).exists()).toBe(false)
+      })
+
+      it('releases a provider filter the free filter left unreachable', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 mini'])
+      })
+
+      it('clears every gateway filter from the empty state', async () => {
+        const wrapper = await openMultiProviderGateway([catalog[0]!])
+
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="gateway-models-clear-filters"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+      })
     })
   })
 })

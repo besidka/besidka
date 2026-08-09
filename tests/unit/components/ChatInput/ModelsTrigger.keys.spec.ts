@@ -298,6 +298,7 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       const banner = wrapper.get('[data-testid="models-picker-key-banner"]')
 
       expect(banner.text()).toContain('No API keys yet')
+      expect(banner.classes()).toContain('rounded-t-2xl')
       expect(
         banner.get('[data-testid="models-picker-key-banner-link"]')
           .attributes('href'),
@@ -329,6 +330,38 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       expect(mocks.useGatewayCatalog).not.toHaveBeenCalled()
       expect(wrapper.find('[data-testid="gateway-models-loading"]').exists())
         .toBe(false)
+    })
+
+    it('drops the search and filter controls with no catalog to search', async () => {
+      const wrapper = await openPicker()
+
+      expect(wrapper.find('[data-testid="models-picker-search"]').exists())
+        .toBe(true)
+
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+
+      expect(wrapper.find('[data-testid="models-picker-search-row"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="models-picker-search"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
+        .exists()).toBe(false)
+      expect(wrapper.find(
+        '[data-testid="models-picker-gateway-provider-strip"]',
+      ).exists()).toBe(false)
+    })
+
+    it('brings the search back on the way out of a keyless gateway', async () => {
+      const wrapper = await openPicker()
+
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="models-picker-gateway-exit"]')
+        .trigger('click')
+
+      expect(wrapper.find('[data-testid="models-picker-search"]').exists())
+        .toBe(true)
     })
 
     it('loads the catalog once the gateway key exists', async () => {

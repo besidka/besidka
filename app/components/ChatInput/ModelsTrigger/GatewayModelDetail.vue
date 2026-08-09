@@ -90,15 +90,38 @@ const detailId = computed<string>(() => {
   return `gateway-model-detail-${props.model.id}`
 })
 
+/**
+ * The row badges deliberately drop the near-universal `supportsTools` wrench
+ * (four in five OpenRouter models report it) and keep only the signals that
+ * tell models apart. It survives here, where a full capability roster is the
+ * point. `undefined` on either advisory flag means "this gateway does not
+ * report it", so only an explicit `true` earns a badge.
+ */
 const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props
   const badges: CapabilityBadge[] = []
+
+  if (model.supportsReasoning === true) {
+    badges.push({
+      label: 'Reasoning',
+      icon: 'lucide:brain',
+      class: 'badge-warning',
+    })
+  }
+
+  if (model.supportsWebSearch === true) {
+    badges.push({
+      label: 'Web search',
+      icon: 'lucide:globe',
+      class: 'badge-info',
+    })
+  }
 
   if (model.supportsTools) {
     badges.push({
       label: 'Tool calling',
       icon: 'lucide:wrench',
-      class: 'badge-info',
+      class: 'badge-neutral',
     })
   }
 

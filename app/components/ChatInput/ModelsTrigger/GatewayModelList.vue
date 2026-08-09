@@ -100,19 +100,35 @@
       <p class="text-xs opacity-60">
         {{ emptyMessage }}
       </p>
+      <button
+        v-if="hasActiveFilters"
+        type="button"
+        data-testid="gateway-models-clear-filters"
+        class="btn btn-ghost btn-xs rounded-full text-accent"
+        @click="emit('clearFilters')"
+      >
+        Clear filters
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
-import type { GatewayPickerSection } from '~/types/models-picker'
+import type {
+  GatewayPickerSection,
+  GatewayProviderGroup,
+} from '~/types/models-picker'
+import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
+import { isGatewayModelFree } from '#shared/utils/gateway-pricing'
 
 const props = defineProps<{
   gatewayId: GatewayId
   gatewayLabel: string
   searchTerm: string
   isFavoritesOnly: boolean
+  isFreeOnly: boolean
+  activeProviderPrefix: string | null
   favoriteModelIds: string[]
   selectedModelId: string | null
   detailModelId: string | null
@@ -124,8 +140,10 @@ const emit = defineEmits<{
   toggleFavorite: [modelId: string]
   toggleDetail: [modelId: string]
   closeDetail: []
+  clearFilters: []
   highlight: [optionId: string | null]
   pendingChange: [isPending: boolean]
+  providerGroupsChange: [groups: GatewayProviderGroup[]]
 }>()
 
 const { models, pending, error, refresh } = useGatewayCatalog(
@@ -140,11 +158,41 @@ const isPending = computed<boolean>(() => {
   return pending.value && !models.value.length
 })
 
-const filteredModels = computed<GatewayModel[]>(() => {
-  const term = props.searchTerm.trim().toLowerCase()
-
+/**
+ * What the provider strip describes: the catalog minus the filters that
+ * outlive a search, and deliberately NOT minus the search term or the
+ * strip's own choice. Narrowing by the picked provider would make every
+ * other count read zero, and letting a search narrow it would make a
+ * provider with no hit for the current term vanish from the groups — which
+ * the parent reads as "this provider is gone" and answers by dropping the
+ * filter the user set before they started typing.
+ */
+const groupableModels = computed<GatewayModel[]>(() => {
   return models.value.filter((model) => {
     if (props.isFavoritesOnly && !props.favoriteModelIds.includes(model.id)) {
+      return false
+    }
+
+    return !props.isFreeOnly || isGatewayModelFree(model)
+  })
+})
+
+const providerGroups = computed<GatewayProviderGroup[]>(() => {
+  return getGatewayProviderGroups(groupableModels.value)
+})
+
+/**
+ * A search suspends the provider filter rather than compounding with it,
+ * matching `ProviderRail.vue`'s rail filter in provider mode: the strip is
+ * hidden while searching, and a filter nothing on screen can explain is
+ * worse than a wider result set. The choice survives the search and applies
+ * again the moment the field is cleared.
+ */
+const filteredModels = computed<GatewayModel[]>(() => {
+  const term = props.searchTerm.trim().toLowerCase()
+  const prefix = term ? null : props.activeProviderPrefix
+  const matching = groupableModels.value.filter((model) => {
+    if (prefix && getGatewayModelProviderPrefix(model.id) !== prefix) {
       return false
     }
 
@@ -155,6 +203,15 @@ const filteredModels = computed<GatewayModel[]>(() => {
     return model.name.toLowerCase().includes(term)
       || model.id.toLowerCase().includes(term)
   })
+
+  return sortGatewayModelsByProvider(matching, providerGroups.value)
+})
+
+const hasActiveFilters = computed<boolean>(() => {
+  return props.isFreeOnly
+    || props.isFavoritesOnly
+    || !!props.activeProviderPrefix
+    || !!props.searchTerm.trim()
 })
 
 const sections = computed<GatewayPickerSection[]>(() => {
@@ -175,6 +232,17 @@ const sections = computed<GatewayPickerSection[]>(() => {
   ]
 })
 
+/**
+ * The rendered order, which the favorites section reshuffles away from the
+ * provider clustering — arrow keys and Enter walk this, so the highlight
+ * follows the rows the user can actually see moving.
+ */
+const orderedModels = computed<GatewayModel[]>(() => {
+  return sections.value.flatMap((section) => {
+    return section.entries
+  })
+})
+
 const emptyMessage = computed<string>(() => {
   if (props.isFavoritesOnly) {
     return `No favorite ${props.gatewayLabel} models yet.`
@@ -182,6 +250,10 @@ const emptyMessage = computed<string>(() => {
 
   if (props.searchTerm.trim()) {
     return `No models match “${props.searchTerm.trim()}”.`
+  }
+
+  if (hasActiveFilters.value) {
+    return 'No models match the selected filters.'
   }
 
   return `${props.gatewayLabel} returned no models.`
@@ -208,17 +280,17 @@ function setHighlight(modelId: string | null) {
 }
 
 function highlightFirst() {
-  setHighlight(filteredModels.value[0]?.id ?? null)
+  setHighlight(orderedModels.value[0]?.id ?? null)
 }
 
 function highlightLast() {
-  const entries = filteredModels.value
+  const entries = orderedModels.value
 
   setHighlight(entries[entries.length - 1]?.id ?? null)
 }
 
 function moveHighlight(step: number) {
-  const entries = filteredModels.value
+  const entries = orderedModels.value
 
   if (!entries.length) {
     return
@@ -251,7 +323,11 @@ watch(isPending, (value) => {
   emit('pendingChange', value)
 }, { immediate: true })
 
-watch(filteredModels, (entries) => {
+watch(providerGroups, (groups) => {
+  emit('providerGroupsChange', groups)
+}, { immediate: true })
+
+watch(orderedModels, (entries) => {
   const stillVisible = entries.some((model) => {
     return model.id === highlightedModelId.value
   })
