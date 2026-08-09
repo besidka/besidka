@@ -49,7 +49,7 @@
                 external
                 target="_blank"
               >
-                {{ meta.dashboardUrl }}
+                {{ meta.dashboardLabel || meta.dashboardUrl }}
               </NuxtLink>
             </span>
           </template>

@@ -18,6 +18,7 @@ export interface ProviderMeta {
   label: string
   keyProviderId: string
   dashboardUrl: string
+  dashboardLabel?: string
   keyFields: ProviderMetaKeyField[]
 }
 
@@ -83,6 +84,7 @@ export const providerMeta: Record<string, ProviderMeta> = {
     label: 'Vercel AI Gateway',
     keyProviderId: 'vercel-gateway',
     dashboardUrl: 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys',
+    dashboardLabel: 'Vercel dashboard → AI Gateway → API Keys',
     keyFields: [apiKeyField],
   },
   openrouter: {
