@@ -145,6 +145,9 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
+    'tests/integration/api/chats-single-step-characterization.spec.ts',
+    'tests/integration/api/chats-tool-loop.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -392,6 +395,15 @@ export function getAffectedTests(changedFiles) {
         ...imageGenerationTests,
         ...filesModuleTests,
         'tests/unit/components/Chat/GeneratedImage.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(server\/utils\/ai\/tool-loop\.ts|tests\/fixtures\/follow-up-turn-tool\.ts)$/,
+      tests: [
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+        'tests/integration/api/chats-tool-loop.spec.ts',
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+        'tests/integration/api/chats-gateway.spec.ts',
       ],
     },
     {

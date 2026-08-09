@@ -684,10 +684,21 @@ overlap the model name it sat next to.
   fires *before* `onEnd`, not after. The actual fix reads `providerMetadata`
   off the per-step `finish-step` chunk instead, which is part of the same
   `result.stream` `messageMetadata` already consumes and is guaranteed to
-  arrive before the terminal `finish` chunk (every send in this app is
-  single-step today, direct-provider or gateway, since nothing anywhere sets
-  `stopWhen` and `streamText()` defaults to `stopWhen: isStepCount(1)`). See
-  `resolveLiveGatewayCost()` in `server/api/v1/chats/[slug]/index.post.ts`.
+  arrive before the terminal `finish` chunk. See `resolveLiveGatewayCost()`
+  in `server/api/v1/chats/[slug]/index.post.ts`.
+
+  **Per-step costs are summed, not last-wins** (superseding this section's
+  earlier "every send is single-step" assumption, which the multi-step tool
+  loop below invalidated). Each AI SDK step is its own `doStream()` call —
+  a separate OpenRouter request with its own generation id and its own billed
+  `usage.cost` — so a loop of N steps reports N independent costs that must
+  be added. `sumOpenRouterStepCosts()` does that on both paths: live by
+  accumulating across `finish-step` chunks, persisted by folding over
+  `result.steps`. For a single-step send the sum of one element is exactly
+  the value the previous `finalStep`-only read produced, which is what the
+  single-step characterization suite pins. Token counts needed no change:
+  `finish.totalUsage`, `result.usage` and `onEnd`'s `usage` are all already
+  summed across steps by the SDK (`addLanguageModelUsage`).
   **This ordering is observed behavior of `ai@7.0.56`, not a documented
   contract** — the SDK's own public type for `messageMetadata` claims it only
   fires on `start`/`finish`, which the `finish-step` firing already
@@ -762,6 +773,72 @@ unit test (`tests/unit/utils/gateways/{vercel,cloudflare}.spec.ts`,
 `tests/integration/api/chats-gateway.spec.ts`) and code inspection only, not
 against a real account. This is a documented gap in "Known gaps requiring
 live verification" below, same category as the pre-existing gateway gaps.
+
+### Multi-step tool loop
+
+`streamText()` defaults to `stopWhen: isStepCount(1)`, so historically every
+send ran exactly one step. `server/utils/ai/tool-loop.ts` adds an opt-in
+multi-step loop for the one case that genuinely needs it: a tool whose result
+the *model* must read before it can answer in natural language.
+
+**The trigger is a marker on the tool, never a heuristic.**
+`withFollowUpTurn(tool)` stamps `requiresFollowUpTurn: true` onto a tool
+definition; `resolveToolLoopOptions()` returns loop options only when at least
+one tool in the send carries it, and `undefined` otherwise. `undefined` spreads
+to nothing at the `streamText()` call site, so every other send passes byte-
+identical arguments to what it passed before the loop existed.
+
+**"Has an `execute()`" is explicitly NOT the trigger, and using it would be a
+regression.** `createImageGenerationTool()` is a client-executed tool with a
+real `execute()`, and the AI SDK's own continuation condition (client tool
+calls that produced results, in `streamText`'s step flush) would happily
+continue past it if a blanket `stopWhen` were set — spending a second billed
+generation to narrate an image the user can already see. Image generation is
+single-step precisely because its tool result IS the deliverable. Provider-
+executed tools (Vercel's `perplexitySearch()`) are doubly safe: the SDK's
+continuation condition skips tool calls flagged `providerExecuted: true`.
+
+Nothing in the app sets the marker today — the first user will be Moonshot's
+Formula-API search (LW2). The loop is therefore proven by a test-only fixture
+tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the real send
+pipeline with a real `streamText` and a `MockLanguageModelV4`; that fixture
+must never be wired into a provider or gateway builder.
+
+**Bounds.** `TOOL_LOOP_MAX_STEPS` is 3 (request the tool, answer from the
+result, one spare refinement round). `timeout: { totalMs: 540_000, toolMs:
+60_000 }` is set on the loop path only: the KV generation-in-progress guard
+this route writes expires after 600s, so the loop's total budget must stay
+under that — otherwise a client retry arriving after the guard expired would
+start a second concurrent generation for the same turn. A tool `execute()`
+that throws produces a `tool-error` output, which the model sees and answers
+from, so a failing tool terminates the loop rather than retrying it.
+
+**`toolMs` is cooperative, not enforced.** The AI SDK only passes it to
+`execute()` as `options.abortSignal` — it never wraps the call in its own
+race/cancellation. A tool that hangs without checking that signal (e.g. a
+`fetch()` that omits `signal: options.abortSignal`) is never interrupted by
+`toolMs`, and can hang past `totalMs` too, since nothing else force-resolves
+a pending step. `totalMs` does correctly abort a hang in the *model's own*
+HTTP call: `persistAssistantMessageFromStream()` sees the resulting `abort`
+chunk, returns `false`, writes no assistant row, and the KV guard is still
+released in the handler's `finally`. **Any real tool wired via
+`withFollowUpTurn()` must thread `options.abortSignal` into its own network
+I/O**, or `toolMs` does nothing for it. There is no test for a true hang —
+nothing in this framework can force one to resolve — only a tool `throw` is
+exercised (`tests/integration/api/chats-tool-loop.spec.ts`).
+
+**Persistence and rendering.** Intermediate tool-call/tool-result parts land
+in `messages.parts` unchanged: `normalizeAssistantMessagePartsForPersistence`
+passes through every part type other than `tool-generate_image`. On the
+client, the `v-if` chain in `app/pages/chats/[slug].vue` and
+`app/pages/shared/[slug].vue` matches only `tool-generate_image`, error text
+and `text`, so an unrecognized tool part renders nothing and throws nothing.
+One cosmetic consequence worth knowing before Wave C ships a real tool:
+`shouldFitMessageBubble()` returns `false` for any part type outside
+`text`/`reasoning`/`step-start`/`file`, so a message carrying a tool part
+loses fit-content bubble styling. Deciding how search steps should *look*
+(chips, collapsed steps, or nothing) is deliberately left to the work package
+that introduces the first real multi-step tool.
 
 ### Telemetry
 
@@ -883,6 +960,32 @@ by its own PR's review and confirmed still open by the final cross-PR review:
     source chips are expected to render for free; Vercel's gateway tools have
     no equivalent confirmed mapping. Not blocking (the send itself still
     works either way), but affects which chips a Vercel search turn shows.
+12. **OpenRouter's per-step cost reporting under a real multi-step send**
+    (Wave B, 2026-08-09) — the summing in `sumOpenRouterStepCosts()` follows
+    from static inspection of the installed `ai@7.0.56` and
+    `@openrouter/ai-sdk-provider@3.0.0`: `streamText`'s step flush calls
+    `streamStep()` again, which issues a fresh `streamLanguageModelCall()`,
+    and the provider builds `providerMetadata.openrouter.usage.cost` purely
+    from that one HTTP response's `usage` object — there is no cross-request
+    accumulation anywhere in either package, so each step's cost is that
+    step's own. Confidence is high and the alternative (a cumulative figure)
+    would require OpenRouter to know about a prior, separate, stateless
+    chat-completions request. Still unconfirmed live, because no tool sets
+    the follow-up marker yet and no multi-step send has ever been made.
+    **Confirm on the first real multi-step send** (Wave C's Moonshot search,
+    if it is ever routed through OpenRouter): compare the summed
+    context-menu cost against the OpenRouter dashboard's total for that
+    turn. If it reads roughly double, the per-step figures were cumulative
+    and the fold must become last-wins.
+13. **Vercel generation-id capture is last-step-only under a multi-step
+    gateway send** — `readVercelGenerationId()` still reads
+    `finalStep.providerMetadata`, so the background
+    `persistVercelGenerationCost()` hop would price only the final step of a
+    loop. This is unconstructible today: nothing gateway-side sets the
+    follow-up marker, Vercel's search tool is provider-executed (single-step
+    by construction), and OpenRouter reports its cost synchronously instead.
+    Documented rather than speculatively fixed; revisit only if a Vercel
+    gateway send is ever given a marked tool.
 
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom
