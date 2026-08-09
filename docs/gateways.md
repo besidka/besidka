@@ -499,6 +499,14 @@ separate cost-hint UI element** — the "via gateway, billed per search"
 wording IS the cost hint, matching the existing Qwen search toggle, which
 also ships without one.
 
+The chat-input toggle reads the same signal off the cached catalog
+(`isWebSearchSupported` in `app/composables/chat-input.ts`), not a fresh
+fetch — it is deliberately fail-closed, unlike the vision check, which fails
+open. This means a persisted gateway selection (page reload, or resuming a
+chat) shows no web-search toggle at all until the picker has fetched that
+gateway's catalog at least once in the session; opening the model picker
+once is enough, since the fetched catalog is cached across the session.
+
 `GatewayModel.supportsImageGeneration` is a new advisory boolean, derived
 from each gateway's own OUTPUT modalities containing `'image'` (Vercel
 `modalities.output`, OpenRouter `architecture.output_modalities`, Cloudflare
@@ -896,7 +904,11 @@ driven end-to-end against the live upstream APIs (both are public and
 unauthenticated, so a dummy stored key is enough to pass the picker's
 presence gate — the route never validates it). Both rendered their real
 catalogs through the picker: OpenRouter 400 models / 58 prefixes / 268
-reasoning / 16 web-search / 17 free, Vercel 209 / 28 / 154 / 70 / 2. That
+reasoning / 16 web-search / 17 free, Vercel 209 / 28 / 154 / 70 / 2 (the
+web-search count reflects the pre-round-4 boolean derivation; round 4
+rewrote `supportsWebSearch` into `'native' | 'universal' | undefined`
+afterward, so this probe no longer measures what the badge shows today —
+the new derivation is fixture-verified only, not re-run live). That
 closes catalog fetching, normalization, price tiering and capability
 signalling for those two gateways. It closes **nothing** for Cloudflare
 (items 2, 3 and 5 need real account credentials) and nothing about sending a
