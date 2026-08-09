@@ -157,7 +157,9 @@ re-planning needed, just scope additions):
 
 **Excluded**: actually sending gateway chats (PR5), no-key gating (PR6), Cloudflare enablement (PR7).
 
-**Definition of done**: mode switch works, provider mode pixel-identical to today; gateway mode catalog searchable/selectable; favorites isolated per gateway; existing bare-string preference values load unchanged; tests for parse/serialize round-trip (incl. `:free`-suffixed ids) and no-wipe-before-load.
+**Definition of done**: mode switch works; gateway mode catalog searchable/selectable; favorites isolated per gateway; existing bare-string preference values load unchanged; tests for parse/serialize round-trip (incl. `:free`-suffixed ids) and no-wipe-before-load.
+
+**Implemented (2026-08-09) — one disclosed, reviewed deviation**: the gateway button row renders unconditionally, including in provider mode (not hidden until a gateway key exists), because the mode switch needs to be discoverable somewhere. Verified this triggers no wasted catalog fetch for a keyless/provider-mode user — `GatewayModelList` only mounts once a gateway is actively selected. Everything else in provider mode is unchanged. PR6 owns the actual no-key gating on top of this.
 
 ---
 
