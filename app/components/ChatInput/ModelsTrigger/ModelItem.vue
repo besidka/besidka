@@ -61,8 +61,11 @@
         <span
           v-if="model.priceTier"
           data-testid="model-price-tier"
-          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom max-xs:ml-5"
-          :class="getPriceTierClass(model.priceTier)"
+          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
+          :class="[
+            getPriceTierClass(model.priceTier),
+            { 'max-xs:ml-5': !isKeyMissing },
+          ]"
           :data-tip="priceTip"
         >
           {{ model.priceTier }}
@@ -83,10 +86,13 @@
           }"
         >
           <span
-            v-if="model.reasoning"
+            v-if="model.reasoning || model.reasoningAlwaysOn"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Reasoning"
+            :data-tip="model.reasoningAlwaysOn
+              ? 'Always-on reasoning'
+              : 'Reasoning'
+            "
           >
             <Icon name="lucide:brain" />
           </span>
@@ -211,6 +217,7 @@ const hasCapabilities = computed<boolean>(() => {
   const { model } = props
 
   return !!model.reasoning
+    || !!model.reasoningAlwaysOn
     || model.tools.includes('web_search')
     || hasImageGenerationCapability(model)
     || !!model.research

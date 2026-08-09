@@ -1,7 +1,19 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, h, shallowRef } from 'vue'
+import { providerMeta } from '#shared/utils/provider-meta'
 import { useChatInput } from '../../../app/composables/chat-input'
+import { defaultModel, providers } from '../../../providers'
+
+function defaultModelProviderLabel(): string {
+  for (const provider of providers) {
+    if (provider.models.some(model => model.id === defaultModel)) {
+      return providerMeta[provider.id]?.label ?? provider.id
+    }
+  }
+
+  return 'this provider'
+}
 
 const mocks = vi.hoisted(() => ({
   useUserKeys: vi.fn(),
@@ -109,7 +121,8 @@ describe('useChatInput missing-key resolution', () => {
     ).toBe('true')
   })
 
-  it('leaves an unresolvable model ungated rather than blocking send', async () => {
+  it('falls back to the default model rather than staying on an '
+    + 'unresolvable provider selection', async () => {
     const wrapper = await mountSuspended(createHost())
 
     const { userModel } = useUserModel()
@@ -118,12 +131,13 @@ describe('useChatInput missing-key resolution', () => {
     keyedProviderIds.value = []
     await wrapper.vm.$nextTick()
 
+    expect(userModel.value).toBe(defaultModel)
     expect(
       wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
-    ).toBe('false')
+    ).toBe('true')
     expect(
       wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
-    ).toBe('this provider')
+    ).toBe(defaultModelProviderLabel())
   })
 })
 
@@ -166,12 +180,17 @@ describe('useChatInput image model capability', () => {
     ).toBe('true')
   })
 
-  it('reports nothing supported when the model cannot be resolved', async () => {
+  it('reports nothing supported when the model cannot be resolved '
+    + 'through the curated catalog', async () => {
     const wrapper = await mountSuspended(createHost())
 
-    const { userModel } = useUserModel()
+    const { selection } = useUserModel()
 
-    userModel.value = 'not-a-real-model'
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'not-a-real-model',
+    }
     await wrapper.vm.$nextTick()
 
     expect(
@@ -223,7 +242,8 @@ describe('useChatInput research config', () => {
     ).toBe('')
   })
 
-  it('reports no research config for an unknown model', async () => {
+  it('falls back to the default model for an unresolvable provider '
+    + 'selection, reporting whatever research config that model has', async () => {
     const wrapper = await mountSuspended(createHost())
 
     const { userModel } = useUserModel()
@@ -231,6 +251,7 @@ describe('useChatInput research config', () => {
     userModel.value = 'not-a-real-model'
     await wrapper.vm.$nextTick()
 
+    expect(userModel.value).toBe(defaultModel)
     expect(
       wrapper.get('[data-testid="is-deep-research-model"]').text(),
     ).toBe('false')

@@ -183,4 +183,35 @@ describe('useUserModel', () => {
 
     expect(selection.value.source).toBe('provider')
   })
+
+  it('falls back to the default model when a provider selection no '
+    + 'longer exists in the curated catalog', () => {
+    localStorage.setItem('model', 'kimi-k2.5')
+
+    const { selection, userModel } = useUserModel()
+
+    expect(selection.value).toEqual({
+      source: 'provider',
+      modelId: defaultModel,
+    })
+    expect(userModel.value).toBe(defaultModel)
+  })
+
+  it('leaves a gateway selection untouched even though its modelId '
+    + 'never resolves through the curated provider catalog', () => {
+    localStorage.setItem('model', JSON.stringify({
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: openRouterModelId,
+    }))
+
+    const { selection, userModel } = useUserModel()
+
+    expect(selection.value).toEqual({
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: openRouterModelId,
+    })
+    expect(userModel.value).toBe(openRouterModelId)
+  })
 })

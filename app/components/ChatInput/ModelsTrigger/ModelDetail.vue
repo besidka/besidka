@@ -152,9 +152,9 @@ const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props
   const badges: CapabilityBadge[] = []
 
-  if (model.reasoning) {
+  if (model.reasoning || model.reasoningAlwaysOn) {
     badges.push({
-      label: 'Reasoning',
+      label: model.reasoningAlwaysOn ? 'Always-on reasoning' : 'Reasoning',
       icon: 'lucide:brain',
       class: 'badge-warning',
     })

@@ -13,8 +13,8 @@ vi.mock('#shared/utils/model', () => ({
 
 function createModel(overrides: Partial<Model> = {}): Model {
   return {
-    id: 'kimi-k2.5',
-    name: 'Kimi K2.5',
+    id: 'kimi-k2.6',
+    name: 'Kimi K2.6',
     description: 'General-purpose Moonshot AI model',
     contextLength: 128_000,
     maxOutputTokens: 8_000,
@@ -69,46 +69,43 @@ async function importUseMoonshotAi() {
   return useMoonshotAi
 }
 
-describe.each(['kimi-k2.5', 'kimi-k2.6'])(
-  'useMoonshotAi reasoning wiring for %s',
-  (modelId) => {
-    beforeEach(() => {
-      vi.resetModules()
-      vi.clearAllMocks()
-      stubKeyLookup()
+describe('useMoonshotAi reasoning wiring for kimi-k2.6', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('enables thinking and never sets the top-level reasoning option', async () => {
+    stubModel(createModel({
+      id: 'kimi-k2.6',
+      reasoning: { mode: 'toggle' },
+    }))
+
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi('1', 'kimi-k2.6', [], 'medium')
+
+    expect(result.providerOptions).toEqual({
+      thinking: { type: 'enabled' },
     })
+    expect(result.reasoning).toBeUndefined()
+  })
 
-    it('enables thinking and never sets the top-level reasoning option', async () => {
-      stubModel(createModel({
-        id: modelId,
-        reasoning: { mode: 'toggle' },
-      }))
+  it('disables thinking and never sets the top-level reasoning option', async () => {
+    stubModel(createModel({
+      id: 'kimi-k2.6',
+      reasoning: { mode: 'toggle' },
+    }))
 
-      const useMoonshotAi = await importUseMoonshotAi()
-      const result = await useMoonshotAi('1', modelId, [], 'medium')
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi('1', 'kimi-k2.6', [], 'off')
 
-      expect(result.providerOptions).toEqual({
-        thinking: { type: 'enabled' },
-      })
-      expect(result.reasoning).toBeUndefined()
+    expect(result.providerOptions).toEqual({
+      thinking: { type: 'disabled' },
     })
-
-    it('disables thinking and never sets the top-level reasoning option', async () => {
-      stubModel(createModel({
-        id: modelId,
-        reasoning: { mode: 'toggle' },
-      }))
-
-      const useMoonshotAi = await importUseMoonshotAi()
-      const result = await useMoonshotAi('1', modelId, [], 'off')
-
-      expect(result.providerOptions).toEqual({
-        thinking: { type: 'disabled' },
-      })
-      expect(result.reasoning).toBeUndefined()
-    })
-  },
-)
+    expect(result.reasoning).toBeUndefined()
+  })
+})
 
 describe('useMoonshotAi reasoning wiring for kimi-k3', () => {
   beforeEach(() => {
@@ -119,6 +116,17 @@ describe('useMoonshotAi reasoning wiring for kimi-k3', () => {
 
   it('sends no reasoning field for a model with no reasoning capability', async () => {
     stubModel(createModel({ id: 'kimi-k3' }))
+
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi('1', 'kimi-k3', [], 'medium')
+
+    expect(result.providerOptions).toEqual({})
+    expect(result.reasoning).toBeUndefined()
+  })
+
+  it('sends no reasoning field even when reasoningAlwaysOn is set, since '
+    + 'the flag only drives the picker UI, not provider wiring', async () => {
+    stubModel(createModel({ id: 'kimi-k3', reasoningAlwaysOn: true }))
 
     const useMoonshotAi = await importUseMoonshotAi()
     const result = await useMoonshotAi('1', 'kimi-k3', [], 'medium')

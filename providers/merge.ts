@@ -28,6 +28,7 @@ export interface CuratedModel {
   forProjectMemory?: boolean
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  reasoningAlwaysOn?: true
   research?: ModelResearchConfig
 }
 
@@ -176,6 +177,9 @@ function curatedCapabilities(curated: CuratedModel) {
       ? { imageGeneration: curated.imageGeneration }
       : {}),
     ...(curated.reasoning ? { reasoning: curated.reasoning } : {}),
+    ...(curated.reasoningAlwaysOn
+      ? { reasoningAlwaysOn: curated.reasoningAlwaysOn }
+      : {}),
     ...(curated.research ? { research: curated.research } : {}),
   }
 }

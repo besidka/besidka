@@ -5,16 +5,6 @@ export default {
   name: 'Moonshot AI',
   models: [
     {
-      id: 'kimi-k2.5',
-      tools: [],
-      reasoning: {
-        mode: 'toggle',
-      },
-      price: {
-        tokens: 1_000_000,
-      },
-    },
-    {
       id: 'kimi-k2.6',
       tools: [],
       reasoning: {
@@ -27,6 +17,7 @@ export default {
     {
       id: 'kimi-k3',
       tools: [],
+      reasoningAlwaysOn: true,
       price: {
         tokens: 1_000_000,
       },

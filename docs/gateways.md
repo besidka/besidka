@@ -21,12 +21,25 @@ import time against `providers/data/models-dev-snapshot.json`.
   on models.dev or in xAI's own docs. `tools: ['web_search']` via
   `xai.tools.webSearch({})`. No image-generation capability: xAI's image
   generation is a separate model class (`xai.image(...)`), not a chat tool.
+  `grok-4.20-0309-reasoning` doesn't accept xAI's `reasoning_effort` param at
+  all (fixed behavior, confirmed via xAI's own docs) — it's curated with
+  `reasoningAlwaysOn: true` instead of a `reasoning` toggle/levels
+  capability, so the picker shows the brain icon without offering a control
+  the model can't actually honor.
 - **DeepSeek**: `deepseek-chat` (default/first-listed, on/off `thinking`
   toggle), `deepseek-reasoner` (always-on reasoning). No native web_search or
   image_generation.
-- **Moonshot AI**: `kimi-k2.5` (the product owner's explicit pick,
-  default/first-listed), `kimi-k2.6`, `kimi-k3`. The `moonshot-v1-*` classic
-  line is deliberately not curated — Moonshot is sunsetting it.
+- **Moonshot AI**: `kimi-k2.6` (default/first-listed), `kimi-k3`. The
+  `moonshot-v1-*` classic line is deliberately not curated — Moonshot is
+  sunsetting it. `kimi-k2.5` (originally the product owner's explicit pick)
+  was removed after real users hit "Not found the model kimi-k2.5 or
+  Permission denied" in the live app — Moonshot has an active sunset notice
+  for it on their platform. `kimi-k3` reasons unconditionally (Moonshot's own
+  docs confirm `reasoning_effort` only adjusts intensity — `low`/`high`/`max`
+  — with no way to disable reasoning), so it's curated with
+  `reasoningAlwaysOn: true` rather than a `reasoning` toggle; see the xAI
+  entry above for the parallel case and `providers/merge.ts`'s
+  `curatedCapabilities()` for how the flag is threaded.
 
 Server-side wiring lives in `server/utils/providers/{xai,deepseek,moonshotai}.ts`,
 matching the existing `use<Provider>()` contract. **Moonshot needs one

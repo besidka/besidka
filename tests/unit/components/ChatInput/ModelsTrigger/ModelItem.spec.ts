@@ -225,6 +225,18 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     ).exists()).toBe(true)
   })
 
+  it('shows the brain icon with an always-on label for a model with '
+    + 'reasoningAlwaysOn but no reasoning capability', async () => {
+    const model = createModel({ reasoningAlwaysOn: true })
+    const wrapper = await mountModelItem(model)
+
+    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-tip="Always-on reasoning"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
+  })
+
   it('renders the image generation icon for a purpose-built image model', async () => {
     const model = createModel({
       tools: [],
@@ -430,6 +442,57 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
       await wrapper.get('button[aria-label="Choose GPT-5.4"]').trigger('click')
 
       expect(wrapper.emitted('select')).toHaveLength(1)
+    })
+
+    describe('price-tier badge margin composition', () => {
+      it('indents the price tier on mobile when the price tier is the '
+        + 'first badge (key present)', async () => {
+        const wrapper = await mountModelItem(createModel({ priceTier: '$$' }))
+        const priceTier = wrapper.get('[data-testid="model-price-tier"]')
+
+        expect(priceTier.classes()).toContain('max-xs:ml-5')
+        expect(priceTier.classes()).toContain('badge-info')
+        expect(wrapper.find('[data-testid="model-key-required"]').exists())
+          .toBe(false)
+      })
+
+      it('drops the price tier indent on mobile when the key is missing, '
+        + 'since the key-required badge already indents that row', async () => {
+        const wrapper = await mountModelItem(createModel({ priceTier: '$$' }), {
+          isKeyMissing: true,
+        })
+        const priceTier = wrapper.get('[data-testid="model-price-tier"]')
+        const keyRequired = wrapper.get('[data-testid="model-key-required"]')
+
+        expect(keyRequired.classes()).toContain('max-xs:ml-5')
+        expect(priceTier.classes()).not.toContain('max-xs:ml-5')
+        expect(priceTier.classes()).toContain('badge-info')
+      })
+
+      it('indents the key-required badge on mobile when there is no '
+        + 'price tier to render', async () => {
+        const wrapper = await mountModelItem(
+          createModel({ priceTier: undefined }),
+          { isKeyMissing: true },
+        )
+        const keyRequired = wrapper.get('[data-testid="model-key-required"]')
+
+        expect(keyRequired.classes()).toContain('max-xs:ml-5')
+        expect(wrapper.find('[data-testid="model-price-tier"]').exists())
+          .toBe(false)
+      })
+
+      it('renders neither badge when the key is present and there is no '
+        + 'price tier', async () => {
+        const wrapper = await mountModelItem(
+          createModel({ priceTier: undefined }),
+        )
+
+        expect(wrapper.find('[data-testid="model-key-required"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="model-price-tier"]').exists())
+          .toBe(false)
+      })
     })
   })
 })

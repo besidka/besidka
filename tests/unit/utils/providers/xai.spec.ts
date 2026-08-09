@@ -130,6 +130,34 @@ describe.each(['grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'])(
   },
 )
 
+describe('useXai reasoning wiring for the reasoningAlwaysOn flag', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('never sets a reasoning value regardless of reasoningAlwaysOn, '
+    + 'since the flag only drives the picker UI, not provider wiring',
+  async () => {
+    stubModel(createModel({
+      id: 'grok-4.20-0309-reasoning',
+      reasoningAlwaysOn: true,
+    }))
+
+    const useXai = await importUseXai()
+    const result = await useXai(
+      '1',
+      'grok-4.20-0309-reasoning',
+      [],
+      'medium',
+    )
+
+    expect(result.providerOptions).toEqual({})
+    expect(result.reasoning).toBeUndefined()
+  })
+})
+
 describe('useXai web search tool choice', () => {
   beforeEach(() => {
     vi.resetModules()
