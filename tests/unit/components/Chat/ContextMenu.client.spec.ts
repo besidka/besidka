@@ -1090,6 +1090,82 @@ describe('Chat/ContextMenu.client', () => {
     })
   })
 
+  describe('provider info rendering', () => {
+    it('shows "(direct)" and a key icon for a direct provider', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+        providerId: 'openai',
+        providerLabel: 'OpenAI',
+        providerKind: 'provider',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
+
+      expect(providerRow.text()).toContain('OpenAI (direct)')
+      expect(providerRow.get('.iconify').classes()).toContain(
+        'i-lucide:key-round',
+      )
+    })
+
+    it('shows the bare gateway label without a "(direct)" suffix', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'openai/gpt-5.4',
+        providerId: 'cloudflare',
+        providerLabel: 'Cloudflare AI Gateway',
+        providerKind: 'gateway',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
+
+      expect(providerRow.text()).toContain('Cloudflare AI Gateway')
+      expect(providerRow.text()).not.toContain('(direct)')
+      expect(providerRow.find('.iconify').exists()).toBe(false)
+    })
+
+    it('hides the provider row when no provider info is present', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-provider"]').exists(),
+      ).toBe(false)
+    })
+  })
+
   describe('deep research tool label', () => {
     it('shows the deep research label and telescope icon', async () => {
       const info: MessageMenuInfo = {

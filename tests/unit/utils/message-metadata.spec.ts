@@ -224,6 +224,9 @@ describe('resolveMessageMenuInfo', () => {
       role: 'assistant',
       createdAt: 'when',
       model: 'gpt-5.4',
+      providerId: 'openai',
+      providerLabel: 'OpenAI',
+      providerKind: 'provider',
       usedTools: ['web_search'],
       tokens: 1180,
       reasoningTokens: 320,
@@ -335,6 +338,9 @@ describe('resolveMessageMenuInfo', () => {
       role: 'assistant',
       createdAt: 'when',
       model: 'o4-mini-deep-research',
+      providerId: 'openai',
+      providerLabel: 'OpenAI',
+      providerKind: 'provider',
       usedTools: ['deep_research'],
       tokens: 35610,
       reasoningTokens: undefined,
@@ -394,6 +400,9 @@ describe('resolveMessageMenuInfo', () => {
       role: 'assistant',
       createdAt: 'when',
       model: 'deep-research-preview-04-2026',
+      providerId: 'google',
+      providerLabel: 'Google AI Studio',
+      providerKind: 'provider',
       usedTools: ['deep_research'],
       tokens: 1130546,
       reasoningTokens: undefined,
@@ -548,6 +557,119 @@ describe('resolveMessageMenuInfo gateway totalCost', () => {
     expect(info?.cost).toBe(0.0177)
     expect(info?.costToMessage).toBe(0.0177)
     expect(info?.chatTotalCost).toBe(0.0177)
+  })
+})
+
+describe('resolveMessageMenuInfo provider display', () => {
+  it('resolves a direct-provider message as a provider kind', () => {
+    const usage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('openai')
+    expect(info?.providerLabel).toBe('OpenAI')
+    expect(info?.providerKind).toBe('provider')
+  })
+
+  it('resolves a cloudflare gateway message via its keyProviderId, not a direct key match', () => {
+    const usage = {
+      model: 'openai/gpt-5.4',
+      provider: 'cloudflare-gateway',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.03,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('cloudflare')
+    expect(info?.providerLabel).toBe('Cloudflare AI Gateway')
+    expect(info?.providerKind).toBe('gateway')
+  })
+
+  it('resolves a vercel gateway message via its keyProviderId, not a direct key match', () => {
+    const usage = {
+      model: 'anthropic/claude-opus-5',
+      provider: 'vercel-gateway',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.04,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('vercel')
+    expect(info?.providerLabel).toBe('Vercel AI Gateway')
+    expect(info?.providerKind).toBe('gateway')
+  })
+
+  it('resolves an openrouter gateway message whose keyProviderId equals its own key', () => {
+    const usage = {
+      model: 'openai/gpt-5.4',
+      provider: 'openrouter',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.021,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('openrouter')
+    expect(info?.providerLabel).toBe('OpenRouter')
+    expect(info?.providerKind).toBe('gateway')
+  })
+
+  it('does not attribute a provider to a user message', () => {
+    const usage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+    }
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'sent' } },
+      { id: 'a1', role: 'assistant', metadata: { usage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'u1')
+
+    expect(info?.providerId).toBeUndefined()
+    expect(info?.providerLabel).toBeUndefined()
+    expect(info?.providerKind).toBeUndefined()
   })
 })
 
