@@ -271,7 +271,8 @@
                 data-testid="send-message"
                 mode="accent"
                 circle
-                :disabled="!hasMessage || isClarifying || researchJobActive"
+                :disabled="!hasMessage || isClarifying || researchJobActive
+                  || isSelectedModelKeyless"
                 :title="sendButtonTitle"
                 icon-name="lucide:arrow-up"
                 icon-only
@@ -349,6 +350,8 @@ const {
   reasoningMode,
   isDeepResearchModel,
   researchConfig,
+  isSelectedModelKeyless,
+  selectedModelKeyOwnerLabel,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -374,7 +377,15 @@ const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
 })
 
+const missingKeyWarning = computed<string>(() => {
+  return `Add your ${selectedModelKeyOwnerLabel.value} API key to send this message`
+})
+
 const sendButtonTitle = computed<string>(() => {
+  if (isSelectedModelKeyless.value) {
+    return missingKeyWarning.value
+  }
+
   if (props.researchJobActive) {
     return 'Research in progress — please wait'
   }
@@ -705,6 +716,13 @@ function handleEnter(event: KeyboardEvent) {
 function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
+  }
+
+  if (isSelectedModelKeyless.value) {
+    return useWarningMessage(
+      `${missingKeyWarning.value}.`,
+      'Open Profile → API Keys to add it, or pick a model you have a key for.',
+    )
   }
 
   if (props.isClarifying) {
