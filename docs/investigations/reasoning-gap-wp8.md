@@ -51,56 +51,63 @@ wins regardless of DaisyUI's higher-specificity open-state selector. **The
 padding-bottom hypothesis as stated does not hold on this stack** — it cannot
 be the (or even a contributing) cause of the reported gap.
 
-## Hypothesis 2: stale `<details>` collapse sizing after open/close toggling — plausible, partially reproduced, not fully confirmed
+## Hypothesis 2: rare, non-deterministic paint flake in the `<details>` collapse mechanism — plausible, low reproduction rate, not confirmed
 
-While probing the same synthetic element, a real and unexpected rendering
-defect turned up. DaisyUI 5.7.16 implements `<details>`-based `.collapse` via
-the browser's native `::details-content` pseudo-element combined with a CSS
-Grid `grid-template-rows: max-content 0fr` (closed) /
-`max-content 1fr` (open) transition on the `<details>` itself. `Reasoning.vue`
-never lets the browser's native toggle run — every `<summary>` uses
-`@click.prevent` and instead flips a Vue `ref` bound via `:open="isMainExpanded"`,
-which is mechanically identical to script setting `element.open = true/false`
-directly (no native `toggle` event path).
+While probing the same synthetic element, a real rendering defect turned up
+once. DaisyUI 5.7.16 implements `<details>`-based `.collapse` via the
+browser's native `::details-content` pseudo-element (not, as first assumed,
+the CSS Grid `grid-template-rows` transition on `.collapse` itself — measuring
+`.collapse-content`'s own `getBoundingClientRect()` and even
+`getComputedStyle(details, '::details-content')` both consistently reported
+the element's *full, uncollapsed* size regardless of open/closed state, while
+a screenshot of the exact same element at the exact same moment showed it
+correctly collapsed. `::details-content` is a very new pseudo-element and its
+`getComputedStyle` query result could not be trusted as ground truth here —
+only actual screenshots could confirm real paint state). `Reasoning.vue` never
+lets the browser's native toggle run — every `<summary>` uses `@click.prevent`
+and instead flips a Vue `ref` bound via `:open="isMainExpanded"`, which is
+mechanically identical to script setting `element.open = true/false` directly
+(no native `toggle` event path).
 
-Reproduction (synthetic element, same classes/markup shape as `Reasoning.vue`,
-injected into the live preview's actual page so the real compiled DaisyUI/
-Tailwind CSS applies):
+Using screenshots as the only trustworthy signal, one run of
+create-open → close → reopen (synthetic element, exact classes/markup shape
+as `Reasoning.vue`'s main collapse, injected into the live preview's actual
+page so the real compiled DaisyUI/Tailwind CSS applies) showed a genuine
+defect: after closing (correctly collapsed, confirmed by screenshot) and
+reopening, **the second of three content lines was missing from the render**
+— only line one and the next sibling were visible, i.e. the collapse-content
+rendered shorter than its actual content immediately after reopening.
 
-- Created **already open** (`<details open>` present in the initial markup),
-  content = 3 lines. Closed via `details.open = false` (screenshot: correctly
-  collapsed, only summary visible, tiny 4px gap to next sibling — correct).
-  Reopened via `details.open = true` immediately after: **the second content
-  line was clipped from the render** — only line one and the next sibling
-  marker were visible, i.e. the collapse-content rendered shorter than its
-  actual content.
-- The same close → reopen cycle, but with the element **created already
-  closed** and full 600ms settle waits between every toggle: reopened
-  correctly, all three lines visible, no defect.
+This was **not reliably reproducible**. The identical sequence (same markup,
+same open→close→reopen steps) was rerun and rendered all three lines
+correctly. A further batch of 8 rapid open→close→reopen trials (using
+`Range.getClientRects()` on the second line's text node as a cheaper
+paint-proxy than a full screenshot) showed the line correctly rendered in all
+8 trials. Best estimate from this session: the defect reproduces on the order
+of **1 time in roughly 10 attempts**, not deterministically tied to any single
+factor tested (created-open vs. created-closed, wait duration, content-size
+change across the toggle). This rate and shape — real, visually confirmed
+once, but not reliably reproducible under identical synthetic conditions — is
+actually a good match for the report's own framing ("sometimes... not every
+time"), but it also means this investigation cannot point to a precise,
+deterministic mechanism to fix. It presents as a rare browser/rendering-engine
+timing quirk in Chromium's relatively new `content-visibility` +
+`transition-behavior: allow-discrete` + `::details-content` combination
+(as used by DaisyUI 5.7.16's collapse component) when toggled via script
+rather than a native user click — not a deterministic defect in
+`Reasoning.vue`'s own code that a targeted change could reliably fix.
 
-This means the defect is not simply "DaisyUI collapse is broken" — it is
-specific to some transition/history-dependent condition that differed between
-the two runs (candidates: created-open vs. created-closed; or something in
-how the `::details-content` pseudo-element's own animated `height` is computed
-across repeated toggles, which is more consistent with the odd earlier
-observation on a real historical message where `getComputedStyle` reported
-`content-visibility: visible` and a non-zero content height on a `details`
-element that was demonstrably closed and visually rendering correctly — i.e.
-the *computed style* and the *actual paint* can legitimately disagree for this
-DaisyUI mechanism, which made isolating the true stale property hard from
-computed-style reads alone).
-
-**What was not established:** a clean, isolated reproduction of the gap
-direction specifically (stale-oversized content, leaving empty space) as
-opposed to the clip direction (stale-undersized content) that was actually
-reproduced once. The two are plausibly the same underlying mechanism
-manifesting in opposite directions depending on whether content grew or
-shrank across a toggle, but this was not confirmed before the investigation
-window closed. The exact realistic `Reasoning.vue` lifecycle — created closed,
-auto-expanded within a tick during streaming, auto-collapsed when the final
-text starts, later manually reopened by the user — was also not exercised
-end-to-end in the live app; only isolated synthetic toggle sequences were
-tested.
+**What was not established:** a reproduction of the *gap* direction
+specifically (stale-oversized content, leaving empty space) as opposed to the
+*clipping* direction (stale-undersized content) that was the one confirmed
+observation. The two are plausibly the same underlying flake manifesting in
+opposite directions depending on exact timing, but this was not confirmed. The
+exact realistic `Reasoning.vue` lifecycle — created closed, auto-expanded
+within a tick during streaming, auto-collapsed when the final text starts,
+later manually reopened by the user — was also not exercised end-to-end in
+the live app; only isolated synthetic toggle sequences were tested, and given
+the low, inconsistent reproduction rate even in a tight synthetic loop, a
+confident fix was not attempted (see Outcome below).
 
 ## What blocked a full live reproduction
 
@@ -156,41 +163,45 @@ tested.
 
 ## Outcome
 
-**Outcome 2: investigated, root cause not confirmed with full end-to-end
-confidence.** The task's named hypothesis (padding-bottom doubling) is
-refuted with a direct measurement and should not be pursued further as
+**Outcome 2: investigated, root cause not confirmed with full confidence — no
+code fix committed.** The task's named hypothesis (padding-bottom doubling)
+is refuted with a direct measurement and should not be pursued further as
 written. A different, real rendering defect in the same DaisyUI collapse
-mechanism was found and partially reproduced (stale sizing after an
-open/close toggle done via direct property assignment, exactly how
-`Reasoning.vue` toggles its `<details>`), but the reproduction so far shows
-content *clipping*, not the reported *gap*, and the realistic
-`Reasoning.vue` streaming-driven toggle sequence was not exercised
-end-to-end. No code fix is committed against this uncertain a root cause.
+mechanism was observed once (content clipped after a script-driven
+open→close→reopen, exactly how `Reasoning.vue` toggles its `<details>`), but
+it reproduced in roughly 1 of 10 identical attempts — a rate too low and too
+non-deterministic to isolate a precise mechanism, and the one confirmed
+direction (clipping) is the opposite of the reported symptom (a gap). No
+code fix is committed against a root cause this uncertain; a speculative CSS
+or lifecycle change would be as likely to do nothing, or to mask a symptom
+without addressing whatever timing condition actually triggers it.
 
 ## Ranked hypotheses for a follow-up session
 
-1. **(Most plausible)** Stale `::details-content` / grid-row sizing on
-   `.collapse` after a Vue-driven (non-native) `open`/`close` toggle,
-   specifically when content size differs between the last-open size and the
-   reopen. Next step: measure
-   `getComputedStyle(detailsEl, '::details-content').height` (not
-   `grid-template-rows`, which was observed pinned regardless of state) across
-   a matrix of {created-open vs. created-closed} × {content unchanged /
-   grown-while-closed / shrunk-while-closed}, and specifically exercise the
-   real `Reasoning.vue` lifecycle: created closed → opened within the same
-   tick (matching its `flush: 'post'` streaming watcher) → auto-collapsed →
-   manually reopened.
-2. **(Less plausible, needs a real repro)** A genuine race between the
-   `hasTextPart` auto-collapse watcher and the `isReasoningStreaming` /
-   latest-step-id auto-expand watcher (both `flush: 'post'` in
-   `Reasoning.vue`) firing in the same or adjacent ticks for a
-   fast-streaming/short-reasoning model, toggling `isMainExpanded` twice in
-   quick succession before the browser has painted the intermediate state —
-   this could not be tested because no available/funded reasoning model on
-   this deployment produced a visible reasoning block during this session
-   (see "What blocked a full live reproduction").
+1. **(Most plausible)** A rare Chromium-level rendering flake specific to the
+   combination DaisyUI 5.7.16's collapse component relies on:
+   `content-visibility` + `transition-behavior: allow-discrete` +
+   the `::details-content` pseudo-element, triggered by toggling `<details>`
+   via script/reactive-binding (`element.open = ...`) rather than a native
+   user click. Confirmed present (1-in-~10 synthetic trials) but not
+   deterministic. A follow-up session should run many more trials (50–100+)
+   varying content size, toggle speed, and browser (does it reproduce in
+   Firefox/Safari, which don't share Chromium's `::details-content`
+   implementation? If not, that all but confirms this as a Chromium engine
+   quirk rather than an app bug) before spending more time on it.
+2. **(Needs a real repro)** A genuine race between the `hasTextPart`
+   auto-collapse watcher and the `isReasoningStreaming` / latest-step-id
+   auto-expand watcher (both `flush: 'post'` in `Reasoning.vue`) firing in the
+   same or adjacent ticks for a fast-streaming/short-reasoning model, toggling
+   `isMainExpanded` twice in quick succession before the browser paints the
+   intermediate state. Could not be tested this session because no
+   available/funded reasoning model on this deployment produced a visible
+   reasoning block at all (see "What blocked a full live reproduction") — this
+   needs the exact `Reasoning.vue` component lifecycle exercised live, not a
+   synthetic standalone element, to say anything conclusive.
 
-Recommend looping back with either the user's screen recording, or a funded
-DeepSeek/Kimi key and a controlled multi-message session, to drive the exact
-`Reasoning.vue` component lifecycle rather than a synthetic standalone
-element.
+Recommend looping back with either the user's screen recording (to see the
+gap's actual pixel size and confirm which direction — oversized vs.
+undersized — it is), or a funded DeepSeek/Kimi/Grok-reasoning key and a
+controlled multi-message session, to drive the exact `Reasoning.vue`
+component lifecycle rather than a synthetic standalone element.
