@@ -18,6 +18,7 @@ import type {
 } from '#shared/types/providers.d'
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -91,6 +92,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const reasoningLevel: ReasoningLevel = body.data.gateway
+    ? 'off'
+    : body.data.reasoning
+
   const session = await useUserSession()
 
   if (!session) {
@@ -151,7 +156,7 @@ export default defineEventHandler(async (event) => {
     userId,
     chatId: chat.id,
     projectId: chat.projectId,
-    reasoning: body.data.reasoning,
+    reasoning: reasoningLevel,
     tools: body.data.tools,
   })
 
@@ -387,7 +392,7 @@ export default defineEventHandler(async (event) => {
         parts: newMessage.parts as UIMessage['parts'],
       },
       tools: requestedTools,
-      reasoning: body.data.reasoning,
+      reasoning: reasoningLevel,
     })
   }
 
@@ -472,7 +477,7 @@ export default defineEventHandler(async (event) => {
     userId,
     modelId,
     providerId: telemetryProviderId,
-    reasoning: body.data.reasoning,
+    reasoning: reasoningLevel,
     tools: requestedTools,
     ...gatewayTelemetryAttributes,
   })
@@ -528,7 +533,7 @@ export default defineEventHandler(async (event) => {
             session.user.id,
             model.id,
             requestedTools,
-            body.data.reasoning,
+            reasoningLevel,
           )
 
           instance = openAiInstance
@@ -580,7 +585,7 @@ export default defineEventHandler(async (event) => {
             session.user.id,
             model.id,
             requestedTools,
-            body.data.reasoning,
+            reasoningLevel,
           )
 
           instance = anthropicInstance
@@ -604,7 +609,7 @@ export default defineEventHandler(async (event) => {
             session.user.id,
             model.id,
             requestedTools,
-            body.data.reasoning,
+            reasoningLevel,
           )
 
           instance = googleInstance
@@ -656,7 +661,7 @@ export default defineEventHandler(async (event) => {
             session.user.id,
             model.id,
             requestedTools,
-            body.data.reasoning,
+            reasoningLevel,
           )
 
           instance = xaiInstance
@@ -678,7 +683,7 @@ export default defineEventHandler(async (event) => {
             session.user.id,
             model.id,
             requestedTools,
-            body.data.reasoning,
+            reasoningLevel,
           )
 
           instance = deepseekInstance
@@ -700,7 +705,7 @@ export default defineEventHandler(async (event) => {
             session.user.id,
             model.id,
             requestedTools,
-            body.data.reasoning,
+            reasoningLevel,
           )
 
           instance = moonshotAiInstance
@@ -747,7 +752,7 @@ export default defineEventHandler(async (event) => {
       chatId: chat.id,
       projectId: chat.projectId,
       modelId,
-      reasoning: body.data.reasoning,
+      reasoning: reasoningLevel,
       tools: requestedTools,
     })
 
@@ -882,7 +887,7 @@ export default defineEventHandler(async (event) => {
             chatId: chat.id,
             projectId: chat.projectId,
             modelId,
-            reasoning: body.data.reasoning,
+            reasoning: reasoningLevel,
             tools: requestedTools,
           })
 
@@ -894,7 +899,7 @@ export default defineEventHandler(async (event) => {
           originalMessages: messagesForAI,
           generateMessageId: () => messagePublicId,
           sendSources: true,
-          sendReasoning: body.data.reasoning !== 'off',
+          sendReasoning: reasoningLevel !== 'off',
           messageMetadata({ part }) {
             if (part.type !== 'finish') {
               return undefined
@@ -944,7 +949,7 @@ export default defineEventHandler(async (event) => {
               chatId: chat.id,
               projectId: chat.projectId,
               modelId,
-              reasoning: body.data.reasoning,
+              reasoning: reasoningLevel,
               tools: requestedTools,
             })
 
@@ -966,7 +971,7 @@ export default defineEventHandler(async (event) => {
           chatId: chat.id,
           projectId: chat.projectId,
           modelId,
-          reasoning: body.data.reasoning,
+          reasoning: reasoningLevel,
           tools: requestedTools,
           publicId: messagePublicId,
           logger,
