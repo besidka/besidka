@@ -40,7 +40,9 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
   — with no way to disable reasoning), so it's curated with
   `reasoningAlwaysOn: true` rather than a `reasoning` toggle; see the xAI
   entry above for the parallel case and `providers/merge.ts`'s
-  `curatedCapabilities()` for how the flag is threaded.
+  `curatedCapabilities()` for how the flag is threaded. Both models now
+  declare `tools: ['web_search']` — see "Moonshot AI — implemented via the
+  Formula API" below.
 - **Qwen**: `qwen3.7-plus` (default/first-listed), `qwen3.7-max`,
   `qwen3.6-flash`. All three get a toggle-only `reasoning` capability
   (`enable_thinking`, see below); `qwen3.7-plus` and `qwen3.6-flash` also
@@ -225,49 +227,115 @@ that would be a Besidka-side search integration (with Besidka owning the
 search-API bill), not a provider capability. `providers/deepseek.ts`
 therefore keeps `tools: []`; don't revisit without new docs evidence.
 
-**Moonshot AI — two documented mechanisms, neither cleanly wireable
-(verified non-fix).** Moonshot documents two web-search surfaces (note:
-`platform.moonshot.ai` now redirects to `platform.kimi.ai`):
+**Moonshot AI — implemented via the Formula API (Wave C-1, verified against
+current docs on 2026-08-10).** Round 3/4 documented two web-search surfaces
+and declined both — the legacy `$web_search` builtin function (unwireable:
+`@ai-sdk/moonshotai@3.0.30` delegates tool serialization to
+`@ai-sdk/openai-compatible`'s `prepareTools`, which hard-codes
+`type: "function"` and silently drops provider-defined tools) and the
+Formula API official tool `moonshot/web-search:latest` (wireable in
+principle, but blocked on the app having no multi-step tool loop). LW1 (the
+tool loop, `server/utils/ai/tool-loop.ts`) shipped in Wave B; this section
+records the Formula-API implementation that consumes it — its first real
+caller. Note: `platform.moonshot.ai` redirects (301) to `platform.kimi.ai`,
+the canonical docs host used below.
 
-1. The legacy `$web_search` builtin function
-   (`https://platform.kimi.ai/docs/guide/use-web-search`): declared as
-   `{"type": "builtin_function", "function": {"name": "$web_search"}}`,
-   executed on Moonshot's own servers ($0.005 per triggered search), with
-   the client required to echo the tool call's arguments back verbatim as a
-   `role: "tool"` message carrying both `tool_call_id` and `name`. Both
-   curated models (kimi-k2.6, kimi-k3) support it. `@ai-sdk/moonshotai`
-   (3.0.30) cannot carry it: the package delegates tool serialization to
-   `@ai-sdk/openai-compatible`'s `prepareTools`, which hard-codes
-   `type: "function"` for every regular tool and silently **drops**
-   provider-defined tools with an "unsupported" warning (verified in the
-   installed package source; a GitHub code search of vercel/ai for
-   `builtin_function` returns zero results, and the open PR #18449 that
-   moves Moonshot onto its own chat implementation is about video input,
-   not search). A regular AI SDK tool named `$web_search` would serialize
-   as `type: "function"` with a name Moonshot's docs disallow for ordinary
-   functions (`$` is builtin-only), and the SDK's outgoing tool-result
-   messages omit the `name` field Moonshot requires. The only injection
-   point left is rewriting raw request bodies through a custom `fetch` —
-   the kind of fragile, live-unverifiable hack this round declined to ship.
-2. The newer "Formula API" official tool `moonshot/web-search:latest`
-   (`https://platform.kimi.ai/docs/guide/use-official-tools`), which
-   Moonshot itself now recommends over `$web_search` for kimi-k3: a
-   standard `type: "function"` tool whose declaration is fetched from
-   `GET /v1/formulas/{uri}/tools` and whose execution the client triggers
-   with a second authenticated call to `POST /v1/formulas/{uri}/fibers`,
-   feeding back a possibly encrypted output blob
-   (`----MOONSHOT ENCRYPTED BEGIN----…`) as the tool result. This is
-   implementable through the AI SDK's ordinary tool path in principle, but
-   not in this app today: the chat pipeline's `streamText` call runs a
-   single step with no `stopWhen`/continuation (image generation works
-   single-step because the tool result IS the deliverable), so the model
-   would never get to produce its post-search answer. It would also persist
-   opaque encrypted blobs into message parts, and the billing docs
-   currently self-contradict ("official tools are currently free for a
-   limited time" vs. fiber execution "produces the tool_call billing").
-   Enabling a multi-step tool loop is a shared-pipeline change affecting
-   every provider — out of scope for this round, and the documented path if
-   this is revisited.
+- **Mechanics, re-verified against the live doc pages, not just the round-4
+  plan snapshot**
+  (`https://platform.kimi.ai/docs/guide/use-official-tools`,
+  `https://platform.kimi.ai/docs/guide/use-web-search`, both fetched
+  2026-08-10): fetch the declaration with
+  `GET {MOONSHOT_BASE_URL}/formulas/{FORMULA_URI}/tools`, send it as an
+  ordinary `type: "function"` tool on `POST /v1/chat/completions`, and when
+  the model calls it, execute with
+  `POST {MOONSHOT_BASE_URL}/formulas/{FORMULA_URI}/fibers` using body
+  `{"name": <function name>, "arguments": <JSON-string args, unmodified
+  from the model's own output>}`. `MOONSHOT_BASE_URL` is
+  `https://api.moonshot.ai/v1` (matches `@ai-sdk/moonshotai`'s own default
+  base URL) and `FORMULA_URI` is `moonshot/web-search:latest`. Auth on both
+  calls is `Authorization: Bearer <the user's own Moonshot API key>` — there
+  is no separate "app" credential; BYOK holds here exactly as everywhere
+  else.
+  - **Correction to the round-4 plan:** the plan wrote the declaration
+    fetch as `GET /v1/formulas/moonshot%2Fweb-search:latest/tools`
+    (URI-encoding the formula's own `/`). Moonshot's own official code
+    samples (Python `f"/formulas/{FORMULA_URI}/tools"` and a bash
+    `curl ${MOONSHOT_BASE_URL}/formulas/${FORMULA_URI}/tools` with
+    `FORMULA_URI="moonshot/web-search:latest"` set literally, unencoded)
+    both interpolate the raw string with no `encodeURIComponent`/`%2F`
+    anywhere on the page. `server/utils/providers/moonshotai-web-search.ts`
+    follows the doc's own literal form: plain string concatenation, no
+    encoding.
+- **Model support (research question: is this k3-only?).** The
+  official-tools page frames Formula-API tools as "Moonshot's recommended
+  path" specifically for kimi-k3, but its own worked example says verbatim:
+  "The examples on this page use the latest model `kimi-k3` by default. …
+  To use another model such as `kimi-k2.6` or `kimi-k2.5`, just replace the
+  `model` field — parameter configurations differ across models." Both of
+  this app's curated models are named as drop-in replacements in Moonshot's
+  own official-tools flow, so both are flipped to `tools: ['web_search']` in
+  `providers/moonshotai.ts`. "Parameter configurations differ" refers to
+  each model's own reasoning-effort field shape (already handled by this
+  provider's existing `getProviderOptions()`), not to Formula-API tool
+  eligibility — the tool declaration itself is a standard `type: "function"`
+  tool, and nothing in either doc page scopes it to one model.
+- **No forced `toolChoice`.** Unlike this app's OpenAI/xAI wiring (which
+  forces `toolChoice` onto their provider-executed search tools, safe
+  because those never loop), the Moonshot tool is client-executed and
+  marked with `withFollowUpTurn()` — forcing `toolChoice` here would re-select
+  the same tool on every loop step and the model would never produce text.
+  See `server/utils/ai/tool-loop.ts`'s doc comment.
+- **The encrypted-output blob — flagged for explicit product-owner
+  sign-off, not silently shipped.** Web search is documented as a
+  "protected" formula: a successful fiber run reports its result inside
+  `context.encrypted_output` (`----MOONSHOT ENCRYPTED BEGIN----…----MOONSHOT
+  ENCRYPTED END----`), and the official-tools doc states this "content can
+  be passed directly into the tool call" — i.e. it is designed to flow
+  through as opaque tool-result content that only Moonshot's own backend
+  can interpret; the app is not expected to decrypt or inspect it, and this
+  implementation doesn't. `getMoonshotWebSearchTools()`'s `execute()`
+  returns the string verbatim, and the multi-step loop's existing part
+  persistence (`normalizeAssistantMessagePartsForPersistence` passes
+  through every part type other than `tool-generate_image`) stores it in
+  `messages.parts` unchanged, same as any other tool result. Moonshot's own
+  docs only describe the *immediate* next `/chat/completions` call reusing
+  this blob — they say nothing about an app like this one that keeps full
+  multi-turn chat history and resends it on every subsequent turn of the
+  *same* chat, potentially for as long as the chat exists, nor about a chat
+  later being shared (this app's chat-sharing feature): the shared page's
+  underlying data payload would include the same opaque blob in
+  `messages.parts` even though `app/pages/shared/[slug].vue`'s part-type
+  `v-if` chain doesn't visually render it. Because Moonshot's actual
+  encryption scheme (algorithm, key custody, ciphertext-reuse safety) is
+  undocumented and unverifiable from outside, this repeated-resend and
+  possible-shared-page-payload exposure has **not** been independently
+  confirmed safe — it is passed through exactly as documented, but the
+  product owner should explicitly sign off on this retention/re-send
+  behavior rather than it being an implicit consequence of following the
+  docs. Nothing is decrypted, transformed, or given any bespoke DB handling
+  here; it lives in the exact same `messages.parts` JSON column every other
+  tool result already uses.
+- **Billing — still self-contradictory as of 2026-08-10, not resolved
+  here.** Two Moonshot doc pages disagree, same as round 3/4 found:
+  - `use-official-tools`: "official tools are currently free for a limited
+    time; when the tool load reaches capacity limits, temporary rate
+    limiting measures may be applied."
+  - `use-web-search` + `/docs/pricing/tools`: "In addition to token
+    consumption, we also charge a call fee for each web search" —
+    specifically "$0.005 for the `$web_search` call" when
+    `finish_reason = tool_calls` (no charge if the model never triggers a
+    search), plus ordinary token billing for
+    `prompt_tokens + search_tokens + completions_tokens`. Prices exclude
+    tax.
+  - Whether the $0.005/call figure (stated for the legacy `$web_search`
+    builtin) also applies to a Formula-API `web_search` fiber call is
+    itself ambiguous — the official-tools page's own "free for a limited
+    time" sentence is the only pricing language on the page that actually
+    describes what this app calls, and it cross-references the same "Web
+    Search Price" page as if the fee applies there too. Per this round's
+    instructions, this contradiction is recorded, not resolved — verify the
+    real Moonshot console/invoice on the first live search send (see "Known
+    gaps" below).
 
 **Cloudflare AI Gateway** — see "Tool calling through gateways: web search
 wired for OpenRouter and Vercel" in the gateway half of this doc, and the
@@ -798,11 +866,13 @@ single-step precisely because its tool result IS the deliverable. Provider-
 executed tools (Vercel's `perplexitySearch()`) are doubly safe: the SDK's
 continuation condition skips tool calls flagged `providerExecuted: true`.
 
-Nothing in the app sets the marker today — the first user will be Moonshot's
-Formula-API search (LW2). The loop is therefore proven by a test-only fixture
-tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the real send
-pipeline with a real `streamText` and a `MockLanguageModelV4`; that fixture
-must never be wired into a provider or gateway builder.
+Moonshot's Formula-API `web_search` tool
+(`server/utils/providers/moonshotai-web-search.ts`) is the first real caller
+of the marker — see "Moonshot AI — implemented via the Formula API" above.
+The loop mechanics themselves remain proven generically by a test-only
+fixture tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the
+real send pipeline with a real `streamText` and a `MockLanguageModelV4`;
+that fixture must never be wired into a provider or gateway builder.
 
 **Bounds.** `TOOL_LOOP_MAX_STEPS` is 3 (request the tool, answer from the
 result, one spare refinement round). `timeout: { totalMs: 540_000, toolMs:
@@ -986,6 +1056,35 @@ by its own PR's review and confirmed still open by the final cross-PR review:
     by construction), and OpenRouter reports its cost synchronously instead.
     Documented rather than speculatively fixed; revisit only if a Vercel
     gateway send is ever given a marked tool.
+14. **Moonshot's Formula-API `web_search` tool, end to end** (Wave C-1,
+    2026-08-10) — no live Moonshot key exists in this environment, so
+    nothing here was exercised against the real API. Everything in
+    `server/utils/providers/moonshotai-web-search.ts` is built and tested
+    against realistic mocks shaped from Moonshot's own current doc pages
+    (cited inline in the source and in the "Moonshot AI — implemented via
+    the Formula API" section above), not a live response. Needs, on the
+    first real key: (a) a genuine declaration fetch against
+    `GET /v1/formulas/moonshot/web-search:latest/tools` to confirm the
+    unencoded-URI form this app sends is accepted and the response shape
+    matches; (b) one real search send per curated model (`kimi-k2.6` and
+    `kimi-k3`) confirming the model actually receives and uses the
+    `encrypted_output` blob to produce a grounded follow-up answer, not
+    just that the fiber call itself succeeds; (c) checking the real
+    Moonshot console/invoice to resolve which side of the billing
+    contradiction above actually applies to a Formula-API call, not the
+    legacy `$web_search` builtin; (d) confirming `withFollowUpTurn()` +
+    no forced `toolChoice` actually lets `kimi-k3` (always-on reasoning)
+    produce a natural-language answer after the tool result rather than
+    re-calling the tool — the fixture-based loop test proves the mechanism
+    generically with a mock model, not with this specific model's real
+    tool-calling behavior; and (e) the `kimi-k2.6` + thinking-disabled +
+    web-search combination specifically — Moonshot's own web-search doc
+    phrases `kimi-k2.6` support as "can perform web search with thinking
+    enabled," which hints the thinking-off case may behave differently
+    (weaker tool selection, a different result shape, or no search at all)
+    rather than being a mechanical no-op; this app's reasoning toggle and
+    web-search toggle are fully independent controls, so a user can select
+    that exact combination today.
 
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom
