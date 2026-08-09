@@ -22,7 +22,7 @@
           <ProviderIcon
             :provider-id="providerPrefix"
             :label="providerPrefix"
-            class="w-3.5 shrink-0 fill-base-content/40"
+            class="size-3.5 shrink-0 text-base-content/40"
           />
           <span
             class="truncate text-sm font-medium"

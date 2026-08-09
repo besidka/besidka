@@ -435,6 +435,7 @@ export function getAffectedTests(changedFiles) {
         ...keysApiTests,
         ...gatewayCatalogTests,
         ...gatewayChatTests,
+        ...modelsTriggerTests,
       ],
     },
     {
@@ -455,6 +456,7 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|shared\/utils\/gateway-(pricing|model-id)\.ts)$/,
       tests: [
+        'tests/unit/components/ProviderIcon.spec.ts',
         ...gatewayCatalogTests,
         ...gatewayChatTests,
         ...modelsTriggerTests,
