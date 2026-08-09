@@ -22,11 +22,38 @@ describe('getGatewayModelProviderPrefix', () => {
       .toBe('~anthropic')
   })
 
-  it('stops at the first slash for a multi-segment Cloudflare-style id', () => {
+  it('extracts the real vendor from an @cf/vendor/model-slug id instead '
+    + 'of the shared @cf namespace segment', () => {
     expect(
       getGatewayModelProviderPrefix(
         '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       ),
-    ).toBe('@cf')
+    ).toBe('meta')
+  })
+
+  it('extracts the real vendor for every known Cloudflare vendor shape', () => {
+    expect(getGatewayModelProviderPrefix('@cf/google/gemma-3-12b-it'))
+      .toBe('google')
+    expect(getGatewayModelProviderPrefix('@cf/mistralai/mistral-small-3.1'))
+      .toBe('mistralai')
+    expect(getGatewayModelProviderPrefix('@cf/deepseek-ai/deepseek-r1'))
+      .toBe('deepseek-ai')
+    expect(getGatewayModelProviderPrefix('@cf/ibm-granite/granite-3-8b'))
+      .toBe('ibm-granite')
+    expect(getGatewayModelProviderPrefix('@cf/qwen/qwen2.5-coder-32b'))
+      .toBe('qwen')
+    expect(getGatewayModelProviderPrefix('@cf/zai-org/glm-4.5'))
+      .toBe('zai-org')
+  })
+
+  it('falls back to the whole @cf/vendor id when there is no third '
+    + 'model-slug segment', () => {
+    expect(getGatewayModelProviderPrefix('@cf/vendor-without-model'))
+      .toBe('@cf')
+  })
+
+  it('falls back to the bare @cf namespace for the namespace alone', () => {
+    expect(getGatewayModelProviderPrefix('@cf')).toBe('@cf')
+    expect(getGatewayModelProviderPrefix('@cf/')).toBe('@cf')
   })
 })

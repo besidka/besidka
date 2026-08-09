@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import { cloudflareVendorIconOverrides } from '#shared/utils/gateway-model-id'
 import { providerMeta } from '#shared/utils/provider-meta'
 
 /**
@@ -44,7 +45,8 @@ const props = defineProps<{
 }>()
 
 const resolvedProviderId = computed<string>(() => {
-  return gatewayProviderPrefixIconOverrides[props.providerId]
+  return cloudflareVendorIconOverrides[props.providerId]
+    ?? gatewayProviderPrefixIconOverrides[props.providerId]
     ?? props.providerId
 })
 
