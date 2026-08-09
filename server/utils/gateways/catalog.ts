@@ -5,6 +5,15 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 const VERCEL_GATEWAY_MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models'
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
 const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
+/**
+ * Cloudflare's catalog is a per-account resource (it requires the caller's
+ * own account id + token), not a shared public one like Vercel's or
+ * OpenRouter's — a much shorter freshness window bounds how long a user
+ * would see a stale model list after adding a model to their own Workers AI
+ * account, without reducing this to an uncached passthrough on every picker
+ * open.
+ */
+const CLOUDFLARE_GATEWAY_CATALOG_CACHE_TTL_MS = 15 * 60 * 1000
 
 interface VercelGatewayPricing {
   input?: string
@@ -139,6 +148,118 @@ function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
       : undefined,
     supportsTools: model.supported_parameters?.includes('tools'),
   }
+}
+
+export interface CloudflareGatewayCatalogCredentials {
+  accountId: string
+  apiKey: string
+}
+
+/**
+ * Cloudflare's `format=openrouter` model search response is documented as
+ * returning models "in marketplace format per OpenRouter specification" —
+ * the same `{data: [...]}` envelope and per-model field names as
+ * `fetchOpenRouterCatalog` above, so this reuses `normalizeOpenRouterModel`
+ * instead of duplicating a normalizer. Unverified against a live Cloudflare
+ * account in this environment (no real Workers AI token available) — flagged
+ * for a human to confirm with real credentials before shipping.
+ */
+export async function fetchCloudflareGatewayCatalog(
+  credentials: CloudflareGatewayCatalogCredentials,
+): Promise<GatewayModel[]> {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${credentials.accountId}/ai/models/search?format=openrouter`
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${credentials.apiKey}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw createError({
+      message: 'Failed to fetch Cloudflare AI Gateway model catalog',
+      status: 502,
+      why: `Cloudflare returned HTTP ${response.status}`,
+      fix: 'Check your Cloudflare account ID and API token, then retry',
+    })
+  }
+
+  const payload = await response.json() as OpenRouterModelsResponse
+
+  return payload.data.map(normalizeOpenRouterModel)
+}
+
+interface CloudflareGatewayCatalogCacheEntry {
+  models: GatewayModel[]
+  cachedAt: number
+}
+
+/**
+ * Cloudflare's catalog needs the caller's own account id + token, so it
+ * cannot share `getCachedGatewayCatalog`'s global, zero-arg cache further
+ * down in this file — each account gets its own cache entry
+ * (`gateway-catalog:cloudflare:${accountId}`), never a shared one. Mirrors
+ * the same freshness/stale-fallback/non-fatal-cache-write-failure behaviour
+ * as the public gateways.
+ */
+export async function getCachedCloudflareGatewayCatalog(
+  credentials: CloudflareGatewayCatalogCredentials,
+  options: GetCachedGatewayCatalogOptions = {},
+): Promise<GatewayModel[]> {
+  const cache = useStorage('cache')
+  const cacheKey = `gateway-catalog:cloudflare:${credentials.accountId}`
+  const cached = await cache.getItem<CloudflareGatewayCatalogCacheEntry>(
+    cacheKey,
+  )
+  const now = Date.now()
+
+  if (
+    cached
+    && now - cached.cachedAt < CLOUDFLARE_GATEWAY_CATALOG_CACHE_TTL_MS
+  ) {
+    return cached.models
+  }
+
+  let models: GatewayModel[]
+
+  try {
+    models = await fetchCloudflareGatewayCatalog(credentials)
+  } catch (exception) {
+    if (!cached) {
+      throw exception
+    }
+
+    options.logger?.set({
+      gatewayCatalogFetch: {
+        gateway: 'cloudflare',
+        servedStale: true,
+      },
+      attributes: {
+        gatewayCatalogFetch: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
+    return cached.models
+  }
+
+  try {
+    await cache.setItem<CloudflareGatewayCatalogCacheEntry>(cacheKey, {
+      models,
+      cachedAt: now,
+    })
+  } catch (exception) {
+    options.logger?.set({
+      attributes: {
+        gatewayCatalogCacheWrite: {
+          gateway: 'cloudflare',
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
+
+  return models
 }
 
 type CachedGatewayId = 'vercel' | 'openrouter'

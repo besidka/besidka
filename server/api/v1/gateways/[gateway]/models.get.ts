@@ -1,7 +1,11 @@
 import { createError, useLogger } from 'evlog'
 import type { H3Event } from 'h3'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
-import { getCachedGatewayCatalog } from '~~/server/utils/gateways/catalog'
+import {
+  getCachedCloudflareGatewayCatalog,
+  getCachedGatewayCatalog,
+} from '~~/server/utils/gateways/catalog'
+import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
 
 const GATEWAY_MODELS_RATE_LIMIT = { window: 60, max: 20 }
 const GATEWAY_MODELS_RATE_LIMIT_KEY_PREFIX = 'gateway-catalog:rate-limit'
@@ -45,15 +49,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (params.data.gateway === 'cloudflare') {
-    throw createError({
-      message: 'Cloudflare AI Gateway is not yet supported',
-      status: 400,
-      why: 'Cloudflare AI Gateway catalog support ships in a later PR',
-      fix: 'Use "vercel" or "openrouter" for now',
-    })
-  }
-
   const session = await useUserSession()
 
   if (!session) {
@@ -63,6 +58,31 @@ export default defineEventHandler(async (event) => {
   await enforceGatewayModelsRateLimit(event, session.user.id)
 
   const logger = useLogger(event)
+
+  if (params.data.gateway === 'cloudflare') {
+    const credentials = await getCloudflareGatewayCredentials(
+      session.user.id,
+    )
+
+    if (!credentials) {
+      throw createError({
+        message: 'Cloudflare AI Gateway credentials not found',
+        status: 401,
+        why: 'No Cloudflare AI Gateway API key is set up for this account.',
+        fix: 'Add your Cloudflare AI Gateway credentials in the settings.',
+      })
+    }
+
+    const models = await getCachedCloudflareGatewayCatalog(credentials, {
+      logger,
+    })
+
+    return {
+      gateway: 'cloudflare' as const,
+      models,
+    }
+  }
+
   const models = await getCachedGatewayCatalog(params.data.gateway, {
     logger,
   })
