@@ -28,7 +28,8 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
   the model can't actually honor.
 - **DeepSeek**: `deepseek-chat` (default/first-listed, on/off `thinking`
   toggle), `deepseek-reasoner` (always-on reasoning). No native web_search or
-  image_generation.
+  image_generation — re-verified against DeepSeek's official API docs, see
+  "Web search across the direct providers" below.
 - **Moonshot AI**: `kimi-k2.6` (default/first-listed), `kimi-k3`. The
   `moonshot-v1-*` classic line is deliberately not curated — Moonshot is
   sunsetting it. `kimi-k2.5` (originally the product owner's explicit pick)
@@ -42,7 +43,10 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
   `curatedCapabilities()` for how the flag is threaded.
 - **Qwen**: `qwen3.7-plus` (default/first-listed), `qwen3.7-max`,
   `qwen3.6-flash`. All three get a toggle-only `reasoning` capability
-  (`enable_thinking`, see below) and no tools. Deliberately **not** curated
+  (`enable_thinking`, see below); `qwen3.7-plus` and `qwen3.6-flash` also
+  declare `web_search` while `qwen3.7-max` deliberately does not — see
+  "Web search across the direct providers" below for the doc-sourced
+  scoping. Deliberately **not** curated
   with the bare `qwen-max`/`qwen-plus`/`qwen-flash`/`qwen-turbo` ids Alibaba's
   own docs lead with: Alibaba's own release notices confirm those unversioned
   names are rolling aliases that get silently repointed to a newer dated
@@ -115,6 +119,126 @@ JSON body untouched, so `useQwen()` sets `providerOptions.qwen.enable_thinking`
 directly — same `Object.assign`-into-a-typed-`{}` pattern `useXai()` uses to
 route around `SharedV2ProviderOptions`'s `Record<string, Record<string,
 JSONValue>>` shape rejecting a flat boolean value at the type level.
+
+### Web search across the direct providers (round-3 investigation, 2026-08)
+
+A round-3 review challenged the empty `tools` declarations on Qwen, DeepSeek
+and Moonshot AI ("I don't believe it doesn't support web_search. their docs
+mentioned they do"). Each was verified against the provider's official docs
+on 2026-08-09; the outcomes deliberately differ per provider.
+
+**Qwen — implemented.** DashScope's built-in web search is a plain
+`enable_search: true` body flag on the same chat-completions endpoint this
+app already calls, with an optional `search_options` sibling object — not an
+OpenAI-style tool declaration. `useQwen()` therefore wires it through
+`providerOptions.qwen` exactly like `enable_thinking`, and its `getTools()`
+still returns `{}` (there is no AI SDK tool object and must be no
+`toolChoice`). Scoping decisions, all sourced from
+`https://www.alibabacloud.com/help/en/model-studio/web-search` (and its
+region-tabbed `help.aliyun.com` twin):
+
+- `qwen3.7-plus` and `qwen3.6-flash` appear in the Singapore-region
+  "Supported models" table, so they are curated with
+  `tools: ['web_search']`. `qwen3.7-max` is **not** flagged: the same doc
+  states "Models such as qwen3.7-max support only the web search feature of
+  the Responses API" — a different API surface from the
+  `/compatible-mode/v1/chat/completions` endpoint this app uses.
+- `search_options.search_strategy` is pinned to `'agent'`. The
+  international-facing docs state only `agent` is supported outside
+  China-mainland (`turbo`/`max` are Beijing-only, down to having no
+  Singapore price listed). Under the agent strategy the docs mark
+  `forced_search` as inert ("only return search sources is supported;
+  other web search features are unavailable"), so Besidka's web-search
+  toggle means "let the model search," not "force a search" — unlike
+  OpenAI, where this app forces `toolChoice` onto the search tool.
+- `enable_search` and `enable_thinking` coexist — Alibaba publishes a
+  combined example — so a thinking-enabled search request sends both flags
+  in one body.
+- Search billing is separate from tokens and sharply regional: the agent
+  strategy is priced around CNY 73.4 per 1,000 calls (~$10/1k) in
+  Singapore vs CNY 4/1k in Beijing — a ~17x premium on this app's exact
+  endpoint, paid by the BYOK key owner. Search results are also injected
+  into the prompt and billed as ordinary input tokens.
+- Two disclosed cosmetic gaps: DashScope's chat-completions response carries
+  no source annotations that `@ai-sdk/openai-compatible` would map to AI SDK
+  source parts, so a Qwen search turn renders no source chips, and the
+  context menu's "Web search" chip (inferred from `source-url` parts on
+  assistant rows) stays hidden — the persisted user-message `tools` array
+  still records the request. The response also has no explicit "a search
+  happened" indicator at all; Alibaba's own suggested detection is comparing
+  input-token counts with and without the flag.
+- Never live-verified (no DashScope key available in this environment) —
+  see the dedicated item under "Known gaps requiring live verification".
+
+**DeepSeek — no first-party mechanism (verified non-fix).** DeepSeek's
+developer API has no built-in web search as of 2026-08. Checked: the Chat
+Completions reference
+(`https://api-docs.deepseek.com/api/create-chat-completion/`) documents no
+`enable_search`/`web_search`/`search_options` parameter, and its `tools`
+parameter states verbatim "Currently, only functions are supported as a
+tool"; the full API change log (`https://api-docs.deepseek.com/updates/`,
+2024-05-17 through 2026-07-31, covering every model line through
+V4/V4-Flash) never announces a search or grounding feature; and the
+chat.deepseek.com consumer app's "Search" toggle is a product feature, not
+an API capability — an API request does not browse. One near-miss recorded
+so it isn't re-litigated: the Anthropic-compatible endpoint
+(`https://api-docs.deepseek.com/guides/anthropic_api`) lists
+`server_tool_use`/`web_search_tool_result` content blocks as "Supported" in
+its Message Fields table, but its Tools table documents only the
+custom-tool schema with no server-tool `type` (nothing like Anthropic's
+`web_search_20250305`), so those rows are schema tolerance for conversation
+history, not a way to request a server-side search. The only route DeepSeek
+offers is generic function calling against a caller-built search backend —
+that would be a Besidka-side search integration (with Besidka owning the
+search-API bill), not a provider capability. `providers/deepseek.ts`
+therefore keeps `tools: []`; don't revisit without new docs evidence.
+
+**Moonshot AI — two documented mechanisms, neither cleanly wireable
+(verified non-fix).** Moonshot documents two web-search surfaces (note:
+`platform.moonshot.ai` now redirects to `platform.kimi.ai`):
+
+1. The legacy `$web_search` builtin function
+   (`https://platform.kimi.ai/docs/guide/use-web-search`): declared as
+   `{"type": "builtin_function", "function": {"name": "$web_search"}}`,
+   executed on Moonshot's own servers ($0.005 per triggered search), with
+   the client required to echo the tool call's arguments back verbatim as a
+   `role: "tool"` message carrying both `tool_call_id` and `name`. Both
+   curated models (kimi-k2.6, kimi-k3) support it. `@ai-sdk/moonshotai`
+   (3.0.30) cannot carry it: the package delegates tool serialization to
+   `@ai-sdk/openai-compatible`'s `prepareTools`, which hard-codes
+   `type: "function"` for every regular tool and silently **drops**
+   provider-defined tools with an "unsupported" warning (verified in the
+   installed package source; a GitHub code search of vercel/ai for
+   `builtin_function` returns zero results, and the open PR #18449 that
+   moves Moonshot onto its own chat implementation is about video input,
+   not search). A regular AI SDK tool named `$web_search` would serialize
+   as `type: "function"` with a name Moonshot's docs disallow for ordinary
+   functions (`$` is builtin-only), and the SDK's outgoing tool-result
+   messages omit the `name` field Moonshot requires. The only injection
+   point left is rewriting raw request bodies through a custom `fetch` —
+   the kind of fragile, live-unverifiable hack this round declined to ship.
+2. The newer "Formula API" official tool `moonshot/web-search:latest`
+   (`https://platform.kimi.ai/docs/guide/use-official-tools`), which
+   Moonshot itself now recommends over `$web_search` for kimi-k3: a
+   standard `type: "function"` tool whose declaration is fetched from
+   `GET /v1/formulas/{uri}/tools` and whose execution the client triggers
+   with a second authenticated call to `POST /v1/formulas/{uri}/fibers`,
+   feeding back a possibly encrypted output blob
+   (`----MOONSHOT ENCRYPTED BEGIN----…`) as the tool result. This is
+   implementable through the AI SDK's ordinary tool path in principle, but
+   not in this app today: the chat pipeline's `streamText` call runs a
+   single step with no `stopWhen`/continuation (image generation works
+   single-step because the tool result IS the deliverable), so the model
+   would never get to produce its post-search answer. It would also persist
+   opaque encrypted blobs into message parts, and the billing docs
+   currently self-contradict ("official tools are currently free for a
+   limited time" vs. fiber execution "produces the tool_call billing").
+   Enabling a multi-step tool loop is a shared-pipeline change affecting
+   every provider — out of scope for this round, and the documented path if
+   this is revisited.
+
+**Cloudflare AI Gateway** — see "Tool calling through gateways: signal-only
+today" in the gateway half of this doc.
 
 ### models.dev catalog key: `alibaba`, not `qwen`
 
@@ -323,6 +447,35 @@ capability roster is the point, on the deprioritized `badge-neutral`. For
 contrast, `supportsWebSearch` lands on 16 of OpenRouter's 400 — the signal
 worth the pixels. Re-adding a row-level wrench re-creates the exact
 "everything looks the same" complaint this replaced.
+
+### Tool calling through gateways: signal-only today
+
+`index.post.ts` rejects any tool request routed through a gateway with a
+400 ("Tools are not yet supported for models routed through a gateway")
+before any builder runs, and every gateway builder returns `tools: {}`. The
+catalog's `supportsTools` flag — including Cloudflare's, parsed from the
+marketplace schema's `supported_parameters.tools` key — is a display-only
+enrichment consumed exclusively by `GatewayModelDetail.vue`'s capability
+roster; nothing downstream reads it to enable tool calling. The round-3
+observation that the Cloudflare gateway has "still no any supported tools"
+is therefore accurate, but it describes the deliberate current state of ALL
+three gateways, not a Cloudflare-specific regression or a missing catalog
+signal.
+
+For web search specifically, no passthrough could deliver it for Cloudflare
+even if the gate were lifted: Workers AI's chat-completions API exposes no
+server-side web-search tool for a `tools` array to name (unlike OpenRouter,
+whose catalog does advertise `web_search_options` on some models — equally
+unused today). What a real fix requires, in dependency order: (1) the
+live-account verification of Cloudflare's catalog shape and model ids
+already tracked as items 2-3 under "Known gaps"; (2) replacing the blanket
+400 with a per-gateway, per-model policy driven by `supportsTools`; (3) for
+generic function calling, a multi-step tool loop in the chat pipeline —
+this app's `streamText` is single-step today (see the Moonshot Formula API
+note in the direct-provider half for the same blocker); and (4) for web
+search, an upstream mechanism that actually exists on the routed provider.
+None of that fits this round's scope, and partially lifting the gate
+without (3) would produce tool calls the pipeline cannot complete.
 
 ### Picker: grouping by underlying provider
 
@@ -555,13 +708,32 @@ by its own PR's review and confirmed still open by the final cross-PR review:
    exercises the real `messageMetadata` implementation, but was never
    confirmed against a real OpenRouter response in a browser.
 
+8. **Qwen `enable_search` on the international endpoint** — the wiring
+   follows the Singapore-region docs (agent strategy, the region tab's
+   supported-model table), but no live DashScope call was made, and
+   Alibaba's docs internally conflict on exactly the two curated models:
+   the Singapore tab's supported-models table lists
+   `qwen3.7-plus`/`qwen3.6-flash` under the agent strategy, while the
+   agent strategy's own applicability list names only 3.5-generation
+   models plus bare `qwen3-max`, and no worked example anywhere in the doc
+   uses a 3.7/3.6 id with `enable_search`. The curated flags deliberately
+   follow the supported-models table; this live probe is what resolves
+   that conflict, not a formality. The response carries no explicit search
+   indicator, so Alibaba's own suggested probe is comparing input-token
+   counts for the same prompt with and without the flag (a fired search
+   inflates the prompt by hundreds-to-thousands of tokens). Verify on
+   `qwen3.7-plus` and `qwen3.6-flash`, and confirm a flagged request is
+   not rejected when the model chooses not to search.
+
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom
-event with the expected `attributes.chat.gateway*` fields — closes all seven
-items at once (send through Vercel/Cloudflare with a model whose catalog
+event with the expected `attributes.chat.gateway*` fields — closes items 1-7
+at once (send through Vercel/Cloudflare with a model whose catalog
 `max_tokens` is below its account-level default to also exercise item 6, and
 watch the OpenRouter message's context menu before reloading to exercise
-item 7).
+item 7). Item 8 needs one extra pair of Qwen sends — the same prompt with
+the web-search toggle on and off — comparing the two input-token counts in
+the context menu.
 
 **Partially closed since**: the Vercel and OpenRouter *catalog* halves were
 driven end-to-end against the live upstream APIs (both are public and

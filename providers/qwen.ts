@@ -7,7 +7,7 @@ export default {
   models: [
     {
       id: 'qwen3.7-plus',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -27,7 +27,7 @@ export default {
     },
     {
       id: 'qwen3.6-flash',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
