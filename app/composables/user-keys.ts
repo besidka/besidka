@@ -63,9 +63,14 @@ export function useUserKeys() {
    * `'unknown'` so the UI can stay silent instead of badging a keyless
    * provider as saved. Picker gating wants the opposite trade-off — never
    * swap one for the other.
+   *
+   * Gated on `pending` rather than the raw in-flight flag for the same reason
+   * that computed exists: the post-save/post-delete `refresh()` must resolve
+   * against the rows already held, or every card's badge, delete button and
+   * placeholder would blank out and pop back on each save.
    */
   function keyStatusForProvider(providerOrGatewayId: string): UserKeyStatus {
-    if (isFetching.value || error.value) {
+    if (pending.value || error.value) {
       return 'unknown'
     }
 

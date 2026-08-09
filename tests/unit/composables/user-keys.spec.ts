@@ -215,6 +215,16 @@ describe('useUserKeys', () => {
     expect(keyStatusForProvider('anthropic')).toBe('unknown')
   })
 
+  it('keeps the known status while a post-save refresh is in flight', () => {
+    const state = useSummary([{ provider: 'anthropic', hasKey: true }])
+
+    state.pending.value = true
+
+    const { keyStatusForProvider } = useUserKeys()
+
+    expect(keyStatusForProvider('anthropic')).toBe('saved')
+  })
+
   it('reports unknown rather than saved when the summary request failed', () => {
     useSummary(null, { error: new Error('offline') })
 
