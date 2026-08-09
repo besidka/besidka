@@ -156,6 +156,36 @@ export function formatGatewayPriceDetail(
 }
 
 /**
+ * What a rail count badge claims to describe: the models the picker will
+ * actually list for that provider. Deprecated entries live behind the
+ * collapsed legacy section and cannot be selected, so counting them would
+ * promise rows the user never reaches.
+ */
+export function countSelectableModels(models: Model[]): number {
+  return models.filter((model) => {
+    return model.status !== 'deprecated'
+  }).length
+}
+
+/**
+ * Keeps a rail badge to three glyphs. A vertical rail is one icon wide, and
+ * an uncapped count from a gateway with hundreds of models per vendor would
+ * grow the badge wider than the button it hangs off.
+ */
+export function formatRailCount(count: number): string {
+  return count > 99 ? '99+' : `${count}`
+}
+
+/**
+ * Spells the badge out for the tooltip and the accessible name, where the
+ * bare number has no unit to lean on. Most of OpenRouter's 58 vendor
+ * prefixes carry a single model, so the singular is the common case.
+ */
+export function formatModelCount(count: number): string {
+  return `${count} ${count === 1 ? 'model' : 'models'}`
+}
+
+/**
  * The underlying providers a gateway catalog proxies, most-stocked first so
  * the handful worth browsing lead the strip and the long tail (OpenRouter
  * reports 58 prefixes across 400 models, most of them one-model vendors)

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { GatewayModel } from '#shared/types/gateways.d'
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
 import {
+  countSelectableModels,
   formatGatewayPriceDetail,
+  formatModelCount,
   formatModelTokenLimit,
+  formatRailCount,
   formatReleaseDate,
   gatewayModelCategoryOptions,
   getGatewayProviderGroups,
@@ -354,5 +357,40 @@ describe('gateway provider grouping', () => {
       return option.value
     })).toEqual(['free'])
     expect(gatewayModelCategoryOptions[0]?.icon).toBe('lucide:banknote-x')
+  })
+})
+
+describe('rail count badges', () => {
+  function createRailModel(id: string, status?: Model['status']): Model {
+    return { id, name: id, status } as Model
+  }
+
+  it('counts the models the picker will actually list', () => {
+    expect(countSelectableModels([
+      createRailModel('one'),
+      createRailModel('two', 'beta'),
+      createRailModel('three', 'deprecated'),
+    ])).toBe(2)
+  })
+
+  it('counts nothing for an empty catalog', () => {
+    expect(countSelectableModels([])).toBe(0)
+  })
+
+  it('prints a small count as-is', () => {
+    expect(formatRailCount(0)).toBe('0')
+    expect(formatRailCount(7)).toBe('7')
+    expect(formatRailCount(99)).toBe('99')
+  })
+
+  it('caps anything past two digits so the badge stays narrow', () => {
+    expect(formatRailCount(100)).toBe('99+')
+    expect(formatRailCount(412)).toBe('99+')
+  })
+
+  it('spells the count out with a matching unit', () => {
+    expect(formatModelCount(1)).toBe('1 model')
+    expect(formatModelCount(0)).toBe('0 models')
+    expect(formatModelCount(95)).toBe('95 models')
   })
 })

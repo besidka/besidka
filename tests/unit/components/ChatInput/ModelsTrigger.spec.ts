@@ -540,7 +540,7 @@ describe('ChatInput/ModelsTrigger', () => {
         .classes()).toContain('rounded-b-2xl')
     })
 
-    describe('provider strip', () => {
+    describe('provider rail', () => {
       const catalog = [
         {
           id: 'anthropic/claude-opus-5',
@@ -589,18 +589,75 @@ describe('ChatInput/ModelsTrigger', () => {
           })
       }
 
-      it('offers a chip per underlying provider, most stocked first', async () => {
+      it('offers a button per underlying provider, most stocked first', async () => {
         const wrapper = await openMultiProviderGateway()
-        const chips = wrapper
-          .findAll('[data-testid="models-picker-gateway-provider-strip"] button')
-          .map((chip) => {
-            return chip.attributes('data-testid')
+        const buttons = wrapper
+          .findAll('[data-testid="models-picker-gateway-provider-rail"] button')
+          .map((button) => {
+            return button.attributes('data-testid')
           })
 
-        expect(chips).toEqual([
+        expect(buttons).toEqual([
           'models-picker-gateway-provider-openai',
           'models-picker-gateway-provider-anthropic',
         ])
+      })
+
+      it('separates vendors on the left, never stacking two rails', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(true)
+        expect(wrapper.find('[data-testid="models-picker-rail"]').exists())
+          .toBe(false)
+      })
+
+      it('badges each provider with how many models it carries', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        expect(wrapper.get(
+          '[data-testid="models-picker-gateway-provider-openai-count"]',
+        ).text()).toBe('2')
+        expect(wrapper.get(
+          '[data-testid="models-picker-gateway-provider-anthropic-count"]',
+        ).text()).toBe('1')
+      })
+
+      it('holds the count still while a search narrows the list', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-search"]')
+          .setValue('opus')
+        await wrapper.get('[data-testid="models-picker-search"]').setValue('')
+
+        expect(wrapper.get(
+          '[data-testid="models-picker-gateway-provider-openai-count"]',
+        ).text()).toBe('2')
+      })
+
+      it('hands the favorites filter to the gateway rail', async () => {
+        mocks.getFavoriteGatewayModels.mockReturnValue(['openai/gpt-5.4'])
+
+        const wrapper = await openMultiProviderGateway()
+        const rail = wrapper.get(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        )
+
+        expect(rail.find('[data-testid="models-picker-rail-favorites"]')
+          .exists()).toBe(true)
+        expect(wrapper.find('[data-testid="models-picker-rail"]').exists())
+          .toBe(false)
+      })
+
+      it('keeps the rail for a lone vendor once a favorite exists', async () => {
+        mocks.getFavoriteGatewayModels.mockReturnValue(['openai/gpt-5.4'])
+
+        const wrapper = await openMultiProviderGateway([catalog[1]!])
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(true)
       })
 
       it('clusters the list by provider in the same order', async () => {
@@ -624,22 +681,22 @@ describe('ChatInput/ModelsTrigger', () => {
         expect(getRenderedModelNames(wrapper)).toHaveLength(3)
       })
 
-      it('hides the strip for a single-provider catalog', async () => {
+      it('hides the rail for a single-provider catalog', async () => {
         const wrapper = await openMultiProviderGateway([catalog[0]!])
 
         expect(wrapper.find(
-          '[data-testid="models-picker-gateway-provider-strip"]',
+          '[data-testid="models-picker-gateway-provider-rail"]',
         ).exists()).toBe(false)
       })
 
-      it('hides the strip while a search is narrowing the list', async () => {
+      it('hides the rail while a search is narrowing the list', async () => {
         const wrapper = await openMultiProviderGateway()
 
         await wrapper.get('[data-testid="models-picker-search"]')
           .setValue('gpt')
 
         expect(wrapper.find(
-          '[data-testid="models-picker-gateway-provider-strip"]',
+          '[data-testid="models-picker-gateway-provider-rail"]',
         ).exists()).toBe(false)
       })
 
@@ -684,14 +741,14 @@ describe('ChatInput/ModelsTrigger', () => {
           .toContain('Free')
       })
 
-      it('drops a provider chip the free filter emptied out', async () => {
+      it('drops a provider button the free filter emptied out', async () => {
         const wrapper = await openMultiProviderGateway()
 
         await wrapper.get('[data-testid="models-picker-filter-free"]')
           .trigger('click')
 
         expect(wrapper.find(
-          '[data-testid="models-picker-gateway-provider-strip"]',
+          '[data-testid="models-picker-gateway-provider-rail"]',
         ).exists()).toBe(false)
       })
 

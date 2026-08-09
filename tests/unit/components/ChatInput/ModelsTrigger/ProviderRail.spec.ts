@@ -1,12 +1,18 @@
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
-import type { Providers } from '#shared/types/providers.d'
+import type { Model, Providers } from '#shared/types/providers.d'
 import ProviderRail
   from '../../../../../app/components/ChatInput/ModelsTrigger/ProviderRail.vue'
 
+function buildModels(count: number, status?: Model['status']): Model[] {
+  return Array.from({ length: count }, (_entry, index) => {
+    return { id: `model-${index}`, name: `Model ${index}`, status } as Model
+  })
+}
+
 const providers: Providers = [
-  { id: 'openai', name: 'OpenAI', models: [] },
-  { id: 'google', name: 'Google AI Studio', models: [] },
+  { id: 'openai', name: 'OpenAI', models: buildModels(3) },
+  { id: 'google', name: 'Google AI Studio', models: buildModels(2) },
 ]
 
 function mountRail(
@@ -35,12 +41,13 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
     const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
     const google = wrapper.get('[data-testid="models-picker-rail-google"]')
 
-    expect(openai.attributes('aria-label')).toBe('Show OpenAI models only')
-    expect(openai.attributes('data-tip')).toBe('OpenAI')
+    expect(openai.attributes('aria-label'))
+      .toBe('Show OpenAI models only — 3 models')
+    expect(openai.attributes('data-tip')).toBe('OpenAI — 3 models')
     expect(openai.attributes('aria-pressed')).toBe('false')
     expect(google.attributes('aria-label'))
-      .toBe('Show Google AI Studio models only')
-    expect(google.attributes('data-tip')).toBe('Google AI Studio')
+      .toBe('Show Google AI Studio models only — 2 models')
+    expect(google.attributes('data-tip')).toBe('Google AI Studio — 2 models')
   })
 
   it('hides the favorites filter until the user has a favorite', async () => {
@@ -113,7 +120,7 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
     const wrapper = await mountRail({
       providers: [
         ...providers,
-        { id: 'anthropic', name: 'Anthropic', models: [] },
+        { id: 'anthropic', name: 'Anthropic', models: buildModels(1) },
       ],
     })
 
@@ -142,7 +149,7 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
     )
 
     expect(unknown.text()).toBe('No')
-    expect(unknown.get('span').classes()).toContain('uppercase')
+    expect(unknown.get('.indicator span').classes()).toContain('uppercase')
     expect(unknown.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
   })
 
@@ -189,7 +196,121 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
       expect(
         wrapper.get('[data-testid="models-picker-rail-openai"]')
           .attributes('data-tip'),
-      ).toBe('OpenAI')
+      ).toBe('OpenAI — 3 models')
+    })
+
+    it('shows an accent dot instead of a count, never a zero', async () => {
+      const wrapper = await mountRail({ keylessProviderIds: ['openai'] })
+      const dot = wrapper.get(
+        '[data-testid="models-picker-rail-openai-keyless"]',
+      )
+
+      expect(dot.classes()).toContain('bg-accent')
+      expect(dot.classes()).toContain('indicator-item')
+      expect(dot.classes()).toContain('indicator-end')
+      expect(dot.classes()).toContain('indicator-bottom')
+      expect(dot.text()).toBe('')
+      expect(
+        wrapper.find('[data-testid="models-picker-rail-openai-count"]')
+          .exists(),
+      ).toBe(false)
+    })
+
+    it('leaves the icon at full opacity now the dot carries the signal',
+      async () => {
+        const wrapper = await mountRail({ keylessProviderIds: ['openai'] })
+        const icon = wrapper
+          .get('[data-testid="models-picker-rail-openai"]')
+          .findComponent({ name: 'ProviderIcon' })
+
+        expect(icon.classes()).not.toContain('opacity-40')
+        expect(icon.classes()).not.toContain('opacity-60')
+      })
+  })
+
+  describe('count badges', () => {
+    it('hangs a daisyUI badge off each keyed provider icon', async () => {
+      const wrapper = await mountRail()
+      const badge = wrapper.get(
+        '[data-testid="models-picker-rail-openai-count"]',
+      )
+
+      expect(badge.text()).toBe('3')
+      expect(badge.classes()).toContain('badge')
+      expect(badge.classes()).toContain('badge-xs')
+      expect(badge.classes()).toContain('indicator-item')
+      expect(badge.classes()).toContain('indicator-end')
+      expect(badge.classes()).toContain('indicator-bottom')
+    })
+
+    it('wraps the icon in an indicator so the badge anchors to it',
+      async () => {
+        const wrapper = await mountRail()
+        const button = wrapper.get('[data-testid="models-picker-rail-openai"]')
+
+        expect(button.find('.indicator').exists()).toBe(true)
+        expect(button
+          .get('.indicator')
+          .find('[data-testid="models-picker-rail-openai-count"]')
+          .exists(),
+        ).toBe(true)
+      })
+
+    it('says "1 model" when a provider carries exactly one', async () => {
+      const wrapper = await mountRail({
+        providers: [{ id: 'openai', name: 'OpenAI', models: buildModels(1) }],
+      })
+      const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
+
+      expect(openai.attributes('data-tip')).toBe('OpenAI — 1 model')
+      expect(openai.attributes('aria-label'))
+        .toBe('Show OpenAI models only — 1 model')
+    })
+
+    it('counts only the models the picker will list', async () => {
+      const wrapper = await mountRail({
+        providers: [
+          {
+            id: 'openai',
+            name: 'OpenAI',
+            models: [...buildModels(2), ...buildModels(3, 'deprecated')],
+          },
+        ],
+      })
+
+      expect(wrapper
+        .get('[data-testid="models-picker-rail-openai-count"]')
+        .text(),
+      ).toBe('2')
+    })
+
+    it('shows no badge at all when a keyed provider lists nothing',
+      async () => {
+        const wrapper = await mountRail({
+          providers: [{ id: 'openai', name: 'OpenAI', models: [] }],
+        })
+
+        expect(
+          wrapper.find('[data-testid="models-picker-rail-openai-count"]')
+            .exists(),
+        ).toBe(false)
+        expect(
+          wrapper.get('[data-testid="models-picker-rail-openai"]')
+            .attributes('data-tip'),
+        ).toBe('OpenAI')
+      })
+
+    it('caps a very large catalog at three glyphs', async () => {
+      const wrapper = await mountRail({
+        providers: [
+          { id: 'openai', name: 'OpenAI', models: buildModels(140) },
+        ],
+      })
+
+      expect(wrapper
+        .get('[data-testid="models-picker-rail-openai-count"]')
+        .text(),
+      ).toBe('99+')
     })
   })
 })

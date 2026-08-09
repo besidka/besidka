@@ -103,7 +103,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
-    'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderStrip.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [

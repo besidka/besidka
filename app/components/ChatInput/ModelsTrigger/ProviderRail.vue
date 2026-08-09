@@ -31,7 +31,7 @@
       :key="provider.id"
       type="button"
       :data-testid="`models-picker-rail-${provider.id}`"
-      class="btn btn-ghost btn-sm btn-circle relative"
+      class="btn btn-ghost btn-sm btn-circle"
       :class="{
         'btn-active text-accent': activeProviderId === provider.id,
         'tooltip tooltip-soft tooltip-right': $device.isDesktop
@@ -41,17 +41,25 @@
       :aria-pressed="activeProviderId === provider.id"
       @click="emit('toggleProvider', provider.id)"
     >
-      <ProviderIcon
-        :provider-id="provider.id"
-        :label="provider.name"
-        class="!size-4"
-        :class="{ 'opacity-40': isKeyless(provider.id) }"
-      />
-      <span
-        v-if="isKeyless(provider.id)"
-        :data-testid="`models-picker-rail-${provider.id}-keyless`"
-        class="absolute top-0.5 right-0.5 size-2 rounded-full bg-warning"
-      />
+      <span class="indicator">
+        <ProviderIcon
+          :provider-id="provider.id"
+          :label="provider.name"
+          class="!size-4"
+        />
+        <span
+          v-if="isKeyless(provider.id)"
+          :data-testid="`models-picker-rail-${provider.id}-keyless`"
+          class="indicator-item indicator-end indicator-bottom size-2 rounded-full bg-accent pointer-events-none"
+        />
+        <span
+          v-else-if="getModelCount(provider)"
+          :data-testid="`models-picker-rail-${provider.id}-count`"
+          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none"
+        >
+          {{ formatRailCount(getModelCount(provider)) }}
+        </span>
+      </span>
     </button>
   </div>
 </template>
@@ -81,12 +89,22 @@ function isKeyless(providerId: string): boolean {
   return props.keylessProviderIds.includes(providerId)
 }
 
+function getModelCount(provider: Provider): number {
+  return countSelectableModels(provider.models)
+}
+
 function getProviderTip(provider: Provider): string {
   if (isKeyless(provider.id)) {
     return `${provider.name} — API key required`
   }
 
-  return provider.name
+  const count = getModelCount(provider)
+
+  if (!count) {
+    return provider.name
+  }
+
+  return `${provider.name} — ${formatModelCount(count)}`
 }
 
 function getProviderLabel(provider: Provider): string {
@@ -94,6 +112,12 @@ function getProviderLabel(provider: Provider): string {
     return `Show ${provider.name} models only — API key required`
   }
 
-  return `Show ${provider.name} models only`
+  const count = getModelCount(provider)
+
+  if (!count) {
+    return `Show ${provider.name} models only`
+  }
+
+  return `Show ${provider.name} models only — ${formatModelCount(count)}`
 }
 </script>
