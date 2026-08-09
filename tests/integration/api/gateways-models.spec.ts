@@ -181,4 +181,64 @@ describe('gateway models API', () => {
     expect(first).toEqual(second)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('serves a stale cached catalog when the upstream fetch fails',
+    async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => 'Service unavailable',
+      })
+
+      vi.stubGlobal('fetch', fetchMock)
+
+      const cache = createFakeCache()
+      const staleModels = [{
+        id: 'openai/gpt-4o',
+        name: 'GPT-4o (stale)',
+      }]
+
+      await cache.setItem('gateway-catalog:vercel', {
+        models: staleModels,
+        cachedAt: Date.now() - (2 * 60 * 60 * 1000),
+      })
+
+      vi.stubGlobal('useStorage', () => cache)
+
+      const handler = await getHandler()
+
+      const response = await handler({
+        params: { gateway: 'vercel' },
+      } as never)
+
+      expect(response).toEqual({ gateway: 'vercel', models: staleModels })
+      expect(mocks.loggerSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayCatalogFetch: {
+            gateway: 'vercel',
+            servedStale: true,
+          },
+        }),
+      )
+    })
+
+  it('propagates a clean error when there is no cache and the fetch fails',
+    async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => 'Service unavailable',
+      })
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => createFakeCache())
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        params: { gateway: 'vercel' },
+      } as never)).rejects.toThrow(
+        'Failed to fetch Vercel AI Gateway model catalog',
+      )
+    })
 })
