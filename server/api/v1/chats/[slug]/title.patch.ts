@@ -17,6 +17,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
+    gateway: z.enum(['vercel', 'cloudflare', 'openrouter']).optional(),
   }).safeParse)
 
   if (body.error) {
@@ -70,9 +71,14 @@ export default defineEventHandler(async (event) => {
     return chat.title
   }
 
-  const { provider, model } = useChatProvider(body.data.model)
-  const research = getModelResearch(model)
-  const titleModelId = research ? research.assistModel : model.id
+  const gatewayId = body.data.gateway
+
+  if (gatewayId === 'cloudflare') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Cloudflare AI Gateway is not yet supported.',
+    })
+  }
 
   const initialMessage = chat.messages[0]
 
@@ -91,7 +97,19 @@ export default defineEventHandler(async (event) => {
     && initialMessages?.trim().toLowerCase().startsWith('mock:')
   ) {
     title = buildMockChatTitle(initialMessages)
+  } else if (gatewayId) {
+    const { generateChatTitle } = await useGateway(
+      gatewayId,
+      session.user.id,
+      body.data.model,
+    )
+
+    title = await generateChatTitle(initialMessages)
   } else {
+    const { provider, model } = useChatProvider(body.data.model)
+    const research = getModelResearch(model)
+    const titleModelId = research ? research.assistModel : model.id
+
     switch (provider.id) {
       case 'openai': {
         const { generateChatTitle } = await useOpenAI(
