@@ -30,13 +30,21 @@ function createModel(overrides: Partial<Model> = {}): Model {
 
 function mountDetail(
   model: Model = createModel(),
-  props: Partial<{ providerName: string }> = {},
+  props: Partial<{ providerName: string, isKeyMissing: boolean }> = {},
 ) {
   return mountSuspended(ModelDetail, {
     props: {
       model,
       providerName: 'OpenAI',
       ...props,
+    },
+    global: {
+      stubs: {
+        NuxtLink: {
+          props: ['to'],
+          template: '<a :href="to"><slot /></a>',
+        },
+      },
     },
   })
 }
@@ -259,5 +267,27 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       .trigger('click')
 
     expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  describe('missing provider key', () => {
+    it('names the provider and links to the keys page', async () => {
+      const wrapper = await mountDetail(createModel(), {
+        isKeyMissing: true,
+        providerName: 'Moonshot AI',
+      })
+      const notice = wrapper.get('[data-testid="model-detail-key-notice"]')
+
+      expect(notice.text()).toContain('Moonshot AI models need your own API key')
+      expect(
+        notice.get('[data-testid="model-detail-key-link"]').attributes('href'),
+      ).toBe('/profile/keys')
+    })
+
+    it('shows no notice when the key is present', async () => {
+      const wrapper = await mountDetail()
+
+      expect(wrapper.find('[data-testid="model-detail-key-notice"]').exists())
+        .toBe(false)
+    })
   })
 })
