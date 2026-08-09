@@ -155,14 +155,77 @@ export interface CloudflareGatewayCatalogCredentials {
   apiKey: string
 }
 
+interface CloudflareGatewayLimit {
+  value?: number
+  unit?: string
+}
+
+interface CloudflareGatewayPricingEntry {
+  type?: string
+  unit?: string
+  cost_usd?: string
+}
+
+interface CloudflareGatewayInputModality {
+  type?: string
+  supported_inputs?: {
+    max_context_length?: CloudflareGatewayLimit
+    max_prompt_length?: CloudflareGatewayLimit
+  }
+  pricing?: CloudflareGatewayPricingEntry[]
+}
+
+interface CloudflareGatewayOutputModality {
+  type?: string
+  max_length?: CloudflareGatewayLimit
+  supported_parameters?: Record<string, unknown>
+  pricing?: CloudflareGatewayPricingEntry[]
+}
+
+interface CloudflareGatewayRawModel {
+  id: string
+  name: string
+  description?: string
+  input_modalities?: CloudflareGatewayInputModality[]
+  output_modalities?: CloudflareGatewayOutputModality[]
+}
+
+interface CloudflareGatewayModelsResponse {
+  data: CloudflareGatewayRawModel[]
+}
+
 /**
  * Cloudflare's `format=openrouter` model search response is documented as
  * returning models "in marketplace format per OpenRouter specification" —
- * the same `{data: [...]}` envelope and per-model field names as
- * `fetchOpenRouterCatalog` above, so this reuses `normalizeOpenRouterModel`
- * instead of duplicating a normalizer. Unverified against a live Cloudflare
- * account in this environment (no real Workers AI token available) — flagged
- * for a human to confirm with real credentials before shipping.
+ * NOT the flat, consumer-facing shape `fetchOpenRouterCatalog` above parses
+ * (`architecture.input_modalities: string[]`, flat `pricing.{prompt,
+ * completion}`, top-level `supported_parameters: string[]`). OpenRouter's
+ * "for providers" marketplace/listing format
+ * (https://openrouter.ai/docs/guides/get-started/for-providers, schema
+ * version 2.4, OpenAPI document at
+ * https://openrouter.ai/docs/assets/provider-monitor-schema-v2.openapi.json)
+ * is a structurally different, per-modality shape: `input_modalities`/
+ * `output_modalities` are arrays of typed objects, each owning its own
+ * `pricing` array of `{type, unit, cost_usd}` entries and its own
+ * constraints (`supported_inputs.max_context_length.value` for context
+ * length, `max_length.value` for max output tokens on the text output
+ * modality). Tool-calling support is signalled by the presence of a `tools`
+ * key in a text output modality's `supported_parameters` map, not a
+ * top-level `supported_parameters: string[]` array.
+ *
+ * This normalizer targets that documented marketplace schema. It is backed
+ * by OpenRouter's own published OpenAPI schema for the format (strong,
+ * versioned, machine-checkable evidence of what "marketplace format" means),
+ * but has NOT been verified against a live Cloudflare account response in
+ * this environment (no real Workers AI token available) — Cloudflare's own
+ * API reference confirms the `format=openrouter` parameter and the
+ * `{data: [...]}` envelope, but does not publish its own per-model field
+ * schema, only pointing at "marketplace format". If a live account later
+ * shows Cloudflare's actual response deviates from this schema, update this
+ * normalizer and its tests accordingly — the parsing below is written
+ * defensively (optional chaining throughout, `find`-or-`undefined`) so an
+ * unexpected shape degrades to a `{id, name}`-only `GatewayModel` rather
+ * than throwing.
  */
 export async function fetchCloudflareGatewayCatalog(
   credentials: CloudflareGatewayCatalogCredentials,
@@ -183,9 +246,74 @@ export async function fetchCloudflareGatewayCatalog(
     })
   }
 
-  const payload = await response.json() as OpenRouterModelsResponse
+  const payload = await response.json() as CloudflareGatewayModelsResponse
 
-  return payload.data.map(normalizeOpenRouterModel)
+  return payload.data.map(normalizeCloudflareGatewayModel)
+}
+
+function findCloudflareTextInputModality(
+  inputModalities: CloudflareGatewayInputModality[] | undefined,
+): CloudflareGatewayInputModality | undefined {
+  return inputModalities?.find(modality => modality.type === 'text')
+}
+
+function findCloudflareTextOutputModality(
+  outputModalities: CloudflareGatewayOutputModality[] | undefined,
+): CloudflareGatewayOutputModality | undefined {
+  return outputModalities?.find(modality => modality.type === 'text')
+}
+
+function findCloudflarePricingCost(
+  entries: CloudflareGatewayPricingEntry[] | undefined,
+  type: string,
+): string | undefined {
+  return entries?.find(entry => entry.type === type)?.cost_usd
+}
+
+function normalizeCloudflareGatewayModel(
+  model: CloudflareGatewayRawModel,
+): GatewayModel {
+  const textInputModality = findCloudflareTextInputModality(
+    model.input_modalities,
+  )
+  const textOutputModality = findCloudflareTextOutputModality(
+    model.output_modalities,
+  )
+  const inputCost = findCloudflarePricingCost(
+    textInputModality?.pricing,
+    'prompt',
+  )
+  const outputCost = findCloudflarePricingCost(
+    textOutputModality?.pricing,
+    'completion',
+  )
+
+  return {
+    id: model.id,
+    name: model.name,
+    description: model.description,
+    contextLength: textInputModality?.supported_inputs
+      ?.max_context_length?.value,
+    maxOutputTokens: textOutputModality?.max_length?.value,
+    pricing: inputCost && outputCost
+      ? { input: inputCost, output: outputCost }
+      : undefined,
+    modalities: model.input_modalities || model.output_modalities
+      ? {
+        input: (model.input_modalities || [])
+          .map(modality => modality.type)
+          .filter((type): type is string => Boolean(type)),
+        output: (model.output_modalities || [])
+          .map(modality => modality.type)
+          .filter((type): type is string => Boolean(type)),
+      }
+      : undefined,
+    supportsTools: model.output_modalities
+      ? model.output_modalities.some((modality) => {
+        return Boolean(modality.supported_parameters?.tools)
+      })
+      : undefined,
+  }
 }
 
 interface CloudflareGatewayCatalogCacheEntry {
@@ -193,20 +321,43 @@ interface CloudflareGatewayCatalogCacheEntry {
   cachedAt: number
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 /**
  * Cloudflare's catalog needs the caller's own account id + token, so it
  * cannot share `getCachedGatewayCatalog`'s global, zero-arg cache further
- * down in this file — each account gets its own cache entry
- * (`gateway-catalog:cloudflare:${accountId}`), never a shared one. Mirrors
- * the same freshness/stale-fallback/non-fatal-cache-write-failure behaviour
- * as the public gateways.
+ * down in this file — each account gets its own cache entry. Mirrors the
+ * same freshness/stale-fallback/non-fatal-cache-write-failure behaviour as
+ * the public gateways.
+ *
+ * The cache key includes a hash of the caller's own `apiKey`
+ * (`gateway-catalog:cloudflare:${accountId}:${sha256Hex(apiKey)}`), not just
+ * the `accountId`. The POST route that saves these credentials never
+ * validates the accountId+apiKey pair against Cloudflare, so a user could
+ * save someone else's real (or guessed) `accountId` alongside their own
+ * fake `apiKey`. Keying the cache on `accountId` alone would let that user
+ * read another account's model list on a cache hit, as long as the real
+ * account owner's genuine request had already populated the cache within
+ * the TTL window. Hashing in the apiKey means a cache hit is only possible
+ * for someone who has previously supplied that exact token for that
+ * account — which requires their own prior request to have actually reached
+ * Cloudflare's API with it. Only the hash is stored in the key, never the
+ * raw apiKey.
  */
 export async function getCachedCloudflareGatewayCatalog(
   credentials: CloudflareGatewayCatalogCredentials,
   options: GetCachedGatewayCatalogOptions = {},
 ): Promise<GatewayModel[]> {
   const cache = useStorage('cache')
-  const cacheKey = `gateway-catalog:cloudflare:${credentials.accountId}`
+  const apiKeyHash = await sha256Hex(credentials.apiKey)
+  const cacheKey = `gateway-catalog:cloudflare:${credentials.accountId}:${apiKeyHash}`
   const cached = await cache.getItem<CloudflareGatewayCatalogCacheEntry>(
     cacheKey,
   )

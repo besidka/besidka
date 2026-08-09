@@ -314,26 +314,40 @@ describe('fetchCloudflareGatewayCatalog', () => {
     vi.unstubAllGlobals()
   })
 
-  it('normalizes a model from the OpenRouter-shaped marketplace response',
+  it('normalizes a model from the OpenRouter provider/marketplace response',
     async () => {
       mockFetchOnce({
         data: [
           {
+            schema_version: '2.4',
             id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
             name: 'Llama 3.3 70B Instruct FP8 Fast',
             description: 'A fast Llama 3.3 model on Workers AI.',
-            context_length: 24000,
-            architecture: {
-              input_modalities: ['text'],
-              output_modalities: ['text'],
-            },
-            pricing: { prompt: '0.0000002', completion: '0.0000009' },
-            top_provider: {
-              context_length: 24000,
-              max_completion_tokens: 4096,
-              is_moderated: false,
-            },
-            supported_parameters: ['tools', 'tool_choice'],
+            input_modalities: [
+              {
+                type: 'text',
+                supported_inputs: {
+                  max_context_length: { value: 24000, unit: 'token' },
+                },
+                pricing: [
+                  { type: 'prompt', unit: 'token', cost_usd: '0.0000002' },
+                ],
+              },
+            ],
+            output_modalities: [
+              {
+                type: 'text',
+                max_length: { value: 4096, unit: 'token' },
+                streaming: true,
+                supported_parameters: {
+                  tools: { type: 'boolean' },
+                  tool_choice: { type: 'boolean' },
+                },
+                pricing: [
+                  { type: 'completion', unit: 'token', cost_usd: '0.0000009' },
+                ],
+              },
+            ],
           },
         ],
       })
@@ -354,6 +368,66 @@ describe('fetchCloudflareGatewayCatalog', () => {
           pricing: { input: '0.0000002', output: '0.0000009' },
           modalities: { input: ['text'], output: ['text'] },
           supportsTools: true,
+        },
+      ])
+    })
+
+  it('reports supportsTools as false when the text output modality omits tools',
+    async () => {
+      mockFetchOnce({
+        data: [
+          {
+            id: '@cf/meta/embedding-only-model',
+            name: 'Embedding Only Model',
+            input_modalities: [{ type: 'text' }],
+            output_modalities: [
+              {
+                type: 'text',
+                supported_parameters: {
+                  temperature: { type: 'range', min: 0, max: 1 },
+                },
+              },
+            ],
+          },
+        ],
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(models[0]?.supportsTools).toBe(false)
+    })
+
+  it('handles a model missing pricing, modalities, and description',
+    async () => {
+      mockFetchOnce({
+        data: [
+          {
+            id: '@cf/bare/model',
+            name: 'Bare Model',
+          },
+        ],
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(models).toEqual([
+        {
+          id: '@cf/bare/model',
+          name: 'Bare Model',
+          description: undefined,
+          contextLength: undefined,
+          maxOutputTokens: undefined,
+          pricing: undefined,
+          modalities: undefined,
+          supportsTools: undefined,
         },
       ])
     })
@@ -394,6 +468,15 @@ describe('fetchCloudflareGatewayCatalog', () => {
   })
 })
 
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 describe('getCachedCloudflareGatewayCatalog', () => {
   function createFakeCache() {
     const store = new Map<string, unknown>()
@@ -420,13 +503,13 @@ describe('getCachedCloudflareGatewayCatalog', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
-            data: [{ id: 'model-a', name: 'Model A', context_length: 8192 }],
+            data: [{ id: 'model-a', name: 'Model A' }],
           }),
         })
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
-            data: [{ id: 'model-b', name: 'Model B', context_length: 8192 }],
+            data: [{ id: 'model-b', name: 'Model B' }],
           }),
         })
 
@@ -449,12 +532,48 @@ describe('getCachedCloudflareGatewayCatalog', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
 
+  it('scopes the cache key per apiKey, so a guessed accountId with a different key never shares a catalog',
+    async () => {
+      const cache = createFakeCache()
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-a', name: 'Model A' }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-b', name: 'Model B' }],
+          }),
+        })
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+      const genuineOwnerModels = await getCachedCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'genuine-owner-token',
+      })
+      const guessedAccountModels = await getCachedCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'attacker-fake-token',
+      })
+
+      expect(genuineOwnerModels[0]?.id).toBe('model-a')
+      expect(guessedAccountModels[0]?.id).toBe('model-b')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
   it('serves the second request for the same account from cache', async () => {
     const cache = createFakeCache()
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        data: [{ id: 'model-a', name: 'Model A', context_length: 8192 }],
+        data: [{ id: 'model-a', name: 'Model A' }],
       }),
     })
 
@@ -476,11 +595,15 @@ describe('getCachedCloudflareGatewayCatalog', () => {
     async () => {
       const cache = createFakeCache()
       const staleModels = [{ id: 'model-a-stale', name: 'Model A (stale)' }]
+      const apiKeyHash = await sha256Hex('token-1')
 
-      await cache.setItem('gateway-catalog:cloudflare:account-1', {
-        models: staleModels,
-        cachedAt: Date.now() - (60 * 60 * 1000),
-      })
+      await cache.setItem(
+        `gateway-catalog:cloudflare:account-1:${apiKeyHash}`,
+        {
+          models: staleModels,
+          cachedAt: Date.now() - (60 * 60 * 1000),
+        },
+      )
 
       const fetchMock = vi.fn().mockResolvedValue({
         ok: false,

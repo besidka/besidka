@@ -143,16 +143,32 @@ describe('gateway models API', () => {
         ok: true,
         json: async () => ({
           data: [{
+            schema_version: '2.4',
             id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
             name: 'Llama 3.3 70B Instruct FP8 Fast',
-            context_length: 24000,
-            architecture: {
-              input_modalities: ['text'],
-              output_modalities: ['text'],
-            },
-            pricing: { prompt: '0.0000002', completion: '0.0000009' },
-            top_provider: { max_completion_tokens: 4096 },
-            supported_parameters: ['tools'],
+            input_modalities: [
+              {
+                type: 'text',
+                supported_inputs: {
+                  max_context_length: { value: 24000, unit: 'token' },
+                },
+                pricing: [
+                  { type: 'prompt', unit: 'token', cost_usd: '0.0000002' },
+                ],
+              },
+            ],
+            output_modalities: [
+              {
+                type: 'text',
+                max_length: { value: 4096, unit: 'token' },
+                supported_parameters: {
+                  tools: { type: 'boolean' },
+                },
+                pricing: [
+                  { type: 'completion', unit: 'token', cost_usd: '0.0000009' },
+                ],
+              },
+            ],
           }],
         }),
       })
@@ -196,13 +212,13 @@ describe('gateway models API', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
-            data: [{ id: 'model-a', name: 'Model A', context_length: 8192 }],
+            data: [{ id: 'model-a', name: 'Model A' }],
           }),
         })
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
-            data: [{ id: 'model-b', name: 'Model B', context_length: 8192 }],
+            data: [{ id: 'model-b', name: 'Model B' }],
           }),
         })
 
@@ -238,6 +254,53 @@ describe('gateway models API', () => {
       expect(first.models[0]?.id).toBe('model-a')
       expect(second.models[0]?.id).toBe('model-a')
       expect(third.models[0]?.id).toBe('model-b')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+  it('caches the cloudflare catalog per apiKey, so a guessed accountId with a different key never shares a catalog',
+    async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-a', name: 'Model A' }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-b', name: 'Model B' }],
+          }),
+        })
+
+      const cache = createFakeCache()
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      let apiKey = 'genuine-owner-token'
+
+      vi.doMock('~~/server/utils/gateways/cloudflare', () => ({
+        getCloudflareGatewayCredentials: vi.fn(async () => ({
+          accountId: 'account-1',
+          apiKey,
+        })),
+      }))
+
+      const handler = await getHandler()
+
+      const genuineOwnerResponse = await handler({
+        params: { gateway: 'cloudflare' },
+      } as never)
+
+      apiKey = 'attacker-fake-token'
+
+      const guessedAccountResponse = await handler({
+        params: { gateway: 'cloudflare' },
+      } as never)
+
+      expect(genuineOwnerResponse.models[0]?.id).toBe('model-a')
+      expect(guessedAccountResponse.models[0]?.id).toBe('model-b')
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
 
