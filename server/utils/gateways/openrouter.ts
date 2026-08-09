@@ -1,5 +1,6 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type { GatewayChatResult } from './index'
+import { keyProviderIdForGateway } from './index'
 
 export async function useOpenRouterGateway(
   userId: string,
@@ -8,7 +9,7 @@ export async function useOpenRouterGateway(
   const data = await useDb().query.keys.findFirst({
     where: {
       userId: parseInt(userId),
-      provider: 'openrouter',
+      provider: keyProviderIdForGateway('openrouter'),
     },
     columns: {
       apiKey: true,

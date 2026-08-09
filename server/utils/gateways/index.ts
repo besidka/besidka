@@ -43,6 +43,9 @@ export async function useGateway(
   }
 }
 
+export function keyProviderIdForGateway(gatewayId: 'vercel'): 'vercel-gateway'
+export function keyProviderIdForGateway(gatewayId: 'openrouter'): 'openrouter'
+export function keyProviderIdForGateway(gatewayId: GatewayId): string
 export function keyProviderIdForGateway(gatewayId: GatewayId): string {
   return providerMeta[gatewayId]?.keyProviderId ?? gatewayId
 }

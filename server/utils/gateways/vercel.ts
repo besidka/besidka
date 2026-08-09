@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type { GatewayChatResult } from './index'
+import { keyProviderIdForGateway } from './index'
 
 const GENERATION_INFO_RETRY_DELAY_MS = 1500
 
@@ -13,7 +14,7 @@ export async function useVercelGateway(
   const data = await useDb().query.keys.findFirst({
     where: {
       userId: parseInt(userId),
-      provider: 'vercel-gateway',
+      provider: keyProviderIdForGateway('vercel'),
     },
     columns: {
       apiKey: true,
