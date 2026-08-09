@@ -532,12 +532,21 @@ export async function getCachedGatewayCatalog(
 export async function findGatewayCatalogModel(
   fetchCatalog: () => Promise<GatewayModel[]>,
   modelId: string,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayModel | undefined> {
   try {
     const models = await fetchCatalog()
 
     return models.find(model => model.id === modelId)
-  } catch {
+  } catch (exception) {
+    logger?.set({
+      attributes: {
+        gatewayCatalogModelLookup: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+
     return undefined
   }
 }

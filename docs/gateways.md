@@ -172,10 +172,16 @@ this codebase.
   fires *before* `onEnd`, not after. The actual fix reads `providerMetadata`
   off the per-step `finish-step` chunk instead, which is part of the same
   `result.stream` `messageMetadata` already consumes and is guaranteed to
-  arrive before the terminal `finish` chunk (gateway sends are always
-  single-step, since gateway + tools together are rejected earlier in the
-  request). See `resolveLiveGatewayCost()` in
-  `server/api/v1/chats/[slug]/index.post.ts`.
+  arrive before the terminal `finish` chunk (every send in this app is
+  single-step today, direct-provider or gateway, since nothing anywhere sets
+  `stopWhen` and `streamText()` defaults to `stopWhen: isStepCount(1)`). See
+  `resolveLiveGatewayCost()` in `server/api/v1/chats/[slug]/index.post.ts`.
+  **This ordering is observed behavior of `ai@7.0.56`, not a documented
+  contract** — the SDK's own public type for `messageMetadata` claims it only
+  fires on `start`/`finish`, which the `finish-step` firing already
+  contradicts. A future `ai` version bump (the dependency is pinned with a
+  caret range) could silently change this; re-run the empirical check above
+  after any `ai` upgrade before trusting live gateway cost display again.
 - **Vercel**: `providerMetadata.gateway.generationId` → `client.getGenerationInfo({id})`,
   scheduled via the existing `waitUntil` background-completion mechanism
   (same pattern as push notifications / Axiom shipping). Cost lands on the

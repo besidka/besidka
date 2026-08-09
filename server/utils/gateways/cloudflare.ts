@@ -107,6 +107,7 @@ export async function getCloudflareGatewayCredentials(
 export async function useCloudflareGateway(
   userId: string,
   model: string,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const credentials = await getCloudflareGatewayCredentials(userId)
 
@@ -127,8 +128,9 @@ export async function useCloudflareGateway(
     },
   })
   const catalogModel = await findGatewayCatalogModel(
-    () => getCachedCloudflareGatewayCatalog(credentials),
+    () => getCachedCloudflareGatewayCatalog(credentials, { logger }),
     model,
+    logger,
   )
 
   function getInstance() {

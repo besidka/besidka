@@ -14,6 +14,7 @@ const GENERATION_INFO_RETRY_DELAY_MS = 1500
 export async function useVercelGateway(
   userId: string,
   model: string,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -36,8 +37,9 @@ export async function useVercelGateway(
     apiKey: await useDecryptText(data.apiKey),
   })
   const catalogModel = await findGatewayCatalogModel(
-    () => getCachedGatewayCatalog('vercel'),
+    () => getCachedGatewayCatalog('vercel', { logger }),
     model,
+    logger,
   )
 
   function getInstance() {

@@ -505,6 +505,7 @@ export default defineEventHandler(async (event) => {
         gatewayId,
         session.user.id,
         modelId,
+        logger,
       )
 
       instance = gatewayResult.instance

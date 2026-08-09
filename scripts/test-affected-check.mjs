@@ -784,7 +784,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/title\.ts$/,
-      tests: [...gatewayChatTests, 'tests/integration/api/chats-title.spec.ts'],
+      tests: gatewayChatTests,
     },
     {
       pattern: /^server\/utils\/chats\/provider\.ts$/,

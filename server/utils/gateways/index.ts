@@ -51,14 +51,15 @@ export async function useGateway(
   gatewayId: ChatGatewayId,
   userId: string,
   modelId: string,
+  logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   switch (gatewayId) {
     case 'vercel':
-      return await useVercelGateway(userId, modelId)
+      return await useVercelGateway(userId, modelId, logger)
     case 'openrouter':
       return await useOpenRouterGateway(userId, modelId)
     case 'cloudflare':
-      return await useCloudflareGateway(userId, modelId)
+      return await useCloudflareGateway(userId, modelId, logger)
   }
 }
 
