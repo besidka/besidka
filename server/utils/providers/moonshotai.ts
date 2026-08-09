@@ -3,6 +3,7 @@ import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createMoonshotAI } from '@ai-sdk/moonshotai'
+import { getMoonshotWebSearchTools } from './moonshotai-web-search'
 import { resolveReasoningLevelForModel } from './reasoning'
 
 export async function useMoonshotAi(
@@ -28,9 +29,8 @@ export async function useMoonshotAi(
     })
   }
 
-  const moonshotai = createMoonshotAI({
-    apiKey: await useDecryptText(data.apiKey),
-  })
+  const apiKey = await useDecryptText(data.apiKey)
+  const moonshotai = createMoonshotAI({ apiKey })
   const { model: modelData } = getModel(model)
 
   if (!modelData) {
@@ -53,8 +53,12 @@ export async function useMoonshotAi(
     )
   }
 
-  function getTools(): FormattedTools {
-    return {}
+  async function getTools(): Promise<FormattedTools> {
+    if (!requestedTools.includes('web_search')) {
+      return {}
+    }
+
+    return await getMoonshotWebSearchTools(apiKey)
   }
 
   const reasoningLevel = resolveReasoningLevelForModel(
@@ -92,7 +96,7 @@ export async function useMoonshotAi(
   return {
     instance: getInstance(),
     generateChatTitle,
-    tools: getTools(),
+    tools: await getTools(),
     providerOptions: getProviderOptions(),
     reasoning: undefined,
   }

@@ -139,6 +139,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/xai.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
   ]
+  const moonshotWebSearchTests = [
+    'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+    'tests/unit/utils/providers/moonshotai.spec.ts',
+    'tests/unit/providers/moonshotai.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+  ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/utils/filter-ui-message-stream.spec.ts',
@@ -404,6 +410,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
         'tests/integration/api/chats-gateway.spec.ts',
+        'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
       ],
     },
     {
@@ -419,6 +426,10 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/utils\/providers\/(deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/utils\/reasoning\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
+    },
+    {
+      pattern: /^server\/utils\/providers\/moonshotai-web-search\.ts$/,
+      tests: moonshotWebSearchTests,
     },
     {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,

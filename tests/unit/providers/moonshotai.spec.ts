@@ -45,9 +45,9 @@ describe('curated moonshotai provider', () => {
     }
   })
 
-  it('has no model exposing any tool', () => {
+  it('exposes the web_search tool for every curated model', () => {
     for (const model of moonshotai.models) {
-      expect(model.tools).toEqual([])
+      expect(model.tools).toEqual(['web_search'])
       expect(model.imageGeneration).toBeUndefined()
     }
   })

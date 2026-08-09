@@ -6,7 +6,7 @@ export default {
   models: [
     {
       id: 'kimi-k2.6',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -16,7 +16,7 @@ export default {
     },
     {
       id: 'kimi-k3',
-      tools: [],
+      tools: ['web_search'],
       reasoningAlwaysOn: true,
       price: {
         tokens: 1_000_000,

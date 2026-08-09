@@ -4,11 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   getModel: vi.fn(),
   getControllerModelId: vi.fn((model: Model) => model.id),
+  getMoonshotWebSearchTools: vi.fn(),
 }))
 
 vi.mock('#shared/utils/model', () => ({
   getModel: mocks.getModel,
   getControllerModelId: mocks.getControllerModelId,
+}))
+
+vi.mock('../../../../server/utils/providers/moonshotai-web-search', () => ({
+  getMoonshotWebSearchTools: mocks.getMoonshotWebSearchTools,
 }))
 
 function createModel(overrides: Partial<Model> = {}): Model {
@@ -133,5 +138,68 @@ describe('useMoonshotAi reasoning wiring for kimi-k3', () => {
 
     expect(result.providerOptions).toEqual({})
     expect(result.reasoning).toBeUndefined()
+  })
+})
+
+describe('useMoonshotAi web search wiring', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('exposes no tools when web search is not requested', async () => {
+    stubModel(createModel({ id: 'kimi-k2.6', tools: ['web_search'] }))
+
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi('1', 'kimi-k2.6', [], 'off')
+
+    expect(result.tools).toEqual({})
+    expect(mocks.getMoonshotWebSearchTools).not.toHaveBeenCalled()
+  })
+
+  it('builds the Formula-API search tool with the user\'s decrypted key '
+    + 'when web search is requested', async () => {
+    stubModel(createModel({ id: 'kimi-k2.6', tools: ['web_search'] }))
+    mocks.getMoonshotWebSearchTools.mockResolvedValue({
+      tools: { web_search: { description: 'stub tool' } },
+    })
+
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi(
+      '1',
+      'kimi-k2.6',
+      ['web_search'],
+      'off',
+    )
+
+    expect(mocks.getMoonshotWebSearchTools).toHaveBeenCalledWith(
+      'decrypted-key',
+    )
+    expect(result.tools).toEqual({
+      tools: { web_search: { description: 'stub tool' } },
+    })
+  })
+
+  it('builds the Formula-API search tool for kimi-k3 too', async () => {
+    stubModel(createModel({ id: 'kimi-k3', tools: ['web_search'] }))
+    mocks.getMoonshotWebSearchTools.mockResolvedValue({
+      tools: { web_search: { description: 'stub tool' } },
+    })
+
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi(
+      '1',
+      'kimi-k3',
+      ['web_search'],
+      'off',
+    )
+
+    expect(mocks.getMoonshotWebSearchTools).toHaveBeenCalledWith(
+      'decrypted-key',
+    )
+    expect(result.tools).toEqual({
+      tools: { web_search: { description: 'stub tool' } },
+    })
   })
 })
