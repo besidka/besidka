@@ -1,8 +1,9 @@
+import type { GatewayId } from '#shared/types/gateways.d'
+
 /**
- * The `gateway` kind, `accountId`/`gatewayId` field names, and
- * `enabledGateways` below are forward scaffolding for gateway support
- * landing in a later PR of this stack — intentionally unwired here, not
- * dead code.
+ * The `accountId`/`gatewayId` field names below are forward scaffolding for
+ * Cloudflare AI Gateway support landing in a later PR of this stack —
+ * intentionally unwired here, not dead code.
  */
 export interface ProviderMetaKeyField {
   name: 'apiKey' | 'accountId' | 'gatewayId'
@@ -76,6 +77,32 @@ export const providerMeta: Record<string, ProviderMeta> = {
     dashboardUrl: 'https://platform.kimi.ai/console/api-keys',
     keyFields: [apiKeyField],
   },
+  vercel: {
+    id: 'vercel',
+    kind: 'gateway',
+    label: 'Vercel AI Gateway',
+    keyProviderId: 'vercel-gateway',
+    dashboardUrl: 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys',
+    keyFields: [apiKeyField],
+  },
+  openrouter: {
+    id: 'openrouter',
+    kind: 'gateway',
+    label: 'OpenRouter',
+    keyProviderId: 'openrouter',
+    dashboardUrl: 'https://openrouter.ai/settings/keys',
+    keyFields: [apiKeyField],
+  },
 }
 
-export const enabledGateways: string[] = []
+/**
+ * Cloudflare AI Gateway is reserved in the `keys.provider` enum and in
+ * `GatewayId`, but is intentionally NOT listed here yet — its `providerMeta`
+ * entry (a 3-field `accountId`/`gatewayId`/`apiKey` form, decided but not
+ * built until a later PR) would be the wrong shape to ship as a usable
+ * single-`apiKey` gateway card today. This array, not a `providerMeta`
+ * placeholder, is what marks it "not enabled yet": every gateway-rail/keys
+ * UI should iterate `enabledGateways` (mapped through `providerMeta`)
+ * rather than assuming all `GatewayId` values are ready.
+ */
+export const enabledGateways: GatewayId[] = ['vercel', 'openrouter']
