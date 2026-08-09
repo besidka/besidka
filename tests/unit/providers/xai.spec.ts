@@ -68,6 +68,21 @@ describe('curated xai provider', () => {
     expect(reasoning?.reasoning).toBeUndefined()
   })
 
+  it('marks the reasoning variant as always-on rather than toggleable '
+    + 'or leveled', () => {
+    const grok45 = xai.models.find(model => model.id === 'grok-4.5')
+    const nonReasoning = xai.models.find((model) => {
+      return model.id === 'grok-4.20-0309-non-reasoning'
+    })
+    const reasoning = xai.models.find((model) => {
+      return model.id === 'grok-4.20-0309-reasoning'
+    })
+
+    expect(reasoning?.reasoningAlwaysOn).toBe(true)
+    expect(nonReasoning?.reasoningAlwaysOn).toBeUndefined()
+    expect(grok45?.reasoningAlwaysOn).toBeUndefined()
+  })
+
   it('has a models.dev snapshot entry for every curated id', () => {
     const snapshotIds = Object.keys(snapshot)
 

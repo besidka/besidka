@@ -146,6 +146,20 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     ])
   })
 
+  it('renders an always-on reasoning badge for a model with '
+    + 'reasoningAlwaysOn but no reasoning capability', async () => {
+    const model = createModel({ reasoningAlwaysOn: true })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
+
+    expect(badges).toEqual(['Always-on reasoning'])
+  })
+
   it('renders no capability badges for a plain model', async () => {
     const wrapper = await mountDetail()
 

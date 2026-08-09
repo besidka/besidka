@@ -41,6 +41,7 @@ export interface Model {
   tools: ModelTool[]
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  reasoningAlwaysOn?: true
   research?: ModelResearchConfig
 }
 

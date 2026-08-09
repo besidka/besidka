@@ -14,6 +14,7 @@ export default {
     {
       id: 'grok-4.20-0309-reasoning',
       tools: ['web_search'],
+      reasoningAlwaysOn: true,
       price: {
         tokens: 1_000_000,
       },

@@ -8,10 +8,16 @@ export function useUserModel() {
     get() {
       track()
 
-      return parseModelSelection(
+      const parsed = parseModelSelection(
         prefStorage.getItem('model'),
         defaultModel as string,
       )
+
+      if (parsed.source === 'provider' && !getModel(parsed.modelId).model) {
+        return { source: 'provider', modelId: defaultModel as string }
+      }
+
+      return parsed
     },
     set(value) {
       prefStorage.setItem('model', serializeModelSelection(value))

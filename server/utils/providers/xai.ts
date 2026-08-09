@@ -60,6 +60,7 @@ export async function useXai(
     modelData,
     requestedReasoning,
   )
+  const reasoningAlwaysOn = !!modelData.reasoningAlwaysOn
 
   function getTools(): FormattedTools {
     if (!requestedTools?.length) {
@@ -95,14 +96,20 @@ export async function useXai(
   function getProviderOptions(): SharedV2ProviderOptions {
     const result: SharedV2ProviderOptions = {}
 
-    if (reasoningLevel !== 'off') {
-      /**
-       * Reasoning effort is set provider-agnostically via the top-level
-       * `reasoning` option on streamText (AI SDK v7). providerOptions only
-       * carries the output flag, because the SDK never enables reasoning
-       * summaries on its own (same contract as the OpenAI responses model).
-       * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#reasoning
-       */
+    /**
+     * Reasoning effort is set provider-agnostically via the top-level
+     * `reasoning` option on streamText (AI SDK v7). providerOptions only
+     * carries the output flag, because the SDK never enables reasoning
+     * summaries on its own (same contract as the OpenAI responses model).
+     * `modelData.reasoningAlwaysOn` models (e.g. grok-4.20-0309-reasoning)
+     * never accept a `reasoning_effort` value at all — xAI hardcodes them
+     * as unsupported — but they always reason internally, so the summary
+     * flag must still be requested here or their reasoning trace, despite
+     * the picker showing a brain icon for them, would never actually
+     * render.
+     * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#reasoning
+     */
+    if (reasoningLevel !== 'off' || reasoningAlwaysOn) {
       Object.assign(result, {
         reasoningSummary: 'detailed',
       })

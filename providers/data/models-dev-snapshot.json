@@ -880,29 +880,6 @@
       "output": 0.28
     }
   },
-  "kimi-k2.5": {
-    "name": "Kimi K2.5",
-    "description": "Earlier Kimi frontier model for long-context agents, coding, and multimodal work",
-    "releaseDate": "2026-01",
-    "limit": {
-      "context": 262144,
-      "output": 262144
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "video"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 0.6,
-      "output": 3
-    }
-  },
   "kimi-k2.6": {
     "name": "Kimi K2.6",
     "description": "Multimodal Kimi workhorse for agent loops, coding tasks, and visual context",
