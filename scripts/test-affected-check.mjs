@@ -103,6 +103,7 @@ export function getAffectedTests(changedFiles) {
   ]
   const modelSelectionTests = [
     'tests/unit/composables/model.spec.ts',
+    'tests/unit/composables/selected-model-info.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
     'tests/unit/composables/chat-research.spec.ts',
   ]
