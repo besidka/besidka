@@ -3,6 +3,7 @@ import { providerMeta } from '#shared/utils/provider-meta'
 export function useChatInput() {
   const { selection, userModel } = useUserModel()
   const { hasKeyForProvider } = useUserKeys()
+  const { isImageInputSupported } = useImageInputSupport()
 
   const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
@@ -96,6 +97,7 @@ export function useChatInput() {
     isWebSearchSupported,
     isImageGenerationSupported,
     isImageGenerationRequired,
+    isImageInputSupported,
     reasoningCapability,
     reasoningMode,
     reasoningLevels,

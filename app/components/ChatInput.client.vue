@@ -122,6 +122,7 @@
                   v-if="!isDeepResearchModel"
                   hydrate-on-idle
                   :files="files"
+                  :is-image-input-supported="isImageInputSupported"
                   @detach-all="files = []"
                   @open="openFilesModal"
                 />
@@ -300,6 +301,7 @@
     <LazyChatInputFilesModal
       ref="filesModalRef"
       :attached-ids="attachedIds"
+      :is-image-input-supported="isImageInputSupported"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
       @upload="uploadFiles"
@@ -344,6 +346,7 @@ const {
   isWebSearchSupported,
   isImageGenerationSupported,
   isImageGenerationRequired,
+  isImageInputSupported,
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
@@ -502,7 +505,24 @@ const {
   cancelAllUploads,
   removeAttachedFile,
   removeAllFiles,
-} = useChatFiles(files)
+} = useChatFiles(files, isImageInputSupported)
+
+watch(isImageInputSupported, (supported) => {
+  if (supported) {
+    return
+  }
+
+  const remainingFiles = files.value.filter((file) => {
+    return !isImageFile(file.type)
+  })
+
+  if (remainingFiles.length === files.value.length) {
+    return
+  }
+
+  files.value = remainingFiles
+  useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+}, { flush: 'post' })
 
 watch(
   [isReasoningSupported, reasoningCapability],
@@ -714,15 +734,22 @@ function onFilesAttached(
   attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
 ) {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
-  const newFiles = attachedFiles.filter(
+  const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
   )
+  const newFiles = isImageInputSupported.value
+    ? incomingFiles
+    : incomingFiles.filter(file => !isImageFile(file.type))
+
+  if (newFiles.length < incomingFiles.length) {
+    useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+  }
 
   if (newFiles.length === 0) {
     return
   }
 
-  files.value.push(...newFiles as FileMetadata[])
+  files.value = [...files.value, ...newFiles as FileMetadata[]]
 }
 
 function onFilesDetached(fileIds: string[]) {
