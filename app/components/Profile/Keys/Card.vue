@@ -12,7 +12,7 @@
       <ProviderIcon
         :provider-id="providerId"
         :label="label"
-        class="!size-8 shrink-0"
+        class="!size-5 shrink-0"
       />
       <span class="grow truncate text-left text-lg font-bold">
         {{ label }}

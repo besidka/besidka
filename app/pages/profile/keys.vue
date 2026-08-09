@@ -12,7 +12,7 @@
   </div>
   <nav
     aria-label="Key sections"
-    class="tabs tabs-border mb-6"
+    class="tabs tabs-box tabs-sm mb-6"
   >
     <button
       v-for="tab in tabs"

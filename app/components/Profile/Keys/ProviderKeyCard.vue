@@ -38,7 +38,8 @@
               icon-only
               circle
               ghost
-              size="sm"
+              size="xs"
+              tooltip-position="left"
               @click="pasteApiKey"
             />
           </template>
