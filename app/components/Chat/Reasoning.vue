@@ -27,7 +27,9 @@
         >
           <template v-if="isReasoningStreaming && activeStreamingTitle.length">
             <span class="max-sm:hidden">Reasoning:</span>
-            {{ truncateReasoningTitle(activeStreamingTitle) }}
+            <span :title="activeStreamingTitle">
+              {{ truncateReasoningTitle(activeStreamingTitle) }}
+            </span>
           </template>
           <template v-else>
             {{ mainTitle }}
