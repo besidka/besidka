@@ -198,9 +198,18 @@ Two rules keep the strip honest:
   rule that still does not exist**; the single-prefix guard hides the
   useless control instead of faking one.
 - It hides while a search is narrowing the list (parity with
-  `ProviderRail.vue`), and `ModelsTrigger.vue` drops an active prefix as
-  soon as the catalog stops offering it — the free filter can empty a
-  provider out from under the chip that selected it.
+  `ProviderRail.vue`), and a hidden strip governs nothing: the search
+  **suspends** the provider filter rather than compounding with it, exactly
+  as `isRailFilterApplied` bypasses the rail in provider mode. The choice
+  survives and applies again the moment the field is cleared. A filter no
+  visible control can explain is worse than a wider result set.
+- `ModelsTrigger.vue` drops an active prefix as soon as the catalog stops
+  offering it — the free filter can empty a provider out from under the chip
+  that selected it. **`getGatewayProviderGroups()` must therefore be fed a
+  search-independent list** (`groupableModels`, favorites + free only): a
+  provider with no hit for the current search term would otherwise
+  disappear from the groups, and that reset would silently discard a filter
+  the user set before they started typing.
 
 `app/components/ProviderIcon.vue` normalizes a handful of known vendor-slug
 variants (OpenRouter's `x-ai` and its six `~`-prefixed "latest" aliases) to

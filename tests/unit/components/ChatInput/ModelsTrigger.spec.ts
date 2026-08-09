@@ -643,6 +643,36 @@ describe('ChatInput/ModelsTrigger', () => {
         ).exists()).toBe(false)
       })
 
+      it('suspends the provider filter for the duration of a search', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await search.setValue('gpt')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4', 'GPT-5.4 mini'])
+      })
+
+      it('restores the provider filter a fruitless search cleared', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await search.setValue('gpt')
+        await search.setValue('')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+        expect(wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .attributes('aria-pressed'),
+        ).toBe('true')
+      })
+
       it('keeps only free models under the free filter', async () => {
         const wrapper = await openMultiProviderGateway()
 

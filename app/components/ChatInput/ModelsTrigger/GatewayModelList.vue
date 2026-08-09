@@ -159,20 +159,40 @@ const isPending = computed<boolean>(() => {
 })
 
 /**
- * Everything the picker filters on EXCEPT the provider strip's own choice —
- * the strip's counts have to describe the list the user would get by picking
- * a provider, so narrowing by the currently picked one would make every count
- * but that one read zero.
+ * What the provider strip describes: the catalog minus the filters that
+ * outlive a search, and deliberately NOT minus the search term or the
+ * strip's own choice. Narrowing by the picked provider would make every
+ * other count read zero, and letting a search narrow it would make a
+ * provider with no hit for the current term vanish from the groups — which
+ * the parent reads as "this provider is gone" and answers by dropping the
+ * filter the user set before they started typing.
  */
-const matchingModels = computed<GatewayModel[]>(() => {
-  const term = props.searchTerm.trim().toLowerCase()
-
+const groupableModels = computed<GatewayModel[]>(() => {
   return models.value.filter((model) => {
     if (props.isFavoritesOnly && !props.favoriteModelIds.includes(model.id)) {
       return false
     }
 
-    if (props.isFreeOnly && !isGatewayModelFree(model)) {
+    return !props.isFreeOnly || isGatewayModelFree(model)
+  })
+})
+
+const providerGroups = computed<GatewayProviderGroup[]>(() => {
+  return getGatewayProviderGroups(groupableModels.value)
+})
+
+/**
+ * A search suspends the provider filter rather than compounding with it,
+ * matching `ProviderRail.vue`'s rail filter in provider mode: the strip is
+ * hidden while searching, and a filter nothing on screen can explain is
+ * worse than a wider result set. The choice survives the search and applies
+ * again the moment the field is cleared.
+ */
+const filteredModels = computed<GatewayModel[]>(() => {
+  const term = props.searchTerm.trim().toLowerCase()
+  const prefix = term ? null : props.activeProviderPrefix
+  const matching = groupableModels.value.filter((model) => {
+    if (prefix && getGatewayModelProviderPrefix(model.id) !== prefix) {
       return false
     }
 
@@ -183,19 +203,6 @@ const matchingModels = computed<GatewayModel[]>(() => {
     return model.name.toLowerCase().includes(term)
       || model.id.toLowerCase().includes(term)
   })
-})
-
-const providerGroups = computed<GatewayProviderGroup[]>(() => {
-  return getGatewayProviderGroups(matchingModels.value)
-})
-
-const filteredModels = computed<GatewayModel[]>(() => {
-  const prefix = props.activeProviderPrefix
-  const matching = prefix
-    ? matchingModels.value.filter((model) => {
-      return getGatewayModelProviderPrefix(model.id) === prefix
-    })
-    : matchingModels.value
 
   return sortGatewayModelsByProvider(matching, providerGroups.value)
 })
