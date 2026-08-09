@@ -10,11 +10,13 @@ const mocks = vi.hoisted(() => ({
   useChatFiles: vi.fn(),
   useDevice: vi.fn(),
   uploadFiles: vi.fn(),
+  useWarningMessage: vi.fn(),
 }))
 
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
 mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useDevice', () => mocks.useDevice)
+mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
 
 const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
@@ -30,6 +32,17 @@ const filesModalStub = defineComponent({
     open: filesModalOpenMock,
   },
   template: '<div />',
+})
+
+const uiButtonStub = defineComponent({
+  name: 'UiButtonStub',
+  props: {
+    disabled: { type: Boolean, default: false },
+    title: { type: String, default: '' },
+  },
+  emits: ['click'],
+  template: '<button :disabled="disabled" :title="title" '
+    + '@click="$emit(\'click\')"><slot /></button>',
 })
 
 enableAutoUnmount(afterEach)
@@ -54,8 +67,10 @@ function mountChatInput() {
         LazyChatInputReasoningTrigger: true,
         LazyChatInputDeepResearchTrigger: true,
         LazyChatInputToolbarMore: true,
-        UiBubble: true,
-        UiButton: true,
+        UiBubble: {
+          template: '<div><slot /></div>',
+        },
+        UiButton: uiButtonStub,
       },
     },
   })
@@ -101,6 +116,8 @@ describe('ChatInput.client', () => {
       reasoningMode: shallowRef('none'),
       isDeepResearchModel: shallowRef(false),
       researchConfig: shallowRef(null),
+      isSelectedModelKeyless: shallowRef(false),
+      selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
     })
 
     mocks.useChatFiles.mockReturnValue({
@@ -122,6 +139,7 @@ describe('ChatInput.client', () => {
 
     filesModalOpenMock.mockReset()
     mocks.uploadFiles.mockReset()
+    mocks.useWarningMessage.mockReset()
 
     useFilesModalHandoff().clearPendingOpen()
   })
@@ -217,6 +235,162 @@ describe('ChatInput.client', () => {
       document.dispatchEvent(createPasteEvent([file]))
 
       expect(mocks.uploadFiles).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('missing-key send guidance', () => {
+    function useKeylessSelection() {
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isImageGenerationSupported: shallowRef(false),
+        isImageGenerationRequired: shallowRef(false),
+        isReasoningSupported: shallowRef(false),
+        reasoningCapability: shallowRef(null),
+        reasoningMode: shallowRef('none'),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(true),
+        selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
+      })
+    }
+
+    it('names the key the selection depends on without deadening the button', async () => {
+      useKeylessSelection()
+
+      const wrapper = await mountChatInput()
+
+      await wrapper.get('textarea').setValue('hello')
+
+      const sendButton = wrapper.get('[data-testid="send-message"]')
+
+      expect(sendButton.attributes('title'))
+        .toBe('Add your Anthropic API key to send this message')
+      expect(sendButton.attributes('disabled')).toBeUndefined()
+    })
+
+    it('warns instead of sending when the send button is pressed', async () => {
+      useKeylessSelection()
+
+      const wrapper = await mountChatInput()
+
+      await wrapper.get('textarea').setValue('hello')
+      await wrapper.get('[data-testid="send-message"]').trigger('click')
+
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'Add your Anthropic API key to send this message.',
+        'Open Profile → API Keys to add it, or pick a model you have a key for.',
+      )
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('warns instead of regenerating against the same missing key', async () => {
+      useKeylessSelection()
+
+      const regenerate = vi.fn()
+      const wrapper = await mountSuspended(ChatInput, {
+        props: {
+          messagesLength: 2,
+          stop: vi.fn(),
+          regenerate,
+          displayRegenerate: true,
+        },
+        attachTo: document.body,
+        global: {
+          stubs: {
+            ChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesDropZone: true,
+            LazyChatScroll: true,
+            LazyChatInputFilesAttachedPreview: true,
+            LazyChatInputModelsTrigger: true,
+            LazyChatInputFilesTrigger: true,
+            LazyChatInputReasoningTrigger: true,
+            LazyChatInputDeepResearchTrigger: true,
+            LazyChatInputToolbarMore: true,
+            UiBubble: {
+              template: '<div><slot /></div>',
+            },
+            UiButton: uiButtonStub,
+          },
+        },
+      })
+
+      const regenerateButton = wrapper.get('[data-testid="regenerate"]')
+
+      expect(regenerateButton.attributes('title'))
+        .toBe('Add your Anthropic API key to send this message')
+
+      await regenerateButton.trigger('click')
+
+      expect(regenerate).not.toHaveBeenCalled()
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'Add your Anthropic API key to send this message.',
+        'Open Profile → API Keys to add it, or pick a model you have a key for.',
+      )
+    })
+
+    it('warns with the keys-page guidance when Enter bypasses the button', async () => {
+      useKeylessSelection()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('hello')
+      await textarea.trigger('keydown.enter')
+
+      expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+        'Add your Anthropic API key to send this message.',
+        'Open Profile → API Keys to add it, or pick a model you have a key for.',
+      )
+      expect(wrapper.emitted('submit')).toBeUndefined()
+    })
+
+    it('sends normally once a key is present', async () => {
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('hello')
+
+      expect(wrapper.get('[data-testid="send-message"]')
+        .attributes('disabled')).toBeUndefined()
+
+      await textarea.trigger('keydown.enter')
+
+      expect(mocks.useWarningMessage).not.toHaveBeenCalled()
+      expect(wrapper.emitted('submit')).toHaveLength(1)
+    })
+
+    it('leaves the regenerate title alone when a key is present', async () => {
+      const wrapper = await mountSuspended(ChatInput, {
+        props: {
+          messagesLength: 2,
+          stop: vi.fn(),
+          regenerate: vi.fn(),
+          displayRegenerate: true,
+        },
+        attachTo: document.body,
+        global: {
+          stubs: {
+            ChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesModal: filesModalStub,
+            LazyChatInputFilesDropZone: true,
+            LazyChatScroll: true,
+            LazyChatInputFilesAttachedPreview: true,
+            LazyChatInputModelsTrigger: true,
+            LazyChatInputFilesTrigger: true,
+            LazyChatInputReasoningTrigger: true,
+            LazyChatInputDeepResearchTrigger: true,
+            LazyChatInputToolbarMore: true,
+            UiBubble: {
+              template: '<div><slot /></div>',
+            },
+            UiButton: uiButtonStub,
+          },
+        },
+      })
+
+      expect(wrapper.get('[data-testid="regenerate"]').attributes('title'))
+        .toBe('Regenerate')
     })
   })
 })

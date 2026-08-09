@@ -31,13 +31,13 @@
       :key="provider.id"
       type="button"
       :data-testid="`models-picker-rail-${provider.id}`"
-      class="btn btn-ghost btn-sm btn-circle"
+      class="btn btn-ghost btn-sm btn-circle relative"
       :class="{
         'btn-active text-accent': activeProviderId === provider.id,
         'tooltip tooltip-soft tooltip-right': $device.isDesktop
       }"
-      :data-tip="provider.name"
-      :aria-label="`Show ${provider.name} models only`"
+      :data-tip="getProviderTip(provider)"
+      :aria-label="getProviderLabel(provider)"
       :aria-pressed="activeProviderId === provider.id"
       @click="emit('toggleProvider', provider.id)"
     >
@@ -45,23 +45,55 @@
         :provider-id="provider.id"
         :label="provider.name"
         class="w-4 fill-current"
+        :class="{ 'opacity-40': isKeyless(provider.id) }"
+      />
+      <span
+        v-if="isKeyless(provider.id)"
+        :data-testid="`models-picker-rail-${provider.id}-keyless`"
+        class="absolute top-0.5 right-0.5 size-2 rounded-full bg-warning"
       />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { Providers } from '#shared/types/providers.d'
+import type { Provider, Providers } from '#shared/types/providers.d'
 
-defineProps<{
-  providers: Providers
-  activeProviderId: string | null
-  isFavoritesOnly: boolean
-  hasFavorites: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    providers: Providers
+    activeProviderId: string | null
+    isFavoritesOnly: boolean
+    hasFavorites: boolean
+    keylessProviderIds?: string[]
+  }>(),
+  {
+    keylessProviderIds: () => [],
+  },
+)
 
 const emit = defineEmits<{
   toggleProvider: [providerId: string]
   toggleFavorites: []
 }>()
+
+function isKeyless(providerId: string): boolean {
+  return props.keylessProviderIds.includes(providerId)
+}
+
+function getProviderTip(provider: Provider): string {
+  if (isKeyless(provider.id)) {
+    return `${provider.name} — API key required`
+  }
+
+  return provider.name
+}
+
+function getProviderLabel(provider: Provider): string {
+  if (isKeyless(provider.id)) {
+    return `Show ${provider.name} models only — API key required`
+  }
+
+  return `Show ${provider.name} models only`
+}
 </script>

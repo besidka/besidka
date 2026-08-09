@@ -2,23 +2,23 @@
   <li
     :id="optionId"
     role="option"
-    :aria-selected="isLegacy ? false : isSelected"
-    :aria-disabled="isLegacy ? true : undefined"
+    :aria-selected="isDisabled ? false : isSelected"
+    :aria-disabled="isDisabled ? true : undefined"
   >
     <div
       class="flex items-center gap-1 rounded-xl pl-2 pr-1 py-1 transition-colors"
       :class="{
-        'bg-accent/15': isSelected && !isLegacy,
-        'bg-base-content/10': isHighlighted && !isSelected && !isLegacy,
-        'hover:bg-base-content/5': !isSelected && !isHighlighted && !isLegacy
+        'bg-accent/15': isSelected && !isDisabled,
+        'bg-base-content/10': isHighlighted && !isSelected && !isDisabled,
+        'hover:bg-base-content/5': !isSelected && !isHighlighted && !isDisabled
       }"
     >
       <component
-        :is="isLegacy ? 'div' : 'button'"
-        :type="isLegacy ? undefined : 'button'"
-        :aria-label="isLegacy ? undefined : selectLabel"
+        :is="isDisabled ? 'div' : 'button'"
+        :type="isDisabled ? undefined : 'button'"
+        :aria-label="isDisabled ? undefined : selectLabel"
         class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left"
-        :class="isLegacy ? 'opacity-50' : 'cursor-pointer'"
+        :class="isDisabled ? 'opacity-50' : 'cursor-pointer'"
         @click="onSelect"
       >
         <span
@@ -26,6 +26,12 @@
           class="sr-only"
         >
           Deprecated, no longer selectable.
+        </span>
+        <span
+          v-else-if="isKeyMissing"
+          class="sr-only"
+        >
+          {{ keyMissingLabel }}
         </span>
         <span
           class="w-full xs:w-auto min-w-0 flex items-center gap-1.5"
@@ -40,6 +46,17 @@
           >
             {{ model.name }}
           </span>
+        </span>
+        <span
+          v-if="isKeyMissing"
+          data-testid="model-key-required"
+          class="badge badge-xs badge-soft badge-warning shrink-0 gap-1 font-semibold max-xs:ml-5"
+        >
+          <Icon
+            name="lucide:key-round"
+            size="10"
+          />
+          Key required
         </span>
         <span
           v-if="model.priceTier"
@@ -160,6 +177,8 @@ const props = defineProps<{
   isFavorite: boolean
   isDetailOpen: boolean
   isLegacy?: boolean
+  isKeyMissing?: boolean
+  providerName?: string
 }>()
 
 const emit = defineEmits<{
@@ -172,6 +191,16 @@ const { isDesktop } = useDevice()
 
 const priceTip = computed<string | undefined>(() => {
   return getModelPriceTip(props.model)
+})
+
+const isDisabled = computed<boolean>(() => {
+  return !!props.isLegacy || !!props.isKeyMissing
+})
+
+const keyMissingLabel = computed<string>(() => {
+  const owner = props.providerName || 'this provider'
+
+  return `Add your ${owner} API key to use this model.`
 })
 
 const hasTooltip = computed<boolean>(() => {
@@ -200,7 +229,7 @@ const detailId = computed<string>(() => {
 })
 
 function onSelect() {
-  if (props.isLegacy) {
+  if (isDisabled.value) {
     return
   }
 

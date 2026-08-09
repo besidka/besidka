@@ -40,6 +40,9 @@ function mountModelItem(
     isHighlighted: boolean
     isFavorite: boolean
     isDetailOpen: boolean
+    isLegacy: boolean
+    isKeyMissing: boolean
+    providerName: string
   }> = {},
 ) {
   return mountSuspended(ModelItem, {
@@ -360,5 +363,73 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
 
     expect(row.classes()).toContain('bg-accent/15')
     expect(row.classes()).not.toContain('bg-base-content/10')
+  })
+
+  describe('missing provider key', () => {
+    it('renders the row as non-interactive and says why', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+        providerName: 'OpenAI',
+      })
+
+      expect(wrapper.get('li').attributes('aria-disabled')).toBe('true')
+      expect(wrapper.find('button[aria-label="Choose GPT-5.4"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="model-key-required"]').text())
+        .toContain('Key required')
+      expect(wrapper.get('.sr-only').text())
+        .toBe('Add your OpenAI API key to use this model.')
+    })
+
+    it('does not emit a selection when the row is clicked', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+        providerName: 'OpenAI',
+      })
+
+      await wrapper.get('li > div > div').trigger('click')
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('drops the selected and highlighted backgrounds', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+        isSelected: true,
+        isHighlighted: true,
+      })
+      const row = wrapper.get('li > div')
+
+      expect(row.classes()).not.toContain('bg-accent/15')
+      expect(row.classes()).not.toContain('bg-base-content/10')
+      expect(wrapper.get('li').attributes('aria-selected')).toBe('false')
+    })
+
+    it('keeps the info and favorite actions reachable', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+      })
+
+      await wrapper.get('[data-testid="model-info-trigger"]').trigger('click')
+      await wrapper.get('[data-testid="model-favorite-toggle"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('toggleDetail')).toHaveLength(1)
+      expect(wrapper.emitted('toggleFavorite')).toHaveLength(1)
+    })
+
+    it('stays fully selectable when the key is present', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        providerName: 'OpenAI',
+      })
+
+      expect(wrapper.get('li').attributes('aria-disabled')).toBeUndefined()
+      expect(wrapper.find('[data-testid="model-key-required"]').exists())
+        .toBe(false)
+
+      await wrapper.get('button[aria-label="Choose GPT-5.4"]').trigger('click')
+
+      expect(wrapper.emitted('select')).toHaveLength(1)
+    })
   })
 })

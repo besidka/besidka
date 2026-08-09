@@ -4,14 +4,20 @@ import type { GatewayId } from '#shared/types/gateways.d'
 import GatewayRail
   from '../../../../../app/components/ChatInput/ModelsTrigger/GatewayRail.vue'
 
-const gateways: Array<{ id: GatewayId, label: string }> = [
+interface GatewayRailItem {
+  id: GatewayId
+  label: string
+  hasKey?: boolean
+}
+
+const gateways: GatewayRailItem[] = [
   { id: 'vercel', label: 'Vercel AI Gateway' },
   { id: 'openrouter', label: 'OpenRouter' },
 ]
 
 function mountRail(
   props: Partial<{
-    gateways: Array<{ id: GatewayId, label: string }>
+    gateways: GatewayRailItem[]
     activeGatewayId: GatewayId | null
     isPending: boolean
   }> = {},
@@ -119,5 +125,56 @@ describe('ChatInput/ModelsTrigger/GatewayRail', () => {
       wrapper.get('[data-testid="models-picker-gateway-openrouter"]')
         .find('svg').exists(),
     ).toBe(true)
+  })
+
+  describe('keyless gateways', () => {
+    it('marks only the gateway reported without a key', async () => {
+      const wrapper = await mountRail({
+        gateways: [
+          { id: 'vercel', label: 'Vercel AI Gateway', hasKey: false },
+          { id: 'openrouter', label: 'OpenRouter', hasKey: true },
+        ],
+      })
+
+      expect(
+        wrapper.find('[data-testid="models-picker-gateway-vercel-keyless"]')
+          .exists(),
+      ).toBe(true)
+      expect(
+        wrapper
+          .find('[data-testid="models-picker-gateway-openrouter-keyless"]')
+          .exists(),
+      ).toBe(false)
+      expect(
+        wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+          .attributes('aria-label'),
+      ).toBe('Browse Vercel AI Gateway models — API key required')
+    })
+
+    it('keeps the button usable so it can reach the key prompt', async () => {
+      const wrapper = await mountRail({
+        gateways: [
+          { id: 'vercel', label: 'Vercel AI Gateway', hasKey: false },
+        ],
+      })
+
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('toggleGateway')).toEqual([['vercel']])
+    })
+
+    it('marks nothing when presence is unreported, which is the fail-open default', async () => {
+      const wrapper = await mountRail()
+
+      expect(
+        wrapper.find('[data-testid="models-picker-gateway-vercel-keyless"]')
+          .exists(),
+      ).toBe(false)
+      expect(
+        wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+          .attributes('aria-label'),
+      ).toBe('Browse Vercel AI Gateway models')
+    })
   })
 })

@@ -93,6 +93,7 @@ export function getAffectedTests(changedFiles) {
   const modelsTriggerTests = [
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.keys.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
@@ -100,6 +101,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
+  ]
+  const userKeysTests = [
+    'tests/unit/composables/user-keys.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    ...modelsTriggerTests,
   ]
   const modelSelectionTests = [
     'tests/unit/composables/model.spec.ts',
@@ -392,7 +399,7 @@ export function getAffectedTests(changedFiles) {
         /^(app\/components\/ProviderIcon\.vue|shared\/utils\/provider-meta\.ts)$/,
       tests: [
         'tests/unit/components/ProviderIcon.spec.ts',
-        ...modelsTriggerTests,
+        ...userKeysTests,
       ],
     },
     {
@@ -428,9 +435,13 @@ export function getAffectedTests(changedFiles) {
       tests: [...profileSettingsTests, ...modelsTriggerTests],
     },
     {
+      pattern: /^app\/composables\/user-keys\.ts$/,
+      tests: userKeysTests,
+    },
+    {
       pattern:
         /^(server\/api\/v1\/profiles\/keys(\/.*)?\.ts|server\/utils\/keys-rate-limit\.ts|server\/db\/schemas\/keys\.ts|app\/pages\/profile\/keys\.vue|app\/components\/Profile\/Keys\/.*\.vue)$/,
-      tests: keysApiTests,
+      tests: [...keysApiTests, ...userKeysTests],
     },
     {
       pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,

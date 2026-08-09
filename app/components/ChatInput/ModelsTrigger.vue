@@ -45,6 +45,14 @@
           <div
             class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl"
           >
+            <ChatInputModelsTriggerKeyPrompt
+              v-if="!hasAnyKey && !isActiveGatewayKeyless"
+              compact
+              title="No API keys yet"
+              description="Besidka runs on your own keys. Add one to start."
+              action-label="Add a key"
+              @navigate="close"
+            />
             <div
               v-if="activeGateway"
               data-testid="models-picker-gateway-banner"
@@ -96,6 +104,7 @@
                 :active-provider-id="activeProviderId"
                 :is-favorites-only="isFavoritesOnly"
                 :has-favorites="hasFavorites"
+                :keyless-provider-ids="keylessProviderIds"
                 @toggle-provider="toggleProvider"
                 @toggle-favorites="toggleFavoritesOnly"
               />
@@ -104,8 +113,15 @@
                 class="flex-1 min-h-[14rem] overflow-y-auto p-1.5"
                 :class="{ 'pb-9': !activeGateway && filteredModels.length }"
               >
+                <ChatInputModelsTriggerKeyPrompt
+                  v-if="isActiveGatewayKeyless"
+                  :title="activeGatewayPrompt.title"
+                  :description="activeGatewayPrompt.description"
+                  :action-label="activeGatewayPrompt.actionLabel"
+                  @navigate="close"
+                />
                 <ChatInputModelsTriggerGatewayModelList
-                  v-if="activeGateway"
+                  v-else-if="activeGateway"
                   ref="gatewayList"
                   :key="activeGateway.id"
                   :gateway-id="activeGateway.id"
@@ -155,6 +171,10 @@
                           <ChatInputModelsTriggerModelItem
                             :model="entry.model"
                             :provider-id="entry.providerId"
+                            :provider-name="entry.providerName"
+                            :is-key-missing="
+                              isModelKeyMissing(entry.providerId)
+                            "
                             :is-selected="
                               selectedProviderModelId === entry.model.id
                             "
@@ -179,6 +199,9 @@
                             <ChatInputModelsTriggerModelDetail
                               :model="entry.model"
                               :provider-name="entry.providerName"
+                              :is-key-missing="
+                                isModelKeyMissing(entry.providerId)
+                              "
                               @close="closeDetail"
                             />
                           </li>
@@ -319,6 +342,7 @@ const {
   name: selectedModelName,
   iconProviderId: selectedIconProviderId,
 } = useSelectedModelInfo()
+const { hasKeyForProvider, hasAnyKey } = useUserKeys()
 
 const pickerMode = shallowRef<PickerMode>({ source: 'provider' })
 const gatewayHighlightedOptionId = shallowRef<string | null>(null)
@@ -340,13 +364,29 @@ const listboxId = useId()
 const legacyListId = useId()
 const legacyLabelId = useId()
 
+/**
+ * `hasKeyForProvider` maps the `GatewayId` through `providerMeta` to the
+ * `keys.provider` enum value it is stored under — `vercel` lives in the table
+ * as `vercel-gateway`, so the bare id must never reach a key lookup.
+ */
 const gatewayRailItems = computed(() => {
   return enabledGateways.map((gatewayId) => {
     return {
       id: gatewayId,
       label: providerMeta[gatewayId]?.label ?? gatewayId,
+      hasKey: hasKeyForProvider(gatewayId),
     }
   })
+})
+
+const keylessProviderIds = computed<string[]>(() => {
+  return providers
+    .filter((provider) => {
+      return !hasKeyForProvider(provider.id)
+    })
+    .map((provider) => {
+      return provider.id
+    })
 })
 
 /**
@@ -364,6 +404,20 @@ const activeGateway = computed(() => {
   return gatewayRailItems.value.find((item) => {
     return item.id === mode.gatewayId
   }) ?? null
+})
+
+const isActiveGatewayKeyless = computed<boolean>(() => {
+  return activeGateway.value?.hasKey === false
+})
+
+const activeGatewayPrompt = computed(() => {
+  const label = activeGateway.value?.label ?? 'This gateway'
+
+  return {
+    title: `${label} needs an API key`,
+    description: `Add your ${label} key to browse its models here.`,
+    actionLabel: `Add ${label} key`,
+  }
 })
 
 const activeGatewayFavorites = computed<string[]>(() => {
@@ -488,6 +542,29 @@ const filteredModels = computed<PickerModel[]>(() => {
 const legacyModels = computed<PickerModel[]>(() => {
   return matchingModels.value.filter(({ model }) => {
     return model.status === 'deprecated'
+  })
+})
+
+function isModelKeyMissing(providerId: string): boolean {
+  return keylessProviderIds.value.includes(providerId)
+}
+
+/**
+ * Keyboard navigation and Enter-to-choose run over this list, not over
+ * `filteredModels`: a keyless row is rendered but not selectable, so letting
+ * the highlight land on one would hand the user an Enter key that silently
+ * does nothing. Empty in gateway mode, which keeps the curated catalog out of
+ * reach of the arrow keys while a gateway owns the panel — including when a
+ * keyless gateway replaces the model list entirely and there is no gateway
+ * list handle to delegate to.
+ */
+const selectableModels = computed<PickerModel[]>(() => {
+  if (activeGateway.value) {
+    return []
+  }
+
+  return filteredModels.value.filter(({ providerId }) => {
+    return !isModelKeyMissing(providerId)
   })
 })
 
@@ -627,7 +704,7 @@ function toggleGateway(gatewayId: GatewayId) {
  */
 function getInitialHighlight(): string | null {
   const selectedId = selectedProviderModelId.value
-  const isSelectable = filteredModels.value.some(({ model }) => {
+  const isSelectable = selectableModels.value.some(({ model }) => {
     return model.id === selectedId
   })
 
@@ -635,7 +712,7 @@ function getInitialHighlight(): string | null {
     return selectedId
   }
 
-  return filteredModels.value[0]?.model.id ?? null
+  return selectableModels.value[0]?.model.id ?? null
 }
 
 function toggleProvider(providerId: string) {
@@ -666,6 +743,14 @@ function toggleDetail(modelId: string) {
 }
 
 function selectModel(modelId: string) {
+  const entry = allModels.value.find(({ model }) => {
+    return model.id === modelId
+  })
+
+  if (entry && isModelKeyMissing(entry.providerId)) {
+    return
+  }
+
   selection.value = { source: 'provider', modelId }
   closeAndRestoreFocus()
 }
@@ -673,7 +758,7 @@ function selectModel(modelId: string) {
 function selectGatewayModel(modelId: string) {
   const gateway = activeGateway.value
 
-  if (!gateway) {
+  if (!gateway || gateway.hasKey === false) {
     return
   }
 
@@ -724,17 +809,17 @@ function setHighlight(modelId: string | null) {
 }
 
 function highlightFirst() {
-  setHighlight(filteredModels.value[0]?.model.id ?? null)
+  setHighlight(selectableModels.value[0]?.model.id ?? null)
 }
 
 function highlightLast() {
-  const models = filteredModels.value
+  const models = selectableModels.value
 
   setHighlight(models[models.length - 1]?.model.id ?? null)
 }
 
 function moveHighlight(step: number) {
-  const models = filteredModels.value
+  const models = selectableModels.value
 
   if (!models.length) {
     return
@@ -857,7 +942,7 @@ watch([searchTerm, activeCategory, activeProviderId, isFavoritesOnly], () => {
     return
   }
 
-  highlightedModelId.value = filteredModels.value[0]?.model.id ?? null
+  highlightedModelId.value = selectableModels.value[0]?.model.id ?? null
 })
 
 onClickOutside(root, () => {

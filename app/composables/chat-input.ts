@@ -1,5 +1,8 @@
+import { providerMeta } from '#shared/utils/provider-meta'
+
 export function useChatInput() {
-  const { userModel } = useUserModel()
+  const { selection, userModel } = useUserModel()
+  const { hasKeyForProvider } = useUserKeys()
 
   const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
@@ -54,6 +57,41 @@ export function useChatInput() {
     return getReasoningDropdownLevels(reasoningCapability.value)
   })
 
+  /**
+   * The `providerMeta` id whose key unlocks the current selection — a gateway
+   * id in gateway mode, the owning provider id otherwise. `useUserKeys` maps
+   * it to the `keys.provider` enum value, so no caller builds that string.
+   */
+  const selectedModelKeyOwnerId = computed<string | null>(() => {
+    const current = selection.value
+
+    if (current.source === 'gateway') {
+      return current.gatewayId
+    }
+
+    return getModel(current.modelId).provider?.id ?? null
+  })
+
+  const selectedModelKeyOwnerLabel = computed<string>(() => {
+    const ownerId = selectedModelKeyOwnerId.value
+
+    if (!ownerId) {
+      return 'this provider'
+    }
+
+    return providerMeta[ownerId]?.label ?? ownerId
+  })
+
+  const isSelectedModelKeyless = computed<boolean>(() => {
+    const ownerId = selectedModelKeyOwnerId.value
+
+    if (!ownerId) {
+      return false
+    }
+
+    return !hasKeyForProvider(ownerId)
+  })
+
   return {
     isWebSearchSupported,
     isImageGenerationSupported,
@@ -64,5 +102,7 @@ export function useChatInput() {
     isReasoningSupported,
     researchConfig,
     isDeepResearchModel,
+    isSelectedModelKeyless,
+    selectedModelKeyOwnerLabel,
   }
 }

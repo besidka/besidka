@@ -15,6 +15,7 @@ function mountRail(
     activeProviderId: string | null
     isFavoritesOnly: boolean
     hasFavorites: boolean
+    keylessProviderIds: string[]
   }> = {},
 ) {
   return mountSuspended(ProviderRail, {
@@ -141,5 +142,52 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
     expect(mistral.text()).toBe('Mi')
     expect(mistral.get('span').classes()).toContain('uppercase')
     expect(mistral.find('svg').exists()).toBe(false)
+  })
+
+  describe('keyless providers', () => {
+    it('marks only the providers it is told have no key', async () => {
+      const wrapper = await mountRail({ keylessProviderIds: ['openai'] })
+
+      expect(
+        wrapper.find('[data-testid="models-picker-rail-openai-keyless"]')
+          .exists(),
+      ).toBe(true)
+      expect(
+        wrapper.find('[data-testid="models-picker-rail-google-keyless"]')
+          .exists(),
+      ).toBe(false)
+    })
+
+    it('says why in the tooltip and the accessible name', async () => {
+      const wrapper = await mountRail({ keylessProviderIds: ['openai'] })
+      const openai = wrapper.get('[data-testid="models-picker-rail-openai"]')
+
+      expect(openai.attributes('data-tip'))
+        .toBe('OpenAI — API key required')
+      expect(openai.attributes('aria-label'))
+        .toBe('Show OpenAI models only — API key required')
+    })
+
+    it('keeps the button usable so filtering still explains the state', async () => {
+      const wrapper = await mountRail({ keylessProviderIds: ['openai'] })
+
+      await wrapper.get('[data-testid="models-picker-rail-openai"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('toggleProvider')).toEqual([['openai']])
+    })
+
+    it('marks nothing when the prop is omitted, which is the fail-open default', async () => {
+      const wrapper = await mountRail()
+
+      expect(
+        wrapper.find('[data-testid="models-picker-rail-openai-keyless"]')
+          .exists(),
+      ).toBe(false)
+      expect(
+        wrapper.get('[data-testid="models-picker-rail-openai"]')
+          .attributes('data-tip'),
+      ).toBe('OpenAI')
+    })
   })
 })
