@@ -94,6 +94,7 @@ const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
+const { refresh: refreshUserKeys } = useUserKeys()
 
 const apiKey = shallowRef<string>(fetchedApiKey.value || '')
 
@@ -116,6 +117,7 @@ async function updateKeys() {
       },
     })
     await refresh()
+    await refreshUserKeys()
     form.value?.resetValidation()
     useSuccessMessage('OpenAI API key updated successfully')
   } catch (exception) {
@@ -140,6 +142,7 @@ async function deleteKeys() {
       method: 'delete',
     })
     await refresh()
+    await refreshUserKeys()
     useSuccessMessage('OpenAI keys deleted successfully')
     apiKey.value = ''
     await nextTick()

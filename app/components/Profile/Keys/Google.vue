@@ -94,6 +94,7 @@ const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
+const { refresh: refreshUserKeys } = useUserKeys()
 
 const apiKey = shallowRef<string>(fetchedApiKey.value || '')
 
@@ -116,6 +117,7 @@ async function updateKey() {
       },
     })
     await refresh()
+    await refreshUserKeys()
     useSuccessMessage('Google AI Studio key updated successfully')
   } catch (exception) {
     useErrorMessage('Failed to update Google AI Studio key')
@@ -137,6 +139,7 @@ async function deleteKey() {
       method: 'delete',
     })
     await refresh()
+    await refreshUserKeys()
     useSuccessMessage('Google AI Studio key deleted successfully')
     apiKey.value = ''
     await nextTick()

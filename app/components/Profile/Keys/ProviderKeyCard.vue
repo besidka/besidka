@@ -123,6 +123,7 @@ const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
 
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
+const { refresh: refreshUserKeys } = useUserKeys()
 
 const apiKey = shallowRef<string>(fetchedApiKey.value || '')
 
@@ -145,6 +146,7 @@ async function updateKey() {
       },
     })
     await refresh()
+    await refreshUserKeys()
     useSuccessMessage(`${meta.value.label} API key updated successfully`)
   } catch (exception) {
     const parsedException = parseError(exception)
@@ -167,6 +169,7 @@ async function deleteKey() {
       method: 'delete',
     })
     await refresh()
+    await refreshUserKeys()
     useSuccessMessage(`${meta.value.label} API key deleted successfully`)
     apiKey.value = ''
     await nextTick()
