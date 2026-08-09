@@ -811,7 +811,12 @@ this route writes expires after 600s, so the loop's total budget must stay
 under that — otherwise a client retry arriving after the guard expired would
 start a second concurrent generation for the same turn. A tool `execute()`
 that throws produces a `tool-error` output, which the model sees and answers
-from, so a failing tool terminates the loop rather than retrying it.
+from, so a failing tool terminates the loop rather than retrying it. If a tool
+instead *hangs* past `toolMs`, or the whole loop passes `totalMs`, the SDK
+aborts the stream: `persistAssistantMessageFromStream()` sees the `abort`
+chunk, returns `false` and writes no assistant row, and the KV guard is still
+released in the handler's `finally` — so a timed-out loop loses the reply
+rather than leaving a half-written one, and the user can resend immediately.
 
 **Persistence and rendering.** Intermediate tool-call/tool-result parts land
 in `messages.parts` unchanged: `normalizeAssistantMessagePartsForPersistence`
