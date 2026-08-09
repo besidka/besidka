@@ -1,3 +1,4 @@
+import type { GatewayId } from './gateways.d'
 import type { SupportedProviderId } from './providers.d'
 
 export type ChatErrorCode
@@ -28,6 +29,6 @@ export interface ChatErrorPayload {
   fix?: string
   status?: number
   requestId?: string
-  providerId?: SupportedProviderId
+  providerId?: SupportedProviderId | GatewayId
   providerRequestId?: string
 }

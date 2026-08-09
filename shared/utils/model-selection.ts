@@ -73,3 +73,15 @@ export function serializeModelSelection(selection: ModelSelection): string {
 
   return JSON.stringify(selection)
 }
+
+/**
+ * The single place request-body builders read "which gateway is this send
+ * for, if any" — keeps every call site (chat send payload, title-generation
+ * payload) in sync with the `ModelSelection` shape instead of re-deriving
+ * the same `source === 'gateway'` check independently.
+ */
+export function getSelectionGatewayId(
+  selection: ModelSelection,
+): GatewayId | undefined {
+  return selection.source === 'gateway' ? selection.gatewayId : undefined
+}
