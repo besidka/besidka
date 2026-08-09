@@ -37,7 +37,13 @@ function parseCloudflareCredentials(
   return {
     accountId: record.accountId,
     apiKey: record.apiKey,
-    gatewayId: typeof record.gatewayId === 'string'
+    /**
+     * An empty string is normalized to `undefined` here, not just at the
+     * UI layer — a direct API caller could otherwise store `gatewayId: ''`
+     * and defeat the builder's `?? CLOUDFLARE_DEFAULT_GATEWAY_ID` fallback,
+     * sending a blank `cf-aig-gateway-id` header instead of `default`.
+     */
+    gatewayId: typeof record.gatewayId === 'string' && record.gatewayId
       ? record.gatewayId
       : undefined,
   }

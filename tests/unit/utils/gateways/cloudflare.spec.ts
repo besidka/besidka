@@ -72,6 +72,23 @@ describe('getCloudflareGatewayCredentials', () => {
     })
   })
 
+  it('normalizes a stored empty-string gatewayId to undefined', async () => {
+    stubKeyLookup('encrypted-blob')
+    stubDecrypt(JSON.stringify({
+      accountId: 'account-123',
+      gatewayId: '',
+      apiKey: 'cf-token',
+    }))
+
+    const { getCloudflareGatewayCredentials } = await importCloudflareGateway()
+
+    expect(await getCloudflareGatewayCredentials('1')).toEqual({
+      accountId: 'account-123',
+      gatewayId: undefined,
+      apiKey: 'cf-token',
+    })
+  })
+
   it('looks the key up under the cloudflare-gateway provider id', async () => {
     const findFirst = vi.fn(async () => ({ apiKey: 'encrypted-blob' }))
 
@@ -194,6 +211,26 @@ describe('useCloudflareGateway', () => {
 
     expect(instance.config.headers()).toEqual(
       expect.objectContaining({ 'cf-aig-gateway-id': 'my-gateway' }),
+    )
+  })
+
+  it('falls back to "default" when the stored gatewayId is an empty string', async () => {
+    stubKeyLookup('encrypted-blob')
+    stubDecrypt(JSON.stringify({
+      accountId: 'account-123',
+      gatewayId: '',
+      apiKey: 'cf-token',
+    }))
+
+    const { useCloudflareGateway } = await importCloudflareGateway()
+    const result = await useCloudflareGateway('1', 'llama-3.3-70b')
+
+    const instance = result.instance as unknown as {
+      config: { headers: () => Record<string, string> }
+    }
+
+    expect(instance.config.headers()).toEqual(
+      expect.objectContaining({ 'cf-aig-gateway-id': 'default' }),
     )
   })
 
