@@ -65,6 +65,7 @@
 
 <script setup lang="ts">
 import type { GatewayModel } from '#shared/types/gateways.d'
+import { WEB_SEARCH_TOOLTIP } from '#shared/utils/gateway-capabilities'
 
 interface CapabilityBadge {
   label: string
@@ -94,8 +95,11 @@ const detailId = computed<string>(() => {
  * The row badges deliberately drop the near-universal `supportsTools` wrench
  * (four in five OpenRouter models report it) and keep only the signals that
  * tell models apart. It survives here, where a full capability roster is the
- * point. `undefined` on either advisory flag means "this gateway does not
- * report it", so only an explicit `true` earns a badge.
+ * point. `undefined` on any advisory flag means "this gateway does not
+ * report it", so only an explicit `true` (or a resolved web-search value)
+ * earns a badge. The web-search label itself spells out native vs.
+ * gateway-billed — see `WEB_SEARCH_TOOLTIP` — doubling as the cost hint, per
+ * the product decision recorded in docs/gateways.md.
  */
 const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props
@@ -109,9 +113,9 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     })
   }
 
-  if (model.supportsWebSearch === true) {
+  if (model.supportsWebSearch) {
     badges.push({
-      label: 'Web search',
+      label: WEB_SEARCH_TOOLTIP[model.supportsWebSearch],
       icon: 'lucide:globe',
       class: 'badge-info',
     })
@@ -125,12 +129,20 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     })
   }
 
-  if (model.modalities?.input.includes('image')) {
+  if (model.supportsImageGeneration) {
     badges.push({
-      label: 'Image input',
-      icon: 'lucide:image',
+      label: 'Image generation',
+      icon: 'lucide:image-plus',
       class: '[--badge-color:var(--color-violet-700)] '
         + 'dark:[--badge-color:var(--color-violet-200)]',
+    })
+  }
+
+  if (model.modalities?.input.includes('image')) {
+    badges.push({
+      label: 'Vision',
+      icon: 'lucide:eye',
+      class: 'badge-secondary',
     })
   }
 

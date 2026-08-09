@@ -313,7 +313,49 @@ describe('gateway chat completion routing', () => {
     )
   })
 
-  it('rejects a gateway request that also requests tools', async () => {
+  it('keeps a non-search openrouter send byte-identical to before: no '
+    + 'tools, no toolChoice on the streamText call', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.tools).toBeUndefined()
+    expect(mocks.streamTextOptions[0]?.toolChoice).toBeUndefined()
+  })
+
+  it('keeps a non-search vercel send byte-identical to before: no tools, '
+    + 'no toolChoice on the streamText call', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'openai/gpt-4o',
+        gateway: 'vercel',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.tools).toBeUndefined()
+    expect(mocks.streamTextOptions[0]?.toolChoice).toBeUndefined()
+  })
+
+  it('rejects image_generation through the vercel gateway', async () => {
     const useGatewayCalls = vi.fn()
 
     vi.stubGlobal('useGateway', useGatewayCalls)
@@ -327,6 +369,51 @@ describe('gateway chat completion routing', () => {
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: baseBody({
         gateway: 'vercel',
+        tools: ['image_generation'],
+      }),
+    } as any)).rejects.toMatchObject({ status: 400 })
+
+    expect(useGatewayCalls).not.toHaveBeenCalled()
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('rejects image_generation through the openrouter gateway', async () => {
+    const useGatewayCalls = vi.fn()
+
+    vi.stubGlobal('useGateway', useGatewayCalls)
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        gateway: 'openrouter',
+        tools: ['image_generation'],
+      }),
+    } as any)).rejects.toMatchObject({ status: 400 })
+
+    expect(useGatewayCalls).not.toHaveBeenCalled()
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
+  it('rejects web_search through the cloudflare gateway', async () => {
+    const useGatewayCalls = vi.fn()
+
+    vi.stubGlobal('useGateway', useGatewayCalls)
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
         tools: ['web_search'],
       }),
     } as any)).rejects.toMatchObject({ status: 400 })
@@ -335,7 +422,80 @@ describe('gateway chat completion routing', () => {
     expect(insertValues).not.toHaveBeenCalled()
   })
 
-  it('rejects a gateway request when the first turn already persisted tools', async () => {
+  it('allows web_search through the vercel gateway and threads it into '
+    + 'useGateway', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'openai/gpt-4o',
+        gateway: 'vercel',
+        tools: ['web_search'],
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'vercel',
+      '1',
+      'openai/gpt-4o',
+      ['web_search'],
+      expect.anything(),
+    )
+  })
+
+  it('allows web_search through the openrouter gateway and threads it '
+    + 'into useGateway', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+        tools: ['web_search'],
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'openrouter',
+      '1',
+      'anthropic/claude-opus-5',
+      ['web_search'],
+      expect.anything(),
+    )
+  })
+
+  it('rejects a gateway request when the first turn already persisted an '
+    + 'unsupported tool', async () => {
     const useGatewayCalls = vi.fn()
 
     vi.stubGlobal('useGateway', useGatewayCalls)
@@ -347,7 +507,7 @@ describe('gateway chat completion routing', () => {
       id: 'chat-1',
       projectId: null,
       project: null,
-      messages: [{ tools: ['web_search'] }],
+      messages: [{ tools: ['image_generation'] }],
     }))
 
     vi.stubGlobal('useDb', () => db)

@@ -208,6 +208,78 @@ describe('useChatInput image model capability', () => {
   })
 })
 
+describe('useChatInput gateway web search capability', () => {
+  it('supports web search for a gateway model with a resolved capability',
+    async () => {
+      const wrapper = await mountSuspended(createHost())
+
+      const { selection } = useUserModel()
+      const gatewayCatalogCache = useGatewayCatalogCache()
+
+      gatewayCatalogCache.value = {
+        openrouter: [{
+          id: 'openai/gpt-5.4',
+          name: 'GPT-5.4',
+          supportsWebSearch: 'universal',
+        }],
+      }
+      selection.value = {
+        source: 'gateway',
+        gatewayId: 'openrouter',
+        modelId: 'openai/gpt-5.4',
+      }
+      await wrapper.vm.$nextTick()
+
+      expect(
+        wrapper.get('[data-testid="is-web-search-supported"]').text(),
+      ).toBe('true')
+    })
+
+  it('blocks web search for a gateway model with no resolved capability',
+    async () => {
+      const wrapper = await mountSuspended(createHost())
+
+      const { selection } = useUserModel()
+      const gatewayCatalogCache = useGatewayCatalogCache()
+
+      gatewayCatalogCache.value = {
+        cloudflare: [{
+          id: '@cf/meta/llama-4',
+          name: 'Llama 4',
+        }],
+      }
+      selection.value = {
+        source: 'gateway',
+        gatewayId: 'cloudflare',
+        modelId: '@cf/meta/llama-4',
+      }
+      await wrapper.vm.$nextTick()
+
+      expect(
+        wrapper.get('[data-testid="is-web-search-supported"]').text(),
+      ).toBe('false')
+    })
+
+  it('fails closed for a gateway model whose catalog is not cached yet',
+    async () => {
+      const wrapper = await mountSuspended(createHost())
+
+      const { selection } = useUserModel()
+
+      useGatewayCatalogCache().value = {}
+      selection.value = {
+        source: 'gateway',
+        gatewayId: 'openrouter',
+        modelId: 'anthropic/claude-opus-5',
+      }
+      await wrapper.vm.$nextTick()
+
+      expect(
+        wrapper.get('[data-testid="is-web-search-supported"]').text(),
+      ).toBe('false')
+    })
+})
+
 describe('useChatInput image input capability', () => {
   it('supports image input for a vision-capable provider model', async () => {
     const wrapper = await mountSuspended(createHost())

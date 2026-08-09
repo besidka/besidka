@@ -19,6 +19,13 @@ async function importUseOpenRouterGateway() {
   return useOpenRouterGateway
 }
 
+function readInstanceSettings(instance: unknown) {
+  return (instance as unknown as {
+    modelId: string
+    settings: { usage?: { include: boolean }, plugins?: unknown[] }
+  })
+}
+
 describe('useOpenRouterGateway', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -40,7 +47,7 @@ describe('useOpenRouterGateway', () => {
 
     const useOpenRouterGateway = await importUseOpenRouterGateway()
 
-    await expect(useOpenRouterGateway('1', 'anthropic/claude-opus-5'))
+    await expect(useOpenRouterGateway('1', 'anthropic/claude-opus-5', []))
       .rejects.toMatchObject({
         statusCode: 401,
         statusMessage: 'OpenRouter API key not found. Please set it up in the settings.',
@@ -51,26 +58,32 @@ describe('useOpenRouterGateway', () => {
     stubKeyLookup()
 
     const useOpenRouterGateway = await importUseOpenRouterGateway()
-    const result = await useOpenRouterGateway('1', 'anthropic/claude-opus-5')
+    const result = await useOpenRouterGateway(
+      '1',
+      'anthropic/claude-opus-5',
+      [],
+    )
 
     expect(result.tools).toEqual({})
     expect(result.providerOptions).toEqual({})
     expect(typeof result.generateChatTitle).toBe('function')
 
-    const instance = result.instance as unknown as {
-      modelId: string
-      settings: { usage?: { include: boolean } }
-    }
+    const instance = readInstanceSettings(result.instance)
 
     expect(instance.modelId).toBe('anthropic/claude-opus-5')
     expect(instance.settings.usage).toEqual({ include: true })
+    expect(instance.settings.plugins).toBeUndefined()
   })
 
   it('never sets maxOutputTokens, so gateway sends stay uncapped', async () => {
     stubKeyLookup()
 
     const useOpenRouterGateway = await importUseOpenRouterGateway()
-    const result = await useOpenRouterGateway('1', 'anthropic/claude-opus-5')
+    const result = await useOpenRouterGateway(
+      '1',
+      'anthropic/claude-opus-5',
+      [],
+    )
 
     expect(result.maxOutputTokens).toBeUndefined()
   })
@@ -83,7 +96,11 @@ describe('useOpenRouterGateway', () => {
     vi.stubGlobal('useChatTitle', useChatTitleMock)
 
     const useOpenRouterGateway = await importUseOpenRouterGateway()
-    const result = await useOpenRouterGateway('1', 'anthropic/claude-opus-5')
+    const result = await useOpenRouterGateway(
+      '1',
+      'anthropic/claude-opus-5',
+      [],
+    )
 
     const title = await result.generateChatTitle('Plan a trip to Kyoto')
 
@@ -92,5 +109,50 @@ describe('useOpenRouterGateway', () => {
       expect.objectContaining({ modelId: 'anthropic/claude-opus-5' }),
       'Plan a trip to Kyoto',
     )
+  })
+
+  describe('web search requested', () => {
+    it('sends the universal web plugin on the chat instance, keeping '
+      + 'tools empty', async () => {
+      stubKeyLookup()
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5.4',
+        ['web_search'],
+      )
+
+      const instance = readInstanceSettings(result.instance)
+
+      expect(instance.settings.plugins).toEqual([{ id: 'web' }])
+      expect(instance.settings.usage).toEqual({ include: true })
+      expect(result.tools).toEqual({})
+      expect(result.providerOptions).toEqual({})
+    })
+
+    it('never carries the plugin into the title-generation instance, so '
+      + 'titles never trigger a second billable search', async () => {
+      stubKeyLookup()
+
+      const useChatTitleMock = vi.fn(async () => 'A title')
+
+      vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5.4',
+        ['web_search'],
+      )
+
+      await result.generateChatTitle('Plan a trip to Kyoto')
+
+      const titleInstance = readInstanceSettings(
+        useChatTitleMock.mock.calls[0]?.[0],
+      )
+
+      expect(titleInstance.settings.plugins).toBeUndefined()
+    })
   })
 })

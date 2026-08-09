@@ -91,7 +91,7 @@ describe('useGateway dispatch', () => {
     }))
 
     const { useGateway } = await importGatewaysIndex()
-    const result = await useGateway('vercel', '1', 'openai/gpt-4o')
+    const result = await useGateway('vercel', '1', 'openai/gpt-4o', [])
 
     expect(result).toBe(vercelResult)
   })
@@ -118,6 +118,7 @@ describe('useGateway dispatch', () => {
       'openrouter',
       '1',
       'anthropic/claude-opus-5',
+      [],
     )
 
     expect(result).toBe(openRouterResult)
@@ -141,8 +142,41 @@ describe('useGateway dispatch', () => {
     }))
 
     const { useGateway } = await importGatewaysIndex()
-    const result = await useGateway('cloudflare', '1', 'llama-3.3-70b')
+    const result = await useGateway('cloudflare', '1', 'llama-3.3-70b', [])
 
     expect(result).toBe(cloudflareResult)
+  })
+
+  it('ignores requestedTools for the cloudflare gateway, which has no '
+    + 'tool it could wire', async () => {
+    const cloudflareGatewayMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    }))
+
+    vi.doMock('../../../../server/utils/gateways/vercel', () => ({
+      useVercelGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
+    vi.doMock('../../../../server/utils/gateways/openrouter', () => ({
+      useOpenRouterGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
+    vi.doMock('../../../../server/utils/gateways/cloudflare', () => ({
+      useCloudflareGateway: cloudflareGatewayMock,
+    }))
+
+    const { useGateway } = await importGatewaysIndex()
+
+    await useGateway('cloudflare', '1', 'llama-3.3-70b', ['web_search'])
+
+    expect(cloudflareGatewayMock).toHaveBeenCalledWith(
+      '1',
+      'llama-3.3-70b',
+      undefined,
+    )
   })
 })

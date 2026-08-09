@@ -1,5 +1,9 @@
 import { createError } from 'evlog'
 import type { GatewayModel } from '#shared/types/gateways.d'
+import {
+  deriveGatewayImageGenerationSupport,
+  resolveGatewayWebSearchSupport,
+} from '#shared/utils/gateway-capabilities'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 const VERCEL_GATEWAY_MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models'
@@ -102,14 +106,21 @@ export async function fetchVercelGatewayCatalog(): Promise<GatewayModel[]> {
 
 /**
  * `tags` is Vercel's own coarse capability roster (also carries `'free'`,
- * `'vision'`, `'tool-use'`, …) and the only field that surfaces web-search
- * support at all — `supported_parameters` never includes a web-search entry,
- * unlike OpenRouter's `web_search_options`. Used for both reasoning and
- * web-search here so both signals come from one source.
+ * `'vision'`, `'tool-use'`, …) and the only field that surfaces *native*
+ * web-search support — `supported_parameters` never includes a web-search
+ * entry, unlike OpenRouter's `web_search_options`. Absent a native tag,
+ * every Vercel model (short of a confirmed image-generation one) resolves to
+ * `'universal'`: Vercel's gateway-executed search tools
+ * (`perplexitySearch()` and friends) work regardless of the underlying
+ * model — see `resolveGatewayWebSearchSupport`.
  */
 function normalizeVercelGatewayModel(
   model: VercelGatewayRawModel,
 ): GatewayModel {
+  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
+    model.modalities?.output,
+  )
+
   return {
     id: model.id,
     name: model.name,
@@ -122,7 +133,12 @@ function normalizeVercelGatewayModel(
     modalities: model.modalities,
     supportsTools: model.supported_parameters?.includes('tools'),
     supportsReasoning: model.tags?.includes('reasoning'),
-    supportsWebSearch: model.tags?.includes('web-search'),
+    supportsWebSearch: resolveGatewayWebSearchSupport({
+      gatewayId: 'vercel',
+      hasNativeSignal: Boolean(model.tags?.includes('web-search')),
+      isImageGenerationModel: supportsImageGeneration,
+    }),
+    supportsImageGeneration,
   }
 }
 
@@ -143,7 +159,19 @@ export async function fetchOpenRouterCatalog(): Promise<GatewayModel[]> {
   return payload.data.map(normalizeOpenRouterModel)
 }
 
+/**
+ * `web_search_options` is documented as a native-search context-size
+ * parameter (`low`/`medium`/`high`), i.e. "this model's own provider offers
+ * server-side search" — a `'native'` signal, not "can this model search at
+ * all". OpenRouter's universal `web` plugin (`plugins: [{ id: 'web' }]`)
+ * works on any routed model regardless of that flag, so every model short
+ * of a confirmed image-generation one resolves to at least `'universal'`.
+ */
 function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
+  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
+    model.architecture?.output_modalities,
+  )
+
   return {
     id: model.id,
     name: model.name,
@@ -161,9 +189,14 @@ function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
       : undefined,
     supportsTools: model.supported_parameters?.includes('tools'),
     supportsReasoning: model.supported_parameters?.includes('reasoning'),
-    supportsWebSearch: model.supported_parameters?.includes(
-      'web_search_options',
-    ),
+    supportsWebSearch: resolveGatewayWebSearchSupport({
+      gatewayId: 'openrouter',
+      hasNativeSignal: Boolean(model.supported_parameters?.includes(
+        'web_search_options',
+      )),
+      isImageGenerationModel: supportsImageGeneration,
+    }),
+    supportsImageGeneration,
   }
 }
 
@@ -244,14 +277,18 @@ interface CloudflareGatewayModelsResponse {
  * unexpected shape degrades to a `{id, name}`-only `GatewayModel` rather
  * than throwing.
  *
- * `supportsReasoning`/`supportsWebSearch` are deliberately never set from
- * this shape: unlike `supportsTools`, whose `tools` key this schema
- * documents landing in a text output modality's `supported_parameters` map,
- * nothing in the published schema names a reasoning or web-search parameter
- * key. `supportsReasoning` is backfilled from the default-format `reasoning`
- * property by `fetchCloudflareGatewayCatalog` instead; web search stays
- * `undefined` on both shapes, keeping the "unknown, not unsupported"
- * contract rather than guessing a key name with no evidence behind it.
+ * `supportsReasoning` is deliberately never set from this shape: unlike
+ * `supportsTools`, whose `tools` key this schema documents landing in a text
+ * output modality's `supported_parameters` map, nothing in the published
+ * schema names a reasoning parameter key — it is backfilled from the
+ * default-format `reasoning` property by `fetchCloudflareGatewayCatalog`
+ * instead. `supportsWebSearch` always resolves to `undefined` here too: no
+ * `@cf/` model has any web-search mechanism, native or universal (Cloudflare
+ * AI Gateway itself states it provides no provider-agnostic web-search
+ * abstraction) — `resolveGatewayWebSearchSupport` is still called, for the
+ * same "one shared policy everywhere" reason the other two gateways use it,
+ * but Cloudflare's tool policy admits no gateway-side `web_search`, so it can
+ * only ever fall through to `undefined`.
  */
 async function fetchCloudflareMarketplaceCatalog(
   credentials: CloudflareGatewayCatalogCredentials,
@@ -358,6 +395,12 @@ function normalizeCloudflareGatewayModel(
     textOutputModality?.pricing,
     'completion',
   )
+  const outputModalityTypes = model.output_modalities
+    ?.map(modality => modality.type)
+    .filter((type): type is string => Boolean(type))
+  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
+    outputModalityTypes,
+  )
 
   return {
     id: model.id,
@@ -374,9 +417,7 @@ function normalizeCloudflareGatewayModel(
         input: (model.input_modalities || [])
           .map(modality => modality.type)
           .filter((type): type is string => Boolean(type)),
-        output: (model.output_modalities || [])
-          .map(modality => modality.type)
-          .filter((type): type is string => Boolean(type)),
+        output: outputModalityTypes || [],
       }
       : undefined,
     supportsTools: model.output_modalities
@@ -384,6 +425,12 @@ function normalizeCloudflareGatewayModel(
         return Boolean(modality.supported_parameters?.tools)
       })
       : undefined,
+    supportsWebSearch: resolveGatewayWebSearchSupport({
+      gatewayId: 'cloudflare',
+      hasNativeSignal: false,
+      isImageGenerationModel: supportsImageGeneration,
+    }),
+    supportsImageGeneration,
   }
 }
 

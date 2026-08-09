@@ -142,6 +142,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       'Reasoning',
       'Web search',
       'Image generation',
+      'Vision',
       'Deep research',
     ])
   })
@@ -157,11 +158,28 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
         return badge.text()
       })
 
-    expect(badges).toEqual(['Always-on reasoning'])
+    expect(badges).toEqual(['Always-on reasoning', 'Vision'])
+  })
+
+  it('lists vision as a separate badge from image generation', async () => {
+    const model = createModel({
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
+
+    expect(badges).toEqual(['Vision'])
   })
 
   it('renders no capability badges for a plain model', async () => {
-    const wrapper = await mountDetail()
+    const wrapper = await mountDetail(createModel({
+      modalities: { input: ['text'], output: ['text'] },
+    }))
 
     expect(wrapper.find('[data-testid="model-detail-capabilities"]').exists())
       .toBe(false)

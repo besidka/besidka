@@ -157,13 +157,15 @@ describe('fetchVercelGatewayCatalog', () => {
         modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
         supportsTools: true,
         supportsReasoning: true,
-        supportsWebSearch: true,
+        supportsWebSearch: 'native',
+        supportsImageGeneration: false,
       },
     ])
   })
 
-  it('reports supportsReasoning and supportsWebSearch as false when tags '
-    + 'exist but omit them', async () => {
+  it('reports supportsReasoning as false and supportsWebSearch as '
+    + '\'universal\' when tags exist but omit the native web-search tag',
+  async () => {
     mockFetchOnce({
       data: [
         {
@@ -180,7 +182,28 @@ describe('fetchVercelGatewayCatalog', () => {
     const models = await fetchVercelGatewayCatalog()
 
     expect(models[0]?.supportsReasoning).toBe(false)
-    expect(models[0]?.supportsWebSearch).toBe(false)
+    expect(models[0]?.supportsWebSearch).toBe('universal')
+  })
+
+  it('excludes the universal web-search resolution for a confirmed '
+    + 'image-generation model', async () => {
+    mockFetchOnce({
+      data: [
+        {
+          id: 'openai/gpt-5-image',
+          name: 'GPT-5 Image',
+          type: 'language',
+          context_window: 128000,
+          modalities: { input: ['text'], output: ['image', 'text'] },
+        },
+      ],
+    })
+
+    const { fetchVercelGatewayCatalog } = await getFetchers()
+    const models = await fetchVercelGatewayCatalog()
+
+    expect(models[0]?.supportsImageGeneration).toBe(true)
+    expect(models[0]?.supportsWebSearch).toBeUndefined()
   })
 
   it('excludes non-language models from the catalog', async () => {
@@ -233,7 +256,8 @@ describe('fetchVercelGatewayCatalog', () => {
         modalities: undefined,
         supportsTools: undefined,
         supportsReasoning: undefined,
-        supportsWebSearch: undefined,
+        supportsWebSearch: 'universal',
+        supportsImageGeneration: undefined,
       },
     ])
   })
@@ -307,9 +331,33 @@ describe('fetchOpenRouterCatalog', () => {
         },
         supportsTools: true,
         supportsReasoning: true,
-        supportsWebSearch: true,
+        supportsWebSearch: 'native',
+        supportsImageGeneration: false,
       },
     ])
+  })
+
+  it('excludes the universal web-search resolution for a confirmed '
+    + 'image-generation model', async () => {
+    mockFetchOnce({
+      data: [
+        {
+          id: 'openai/gpt-5-image',
+          name: 'GPT-5 Image',
+          context_length: 128000,
+          architecture: {
+            input_modalities: ['text'],
+            output_modalities: ['image', 'text'],
+          },
+        },
+      ],
+    })
+
+    const { fetchOpenRouterCatalog } = await getFetchers()
+    const models = await fetchOpenRouterCatalog()
+
+    expect(models[0]?.supportsImageGeneration).toBe(true)
+    expect(models[0]?.supportsWebSearch).toBeUndefined()
   })
 
   it('preserves free-tier ids and zero pricing', async () => {
@@ -371,7 +419,7 @@ describe('fetchOpenRouterCatalog', () => {
       expect(models[0]?.maxOutputTokens).toBeUndefined()
       expect(models[0]?.supportsTools).toBe(false)
       expect(models[0]?.supportsReasoning).toBe(false)
-      expect(models[0]?.supportsWebSearch).toBe(false)
+      expect(models[0]?.supportsWebSearch).toBe('universal')
     })
 
   it('handles a model missing pricing, architecture, and top_provider',
@@ -400,7 +448,8 @@ describe('fetchOpenRouterCatalog', () => {
           modalities: undefined,
           supportsTools: undefined,
           supportsReasoning: undefined,
-          supportsWebSearch: undefined,
+          supportsWebSearch: 'universal',
+          supportsImageGeneration: undefined,
         },
       ])
     })
@@ -478,6 +527,7 @@ describe('fetchCloudflareGatewayCatalog', () => {
           supportsTools: true,
           supportsReasoning: undefined,
           supportsWebSearch: undefined,
+          supportsImageGeneration: false,
         },
       ])
     })
@@ -511,7 +561,31 @@ describe('fetchCloudflareGatewayCatalog', () => {
       expect(models[0]?.supportsTools).toBe(false)
       expect(models[0]?.supportsReasoning).toBeUndefined()
       expect(models[0]?.supportsWebSearch).toBeUndefined()
+      expect(models[0]?.supportsImageGeneration).toBe(false)
     })
+
+  it('reports supportsImageGeneration as true for an image-output model, '
+    + 'and never resolves web search regardless', async () => {
+    mockFetchOnce({
+      data: [
+        {
+          id: '@cf/black-forest-labs/flux-1-schnell',
+          name: 'FLUX.1 [schnell]',
+          input_modalities: [{ type: 'text' }],
+          output_modalities: [{ type: 'image' }],
+        },
+      ],
+    })
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+    const models = await fetchCloudflareGatewayCatalog({
+      accountId: 'account-1',
+      apiKey: 'cf-token',
+    })
+
+    expect(models[0]?.supportsImageGeneration).toBe(true)
+    expect(models[0]?.supportsWebSearch).toBeUndefined()
+  })
 
   it('handles a model missing pricing, modalities, and description',
     async () => {
@@ -542,6 +616,7 @@ describe('fetchCloudflareGatewayCatalog', () => {
           supportsTools: undefined,
           supportsReasoning: undefined,
           supportsWebSearch: undefined,
+          supportsImageGeneration: undefined,
         },
       ])
     })

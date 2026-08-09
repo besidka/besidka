@@ -114,6 +114,15 @@
             <Icon name="lucide:image-plus" />
           </span>
           <span
+            v-if="hasVisionCapability(model)"
+            data-testid="model-vision-capability"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-secondary"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Vision"
+          >
+            <Icon name="lucide:eye" />
+          </span>
+          <span
             v-if="model.research"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-success"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
@@ -220,6 +229,7 @@ const hasCapabilities = computed<boolean>(() => {
     || !!model.reasoningAlwaysOn
     || model.tools.includes('web_search')
     || hasImageGenerationCapability(model)
+    || hasVisionCapability(model)
     || !!model.research
 })
 

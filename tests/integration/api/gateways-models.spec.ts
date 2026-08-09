@@ -232,6 +232,8 @@ describe('gateway models API', () => {
           pricing: { input: '0.0000002', output: '0.0000009' },
           modalities: { input: ['text'], output: ['text'] },
           supportsTools: true,
+          supportsWebSearch: undefined,
+          supportsImageGeneration: false,
         }],
       })
       expect(fetchMock).toHaveBeenCalledWith(
@@ -344,6 +346,8 @@ describe('gateway models API', () => {
           pricing: { input: '0.0000025', output: '0.00001' },
           modalities: { input: ['text'], output: ['text'] },
           supportsTools: true,
+          supportsWebSearch: 'universal',
+          supportsImageGeneration: false,
         },
       ],
     })

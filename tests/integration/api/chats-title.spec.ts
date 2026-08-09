@@ -414,6 +414,7 @@ describe('chat title API gateway routing', () => {
       'openrouter',
       '1',
       'anthropic/claude-opus-5',
+      [],
     )
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
       'Create a roadmap for Q2',
@@ -446,6 +447,7 @@ describe('chat title API gateway routing', () => {
       'cloudflare',
       '1',
       '@cf/meta/llama-3.3-70b-instruct',
+      [],
     )
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
       'Create a roadmap for Q2',

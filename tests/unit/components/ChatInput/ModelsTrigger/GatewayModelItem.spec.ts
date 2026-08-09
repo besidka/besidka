@@ -129,7 +129,7 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
   it('never renders a chip for a capability reported as absent', async () => {
     const wrapper = await mountGatewayModelItem(createModel({
       supportsReasoning: false,
-      supportsWebSearch: false,
+      supportsWebSearch: undefined,
     }))
 
     expect(wrapper.find('[data-testid="gateway-model-capabilities"]').exists())
@@ -139,7 +139,8 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
   it('renders distinctly colored chips for confirmed capabilities', async () => {
     const wrapper = await mountGatewayModelItem(createModel({
       supportsReasoning: true,
-      supportsWebSearch: true,
+      supportsWebSearch: 'native',
+      supportsImageGeneration: true,
       modalities: { input: ['text', 'image'], output: ['text'] },
     }))
     const reasoning = wrapper.get(
@@ -148,16 +149,33 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
     const webSearch = wrapper.get(
       '[data-testid="gateway-model-web-search-capability"]',
     )
-    const imageInput = wrapper.get(
-      '[data-testid="gateway-model-image-input-capability"]',
+    const imageGeneration = wrapper.get(
+      '[data-testid="gateway-model-image-generation-capability"]',
+    )
+    const vision = wrapper.get(
+      '[data-testid="gateway-model-vision-capability"]',
     )
 
     expect(reasoning.classes()).toContain('text-warning')
     expect(reasoning.attributes('data-tip')).toBe('Reasoning')
     expect(webSearch.classes()).toContain('text-info')
-    expect(webSearch.attributes('data-tip')).toBe('Web search')
-    expect(imageInput.classes()).toContain('text-violet-700')
-    expect(imageInput.attributes('data-tip')).toBe('Image input')
+    expect(webSearch.attributes('data-tip')).toBe('Web search (native)')
+    expect(imageGeneration.classes()).toContain('text-violet-700')
+    expect(imageGeneration.attributes('data-tip')).toBe('Image generation')
+    expect(vision.classes()).toContain('text-secondary')
+    expect(vision.attributes('data-tip')).toBe('Vision')
+  })
+
+  it('differentiates the universal web-search tooltip from native', async () => {
+    const wrapper = await mountGatewayModelItem(createModel({
+      supportsWebSearch: 'universal',
+    }))
+    const webSearch = wrapper.get(
+      '[data-testid="gateway-model-web-search-capability"]',
+    )
+
+    expect(webSearch.attributes('data-tip'))
+      .toBe('Web search (via gateway, billed per search)')
   })
 
   it('drops the near-universal tool-calling wrench from the row', async () => {

@@ -47,7 +47,7 @@ describe('useVercelGateway', () => {
 
     const { useVercelGateway } = await importVercelGatewayModule()
 
-    await expect(useVercelGateway('1', 'openai/gpt-4o'))
+    await expect(useVercelGateway('1', 'openai/gpt-4o', []))
       .rejects.toMatchObject({
         statusCode: 401,
         statusMessage: 'Vercel AI Gateway API key not found. Please set it up in the settings.',
@@ -58,7 +58,7 @@ describe('useVercelGateway', () => {
     stubKeyLookup()
 
     const { useVercelGateway } = await importVercelGatewayModule()
-    const result = await useVercelGateway('1', 'openai/gpt-4o')
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [])
 
     expect(result.tools).toEqual({})
     expect(result.providerOptions).toEqual({})
@@ -82,7 +82,7 @@ describe('useVercelGateway', () => {
     ])
 
     const { useVercelGateway } = await importVercelGatewayModule()
-    const result = await useVercelGateway('1', 'openai/gpt-4o')
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [])
 
     expect(result.maxOutputTokens).toBe(4096)
   })
@@ -93,7 +93,7 @@ describe('useVercelGateway', () => {
     stubVercelCatalog([])
 
     const { useVercelGateway } = await importVercelGatewayModule()
-    const result = await useVercelGateway('1', 'openai/gpt-4o')
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [])
 
     expect(result.maxOutputTokens).toBeUndefined()
   })
@@ -115,7 +115,7 @@ describe('useVercelGateway', () => {
       vi.stubGlobal('useChatTitle', useChatTitleMock)
 
       const { useVercelGateway } = await importVercelGatewayModule()
-      const result = await useVercelGateway('1', 'openai/gpt-4o')
+      const result = await useVercelGateway('1', 'openai/gpt-4o', [])
 
       await result.generateChatTitle('Plan a trip to Kyoto')
 
@@ -125,6 +125,40 @@ describe('useVercelGateway', () => {
         4096,
       )
     })
+
+  describe('web search requested', () => {
+    it('attaches the gateway-executed perplexity search tool, no '
+      + 'toolChoice', async () => {
+      stubKeyLookup()
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway(
+        '1',
+        'openai/gpt-4o',
+        ['web_search'],
+      )
+
+      expect(result.tools.toolChoice).toBeUndefined()
+      expect(result.tools.tools?.web_search).toMatchObject({
+        type: 'provider',
+        isProviderExecuted: true,
+        id: 'gateway.perplexity_search',
+      })
+    })
+
+    it('leaves tools empty when web search was not requested', async () => {
+      stubKeyLookup()
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway(
+        '1',
+        'openai/gpt-4o',
+        ['image_generation'],
+      )
+
+      expect(result.tools).toEqual({})
+    })
+  })
 })
 
 describe('persistVercelGenerationCost', () => {

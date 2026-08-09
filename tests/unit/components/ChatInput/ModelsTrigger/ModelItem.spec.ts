@@ -151,7 +151,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
   })
 
   it('renders no capability icons for a plain model', async () => {
-    const wrapper = await mountModelItem()
+    const wrapper = await mountModelItem(createModel({
+      modalities: { input: ['text'], output: ['text'] },
+    }))
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
       .toBe(false)
@@ -160,6 +162,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(false)
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(false)
+    expect(wrapper.find(
+      '[data-testid="model-vision-capability"]',
     ).exists()).toBe(false)
   })
 
@@ -223,6 +228,35 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(true)
+    expect(wrapper.find(
+      '[data-testid="model-vision-capability"]',
+    ).exists()).toBe(true)
+  })
+
+  it('shows the vision icon for a model with image input, fully '
+    + 'separate from image generation', async () => {
+    const model = createModel({
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+    const wrapper = await mountModelItem(model)
+    const vision = wrapper.get('[data-testid="model-vision-capability"]')
+
+    expect(vision.classes()).toContain('text-secondary')
+    expect(vision.attributes('data-tip')).toBe('Vision')
+    expect(wrapper.find(
+      '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(false)
+  })
+
+  it('hides the vision icon for a text-only model', async () => {
+    const model = createModel({
+      modalities: { input: ['text'], output: ['text'] },
+    })
+    const wrapper = await mountModelItem(model)
+
+    expect(wrapper.find(
+      '[data-testid="model-vision-capability"]',
+    ).exists()).toBe(false)
   })
 
   it('shows the brain icon with an always-on label for a model with '

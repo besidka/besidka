@@ -177,6 +177,14 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     })
   }
 
+  if (hasVisionCapability(model)) {
+    badges.push({
+      label: 'Vision',
+      icon: 'lucide:eye',
+      class: 'badge-secondary',
+    })
+  }
+
   if (model.research) {
     badges.push({
       label: 'Deep research',
