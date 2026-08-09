@@ -4,12 +4,17 @@ The model catalog is split in two halves that are merged at import time.
 
 | Half | Lives in | Owner |
 |---|---|---|
-| Capabilities and product decisions | `providers/google.ts`, `providers/openai.ts` | hand-curated |
+| Capabilities and product decisions | `providers/{anthropic,google,openai,xai,deepseek,moonshotai}.ts` | hand-curated |
 | Objective metadata | `providers/data/models-dev-snapshot.json` | generated from [models.dev](https://models.dev) |
 
 `providers/index.ts` joins them through `mergeModelMetadata()` in
 `providers/merge.ts` and exports the same fully shaped `Providers` array
 consumers have always read through `getProviders()`.
+
+This is the **curated, direct-provider** half of the catalog only. AI
+gateways (Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter) are a
+completely separate, dynamically-fetched-at-runtime path that never touches
+this merge pipeline or the models.dev snapshot — see `docs/gateways.md`.
 
 ## Refreshing the snapshot
 
