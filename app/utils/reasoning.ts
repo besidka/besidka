@@ -4,6 +4,31 @@ export interface ParsedReasoningSection {
 }
 
 const TITLE_LENGTH_LIMIT = 80
+const TITLE_DISPLAY_LIMIT = 30
+const TITLE_DISPLAY_WORD_BOUNDARY_MINIMUM = 20
+
+export function truncateReasoningTitle(rawTitle: string): string {
+  const title = rawTitle.trim()
+
+  if (title.length <= TITLE_DISPLAY_LIMIT) {
+    return title
+  }
+
+  const clipped = title.slice(0, TITLE_DISPLAY_LIMIT)
+  const lastSpaceIndex = clipped.lastIndexOf(' ')
+  const shouldCutAtWordBoundary
+    = lastSpaceIndex >= TITLE_DISPLAY_WORD_BOUNDARY_MINIMUM
+  const cut = shouldCutAtWordBoundary
+    ? clipped.slice(0, lastSpaceIndex)
+    : clipped
+  const trimmedCut = trimTrailingPunctuation(cut).replace(/…+$/, '').trim()
+
+  if (trimmedCut.length === 0) {
+    return title
+  }
+
+  return `${trimmedCut}…`
+}
 
 export function normalizeReasoningTitle(rawTitle: string): string {
   const title = rawTitle
