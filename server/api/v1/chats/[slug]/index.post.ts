@@ -21,7 +21,10 @@ import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
+import {
+  isGatewayReasoningSupported,
+  isGatewayToolAllowed,
+} from '#shared/utils/gateway-capabilities'
 import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -97,6 +100,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const reasoningLevel: ReasoningLevel = body.data.gateway
+    && !isGatewayReasoningSupported(body.data.gateway)
     ? 'off'
     : body.data.reasoning
 
@@ -528,11 +532,13 @@ export default defineEventHandler(async (event) => {
         session.user.id,
         modelId,
         requestedTools,
+        reasoningLevel,
         logger,
       )
 
       instance = gatewayResult.instance
       parsedTools = gatewayResult.tools
+      reasoningEffort = gatewayResult.reasoning
       Object.assign(providerOptions, gatewayResult.providerOptions)
       gatewayMaxOutputTokens = gatewayResult.maxOutputTokens
       gatewayPricing = gatewayResult.pricing

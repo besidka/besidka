@@ -355,6 +355,75 @@ describe('gateway chat completion routing', () => {
     expect(mocks.streamTextOptions[0]?.toolChoice).toBeUndefined()
   })
 
+  it('threads a requested reasoning level into the streamText call for '
+    + 'an openrouter send', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+        reasoning: 'high',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.reasoning).toBe('high')
+  })
+
+  it('threads a requested reasoning level into the streamText call for '
+    + 'a vercel send', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'openai/gpt-4o',
+        gateway: 'vercel',
+        reasoning: 'medium',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.reasoning).toBe('medium')
+  })
+
+  it('forces reasoning off for a cloudflare send even when requested, '
+    + 'since cloudflare has no functional reasoning mechanism wired',
+  async () => {
+    vi.stubGlobal('useDecryptText', vi.fn(async () => JSON.stringify({
+      accountId: 'account-1',
+      apiKey: 'cf-token',
+    })))
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
+        reasoning: 'high',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.reasoning).toBeUndefined()
+  })
+
   it('rejects image_generation through the vercel gateway', async () => {
     const useGatewayCalls = vi.fn()
 
@@ -454,6 +523,7 @@ describe('gateway chat completion routing', () => {
       '1',
       'openai/gpt-4o',
       ['web_search'],
+      'off',
       expect.anything(),
     )
   })
@@ -490,6 +560,7 @@ describe('gateway chat completion routing', () => {
       '1',
       'anthropic/claude-opus-5',
       ['web_search'],
+      'off',
       expect.anything(),
     )
   })

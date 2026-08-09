@@ -22,7 +22,11 @@ async function importUseOpenRouterGateway() {
 function readInstanceSettings(instance: unknown) {
   return (instance as unknown as {
     modelId: string
-    settings: { usage?: { include: boolean }, plugins?: unknown[] }
+    settings: {
+      usage?: { include: boolean }
+      plugins?: unknown[]
+      reasoning?: { effort?: string }
+    }
   })
 }
 
@@ -47,11 +51,12 @@ describe('useOpenRouterGateway', () => {
 
     const useOpenRouterGateway = await importUseOpenRouterGateway()
 
-    await expect(useOpenRouterGateway('1', 'anthropic/claude-opus-5', []))
-      .rejects.toMatchObject({
-        statusCode: 401,
-        statusMessage: 'OpenRouter API key not found. Please set it up in the settings.',
-      })
+    await expect(
+      useOpenRouterGateway('1', 'anthropic/claude-opus-5', [], 'off'),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+      statusMessage: 'OpenRouter API key not found. Please set it up in the settings.',
+    })
   })
 
   it('builds an instance with usage accounting enabled and no tools', async () => {
@@ -62,6 +67,7 @@ describe('useOpenRouterGateway', () => {
       '1',
       'anthropic/claude-opus-5',
       [],
+      'off',
     )
 
     expect(result.tools).toEqual({})
@@ -73,6 +79,8 @@ describe('useOpenRouterGateway', () => {
     expect(instance.modelId).toBe('anthropic/claude-opus-5')
     expect(instance.settings.usage).toEqual({ include: true })
     expect(instance.settings.plugins).toBeUndefined()
+    expect(instance.settings.reasoning).toBeUndefined()
+    expect(result.reasoning).toBeUndefined()
   })
 
   it('never sets maxOutputTokens, so gateway sends stay uncapped', async () => {
@@ -83,6 +91,7 @@ describe('useOpenRouterGateway', () => {
       '1',
       'anthropic/claude-opus-5',
       [],
+      'off',
     )
 
     expect(result.maxOutputTokens).toBeUndefined()
@@ -100,6 +109,7 @@ describe('useOpenRouterGateway', () => {
       '1',
       'anthropic/claude-opus-5',
       [],
+      'off',
     )
 
     const title = await result.generateChatTitle('Plan a trip to Kyoto')
@@ -121,6 +131,7 @@ describe('useOpenRouterGateway', () => {
         '1',
         'openai/gpt-5.4',
         ['web_search'],
+        'off',
       )
 
       const instance = readInstanceSettings(result.instance)
@@ -144,6 +155,7 @@ describe('useOpenRouterGateway', () => {
         '1',
         'openai/gpt-5.4',
         ['web_search'],
+        'off',
       )
 
       await result.generateChatTitle('Plan a trip to Kyoto')
@@ -153,6 +165,68 @@ describe('useOpenRouterGateway', () => {
       )
 
       expect(titleInstance.settings.plugins).toBeUndefined()
+    })
+  })
+
+  describe('reasoning requested', () => {
+    it('sets a reasoning.effort chat setting for a supported level', async () => {
+      stubKeyLookup()
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5.4',
+        [],
+        'high',
+      )
+
+      const instance = readInstanceSettings(result.instance)
+
+      expect(instance.settings.reasoning).toEqual({ effort: 'high' })
+      expect(result.reasoning).toBe('high')
+    })
+
+    it('sets no reasoning chat setting and returns undefined for off',
+      async () => {
+        stubKeyLookup()
+
+        const useOpenRouterGateway = await importUseOpenRouterGateway()
+        const result = await useOpenRouterGateway(
+          '1',
+          'openai/gpt-5.4',
+          [],
+          'off',
+        )
+
+        const instance = readInstanceSettings(result.instance)
+
+        expect(instance.settings.reasoning).toBeUndefined()
+        expect(result.reasoning).toBeUndefined()
+      })
+
+    it('never carries reasoning into the title-generation instance, so '
+      + 'titles never spend extra reasoning tokens', async () => {
+      stubKeyLookup()
+
+      const useChatTitleMock = vi.fn(async () => 'A title')
+
+      vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5.4',
+        [],
+        'high',
+      )
+
+      await result.generateChatTitle('Plan a trip to Kyoto')
+
+      const titleInstance = readInstanceSettings(
+        useChatTitleMock.mock.calls[0]?.[0],
+      )
+
+      expect(titleInstance.settings.reasoning).toBeUndefined()
     })
   })
 })

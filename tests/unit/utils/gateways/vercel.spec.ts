@@ -47,7 +47,7 @@ describe('useVercelGateway', () => {
 
     const { useVercelGateway } = await importVercelGatewayModule()
 
-    await expect(useVercelGateway('1', 'openai/gpt-4o', []))
+    await expect(useVercelGateway('1', 'openai/gpt-4o', [], 'off'))
       .rejects.toMatchObject({
         statusCode: 401,
         statusMessage: 'Vercel AI Gateway API key not found. Please set it up in the settings.',
@@ -58,12 +58,13 @@ describe('useVercelGateway', () => {
     stubKeyLookup()
 
     const { useVercelGateway } = await importVercelGatewayModule()
-    const result = await useVercelGateway('1', 'openai/gpt-4o', [])
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
 
     expect(result.tools).toEqual({})
     expect(result.providerOptions).toEqual({})
     expect(typeof result.generateChatTitle).toBe('function')
     expect(typeof result.client?.getGenerationInfo).toBe('function')
+    expect(result.reasoning).toBeUndefined()
 
     const instance = result.instance as unknown as { modelId: string }
 
@@ -82,7 +83,7 @@ describe('useVercelGateway', () => {
     ])
 
     const { useVercelGateway } = await importVercelGatewayModule()
-    const result = await useVercelGateway('1', 'openai/gpt-4o', [])
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
 
     expect(result.maxOutputTokens).toBe(4096)
   })
@@ -93,7 +94,7 @@ describe('useVercelGateway', () => {
     stubVercelCatalog([])
 
     const { useVercelGateway } = await importVercelGatewayModule()
-    const result = await useVercelGateway('1', 'openai/gpt-4o', [])
+    const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
 
     expect(result.maxOutputTokens).toBeUndefined()
   })
@@ -115,7 +116,7 @@ describe('useVercelGateway', () => {
       vi.stubGlobal('useChatTitle', useChatTitleMock)
 
       const { useVercelGateway } = await importVercelGatewayModule()
-      const result = await useVercelGateway('1', 'openai/gpt-4o', [])
+      const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
 
       await result.generateChatTitle('Plan a trip to Kyoto')
 
@@ -136,6 +137,7 @@ describe('useVercelGateway', () => {
         '1',
         'openai/gpt-4o',
         ['web_search'],
+        'off',
       )
 
       expect(result.tools.toolChoice).toBeUndefined()
@@ -154,9 +156,42 @@ describe('useVercelGateway', () => {
         '1',
         'openai/gpt-4o',
         ['image_generation'],
+        'off',
       )
 
       expect(result.tools).toEqual({})
+    })
+  })
+
+  describe('reasoning requested', () => {
+    it('returns the mapped reasoning effort for the top-level streamText '
+      + 'option, with no per-provider providerOptions needed', async () => {
+      stubKeyLookup()
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        [],
+        'medium',
+      )
+
+      expect(result.reasoning).toBe('medium')
+      expect(result.providerOptions).toEqual({})
+    })
+
+    it('returns undefined for an off request', async () => {
+      stubKeyLookup()
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        [],
+        'off',
+      )
+
+      expect(result.reasoning).toBeUndefined()
     })
   })
 })

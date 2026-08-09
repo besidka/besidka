@@ -1,9 +1,11 @@
 import { createGateway, type GatewayProvider } from '@ai-sdk/gateway'
 import { eq } from 'drizzle-orm'
 import type { ModelTool } from '#shared/types/providers.d'
+import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import * as schema from '~~/server/db/schema'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { toReasoningEffort } from '~~/server/utils/providers/reasoning'
 import {
   findGatewayCatalogModel,
   getCachedGatewayCatalog,
@@ -17,6 +19,7 @@ export async function useVercelGateway(
   userId: string,
   model: string,
   requestedTools: ModelTool[],
+  requestedReasoning: ReasoningLevel,
   logger?: { set: (fields: Record<string, unknown>) => void },
 ): Promise<GatewayChatResult> {
   const data = await useDb().query.keys.findFirst({
@@ -88,6 +91,22 @@ export async function useVercelGateway(
     providerOptions: {},
     client,
     maxOutputTokens: catalogModel?.maxOutputTokens,
+    /**
+     * Unlike OpenRouter, Vercel AI Gateway needs no per-provider
+     * `providerOptions` mapping here at all. `@ai-sdk/gateway`'s
+     * `GatewayLanguageModel` is a transparent proxy — `doStream()`/
+     * `doGenerate()` forward the entire standardized call-options object
+     * (including the top-level `reasoning` field `index.post.ts` already
+     * passes to every `streamText()` call) straight to Vercel's backend as
+     * the request body (verified in the installed `@ai-sdk/gateway` package
+     * source: `getArgs()` returns `optionsWithoutSignal` untouched). Vercel's
+     * own backend — not this npm package — translates that single effort
+     * level into each routed provider's native reasoning shape
+     * (`reasoningEffort` for OpenAI, `thinking`/adaptive effort for
+     * Anthropic, `thinkingLevel`/`thinkingBudget` for Google). See
+     * docs/gateways.md's "Gateway reasoning" section.
+     */
+    reasoning: toReasoningEffort(requestedReasoning),
   }
 }
 

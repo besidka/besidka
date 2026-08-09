@@ -30,6 +30,31 @@ export function isGatewayToolAllowed(
   return GATEWAY_TOOL_POLICY[gatewayId].includes(tool)
 }
 
+/**
+ * Whether a gateway's send path can carry a functional reasoning-effort
+ * request at all — the single source of truth consumed by both the
+ * chat-input reasoning toggle/levels gating and the server-side
+ * `reasoningLevel` resolution in `index.post.ts`, so the two can never drift
+ * the way the pre-round-4 web-search badge/toggle/gate did. OpenRouter and
+ * Vercel both forward a real reasoning-effort request to the routed model
+ * (OpenRouter via a `reasoning: { effort }` chat setting, Vercel via the
+ * AI SDK's top-level `reasoning` option translated server-side) — see
+ * `docs/gateways.md`'s "Gateway reasoning" section for the full mechanism
+ * per gateway. Cloudflare has no such mechanism wired, so its existing
+ * `supportsReasoning` catalog badge stays advisory-only, matching the same
+ * "badge without a working control" gap this app already accepts for
+ * Cloudflare's web search and image generation.
+ */
+const GATEWAY_REASONING_POLICY: Record<GatewayId, boolean> = {
+  openrouter: true,
+  vercel: true,
+  cloudflare: false,
+}
+
+export function isGatewayReasoningSupported(gatewayId: GatewayId): boolean {
+  return GATEWAY_REASONING_POLICY[gatewayId]
+}
+
 export const WEB_SEARCH_TOOLTIP: Record<WebSearchResolution, string> = {
   native: 'Web search (native)',
   universal: 'Web search (via gateway, billed per search)',

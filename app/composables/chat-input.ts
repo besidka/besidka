@@ -1,3 +1,5 @@
+import type { ReasoningCapability } from '#shared/types/reasoning.d'
+import { isGatewayReasoningSupported } from '#shared/utils/gateway-capabilities'
 import { providerMeta } from '#shared/utils/provider-meta'
 
 export function useChatInput() {
@@ -54,7 +56,46 @@ export function useChatInput() {
     return isImageGenerationModel(selectedModel.value)
   })
 
-  const reasoningCapability = computed(() => {
+  /**
+   * Gateway models resolve reasoning the same fail-closed way web search
+   * does (`isWebSearchSupported` above): a functional control only appears
+   * once `isGatewayReasoningSupported` (OpenRouter/Vercel; never Cloudflare
+   * — see `#shared/utils/gateway-capabilities`) AND the already-cached
+   * catalog reports `supportsReasoning === true` for the selected model. A
+   * gateway model carries no curated `low`/`medium`/`high` level list the
+   * way direct providers do, so any supported gateway model gets the app's
+   * full level set — the server-side mapping per gateway/provider is what
+   * actually decides how each level is honored (see
+   * `docs/gateways.md`'s "Gateway reasoning" section).
+   */
+  const gatewayReasoningCapability = computed<
+    ReasoningCapability | null
+  >(() => {
+    const current = selection.value
+
+    if (current.source !== 'gateway') {
+      return null
+    }
+
+    if (!isGatewayReasoningSupported(current.gatewayId)) {
+      return null
+    }
+
+    if (gatewayModel.value?.supportsReasoning !== true) {
+      return null
+    }
+
+    return {
+      mode: 'levels',
+      levels: reasoningEnabledLevels,
+    }
+  })
+
+  const reasoningCapability = computed<ReasoningCapability | null>(() => {
+    if (selection.value.source === 'gateway') {
+      return gatewayReasoningCapability.value
+    }
+
     return getReasoningCapability(selectedModel.value)
   })
 
