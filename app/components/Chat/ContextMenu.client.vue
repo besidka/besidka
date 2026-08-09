@@ -5,7 +5,7 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none overflow-y-auto overscroll-contain transition-[opacity,visibility] duration-200"
+      class="absolute z-[9999] menu menu-xs flex-nowrap bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none overflow-x-hidden overflow-y-auto overscroll-contain transition-[opacity,visibility] duration-200"
       :class="{
         invisible: !menuStyle || isTextSelecting,
         'opacity-0': isTextSelecting,
