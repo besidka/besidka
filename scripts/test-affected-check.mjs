@@ -465,7 +465,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/user-keys\.ts$/,
-      tests: userKeysTests,
+      tests: [...userKeysTests, ...keysApiTests],
     },
     {
       pattern:
