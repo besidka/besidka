@@ -235,4 +235,16 @@ describe('Profile/Keys/ProviderKeyCard', () => {
       expect(link?.classes()).toContain('link')
       expect(link?.attributes('target')).toBe('_blank')
     })
+
+  it('reads the dashboard link from provider metadata for the qwen card',
+    async () => {
+      summaryFor([{ provider: 'qwen', hasKey: false }])
+
+      const wrapper = await mountCard('qwen')
+      const link = dashboardLink(wrapper, 'bailian.console.alibabacloud.com')
+
+      expect(link).toBeDefined()
+      expect(link?.classes()).toContain('link')
+      expect(link?.attributes('target')).toBe('_blank')
+    })
 })

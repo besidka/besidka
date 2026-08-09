@@ -19,6 +19,7 @@ export const keys = snakeCase.table(
         'xai',
         'deepseek',
         'moonshotai',
+        'qwen',
         'vercel-gateway',
         'cloudflare-gateway',
         'openrouter',

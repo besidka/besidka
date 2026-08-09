@@ -35,6 +35,13 @@ export interface CuratedModel {
 export interface CuratedProvider {
   id: string
   name: string
+  /**
+   * Overrides the models.dev top-level catalog key looked up by
+   * `scripts/fetch-models-metadata.mjs` when it diverges from `id` — for
+   * example this app's `qwen` provider id vs. models.dev's `alibaba` key.
+   * Defaults to `id` when omitted.
+   */
+  modelsDevKey?: string
   models: CuratedModel[]
 }
 

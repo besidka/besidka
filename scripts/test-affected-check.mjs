@@ -124,6 +124,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/xai.spec.ts',
     'tests/unit/providers/deepseek.spec.ts',
     'tests/unit/providers/moonshotai.spec.ts',
+    'tests/unit/providers/qwen.spec.ts',
     'tests/unit/providers/default-model.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/utils/model.spec.ts',
@@ -136,6 +137,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/deepseek.spec.ts',
     'tests/unit/utils/providers/moonshotai.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
+    'tests/unit/utils/providers/qwen.spec.ts',
   ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
@@ -323,6 +325,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
     'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
+    'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
@@ -379,7 +382,7 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/components\/ChatInput(\.client\.vue|\/ToolbarMore\.client\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/components\/ChatInput(\.client\.vue|\/ToolbarMore\.client\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
     },
     {
@@ -396,12 +399,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
+        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
     },
     {
       pattern:
-        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|reasoning)\.ts|shared\/utils\/reasoning\.ts|shared\/types\/reasoning\.d\.ts)$/,
+        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/utils\/reasoning\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
     },
     {

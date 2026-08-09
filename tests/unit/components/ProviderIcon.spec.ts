@@ -39,6 +39,18 @@ describe('ProviderIcon', () => {
     expect(badge.classes()).toContain('uppercase')
   })
 
+  it('falls back to a two-letter badge for qwen, which has no brand icon '
+    + 'asset yet', async () => {
+    const wrapper = await mountSuspended(ProviderIcon, {
+      props: { providerId: 'qwen' },
+    })
+
+    expect(wrapper.find('svg').exists()).toBe(false)
+    const badge = wrapper.get('span')
+
+    expect(badge.text()).toBe('Qw')
+  })
+
   it('prefers an explicit label prop over provider-meta or the raw id',
     async () => {
       const wrapper = await mountSuspended(ProviderIcon, {

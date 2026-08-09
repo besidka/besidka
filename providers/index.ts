@@ -8,6 +8,7 @@ import openai from './openai'
 import xai from './xai'
 import deepseek from './deepseek'
 import moonshotai from './moonshotai'
+import qwen from './qwen'
 
 const curatedProviders = [
   anthropic,
@@ -16,6 +17,7 @@ const curatedProviders = [
   xai,
   deepseek,
   moonshotai,
+  qwen,
 ]
 
 export const providers: Providers = curatedProviders.map((provider) => {

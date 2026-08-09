@@ -78,6 +78,15 @@ export const providerMeta: Record<string, ProviderMeta> = {
     dashboardUrl: 'https://platform.kimi.ai/console/api-keys',
     keyFields: [apiKeyField],
   },
+  qwen: {
+    id: 'qwen',
+    kind: 'provider',
+    label: 'Qwen',
+    keyProviderId: 'qwen',
+    dashboardUrl: 'https://bailian.console.alibabacloud.com/cn-beijing?tab=model#/api-key',
+    dashboardLabel: 'Alibaba Cloud Model Studio → API-KEY (this app uses the international endpoint — switch to a non-China region in the console before creating your key, or it will fail)',
+    keyFields: [apiKeyField],
+  },
   vercel: {
     id: 'vercel',
     kind: 'gateway',

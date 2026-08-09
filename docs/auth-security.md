@@ -235,8 +235,8 @@ methods or providers would have let a normal save-then-refresh flow, or
 loading both gateway cards at once, silently erode the mutation budget
 meant for abuse containment.
 
-The six pre-existing single-provider key routes
-(`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`) remain
+The seven pre-existing single-provider key routes
+(`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`/`qwen`) remain
 unrated-limited; extending them the same way is a follow-up, not part
 of this change.
 
