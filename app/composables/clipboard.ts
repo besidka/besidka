@@ -1,7 +1,9 @@
 export function useClipboardWithPaste() {
   async function paste() {
     try {
-      return await navigator.clipboard.readText()
+      const text = await navigator.clipboard.readText()
+
+      return text.trim()
     } catch (_exception) {
       useErrorMessage('Failed to read clipboard text')
       return ''

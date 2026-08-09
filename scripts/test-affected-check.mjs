@@ -467,6 +467,13 @@ export function getAffectedTests(changedFiles) {
       tests: [...keysApiTests, ...userKeysTests],
     },
     {
+      pattern: /^app\/composables\/clipboard\.ts$/,
+      tests: [
+        'tests/unit/composables/clipboard.spec.ts',
+        ...keysApiTests,
+      ],
+    },
+    {
       pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,
       tests: [
         ...emailTests,
