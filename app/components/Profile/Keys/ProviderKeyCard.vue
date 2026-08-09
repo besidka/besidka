@@ -43,7 +43,7 @@
             />
           </template>
           <template #noteAfter>
-            <span>
+            <span class="block">
               Get your API key from {{ meta.label }}:
               <NuxtLink
                 :to="meta.dashboardUrl"
@@ -53,10 +53,13 @@
               >
                 {{ meta.dashboardLabel || meta.dashboardUrl }}
               </NuxtLink>
-              <template v-if="status === 'saved'">
-                . A saved key is never sent back to the browser — enter a new
-                one to replace it.
-              </template>
+            </span>
+            <span
+              v-if="status === 'saved'"
+              class="mt-1 block"
+            >
+              A saved key is never sent back to the browser — enter a new one
+              to replace it.
             </span>
           </template>
         </UiFormInput>

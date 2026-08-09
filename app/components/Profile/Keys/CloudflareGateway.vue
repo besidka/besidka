@@ -61,7 +61,7 @@
             />
           </template>
           <template #noteAfter>
-            <span>
+            <span class="block">
               Create a Cloudflare API token scoped to "Workers AI - Read" and
               find your Account ID at:
               <NuxtLink
@@ -72,8 +72,10 @@
               >
                 {{ meta.dashboardLabel || meta.dashboardUrl }}
               </NuxtLink>
-              . The token must be re-entered every time you save, even if
-              you're only updating the Account ID or Gateway ID —
+            </span>
+            <span class="mt-1 block">
+              The token must be re-entered every time you save, even if you're
+              only updating the Account ID or Gateway ID —
               {{ meta.label }} never sends a saved token back to the browser.
             </span>
           </template>
