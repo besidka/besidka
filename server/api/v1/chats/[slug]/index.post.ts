@@ -9,7 +9,7 @@ import type { H3Event } from 'h3'
 import { getRequestURL } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
-import type { ModelTool } from '#shared/types/providers.d'
+import type { ModelTool, SupportedProviderId } from '#shared/types/providers.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
@@ -556,6 +556,72 @@ export default defineEventHandler(async (event) => {
 
         break
       }
+      case 'xai': {
+        const {
+          instance: xaiInstance,
+          tools: xaiTools,
+          providerOptions: xaiProviderOptions,
+          reasoning: xaiReasoning,
+        } = await useXai(
+          session.user.id,
+          model.id,
+          requestedTools,
+          body.data.reasoning,
+        )
+
+        instance = xaiInstance
+        parsedTools = xaiTools
+        reasoningEffort = xaiReasoning
+        Object.assign(providerOptions, {
+          xai: xaiProviderOptions,
+        })
+
+        break
+      }
+      case 'deepseek': {
+        const {
+          instance: deepseekInstance,
+          tools: deepseekTools,
+          providerOptions: deepseekProviderOptions,
+          reasoning: deepseekReasoning,
+        } = await useDeepSeek(
+          session.user.id,
+          model.id,
+          requestedTools,
+          body.data.reasoning,
+        )
+
+        instance = deepseekInstance
+        parsedTools = deepseekTools
+        reasoningEffort = deepseekReasoning
+        Object.assign(providerOptions, {
+          deepseek: deepseekProviderOptions,
+        })
+
+        break
+      }
+      case 'moonshotai': {
+        const {
+          instance: moonshotAiInstance,
+          tools: moonshotAiTools,
+          providerOptions: moonshotAiProviderOptions,
+          reasoning: moonshotAiReasoning,
+        } = await useMoonshotAi(
+          session.user.id,
+          model.id,
+          requestedTools,
+          body.data.reasoning,
+        )
+
+        instance = moonshotAiInstance
+        parsedTools = moonshotAiTools
+        reasoningEffort = moonshotAiReasoning
+        Object.assign(providerOptions, {
+          moonshotai: moonshotAiProviderOptions,
+        })
+
+        break
+      }
       default:
         throw createError({
           message: 'Unsupported provider',
@@ -1061,7 +1127,7 @@ async function persistAssistantMessageFromStream(input: {
   db: ReturnType<typeof useDb>
   event: H3Event
   providerId: string
-  supportedProviderId: 'openai' | 'google' | 'anthropic' | undefined
+  supportedProviderId: SupportedProviderId | undefined
   userId: number
   chatId: string
   projectId: string | null
@@ -1277,18 +1343,21 @@ function buildChatInstructions(
   return instructions.filter(Boolean).join('\n\n') || undefined
 }
 
+const supportedProviderIds: SupportedProviderId[] = [
+  'openai',
+  'google',
+  'anthropic',
+  'xai',
+  'deepseek',
+  'moonshotai',
+]
+
 function toSupportedProviderId(
   providerId: string,
-): 'openai' | 'google' | 'anthropic' | undefined {
-  if (
-    providerId !== 'openai'
-    && providerId !== 'google'
-    && providerId !== 'anthropic'
-  ) {
-    return undefined
-  }
-
-  return providerId
+): SupportedProviderId | undefined {
+  return supportedProviderIds.find((id) => {
+    return id === providerId
+  })
 }
 
 function emitChatErrorLog(input: {

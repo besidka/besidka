@@ -1,4 +1,5 @@
 import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
 import type { H3Event } from 'h3'
 import { getRequestHeader } from 'h3'
@@ -29,7 +30,7 @@ const chatErrorCodes: ChatErrorCode[] = [
 interface NormalizeChatErrorInput {
   error: unknown
   event?: H3Event
-  providerId?: 'openai' | 'google' | 'anthropic'
+  providerId?: SupportedProviderId
   code?: ChatErrorCode
   message?: string
   why?: string

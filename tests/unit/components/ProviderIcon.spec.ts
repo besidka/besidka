@@ -1,0 +1,49 @@
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { describe, expect, it } from 'vitest'
+import ProviderIcon from '../../../app/components/ProviderIcon.vue'
+
+const knownProviderIds = [
+  'google',
+  'openai',
+  'anthropic',
+  'xai',
+  'deepseek',
+  'moonshotai',
+]
+
+describe('ProviderIcon', () => {
+  it('renders a brand svg for every known provider id', async () => {
+    for (const providerId of knownProviderIds) {
+      const wrapper = await mountSuspended(ProviderIcon, {
+        props: { providerId },
+      })
+
+      expect(wrapper.find('svg').exists()).toBe(true)
+      expect(wrapper.find('span').exists()).toBe(false)
+    }
+  })
+
+  it('falls back to a two-letter badge from provider-meta for an '
+    + 'unrecognized id with no label prop', async () => {
+    const wrapper = await mountSuspended(ProviderIcon, {
+      props: { providerId: 'mistral' },
+    })
+
+    expect(wrapper.find('svg').exists()).toBe(false)
+    const badge = wrapper.get('span')
+
+    expect(badge.text()).toBe('mi')
+    expect(badge.classes()).toContain('uppercase')
+  })
+
+  it('prefers an explicit label prop over provider-meta or the raw id',
+    async () => {
+      const wrapper = await mountSuspended(ProviderIcon, {
+        props: { providerId: 'mistral', label: 'Mistral' },
+      })
+
+      const badge = wrapper.get('span')
+
+      expect(badge.text()).toBe('Mi')
+    })
+})

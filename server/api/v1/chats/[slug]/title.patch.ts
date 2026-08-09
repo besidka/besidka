@@ -126,6 +126,39 @@ export default defineEventHandler(async (event) => {
         title = await generateChatTitle(initialMessages)
         break
       }
+      case 'xai': {
+        const { generateChatTitle } = await useXai(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'deepseek': {
+        const { generateChatTitle } = await useDeepSeek(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'moonshotai': {
+        const { generateChatTitle } = await useMoonshotAi(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
     }
   }
 
