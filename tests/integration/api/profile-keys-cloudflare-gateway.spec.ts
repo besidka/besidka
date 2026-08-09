@@ -196,6 +196,130 @@ describe('cloudflare-gateway key API', () => {
     })
   })
 
+  it('rejects an apiKey containing an embedded control character',
+    async () => {
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+
+      const postHandler = await getPostHandler()
+
+      await expect(postHandler({
+        body: { accountId: 'account-1', apiKey: 'cf_te\rst_key' },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+
+      await expect(postHandler({
+        body: { accountId: 'account-1', apiKey: 'cf_te\nst_key' },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+    })
+
+  it('rejects an accountId or gatewayId with disallowed characters',
+    async () => {
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+
+      const postHandler = await getPostHandler()
+
+      await expect(postHandler({
+        body: { accountId: 'account 1', apiKey: 'cf_test' },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+
+      await expect(postHandler({
+        body: { accountId: 'account/1', apiKey: 'cf_test' },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+
+      await expect(postHandler({
+        body: {
+          accountId: 'account-1',
+          gatewayId: 'gateway 1',
+          apiKey: 'cf_test',
+        },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+
+      await expect(postHandler({
+        body: {
+          accountId: 'account-1',
+          gatewayId: 'gateway\x001',
+          apiKey: 'cf_test',
+        },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+    })
+
+  it('rejects accountId, gatewayId, or apiKey exceeding the max length',
+    async () => {
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+
+      const postHandler = await getPostHandler()
+
+      await expect(postHandler({
+        body: { accountId: 'a'.repeat(129), apiKey: 'cf_test' },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+
+      await expect(postHandler({
+        body: {
+          accountId: 'account-1',
+          gatewayId: 'g'.repeat(129),
+          apiKey: 'cf_test',
+        },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+
+      await expect(postHandler({
+        body: { accountId: 'account-1', apiKey: 'a'.repeat(2049) },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        statusMessage: 'Invalid request body',
+      })
+    })
+
+  it('accepts valid credentials that satisfy every validation rule',
+    async () => {
+      const dbMock = createDbMock()
+
+      vi.stubGlobal('useDb', () => dbMock.db)
+
+      const postHandler = await getPostHandler()
+
+      await postHandler({
+        body: {
+          accountId: 'account-1',
+          gatewayId: 'my-gateway',
+          apiKey: 'cf_real_key',
+        },
+      } as any)
+
+      expect(dbMock.spies.insert).toHaveBeenCalledTimes(1)
+      expect(dbMock.spies.insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'cloudflare-gateway' }),
+      )
+    })
+
   it('returns a no-key shape before any credentials are saved', async () => {
     const dbMock = createDbMock()
 
