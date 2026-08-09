@@ -51,7 +51,11 @@
       :key="gatewayId"
     >
       <UiBubble>
-        <LazyProfileKeysProviderKeyCard :provider-id="gatewayId" />
+        <LazyProfileKeysCloudflareGateway v-if="gatewayId === 'cloudflare'" />
+        <LazyProfileKeysProviderKeyCard
+          v-else
+          :provider-id="gatewayId"
+        />
       </UiBubble>
     </li>
   </ul>

@@ -421,25 +421,36 @@ describe('chat title API gateway routing', () => {
     expect(set).toHaveBeenCalledWith({ title: 'Generated title' })
   })
 
-  it('rejects a cloudflare gateway title request as not yet supported', async () => {
-    const useGatewayMock = vi.fn()
+  it('generates a title through the cloudflare gateway builder', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      generateChatTitle: mocks.generateChatTitle,
+    }))
 
     vi.stubGlobal('useGateway', useGatewayMock)
 
     const handler = await getTitleHandler()
-    const { db } = createTitleDb()
+    const { db, set } = createTitleDb()
 
     vi.stubGlobal('useDb', () => db)
 
-    await expect(handler({
+    const response = await handler({
       body: {
-        model: 'some-model',
+        model: '@cf/meta/llama-3.3-70b-instruct',
         gateway: 'cloudflare',
       },
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-    } as any)).rejects.toMatchObject({ statusCode: 400 })
+    } as any)
 
-    expect(useGatewayMock).not.toHaveBeenCalled()
+    expect(response).toBe('Generated title')
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'cloudflare',
+      '1',
+      '@cf/meta/llama-3.3-70b-instruct',
+    )
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+      'Create a roadmap for Q2',
+    )
+    expect(set).toHaveBeenCalledWith({ title: 'Generated title' })
   })
 })
 

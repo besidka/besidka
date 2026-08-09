@@ -84,6 +84,23 @@ describe('useUserKeys', () => {
     expect(hasKeyForProvider('openrouter')).toBe(true)
   })
 
+  it('resolves cloudflare through its keys-table id, cloudflare-gateway', () => {
+    useSummary([
+      { provider: 'cloudflare-gateway', hasKey: false },
+    ])
+
+    const { hasKey, hasKeyForProvider } = useUserKeys()
+
+    expect(hasKeyForProvider('cloudflare')).toBe(false)
+    expect(hasKey('cloudflare')).toBe(true)
+
+    useSummary([
+      { provider: 'cloudflare-gateway', hasKey: true },
+    ])
+
+    expect(useUserKeys().hasKeyForProvider('cloudflare')).toBe(true)
+  })
+
   it('fails open on the bare GatewayId, which is why the mapping is required', () => {
     useSummary([{ provider: 'vercel-gateway', hasKey: false }])
 

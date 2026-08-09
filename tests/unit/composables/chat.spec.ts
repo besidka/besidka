@@ -698,6 +698,41 @@ describe('chat error helpers', () => {
     }))
   })
 
+  it('redacts an unknown-code message that looks like a leaked header value',
+    async () => {
+      const { normalizeChatError } = await import(
+        '../../../server/utils/chats/errors'
+      )
+
+      const result = normalizeChatError({
+        error: new TypeError(
+          'Headers.append: "Bearer sk-real-secret-token\n'
+          + '" is an invalid header value.',
+        ),
+        status: 500,
+      })
+
+      expect(result.code).toBe('unknown')
+      expect(result.message).not.toContain('sk-real-secret-token')
+      expect(result.why).toBeUndefined()
+    })
+
+  it('redacts an unknown-code message containing a raw control character',
+    async () => {
+      const { normalizeChatError } = await import(
+        '../../../server/utils/chats/errors'
+      )
+
+      const result = normalizeChatError({
+        error: new Error('cf-aig-gateway-id: bad-gateway-id\nsome-secret'),
+        status: 500,
+      })
+
+      expect(result.code).toBe('unknown')
+      expect(result.message).not.toContain('some-secret')
+      expect(result.why).toBeUndefined()
+    })
+
   it('reads cf-ray from the H3 event when available', async () => {
     const { normalizeChatError } = await import(
       '../../../server/utils/chats/errors'

@@ -14,6 +14,7 @@ describe('keyProviderIdForGateway', () => {
 
     expect(keyProviderIdForGateway('vercel')).toBe('vercel-gateway')
     expect(keyProviderIdForGateway('openrouter')).toBe('openrouter')
+    expect(keyProviderIdForGateway('cloudflare')).toBe('cloudflare-gateway')
   })
 })
 
@@ -106,6 +107,11 @@ describe('useGateway dispatch', () => {
     vi.doMock('../../../../server/utils/gateways/openrouter', () => ({
       useOpenRouterGateway: vi.fn(async () => openRouterResult),
     }))
+    vi.doMock('../../../../server/utils/gateways/cloudflare', () => ({
+      useCloudflareGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
 
     const { useGateway } = await importGatewaysIndex()
     const result = await useGateway(
@@ -115,5 +121,28 @@ describe('useGateway dispatch', () => {
     )
 
     expect(result).toBe(openRouterResult)
+  })
+
+  it('dispatches to the Cloudflare builder for the cloudflare gateway id', async () => {
+    const cloudflareResult = { instance: {}, tools: {}, providerOptions: {} }
+
+    vi.doMock('../../../../server/utils/gateways/vercel', () => ({
+      useVercelGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
+    vi.doMock('../../../../server/utils/gateways/openrouter', () => ({
+      useOpenRouterGateway: vi.fn(async () => {
+        throw new Error('must not be called')
+      }),
+    }))
+    vi.doMock('../../../../server/utils/gateways/cloudflare', () => ({
+      useCloudflareGateway: vi.fn(async () => cloudflareResult),
+    }))
+
+    const { useGateway } = await importGatewaysIndex()
+    const result = await useGateway('cloudflare', '1', 'llama-3.3-70b')
+
+    expect(result).toBe(cloudflareResult)
   })
 })

@@ -16,6 +16,9 @@ async function getFetchers() {
   return {
     fetchVercelGatewayCatalog: module.fetchVercelGatewayCatalog,
     fetchOpenRouterCatalog: module.fetchOpenRouterCatalog,
+    fetchCloudflareGatewayCatalog: module.fetchCloudflareGatewayCatalog,
+    getCachedCloudflareGatewayCatalog:
+      module.getCachedCloudflareGatewayCatalog,
   }
 }
 
@@ -303,4 +306,330 @@ describe('fetchOpenRouterCatalog', () => {
       'Failed to fetch OpenRouter model catalog',
     )
   })
+})
+
+describe('fetchCloudflareGatewayCatalog', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('normalizes a model from the OpenRouter provider/marketplace response',
+    async () => {
+      mockFetchOnce({
+        data: [
+          {
+            schema_version: '2.4',
+            id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+            name: 'Llama 3.3 70B Instruct FP8 Fast',
+            description: 'A fast Llama 3.3 model on Workers AI.',
+            input_modalities: [
+              {
+                type: 'text',
+                supported_inputs: {
+                  max_context_length: { value: 24000, unit: 'token' },
+                },
+                pricing: [
+                  { type: 'prompt', unit: 'token', cost_usd: '0.0000002' },
+                ],
+              },
+            ],
+            output_modalities: [
+              {
+                type: 'text',
+                max_length: { value: 4096, unit: 'token' },
+                streaming: true,
+                supported_parameters: {
+                  tools: { type: 'boolean' },
+                  tool_choice: { type: 'boolean' },
+                },
+                pricing: [
+                  { type: 'completion', unit: 'token', cost_usd: '0.0000009' },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(models).toEqual([
+        {
+          id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          name: 'Llama 3.3 70B Instruct FP8 Fast',
+          description: 'A fast Llama 3.3 model on Workers AI.',
+          contextLength: 24000,
+          maxOutputTokens: 4096,
+          pricing: { input: '0.0000002', output: '0.0000009' },
+          modalities: { input: ['text'], output: ['text'] },
+          supportsTools: true,
+        },
+      ])
+    })
+
+  it('reports supportsTools as false when the text output modality omits tools',
+    async () => {
+      mockFetchOnce({
+        data: [
+          {
+            id: '@cf/meta/embedding-only-model',
+            name: 'Embedding Only Model',
+            input_modalities: [{ type: 'text' }],
+            output_modalities: [
+              {
+                type: 'text',
+                supported_parameters: {
+                  temperature: { type: 'range', min: 0, max: 1 },
+                },
+              },
+            ],
+          },
+        ],
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(models[0]?.supportsTools).toBe(false)
+    })
+
+  it('handles a model missing pricing, modalities, and description',
+    async () => {
+      mockFetchOnce({
+        data: [
+          {
+            id: '@cf/bare/model',
+            name: 'Bare Model',
+          },
+        ],
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(models).toEqual([
+        {
+          id: '@cf/bare/model',
+          name: 'Bare Model',
+          description: undefined,
+          contextLength: undefined,
+          maxOutputTokens: undefined,
+          pricing: undefined,
+          modalities: undefined,
+          supportsTools: undefined,
+        },
+      ])
+    })
+
+  it('requests the account-scoped format=openrouter search endpoint with a bearer token',
+    async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      })
+
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+      await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.cloudflare.com/client/v4/accounts/account-1/ai/models/search?format=openrouter',
+        { headers: { Authorization: 'Bearer cf-token' } },
+      )
+    })
+
+  it('throws a clean error when the upstream fetch fails', async () => {
+    mockFetchOnce({}, false, 401)
+
+    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+    await expect(fetchCloudflareGatewayCatalog({
+      accountId: 'account-1',
+      apiKey: 'bad-token',
+    })).rejects.toThrow(
+      'Failed to fetch Cloudflare AI Gateway model catalog',
+    )
+  })
+})
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+describe('getCachedCloudflareGatewayCatalog', () => {
+  function createFakeCache() {
+    const store = new Map<string, unknown>()
+
+    return {
+      async getItem(key: string) {
+        return store.get(key) ?? null
+      },
+      async setItem(key: string, value: unknown) {
+        store.set(key, value)
+      },
+    }
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('scopes the cache key per account, so two accounts never share a catalog',
+    async () => {
+      const cache = createFakeCache()
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-a', name: 'Model A' }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-b', name: 'Model B' }],
+          }),
+        })
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+      const accountOneModels = await getCachedCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'token-1',
+      })
+      const accountTwoModels = await getCachedCloudflareGatewayCatalog({
+        accountId: 'account-2',
+        apiKey: 'token-2',
+      })
+
+      expect(accountOneModels[0]?.id).toBe('model-a')
+      expect(accountTwoModels[0]?.id).toBe('model-b')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+  it('scopes the cache key per apiKey, so a guessed accountId with a different key never shares a catalog',
+    async () => {
+      const cache = createFakeCache()
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-a', name: 'Model A' }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'model-b', name: 'Model B' }],
+          }),
+        })
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+      const genuineOwnerModels = await getCachedCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'genuine-owner-token',
+      })
+      const guessedAccountModels = await getCachedCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'attacker-fake-token',
+      })
+
+      expect(genuineOwnerModels[0]?.id).toBe('model-a')
+      expect(guessedAccountModels[0]?.id).toBe('model-b')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+  it('serves the second request for the same account from cache', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [{ id: 'model-a', name: 'Model A' }],
+      }),
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('useStorage', () => cache)
+
+    const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+    const credentials = { accountId: 'account-1', apiKey: 'token-1' }
+
+    const first = await getCachedCloudflareGatewayCatalog(credentials)
+    const second = await getCachedCloudflareGatewayCatalog(credentials)
+
+    expect(first).toEqual(second)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('serves a stale per-account cache entry when the upstream fetch fails',
+    async () => {
+      const cache = createFakeCache()
+      const staleModels = [{ id: 'model-a-stale', name: 'Model A (stale)' }]
+      const apiKeyHash = await sha256Hex('token-1')
+
+      await cache.setItem(
+        `gateway-catalog:cloudflare:account-1:${apiKeyHash}`,
+        {
+          models: staleModels,
+          cachedAt: Date.now() - (60 * 60 * 1000),
+        },
+      )
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => 'Service unavailable',
+      })
+      const loggerSet = vi.fn()
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+      const models = await getCachedCloudflareGatewayCatalog(
+        { accountId: 'account-1', apiKey: 'token-1' },
+        { logger: { set: loggerSet } },
+      )
+
+      expect(models).toEqual(staleModels)
+      expect(loggerSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayCatalogFetch: {
+            gateway: 'cloudflare',
+            servedStale: true,
+          },
+        }),
+      )
+    })
 })

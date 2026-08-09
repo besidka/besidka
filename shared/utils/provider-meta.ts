@@ -1,10 +1,5 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 
-/**
- * The `accountId`/`gatewayId` field names below are forward scaffolding for
- * Cloudflare AI Gateway support landing in a later PR of this stack —
- * intentionally unwired here, not dead code.
- */
 export interface ProviderMetaKeyField {
   name: 'apiKey' | 'accountId' | 'gatewayId'
   label: string
@@ -95,16 +90,41 @@ export const providerMeta: Record<string, ProviderMeta> = {
     dashboardUrl: 'https://openrouter.ai/settings/keys',
     keyFields: [apiKeyField],
   },
+  cloudflare: {
+    id: 'cloudflare',
+    kind: 'gateway',
+    label: 'Cloudflare AI Gateway',
+    keyProviderId: 'cloudflare-gateway',
+    dashboardUrl: 'https://dash.cloudflare.com/?to=/:account/ai/workers-ai',
+    dashboardLabel: 'Cloudflare dashboard → Workers AI (API token + Account ID)',
+    keyFields: [
+      {
+        name: 'accountId',
+        label: 'Account ID',
+        secret: false,
+        required: true,
+      },
+      {
+        name: 'gatewayId',
+        label: 'Gateway ID (optional, defaults to "default")',
+        secret: false,
+        required: false,
+      },
+      apiKeyField,
+    ],
+  },
 }
 
 /**
- * Cloudflare AI Gateway is reserved in the `keys.provider` enum and in
- * `GatewayId`, but is intentionally NOT listed here yet — its `providerMeta`
- * entry (a 3-field `accountId`/`gatewayId`/`apiKey` form, decided but not
- * built until a later PR) would be the wrong shape to ship as a usable
- * single-`apiKey` gateway card today. This array, not a `providerMeta`
- * placeholder, is what marks it "not enabled yet": every gateway-rail/keys
- * UI should iterate `enabledGateways` (mapped through `providerMeta`)
- * rather than assuming all `GatewayId` values are ready.
+ * Every `GatewayId` this app can actually route a chat send through and
+ * fetch a catalog for. Gateway-rail/keys UI iterates this array (mapped
+ * through `providerMeta`) rather than assuming every `GatewayId` value is
+ * ready — that's how a future gateway lands without a flag day: reserve the
+ * `GatewayId`/`keys.provider` values first, wire the feature, then add the
+ * id here last.
  */
-export const enabledGateways: GatewayId[] = ['vercel', 'openrouter']
+export const enabledGateways: GatewayId[] = [
+  'vercel',
+  'openrouter',
+  'cloudflare',
+]

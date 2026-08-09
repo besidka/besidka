@@ -88,6 +88,26 @@ export function normalizeChatError(
   }
 }
 
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/
+const HEADER_VALUE_ERROR_PATTERN
+  = /invalid header|not a legal header|illegal header/i
+
+/**
+ * A malformed credential (for example a pasted API token or Cloudflare
+ * account/gateway id with a trailing control character) can make the Fetch
+ * API's `Headers` constructor throw a `TypeError` whose message embeds the
+ * raw invalid value verbatim — e.g. Node/undici's
+ * `Headers.append: "<value>" is an invalid header value.`. An error message
+ * that contains a raw control character, or that reads like one of these
+ * header-construction errors, is treated as a potential credential leak
+ * rather than surfaced to the client or logs.
+ */
+function looksLikeHeaderValueLeak(message: string): boolean {
+  return CONTROL_CHARACTER_PATTERN.test(message)
+    || HEADER_VALUE_ERROR_PATTERN.test(message)
+}
+
 function getPreferredChatMessage(input: {
   code: ChatErrorCode
   errorMessage: string | undefined
@@ -97,11 +117,25 @@ function getPreferredChatMessage(input: {
     return undefined
   }
 
-  if (
-    input.code === 'chat-request-invalid'
-    || input.code === 'unknown'
-  ) {
+  if (input.code === 'chat-request-invalid') {
     return input.errorMessage
+  }
+
+  /**
+   * Unlike `chat-request-invalid` (always a caller-controlled, safe-to-show
+   * validation message), an `unknown` error can originate from any
+   * unclassified exception thrown anywhere in the request — including a
+   * `Headers` construction failure that embeds a raw credential or header
+   * value (see `looksLikeHeaderValueLeak`). Redacting only that narrow,
+   * detectable case — rather than every `unknown` message outright —
+   * preserves legitimate, non-sensitive `unknown`-coded messages (for
+   * example client-side setup validation like "Please select a model to
+   * continue.") while still closing the credential-leak path.
+   */
+  if (input.code === 'unknown') {
+    return looksLikeHeaderValueLeak(input.errorMessage)
+      ? undefined
+      : input.errorMessage
   }
 
   if (
@@ -301,6 +335,10 @@ function getDefaultChatWhy(
       return errorMessage
     case 'clarification-failed':
       return errorMessage
+    case 'unknown':
+      return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
+        ? errorMessage
+        : undefined
     default:
       return errorMessage
   }

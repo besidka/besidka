@@ -307,6 +307,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateways/index.spec.ts',
     'tests/unit/utils/gateways/vercel.spec.ts',
     'tests/unit/utils/gateways/openrouter.spec.ts',
+    'tests/unit/utils/gateways/cloudflare.spec.ts',
     'tests/integration/api/chats-gateway.spec.ts',
     'tests/integration/api/chats-title.spec.ts',
   ]
@@ -314,7 +315,9 @@ export function getAffectedTests(changedFiles) {
   const keysApiTests = [
     'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
     'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
+    'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
   ]
 
   const turnstileTests = [
@@ -408,6 +411,9 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/components/ProviderIcon.spec.ts',
         ...userKeysTests,
+        ...keysApiTests,
+        ...gatewayCatalogTests,
+        ...gatewayChatTests,
       ],
     },
     {
@@ -459,6 +465,13 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(server\/api\/v1\/profiles\/keys(\/.*)?\.ts|server\/utils\/keys-rate-limit\.ts|server\/db\/schemas\/keys\.ts|app\/pages\/profile\/keys\.vue|app\/components\/Profile\/Keys\/.*\.vue)$/,
       tests: [...keysApiTests, ...userKeysTests],
+    },
+    {
+      pattern: /^app\/composables\/clipboard\.ts$/,
+      tests: [
+        'tests/unit/composables/clipboard.spec.ts',
+        ...keysApiTests,
+      ],
     },
     {
       pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,

@@ -420,7 +420,7 @@ describe('ChatInput/ModelsTrigger', () => {
       expect(wrapper.find('[data-testid="models-picker-gateway-openrouter"]')
         .exists()).toBe(true)
       expect(wrapper.find('[data-testid="models-picker-gateway-cloudflare"]')
-        .exists()).toBe(false)
+        .exists()).toBe(true)
     })
 
     it('replaces provider browsing with an unmistakable gateway mode', async () => {

@@ -349,23 +349,99 @@ describe('gateway chat completion routing', () => {
     expect(insertValues).not.toHaveBeenCalled()
   })
 
-  it('rejects cloudflare as not yet supported', async () => {
-    const useGatewayCalls = vi.fn()
+  it('routes a cloudflare selection to useGateway and never touches the curated catalog',
+    async () => {
+      const useChatProviderMock = vi.fn(() => {
+        throw new Error('useChatProvider must not run on the gateway path')
+      })
 
-    vi.stubGlobal('useGateway', useGatewayCalls)
+      vi.stubGlobal('useChatProvider', useChatProviderMock)
+      vi.stubGlobal('useDecryptText', vi.fn(async () => JSON.stringify({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })))
+
+      const handler = await getHandler()
+      const { db } = createDb()
+
+      vi.stubGlobal('useDb', () => db)
+
+      const result = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: baseBody({
+          model: '@cf/meta/llama-3.3-70b-instruct',
+          gateway: 'cloudflare',
+        }),
+      } as any)
+
+      await result.ready
+
+      expect(useChatProviderMock).not.toHaveBeenCalled()
+      expect(streamText).toHaveBeenCalledTimes(1)
+      expect(db.query.keys.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ provider: 'cloudflare-gateway' }),
+        }),
+      )
+    })
+
+  it('returns a 401 response when no cloudflare credentials are stored',
+    async () => {
+      const useChatProviderMock = vi.fn(() => {
+        throw new Error('useChatProvider must not run on the gateway path')
+      })
+
+      vi.stubGlobal('useChatProvider', useChatProviderMock)
+
+      const handler = await getHandler()
+      const { db, insertValues } = createDb()
+
+      db.query.keys.findFirst = vi.fn(async () => undefined)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: baseBody({ gateway: 'cloudflare' }),
+      } as any)
+
+      expect(response).toBeInstanceOf(Response)
+      expect(response.status).toBe(401)
+
+      const assistantInsert = insertValues.mock.calls.find(
+        ([value]) => value.role === 'assistant',
+      )
+
+      expect(assistantInsert).toBeUndefined()
+    })
+
+  it('never persists a cost for a cloudflare send, unlike OpenRouter', async () => {
+    mocks.providerMetadata = undefined
+    vi.stubGlobal('useDecryptText', vi.fn(async () => JSON.stringify({
+      accountId: 'account-1',
+      apiKey: 'cf-token',
+    })))
 
     const handler = await getHandler()
     const { db, insertValues } = createDb()
 
     vi.stubGlobal('useDb', () => db)
 
-    await expect(handler({
+    const result = await handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-      body: baseBody({ gateway: 'cloudflare' }),
-    } as any)).rejects.toMatchObject({ status: 400 })
+      body: baseBody({
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
+      }),
+    } as any)
 
-    expect(useGatewayCalls).not.toHaveBeenCalled()
-    expect(insertValues).not.toHaveBeenCalled()
+    await result.ready
+
+    const assistantInsert = insertValues.mock.calls.find(
+      ([value]) => value.role === 'assistant',
+    )
+
+    expect(assistantInsert?.[0].usage?.totalCost).toBeUndefined()
   })
 
   it('carries flat + nested gateway telemetry fields', async () => {
