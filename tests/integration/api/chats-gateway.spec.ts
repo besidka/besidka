@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   } as Record<string, unknown>,
   providerMetadata: undefined as Record<string, unknown> | undefined,
   streamTextOptions: [] as Array<Record<string, any>>,
+  lastMessageMetadata: undefined as Record<string, any> | undefined,
 }))
 
 function createMockUIMessageStream(messageId: string) {
@@ -71,6 +72,19 @@ vi.mock('ai', async (importOriginal) => {
       }
     }),
     toUIMessageStream: vi.fn((options) => {
+      options.messageMetadata?.({
+        part: {
+          type: 'finish-step',
+          providerMetadata: mocks.providerMetadata,
+        },
+      })
+      mocks.lastMessageMetadata = options.messageMetadata?.({
+        part: {
+          type: 'finish',
+          totalUsage: mocks.usage,
+        },
+      })
+
       return createMockUIMessageStream(options.generateMessageId())
     }),
     smoothStream: vi.fn(() => undefined),
@@ -206,6 +220,7 @@ describe('gateway chat completion routing', () => {
     mocks.usage = { inputTokens: 10, outputTokens: 20, totalTokens: 30 }
     mocks.providerMetadata = undefined
     mocks.streamTextOptions = []
+    mocks.lastMessageMetadata = undefined
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -415,7 +430,8 @@ describe('gateway chat completion routing', () => {
       expect(assistantInsert).toBeUndefined()
     })
 
-  it('never persists a cost for a cloudflare send, unlike OpenRouter', async () => {
+  it('never persists a cost for a cloudflare send when no catalog pricing '
+    + 'is available', async () => {
     mocks.providerMetadata = undefined
     vi.stubGlobal('useDecryptText', vi.fn(async () => JSON.stringify({
       accountId: 'account-1',
@@ -442,6 +458,180 @@ describe('gateway chat completion routing', () => {
     )
 
     expect(assistantInsert?.[0].usage?.totalCost).toBeUndefined()
+  })
+
+  it('estimates and persists a cloudflare cost from catalog pricing, and '
+    + 'shows it live without waiting for a reload', async () => {
+    mocks.providerMetadata = undefined
+    mocks.usage = { inputTokens: 10, outputTokens: 20, totalTokens: 30 }
+    vi.stubGlobal('useDecryptText', vi.fn(async () => JSON.stringify({
+      accountId: 'account-1',
+      apiKey: 'cf-token',
+    })))
+    vi.stubGlobal('useGateway', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+      pricing: { input: '0.000001', output: '0.000002' },
+    })))
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
+      }),
+    } as any)
+
+    await result.ready
+
+    const expectedCost = 10 * 0.000001 + 20 * 0.000002
+    const assistantInsert = insertValues.mock.calls.find(
+      ([value]) => value.role === 'assistant',
+    )
+
+    expect(assistantInsert?.[0].usage).toEqual(expect.objectContaining({
+      totalCost: expectedCost,
+      costEstimated: true,
+    }))
+    expect(mocks.lastMessageMetadata?.usage).toEqual(
+      expect.objectContaining({
+        totalCost: expectedCost,
+        costEstimated: true,
+      }),
+    )
+  })
+
+  it('caps maxOutputTokens on the streamText call for a vercel send with '
+    + 'a catalog entry', async () => {
+    vi.stubGlobal('useGateway', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+      maxOutputTokens: 4096,
+    })))
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({ model: 'openai/gpt-4o', gateway: 'vercel' }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.maxOutputTokens).toBe(4096)
+  })
+
+  it('leaves maxOutputTokens unset on the streamText call for an '
+    + 'openrouter send', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.maxOutputTokens).toBeUndefined()
+  })
+
+  it('leaves maxOutputTokens unset for a direct-provider send', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: { id: 'gpt-5-mini', tools: [] },
+    })))
+    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    })))
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({ model: 'gpt-5-mini' }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.streamTextOptions[0]?.maxOutputTokens).toBeUndefined()
+  })
+
+  it('threads OpenRouter\'s cost into the live streamed message metadata, '
+    + 'not just the persisted row', async () => {
+    mocks.providerMetadata = {
+      openrouter: {
+        usage: { cost: 0.0042 },
+      },
+    }
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+      }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.lastMessageMetadata?.usage).toEqual(
+      expect.objectContaining({ totalCost: 0.0042 }),
+    )
+  })
+
+  it('never fabricates a live cost for a vercel send', async () => {
+    mocks.providerMetadata = {
+      gateway: { generationId: 'gen_123' },
+    }
+
+    vi.stubGlobal('useGateway', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    })))
+
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const result = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: baseBody({ model: 'openai/gpt-4o', gateway: 'vercel' }),
+    } as any)
+
+    await result.ready
+
+    expect(mocks.lastMessageMetadata?.usage?.totalCost).toBeUndefined()
   })
 
   it('carries flat + nested gateway telemetry fields', async () => {

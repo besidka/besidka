@@ -783,6 +783,10 @@ export function getAffectedTests(changedFiles) {
       tests: chatStreamBranchTests,
     },
     {
+      pattern: /^server\/utils\/chats\/title\.ts$/,
+      tests: [...gatewayChatTests, 'tests/integration/api/chats-title.spec.ts'],
+    },
+    {
       pattern: /^server\/utils\/chats\/provider\.ts$/,
       tests: [
         'tests/unit/utils/chats/provider.spec.ts',

@@ -516,3 +516,28 @@ export async function getCachedGatewayCatalog(
 
   return models
 }
+
+/**
+ * Best-effort lookup of one model's own catalog entry, used by the Vercel
+ * and Cloudflare chat builders to read `maxOutputTokens`/`pricing` before
+ * sending a request (see `docs/gateways.md`'s max-tokens capping section).
+ * `fetchCatalog` is expected to be a call to one of the two
+ * `getCached*GatewayCatalog` functions above, so this is a cache hit in the
+ * common case — a user only ever sends to a gateway model they already saw
+ * in the picker, which just fetched the same catalog. Any failure (cold
+ * cache plus an upstream outage, an unexpected response shape, etc.)
+ * resolves to `undefined` rather than throwing, so a transient catalog
+ * problem never blocks an otherwise-valid chat send.
+ */
+export async function findGatewayCatalogModel(
+  fetchCatalog: () => Promise<GatewayModel[]>,
+  modelId: string,
+): Promise<GatewayModel | undefined> {
+  try {
+    const models = await fetchCatalog()
+
+    return models.find(model => model.id === modelId)
+  } catch {
+    return undefined
+  }
+}

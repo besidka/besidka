@@ -11,6 +11,17 @@ function stubKeyLookup(apiKey: string | null = 'encrypted-key') {
   vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
 }
 
+function stubVercelCatalog(models: unknown[]) {
+  vi.stubGlobal('useStorage', () => ({
+    getItem: vi.fn(async () => null),
+    setItem: vi.fn(async () => undefined),
+  }))
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ data: models }),
+  })))
+}
+
 async function importVercelGatewayModule() {
   return await import('../../../../server/utils/gateways/vercel')
 }
@@ -58,6 +69,62 @@ describe('useVercelGateway', () => {
 
     expect(instance.modelId).toBe('openai/gpt-4o')
   })
+
+  it('caps maxOutputTokens from the model\'s own catalog entry', async () => {
+    stubKeyLookup()
+    stubVercelCatalog([
+      {
+        id: 'openai/gpt-4o',
+        name: 'GPT-4o',
+        type: 'language',
+        max_tokens: 4096,
+      },
+    ])
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway('1', 'openai/gpt-4o')
+
+    expect(result.maxOutputTokens).toBe(4096)
+  })
+
+  it('leaves maxOutputTokens undefined when the model is not in the '
+    + 'catalog', async () => {
+    stubKeyLookup()
+    stubVercelCatalog([])
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway('1', 'openai/gpt-4o')
+
+    expect(result.maxOutputTokens).toBeUndefined()
+  })
+
+  it('passes the catalog maxOutputTokens through to generateChatTitle',
+    async () => {
+      stubKeyLookup()
+      stubVercelCatalog([
+        {
+          id: 'openai/gpt-4o',
+          name: 'GPT-4o',
+          type: 'language',
+          max_tokens: 4096,
+        },
+      ])
+
+      const useChatTitleMock = vi.fn(async () => 'A title')
+
+      vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway('1', 'openai/gpt-4o')
+
+      await result.generateChatTitle('Plan a trip to Kyoto')
+
+      expect(useChatTitleMock).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: 'openai/gpt-4o' }),
+        'Plan a trip to Kyoto',
+        4096,
+      )
+    })
 })
 
 describe('persistVercelGenerationCost', () => {

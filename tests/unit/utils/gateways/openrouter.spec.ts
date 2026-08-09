@@ -66,6 +66,15 @@ describe('useOpenRouterGateway', () => {
     expect(instance.settings.usage).toEqual({ include: true })
   })
 
+  it('never sets maxOutputTokens, so gateway sends stay uncapped', async () => {
+    stubKeyLookup()
+
+    const useOpenRouterGateway = await importUseOpenRouterGateway()
+    const result = await useOpenRouterGateway('1', 'anthropic/claude-opus-5')
+
+    expect(result.maxOutputTokens).toBeUndefined()
+  })
+
   it('wires generateChatTitle through useChatTitle with the built instance', async () => {
     stubKeyLookup()
 

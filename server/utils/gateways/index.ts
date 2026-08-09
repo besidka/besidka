@@ -1,7 +1,7 @@
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { LanguageModel, ProviderMetadata } from 'ai'
 import type { GatewayProvider } from '@ai-sdk/gateway'
-import type { GatewayId } from '#shared/types/gateways.d'
+import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 import { useVercelGateway } from './vercel'
@@ -22,6 +22,23 @@ export interface GatewayChatResult {
    * `providerMetadata`, so it never needs this.
    */
   client?: GatewayProvider
+  /**
+   * The selected model's own catalog `maxOutputTokens`, resolved by the
+   * Vercel and Cloudflare builders so the chat route can cap `streamText`'s
+   * `maxOutputTokens` and never ask a model for more output than it
+   * supports (see `docs/gateways.md`'s max-tokens capping section).
+   * Deliberately left `undefined` by the OpenRouter builder always, and by
+   * Vercel/Cloudflare whenever the model isn't found in the catalog or has
+   * no known `maxOutputTokens` — never a guessed fallback.
+   */
+  maxOutputTokens?: number
+  /**
+   * The selected model's own catalog `pricing`, only ever set by the
+   * Cloudflare builder — used to build a token-based cost estimate since
+   * Cloudflare has no per-request cost API (see `estimateGatewayMessageCost`
+   * in `shared/utils/gateway-pricing.ts`).
+   */
+  pricing?: GatewayModel['pricing']
 }
 
 /**

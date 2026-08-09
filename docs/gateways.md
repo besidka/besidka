@@ -160,18 +160,90 @@ this codebase.
 
 - **OpenRouter**: read synchronously from `providerMetadata.openrouter.usage.cost`.
   Requires `compatibility: 'strict'` **and** `usage: { include: true }` on the
-  client — without both, OpenRouter never returns cost data at all.
+  client — without both, OpenRouter never returns cost data at all. This is
+  genuinely instant now on both paths: the persisted DB row (via
+  `persistAssistantMessageFromStream`, which awaits `result.finalStep`) **and**
+  the live streamed message the client renders immediately, with no reload
+  needed. The live path can't `await` anything — `toUIMessageStream`'s
+  `messageMetadata` callback is synchronous and its return value is never
+  awaited by the AI SDK, so a naive `onEnd`-closure capture doesn't work: an
+  empirical check (constructing a real `streamText()` call against a mock
+  model and logging call order) showed `messageMetadata`'s `finish` branch
+  fires *before* `onEnd`, not after. The actual fix reads `providerMetadata`
+  off the per-step `finish-step` chunk instead, which is part of the same
+  `result.stream` `messageMetadata` already consumes and is guaranteed to
+  arrive before the terminal `finish` chunk (gateway sends are always
+  single-step, since gateway + tools together are rejected earlier in the
+  request). See `resolveLiveGatewayCost()` in
+  `server/api/v1/chats/[slug]/index.post.ts`.
 - **Vercel**: `providerMetadata.gateway.generationId` → `client.getGenerationInfo({id})`,
   scheduled via the existing `waitUntil` background-completion mechanism
   (same pattern as push notifications / Axiom shipping). Cost lands on the
-  message after the response has already streamed back.
-- **Cloudflare**: no per-request cost API exists. `totalCost` stays unset for
-  Cloudflare sends — token counts are still captured, cost display is not.
+  message after the response has already streamed back — this is a real,
+  disclosed limitation, not a bug: there is no cost value obtainable
+  synchronously at stream-finish time for Vercel, live or persisted, so
+  `resolveLiveGatewayCost()` deliberately excludes it and it keeps behaving
+  exactly as before.
+- **Cloudflare**: no per-request cost API exists, but as of this fix
+  `totalCost` is no longer always unset — `estimateGatewayMessageCost()` in
+  `shared/utils/gateway-pricing.ts` multiplies the turn's real
+  input/output token counts by the model's own catalog `pricing.input`/
+  `pricing.output` (per-token USD strings) to produce a token-based
+  **estimate**, on both the persisted row and the live streamed metadata.
+  `MessageUsage.costEstimated` is set alongside it, which
+  `ContextMenu.client.vue`'s `hasEstimatedCost` computed already renders as
+  "Cost (estimated)" rather than "Cost". When the model isn't in the catalog
+  or has no `pricing` (a catalog miss, an unpriced model, an upstream
+  outage), the estimate — and `totalCost` — stays unset exactly as before;
+  no fallback number is ever guessed.
 
 `MessageUsage.totalCost` is a new optional field read by
 `shared/utils/message-metadata.ts`'s cost-display logic in preference to the
 input/output split used for direct-provider models (a gateway reports one
 blended total, not a token-priced breakdown).
+
+### Max output tokens capping
+
+`streamText()`'s top-level `maxOutputTokens` option was never set for any
+send, direct-provider or gateway, letting the AI SDK/provider default apply.
+OpenRouter self-caps/negotiates a safe value server-side and tolerates this;
+Vercel AI Gateway and (presumably, untested live) Cloudflare AI Gateway do
+not, and the underlying model rejects a request for more output tokens than
+it actually supports (confirmed live: `qwen3-14b` through Vercel AI Gateway
+hit `max_tokens=65536 cannot be greater than max_model_len=40960`, while the
+same model worked through OpenRouter on the same account).
+
+The fix caps `maxOutputTokens` for **Vercel and Cloudflare only**, sourced
+from the selected model's own `GatewayModel.maxOutputTokens` catalog entry
+(`findGatewayCatalogModel()` in `server/utils/gateways/catalog.ts`, called
+once per builder invocation and reused for `pricing` too — a cache hit in
+the common case, since a user only ever sends to a model they already saw
+in the picker). `GatewayChatResult.maxOutputTokens` carries the resolved
+value (or stays `undefined` on a catalog miss or a model with no known
+`maxOutputTokens` — never a guessed fallback) from `useVercelGateway`/
+`useCloudflareGateway` into `index.post.ts`, which passes it straight
+through as `streamText({ maxOutputTokens })`. The same cap is applied to
+title generation (`useChatTitle`'s new optional third parameter) for
+consistency, though that codepath's tiny output size makes it unlikely to
+ever hit this limit in practice.
+
+**OpenRouter is deliberately left uncapped.** It already handles this
+correctly today, and OpenRouter's own advertised
+`top_provider.max_completion_tokens` can be *lower* than a model's real
+output capacity for a specific routed upstream (observed: `8192` vs a
+documented 131k context for the same model on some upstreams) —
+introducing an explicit cap there risks newly truncating outputs that work
+fine today. This is a reasoned, permanent exclusion, not an oversight; see
+the comment at the `maxOutputTokens: gatewayMaxOutputTokens` cap site in
+`index.post.ts`'s `streamText()` call before "fixing" it.
+
+No live Vercel/Cloudflare key was available in this development environment
+(BYOK keys are stored per-user in D1, entered through the app UI — nothing
+in `.dev.vars`), so the actual capped request no longer 400s was verified by
+unit test (`tests/unit/utils/gateways/{vercel,cloudflare}.spec.ts`,
+`tests/integration/api/chats-gateway.spec.ts`) and code inspection only, not
+against a real account. This is a documented gap in "Known gaps requiring
+live verification" below, same category as the pre-existing gateway gaps.
 
 ### Telemetry
 
@@ -216,11 +288,22 @@ by its own PR's review and confirmed still open by the final cross-PR review:
    observable from installed package source.
 5. **Cloudflare token scope** — Cloudflare's own docs are inconsistent on
    whether a "Workers AI Read"-only token suffices or Read+Edit is required.
+6. **The `maxOutputTokens` cap actually clearing the Vercel/Cloudflare 400**
+   — verified by unit test and code inspection only (see "Max output tokens
+   capping" above); never sent against a real Vercel or Cloudflare account.
+7. **OpenRouter's live (pre-reload) `usage.totalCost`** — the fix relies on
+   an empirically-confirmed AI SDK v7 chunk-ordering guarantee (`finish-step`
+   before `finish` on `result.stream`) and a mocked-integration test that
+   exercises the real `messageMetadata` implementation, but was never
+   confirmed against a real OpenRouter response in a browser.
 
 **Recommended pre-production gate**: one manual smoke test — one real key per
 gateway, open its catalog in the picker, send one message, confirm an Axiom
-event with the expected `attributes.chat.gateway*` fields — closes all five
-items at once.
+event with the expected `attributes.chat.gateway*` fields — closes all seven
+items at once (send through Vercel/Cloudflare with a model whose catalog
+`max_tokens` is below its account-level default to also exercise item 6, and
+watch the OpenRouter message's context menu before reloading to exercise
+item 7).
 
 ## Known limitation (disclosed, not fixed)
 
@@ -235,6 +318,27 @@ error, not a crash or silent failure), left as a known edge case rather than
 fixed, since closing it fully requires stripping first-turn tools
 server-side specifically for a gateway-model regenerate — a small feature in
 its own right.
+
+An image attached earlier in a conversation under a vision-capable model can
+still reach the provider raw on a *later* turn if the user regenerates that
+same message after switching to a non-vision model mid-session —
+`sanitizeMessagesForModelContext()` in
+`server/utils/files/assistant-files.ts` only replaces file parts with an
+"omitted" text placeholder for non-latest user messages; the latest user
+message's file parts are always kept as-is regardless of the currently
+selected model's vision support, since there's no new attach action for the
+client-side gate to intercept. Closing this fully requires threading the
+selected model's (or, for gateways, its catalog entry's) modality data into
+`sanitizeMessagesForModelContext()` before it runs — for gateways this also
+means resolving the catalog entry earlier in `index.post.ts`'s request flow,
+before `messagesForAI` is built, not just inside `useGateway()`'s builders as
+this fix does for `maxOutputTokens`/`pricing`. Left as a disclosed gap
+rather than folded into this fix: Cloudflare's catalog exposes no modality
+data at all regardless (see "Price tier and capability signals" above), so
+this wouldn't close the gap for Cloudflare specifically — the friendly
+error normalization in `server/utils/chats/errors.ts`
+(`looksLikeImageInputRejection`) is the safety net for that case and for any
+other model whose vision support this app doesn't yet know.
 
 ## Owner action items
 

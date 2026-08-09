@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  estimateGatewayMessageCost,
   isGatewayModelFree,
   resolveGatewayPriceTier,
 } from '#shared/utils/gateway-pricing'
@@ -97,5 +98,62 @@ describe('isGatewayModelFree', () => {
     expect(isGatewayModelFree({
       pricing: { input: 'abc', output: '0' },
     })).toBe(false)
+  })
+})
+
+describe('estimateGatewayMessageCost', () => {
+  it('returns undefined when pricing is missing', () => {
+    expect(estimateGatewayMessageCost(
+      {},
+      { inputTokens: 1000, outputTokens: 500 },
+    )).toBeUndefined()
+  })
+
+  it('returns undefined when the input price is unparseable', () => {
+    expect(estimateGatewayMessageCost(
+      { pricing: { input: 'abc', output: '0.000002' } },
+      { inputTokens: 1000, outputTokens: 500 },
+    )).toBeUndefined()
+  })
+
+  it('returns undefined when the output price is unparseable', () => {
+    expect(estimateGatewayMessageCost(
+      { pricing: { input: '0.000001', output: 'abc' } },
+      { inputTokens: 1000, outputTokens: 500 },
+    )).toBeUndefined()
+  })
+
+  it('returns undefined for a negative sentinel price', () => {
+    expect(estimateGatewayMessageCost(
+      { pricing: { input: '-1', output: '-1' } },
+      { inputTokens: 1000, outputTokens: 500 },
+    )).toBeUndefined()
+  })
+
+  it('multiplies each token count by its own per-token price', () => {
+    const cost = estimateGatewayMessageCost(
+      { pricing: { input: '0.000001', output: '0.000002' } },
+      { inputTokens: 1000, outputTokens: 500 },
+    )
+
+    expect(cost).toBeCloseTo(0.001 + 0.001, 10)
+  })
+
+  it('returns zero for a free model with zero usage cost', () => {
+    const cost = estimateGatewayMessageCost(
+      { pricing: { input: '0', output: '0' } },
+      { inputTokens: 1000, outputTokens: 500 },
+    )
+
+    expect(cost).toBe(0)
+  })
+
+  it('handles zero token counts without throwing', () => {
+    const cost = estimateGatewayMessageCost(
+      { pricing: { input: '0.000001', output: '0.000002' } },
+      { inputTokens: 0, outputTokens: 0 },
+    )
+
+    expect(cost).toBe(0)
   })
 })

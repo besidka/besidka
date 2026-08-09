@@ -16,6 +16,17 @@ function stubDecrypt(decryptedValue: string) {
   vi.stubGlobal('useDecryptText', vi.fn(async () => decryptedValue))
 }
 
+function stubCloudflareCatalog(models: unknown[]) {
+  vi.stubGlobal('useStorage', () => ({
+    getItem: vi.fn(async () => null),
+    setItem: vi.fn(async () => undefined),
+  }))
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ data: models }),
+  })))
+}
+
 async function importCloudflareGateway() {
   const module = await import(
     '../../../../server/utils/gateways/cloudflare'
@@ -281,4 +292,91 @@ describe('useCloudflareGateway', () => {
       'Plan a trip to Kyoto',
     )
   })
+
+  it('caps maxOutputTokens and pricing from the model\'s own catalog entry',
+    async () => {
+      stubKeyLookup('encrypted-blob')
+      stubDecrypt(JSON.stringify({
+        accountId: 'account-123',
+        apiKey: 'cf-token',
+      }))
+      stubCloudflareCatalog([
+        {
+          id: 'llama-3.3-70b',
+          name: 'Llama 3.3 70B',
+          input_modalities: [
+            {
+              type: 'text',
+              supported_inputs: { max_context_length: { value: 24000 } },
+              pricing: [{ type: 'prompt', cost_usd: '0.0000002' }],
+            },
+          ],
+          output_modalities: [
+            {
+              type: 'text',
+              max_length: { value: 4096 },
+              pricing: [{ type: 'completion', cost_usd: '0.0000009' }],
+            },
+          ],
+        },
+      ])
+
+      const { useCloudflareGateway } = await importCloudflareGateway()
+      const result = await useCloudflareGateway('1', 'llama-3.3-70b')
+
+      expect(result.maxOutputTokens).toBe(4096)
+      expect(result.pricing).toEqual({
+        input: '0.0000002',
+        output: '0.0000009',
+      })
+    })
+
+  it('leaves maxOutputTokens and pricing undefined when the model is not '
+    + 'in the catalog', async () => {
+    stubKeyLookup('encrypted-blob')
+    stubDecrypt(JSON.stringify({
+      accountId: 'account-123',
+      apiKey: 'cf-token',
+    }))
+    stubCloudflareCatalog([])
+
+    const { useCloudflareGateway } = await importCloudflareGateway()
+    const result = await useCloudflareGateway('1', 'llama-3.3-70b')
+
+    expect(result.maxOutputTokens).toBeUndefined()
+    expect(result.pricing).toBeUndefined()
+  })
+
+  it('passes the catalog maxOutputTokens through to generateChatTitle',
+    async () => {
+      stubKeyLookup('encrypted-blob')
+      stubDecrypt(JSON.stringify({
+        accountId: 'account-123',
+        apiKey: 'cf-token',
+      }))
+      stubCloudflareCatalog([
+        {
+          id: 'llama-3.3-70b',
+          name: 'Llama 3.3 70B',
+          output_modalities: [
+            { type: 'text', max_length: { value: 4096 } },
+          ],
+        },
+      ])
+
+      const useChatTitleMock = vi.fn(async () => 'A title')
+
+      vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+      const { useCloudflareGateway } = await importCloudflareGateway()
+      const result = await useCloudflareGateway('1', 'llama-3.3-70b')
+
+      await result.generateChatTitle('Plan a trip to Kyoto')
+
+      expect(useChatTitleMock).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: 'llama-3.3-70b' }),
+        'Plan a trip to Kyoto',
+        4096,
+      )
+    })
 })
