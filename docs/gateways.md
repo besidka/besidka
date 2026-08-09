@@ -811,12 +811,21 @@ this route writes expires after 600s, so the loop's total budget must stay
 under that — otherwise a client retry arriving after the guard expired would
 start a second concurrent generation for the same turn. A tool `execute()`
 that throws produces a `tool-error` output, which the model sees and answers
-from, so a failing tool terminates the loop rather than retrying it. If a tool
-instead *hangs* past `toolMs`, or the whole loop passes `totalMs`, the SDK
-aborts the stream: `persistAssistantMessageFromStream()` sees the `abort`
-chunk, returns `false` and writes no assistant row, and the KV guard is still
-released in the handler's `finally` — so a timed-out loop loses the reply
-rather than leaving a half-written one, and the user can resend immediately.
+from, so a failing tool terminates the loop rather than retrying it.
+
+**`toolMs` is cooperative, not enforced.** The AI SDK only passes it to
+`execute()` as `options.abortSignal` — it never wraps the call in its own
+race/cancellation. A tool that hangs without checking that signal (e.g. a
+`fetch()` that omits `signal: options.abortSignal`) is never interrupted by
+`toolMs`, and can hang past `totalMs` too, since nothing else force-resolves
+a pending step. `totalMs` does correctly abort a hang in the *model's own*
+HTTP call: `persistAssistantMessageFromStream()` sees the resulting `abort`
+chunk, returns `false`, writes no assistant row, and the KV guard is still
+released in the handler's `finally`. **Any real tool wired via
+`withFollowUpTurn()` must thread `options.abortSignal` into its own network
+I/O**, or `toolMs` does nothing for it. There is no test for a true hang —
+nothing in this framework can force one to resolve — only a tool `throw` is
+exercised (`tests/integration/api/chats-tool-loop.spec.ts`).
 
 **Persistence and rendering.** Intermediate tool-call/tool-result parts land
 in `messages.parts` unchanged: `normalizeAssistantMessagePartsForPersistence`
