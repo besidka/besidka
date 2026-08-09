@@ -7,7 +7,9 @@
  * The curated
  * half — which tools, reasoning, research and image-generation capabilities
  * a model is offered with — stays hand-written in providers/anthropic.ts,
- * providers/google.ts and providers/openai.ts and is never touched here.
+ * providers/google.ts, providers/openai.ts, providers/xai.ts,
+ * providers/deepseek.ts and providers/moonshotai.ts and is never touched
+ * here.
  *
  * The join only ever looks curated ids UP in models.dev; it never iterates
  * the remote catalog outward, so embedding, video, music, TTS and realtime
@@ -38,6 +40,9 @@ import {
 import anthropic from '../providers/anthropic.ts'
 import google from '../providers/google.ts'
 import openai from '../providers/openai.ts'
+import xai from '../providers/xai.ts'
+import deepseek from '../providers/deepseek.ts'
+import moonshotai from '../providers/moonshotai.ts'
 
 const CATALOG_URL = 'https://models.dev/api.json'
 const FETCH_TIMEOUT_MS = 60_000
@@ -52,7 +57,14 @@ const EXEMPT_IDS = ['o3-deep-research', 'o4-mini-deep-research']
 
 const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']
 
-const curatedProviders = [anthropic, google, openai]
+const curatedProviders = [
+  anthropic,
+  google,
+  openai,
+  xai,
+  deepseek,
+  moonshotai,
+]
 
 const catalog = await fetchCatalog()
 const snapshot = {}
