@@ -30,16 +30,8 @@
         <span
           class="w-full xs:w-auto min-w-0 flex items-center gap-1.5"
         >
-          <SvgoGeminiShort
-            v-if="providerId === 'google'"
-            class="w-3.5 shrink-0 fill-base-content/40"
-          />
-          <SvgoOpenai
-            v-else-if="providerId === 'openai'"
-            class="w-3.5 shrink-0 fill-base-content/40"
-          />
-          <SvgoAnthropic
-            v-else-if="providerId === 'anthropic'"
+          <ProviderIcon
+            :provider-id="providerId"
             class="w-3.5 shrink-0 fill-base-content/40"
           />
           <span

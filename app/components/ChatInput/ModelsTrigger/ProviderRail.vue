@@ -41,24 +41,11 @@
       :aria-pressed="activeProviderId === provider.id"
       @click="emit('toggleProvider', provider.id)"
     >
-      <SvgoGeminiShort
-        v-if="provider.id === 'google'"
+      <ProviderIcon
+        :provider-id="provider.id"
+        :label="provider.name"
         class="w-4 fill-current"
       />
-      <SvgoOpenai
-        v-else-if="provider.id === 'openai'"
-        class="w-4 fill-current"
-      />
-      <SvgoAnthropic
-        v-else-if="provider.id === 'anthropic'"
-        class="w-4 fill-current"
-      />
-      <span
-        v-else
-        class="text-xs font-semibold uppercase"
-      >
-        {{ provider.name.slice(0, 2) }}
-      </span>
     </button>
   </div>
 </template>

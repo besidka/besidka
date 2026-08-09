@@ -15,16 +15,9 @@
       :aria-controls="panelId"
       @click="toggle"
     >
-      <SvgoGeminiShort
-        v-if="getModel(toValue(userModel)).provider?.id === 'google'"
-        class="w-4 fill-base-content/40"
-      />
-      <SvgoOpenai
-        v-if="getModel(toValue(userModel)).provider?.id === 'openai'"
-        class="w-4 fill-base-content/40"
-      />
-      <SvgoAnthropic
-        v-if="getModel(toValue(userModel)).provider?.id === 'anthropic'"
+      <ProviderIcon
+        v-if="triggerProviderId"
+        :provider-id="triggerProviderId"
         class="w-4 fill-base-content/40"
       />
       <span class="block truncate text-left min-w-0">
@@ -260,6 +253,10 @@ const panelId = useId()
 const listboxId = useId()
 const legacyListId = useId()
 const legacyLabelId = useId()
+
+const triggerProviderId = computed<string | null>(() => {
+  return getModel(toValue(userModel)).provider?.id ?? null
+})
 
 const allModels = computed<PickerModel[]>(() => {
   return providers.flatMap((provider) => {
