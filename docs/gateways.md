@@ -54,8 +54,10 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
   three-way `toggle`/`effort` (`low`/`medium`/`xhigh`)/`budget_tokens` choice,
   and mapping this app's `low`/`medium`/`high` levels onto DashScope's
   `xhigh` would need a dedicated translation this app's `ReasoningLevel` type
-  doesn't have prior art for; all three curated models exclusively expose the
-  simpler toggle, avoiding that risk entirely for this initial pass.
+  doesn't have prior art for. models.dev's own catalog shows all three
+  curated models also expose a `budget_tokens` option alongside the toggle —
+  this app deliberately wires only `enable_thinking` and leaves
+  `budget_tokens` unused, rather than the models having no other option.
 
 Server-side wiring lives in
 `server/utils/providers/{xai,deepseek,moonshotai,qwen}.ts`, matching the

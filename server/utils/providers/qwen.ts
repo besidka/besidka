@@ -91,7 +91,8 @@ export async function useQwen(
    * doesn't itself recognize (`user`, `reasoningEffort`, `textVerbosity`,
    * `strictJsonSchema`) straight into the JSON body, so this is the only
    * place that needs to know the field name. Every currently curated Qwen
-   * model exposes only this toggle, never adjustable effort levels, so the
+   * model also exposes a `budget_tokens` option alongside the toggle, left
+   * deliberately unused here; none exposes adjustable effort levels, so the
    * top-level `reasoning` streamText option is never set for this provider.
    * @see https://www.alibabacloud.com/help/en/model-studio/deep-thinking
    */

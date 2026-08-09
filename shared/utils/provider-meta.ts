@@ -84,7 +84,7 @@ export const providerMeta: Record<string, ProviderMeta> = {
     label: 'Qwen',
     keyProviderId: 'qwen',
     dashboardUrl: 'https://bailian.console.alibabacloud.com/cn-beijing?tab=model#/api-key',
-    dashboardLabel: 'Alibaba Cloud Model Studio → API-KEY (switch region in the console)',
+    dashboardLabel: 'Alibaba Cloud Model Studio → API-KEY (this app uses the international endpoint — switch to a non-China region in the console before creating your key, or it will fail)',
     keyFields: [apiKeyField],
   },
   vercel: {
