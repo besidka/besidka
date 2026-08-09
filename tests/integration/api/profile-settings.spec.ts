@@ -8,6 +8,7 @@ interface SettingsRecord {
   notificationPromptState: boolean | null
   sidebarPinned: boolean
   favoriteModels: string[] | null
+  favoriteGatewayModels: Record<string, string[]> | null
 }
 
 function createDbMock() {
@@ -24,6 +25,7 @@ function createDbMock() {
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
     favoriteModels?: string[]
+    favoriteGatewayModels?: Record<string, string[]>
   }) => {
     currentSettings = {
       id: 1,
@@ -33,6 +35,7 @@ function createDbMock() {
       notificationPromptState: values.notificationPromptState ?? null,
       sidebarPinned: values.sidebarPinned ?? false,
       favoriteModels: values.favoriteModels ?? null,
+      favoriteGatewayModels: values.favoriteGatewayModels ?? null,
     }
   })
   const insert = vi.fn(() => ({
@@ -48,6 +51,7 @@ function createDbMock() {
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
     favoriteModels?: string[]
+    favoriteGatewayModels?: Record<string, string[]>
   }) => {
     currentSettings = {
       id: 1,
@@ -68,6 +72,9 @@ function createDbMock() {
         ?? false,
       favoriteModels: values.favoriteModels
         ?? currentSettings?.favoriteModels
+        ?? null,
+      favoriteGatewayModels: values.favoriteGatewayModels
+        ?? currentSettings?.favoriteGatewayModels
         ?? null,
     }
 
@@ -183,6 +190,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -229,6 +237,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -263,6 +272,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -297,6 +307,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -331,6 +342,7 @@ describe('profile settings API', () => {
       notificationPromptState: false,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -365,6 +377,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: true,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -399,6 +412,96 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: ['gpt-5.4', 'gemini-2.5-flash'],
+      favoriteGatewayModels: {},
+    })
+  })
+
+  it('saves deduped favoriteGatewayModels per gateway', async () => {
+    const patchHandler = await patchSettingsHandler()
+    const getHandler = await getSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        favoriteGatewayModels: {
+          vercel: ['openai/gpt-4o', 'openai/gpt-4o'],
+          openrouter: ['anthropic/claude-opus-5:free'],
+        },
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      favoriteGatewayModels: {
+        vercel: ['openai/gpt-4o'],
+        openrouter: ['anthropic/claude-opus-5:free'],
+      },
+    })
+
+    const getResponse = await getHandler({} as any)
+
+    expect(getResponse).toMatchObject({
+      favoriteGatewayModels: {
+        vercel: ['openai/gpt-4o'],
+        openrouter: ['anthropic/claude-opus-5:free'],
+      },
+    })
+  })
+
+  it('drops unknown gateway keys from favoriteGatewayModels', async () => {
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    const patchResponse = await patchHandler({
+      body: {
+        favoriteGatewayModels: {
+          'vercel': ['openai/gpt-4o'],
+          'not-a-gateway': ['evil/model'],
+        },
+      },
+    } as any)
+
+    expect(patchResponse).toEqual({
+      favoriteGatewayModels: {
+        vercel: ['openai/gpt-4o'],
+      },
+    })
+  })
+
+  it('rejects a favoriteGatewayModels list over the cap', async () => {
+    const patchHandler = await patchSettingsHandler()
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: {
+        id: '1',
+      },
+    }))
+
+    await expect(patchHandler({
+      body: {
+        favoriteGatewayModels: {
+          vercel: Array.from({ length: 51 }, (_value, index) => {
+            return `model-${index}`
+          }),
+        },
+      },
+    } as any)).rejects.toMatchObject({
+      statusCode: 400,
     })
   })
 
