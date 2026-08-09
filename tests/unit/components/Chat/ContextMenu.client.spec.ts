@@ -1141,7 +1141,10 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(providerRow.text()).toContain('Cloudflare AI Gateway')
       expect(providerRow.text()).not.toContain('(direct)')
-      expect(providerRow.find('.iconify').exists()).toBe(false)
+      expect(providerRow.find('.i-lucide\\:key-round').exists()).toBe(false)
+      expect(providerRow.get('.iconify').classes()).toContain(
+        'i-simple-icons:cloudflare',
+      )
     })
 
     it('hides the provider row when no provider info is present', async () => {
