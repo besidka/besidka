@@ -11,9 +11,6 @@ const expectedIconNames: Record<string, string> = {
   deepseek: 'simple-icons:deepseek',
   moonshotai: 'simple-icons:moonshotai',
   qwen: 'simple-icons:qwen',
-  vercel: 'simple-icons:vercel',
-  openrouter: 'simple-icons:openrouter',
-  cloudflare: 'simple-icons:cloudflare',
 }
 
 async function getIconName(providerId: string): Promise<string | undefined> {
@@ -66,42 +63,6 @@ describe('ProviderIcon', () => {
       expect(wrapper.get('span').text()).toBe('No')
     })
 
-  it('renders the xai icon for the OpenRouter vendor slug "x-ai"',
-    async () => {
-      expect(await getIconName('x-ai')).toBe('logos:grok-icon')
-    })
-
-  it('renders the matching icon for every tilde-prefixed "latest" alias',
-    async () => {
-      const tildeAliases: Record<string, string> = {
-        '~anthropic': 'simple-icons:anthropic',
-        '~deepseek': 'simple-icons:deepseek',
-        '~google': 'simple-icons:googlegemini',
-        '~moonshotai': 'simple-icons:moonshotai',
-        '~openai': 'simple-icons:openai',
-        '~x-ai': 'logos:grok-icon',
-      }
-
-      for (const [providerId, iconName] of Object.entries(tildeAliases)) {
-        expect(await getIconName(providerId)).toBe(iconName)
-      }
-    })
-
-  it('resolves raw Cloudflare vendor slugs through the shared override table',
-    async () => {
-      const cloudflareSlugs: Record<string, string> = {
-        'deepseek-ai': 'simple-icons:deepseek',
-        'ibm-granite': 'simple-icons:ibm',
-        'meta-llama': 'simple-icons:meta',
-        'mistralai': 'simple-icons:mistralai',
-        'zai-org': 'thesvg:zhipu',
-      }
-
-      for (const [providerId, iconName] of Object.entries(cloudflareSlugs)) {
-        expect(await getIconName(providerId)).toBe(iconName)
-      }
-    })
-
   it('leaves a Cloudflare vendor with no verified brand icon on the badge '
     + 'rather than borrowing a wrong logo', async () => {
     const wrapper = await mountSuspended(ProviderIcon, {
@@ -112,7 +73,7 @@ describe('ProviderIcon', () => {
     expect(wrapper.get('span').text()).toBe('bl')
   })
 
-  it('resolves a real icon for every provider and gateway in providerMeta, '
+  it('resolves a real icon for every provider in providerMeta, '
     + 'so a newly added one cannot silently fall through to the badge',
   async () => {
     for (const providerId of Object.keys(providerMeta)) {

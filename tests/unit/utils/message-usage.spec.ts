@@ -132,26 +132,8 @@ describe('buildMessageUsage', () => {
     expect(result).not.toHaveProperty('cachedInputTokens')
   })
 
-  it('sets totalCost when a gateway-reported cost is passed', () => {
-    const usage = createUsage({
-      inputTokens: 10,
-      outputTokens: 20,
-      totalTokens: 30,
-    })
-
-    const result = buildMessageUsage(
-      usage,
-      'anthropic/claude-opus-5',
-      'openrouter',
-      0.0042,
-    )
-
-    expect(result?.totalCost).toBe(0.0042)
-    expect(result?.inputCost).toBeUndefined()
-    expect(result?.outputCost).toBeUndefined()
-  })
-
-  it('omits totalCost when no gateway cost is passed', () => {
+  it('never sets totalCost, which only ever comes from '
+    + 'already-persisted messages', () => {
     const usage = createUsage({
       inputTokens: 10,
       outputTokens: 20,

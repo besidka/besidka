@@ -3,10 +3,8 @@ import type {
   UIMessage,
   InferUIMessageChunk,
   LanguageModelUsage,
-  ProviderMetadata,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
-import type { GatewayProvider } from '@ai-sdk/gateway'
 import type { H3Event } from 'h3'
 import { getRequestURL } from 'h3'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
@@ -17,15 +15,9 @@ import type {
   Provider,
   SupportedProviderId,
 } from '#shared/types/providers.d'
-import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import {
-  isGatewayReasoningSupported,
-  isGatewayToolAllowed,
-} from '#shared/utils/gateway-capabilities'
-import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -62,7 +54,6 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   getGeneratedImageFileIds,
   isKnownImageGenerationModel,
-  persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
@@ -86,7 +77,6 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    gateway: z.enum(['vercel', 'cloudflare', 'openrouter']).optional(),
     tools: z.array(chatToolSchema),
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
     messages: z.array(incomingUserMessageSchema).length(1),
@@ -100,10 +90,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const reasoningLevel: ReasoningLevel = body.data.gateway
-    && !isGatewayReasoningSupported(body.data.gateway)
-    ? 'off'
-    : body.data.reasoning
+  const reasoningLevel: ReasoningLevel = body.data.reasoning
 
   const session = await useUserSession()
 
@@ -172,7 +159,6 @@ export default defineEventHandler(async (event) => {
   const {
     messages: newMessages,
     model: userModel,
-    gateway: gatewayId,
   } = body.data
   const newMessage = newMessages[0]
 
@@ -187,69 +173,45 @@ export default defineEventHandler(async (event) => {
     ? chat.messages[0]?.tools || []
     : body.data.tools
 
-  if (gatewayId) {
-    const unsupportedGatewayTool = selectedTools.find((selectedTool) => {
-      return !isGatewayToolAllowed(gatewayId, selectedTool)
-    })
-
-    if (unsupportedGatewayTool) {
-      throw createError({
-        message: 'The selected tool is not supported for models routed through this gateway.',
-        status: 400,
-        why: `${gatewayId} does not support ${unsupportedGatewayTool} for gateway chat completions.`,
-        fix: 'Turn off that tool, or choose a direct provider model.',
-      })
-    }
-  }
-
-  let provider: Provider | undefined
-  let model: Model | undefined
+  const resolved = useChatProvider(userModel)
+  const provider: Provider | undefined = resolved.provider
+  const model: Model | undefined = resolved.model
   let requestedTools: ModelTool[] = []
 
-  if (gatewayId) {
-    requestedTools = selectedTools
-    logger.set({ tools: requestedTools })
-  } else {
-    const resolved = useChatProvider(userModel)
+  const hasImageAttachment = newMessage.parts.some((part) => {
+    return part.type === 'file' && part.mediaType.startsWith('image/')
+  })
 
-    provider = resolved.provider
-    model = resolved.model
-
-    const hasImageAttachment = newMessage.parts.some((part) => {
-      return part.type === 'file' && part.mediaType.startsWith('image/')
+  if (hasImageAttachment && !model.modalities.input.includes('image')) {
+    throw createError({
+      message: `${model.name} does not support image input.`,
+      status: 400,
+      why: 'The message includes an image attachment, but the selected model does not advertise image support.',
+      fix: 'Remove the image attachment, or switch to a vision-capable model.',
     })
-
-    if (hasImageAttachment && !model.modalities.input.includes('image')) {
-      throw createError({
-        message: `${model.name} does not support image input.`,
-        status: 400,
-        why: 'The message includes an image attachment, but the selected model does not advertise image support.',
-        fix: 'Remove the image attachment, or switch to a vision-capable model.',
-      })
-    }
-
-    const requiredTools = getRequiredModelTools(model)
-    const supportedTools = [...model.tools, ...requiredTools]
-    const unsupportedTool = selectedTools.find((selectedTool) => {
-      return !supportedTools.includes(selectedTool)
-    })
-
-    if (unsupportedTool) {
-      throw createError({
-        message: 'The selected model does not support the requested tool.',
-        status: 400,
-        why: `${model.name} does not advertise ${unsupportedTool}.`,
-        fix: 'Choose a supported model or turn off that tool.',
-      })
-    }
-
-    requestedTools = [...new Set([
-      ...selectedTools,
-      ...requiredTools,
-    ])]
-
-    logger.set({ tools: requestedTools })
   }
+
+  const requiredTools = getRequiredModelTools(model)
+  const supportedTools = [...model.tools, ...requiredTools]
+  const unsupportedTool = selectedTools.find((selectedTool) => {
+    return !supportedTools.includes(selectedTool)
+  })
+
+  if (unsupportedTool) {
+    throw createError({
+      message: 'The selected model does not support the requested tool.',
+      status: 400,
+      why: `${model.name} does not advertise ${unsupportedTool}.`,
+      fix: 'Choose a supported model or turn off that tool.',
+    })
+  }
+
+  requestedTools = [...new Set([
+    ...selectedTools,
+    ...requiredTools,
+  ])]
+
+  logger.set({ tools: requestedTools })
 
   const previousMessages = chat.messages
     .filter((message) => {
@@ -427,13 +389,9 @@ export default defineEventHandler(async (event) => {
 
   let modelId: string
   let telemetryProviderId: string
-  let errorProviderId: SupportedProviderId | GatewayId | undefined
+  let errorProviderId: SupportedProviderId | undefined
 
-  if (gatewayId) {
-    modelId = userModel
-    telemetryProviderId = keyProviderIdForGateway(gatewayId)
-    errorProviderId = gatewayId
-  } else if (provider && model) {
+  if (provider && model) {
     modelId = model.id
     telemetryProviderId = provider.id
     errorProviderId = toSupportedProviderId(provider.id)
@@ -443,18 +401,6 @@ export default defineEventHandler(async (event) => {
       status: 400,
     })
   }
-
-  const gatewayTelemetryAttributes = gatewayId
-    ? {
-      attributes: {
-        chat: {
-          gateway: gatewayId,
-          gatewayProvider: modelId.split('/')[0],
-          gatewayModel: modelId,
-        },
-      },
-    }
-    : {}
 
   // Nuxt/Nitro emits the parent request wide event the moment this handler
   // returns the streaming Response — BEFORE the AI stream finishes — so the
@@ -499,7 +445,6 @@ export default defineEventHandler(async (event) => {
     providerId: telemetryProviderId,
     reasoning: reasoningLevel,
     tools: requestedTools,
-    ...gatewayTelemetryAttributes,
   })
 
   // Mirror Cloudflare edge metadata (colo, country, ASN, etc.) onto the
@@ -511,7 +456,6 @@ export default defineEventHandler(async (event) => {
   logger.set({
     providerId: telemetryProviderId,
     modelId,
-    ...gatewayTelemetryAttributes,
   })
 
   let instance: LanguageModel
@@ -522,32 +466,9 @@ export default defineEventHandler(async (event) => {
     modelId: string
     aspectRatio: ImageGenerationAspectRatio
   } | undefined
-  let vercelGatewayClient: GatewayProvider | undefined
-  let gatewayMaxOutputTokens: number | undefined
-  let gatewayPricing: GatewayModel['pricing'] | undefined
 
   try {
-    if (gatewayId) {
-      const gatewayResult = await useGateway(
-        gatewayId,
-        session.user.id,
-        modelId,
-        requestedTools,
-        reasoningLevel,
-        logger,
-      )
-
-      instance = gatewayResult.instance
-      parsedTools = gatewayResult.tools
-      reasoningEffort = gatewayResult.reasoning
-      Object.assign(providerOptions, gatewayResult.providerOptions)
-      gatewayMaxOutputTokens = gatewayResult.maxOutputTokens
-      gatewayPricing = gatewayResult.pricing
-
-      if (gatewayId === 'vercel') {
-        vercelGatewayClient = gatewayResult.client
-      }
-    } else if (provider && model) {
+    if (provider && model) {
       switch (provider.id) {
         case 'openai': {
           const {
@@ -884,27 +805,16 @@ export default defineEventHandler(async (event) => {
             instructions: buildChatInstructions(
               projectSystemPrompt,
               requestedTools,
-              gatewayId,
             ),
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForAI),
             experimental_transform: smoothStream(),
-            // Only Vercel/Cloudflare populate gatewayMaxOutputTokens (from
-            // the model's own catalog entry — see GatewayChatResult in
-            // server/utils/gateways/index.ts). OpenRouter's builder leaves
-            // this undefined on purpose: it already self-negotiates a safe
-            // max_tokens per routed upstream, and OpenRouter's own
-            // advertised max_completion_tokens can be LOWER than a model's
-            // real capacity on some upstreams, so capping it here would risk
-            // truncating outputs that work fine today. Direct-provider sends
-            // never set this either, so they keep their existing uncapped
-            // behavior unchanged.
-            maxOutputTokens: gatewayMaxOutputTokens,
-            onEnd({ usage, providerMetadata, steps }) {
-              const textCost = gatewayId
-                ? sumOpenRouterStepCosts(steps)
-                ?? readOpenRouterCost(providerMetadata)
-                : computeModelCost(modelId, telemetryProviderId, usage)
+            onEnd({ usage }) {
+              const textCost = computeModelCost(
+                modelId,
+                telemetryProviderId,
+                usage,
+              )
               const imageCost = generatedImage
                 ? getImageGenerationCost(
                   generatedImage.modelId,
@@ -961,8 +871,6 @@ export default defineEventHandler(async (event) => {
           throw chatError
         }
 
-        let streamedGatewayCost: number | undefined
-
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
           originalMessages: messagesForAI,
@@ -970,32 +878,14 @@ export default defineEventHandler(async (event) => {
           sendSources: true,
           sendReasoning: reasoningLevel !== 'off',
           messageMetadata({ part }) {
-            if (part.type === 'finish-step') {
-              const stepCost = readOpenRouterCost(part.providerMetadata)
-
-              if (stepCost !== undefined) {
-                streamedGatewayCost = (streamedGatewayCost ?? 0) + stepCost
-              }
-
-              return undefined
-            }
-
             if (part.type !== 'finish') {
               return undefined
             }
-
-            const gatewayCost = resolveLiveGatewayCost({
-              gatewayId,
-              openRouterCost: streamedGatewayCost,
-              pricing: gatewayPricing,
-              usage: part.totalUsage,
-            })
 
             const baseUsage = buildMessageUsage(
               part.totalUsage,
               modelId,
               telemetryProviderId,
-              gatewayCost?.totalCost,
             )
             const imageGenerationCost = generatedImage
               ? getImageGenerationCost(
@@ -1003,13 +893,10 @@ export default defineEventHandler(async (event) => {
                 generatedImage.aspectRatio,
               )
               : undefined
-            const usageWithImageCost = addImageGenerationCostToUsage(
+            const usage = addImageGenerationCostToUsage(
               baseUsage,
               imageGenerationCost,
             )
-            const usage = usageWithImageCost && gatewayCost?.costEstimated
-              ? { ...usageWithImageCost, costEstimated: true }
-              : usageWithImageCost
 
             return {
               createdAt: new Date().toISOString(),
@@ -1065,10 +952,6 @@ export default defineEventHandler(async (event) => {
           tools: requestedTools,
           publicId: messagePublicId,
           logger,
-          gatewayId,
-          gatewayPricing,
-          vercelGatewayClient,
-          scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
         })
 
         // There is no reliable signal here for "is the client still
@@ -1159,91 +1042,6 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
-
-/**
- * Sums the per-step OpenRouter cost across every step of one send.
- *
- * Each AI SDK step is its own `doStream()` call — a separate OpenRouter
- * request with its own generation id and its own billed `usage.cost` — so a
- * multi-step send reports N independent costs that must be added, never
- * last-wins. For the single-step sends that are the only ones reachable
- * without a `withFollowUpTurn()` tool, the sum of one element is exactly the
- * value the previous `finalStep`-only read produced.
- *
- * Stays `undefined` (never 0) when no step reported a cost, so an unpriced
- * send omits `totalCost` instead of displaying a fabricated free generation.
- */
-function sumOpenRouterStepCosts(
-  steps: readonly { providerMetadata?: ProviderMetadata }[] | undefined,
-): number | undefined {
-  if (!steps) {
-    return undefined
-  }
-
-  let total: number | undefined
-
-  for (const step of steps) {
-    const stepCost = readOpenRouterCost(step.providerMetadata)
-
-    if (stepCost === undefined) {
-      continue
-    }
-
-    total = (total ?? 0) + stepCost
-  }
-
-  return total
-}
-
-/**
- * Resolves the one gateway cost figure that's genuinely available at
- * generation-finish time, shared by the live streamed metadata
- * (`messageMetadata`'s finish branch) and the persisted DB write
- * (`persistAssistantMessageFromStream`) so both paths agree. `openRouterCost`
- * arrives already summed across steps by the caller — live from the
- * `finish-step` chunks, persisted from `result.steps`.
- *
- * OpenRouter reports its billed cost synchronously — never estimated.
- * Cloudflare has no per-request cost API, so its figure is a token-based
- * estimate from the catalog's per-token `pricing` (see
- * `estimateGatewayMessageCost`), flagged `costEstimated: true`. Vercel is
- * deliberately excluded: its real cost is only knowable via an async
- * follow-up call scheduled well after the stream finishes (see
- * `persistVercelGenerationCost` in `server/utils/gateways/vercel.ts`), so
- * there is nothing to read here yet. Direct-provider sends (`gatewayId`
- * undefined) also resolve to `undefined`, leaving their existing
- * `inputCost`/`outputCost` split untouched.
- */
-function resolveLiveGatewayCost(input: {
-  gatewayId: GatewayId | undefined
-  openRouterCost: number | undefined
-  pricing: GatewayModel['pricing'] | undefined
-  usage: LanguageModelUsage
-}): { totalCost: number, costEstimated: boolean } | undefined {
-  if (input.gatewayId === 'openrouter') {
-    const totalCost = input.openRouterCost
-
-    return totalCost === undefined
-      ? undefined
-      : { totalCost, costEstimated: false }
-  }
-
-  if (input.gatewayId === 'cloudflare' && input.pricing) {
-    const totalCost = estimateGatewayMessageCost(
-      { pricing: input.pricing },
-      {
-        inputTokens: input.usage.inputTokens ?? 0,
-        outputTokens: input.usage.outputTokens ?? 0,
-      },
-    )
-
-    return totalCost === undefined
-      ? undefined
-      : { totalCost, costEstimated: true }
-  }
-
-  return undefined
-}
 
 // Dollars spent on a single generation, derived from the same per-1M-token
 // pricing `buildMessageUsage()` uses for persisted/streamed usage. Returns
@@ -1409,7 +1207,7 @@ async function persistAssistantMessageFromStream(input: {
   db: ReturnType<typeof useDb>
   event: H3Event
   providerId: string
-  supportedProviderId: SupportedProviderId | GatewayId | undefined
+  supportedProviderId: SupportedProviderId | undefined
   userId: number
   chatId: string
   projectId: string | null
@@ -1420,10 +1218,6 @@ async function persistAssistantMessageFromStream(input: {
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
-  vercelGatewayClient?: GatewayProvider
-  scheduleBackgroundWork?: (promise: Promise<unknown>) => void
-  gatewayId?: GatewayId
-  gatewayPricing?: GatewayModel['pricing']
 }): Promise<boolean> {
   let isAborted = false
   let responseMessage: UIMessage | null = null
@@ -1449,19 +1243,8 @@ async function persistAssistantMessageFromStream(input: {
 
   try {
     const responseParts = responseMessage.parts as UIMessage['parts']
-    const gatewayImageResult = input.gatewayId
-      ? await persistGatewayGeneratedImageParts({
-        parts: responseParts,
-        userId: input.userId,
-        chatId: input.chatId,
-        gatewayId: input.providerId,
-        modelId: input.modelId,
-        logger: input.logger,
-      })
-      : undefined
-    const partsAfterGatewayImages = gatewayImageResult?.parts ?? responseParts
     const normalizationInput = {
-      parts: partsAfterGatewayImages,
+      parts: responseParts,
       providerId: input.providerId,
       chatId: input.chatId,
       userId: input.userId,
@@ -1470,57 +1253,36 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
-    const generatedFileIds = [
-      ...getGeneratedImageFileIds(
-        partsAfterGatewayImages,
-        input.providerId,
-        normalizedParts,
-      ),
-      ...(gatewayImageResult?.fileIds ?? []),
-    ]
+    const generatedFileIds = getGeneratedImageFileIds(
+      responseParts,
+      input.providerId,
+      normalizedParts,
+    )
     const usedImageGeneration = responseParts.some((part) => {
       return part.type === 'tool-generate_image'
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
         )
-    }) || (gatewayImageResult?.fileIds.length ?? 0) > 0
+    })
 
     let usage: MessageUsage | undefined
-    let vercelGenerationId: string | undefined
 
     try {
-      const finalStep = await input.result.finalStep
-      const steps = await input.result.steps
       const resolvedUsage = await input.result.usage
-
-      vercelGenerationId = readVercelGenerationId(finalStep.providerMetadata)
-
-      const gatewayCost = resolveLiveGatewayCost({
-        gatewayId: input.gatewayId,
-        openRouterCost: sumOpenRouterStepCosts(steps)
-          ?? readOpenRouterCost(finalStep.providerMetadata),
-        pricing: input.gatewayPricing,
-        usage: resolvedUsage,
-      })
-
       const baseUsage = buildMessageUsage(
         resolvedUsage,
         input.modelId,
         input.providerId,
-        gatewayCost?.totalCost,
       )
       const imageGenerationCost = getGeneratedImageCostFromParts(
         responseParts,
       )
-      const usageWithImageCost = addImageGenerationCostToUsage(
+
+      usage = addImageGenerationCostToUsage(
         baseUsage,
         imageGenerationCost,
       )
-
-      usage = usageWithImageCost && gatewayCost?.costEstimated
-        ? { ...usageWithImageCost, costEstimated: true }
-        : usageWithImageCost
     } catch (exception) {
       input.logger.set({
         attributes: {
@@ -1543,21 +1305,6 @@ async function persistAssistantMessageFromStream(input: {
       },
       publicId: input.publicId,
     })
-
-    if (
-      assistantMessage
-      && input.vercelGatewayClient
-      && input.scheduleBackgroundWork
-      && vercelGenerationId
-    ) {
-      input.scheduleBackgroundWork(persistVercelGenerationCost({
-        db: input.db,
-        client: input.vercelGatewayClient,
-        generationId: vercelGenerationId,
-        publicId: input.publicId,
-        logger: input.logger,
-      }))
-    }
 
     if (assistantMessage && generatedFileIds.length > 0) {
       let filesLinked = false
@@ -1663,36 +1410,19 @@ function generationInProgressKvKey(
   return `chat-generating:${chatId}:${userMessageId}`
 }
 
-/**
- * Gateway image generation has no tool to call at all — OpenRouter's
- * `modalities` request param and Vercel's Gemini `*-image` models both
- * return image content parts directly from an ordinary completion, the same
- * way any other multimodal LLM output works. Sending the direct-provider
- * instruction's "Call generate_image exactly once" text to a gateway send
- * would actively mislead the model into looking for a tool that was never
- * registered, so the two paths get distinct wording.
- */
 function buildChatInstructions(
   projectSystemPrompt: string | null,
   requestedTools: ModelTool[],
-  gatewayId: GatewayId | undefined,
 ): string | undefined {
   const instructions = [projectSystemPrompt]
 
   if (requestedTools.includes('image_generation')) {
-    instructions.push(gatewayId
-      ? [
-        'Image generation mode is active. Generate an image that fulfills',
-        'the user request as part of your response, alongside a short text',
-        'reply. Do not decline a valid image request or claim image',
-        'generation is unavailable.',
-      ].join(' ')
-      : [
-        'Image generation mode is active. Call generate_image exactly once',
-        'with a complete visual prompt based on the user request. Do not',
-        'decline a valid image request or claim image generation is unavailable.',
-        'The tool saves the result in the user private file library.',
-      ].join(' '))
+    instructions.push([
+      'Image generation mode is active. Call generate_image exactly once',
+      'with a complete visual prompt based on the user request. Do not',
+      'decline a valid image request or claim image generation is unavailable.',
+      'The tool saves the result in the user private file library.',
+    ].join(' '))
   }
 
   return instructions.filter(Boolean).join('\n\n') || undefined

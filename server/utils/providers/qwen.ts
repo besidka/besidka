@@ -13,9 +13,9 @@ const QWEN_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
 /**
  * Alibaba's dedicated `qwen-ai-provider` package pins `zod@^3`, which
  * conflicts with this app's `zod@^4` line, so Qwen is wired through the
- * generic `@ai-sdk/openai-compatible` package instead — the same mechanism
- * `server/utils/gateways/cloudflare.ts` already uses. DashScope's
- * international OpenAI-compatible endpoint is used rather than the newer
+ * generic `@ai-sdk/openai-compatible` package instead, pointed at
+ * DashScope's OpenAI-compatible base URL. DashScope's international
+ * OpenAI-compatible endpoint is used rather than the newer
  * per-workspace `{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com` domain
  * Alibaba now recommends for performance: the workspace-scoped domain needs
  * a Workspace ID collected as a second credential field, while the existing

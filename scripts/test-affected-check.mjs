@@ -101,10 +101,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
-    'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
-    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
-    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
-    'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [
@@ -130,7 +126,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
-    'tests/unit/utils/gateway-pricing.spec.ts',
     ...modelsTriggerTests,
     'tests/e2e/chat/scroll-spacer.spec.ts',
   ]
@@ -315,31 +310,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-hosts.spec.ts',
   ]
 
-  const gatewayCatalogTests = [
-    'tests/unit/utils/gateway-catalog-normalize.spec.ts',
-    'tests/unit/utils/gateway-capabilities.spec.ts',
-    'tests/unit/utils/gateway-pricing.spec.ts',
-    'tests/unit/utils/gateway-model-id.spec.ts',
-    'tests/integration/api/gateways-models.spec.ts',
-  ]
-
-  const gatewayChatTests = [
-    'tests/unit/utils/gateways/index.spec.ts',
-    'tests/unit/utils/gateways/vercel.spec.ts',
-    'tests/unit/utils/gateways/openrouter.spec.ts',
-    'tests/unit/utils/gateways/cloudflare.spec.ts',
-    'tests/integration/api/chats-gateway.spec.ts',
-    'tests/integration/api/chats-title.spec.ts',
-  ]
-
   const keysApiTests = [
-    'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
-    'tests/integration/api/profile-keys-openrouter.spec.ts',
-    'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
     'tests/integration/api/profile-keys-qwen.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
     'tests/unit/components/Profile/Keys/Card.spec.ts',
-    'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
   ]
@@ -410,7 +384,6 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/utils/ai/tool-loop.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
-        'tests/integration/api/chats-gateway.spec.ts',
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
       ],
     },
@@ -459,8 +432,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/utils/provider-meta.spec.ts',
         ...userKeysTests,
         ...keysApiTests,
-        ...gatewayCatalogTests,
-        ...gatewayChatTests,
+        'tests/integration/api/chats-title.spec.ts',
         ...messageUsageTests,
         ...modelsTriggerTests,
       ],
@@ -481,22 +453,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/gateways\/.*\.ts|server\/api\/v1\/gateways\/.*\.ts|shared\/types\/gateways\.d\.ts|shared\/utils\/gateway-(pricing|model-id|capabilities)\.ts)$/,
-      tests: [
-        'tests/unit/components/ProviderIcon.spec.ts',
-        ...gatewayCatalogTests,
-        ...gatewayChatTests,
-        ...modelsTriggerTests,
-      ],
-    },
-    {
-      pattern: /^app\/composables\/gateway-catalog\.ts$/,
-      tests: [...gatewayCatalogTests, ...modelsTriggerTests],
-    },
-    {
-      pattern:
         /^server\/api\/v1\/chats\/\[slug\]\/(index\.post|title\.patch)\.ts$/,
-      tests: [...chatStreamBranchTests, ...gatewayChatTests],
+      tests: [
+        ...chatStreamBranchTests,
+        'tests/integration/api/chats-title.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/chat-title\.ts$/,
@@ -504,7 +465,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(model|selected-model-info)\.ts|shared\/utils\/model-selection\.ts|shared\/types\/model-selection\.d\.ts)$/,
+        /^(app\/composables\/(model|selected-model-info)\.ts|shared\/utils\/model-selection\.ts)$/,
       tests: [...modelSelectionTests, ...modelsTriggerTests],
     },
     {
@@ -785,7 +746,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...chatStreamBranchTests,
         ...messageUsageTests,
-        ...gatewayChatTests,
+        'tests/integration/api/chats-title.spec.ts',
       ],
     },
     {
@@ -796,7 +757,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/chats\/errors\.ts$/,
       tests: [
         ...chatStreamBranchTests,
-        ...gatewayChatTests,
+        'tests/integration/api/chats-title.spec.ts',
         'tests/unit/utils/research/errors.spec.ts',
       ],
     },
@@ -835,7 +796,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/title\.ts$/,
-      tests: gatewayChatTests,
+      tests: ['tests/integration/api/chats-title.spec.ts'],
     },
     {
       pattern: /^server\/utils\/chats\/provider\.ts$/,
@@ -999,7 +960,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/types\/chat-errors\.d\.ts$/,
-      tests: [...chatStreamBranchTests, ...gatewayChatTests],
+      tests: [
+        ...chatStreamBranchTests,
+        'tests/integration/api/chats-title.spec.ts',
+      ],
     },
     {
       pattern: /^shared\/utils\/chat-test-errors\.ts$/,

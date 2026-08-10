@@ -9,12 +9,12 @@ interface KeysRateLimitRule {
 
 /**
  * Shared rate-limit enforcement for the `/api/v1/profiles/keys/*` routes,
- * reusing the same KV-backed `createAuthRateLimitStorage()` factory as the
- * gateway catalog route. Each call site passes its own `keyPrefix` so every
- * route/provider/method combination gets an independent bucket keyed by
- * `session.user.id` — a card's POST-then-refresh-GET flow, or two gateway
- * cards each firing a GET on page load, must never share a bucket with each
- * other or false-429 normal usage.
+ * reusing the KV-backed `createAuthRateLimitStorage()` factory. Each call
+ * site passes its own `keyPrefix` so every route/provider/method
+ * combination gets an independent bucket keyed by `session.user.id` — a
+ * card's POST-then-refresh-GET flow, or two independent routes each firing
+ * a GET on page load, must never share a bucket with each other or
+ * false-429 normal usage.
  */
 export async function enforceKeysRateLimit(
   event: H3Event,

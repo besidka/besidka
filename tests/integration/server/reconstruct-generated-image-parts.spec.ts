@@ -65,12 +65,12 @@ describe('reconstructGeneratedImageParts', () => {
     })
   })
 
-  it('never reconstructs a gateway-origin file, leaving the plain file '
-    + 'part untouched so it keeps rendering through the generic file-part '
-    + 'path', async () => {
+  it('never reconstructs a file from a non-allowlisted origin provider, '
+    + 'leaving the plain file part untouched so it keeps rendering through '
+    + 'the generic file-part path', async () => {
     const file = createFileRow({
-      originProvider: 'openrouter',
-      originModel: 'openai/gpt-5-image',
+      originProvider: 'anthropic',
+      originModel: 'claude-opus-5',
     })
 
     mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
@@ -88,10 +88,11 @@ describe('reconstructGeneratedImageParts', () => {
     })
   })
 
-  it('never reconstructs a vercel-gateway origin file either', async () => {
+  it('never reconstructs a file from an unrecognized origin provider '
+    + 'either', async () => {
     const file = createFileRow({
-      originProvider: 'vercel-gateway',
-      originModel: 'google/gemini-3.1-flash-image-preview',
+      originProvider: 'some-unrecognized-provider',
+      originModel: 'unrecognized-model',
     })
 
     mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(

@@ -125,9 +125,6 @@ importers:
       '@ai-sdk/deepseek':
         specifier: ^3.0.26
         version: 3.0.26(zod@4.4.3)
-      '@ai-sdk/gateway':
-        specifier: ^4.0.46
-        version: 4.0.46(zod@4.4.3)
       '@ai-sdk/google':
         specifier: ^4.0.37
         version: 4.0.37(zod@4.4.3)
@@ -194,9 +191,6 @@ importers:
       '@nuxtjs/sitemap':
         specifier: ^8.3.3
         version: 8.3.3(c062a7672930eca77cf02199db48ba77)
-      '@openrouter/ai-sdk-provider':
-        specifier: ^3.0.0
-        version: 3.0.0(ai@7.0.56(zod@4.4.3))(zod@4.4.3)
       '@react-email/render':
         specifier: ^2.0.4
         version: 2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -453,12 +447,6 @@ packages:
 
   '@ai-sdk/gateway@4.0.44':
     resolution: {integrity: sha512-dQ/AHH1do1iEpWEXdAge37FtpXV17fsj7NkL9w+xuzVgvmI7+dQFeDerul+F2I5czmxe61Lq+TnUREjU92UXYg==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/gateway@4.0.46':
-    resolution: {integrity: sha512-LIAO6kAG8fpXQb9L0iwPk1FIbXftvqnyC56v5NEAzeWTeL8fUsy/Hx86VPBTWEDFdwbVprjWifJOAqS6AOj3mA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2804,13 +2792,6 @@ packages:
 
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
-
-  '@openrouter/ai-sdk-provider@3.0.0':
-    resolution: {integrity: sha512-m9XTSWoODH2RM5OsZpaGiN7QRR8cdP5paBWq699Tu3JVmGPBKT8xF8XwV0ZBVVsjikD/JgWfak4VSsTR4wAVbg==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      ai: ^7.0.0
-      zod: ^3.25.76 || ^4.1.8
 
   '@opentelemetry/api@1.9.1':
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
@@ -10343,13 +10324,6 @@ snapshots:
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/gateway@4.0.46(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.7
-      '@ai-sdk/provider-utils': 5.0.25(zod@4.4.3)
-      '@vercel/oidc': 3.2.0
-      zod: 4.4.3
-
   '@ai-sdk/google@4.0.37(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.6
@@ -14087,11 +14061,6 @@ snapshots:
       outvariant: 1.4.3
 
   '@open-draft/until@2.1.0': {}
-
-  '@openrouter/ai-sdk-provider@3.0.0(ai@7.0.56(zod@4.4.3))(zod@4.4.3)':
-    dependencies:
-      ai: 7.0.56(zod@4.4.3)
-      zod: 4.4.3
 
   '@opentelemetry/api@1.9.1': {}
 

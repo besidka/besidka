@@ -119,7 +119,7 @@ confident fix was not attempted (see Outcome below).
   successfully but **neither surfaced any `Reasoning process` collapse block
   at all** for the prompts tried — `document.querySelectorAll('details.collapse')`
   found zero reasoning blocks after either response. This may be worth a
-  separate look (are these two models/gateways actually returning a
+  separate look (are these two models actually returning a
   `reasoning` UI part on this deployment at all?) but is out of scope for
   this investigation.
   - **Update, added after this investigation was finalized**: the
@@ -129,7 +129,7 @@ confident fix was not attempted (see Outcome below).
     reasoning summary for always-on models — so xAI never returned any
     reasoning content to render, matching exactly what was observed here.
     Closed by `server/utils/providers/xai.ts`'s `reasoningSummary` fix (see
-    `docs/gateways.md`'s xAI entry). **The Gemini 3 Flash Preview half is
+    `docs/providers.md`'s xAI entry). **The Gemini 3 Flash Preview half is
     unrelated and remains genuinely open** — it does not share xAI's fix and
     still warrants its own look.
 - The shared browser session showed clear evidence of *other concurrent

@@ -1,1 +1,0 @@
-ALTER TABLE `user_settings` ADD `favorite_gateway_models` text;

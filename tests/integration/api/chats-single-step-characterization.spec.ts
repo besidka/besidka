@@ -1,24 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamText } from 'ai'
-import {
-  keyProviderIdForGateway,
-  readOpenRouterCost,
-  readVercelGenerationId,
-  useGateway,
-} from '../../../server/utils/gateways/index'
 import { getModelCostMap } from '../../../server/utils/ai/cost-map'
 import {
   getImageGenerationCost,
 } from '../../../server/utils/ai/image-generation-cost'
 
 /**
- * Characterization suite for the chat send pipeline as it behaves BEFORE the
- * multi-step tool loop lands. Every send today runs exactly one step because
- * nothing anywhere passes `stopWhen` to `streamText()`, whose own default is
- * `stopWhen: isStepCount(1)`. These assertions pin that contract for all five
- * send shapes that exist today so a later loop change cannot silently widen
- * it. Treat a failure here as a regression in the send path, never as a test
- * to update.
+ * Characterization suite for every send shape that must stay single step now
+ * that the multi-step tool loop exists. None of these sends carries a
+ * `withFollowUpTurn()` tool, so `resolveToolLoopOptions()` returns undefined
+ * and no `stopWhen` reaches `streamText()`, whose own default is
+ * `stopWhen: isStepCount(1)`. These assertions pin that contract so a later
+ * loop change cannot silently widen it. Treat a failure here as a regression
+ * in the send path, never as a test to update. The multi-step counterpart
+ * lives in `chats-tool-loop.spec.ts`.
  */
 const mocks = vi.hoisted(() => ({
   usage: {
@@ -26,7 +21,6 @@ const mocks = vi.hoisted(() => ({
     outputTokens: 20,
     totalTokens: 30,
   } as Record<string, unknown>,
-  providerMetadata: undefined as Record<string, unknown> | undefined,
   streamTextOptions: [] as Array<Record<string, any>>,
   lastMessageMetadata: undefined as Record<string, any> | undefined,
   finishStepCount: 0,
@@ -70,10 +64,7 @@ vi.mock('ai', async (importOriginal) => {
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
     streamText: vi.fn((options: Record<string, any>) => {
       mocks.streamTextOptions.push(options)
-      options.onEnd?.({
-        usage: mocks.usage,
-        providerMetadata: mocks.providerMetadata,
-      })
+      options.onEnd?.({ usage: mocks.usage })
 
       return {
         consumeStream: vi.fn(),
@@ -81,13 +72,8 @@ vi.mock('ai', async (importOriginal) => {
           c.close()
         } }),
         usage: Promise.resolve(mocks.usage),
-        steps: Promise.resolve([{
-          providerMetadata: mocks.providerMetadata,
-          usage: mocks.usage,
-        }]),
-        finalStep: Promise.resolve({
-          providerMetadata: mocks.providerMetadata,
-        }),
+        steps: Promise.resolve([{ usage: mocks.usage }]),
+        finalStep: Promise.resolve({}),
       }
     }),
     toUIMessageStream: vi.fn((options) => {
@@ -95,7 +81,6 @@ vi.mock('ai', async (importOriginal) => {
       options.messageMetadata?.({
         part: {
           type: 'finish-step',
-          providerMetadata: mocks.providerMetadata,
         },
       })
       mocks.lastMessageMetadata = options.messageMetadata?.({
@@ -149,12 +134,6 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,
-  ),
-  persistGatewayGeneratedImageParts: vi.fn(
-    async (input: { parts: unknown }) => ({
-      parts: input.parts,
-      fileIds: [],
-    }),
   ),
 }))
 
@@ -285,7 +264,6 @@ describe('chat send pipeline: single-step characterization', () => {
     vi.resetModules()
     vi.clearAllMocks()
     mocks.usage = { inputTokens: 10, outputTokens: 20, totalTokens: 30 }
-    mocks.providerMetadata = undefined
     mocks.streamTextOptions = []
     mocks.lastMessageMetadata = undefined
     mocks.finishStepCount = 0
@@ -339,10 +317,6 @@ describe('chat send pipeline: single-step characterization', () => {
       delete: vi.fn(async () => undefined),
     }))
     vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
-    vi.stubGlobal('useGateway', useGateway)
-    vi.stubGlobal('keyProviderIdForGateway', keyProviderIdForGateway)
-    vi.stubGlobal('readOpenRouterCost', readOpenRouterCost)
-    vi.stubGlobal('readVercelGenerationId', readVercelGenerationId)
     vi.stubGlobal('getRequiredModelTools', vi.fn(() => []))
     vi.stubGlobal('buildPersistedAssistantReplayChunks', vi.fn(() => []))
     vi.stubGlobal('sendPushNotificationToUser', vi.fn(async () => undefined))
@@ -435,76 +409,6 @@ describe('chat send pipeline: single-step characterization', () => {
         search_options: { search_strategy: 'agent' },
       },
     })
-    expect(getAssistantInsert(insertValues)?.usage.totalCost).toBeUndefined()
-  })
-
-  it('(c) openrouter web-search send stays single step, sends no AI SDK '
-    + 'tool and reports the gateway cost exactly once', async () => {
-    mocks.providerMetadata = { openrouter: { usage: { cost: 0.0042 } } }
-
-    const { insertValues } = await runHandler(baseBody({
-      model: 'openai/gpt-5',
-      gateway: 'openrouter',
-      tools: ['web_search'],
-    }))
-    const options = mocks.streamTextOptions[0]
-
-    expect(streamText).toHaveBeenCalledTimes(1)
-    expectSingleStepStreamTextCall(options)
-    expect(options?.tools).toBeUndefined()
-    expect(options?.toolChoice).toBeUndefined()
-    expect(options?.maxOutputTokens).toBeUndefined()
-    expect(getAssistantInsert(insertValues)?.usage).toEqual(
-      expect.objectContaining({ totalCost: 0.0042 }),
-    )
-    expect(mocks.lastMessageMetadata?.usage).toEqual(
-      expect.objectContaining({ totalCost: 0.0042 }),
-    )
-    expect(
-      getAssistantInsert(insertValues)?.usage.costEstimated,
-    ).toBeUndefined()
-  })
-
-  it('(c2) openrouter send without a reported cost persists no totalCost '
-    + 'rather than a fabricated zero', async () => {
-    mocks.providerMetadata = undefined
-
-    const { insertValues } = await runHandler(baseBody({
-      model: 'openai/gpt-5',
-      gateway: 'openrouter',
-      tools: ['web_search'],
-    }))
-
-    expectSingleStepStreamTextCall(mocks.streamTextOptions[0])
-    expect(getAssistantInsert(insertValues)?.usage.totalCost).toBeUndefined()
-    expect(mocks.lastMessageMetadata?.usage.totalCost).toBeUndefined()
-  })
-
-  it('(d) vercel perplexitySearch send stays single step and passes the '
-    + 'provider-executed tool with no forced toolChoice', async () => {
-    const webSearchTool = { type: 'provider', id: 'gateway.perplexitySearch' }
-
-    vi.stubGlobal('useGateway', vi.fn(async () => ({
-      instance: {},
-      tools: { tools: { web_search: webSearchTool } },
-      providerOptions: {},
-      generateChatTitle: vi.fn(),
-      client: { getGenerationInfo: vi.fn() },
-      maxOutputTokens: 4096,
-    })))
-
-    const { insertValues } = await runHandler(baseBody({
-      model: 'openai/gpt-5',
-      gateway: 'vercel',
-      tools: ['web_search'],
-    }))
-    const options = mocks.streamTextOptions[0]
-
-    expect(streamText).toHaveBeenCalledTimes(1)
-    expectSingleStepStreamTextCall(options)
-    expect(options?.tools).toEqual({ web_search: webSearchTool })
-    expect(options?.toolChoice).toBeUndefined()
-    expect(options?.maxOutputTokens).toBe(4096)
     expect(getAssistantInsert(insertValues)?.usage.totalCost).toBeUndefined()
   })
 

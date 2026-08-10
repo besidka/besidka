@@ -147,12 +147,6 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
 
     return input.parts
   }),
-  persistGatewayGeneratedImageParts: vi.fn(
-    async (input: { parts: unknown }) => ({
-      parts: input.parts,
-      fileIds: [],
-    }),
-  ),
 }))
 
 vi.mock('~~/server/utils/chats/share', () => ({

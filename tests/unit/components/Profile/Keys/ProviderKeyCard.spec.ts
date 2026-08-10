@@ -133,39 +133,28 @@ describe('Profile/Keys/ProviderKeyCard', () => {
       .toBe(false)
   })
 
-  it('resolves a gateway through its keys-table id, not its GatewayId',
-    async () => {
-      summaryFor([{ provider: 'vercel-gateway', hasKey: true }])
-
-      const wrapper = await mountCard('vercel')
-
-      expect(wrapper.find('[data-testid="key-status-saved"]').exists())
-        .toBe(true)
-      expect(wrapper.find('summary').text()).toContain('Vercel AI Gateway')
-    })
-
   it('posts to the keys-table route and clears the input after saving',
     async () => {
-      summaryFor([{ provider: 'openrouter', hasKey: false }])
+      summaryFor([{ provider: 'deepseek', hasKey: false }])
 
       const useSuccessMessage
         = vi.spyOn(messagesComposable, 'useSuccessMessage')
 
-      const wrapper = await mountCard('openrouter')
+      const wrapper = await mountCard('deepseek')
 
-      await apiKeyInput(wrapper).setValue('sk-or-new-key')
+      await apiKeyInput(wrapper).setValue('sk-ds-new-key')
       await wrapper.get('form').trigger('submit')
 
       await vi.waitFor(() => {
         expect(mocks.fetch).toHaveBeenCalledWith(
-          '/api/v1/profiles/keys/openrouter',
+          '/api/v1/profiles/keys/deepseek',
           expect.objectContaining({
             method: 'post',
-            body: { apiKey: 'sk-or-new-key' },
+            body: { apiKey: 'sk-ds-new-key' },
           }),
         )
         expect(useSuccessMessage).toHaveBeenCalledWith(
-          'OpenRouter API key updated successfully',
+          'DeepSeek API key updated successfully',
         )
       })
 

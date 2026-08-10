@@ -80,12 +80,11 @@ function collectFileStorageKeys<
  * Reconstruction only ever produces a `tool-generate_image` part, which the
  * client's `getGenerateImageOutput()` (`app/utils/generated-images.ts`)
  * renders only for `output.provider === 'openai' | 'google'` — the two
- * direct providers with a real `generate_image` tool. A gateway-origin file
- * (`originProvider: 'openrouter'`/`'vercel-gateway'`, from
- * `persistGatewayGeneratedImageParts`) has no tool behind it at all; letting
- * it through this allowlist would rewrite an already-correctly-rendering
- * plain `file` part into a `tool-generate_image` part the client rejects and
- * renders as nothing, making the image silently vanish on reload.
+ * direct providers with a real `generate_image` tool. A file with any other
+ * `originProvider` has no tool behind it at all; letting it through this
+ * allowlist would rewrite an already-correctly-rendering plain `file` part
+ * into a `tool-generate_image` part the client rejects and renders as
+ * nothing, making the image silently vanish on reload.
  */
 function hasOriginMetadata(
   file: OwnedGeneratedImageFile,

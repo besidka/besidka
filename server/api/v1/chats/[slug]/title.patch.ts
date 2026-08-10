@@ -17,7 +17,6 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    gateway: z.enum(['vercel', 'cloudflare', 'openrouter']).optional(),
   }).safeParse)
 
   if (body.error) {
@@ -71,8 +70,6 @@ export default defineEventHandler(async (event) => {
     return chat.title
   }
 
-  const gatewayId = body.data.gateway
-
   const initialMessage = chat.messages[0]
 
   if (!initialMessage) {
@@ -90,16 +87,6 @@ export default defineEventHandler(async (event) => {
     && initialMessages?.trim().toLowerCase().startsWith('mock:')
   ) {
     title = buildMockChatTitle(initialMessages)
-  } else if (gatewayId) {
-    const { generateChatTitle } = await useGateway(
-      gatewayId,
-      session.user.id,
-      body.data.model,
-      [],
-      'off',
-    )
-
-    title = await generateChatTitle(initialMessages)
   } else {
     const { provider, model } = useChatProvider(body.data.model)
     const research = getModelResearch(model)

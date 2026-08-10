@@ -1,6 +1,6 @@
 ## Project Overview
 
-Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI) and gateways (Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter) and pay for what they use — see `docs/gateways.md`.
+Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI, Qwen) and pay for what they use — see `docs/providers.md`.
 
 ## Package Manager
 
@@ -197,12 +197,10 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   read-only scan, blast radius for existing sessions/push/passkeys, and the
   ordered manual runbook for the Cloudflare redirect rule flip and OAuth
   app callback updates that can't be automated from this repo
-- `docs/gateways.md` - xAI/DeepSeek/Moonshot AI direct providers plus Vercel
-  AI Gateway/OpenRouter/Cloudflare AI Gateway support: the curated-vs-dynamic
-  catalog split, the `GatewayId`/`keys.provider`/`keyProviderId` naming map
-  (read before touching any gateway code), selection encoding, per-gateway
-  cost capture and telemetry, no-key UX gating, and unverified-live gaps to
-  close before production use
+- `docs/providers.md` - Direct LLM providers (xAI, DeepSeek, Moonshot AI,
+  Qwen): the curated-vs-fetched model catalog split, and per-provider
+  web-search/reasoning wiring (Qwen DashScope search, Moonshot Formula-API
+  search, direct-provider reasoning controls)
 
 ### Tech Stack
 

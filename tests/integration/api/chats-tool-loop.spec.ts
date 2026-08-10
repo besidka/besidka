@@ -1,22 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream, tool } from 'ai'
-import {
-  keyProviderIdForGateway,
-  readOpenRouterCost,
-  readVercelGenerationId,
-} from '../../../server/utils/gateways/index'
+import { getModelCostMap } from '../../../server/utils/ai/cost-map'
 import {
   createFixtureFollowUpTool,
   FIXTURE_FOLLOW_UP_TOOL_NAME,
 } from '../../fixtures/follow-up-turn-tool'
 
+const LOOP_MODEL_ID = 'kimi-k2.6'
+const LOOP_PROVIDER_ID = 'moonshotai'
+
 /**
- * Drives the real `streamText` loop through the real send pipeline. Only the
+ * Drives the real `streamText` loop through the real send pipeline, shaped as
+ * a Moonshot AI send because Moonshot's Formula-API web search is the only
+ * shipped tool that carries the `withFollowUpTurn()` marker. Only the
  * UI-stream plumbing entry points are stubbed so the handler's execute() can
  * be awaited — `streamText`, `toUIMessageStream` and `readUIMessageStream`
  * all run for real, which is what makes the step count, the persisted
- * intermediate tool parts and the cross-step cost sum genuine evidence
+ * intermediate tool parts and the cross-step usage totals genuine evidence
  * rather than a restatement of a mock.
  */
 const mocks = vi.hoisted(() => ({
@@ -75,12 +76,6 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,
   ),
-  persistGatewayGeneratedImageParts: vi.fn(
-    async (input: { parts: unknown }) => ({
-      parts: input.parts,
-      fileIds: [],
-    }),
-  ),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -103,15 +98,7 @@ function createUsage() {
   }
 }
 
-function createProviderMetadata(cost: number | undefined) {
-  if (cost === undefined) {
-    return undefined
-  }
-
-  return { openrouter: { usage: { cost } } }
-}
-
-function createToolCallChunks(toolCallId: string, cost?: number) {
+function createToolCallChunks(toolCallId: string) {
   return [
     {
       type: 'tool-call' as const,
@@ -126,12 +113,11 @@ function createToolCallChunks(toolCallId: string, cost?: number) {
         raw: undefined,
       },
       usage: createUsage(),
-      providerMetadata: createProviderMetadata(cost),
     },
   ]
 }
 
-function createTextChunks(text: string, cost?: number) {
+function createTextChunks(text: string) {
   return [
     { type: 'text-start' as const, id: 'text-1' },
     { type: 'text-delta' as const, id: 'text-1', delta: text },
@@ -143,7 +129,6 @@ function createTextChunks(text: string, cost?: number) {
         raw: undefined,
       },
       usage: createUsage(),
-      providerMetadata: createProviderMetadata(cost),
     },
   ]
 }
@@ -221,8 +206,7 @@ function createDb() {
 
 function baseBody(overrides: Record<string, unknown> = {}) {
   return {
-    model: 'openai/gpt-5',
-    gateway: 'openrouter',
+    model: LOOP_MODEL_ID,
     tools: ['web_search'],
     reasoning: 'off',
     messages: [{
@@ -253,7 +237,7 @@ async function runLoopSend(input: {
     })
     : markedTool
 
-  vi.stubGlobal('useGateway', vi.fn(async () => ({
+  vi.stubGlobal('useMoonshotAi', vi.fn(async () => ({
     instance: model,
     tools: {
       tools: {
@@ -261,7 +245,7 @@ async function runLoopSend(input: {
       },
     },
     providerOptions: {},
-    generateChatTitle: vi.fn(),
+    reasoning: undefined,
   })))
 
   const handler = await getHandler()
@@ -352,9 +336,16 @@ describe('multi-step tool loop', () => {
       delete: vi.fn(async () => undefined),
     }))
     vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
-    vi.stubGlobal('keyProviderIdForGateway', keyProviderIdForGateway)
-    vi.stubGlobal('readOpenRouterCost', readOpenRouterCost)
-    vi.stubGlobal('readVercelGenerationId', readVercelGenerationId)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: LOOP_PROVIDER_ID },
+      model: {
+        id: LOOP_MODEL_ID,
+        name: 'Kimi K2.6',
+        tools: ['web_search'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+    vi.stubGlobal('getRequiredModelTools', vi.fn(() => []))
     vi.stubGlobal('sendPushNotificationToUser', vi.fn(async () => undefined))
     vi.stubGlobal('buildVapidSubject', vi.fn(() => 'mailto:test@example.com'))
     vi.stubGlobal('useRuntimeConfig', vi.fn(() => ({ public: {} })))
@@ -406,25 +397,12 @@ describe('multi-step tool loop', () => {
       })
     })
 
-  it('sums the per-step openrouter cost across the whole loop', async () => {
-    const { assistantInsert } = await runLoopSend({
-      steps: [
-        createToolCallChunks('call-1', 0.004),
-        createTextChunks('Answer', 0.0015),
-      ],
-    })
-
-    expect(assistantInsert?.usage?.totalCost).toBeCloseTo(0.0055, 10)
-    expect(assistantInsert?.usage?.inputTokens).toBe(20)
-    expect(assistantInsert?.usage?.outputTokens).toBe(40)
-  })
-
-  it('streams the same summed cost live, without waiting for a reload',
+  it('streams the whole-loop usage live, without waiting for a reload',
     async () => {
-      await runLoopSend({
+      const { assistantInsert } = await runLoopSend({
         steps: [
-          createToolCallChunks('call-1', 0.004),
-          createTextChunks('Answer', 0.0015),
+          createToolCallChunks('call-1'),
+          createTextChunks('Answer'),
         ],
       })
 
@@ -433,18 +411,36 @@ describe('multi-step tool loop', () => {
         return chunk.type === 'finish' && chunk.messageMetadata
       })
 
-      expect(finishChunk?.messageMetadata?.usage?.totalCost)
-        .toBeCloseTo(0.0055, 10)
+      expect(finishChunk?.messageMetadata?.usage).toEqual(
+        expect.objectContaining({
+          inputTokens: 20,
+          outputTokens: 40,
+        }),
+      )
+      expect(finishChunk?.messageMetadata?.usage)
+        .toEqual(assistantInsert?.usage)
     })
 
-  it('leaves totalCost unset when no step reports a cost', async () => {
+  it('prices the whole loop once from the model cost map and never '
+    + 'fabricates a totalCost', async () => {
     const { assistantInsert } = await runLoopSend({
       steps: [
         createToolCallChunks('call-1'),
         createTextChunks('Answer'),
       ],
     })
+    const modelCost = getModelCostMap()[LOOP_MODEL_ID]
 
+    expect(modelCost).toBeDefined()
+    expect(assistantInsert?.usage).toEqual({
+      model: LOOP_MODEL_ID,
+      provider: LOOP_PROVIDER_ID,
+      inputTokens: 20,
+      outputTokens: 40,
+      totalTokens: 60,
+      inputCost: (20 * (modelCost?.input ?? 0)) / 1_000_000,
+      outputCost: (40 * (modelCost?.output ?? 0)) / 1_000_000,
+    })
     expect(assistantInsert?.usage?.totalCost).toBeUndefined()
   })
 

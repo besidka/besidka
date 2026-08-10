@@ -93,15 +93,12 @@ async function fetchMoonshotWebSearchDeclaration(
  * schema rather than per-request or per-user data — Moonshot's own docs
  * describe a formula as carrying one fixed declaration — so it is cached
  * globally, keyed only by the formula URI and never by the caller's own API
- * key, the same way `server/utils/gateways/catalog.ts` caches Vercel's and
- * OpenRouter's public model catalogs. Whichever user's request misses the
- * cache pays the one live fetch (using their own key, since the endpoint
- * still requires a valid Bearer token); every other request within the TTL
- * window reuses the result. A stale-serve after a failed refresh and a
- * cache-write failure are both non-fatal — the declaration was already
- * fetched successfully either way — but are reported through `logger` so
- * they stay visible in Axiom, mirroring `server/utils/gateways/catalog.ts`'s
- * gateway-catalog caching.
+ * key. Whichever user's request misses the cache pays the one live fetch
+ * (using their own key, since the endpoint still requires a valid Bearer
+ * token); every other request within the TTL window reuses the result. A
+ * stale-serve after a failed refresh and a cache-write failure are both
+ * non-fatal — the declaration was already fetched successfully either way —
+ * but are reported through `logger` so they stay visible in Axiom.
  * @see https://platform.kimi.ai/docs/guide/use-official-tools
  */
 async function getCachedMoonshotWebSearchDeclaration(

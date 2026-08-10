@@ -1,7 +1,6 @@
-import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { Model } from '#shared/types/providers.d'
 
-export type ModelCategory = 'chat' | 'research' | 'image-generation' | 'free'
+export type ModelCategory = 'chat' | 'research' | 'image-generation'
 
 export interface ModelCategoryOption {
   value: ModelCategory
@@ -19,19 +18,4 @@ export interface PickerSection {
   id: string
   label: string
   entries: PickerModel[]
-}
-
-export type PickerMode
-  = | { source: 'provider' }
-    | { source: 'gateway', gatewayId: GatewayId }
-
-export interface GatewayPickerSection {
-  id: string
-  label: string
-  entries: GatewayModel[]
-}
-
-export interface GatewayProviderGroup {
-  prefix: string
-  count: number
 }

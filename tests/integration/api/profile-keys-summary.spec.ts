@@ -24,9 +24,6 @@ const ALL_PROVIDERS = [
   'deepseek',
   'moonshotai',
   'qwen',
-  'vercel-gateway',
-  'cloudflare-gateway',
-  'openrouter',
 ]
 
 function createFakeKv() {
@@ -111,7 +108,7 @@ describe('keys summary API', () => {
     expect(dbMock.spies.findMany).not.toHaveBeenCalled()
   })
 
-  it('reports all 10 providers with hasKey false when none are set',
+  it('reports all 7 providers with hasKey false when none are set',
     async () => {
       const dbMock = createDbMock([])
 
@@ -120,7 +117,7 @@ describe('keys summary API', () => {
       const handler = await getHandler()
       const response = await handler({} as any)
 
-      expect(response.keys).toHaveLength(10)
+      expect(response.keys).toHaveLength(7)
       expect(response.keys.map((entry: { provider: string }) => {
         return entry.provider
       }).sort()).toEqual([...ALL_PROVIDERS].sort())
@@ -133,7 +130,7 @@ describe('keys summary API', () => {
     async () => {
       const dbMock = createDbMock([
         { provider: 'openai' },
-        { provider: 'vercel-gateway' },
+        { provider: 'xai' },
       ])
 
       vi.stubGlobal('useDb', () => dbMock.db)
@@ -149,9 +146,9 @@ describe('keys summary API', () => {
       )
 
       expect(byProvider.get('openai')).toBe(true)
-      expect(byProvider.get('vercel-gateway')).toBe(true)
-      expect(byProvider.get('openrouter')).toBe(false)
-      expect(byProvider.get('cloudflare-gateway')).toBe(false)
+      expect(byProvider.get('xai')).toBe(true)
+      expect(byProvider.get('qwen')).toBe(false)
+      expect(byProvider.get('deepseek')).toBe(false)
       expect(byProvider.get('anthropic')).toBe(false)
     })
 

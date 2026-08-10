@@ -72,44 +72,6 @@ describe('useUserKeys', () => {
     expect(hasKey('openai')).toBe(false)
   })
 
-  it('resolves a gateway through its keys-table id, not its bare GatewayId', () => {
-    useSummary([
-      { provider: 'vercel-gateway', hasKey: false },
-      { provider: 'openrouter', hasKey: true },
-    ])
-
-    const { hasKeyForProvider } = useUserKeys()
-
-    expect(hasKeyForProvider('vercel')).toBe(false)
-    expect(hasKeyForProvider('openrouter')).toBe(true)
-  })
-
-  it('resolves cloudflare through its keys-table id, cloudflare-gateway', () => {
-    useSummary([
-      { provider: 'cloudflare-gateway', hasKey: false },
-    ])
-
-    const { hasKey, hasKeyForProvider } = useUserKeys()
-
-    expect(hasKeyForProvider('cloudflare')).toBe(false)
-    expect(hasKey('cloudflare')).toBe(true)
-
-    useSummary([
-      { provider: 'cloudflare-gateway', hasKey: true },
-    ])
-
-    expect(useUserKeys().hasKeyForProvider('cloudflare')).toBe(true)
-  })
-
-  it('fails open on the bare GatewayId, which is why the mapping is required', () => {
-    useSummary([{ provider: 'vercel-gateway', hasKey: false }])
-
-    const { hasKey } = useUserKeys()
-
-    expect(hasKey('vercel-gateway')).toBe(false)
-    expect(hasKey('vercel')).toBe(true)
-  })
-
   it('maps a direct provider onto its identically named key id', () => {
     useSummary([{ provider: 'moonshotai', hasKey: false }])
 
@@ -125,7 +87,7 @@ describe('useUserKeys', () => {
 
     expect(pending.value).toBe(true)
     expect(hasKey('google')).toBe(true)
-    expect(hasKeyForProvider('vercel')).toBe(true)
+    expect(hasKeyForProvider('openai')).toBe(true)
     expect(hasAnyKey.value).toBe(true)
   })
 
@@ -135,7 +97,7 @@ describe('useUserKeys', () => {
     const { hasKey, hasKeyForProvider, hasAnyKey } = useUserKeys()
 
     expect(hasKey('google')).toBe(true)
-    expect(hasKeyForProvider('vercel')).toBe(true)
+    expect(hasKeyForProvider('openai')).toBe(true)
     expect(hasAnyKey.value).toBe(true)
   })
 
@@ -155,7 +117,7 @@ describe('useUserKeys', () => {
 
     const { hasKey, hasKeyForProvider } = useUserKeys()
 
-    expect(hasKey('cloudflare-gateway')).toBe(true)
+    expect(hasKey('unknown-provider-id')).toBe(true)
     expect(hasKeyForProvider('not-a-provider')).toBe(true)
   })
 
@@ -191,20 +153,16 @@ describe('useUserKeys', () => {
     expect(hasKey('google')).toBe(false)
   })
 
-  it('reports a saved and a missing key status per provider and gateway', () => {
+  it('reports a saved and a missing key status per provider', () => {
     useSummary([
       { provider: 'anthropic', hasKey: true },
       { provider: 'openai', hasKey: false },
-      { provider: 'vercel-gateway', hasKey: true },
-      { provider: 'cloudflare-gateway', hasKey: false },
     ])
 
     const { keyStatusForProvider } = useUserKeys()
 
     expect(keyStatusForProvider('anthropic')).toBe('saved')
     expect(keyStatusForProvider('openai')).toBe('missing')
-    expect(keyStatusForProvider('vercel')).toBe('saved')
-    expect(keyStatusForProvider('cloudflare')).toBe('missing')
   })
 
   it('reports unknown rather than saved while the summary is in flight', () => {
@@ -261,14 +219,14 @@ describe('useUserKeys', () => {
   it('reports an account with no keys at all only when every entry is empty', () => {
     useSummary([
       { provider: 'google', hasKey: false },
-      { provider: 'vercel-gateway', hasKey: false },
+      { provider: 'openai', hasKey: false },
     ])
 
     expect(useUserKeys().hasAnyKey.value).toBe(false)
 
     useSummary([
       { provider: 'google', hasKey: false },
-      { provider: 'vercel-gateway', hasKey: true },
+      { provider: 'openai', hasKey: true },
     ])
 
     expect(useUserKeys().hasAnyKey.value).toBe(true)

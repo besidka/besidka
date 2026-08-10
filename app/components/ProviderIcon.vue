@@ -12,7 +12,6 @@
 </template>
 
 <script setup lang="ts">
-import { cloudflareVendorIconOverrides } from '#shared/utils/gateway-model-id'
 import { providerMeta } from '#shared/utils/provider-meta'
 
 /**
@@ -30,45 +29,12 @@ import { providerMeta } from '#shared/utils/provider-meta'
  */
 const providerIconNames: Record<string, string> = {
   anthropic: 'simple-icons:anthropic',
-  bytedance: 'simple-icons:bytedance',
-  cloudflare: 'simple-icons:cloudflare',
-  deepgram: 'simple-icons:deepgram',
   deepseek: 'simple-icons:deepseek',
   google: 'simple-icons:googlegemini',
-  huggingface: 'simple-icons:huggingface',
-  ibm: 'simple-icons:ibm',
-  meta: 'simple-icons:meta',
-  microsoft: 'simple-icons:microsoft',
-  mistral: 'simple-icons:mistralai',
   moonshotai: 'simple-icons:moonshotai',
-  nvidia: 'simple-icons:nvidia',
   openai: 'simple-icons:openai',
-  openrouter: 'simple-icons:openrouter',
-  pipecat: 'simple-icons:pipecat',
   qwen: 'simple-icons:qwen',
-  vercel: 'simple-icons:vercel',
   xai: 'logos:grok-icon',
-  zhipu: 'thesvg:zhipu',
-}
-
-/**
- * Gateway model ids are vendor-prefixed (`shared/utils/gateway-model-id.ts`
- * splits `anthropic/claude-opus-5` down to `anthropic`), but some real
- * vendor slugs don't match this app's own provider/gateway ids even though a
- * matching icon exists — OpenRouter's `x-ai` and its `~`-prefixed "latest"
- * aliases being the confirmed cases. Cloudflare's `@cf/<vendor>/...` slugs are
- * folded in from the shared table so a raw slug resolves here too, whether or
- * not the caller normalized it first.
- */
-const gatewayProviderPrefixIconOverrides: Record<string, string> = {
-  ...cloudflareVendorIconOverrides,
-  'x-ai': 'xai',
-  '~anthropic': 'anthropic',
-  '~deepseek': 'deepseek',
-  '~google': 'google',
-  '~moonshotai': 'moonshotai',
-  '~openai': 'openai',
-  '~x-ai': 'xai',
 }
 
 const props = defineProps<{
@@ -76,13 +42,8 @@ const props = defineProps<{
   label?: string
 }>()
 
-const resolvedProviderId = computed<string>(() => {
-  return gatewayProviderPrefixIconOverrides[props.providerId]
-    ?? props.providerId
-})
-
 const iconName = computed<string | undefined>(() => {
-  return providerIconNames[resolvedProviderId.value]
+  return providerIconNames[props.providerId]
 })
 
 const badgeText = computed<string>(() => {

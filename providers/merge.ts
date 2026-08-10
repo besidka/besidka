@@ -101,9 +101,8 @@ function resolveTier(
 
 /**
  * Resolves a per-million-token USD amount against
- * `tierCeilingsPerMillionTokens`, the single source of truth for direct
- * provider and gateway pricing tiers alike — see
- * `resolveGatewayPriceTier()` in `shared/utils/gateway-pricing.ts`.
+ * `tierCeilingsPerMillionTokens`, the single source of truth for provider
+ * pricing tiers.
  */
 export function resolvePriceTierFromPerMillion(
   amount: number,

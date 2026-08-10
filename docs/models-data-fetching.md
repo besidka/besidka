@@ -11,10 +11,10 @@ The model catalog is split in two halves that are merged at import time.
 `providers/merge.ts` and exports the same fully shaped `Providers` array
 consumers have always read through `getProviders()`.
 
-This is the **curated, direct-provider** half of the catalog only. AI
-gateways (Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter) are a
-completely separate, dynamically-fetched-at-runtime path that never touches
-this merge pipeline or the models.dev snapshot — see `docs/gateways.md`.
+This is the **curated, direct-provider** catalog — the only catalog. Every
+model the app can select is declared here; nothing is fetched at runtime.
+`docs/providers.md` records the per-provider capability decisions layered on
+top of this pipeline.
 
 ## Refreshing the snapshot
 

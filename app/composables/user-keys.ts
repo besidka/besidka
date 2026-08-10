@@ -7,7 +7,7 @@ interface UserKeysResponse {
 export type UserKeyStatus = 'saved' | 'missing' | 'unknown'
 
 /**
- * Key presence for every provider and gateway, fetched once into shared state.
+ * Key presence for every provider, fetched once into shared state.
  *
  * Every lookup fails OPEN — an id the summary does not mention, a request still
  * in flight, and a request that failed all report "has a key". Gating is UI
@@ -30,10 +30,9 @@ export function useUserKeys() {
   })
 
   /**
-   * Takes the `keys.provider` enum value, which is NOT interchangeable with a
-   * gateway's `GatewayId` — `vercel` is stored as `vercel-gateway`. Resolve
-   * gateway and provider ids through `hasKeyForProvider` instead of building
-   * that string at a call site.
+   * Takes the `keys.provider` enum value directly. Resolve a `providerMeta`
+   * id through `hasKeyForProvider` instead of building that string at a
+   * call site.
    */
   function hasKey(keyProviderId: string): boolean {
     const entry = data.value?.keys.find((row) => {
@@ -47,8 +46,8 @@ export function useUserKeys() {
     return entry.hasKey
   }
 
-  function hasKeyForProvider(providerOrGatewayId: string): boolean {
-    const keyProviderId = providerMeta[providerOrGatewayId]?.keyProviderId
+  function hasKeyForProvider(providerId: string): boolean {
+    const keyProviderId = providerMeta[providerId]?.keyProviderId
 
     if (!keyProviderId) {
       return true
@@ -69,12 +68,12 @@ export function useUserKeys() {
    * against the rows already held, or every card's badge, delete button and
    * placeholder would blank out and pop back on each save.
    */
-  function keyStatusForProvider(providerOrGatewayId: string): UserKeyStatus {
+  function keyStatusForProvider(providerId: string): UserKeyStatus {
     if (pending.value || error.value) {
       return 'unknown'
     }
 
-    const keyProviderId = providerMeta[providerOrGatewayId]?.keyProviderId
+    const keyProviderId = providerMeta[providerId]?.keyProviderId
 
     if (!keyProviderId) {
       return 'unknown'

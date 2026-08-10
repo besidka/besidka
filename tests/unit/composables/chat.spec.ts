@@ -724,7 +724,7 @@ describe('chat error helpers', () => {
       )
 
       const result = normalizeChatError({
-        error: new Error('cf-aig-gateway-id: bad-gateway-id\nsome-secret'),
+        error: new Error('x-account-id: bad-account-id\nsome-secret'),
         status: 500,
       })
 
@@ -733,8 +733,8 @@ describe('chat error helpers', () => {
       expect(result.why).toBeUndefined()
     })
 
-  it('rewrites an OpenRouter "no endpoints found" image rejection into a '
-    + 'friendly message', async () => {
+  it('rewrites an upstream "image input" rejection embedded mid-sentence '
+    + 'into a friendly message', async () => {
     const { normalizeChatError } = await import(
       '../../../server/utils/chats/errors'
     )

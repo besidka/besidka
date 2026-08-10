@@ -178,62 +178,26 @@ that wildcard for this reason — reordering the object breaks the
 per-endpoint overrides silently, falling back to the wildcard's looser
 limit.
 
-## Reused outside Better Auth: the gateway catalog route
+## Reused outside Better Auth: the profile keys summary route
 
-`GET /api/v1/gateways/[gateway]/models` (providers/gateways initiative)
-isn't a Better Auth endpoint and isn't in the table above, but it reuses
-the same `createAuthRateLimitStorage()` KV-backed limiter with its own
-key prefix (`gateway-catalog:rate-limit`) and a dedicated per-user rule:
-
-| Path | Window | Max |
-| --- | --- | --- |
-| `GET /api/v1/gateways/[gateway]/models` | 60s | 20 |
-
-Unlike the table above, this rule is keyed by the authenticated
-`session.user.id`, not by IP. It exists because the route triggers an
-upstream fetch to Vercel AI Gateway or OpenRouter on every cache miss
-(the catalog is cached in KV for 1 hour, with no request coalescing —
-see `server/utils/gateways/catalog.ts`), so an unbounded client could
-drive repeated concurrent upstream fetches. This is a cost/availability
-concern for those upstreams rather than an auth-sensitive action.
-
-## Reused outside Better Auth: the gateway key-management routes
-
-The gateway credential routes added alongside gateway support
-(`GET/POST/DELETE /api/v1/profiles/keys/vercel-gateway`,
-`GET/POST/DELETE /api/v1/profiles/keys/openrouter`, and the
-`GET /api/v1/profiles/keys` summary endpoint) also reuse
-`createAuthRateLimitStorage()`, via a small shared wrapper
-(`server/utils/keys-rate-limit.ts`) rather than pasting the gateway
-catalog route's inline enforcement function into each route. Every rule
-below is keyed by `session.user.id`, same as the gateway catalog rule:
+The `GET /api/v1/profiles/keys` summary endpoint isn't a Better Auth
+endpoint and isn't in the table above, but it reuses the same
+KV-backed `createAuthRateLimitStorage()` factory via a small shared
+wrapper (`server/utils/keys-rate-limit.ts`) rather than pasting the
+enforcement logic inline. The rule is keyed by the authenticated
+`session.user.id`, not by IP:
 
 | Path | Window | Max |
 | --- | --- | --- |
 | `GET /api/v1/profiles/keys` | 60s | 30 |
-| `GET /api/v1/profiles/keys/vercel-gateway` | 60s | 30 |
-| `POST /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
-| `DELETE /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
-| `GET /api/v1/profiles/keys/openrouter` | 60s | 30 |
-| `POST /api/v1/profiles/keys/openrouter` | 60s | 10 |
-| `DELETE /api/v1/profiles/keys/openrouter` | 60s | 10 |
 
-These routes are read-mostly, user-initiated, and low-frequency — there
-is no upstream fetch on the hot path the way the gateway catalog route
-has — so the limits are looser than that 20-per-60s catalog rule.
-`GET` requests (a single DB lookup, no secret decryption cost beyond
-one `crypto-shield` call) get the same generous 30-per-60s row as the
-summary endpoint. `POST`/`DELETE` get a tighter 10-per-60s row because
-they mutate state, even though a legitimate user is very unlikely to
-hit it: the keys page's `ProviderKeyCard` triggers one `POST` followed
-by one `GET` refresh per save, and each gateway card issues one `GET`
-on page load — every one of those lands in its **own** bucket, because
-each route/method/provider combination is given a distinct
-`keyPrefix` (e.g. `keys-rate-limit:vercel-gateway:post` vs.
-`keys-rate-limit:vercel-gateway:get`). Sharing one bucket across
-methods or providers would have let a normal save-then-refresh flow, or
-loading both gateway cards at once, silently erode the mutation budget
-meant for abuse containment.
+This route is read-mostly, user-initiated, and low-frequency — a
+single DB lookup with no secret decryption cost beyond one
+`crypto-shield` call — so it gets a generous 30-per-60s row.
+`enforceKeysRateLimit()` takes a `keyPrefix` argument so every
+route/provider/method combination that calls it gets an independent
+bucket keyed by `session.user.id`; sharing one bucket across methods or
+providers would let one flow's traffic silently erode another's budget.
 
 The seven pre-existing single-provider key routes
 (`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`/`qwen`) remain

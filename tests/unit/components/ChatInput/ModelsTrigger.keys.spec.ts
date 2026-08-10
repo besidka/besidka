@@ -1,4 +1,3 @@
-import type { ModelSelection } from '#shared/types/model-selection.d'
 import { computed, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,11 +12,7 @@ const mocks = vi.hoisted(() => ({
   useUserModel: vi.fn(),
   useUserSetting: vi.fn(),
   useUserKeys: vi.fn(),
-  useGatewayCatalog: vi.fn(),
   toggleFavoriteModel: vi.fn(),
-  toggleFavoriteGatewayModel: vi.fn(),
-  getFavoriteGatewayModels: vi.fn(),
-  refreshGatewayCatalog: vi.fn(),
   refreshUserKeys: vi.fn(),
 }))
 
@@ -29,25 +24,13 @@ mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useUserModel', () => mocks.useUserModel)
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 mockNuxtImport('useUserKeys', () => mocks.useUserKeys)
-mockNuxtImport('useGatewayCatalog', () => mocks.useGatewayCatalog)
 
 const keyedProviderIds = shallowRef<string[]>([])
 
-function createSelectionMock(modelId: string) {
-  const selection = shallowRef<ModelSelection>({
-    source: 'provider',
-    modelId,
-  })
-  const userModel = computed<string>({
-    get() {
-      return selection.value.modelId
-    },
-    set(value) {
-      selection.value = { source: 'provider', modelId: value }
-    },
-  })
+function createUserModelMock(modelId: string) {
+  const userModel = shallowRef<string>(modelId)
 
-  return { selection, userModel }
+  return { userModel }
 }
 
 const baseModel = {
@@ -127,31 +110,20 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
       isAndroid: false,
       isDesktop: true,
     })
-    mocks.useUserModel.mockReturnValue(createSelectionMock('google-model'))
-    mocks.getFavoriteGatewayModels.mockReturnValue([])
+    mocks.useUserModel.mockReturnValue(createUserModelMock('google-model'))
     mocks.useUserSetting.mockReturnValue({
       favoriteModels: shallowRef<string[]>([]),
-      favoriteGatewayModels: shallowRef({}),
-      getFavoriteGatewayModels: mocks.getFavoriteGatewayModels,
       toggleFavoriteModel: mocks.toggleFavoriteModel,
-      toggleFavoriteGatewayModel: mocks.toggleFavoriteGatewayModel,
     })
     mocks.useUserKeys.mockReturnValue({
       pending: shallowRef(false),
       error: shallowRef(null),
       hasKey: vi.fn(),
-      hasKeyForProvider: (providerOrGatewayId: string) => {
-        return keyedProviderIds.value.includes(providerOrGatewayId)
+      hasKeyForProvider: (providerId: string) => {
+        return keyedProviderIds.value.includes(providerId)
       },
       hasAnyKey: computed(() => keyedProviderIds.value.length > 0),
       refresh: mocks.refreshUserKeys,
-    })
-    mocks.useGatewayCatalog.mockReset()
-    mocks.useGatewayCatalog.mockReturnValue({
-      models: shallowRef([]),
-      pending: shallowRef(false),
-      error: shallowRef(null),
-      refresh: mocks.refreshGatewayCatalog,
     })
   })
 
@@ -178,18 +150,15 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
     })
 
     it('ignores a click on a keyless row instead of selecting it', async () => {
-      const selectionMock = createSelectionMock('google-model')
+      const { userModel } = createUserModelMock('google-model')
 
-      mocks.useUserModel.mockReturnValue(selectionMock)
+      mocks.useUserModel.mockReturnValue({ userModel })
 
       const wrapper = await openPicker()
 
       await wrapper.get('#model-option-openai-model div').trigger('click')
 
-      expect(selectionMock.selection.value).toEqual({
-        source: 'provider',
-        modelId: 'google-model',
-      })
+      expect(userModel.value).toBe('google-model')
       expect(wrapper.find('[data-testid="models-picker-panel"]').exists())
         .toBe(true)
     })
@@ -255,19 +224,16 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
     })
 
     it('chooses the first model that has a key when Enter is pressed', async () => {
-      const selectionMock = createSelectionMock('other-model')
+      const { userModel } = createUserModelMock('other-model')
 
-      mocks.useUserModel.mockReturnValue(selectionMock)
+      mocks.useUserModel.mockReturnValue({ userModel })
 
       const wrapper = await openPicker()
 
       await wrapper.get('[data-testid="models-picker-search"]')
         .trigger('keydown', { key: 'Enter' })
 
-      expect(selectionMock.selection.value).toEqual({
-        source: 'provider',
-        modelId: 'google-model',
-      })
+      expect(userModel.value).toBe('google-model')
     })
   })
 
@@ -310,92 +276,6 @@ describe('ChatInput/ModelsTrigger no-key gating', () => {
 
       expect(wrapper.find('[data-testid="models-picker-key-banner"]').exists())
         .toBe(false)
-    })
-  })
-
-  describe('gateway mode', () => {
-    it('prompts for the gateway key instead of fetching a catalog to disable', async () => {
-      const wrapper = await openPicker()
-
-      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
-        .trigger('click')
-
-      const prompt = wrapper.get('[data-testid="models-picker-key-prompt"]')
-
-      expect(prompt.text()).toContain('Vercel AI Gateway needs an API key')
-      expect(
-        prompt.get('[data-testid="models-picker-key-prompt-link"]')
-          .attributes('href'),
-      ).toBe('/profile/keys')
-      expect(mocks.useGatewayCatalog).not.toHaveBeenCalled()
-      expect(wrapper.find('[data-testid="gateway-models-loading"]').exists())
-        .toBe(false)
-    })
-
-    it('drops the search and filter controls with no catalog to search', async () => {
-      const wrapper = await openPicker()
-
-      expect(wrapper.find('[data-testid="models-picker-search"]').exists())
-        .toBe(true)
-
-      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
-        .trigger('click')
-
-      expect(wrapper.find('[data-testid="models-picker-search-row"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="models-picker-search"]').exists())
-        .toBe(false)
-      expect(wrapper.find('[data-testid="models-picker-filter-trigger"]')
-        .exists()).toBe(false)
-      expect(wrapper.find(
-        '[data-testid="models-picker-gateway-provider-rail"]',
-      ).exists()).toBe(false)
-    })
-
-    it('brings the search back on the way out of a keyless gateway', async () => {
-      const wrapper = await openPicker()
-
-      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
-        .trigger('click')
-      await wrapper.get('[data-testid="models-picker-gateway-exit"]')
-        .trigger('click')
-
-      expect(wrapper.find('[data-testid="models-picker-search"]').exists())
-        .toBe(true)
-    })
-
-    it('loads the catalog once the gateway key exists', async () => {
-      keyedProviderIds.value = ['google', 'vercel']
-
-      const wrapper = await openPicker()
-
-      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
-        .trigger('click')
-
-      expect(wrapper.find('[data-testid="models-picker-key-prompt"]').exists())
-        .toBe(false)
-      expect(mocks.useGatewayCatalog).toHaveBeenCalled()
-    })
-
-    it('flags the keyless gateways on the rail', async () => {
-      keyedProviderIds.value = ['vercel']
-
-      const wrapper = await openPicker()
-
-      expect(
-        wrapper
-          .find('[data-testid="models-picker-gateway-vercel-keyless"]')
-          .exists(),
-      ).toBe(false)
-      expect(
-        wrapper
-          .find('[data-testid="models-picker-gateway-openrouter-keyless"]')
-          .exists(),
-      ).toBe(true)
-      expect(
-        wrapper.get('[data-testid="models-picker-gateway-openrouter"]')
-          .attributes('aria-label'),
-      ).toContain('API key required')
     })
   })
 

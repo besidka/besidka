@@ -1,7 +1,5 @@
-import type { GatewayId } from '#shared/types/gateways.d'
-
 export interface ProviderMetaKeyField {
-  name: 'apiKey' | 'accountId' | 'gatewayId'
+  name: 'apiKey' | 'accountId'
   label: string
   secret: boolean
   required: boolean
@@ -9,7 +7,7 @@ export interface ProviderMetaKeyField {
 
 export interface ProviderMeta {
   id: string
-  kind: 'provider' | 'gateway'
+  kind: 'provider'
   label: string
   keyProviderId: string
   dashboardUrl: string
@@ -87,56 +85,15 @@ export const providerMeta: Record<string, ProviderMeta> = {
     dashboardLabel: 'Alibaba Cloud Model Studio → API-KEY (this app uses the international endpoint — switch to a non-China region in the console before creating your key, or it will fail)',
     keyFields: [apiKeyField],
   },
-  vercel: {
-    id: 'vercel',
-    kind: 'gateway',
-    label: 'Vercel AI Gateway',
-    keyProviderId: 'vercel-gateway',
-    dashboardUrl: 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Fapi-keys&title=AI+Gateway+API+Keys',
-    dashboardLabel: 'Vercel dashboard → AI Gateway → API Keys',
-    keyFields: [apiKeyField],
-  },
-  openrouter: {
-    id: 'openrouter',
-    kind: 'gateway',
-    label: 'OpenRouter',
-    keyProviderId: 'openrouter',
-    dashboardUrl: 'https://openrouter.ai/settings/keys',
-    keyFields: [apiKeyField],
-  },
-  cloudflare: {
-    id: 'cloudflare',
-    kind: 'gateway',
-    label: 'Cloudflare AI Gateway',
-    keyProviderId: 'cloudflare-gateway',
-    dashboardUrl: 'https://dash.cloudflare.com/?to=/:account/ai/workers-ai',
-    dashboardLabel: 'Cloudflare dashboard → Workers AI (API token + Account ID)',
-    keyFields: [
-      {
-        name: 'accountId',
-        label: 'Account ID',
-        secret: false,
-        required: true,
-      },
-      {
-        name: 'gatewayId',
-        label: 'Gateway ID (optional, defaults to "default")',
-        secret: false,
-        required: false,
-      },
-      apiKeyField,
-    ],
-  },
 }
 
 /**
  * Resolves a persisted `MessageUsage.provider` value back to its
- * `providerMeta` entry. That value is NOT always a `providerMeta` key: gateway
- * sends persist `keyProviderIdForGateway(gatewayId)` instead (e.g.
- * `'cloudflare-gateway'`, `'vercel-gateway'`), which only equals the key for
- * OpenRouter. Direct-provider sends persist the `providerMeta` key itself, so
- * matching against every entry's `keyProviderId` resolves both cases
- * uniformly instead of assuming the persisted string IS the key.
+ * `providerMeta` entry, matching against `keyProviderId` rather than the
+ * object key directly. Messages sent through a now-removed integration
+ * persisted a value that never matched a `providerMeta` key — those simply
+ * resolve to `undefined` here, which callers already treat as "no provider
+ * row to render."
  */
 export function resolveProviderMetaByKeyProviderId(
   keyProviderId: string,
@@ -145,22 +102,3 @@ export function resolveProviderMetaByKeyProviderId(
     return meta.keyProviderId === keyProviderId
   })
 }
-
-/**
- * Every `GatewayId` this app can actually route a chat send through and
- * fetch a catalog for. Gateway-rail/keys UI iterates this array (mapped
- * through `providerMeta`) rather than assuming every `GatewayId` value is
- * ready — that's how a future gateway lands without a flag day: reserve the
- * `GatewayId`/`keys.provider` values first, wire the feature, then add the
- * id here last.
- *
- * The order (Cloudflare, OpenRouter, Vercel) is a deliberate product
- * decision, not an incidental default — every gateway-listing UI (keys
- * page, picker rail) must display in this exact order, so a future gateway's
- * id is placed deliberately, not just appended or alphabetized.
- */
-export const enabledGateways: GatewayId[] = [
-  'cloudflare',
-  'openrouter',
-  'vercel',
-]

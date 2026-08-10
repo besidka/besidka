@@ -561,7 +561,7 @@ const MAX_GENERATION_RETRY_ATTEMPTS = 150
 const GENERATION_RETRY_DELAY_MS = 4_000
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
-  const { selection, userModel } = useUserModel()
+  const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   const input = customRef<string>((track, trigger) => ({
@@ -662,7 +662,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return {
           body: {
             model: userModel.value,
-            gateway: getSelectionGatewayId(selection.value),
             tools: tools.value,
             messages: [lastMessage],
             reasoning: reasoning.value,

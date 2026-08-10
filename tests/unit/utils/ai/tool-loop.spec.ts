@@ -40,7 +40,7 @@ function createRealImageGenerationTool() {
 function createProviderExecutedSearchTool() {
   return {
     type: 'provider' as const,
-    id: 'gateway.perplexitySearch' as const,
+    id: 'provider.webSearch' as const,
     args: {},
     inputSchema: z.object({}),
   }
