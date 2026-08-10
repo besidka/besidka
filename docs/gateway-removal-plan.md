@@ -1,6 +1,21 @@
 # Gateway removal plan
 
-Status: PLAN ONLY — nothing in this document has been executed.
+Status: EXECUTED. All 6 waves landed and committed
+(`24df3b5`, local to this worktree, not yet pushed). Verification gates
+in § 7 all passed: format/lint clean, typecheck clean, 232/232 test files
+(2259/2259 tests) green, `db:generate` produced no new migration. The § 2.4
+preview-database runbook ran successfully: Time Travel bookmark
+`00002729-00000000-000050c3-c94c134de6ad893205d6364037213ea0` taken first,
+3 gateway credential rows deleted from `keys`, `favorite_gateway_models`
+column dropped from `user_settings`, before/after row counts matched
+exactly (only the 3 expected `keys` rows changed), the orphaned
+`d1_migrations` bookkeeping row removed, local dev DB reset. § 2.6's KV
+sweep found zero `gateway-catalog:*` keys on both preview and production —
+no cleanup needed there. Production database was never touched (confirmed
+untouched by design — the gateway migration never reached it).
+Not yet done: pushing this commit, and the § 6 decision points below were
+resolved by the plan's own recommendations (adopted per the product
+owner's "I will decide how to proceed after" — reported, not blocking).
 
 Branch: `feat/add-more-providers`
 Worktree: `/Users/inevix/dev/main/besidka/.herdr/worktrees/feat-add-more-providers`
