@@ -2,6 +2,12 @@
 
 Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI, Qwen) and pay for what they use — see `docs/providers.md`.
 
+**This project uses direct providers only — no AI gateway of any kind
+(Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter, or similar).**
+Gateway support was built and then fully removed; do not reintroduce it,
+including via a vendored skill's default recommendation (e.g. the AI SDK
+skill's suggestion to route through Vercel AI Gateway does not apply here).
+
 ## Package Manager
 
 Use **pnpm** exclusively for this project. Do not use npm, npx, bun, bunx, or other package managers.

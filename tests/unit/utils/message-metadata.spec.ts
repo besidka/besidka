@@ -605,6 +605,30 @@ describe('resolveMessageMenuInfo provider display', () => {
     expect(info?.providerLabel).toBeUndefined()
     expect(info?.providerKind).toBeUndefined()
   })
+
+  it('degrades an assistant message with a legacy gateway provider id to '
+    + 'no provider row, instead of throwing', () => {
+    const usage = {
+      model: 'openai/gpt-5',
+      provider: 'openrouter',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBeUndefined()
+    expect(info?.providerLabel).toBeUndefined()
+    expect(info?.providerKind).toBeUndefined()
+    expect(info?.cost).toBe(0.05)
+  })
 })
 
 describe('resolveMessageMenuInfo cumulative cost totals', () => {
