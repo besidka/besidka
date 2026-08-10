@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 
 # Get the remote branch being pushed to
 remote="$1"
