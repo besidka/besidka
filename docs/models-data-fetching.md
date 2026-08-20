@@ -129,11 +129,15 @@ state:
 
 As of this pass, one currently curated id is flagged deprecated:
 
-- **`gemini-3-pro-preview`** — a standalone curated chat model whose
-  successor, `gemini-3.1-pro-preview`, is already curated separately. Left
-  in the catalog (not deleted — a user with it persisted would otherwise
-  see `getModel()` silently resolve to nothing) and handled entirely by the
-  legacy-section UI and server guard above.
+- **`gemini-3-pro-preview`** — fully retired from models.dev (it previously
+  carried `status: 'deprecated'`). Kept in the catalog via `EXEMPT_IDS` and
+  fully curated in `providers/google.ts` with `status: 'deprecated'` and a
+  `releaseDate`, so a user with it persisted still resolves normally while
+  the legacy-section picker UI and `useChatProvider()` guard stop offering
+  it as a new pick. Its successor, `gemini-3.1-pro-preview`, is already
+  curated separately. The next successful `models:fetch` drops the snapshot
+  row for this id — that is expected and correct; the curated half is now
+  the only source of its metadata.
 
 **`gemini-3.1-flash-lite-preview`** was ALSO flagged deprecated on an
 earlier pass of this audit, but that was a genuine bug, not a "leave it in
@@ -158,11 +162,21 @@ point of fetching: a retired or renamed model becomes a loud, deliberate
 edit instead of silently stale hardcoded values.
 
 `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs` lists the ids that are
-knowingly absent upstream — currently `o3-deep-research` and
-`o4-mini-deep-research`, whose Deep Research snapshots OpenAI bills
-separately but models.dev does not track. Exempt models carry their full
-metadata in the curated file, and the merge throws at import time if any of
-it is missing.
+knowingly absent upstream — two kinds:
+
+- Deep Research snapshots OpenAI bills separately but models.dev does not
+  track (`o3-deep-research`, `o4-mini-deep-research`).
+- Retired-but-kept legacy ids models.dev no longer publishes at all
+  (`gemini-3-pro-preview`; see "Model status" below).
+
+Exempt models carry their **full metadata in the curated file**
+(`providers/*.ts`), not in the snapshot — `models:fetch` rebuilds the
+snapshot from `{}` every run and skips exempt ids, so a hand-edited
+snapshot row would be wiped on the next successful run. For a retired-but-
+kept model, set curated `status: 'deprecated'` (and optionally
+`releaseDate`) so the legacy picker section and `useChatProvider()` guard
+keep working after the snapshot row disappears. The merge throws at import
+time if any required curated field is missing.
 
 ## Optional owner-run spot-check
 
@@ -182,13 +196,24 @@ curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API
   | jq '.models[].name'
 ```
 
-## No scheduled refresh workflow
+## Scheduled drift check
 
-There is no cron workflow opening a refresh PR. The repo has no
-`create-pull-request` precedent in `.github/workflows/`, and a bot PR that
-renames user-visible models needs a human reading the diff anyway. Run
-`pnpm run models:fetch` when adding a model or when provider pricing
-changes.
+A weekly cron (`.github/workflows/models-drift-check.yml`, `0 9 * * 1`,
+also `workflow_dispatch`) runs `pnpm run models:fetch` so a stale
+snapshot never silently ships.
+
+- **Success:** if the snapshot changed, the workflow opens a refresh PR for
+  `providers/data/models-dev-snapshot.json` only (label `dependencies`).
+  A human still reads the diff — a refreshed snapshot can rename a model
+  users already picked.
+- **Failure:** if a curated id is missing or incomplete on models.dev, the
+  fetch script hard-fails (see below). The workflow captures the exit code,
+  writes the full fetch log to the job summary, and opens or comments on a
+  single tracking GitHub issue (deduped by a `<!-- models-drift-check -->`
+  body marker) instead of leaving a silent red X. The job is then re-failed
+  so the cron stays loud. The script's hard-fail is **not** softened — the
+  human-visible issue and the failed job are the signal; the deliberate
+  catalog edit is still made by hand.
 
 ## Favorites are DB-persisted, not localStorage
 
