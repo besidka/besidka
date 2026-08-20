@@ -189,6 +189,8 @@ describe('mergeModelMetadata', () => {
         description: 'Not tracked by models.dev',
         contextLength: 200_000,
         maxOutputTokens: 100_000,
+        releaseDate: '2025-11-18',
+        status: 'deprecated',
         price: {
           tokens: 1_000_000,
           input: '$10.00',
@@ -205,7 +207,48 @@ describe('mergeModelMetadata', () => {
     expect(model.name).toBe('Curated Only')
     expect(model.contextLength).toBe(200_000)
     expect(model.price.input).toBe('$10.00')
-    expect('releaseDate' in model).toBe(false)
+    expect(model.releaseDate).toBe('2025-11-18')
+    expect(model.status).toBe('deprecated')
+  })
+
+  it('passes curated status and releaseDate through when there is no snapshot', () => {
+    const withStatus = mergeModelMetadata(
+      {
+        ...chatModel,
+        name: 'Retired Legacy',
+        description: 'Curated after retirement',
+        contextLength: 200_000,
+        maxOutputTokens: 100_000,
+        releaseDate: '2025-11-18',
+        status: 'deprecated',
+        modalities: {
+          input: ['text'],
+          output: ['text'],
+        },
+      },
+      undefined,
+    )
+
+    expect(withStatus.releaseDate).toBe('2025-11-18')
+    expect(withStatus.status).toBe('deprecated')
+
+    const withoutStatus = mergeModelMetadata(
+      {
+        ...chatModel,
+        name: 'Exempt No Status',
+        description: 'Curated, no status or date',
+        contextLength: 200_000,
+        maxOutputTokens: 100_000,
+        modalities: {
+          input: ['text'],
+          output: ['text'],
+        },
+      },
+      undefined,
+    )
+
+    expect('releaseDate' in withoutStatus).toBe(false)
+    expect('status' in withoutStatus).toBe(false)
   })
 
   it('throws when a model has neither a snapshot entry nor full curation', () => {
@@ -368,13 +411,18 @@ describe('merged catalog', () => {
     }
   })
 
-  it('carries a release date exactly for snapshot-backed models', () => {
+  it('carries a release date for snapshot-backed and curated-only models', () => {
     for (const provider of providers) {
       for (const model of provider.models) {
         const entry = snapshot[model.id as keyof typeof snapshot]
 
         if (!entry) {
-          expect('releaseDate' in model).toBe(false)
+          // Fully curated exempt models (e.g. deep-research ids, retired
+          // legacy ids) may carry a curated releaseDate; if present it
+          // must still be a valid date.
+          if ('releaseDate' in model) {
+            expect(model.releaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+          }
 
           continue
         }

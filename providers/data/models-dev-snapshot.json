@@ -248,33 +248,6 @@
       "output": 1.5
     }
   },
-  "gemini-3-pro-preview": {
-    "name": "Gemini 3 Pro Preview",
-    "description": "Preview Gemini flagship for complex reasoning, coding, and rich multimodal prompts",
-    "releaseDate": "2025-11-18",
-    "status": "deprecated",
-    "limit": {
-      "context": 1048576,
-      "output": 65536
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "video",
-        "audio",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 2,
-      "output": 12
-    },
-    "tieredPricing": true
-  },
   "gemini-3-flash-preview": {
     "name": "Gemini 3 Flash Preview",
     "description": "New Gemini flash lane bringing frontier-style multimodal reasoning to cheaper runs",
