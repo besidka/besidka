@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
 
     steps:
       - name: Checkout
@@ -35,12 +36,34 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Capture the fetch exit code without short-circuiting later steps: a
+      # missing/incomplete curated model is an intentional hard-fail of the
+      # fetch script. Later steps publish the log and open an issue, then the
+      # job is re-failed at the end so the cron stays a loud red X.
       - name: Fetch model metadata
+        id: fetch
         shell: bash
         run: |
+          set +e
           pnpm run models:fetch 2>&1 | tee "$RUNNER_TEMP/models-fetch.log"
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Write fetch log to job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## models:fetch output"
+            echo ""
+            echo '```'
+            cat "$RUNNER_TEMP/models-fetch.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check for snapshot changes
+        if: steps.fetch.outputs.exit_code == '0'
         id: diff
         run: |
           if [ -n "$(git status --porcelain providers/data/models-dev-snapshot.json)" ]; then
@@ -50,7 +73,7 @@ jobs:
           fi
 
       - name: Build pull request body
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.fetch.outputs.exit_code == '0' && steps.diff.outputs.changed == 'true'
         run: |
           {
             echo "Automated weekly refresh of"
@@ -66,7 +89,7 @@ jobs:
           } > "$RUNNER_TEMP/pr-body.md"
 
       - name: Open pull request
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.fetch.outputs.exit_code == '0' && steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore(models): refresh models.dev metadata snapshot"
@@ -75,3 +98,72 @@ jobs:
           branch: chore/models-metadata-drift
           add-paths: providers/data/models-dev-snapshot.json
           labels: dependencies
+
+      # Failure path: a curated model id is missing or incomplete on
+      # models.dev. Open a single tracking issue (or comment on the existing
+      # open one) instead of leaving a silent red X. The hard-fail stays —
+      # the job is re-failed below.
+      - name: Open or update drift-check failure issue
+        if: steps.fetch.outputs.exit_code != '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MARKER='<!-- models-drift-check -->'
+          TITLE='models.dev drift check failed: curated model missing or incomplete'
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          BODY_FILE="$RUNNER_TEMP/drift-issue-body.md"
+          {
+            echo "$MARKER"
+            echo ""
+            echo "Automated weekly \`models:fetch\` failed."
+            echo ""
+            echo "A curated model id is missing or incomplete on models.dev."
+            echo "This is an intentional hard-fail of the fetch script — do not"
+            echo "soften it. Make a deliberate catalog edit:"
+            echo ""
+            echo "- Remove or replace the id in \`providers/*.ts\`, **or**"
+            echo "- Add it to \`EXEMPT_IDS\` in \`scripts/fetch-models-metadata.mjs\`"
+            echo "  and fully curate its metadata (including \`status: 'deprecated'\`"
+            echo "  for retired-but-kept legacy models) in \`providers/*.ts\`."
+            echo ""
+            echo "See \`docs/models-data-fetching.md\`."
+            echo ""
+            echo "Workflow run: $RUN_URL"
+            echo ""
+            echo '```'
+            cat "$RUNNER_TEMP/models-fetch.log"
+            echo '```'
+          } > "$BODY_FILE"
+
+          EXISTING=$(gh issue list \
+            --state open \
+            --search "models.dev drift check failed in:title" \
+            --json number,body \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .number" \
+            | head -n1)
+
+          if [ -n "$EXISTING" ]; then
+            {
+              echo "Another failing run: $RUN_URL"
+              echo ""
+              echo '```'
+              cat "$RUNNER_TEMP/models-fetch.log"
+              echo '```'
+            } | gh issue comment "$EXISTING" --body-file -
+          else
+            # Create the bug label idempotently in case it is missing;
+            # a missing label would otherwise fail issue creation.
+            gh label create bug --color D73A4A 2>/dev/null || true
+            gh issue create \
+              --title "$TITLE" \
+              --body-file "$BODY_FILE" \
+              --label "bug"
+          fi
+
+      - name: Fail job when models:fetch failed
+        if: steps.fetch.outputs.exit_code != '0'
+        run: |
+          echo "models:fetch exited ${{ steps.fetch.outputs.exit_code }}"
+          exit 1
