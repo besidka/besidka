@@ -45,10 +45,18 @@ const SNAPSHOT_PATH = fileURLToPath(
   new URL('../providers/data/models-dev-snapshot.json', import.meta.url),
 )
 
-// OpenAI bills Deep Research as its own model snapshots, which models.dev
-// does not track separately (it lists only the bare o3 / o4-mini). These two
-// stay fully curated in providers/openai.ts.
-const EXEMPT_IDS = ['o3-deep-research', 'o4-mini-deep-research']
+// Ids that are knowingly absent from models.dev. Two kinds:
+//  - Deep Research snapshots OpenAI bills separately but models.dev does not
+//    track (it lists only the bare o3 / o4-mini). Fully curated in
+//    providers/openai.ts.
+//  - Retired-but-kept legacy ids models.dev no longer publishes at all.
+//    Fully curated in providers/*.ts with `status: 'deprecated'` so the
+//    legacy picker section and useChatProvider() guard keep working.
+const EXEMPT_IDS = [
+  'o3-deep-research',
+  'o4-mini-deep-research',
+  'gemini-3-pro-preview',
+]
 
 const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']
 

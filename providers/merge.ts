@@ -21,6 +21,8 @@ export interface CuratedModel {
   description?: string
   contextLength?: number
   maxOutputTokens?: number
+  releaseDate?: string
+  status?: 'deprecated' | 'beta' | 'alpha'
   price: CuratedModelPrice
   modalities?: Model['modalities']
   tools: ModelTool[]
@@ -224,6 +226,8 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     description,
     contextLength,
     maxOutputTokens,
+    ...(curated.releaseDate ? { releaseDate: curated.releaseDate } : {}),
+    ...(curated.status ? { status: curated.status } : {}),
     price: mergedPrice(
       curated.price,
       curated.price.input ?? '',

@@ -96,8 +96,21 @@ export default {
     },
     {
       id: 'gemini-3-pro-preview',
+      name: 'Gemini 3 Pro Preview',
+      description:
+        'Preview Gemini flagship for complex reasoning, coding, and rich multimodal prompts',
+      contextLength: 1_048_576,
+      maxOutputTokens: 65_536,
+      releaseDate: '2025-11-18',
+      status: 'deprecated',
       price: {
         tokens: 1_000_000,
+        input: 'from $2.00',
+        output: 'from $12.00',
+      },
+      modalities: {
+        input: ['text', 'image', 'video', 'audio', 'pdf'],
+        output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
       reasoning: {
