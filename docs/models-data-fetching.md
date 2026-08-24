@@ -206,14 +206,20 @@ snapshot never silently ships.
   `providers/data/models-dev-snapshot.json` only (label `dependencies`).
   A human still reads the diff — a refreshed snapshot can rename a model
   users already picked.
-- **Failure:** if a curated id is missing or incomplete on models.dev, the
-  fetch script hard-fails (see below). The workflow captures the exit code,
-  writes the full fetch log to the job summary, and opens or comments on a
-  single tracking GitHub issue (deduped by a `<!-- models-drift-check -->`
-  body marker) instead of leaving a silent red X. The job is then re-failed
-  so the cron stays loud. The script's hard-fail is **not** softened — the
-  human-visible issue and the failed job are the signal; the deliberate
-  catalog edit is still made by hand.
+- **Failure:** the job stays a loud red X and a human-visible tracking issue
+  is opened (or commented on, deduplicated). Two disjoint paths:
+  - If a curated id is missing or incomplete on models.dev, the fetch script
+    hard-fails (see below). The workflow captures the exit code, writes the
+    full fetch log to the job summary, and opens or comments on a single
+    tracking issue (deduped by a `<!-- models-drift-check -->` body marker).
+    The script's hard-fail is **not** softened — the deliberate catalog edit
+    is still made by hand.
+  - If `models:fetch` exits 0 but any later step fails (typically the
+    refresh-pull-request commit), a separate catch-all step opens or comments
+    on its own tracking issue (marker
+    `<!-- models-drift-check-workflow-failure -->`). Bot commits in this
+    workflow skip husky hooks via a job-level `HUSKY: 0`, so they never run
+    dev-machine pre-commit tooling.
 
 ## Favorites are DB-persisted, not localStorage
 
