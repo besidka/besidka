@@ -18,6 +18,9 @@ jobs:
       pull-requests: write
       issues: write
 
+    env:
+      HUSKY: 0
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -155,6 +158,59 @@ jobs:
           else
             # Create the bug label idempotently in case it is missing;
             # a missing label would otherwise fail issue creation.
+            gh label create bug --color D73A4A 2>/dev/null || true
+            gh issue create \
+              --title "$TITLE" \
+              --body-file "$BODY_FILE" \
+              --label "bug"
+          fi
+
+      # Catch-all: fetch exited 0 but a later step failed (pull request
+      # creation, diff). Opens-or-comments a distinctly marked
+      # tracking issue instead of leaving a silent red X. Disjoint from the
+      # fetch-failure path above, which gates on exit_code != '0'.
+      - name: Open or update workflow failure issue
+        if: failure() && steps.fetch.outputs.exit_code == '0'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MARKER='<!-- models-drift-check-workflow-failure -->'
+          TITLE='models.dev drift check workflow failed'
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          BODY_FILE="$RUNNER_TEMP/drift-workflow-issue-body.md"
+          {
+            echo "$MARKER"
+            echo ""
+            echo "A \`models-metadata-drift\` workflow step failed **after**"
+            echo "\`models:fetch\` exited successfully (exit code 0) — likely"
+            echo "the refresh-pull-request step. Check the run logs:"
+            echo ""
+            echo "Workflow run: $RUN_URL"
+            echo ""
+            echo "Fetch log from this run (informational):"
+            echo '```'
+            cat "$RUNNER_TEMP/models-fetch.log"
+            echo '```'
+          } > "$BODY_FILE"
+
+          EXISTING=$(gh issue list \
+            --state open \
+            --search "drift check workflow failed in:title" \
+            --json number,body \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .number" \
+            | head -n1)
+
+          if [ -n "$EXISTING" ]; then
+            {
+              echo "Another failing run: $RUN_URL"
+              echo ""
+              echo '```'
+              cat "$RUNNER_TEMP/models-fetch.log"
+              echo '```'
+            } | gh issue comment "$EXISTING" --body-file -
+          else
             gh label create bug --color D73A4A 2>/dev/null || true
             gh issue create \
               --title "$TITLE" \
