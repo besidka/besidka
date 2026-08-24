@@ -86,11 +86,11 @@ describe('ChatInput/ModelsTrigger', () => {
       .trigger('click')
 
     expect(findModelButton(wrapper, 'GPT-5.4')).toBeTruthy()
-    expect(findModelButton(wrapper, 'Nano Banana')).toBeUndefined()
+    expect(findModelButton(wrapper, 'Gemini 2.5 Flash')).toBeUndefined()
 
     await wrapper.get('[data-testid="models-picker-rail-openai"]')
       .trigger('click')
 
-    expect(findModelButton(wrapper, 'Nano Banana')).toBeTruthy()
+    expect(findModelButton(wrapper, 'Gemini 2.5 Flash')).toBeTruthy()
   })
 })

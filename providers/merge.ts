@@ -23,6 +23,7 @@ export interface CuratedModel {
   maxOutputTokens?: number
   releaseDate?: string
   status?: 'deprecated' | 'beta' | 'alpha'
+  retiredAt?: string
   price: CuratedModelPrice
   modalities?: Model['modalities']
   tools: ModelTool[]
@@ -228,6 +229,7 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     maxOutputTokens,
     ...(curated.releaseDate ? { releaseDate: curated.releaseDate } : {}),
     ...(curated.status ? { status: curated.status } : {}),
+    ...(curated.retiredAt ? { retiredAt: curated.retiredAt } : {}),
     price: mergedPrice(
       curated.price,
       curated.price.input ?? '',
@@ -246,8 +248,11 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
  * Curated wins for product decisions (capabilities, tools, defaults, the
  * structural `price.tokens` divisor, the per-image `price.display` copy) and
  * for research-agent models, whose name, description and price deliberately
- * encode per-task billing that no per-token figure can express. Everything
- * objective — specs, modalities, release date, status, per-token cost —
+ * encode per-task billing that no per-token figure can express. Retirement
+ * knowledge is also curated-only: a hand-set `status` outranks the fetched
+ * one and `retiredAt` exists only in curated files, because models.dev has
+ * no retirement dates. Everything else objective — specs, modalities,
+ * release date, remaining status values, per-token cost —
  * comes from the snapshot, unless a curated `name` is explicitly set, which
  * always wins: it means models.dev's name is worse than the curated one
  * (a placeholder equal to the bare id, a stale alias suffix like
@@ -274,7 +279,10 @@ export function mergeModelMetadata(
     contextLength: snapshot.limit.context,
     maxOutputTokens: snapshot.limit.output,
     ...(snapshot.releaseDate ? { releaseDate: snapshot.releaseDate } : {}),
-    ...(snapshot.status ? { status: snapshot.status } : {}),
+    ...(curated.status
+      ? { status: curated.status }
+      : snapshot.status ? { status: snapshot.status } : {}),
+    ...(curated.retiredAt ? { retiredAt: curated.retiredAt } : {}),
     price: mergedPrice(
       curated.price,
       keepCuratedPrice

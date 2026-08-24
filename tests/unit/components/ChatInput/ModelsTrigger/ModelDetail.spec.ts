@@ -97,6 +97,58 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     ).toBe(false)
   })
 
+  it('appends the scheduled shutdown date to the deprecation notice', async () => {
+    const wrapper = await mountDetail(createModel({
+      status: 'deprecated',
+      retiredAt: '2099-10-02',
+    }))
+    const notice = wrapper.get('[data-testid="model-detail-deprecated-notice"]')
+
+    expect(notice.text()).toContain(
+      'It is scheduled to shut down on October 2, 2099.',
+    )
+  })
+
+  it('uses past tense once the shutdown date has passed', async () => {
+    const wrapper = await mountDetail(createModel({
+      status: 'deprecated',
+      retiredAt: '2000-03-09',
+    }))
+    const notice = wrapper.get('[data-testid="model-detail-deprecated-notice"]')
+
+    expect(notice.text()).toContain('It was shut down on March 9, 2000.')
+    expect(notice.text()).not.toContain('scheduled to shut down')
+  })
+
+  it('shows an informational retire notice for a selectable model', async () => {
+    const wrapper = await mountDetail(createModel({
+      retiredAt: '2099-05-07',
+    }))
+
+    expect(
+      wrapper.find('[data-testid="model-detail-deprecated-notice"]').exists(),
+    ).toBe(false)
+    expect(wrapper.get('[data-testid="model-detail-retire-notice"]').text())
+      .toContain('Scheduled to retire on May 7, 2099.')
+  })
+
+  it('uses past tense in the retire notice once the date has passed', async () => {
+    const wrapper = await mountDetail(createModel({
+      retiredAt: '2000-05-07',
+    }))
+
+    expect(wrapper.get('[data-testid="model-detail-retire-notice"]').text())
+      .toContain('Retired on May 7, 2000.')
+  })
+
+  it('omits the retire notice when the model has no retirement date', async () => {
+    const wrapper = await mountDetail()
+
+    expect(
+      wrapper.find('[data-testid="model-detail-retire-notice"]').exists(),
+    ).toBe(false)
+  })
+
   it('flows inline instead of overlaying the model list', async () => {
     const wrapper = await mountDetail()
     const panel = wrapper.get('[data-testid="model-detail-panel"]')
