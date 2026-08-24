@@ -143,8 +143,8 @@
       ]
     },
     "cost": {
-      "input": 1.5,
-      "output": 7.5
+      "input": 0.75,
+      "output": 3.75
     }
   },
   "gemini-3.5-flash": {
