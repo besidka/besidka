@@ -526,7 +526,7 @@ async function expectStableImageTurnPin(
   await openCase(page, url)
 
   await page.locator('[data-testid="current-model-trigger"]').click()
-  await page.getByRole('button', { name: 'Choose Nano Banana', exact: true })
+  await page.getByRole('button', { name: 'Choose Nano Banana 2', exact: true })
     .click()
   await page.locator('textarea').fill('A scottish fold cat by a fireplace')
   await page.getByRole('button', { name: 'Send Message' }).click()
