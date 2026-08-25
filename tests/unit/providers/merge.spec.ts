@@ -251,6 +251,64 @@ describe('mergeModelMetadata', () => {
     expect('status' in withoutStatus).toBe(false)
   })
 
+  it('passes curated retiredAt through both merge paths', () => {
+    const snapshotBacked = mergeModelMetadata(
+      {
+        ...chatModel,
+        retiredAt: '2027-05-07',
+      },
+      snapshotEntry,
+    )
+
+    expect(snapshotBacked.retiredAt).toBe('2027-05-07')
+
+    const fullyCurated = mergeModelMetadata(
+      {
+        ...chatModel,
+        name: 'Retired Legacy',
+        description: 'Curated after retirement',
+        contextLength: 200_000,
+        maxOutputTokens: 100_000,
+        status: 'deprecated',
+        retiredAt: '2026-03-09',
+        modalities: {
+          input: ['text'],
+          output: ['text'],
+        },
+      },
+      undefined,
+    )
+
+    expect(fullyCurated.retiredAt).toBe('2026-03-09')
+  })
+
+  it('omits retiredAt when curated sets none', () => {
+    const model = mergeModelMetadata(chatModel, snapshotEntry)
+
+    expect('retiredAt' in model).toBe(false)
+  })
+
+  it('lets a hand-set curated status outrank the fetched one', () => {
+    const model = mergeModelMetadata(
+      {
+        ...chatModel,
+        status: 'deprecated',
+      },
+      { ...snapshotEntry, status: 'beta' },
+    )
+
+    expect(model.status).toBe('deprecated')
+  })
+
+  it('still takes status from the snapshot when curated sets none', () => {
+    const model = mergeModelMetadata(
+      chatModel,
+      { ...snapshotEntry, status: 'alpha' },
+    )
+
+    expect(model.status).toBe('alpha')
+  })
+
   it('throws when a model has neither a snapshot entry nor full curation', () => {
     expect(() => mergeModelMetadata(chatModel, undefined))
       .toThrowError(/test-chat-model/)

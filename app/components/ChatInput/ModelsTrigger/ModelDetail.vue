@@ -45,10 +45,19 @@
         size="13"
         class="shrink-0 mt-px"
       />
-      <span>
-        The provider has deprecated this model, so it can stop responding at
-        any time and can no longer be selected. Pick a supported model instead.
-      </span>
+      <span>{{ deprecationNotice }}</span>
+    </p>
+    <p
+      v-else-if="model.retiredAt"
+      data-testid="model-detail-retire-notice"
+      class="mt-2 flex items-start gap-1.5 p-2 rounded-xl text-xs text-warning capability-chip"
+    >
+      <Icon
+        name="lucide:calendar-clock"
+        size="13"
+        class="shrink-0 mt-px"
+      />
+      <span>{{ retireNotice }}</span>
     </p>
     <p
       v-if="model.description"
@@ -118,6 +127,62 @@ const emit = defineEmits<{
 
 const detailId = computed<string>(() => {
   return `model-detail-${props.model.id}`
+})
+
+const retirementMonthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+function formatRetirementDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-')
+  const monthName = retirementMonthNames[Number(month) - 1]
+
+  if (!year || !monthName || !day) {
+    return isoDate
+  }
+
+  return `${monthName} ${Number(day)}, ${year}`
+}
+
+function localDateToday(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+const retireNotice = computed<string>(() => {
+  const { retiredAt } = props.model
+
+  if (!retiredAt) {
+    return ''
+  }
+
+  const formatted = formatRetirementDate(retiredAt)
+
+  return retiredAt > localDateToday()
+    ? `Scheduled to retire on ${formatted}.`
+    : `Retired on ${formatted}.`
+})
+
+const deprecationNotice = computed<string>(() => {
+  const base = 'The provider has deprecated this model, so it can stop '
+    + 'responding at any time and can no longer be selected. Pick a '
+    + 'supported model instead.'
+  const { retiredAt } = props.model
+
+  if (!retiredAt) {
+    return base
+  }
+
+  const today = localDateToday()
+  const formatted = formatRetirementDate(retiredAt)
+
+  return retiredAt > today
+    ? `${base} It is scheduled to shut down on ${formatted}.`
+    : `${base} It was shut down on ${formatted}.`
 })
 
 const priceTip = computed<string | undefined>(() => {

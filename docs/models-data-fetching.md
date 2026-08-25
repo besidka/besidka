@@ -30,7 +30,8 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `name` | fetched, unless the model is a research agent or models.dev publishes the bare id as the name |
 | `description` | fetched, unless the model is a research agent |
 | `contextLength`, `maxOutputTokens`, `modalities` | fetched |
-| `status` | fetched, present only when models.dev flags `deprecated`/`beta`/`alpha` |
+| `status` | fetched, unless hand-set in curated (curated wins — the owner can outrank models.dev) |
+| `retiredAt` | curated only — the provider's official shutdown date; models.dev has no retirement dates |
 | `price.input`, `price.output` | fetched, unless the model is a research agent (billed per task) |
 | `price.display` | curated (per-image copy) |
 | `price.tokens` | curated (the structural cost divisor) |
@@ -127,14 +128,21 @@ state:
   `localStorage`/devtools edit could otherwise still send a deprecated
   model id straight to the API).
 
-As of this pass, one currently curated id is flagged deprecated:
+As of this pass, curated ids carry deprecation state from two sources:
 
+- **`gemini-2.5-flash-image`** — models.dev does not flag it, but Google's
+  official deprecations page schedules its shutdown for 2026-10-02. The
+  curated entry hand-sets `status: 'deprecated'` (curated status now
+  outranks the snapshot at merge time) plus `retiredAt: '2026-10-02'`, so
+  it moves to the legacy picker section and the `useChatProvider()` guard
+  blocks sending with it, in new and continued chats alike.
 - **`gemini-3-pro-preview`** — fully retired from models.dev (it previously
   carried `status: 'deprecated'`). Kept in the catalog via `EXEMPT_IDS` and
-  fully curated in `providers/google.ts` with `status: 'deprecated'` and a
-  `releaseDate`, so a user with it persisted still resolves normally while
-  the legacy-section picker UI and `useChatProvider()` guard stop offering
-  it as a new pick. Its successor, `gemini-3.1-pro-preview`, is already
+  fully curated in `providers/google.ts` with `status: 'deprecated'`, a
+  `releaseDate`, and its passed shutdown date `retiredAt: '2026-03-09'`,
+  so a user with it persisted still resolves normally while the
+  legacy-section picker UI and `useChatProvider()` guard stop offering it
+  as a new pick. Its successor, `gemini-3.1-pro-preview`, is already
   curated separately. The next successful `models:fetch` drops the snapshot
   row for this id — that is expected and correct; the curated half is now
   the only source of its metadata.
@@ -153,6 +161,45 @@ already available upstream (often just the same name minus `-preview`, or
 the next point release) before assuming the legacy-section treatment is the
 right fix — swapping the id is strictly better when a real successor
 exists.
+
+## Retirement dates and how we learn about them
+
+models.dev has no retirement data at all — it flags none of our curated
+models deprecated even when the provider officially schedules shutdown
+(proven: the whole gemini-2.5 family). Retirement knowledge therefore
+arrives through two layers:
+
+1. **The models.dev `status` tripwire.** The weekly drift check and every
+   manual `pnpm run models:fetch` print the deprecated-model warning (see
+   "Auditing curated vs. available models" above), and a fetched
+   `status: 'deprecated'` flows into the merge, driving the legacy picker
+   tab and the server guard automatically. This catches OpenAI-style flags,
+   where models.dev does mark a model deprecated.
+2. **Hand-curated `status` + `retiredAt`.** When models.dev stays silent,
+   the authoritative source is the provider's official deprecation page —
+   for Gemini https://ai.google.dev/gemini-api/docs/deprecations , for
+   OpenAI https://platform.openai.com/docs/deprecations . The weekly cadence
+   already forces a human look at the fetch output; these pages are that
+   human's reading list. A hand-set curated `retiredAt`
+   (`yyyy-mm-dd`, shown in the model detail panel) and, when shutdown is
+   near or past, a hand-set curated `status: 'deprecated'` are set in
+   `providers/*.ts`; curated status outranks the snapshot.
+
+Scraping the deprecation pages on a schedule was rejected (fragile HTML
+churn for little gain) and so was API probing (this repo is 100% BYOK and
+holds no provider keys — see "Optional owner-run spot-check" below).
+
+Semantics: `status: 'deprecated'` is the **gate** — legacy tab plus the
+`useChatProvider()` server guard block new chats with the model.
+`retiredAt` alone is **informational** — the model stays selectable but its
+detail panel shows the scheduled retirement date (`gemini-3.1-flash-lite`,
+retiring 2027-05-07, is the working example).
+
+Beware product-scoped dates: Google's Vertex AI and Gemini API (AI Studio)
+deprecate models on different schedules. The Oct 16 2026 shutdown date
+circulating for the gemini-2.5 text models is a Vertex AI date; the AI
+Studio page announces no shutdown date for them, so they stay untouched in
+the catalog.
 
 ## Hard failure on a retired model
 
@@ -294,12 +341,13 @@ deliberately not fixed now — logged here instead of silently dropped:
   server-side.** An id that doesn't match any known model is stored as-is
   and simply never rendered (see "Favorites are DB-persisted" above) —
   inert, not a correctness risk, so not worth rejecting at the API layer.
-- **models.dev has no retirement *date* field**, only `release_date` and
-  `last_updated` — so a "leaving on \<date\>" countdown badge isn't
-  derivable from this data source; that would need a hand-curated
-  retirement date per model. See "Model status" above for the coarse
-  present-tense `status` field this data source does carry instead, and
-  how it now drives the legacy-section UI and server guard.
+- **models.dev still has no retirement *date* field**, only `release_date`
+  and `last_updated` — the coarse present-tense `status` it does carry
+  drives the legacy-section UI and server guard, but any "leaving on
+  \<date\>" countdown needs a hand-curated date. That gap is now filled by
+  curated `retiredAt` (see "Retirement dates and how we learn about them"
+  above); what remains deferred is surfacing it as anything richer than
+  the detail-panel sentence.
 
 ## New models added this pass — confidence on capability flags
 
@@ -316,6 +364,15 @@ per-model capability confirmed against any field models.dev exposes.** If a
 model in this set turns out not to actually support image generation, a user
 picking that tool would only find out at generation time. Worth a spot-check
 before relying on it for a model you haven't tried yet.
+
+A later pass added `gemini-3.7-flash` — the same-family successor of
+`gemini-3.6-flash`, curated with the identical structure and the same
+$0.75/$3.75 pricing, with name/description/limits pulled from the snapshot
+— and bare `gpt-5.6`, whose models.dev specs are byte-identical to
+`gpt-5.6-sol`. Both `gpt-5.6` ids are now curated deliberately: the specs
+are indistinguishable, but users who know the model by the bare id should
+find it under that id too (this supersedes the earlier decision recorded
+under "Ids deliberately not auto-added" below).
 
 ## Ids deliberately not auto-added (owner review needed)
 
@@ -334,13 +391,13 @@ automatic add:
 - **`gpt-5.3-codex`, `gpt-5.3-codex-spark`** — coding-agent-specialized
   variants, a different product positioning than this app's general chat
   models (also: no plain `gpt-5.3` mainline model exists upstream at all).
-- **`gpt-5.6-sol`** — not a distinct model. OpenAI's own docs state
+- **`gpt-5.6-sol`** — not a distinct model: OpenAI's own docs state
   "Model ID: gpt-5.6-sol (aliased as gpt-5.6)", and its models.dev entry is
   byte-identical to bare `gpt-5.6` (same cost, description, release date).
-  Curating both would show two indistinguishable rows for one model; the
-  bare `gpt-5.6` id was curated instead, matching how every other mainline
-  release in this lineage (`gpt-5`, `gpt-5.1`, `gpt-5.2`, `gpt-5.4`) has no
-  separate top-tier alias id.
+  This pass originally curated only the bare `gpt-5.6` id for that reason;
+  a later pass reversed the call and now curates BOTH ids deliberately (see
+  "New models added this pass" above), so users who know either id find the
+  model under it.
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:
 

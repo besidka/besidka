@@ -50,6 +50,17 @@ export default {
       },
     },
     {
+      id: 'gemini-3.7-flash',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'gemini-3.5-flash',
       price: {
         tokens: 1_000_000,
@@ -92,6 +103,7 @@ export default {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
       },
+      retiredAt: '2027-05-07',
       forProjectMemory: true,
     },
     {
@@ -103,6 +115,7 @@ export default {
       maxOutputTokens: 65_536,
       releaseDate: '2025-11-18',
       status: 'deprecated',
+      retiredAt: '2026-03-09',
       price: {
         tokens: 1_000_000,
         input: 'from $2.00',
@@ -198,6 +211,8 @@ export default {
     },
     {
       id: 'gemini-2.5-flash-image',
+      status: 'deprecated',
+      retiredAt: '2026-10-02',
       price: {
         tokens: 1,
         display: '$0.039 / 1K image, plus input',
