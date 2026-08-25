@@ -487,8 +487,8 @@
       ]
     },
     "cost": {
-      "input": 5,
-      "output": 30
+      "input": 4,
+      "output": 20
     },
     "tieredPricing": true
   },
@@ -559,8 +559,8 @@
       ]
     },
     "cost": {
-      "input": 5,
-      "output": 30
+      "input": 4,
+      "output": 20
     },
     "tieredPricing": true
   },
