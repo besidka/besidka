@@ -178,12 +178,13 @@ arrives through two layers:
 2. **Hand-curated `status` + `retiredAt`.** When models.dev stays silent,
    the authoritative source is the provider's official deprecation page —
    for Gemini https://ai.google.dev/gemini-api/docs/deprecations , for
-   OpenAI https://platform.openai.com/docs/deprecations . The weekly cadence
-   already forces a human look at the fetch output; these pages are that
-   human's reading list. A hand-set curated `retiredAt`
-   (`yyyy-mm-dd`, shown in the model detail panel) and, when shutdown is
-   near or past, a hand-set curated `status: 'deprecated'` are set in
-   `providers/*.ts`; curated status outranks the snapshot.
+   OpenAI https://platform.openai.com/docs/deprecations , for Anthropic
+   https://platform.claude.com/docs/en/about-claude/model-deprecations .
+   The weekly cadence already forces a human look at the fetch output;
+   these pages are that human's reading list. A hand-set curated
+   `retiredAt` (`yyyy-mm-dd`, shown in the model detail panel) and, when
+   shutdown is near or past, a hand-set curated `status: 'deprecated'`
+   are set in `providers/*.ts`; curated status outranks the snapshot.
 
 Scraping the deprecation pages on a schedule was rejected (fragile HTML
 churn for little gain) and so was API probing (this repo is 100% BYOK and
@@ -200,6 +201,21 @@ deprecate models on different schedules. The Oct 16 2026 shutdown date
 circulating for the gemini-2.5 text models is a Vertex AI date; the AI
 Studio page announces no shutdown date for them, so they stay untouched in
 the catalog.
+
+**Anthropic lineage** (checked 2026-08-25): the old Claude lineage
+(opus-4-5/4-6/4-7/4-8, sonnet-4-6, fable-5) stays out of the catalog.
+Anthropic's deprecations table lists all of them Active ("Deprecated:
+N/A"), so none can enter the legacy tab — Anthropic does date-retire
+models (Active → Legacy → Deprecated → Retired, ≥60 days notice), but
+these are not there yet. None is a value tier either: Opus 4.5–4.8 cost
+$5/$25, exactly what curated Opus 5 costs (and 4.7+ use a ~30%-heavier
+tokenizer and reject `temperature`/`top_p`/`top_k` with a 400 on
+non-default values, making them strictly worse picks); Sonnet 4.6 at
+$3/$15 is 50% pricier than curated Sonnet 5; fable-5 ($10/$50) is a
+premium tier already declined. Curated retirement
+floors ("not sooner than"): opus-5 ≥ 2027-07-24, sonnet-5 ≥ 2027-06-30,
+haiku-4-5 (snapshot claude-haiku-4-5-20251001) ≥ 2026-10-15 — the
+closest watch item.
 
 ## Hard failure on a retired model
 
@@ -351,14 +367,14 @@ deliberately not fixed now — logged here instead of silently dropped:
 
 ## New models added this pass — confidence on capability flags
 
-`gpt-5.6`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (OpenAI) and
+`gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (OpenAI) and
 `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite` (Google) were
 added to the curated files this pass, found via the audit report above.
 
-**`tool_call`/`reasoning: true` are confirmed** for all seven from
+**`tool_call`/`reasoning: true` are confirmed** for all six from
 models.dev's own fields, and OpenAI's docs additionally confirm web search
 for `gpt-5.6-sol`/`terra`/`luna` explicitly. **`tools: ['image_generation']`
-on all seven is a convention copy from sibling models in the same lineage
+on all six is a convention copy from sibling models in the same lineage
 (every `gpt-5.x`/`gemini-3.x` mainline entry already gets it), not a
 per-model capability confirmed against any field models.dev exposes.** If a
 model in this set turns out not to actually support image generation, a user
@@ -368,11 +384,11 @@ before relying on it for a model you haven't tried yet.
 A later pass added `gemini-3.7-flash` — the same-family successor of
 `gemini-3.6-flash`, curated with the identical structure and the same
 $0.75/$3.75 pricing, with name/description/limits pulled from the snapshot
-— and bare `gpt-5.6`, whose models.dev specs are byte-identical to
-`gpt-5.6-sol`. Both `gpt-5.6` ids are now curated deliberately: the specs
-are indistinguishable, but users who know the model by the bare id should
-find it under that id too (this supersedes the earlier decision recorded
-under "Ids deliberately not auto-added" below).
+— and bare `gpt-5.6`, whose models.dev specs are identical to
+`gpt-5.6-sol` apart from id and name. The bare alias was later removed
+again as unnecessary duplication; only the explicit `gpt-5.6-sol` id
+stays curated (see "Ids
+deliberately not auto-added" below).
 
 ## Ids deliberately not auto-added (owner review needed)
 
@@ -391,13 +407,14 @@ automatic add:
 - **`gpt-5.3-codex`, `gpt-5.3-codex-spark`** — coding-agent-specialized
   variants, a different product positioning than this app's general chat
   models (also: no plain `gpt-5.3` mainline model exists upstream at all).
-- **`gpt-5.6-sol`** — not a distinct model: OpenAI's own docs state
-  "Model ID: gpt-5.6-sol (aliased as gpt-5.6)", and its models.dev entry is
-  byte-identical to bare `gpt-5.6` (same cost, description, release date).
-  This pass originally curated only the bare `gpt-5.6` id for that reason;
-  a later pass reversed the call and now curates BOTH ids deliberately (see
-  "New models added this pass" above), so users who know either id find the
-  model under it.
+- **`gpt-5.6-sol`** — the curated id for this model, not a distinct
+  sibling: OpenAI's own docs state "Model ID: gpt-5.6-sol (aliased as
+  gpt-5.6)", and its models.dev entry is identical to bare `gpt-5.6`
+  apart from id and name (same cost, description, release date). The
+  bare `gpt-5.6` alias was
+  briefly curated too (#367), then removed again as unnecessary
+  duplication — the owner prefers the explicit Sol id — so bare
+  `gpt-5.6` stays on this deliberately-not-curated list.
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:
 
