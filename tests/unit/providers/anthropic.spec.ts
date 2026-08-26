@@ -10,11 +10,12 @@ const expectedModelIds = [
   'claude-opus-4-5',
   'claude-sonnet-5',
   'claude-sonnet-4-6',
+  'claude-sonnet-4-5',
   'claude-haiku-4-5',
 ]
 
 describe('curated anthropic provider', () => {
-  it('curates exactly the eight expected models', () => {
+  it('curates exactly the nine expected models', () => {
     const ids = anthropic.models.map(model => model.id)
 
     expect(anthropic.models).toHaveLength(expectedModelIds.length)

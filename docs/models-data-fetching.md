@@ -202,21 +202,25 @@ circulating for the gemini-2.5 text models is a Vertex AI date; the AI
 Studio page announces no shutdown date for them, so they stay untouched in
 the catalog.
 
-**Anthropic lineage** (updated 2026-08-25): the previous Claude
-generations (opus-4-8/4-7/4-6/4-5, sonnet-4-6) are IN the catalog as
+**Anthropic lineage** (updated 2026-08-26): the previous Claude
+generations (opus-4-8/4-7/4-6/4-5, sonnet-4-6/4-5) are IN the catalog as
 normal selectable models. The catalog is BYOK access, not taste
 curation — the app is not the provider and does not decide what users
 use — and it already keeps old Gemini generations (3.1/3.5/3.6
-alongside 3.7), so the same principle now covers Anthropic too. All
-five are Active ("Deprecated: N/A") in Anthropic's deprecations
-table; when Anthropic actually deprecates any of them, it moves to
-the legacy tab via curated `status` + `retiredAt`, like
-`gemini-2.5-flash-image`. Excluded on purpose: fable-5 ($10/$50
-premium tier above Opus 5, owner declined), the dated-snapshot ids
-(`claude-opus-4-5-20251101`, `claude-sonnet-4-5-20250929`), and the
-dateless `claude-sonnet-4-5` alias (not on the owner's add-list).
-No old haiku exists upstream — `claude-haiku-4-5` is the only haiku
-generation and is already curated. Curated retirement
+alongside 3.7), so the same principle now covers Anthropic too: every
+active mainline chat generation upstream is offered. All six are
+Active ("Deprecated: N/A") in Anthropic's deprecations table; when
+Anthropic actually deprecates any of them, it moves to the legacy tab
+via curated `status` + `retiredAt`, like `gemini-2.5-flash-image`.
+Excluded on purpose: fable-5 ($10/$50 premium tier above Opus 5 —
+price overkill for a chat-only app, owner declined) and the
+dated-snapshot ids (`claude-opus-4-5-20251101`,
+`claude-sonnet-4-5-20250929`, `claude-haiku-4-5-20251001`), which are
+the same models as their dateless aliases. Older generations (Sonnet
+4, Haiku 4, Opus 4.1) are no longer listed on models.dev at all, so
+there is nothing to add or retire for them. `claude-opus-4-5` and
+`claude-sonnet-4-5` carry a curated `name` override because models.dev
+names those aliases with a "(latest)" suffix. Curated retirement
 floors ("not sooner than"): opus-5 ≥ 2027-07-24, sonnet-5 ≥ 2027-06-30,
 haiku-4-5 (snapshot claude-haiku-4-5-20251001) ≥ 2026-10-15 — the
 closest watch item.

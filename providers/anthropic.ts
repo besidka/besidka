@@ -83,6 +83,18 @@ export default {
       },
     },
     {
+      id: 'claude-sonnet-4-5',
+      name: 'Claude Sonnet 4.5',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'claude-haiku-4-5',
       name: 'Claude Haiku 4.5',
       price: {
