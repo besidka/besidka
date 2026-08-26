@@ -4,12 +4,17 @@ import snapshot from '../../../providers/data/models-dev-snapshot.json'
 
 const expectedModelIds = [
   'claude-opus-5',
+  'claude-opus-4-8',
+  'claude-opus-4-7',
+  'claude-opus-4-6',
+  'claude-opus-4-5',
   'claude-sonnet-5',
+  'claude-sonnet-4-6',
   'claude-haiku-4-5',
 ]
 
 describe('curated anthropic provider', () => {
-  it('curates exactly the three expected models', () => {
+  it('curates exactly the eight expected models', () => {
     const ids = anthropic.models.map(model => model.id)
 
     expect(anthropic.models).toHaveLength(expectedModelIds.length)

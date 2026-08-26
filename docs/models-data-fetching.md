@@ -202,17 +202,21 @@ circulating for the gemini-2.5 text models is a Vertex AI date; the AI
 Studio page announces no shutdown date for them, so they stay untouched in
 the catalog.
 
-**Anthropic lineage** (checked 2026-08-25): the old Claude lineage
-(opus-4-5/4-6/4-7/4-8, sonnet-4-6, fable-5) stays out of the catalog.
-Anthropic's deprecations table lists all of them Active ("Deprecated:
-N/A"), so none can enter the legacy tab — Anthropic does date-retire
-models (Active → Legacy → Deprecated → Retired, ≥60 days notice), but
-these are not there yet. None is a value tier either: Opus 4.5–4.8 cost
-$5/$25, exactly what curated Opus 5 costs (and 4.7+ use a ~30%-heavier
-tokenizer and reject `temperature`/`top_p`/`top_k` with a 400 on
-non-default values, making them strictly worse picks); Sonnet 4.6 at
-$3/$15 is 50% pricier than curated Sonnet 5; fable-5 ($10/$50) is a
-premium tier already declined. Curated retirement
+**Anthropic lineage** (updated 2026-08-25): the previous Claude
+generations (opus-4-8/4-7/4-6/4-5, sonnet-4-6) are IN the catalog as
+normal selectable models. The catalog is BYOK access, not taste
+curation — the app is not the provider and does not decide what users
+use — and it already keeps old Gemini generations (3.1/3.5/3.6
+alongside 3.7), so the same principle now covers Anthropic too. All
+five are Active ("Deprecated: N/A") in Anthropic's deprecations
+table; when Anthropic actually deprecates any of them, it moves to
+the legacy tab via curated `status` + `retiredAt`, like
+`gemini-2.5-flash-image`. Excluded on purpose: fable-5 ($10/$50
+premium tier above Opus 5, owner declined), the dated-snapshot ids
+(`claude-opus-4-5-20251101`, `claude-sonnet-4-5-20250929`), and the
+dateless `claude-sonnet-4-5` alias (not on the owner's add-list).
+No old haiku exists upstream — `claude-haiku-4-5` is the only haiku
+generation and is already curated. Curated retirement
 floors ("not sooner than"): opus-5 ≥ 2027-07-24, sonnet-5 ≥ 2027-06-30,
 haiku-4-5 (snapshot claude-haiku-4-5-20251001) ≥ 2026-10-15 — the
 closest watch item.
@@ -415,6 +419,10 @@ automatic add:
   briefly curated too (#367), then removed again as unnecessary
   duplication — the owner prefers the explicit Sol id — so bare
   `gpt-5.6` stays on this deliberately-not-curated list.
+- **`claude-fable-5`** — a premium tier above Opus 5 ($10/$50 vs the
+  $5/$25 Opus pricing); it would add another price tier to the picker,
+  and the owner declined.
+
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:
 

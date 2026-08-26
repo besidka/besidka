@@ -22,6 +22,98 @@
       "output": 25
     }
   },
+  "claude-opus-4-8": {
+    "name": "Claude Opus 4.8",
+    "description": "Top Claude Opus tier for the hardest reasoning, coding, and long-horizon agents",
+    "releaseDate": "2026-05-28",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-opus-4-7": {
+    "name": "Claude Opus 4.7",
+    "description": "Stronger Opus tier for advanced software work and high-stakes reasoning",
+    "releaseDate": "2026-04-14",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-opus-4-6": {
+    "name": "Claude Opus 4.6",
+    "description": "High-end Claude for difficult coding, planning, and slower expert reasoning",
+    "releaseDate": "2026-02-04",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-opus-4-5": {
+    "name": "Claude Opus 4.5 (latest)",
+    "description": "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
+    "releaseDate": "2025-11-24",
+    "limit": {
+      "context": 200000,
+      "output": 64000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
   "claude-sonnet-5": {
     "name": "Claude Sonnet 5",
     "description": "Everyday Claude agent model for coding, planning, browsing, and general work",
@@ -43,6 +135,29 @@
     "cost": {
       "input": 2,
       "output": 10
+    }
+  },
+  "claude-sonnet-4-6": {
+    "name": "Claude Sonnet 4.6",
+    "description": "Claude workhorse for coding agents, careful analysis, and production cost control",
+    "releaseDate": "2026-02-17",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 3,
+      "output": 15
     }
   },
   "claude-haiku-4-5": {
