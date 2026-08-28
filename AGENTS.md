@@ -153,6 +153,10 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
 - `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
   installed PWA (push handoff + cold-start tap navigation)
+- `docs/pwa-safari-cache-headers.md` - Why SSR HTML documents get
+  `Cache-Control: private, no-store`: WebKit's cache-first Dock/home-screen
+  PWA launch policy, why `no-store` (not `no-cache`), the `render:response`
+  Nitro plugin vs. `routeRules`/`_headers` trade-off, and the bfcache caveat
 - `docs/deep-research.md` - Deep research: async provider-agent jobs
   (OpenAI Responses background mode, Google Interactions API), job store,
   finalize/cron sweep, UI, live-spike checklist

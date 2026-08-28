@@ -422,6 +422,10 @@ export function getAffectedTests(changedFiles) {
       tests: landingTests,
     },
     {
+      pattern: /^server\/plugins\/ssr-html-no-store\.ts$/,
+      tests: ['tests/integration/server/ssr-html-no-store-plugin.spec.ts'],
+    },
+    {
       pattern: /^server\/middleware\/evlog-auth\.ts$/,
       tests: ['tests/integration/api/stats.spec.ts'],
     },
