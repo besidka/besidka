@@ -254,6 +254,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/notification-prompt.spec.ts',
     'tests/unit/utils/push.spec.ts',
     'tests/unit/utils/push-encryption.spec.ts',
+    'tests/unit/service-worker/push.spec.ts',
+    'tests/unit/service-worker/sw.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/push-status.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -361,7 +363,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
+        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
       tests: pushNotificationTests,
     },
     {

@@ -14,7 +14,7 @@ PWA (see [chats/shared-pwa-handoff.md](chats/shared-pwa-handoff.md)).
 | Triggers | `server/api/v1/chats/[slug]/index.post.ts`, `server/api/v1/chats/shares/[slug]/{branch,handoff}.post.ts` | Generation-finished push (fire-and-forget), branch push, awaited handoff |
 | Subscription API | `server/api/v1/push/{subscribe,unsubscribe}.post.ts`, `status.get.ts` | Upload/remove/report subscriptions per user |
 | Client | `app/composables/push-notifications.ts`, `notification-prompt.ts` | Subscribe, permission banner, reconcile, key-rotation healing |
-| Service worker | `public/sw-push.js` (importScripts into the Workbox worker) | Show notifications, focused-window suppression, tap navigation |
+| Service worker | `app/service-worker/push.ts` (bundled into `app/service-worker/sw.ts` via `injectManifest`) | Show notifications, focused-window suppression, tap navigation |
 | Tap navigation | `app/plugins/push-navigation.client.ts` | Navigates on SW postMessage; IndexedDB fallback for cold starts |
 | Storage | `push_subscriptions` (D1) | One row per browser/install per user; endpoint is a capability URL |
 
@@ -142,12 +142,36 @@ is missed first.
   when one account has subscriptions from multiple PR-preview subdomains,
   since all previews share one D1 database.
 
-## Service worker behavior (`public/sw-push.js`)
+## Service worker behavior (`app/service-worker/`)
 
-- Injected via `pwa.workbox.importScripts` with a per-build query
-  (`/sw-push.js?v=<buildId>`): registration `updateViaCache` defaults to
-  `'imports'`, so without the cache-bust a new worker shell could keep
-  executing a stale cached script after deploy.
+The service worker is push-only: `app/service-worker/sw.ts` is the entry
+point, built via `@vite-pwa/nuxt`'s `injectManifest` strategy
+(`nuxt.config.ts` `pwa`) with `injectionPoint: ''` — this tells
+`vite-plugin-pwa` to skip workbox-build's manifest-injection step entirely,
+so nothing from Workbox (precaching, a `fetch` listener, `self.__WB_MANIFEST`)
+ends up in the built worker. The push/notification handlers themselves live
+in `app/service-worker/push.ts` and are imported by the entry with a plain
+relative `./push` import — see
+[pwa-safari-webkit-sw-first-load.md](pwa-safari-webkit-sw-first-load.md) for
+why the SW was stripped down to push-only (a WebKit bug where the first
+document load in a fresh Web App process silently ignores CSS/JS the SW
+served from its cache).
+
+- The SW source lives under `app/service-worker/` rather than `app/utils/`
+  so Nuxt's `app/utils` auto-import scan never picks up `handlePush`/
+  `handleNotificationClick` as client auto-imports — they only make sense
+  bundled into the worker.
+- The build embeds the current `buildId` into the worker as
+  `__SW_BUILD_ID__` (a Vite `define`, set by a small plugin in
+  `nuxt.config.ts`'s `pwa.injectManifest.buildPlugins.vite`), so every deploy
+  changes the worker's bytes even when the push logic itself didn't change —
+  `workbox-window`'s update check is byte-comparison based, so an unchanged
+  worker would never register as "waiting" and the update-prompt banner
+  would go stale. A page can read it back by posting `{ type: 'GET_BUILD_ID'
+  }` to the controlling worker and listening for the `{ type: 'BUILD_ID',
+  buildId }` reply (see the Web Inspector checklist in
+  [pwa-safari-webkit-sw-first-load.md](pwa-safari-webkit-sw-first-load.md));
+  this also keeps the constant from being minified away as unused.
 - **Focused suppression**: the push handler skips the banner when any window
   of the origin is focused — the user is already looking at the app.
   Browsers waive the `userVisibleOnly` requirement in that case. This is

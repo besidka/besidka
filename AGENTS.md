@@ -153,10 +153,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
 - `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
   installed PWA (push handoff + cold-start tap navigation)
-- `docs/pwa-safari-cache-headers.md` - Why SSR HTML documents get
-  `Cache-Control: private, no-store`: WebKit's cache-first Dock/home-screen
-  PWA launch policy, why `no-store` (not `no-cache`), the `render:response`
-  Nitro plugin vs. `routeRules`/`_headers` trade-off, and the bfcache caveat
+- `docs/pwa-safari-webkit-sw-first-load.md` - Why a fresh macOS Safari Dock
+  PWA process could render unstyled on cold launch: WebKit not applying
+  SW-`respondWith` stylesheet responses on a Web App process's first
+  document load, the unified-log forensic recipe that proved it, the
+  push-only (`injectManifest`, no `fetch` listener) service-worker fix, and
+  the `Cache-Control: private, no-store` SSR-HTML hygiene kept from the
+  earlier (wrong-theory) fix attempt
 - `docs/deep-research.md` - Deep research: async provider-agent jobs
   (OpenAI Responses background mode, Google Interactions API), job store,
   finalize/cron sweep, UI, live-spike checklist

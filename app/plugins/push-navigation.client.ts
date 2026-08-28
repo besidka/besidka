@@ -1,11 +1,11 @@
 /**
  * Completes push-notification deep links that iOS drops on PWA cold start
  * (firebase-js-sdk#7698): the service worker persists the target path in
- * IndexedDB before calling openWindow (public/sw-push.js), and this plugin
- * reads-and-clears it on boot — and when the app returns to visibility, for
- * the case where iOS refocuses the running standalone window without a
- * reload — to perform the navigation client-side.
- * DB/store/key names must stay in sync with public/sw-push.js.
+ * IndexedDB before calling openWindow (app/service-worker/push.ts), and this
+ * plugin reads-and-clears it on boot — and when the app returns to
+ * visibility, for the case where iOS refocuses the running standalone window
+ * without a reload — to perform the navigation client-side.
+ * DB/store/key names must stay in sync with app/service-worker/push.ts.
  */
 const PENDING_NAVIGATION_DB = 'besidka-push'
 const PENDING_NAVIGATION_STORE = 'pending-navigation'
@@ -138,7 +138,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   // The deterministic path for a tap while the app is already running: the
   // service worker posts the target directly to this window instead of
-  // relying on IndexedDB plus a refocus event (public/sw-push.js).
+  // relying on IndexedDB plus a refocus event (app/service-worker/push.ts).
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
       const data = event.data as { type?: string, url?: unknown } | null

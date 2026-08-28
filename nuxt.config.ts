@@ -603,20 +603,22 @@ export default defineNuxtConfig({
   // https://stackblitz.com/edit/vite-pwa-nuxt-42xnmfqg?file=playground%2Fnuxt.config.ts
   pwa: {
     registerWebManifestInRouteRules: true,
-    workbox: {
-      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
-      globIgnores: ['_studio-app/**'],
-      navigateFallback: null,
-      // Workbox's generateSW strategy builds the whole service worker from
-      // its own config and has no hook for custom push/notificationclick
-      // listeners — importScripts is the only way to add them without
-      // switching to injectManifest (which would mean owning the entire SW
-      // source, caching strategy included). sw-push.js lives in public/ and
-      // is concatenated into the generated worker as-is. The buildId query
-      // busts HTTP caching of the imported script: registration
-      // updateViaCache defaults to 'imports', so without it a new worker
-      // shell could keep executing a stale cached sw-push.js after deploy.
-      importScripts: [`/sw-push.js?v=${buildId}`],
+    strategies: 'injectManifest',
+    srcDir: 'service-worker',
+    filename: 'sw.ts',
+    injectManifest: {
+      injectionPoint: '',
+      rollupFormat: 'iife',
+      buildPlugins: {
+        vite: [
+          {
+            name: 'besidka:sw-build-id',
+            config: () => {
+              return { define: { __SW_BUILD_ID__: JSON.stringify(buildId) } }
+            },
+          },
+        ],
+      },
     },
     client: {
       installPrompt: true,
