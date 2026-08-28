@@ -52,9 +52,9 @@ could never subscribe and pushes would only reach older installs.
 
 iOS can ignore the `clients.openWindow(url)` target when the PWA cold-starts
 from a killed state (firebase-js-sdk#7698) and open `start_url` instead. To
-survive that, `public/sw-push.js` persists the target path in IndexedDB
-(`besidka-push` / `pending-navigation`, internal paths only, written only on
-the `openWindow` branch) before opening the window, and
+survive that, `app/service-worker/push.ts` persists the target path in
+IndexedDB (`besidka-push` / `pending-navigation`, internal paths only,
+written only on the `openWindow` branch) before opening the window, and
 `app/plugins/push-navigation.client.ts` reads-and-clears the entry on
 `app:mounted` and on return-to-visibility to complete the navigation
 client-side. Entries expire after 5 minutes and are ignored when the app
