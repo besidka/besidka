@@ -428,6 +428,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/integration/server/ssr-html-no-store-plugin.spec.ts'],
     },
     {
+      pattern: /^app\/plugins\/01\.build-freshness\.client\.ts$/,
+      tests: ['tests/unit/plugins/01.build-freshness.client.spec.ts'],
+    },
+    {
       pattern: /^server\/middleware\/evlog-auth\.ts$/,
       tests: ['tests/integration/api/stats.spec.ts'],
     },
