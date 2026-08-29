@@ -152,7 +152,7 @@ so nothing from Workbox (precaching, a `fetch` listener, `self.__WB_MANIFEST`)
 ends up in the built worker. The push/notification handlers themselves live
 in `app/service-worker/push.ts` and are imported by the entry with a plain
 relative `./push` import — see
-[pwa-safari-webkit-sw-first-load.md](pwa-safari-webkit-sw-first-load.md) for
+[pwa-safari-dock-app-launch.md](pwa-safari-dock-app-launch.md) for
 why the SW was stripped down to push-only (a WebKit bug where the first
 document load in a fresh Web App process silently ignores CSS/JS the SW
 served from its cache).
@@ -170,7 +170,7 @@ served from its cache).
   would go stale. A page can read it back by posting `{ type: 'GET_BUILD_ID'
   }` to the controlling worker and listening for the `{ type: 'BUILD_ID',
   buildId }` reply (see the Web Inspector checklist in
-  [pwa-safari-webkit-sw-first-load.md](pwa-safari-webkit-sw-first-load.md));
+  [pwa-safari-dock-app-launch.md](pwa-safari-dock-app-launch.md));
   this also keeps the constant from being minified away as unused.
 - **Focused suppression**: the push handler skips the banner when any window
   of the origin is focused — the user is already looking at the app.

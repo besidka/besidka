@@ -153,13 +153,13 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
 - `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
   installed PWA (push handoff + cold-start tap navigation)
-- `docs/pwa-safari-webkit-sw-first-load.md` - Why a fresh macOS Safari Dock
-  PWA process could render unstyled on cold launch: WebKit not applying
-  SW-`respondWith` stylesheet responses on a Web App process's first
-  document load, the unified-log forensic recipe that proved it, the
-  push-only (`injectManifest`, no `fetch` listener) service-worker fix, and
-  the `Cache-Control: private, no-store` SSR-HTML hygiene kept from the
-  earlier (wrong-theory) fix attempt
+- `docs/pwa-safari-dock-app-launch.md` - Two macOS Safari Dock app launch
+  bugs: WebKit not applying SW-`respondWith` stylesheet responses on a Web
+  App process's first document load (fixed, push-only service worker), and
+  a stale-shell relaunch from WebKit's session-restore cache path
+  (`ReturnCacheDataElseLoad` ignores `Cache-Control`; `private, no-store`
+  plus an async-eviction race explain the observed staleness; the
+  `01.build-freshness.client` plugin heals it with a bounded reload)
 - `docs/deep-research.md` - Deep research: async provider-agent jobs
   (OpenAI Responses background mode, Google Interactions API), job store,
   finalize/cron sweep, UI, live-spike checklist
