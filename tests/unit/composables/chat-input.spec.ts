@@ -1,7 +1,27 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, defineComponent, h, shallowRef } from 'vue'
+import { providerMeta } from '#shared/utils/provider-meta'
 import { useChatInput } from '../../../app/composables/chat-input'
+import { defaultModel, providers } from '../../../providers'
+
+function defaultModelProviderLabel(): string {
+  for (const provider of providers) {
+    if (provider.models.some(model => model.id === defaultModel)) {
+      return providerMeta[provider.id]?.label ?? provider.id
+    }
+  }
+
+  return 'this provider'
+}
+
+const mocks = vi.hoisted(() => ({
+  useUserKeys: vi.fn(),
+}))
+
+mockNuxtImport('useUserKeys', () => mocks.useUserKeys)
+
+const keyedProviderIds = shallowRef<string[]>([])
 
 function createHost() {
   return defineComponent({
@@ -9,6 +29,12 @@ function createHost() {
       const chatInput = useChatInput()
 
       return () => h('div', [
+        h('span', { 'data-testid': 'is-selected-model-keyless' }, [
+          String(chatInput.isSelectedModelKeyless.value),
+        ]),
+        h('span', { 'data-testid': 'selected-model-key-owner-label' }, [
+          chatInput.selectedModelKeyOwnerLabel.value,
+        ]),
         h('span', { 'data-testid': 'is-image-generation-supported' }, [
           String(chatInput.isImageGenerationSupported.value),
         ]),
@@ -17,6 +43,18 @@ function createHost() {
         ]),
         h('span', { 'data-testid': 'is-web-search-supported' }, [
           String(chatInput.isWebSearchSupported.value),
+        ]),
+        h('span', { 'data-testid': 'is-reasoning-supported' }, [
+          String(chatInput.isReasoningSupported.value),
+        ]),
+        h('span', { 'data-testid': 'reasoning-mode' }, [
+          chatInput.reasoningMode.value,
+        ]),
+        h('span', { 'data-testid': 'reasoning-levels' }, [
+          chatInput.reasoningLevels.value.join(','),
+        ]),
+        h('span', { 'data-testid': 'is-image-input-supported' }, [
+          String(chatInput.isImageInputSupported.value),
         ]),
         h('span', { 'data-testid': 'is-deep-research-model' }, [
           String(chatInput.isDeepResearchModel.value),
@@ -28,6 +66,65 @@ function createHost() {
     },
   })
 }
+
+beforeEach(() => {
+  keyedProviderIds.value = ['openai', 'google', 'anthropic']
+
+  mocks.useUserKeys.mockReturnValue({
+    pending: shallowRef(false),
+    error: shallowRef(null),
+    hasKey: vi.fn(),
+    hasKeyForProvider: (providerId: string) => {
+      return keyedProviderIds.value.includes(providerId)
+    },
+    hasAnyKey: computed(() => keyedProviderIds.value.length > 0),
+    refresh: vi.fn(),
+  })
+})
+
+describe('useChatInput missing-key resolution', () => {
+  it('reports a provider model as keyless once its key is gone', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('false')
+
+    keyedProviderIds.value = ['google']
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
+    ).toBe('OpenAI')
+  })
+
+  it('falls back to the default model rather than staying on an '
+    + 'unresolvable provider selection', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'not-a-real-model'
+    keyedProviderIds.value = []
+    await wrapper.vm.$nextTick()
+
+    expect(userModel.value).toBe(defaultModel)
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
+    ).toBe(defaultModelProviderLabel())
+  })
+})
 
 describe('useChatInput image model capability', () => {
   it('requires image generation for a purpose-built image model', async () => {
@@ -67,8 +164,36 @@ describe('useChatInput image model capability', () => {
       wrapper.get('[data-testid="is-web-search-supported"]').text(),
     ).toBe('true')
   })
+})
 
-  it('reports nothing supported when the model cannot be resolved', async () => {
+describe('useChatInput image input capability', () => {
+  it('supports image input for a vision-capable provider model', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('blocks image input for a provider model with no vision modality', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'deepseek-chat'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('fails open when the provider model cannot be resolved', async () => {
     const wrapper = await mountSuspended(createHost())
 
     const { userModel } = useUserModel()
@@ -77,14 +202,8 @@ describe('useChatInput image model capability', () => {
     await wrapper.vm.$nextTick()
 
     expect(
-      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
-    ).toBe('false')
-    expect(
-      wrapper.get('[data-testid="is-image-generation-required"]').text(),
-    ).toBe('false')
-    expect(
-      wrapper.get('[data-testid="is-web-search-supported"]').text(),
-    ).toBe('false')
+      wrapper.get('[data-testid="is-image-input-supported"]').text(),
+    ).toBe('true')
   })
 })
 
@@ -125,7 +244,8 @@ describe('useChatInput research config', () => {
     ).toBe('')
   })
 
-  it('reports no research config for an unknown model', async () => {
+  it('falls back to the default model for an unresolvable provider '
+    + 'selection, reporting whatever research config that model has', async () => {
     const wrapper = await mountSuspended(createHost())
 
     const { userModel } = useUserModel()
@@ -133,6 +253,7 @@ describe('useChatInput research config', () => {
     userModel.value = 'not-a-real-model'
     await wrapper.vm.$nextTick()
 
+    expect(userModel.value).toBe(defaultModel)
     expect(
       wrapper.get('[data-testid="is-deep-research-model"]').text(),
     ).toBe('false')

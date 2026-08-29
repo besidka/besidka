@@ -40,6 +40,9 @@ function mountModelItem(
     isHighlighted: boolean
     isFavorite: boolean
     isDetailOpen: boolean
+    isLegacy: boolean
+    isKeyMissing: boolean
+    providerName: string
   }> = {},
 ) {
   return mountSuspended(ModelItem, {
@@ -148,7 +151,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
   })
 
   it('renders no capability icons for a plain model', async () => {
-    const wrapper = await mountModelItem()
+    const wrapper = await mountModelItem(createModel({
+      modalities: { input: ['text'], output: ['text'] },
+    }))
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
       .toBe(false)
@@ -157,6 +162,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(false)
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(false)
+    expect(wrapper.find(
+      '[data-testid="model-vision-capability"]',
     ).exists()).toBe(false)
   })
 
@@ -220,6 +228,47 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(true)
+    expect(wrapper.find(
+      '[data-testid="model-vision-capability"]',
+    ).exists()).toBe(true)
+  })
+
+  it('shows the vision icon for a model with image input, fully '
+    + 'separate from image generation', async () => {
+    const model = createModel({
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+    const wrapper = await mountModelItem(model)
+    const vision = wrapper.get('[data-testid="model-vision-capability"]')
+
+    expect(vision.classes()).toContain('text-secondary')
+    expect(vision.attributes('data-tip')).toBe('Vision')
+    expect(wrapper.find(
+      '[data-testid="model-image-generation-capability"]',
+    ).exists()).toBe(false)
+  })
+
+  it('hides the vision icon for a text-only model', async () => {
+    const model = createModel({
+      modalities: { input: ['text'], output: ['text'] },
+    })
+    const wrapper = await mountModelItem(model)
+
+    expect(wrapper.find(
+      '[data-testid="model-vision-capability"]',
+    ).exists()).toBe(false)
+  })
+
+  it('shows the brain icon with an always-on label for a model with '
+    + 'reasoningAlwaysOn but no reasoning capability', async () => {
+    const model = createModel({ reasoningAlwaysOn: true })
+    const wrapper = await mountModelItem(model)
+
+    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-tip="Always-on reasoning"]').exists())
+      .toBe(true)
+    expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
   })
 
   it('renders the image generation icon for a purpose-built image model', async () => {
@@ -360,5 +409,124 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
 
     expect(row.classes()).toContain('bg-accent/15')
     expect(row.classes()).not.toContain('bg-base-content/10')
+  })
+
+  describe('missing provider key', () => {
+    it('renders the row as non-interactive and says why', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+        providerName: 'OpenAI',
+      })
+
+      expect(wrapper.get('li').attributes('aria-disabled')).toBe('true')
+      expect(wrapper.find('button[aria-label="Choose GPT-5.4"]').exists())
+        .toBe(false)
+      expect(wrapper.get('[data-testid="model-key-required"]').text())
+        .toContain('Key required')
+      expect(wrapper.get('.sr-only').text())
+        .toBe('Add your OpenAI API key to use this model.')
+    })
+
+    it('does not emit a selection when the row is clicked', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+        providerName: 'OpenAI',
+      })
+
+      await wrapper.get('li > div > div').trigger('click')
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('drops the selected and highlighted backgrounds', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+        isSelected: true,
+        isHighlighted: true,
+      })
+      const row = wrapper.get('li > div')
+
+      expect(row.classes()).not.toContain('bg-accent/15')
+      expect(row.classes()).not.toContain('bg-base-content/10')
+      expect(wrapper.get('li').attributes('aria-selected')).toBe('false')
+    })
+
+    it('keeps the info and favorite actions reachable', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        isKeyMissing: true,
+      })
+
+      await wrapper.get('[data-testid="model-info-trigger"]').trigger('click')
+      await wrapper.get('[data-testid="model-favorite-toggle"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('toggleDetail')).toHaveLength(1)
+      expect(wrapper.emitted('toggleFavorite')).toHaveLength(1)
+    })
+
+    it('stays fully selectable when the key is present', async () => {
+      const wrapper = await mountModelItem(createModel(), {
+        providerName: 'OpenAI',
+      })
+
+      expect(wrapper.get('li').attributes('aria-disabled')).toBeUndefined()
+      expect(wrapper.find('[data-testid="model-key-required"]').exists())
+        .toBe(false)
+
+      await wrapper.get('button[aria-label="Choose GPT-5.4"]').trigger('click')
+
+      expect(wrapper.emitted('select')).toHaveLength(1)
+    })
+
+    describe('price-tier badge margin composition', () => {
+      it('indents the price tier on mobile when the price tier is the '
+        + 'first badge (key present)', async () => {
+        const wrapper = await mountModelItem(createModel({ priceTier: '$$' }))
+        const priceTier = wrapper.get('[data-testid="model-price-tier"]')
+
+        expect(priceTier.classes()).toContain('max-xs:ml-5')
+        expect(priceTier.classes()).toContain('badge-info')
+        expect(wrapper.find('[data-testid="model-key-required"]').exists())
+          .toBe(false)
+      })
+
+      it('drops the price tier indent on mobile when the key is missing, '
+        + 'since the key-required badge already indents that row', async () => {
+        const wrapper = await mountModelItem(createModel({ priceTier: '$$' }), {
+          isKeyMissing: true,
+        })
+        const priceTier = wrapper.get('[data-testid="model-price-tier"]')
+        const keyRequired = wrapper.get('[data-testid="model-key-required"]')
+
+        expect(keyRequired.classes()).toContain('max-xs:ml-5')
+        expect(priceTier.classes()).not.toContain('max-xs:ml-5')
+        expect(priceTier.classes()).toContain('badge-info')
+      })
+
+      it('indents the key-required badge on mobile when there is no '
+        + 'price tier to render', async () => {
+        const wrapper = await mountModelItem(
+          createModel({ priceTier: undefined }),
+          { isKeyMissing: true },
+        )
+        const keyRequired = wrapper.get('[data-testid="model-key-required"]')
+
+        expect(keyRequired.classes()).toContain('max-xs:ml-5')
+        expect(wrapper.find('[data-testid="model-price-tier"]').exists())
+          .toBe(false)
+      })
+
+      it('renders neither badge when the key is present and there is no '
+        + 'price tier', async () => {
+        const wrapper = await mountModelItem(
+          createModel({ priceTier: undefined }),
+        )
+
+        expect(wrapper.find('[data-testid="model-key-required"]').exists())
+          .toBe(false)
+        expect(wrapper.find('[data-testid="model-price-tier"]').exists())
+          .toBe(false)
+      })
+    })
   })
 })

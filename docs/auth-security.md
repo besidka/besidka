@@ -178,6 +178,32 @@ that wildcard for this reason — reordering the object breaks the
 per-endpoint overrides silently, falling back to the wildcard's looser
 limit.
 
+## Reused outside Better Auth: the profile keys summary route
+
+The `GET /api/v1/profiles/keys` summary endpoint isn't a Better Auth
+endpoint and isn't in the table above, but it reuses the same
+KV-backed `createAuthRateLimitStorage()` factory via a small shared
+wrapper (`server/utils/keys-rate-limit.ts`) rather than pasting the
+enforcement logic inline. The rule is keyed by the authenticated
+`session.user.id`, not by IP:
+
+| Path | Window | Max |
+| --- | --- | --- |
+| `GET /api/v1/profiles/keys` | 60s | 30 |
+
+This route is read-mostly, user-initiated, and low-frequency — a
+single DB lookup with no secret decryption cost beyond one
+`crypto-shield` call — so it gets a generous 30-per-60s row.
+`enforceKeysRateLimit()` takes a `keyPrefix` argument so every
+route/provider/method combination that calls it gets an independent
+bucket keyed by `session.user.id`; sharing one bucket across methods or
+providers would let one flow's traffic silently erode another's budget.
+
+The seven pre-existing single-provider key routes
+(`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`/`qwen`) remain
+unrated-limited; extending them the same way is a follow-up, not part
+of this change.
+
 ## KV rate-limit storage: the TTL fix and the `consume` caveat
 
 The previous `customStorage` implemented only `get`/`set`, with `set`

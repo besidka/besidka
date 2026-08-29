@@ -3,12 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useChatFiles } from '../../../app/composables/chat-files'
 
-const { uploadWithProgressMock, fetchMock } = vi.hoisted(() => ({
+const {
+  uploadWithProgressMock,
+  fetchMock,
+  useWarningMessageMock,
+} = vi.hoisted(() => ({
   uploadWithProgressMock: vi.fn(),
   fetchMock: vi.fn(),
+  useWarningMessageMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
+mockNuxtImport('useWarningMessage', () => useWarningMessageMock)
 
 vi.mock('~/utils/upload-with-progress', () => ({
   uploadWithProgress: (...args: any[]) => uploadWithProgressMock(...args),
@@ -33,9 +39,14 @@ function createTextFile(name: string, size = 4): File {
   return new File(['x'.repeat(size)], name, { type: 'text/plain' })
 }
 
+function createImageFile(name: string, size = 4): File {
+  return new File(['x'.repeat(size)], name, { type: 'image/png' })
+}
+
 describe('useChatFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-preview')
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/v1/files/policy') {
         return {
@@ -58,11 +69,15 @@ describe('useChatFiles', () => {
 
   afterEach(() => {
     uploadWithProgressMock.mockReset()
+    useWarningMessageMock.mockReset()
   })
 
   it('validates max file count before enqueue', async () => {
     const attachedFiles = ref([]) as any
-    const { uploadFiles, uploadingFiles } = useChatFiles(attachedFiles)
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      attachedFiles,
+      ref(true),
+    )
 
     const files = Array.from({ length: 11 }, (_, index) => {
       return createTextFile(`file-${index}.txt`)
@@ -94,7 +109,10 @@ describe('useChatFiles', () => {
     })
 
     const attachedFiles = ref([]) as any
-    const { uploadFiles, uploadingFiles } = useChatFiles(attachedFiles)
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      attachedFiles,
+      ref(true),
+    )
 
     await uploadFiles([createTextFile('big.txt', 8)])
 
@@ -104,7 +122,7 @@ describe('useChatFiles', () => {
 
   it('uploads files sequentially', async () => {
     const attachedFiles = ref([]) as any
-    const { uploadFiles } = useChatFiles(attachedFiles)
+    const { uploadFiles } = useChatFiles(attachedFiles, ref(true))
     const order: string[] = []
 
     uploadWithProgressMock.mockImplementation(async ({ file }) => {
@@ -142,7 +160,7 @@ describe('useChatFiles', () => {
 
   it('retries once for retryable upload errors', async () => {
     const attachedFiles = ref([]) as any
-    const { uploadFiles } = useChatFiles(attachedFiles)
+    const { uploadFiles } = useChatFiles(attachedFiles, ref(true))
     let calls = 0
 
     uploadWithProgressMock.mockImplementation(async ({ file }) => {
@@ -176,7 +194,10 @@ describe('useChatFiles', () => {
 
   it('does not retry non-retryable validation/quota errors', async () => {
     const attachedFiles = ref([]) as any
-    const { uploadFiles, uploadingFiles } = useChatFiles(attachedFiles)
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      attachedFiles,
+      ref(true),
+    )
     let calls = 0
 
     uploadWithProgressMock.mockImplementation(async () => {
@@ -194,5 +215,79 @@ describe('useChatFiles', () => {
     })
 
     expect(calls).toBe(1)
+  })
+
+  it('rejects an image at enqueue time when unsupported', async () => {
+    const attachedFiles = ref([]) as any
+    const isImageInputSupported = ref(false)
+    const { uploadFiles, uploadingFiles } = useChatFiles(
+      attachedFiles,
+      isImageInputSupported,
+    )
+
+    await uploadFiles([createImageFile('photo.png')])
+
+    expect(uploadingFiles.value.size).toBe(0)
+    expect(uploadWithProgressMock).not.toHaveBeenCalled()
+    expect(useWarningMessageMock).toHaveBeenCalledWith(
+      'This model does not support image input. Attach a PDF or text '
+      + 'file instead, or switch models.',
+    )
+  })
+
+  it('uploads a non-image file even when image input is unsupported', async () => {
+    const attachedFiles = ref([]) as any
+    const isImageInputSupported = ref(false)
+    const { uploadFiles } = useChatFiles(attachedFiles, isImageInputSupported)
+
+    uploadWithProgressMock.mockImplementation(async ({ file }) => {
+      return {
+        data: {
+          id: file.name,
+          storageKey: file.name,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          source: 'upload',
+          expiresAt: null,
+        },
+      }
+    })
+
+    await uploadFiles([createTextFile('notes.txt')])
+    await waitFor(() => attachedFiles.value.length === 1)
+
+    expect(useWarningMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('drops a completed image upload if support is revoked mid-flight', async () => {
+    const attachedFiles = ref([]) as any
+    const isImageInputSupported = ref(true)
+    const { uploadFiles } = useChatFiles(attachedFiles, isImageInputSupported)
+
+    uploadWithProgressMock.mockImplementation(async ({ file }) => {
+      isImageInputSupported.value = false
+
+      return {
+        data: {
+          id: file.name,
+          storageKey: file.name,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          source: 'upload',
+          expiresAt: null,
+        },
+      }
+    })
+
+    await uploadFiles([createImageFile('mid-flight.png')])
+    await waitFor(() => useWarningMessageMock.mock.calls.length > 0)
+
+    expect(attachedFiles.value).toEqual([])
+    expect(useWarningMessageMock).toHaveBeenCalledWith(
+      'This model does not support image input. Attach a PDF or text '
+      + 'file instead, or switch models.',
+    )
   })
 })

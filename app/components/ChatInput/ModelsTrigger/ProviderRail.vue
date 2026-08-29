@@ -36,45 +36,88 @@
         'btn-active text-accent': activeProviderId === provider.id,
         'tooltip tooltip-soft tooltip-right': $device.isDesktop
       }"
-      :data-tip="provider.name"
-      :aria-label="`Show ${provider.name} models only`"
+      :data-tip="getProviderTip(provider)"
+      :aria-label="getProviderLabel(provider)"
       :aria-pressed="activeProviderId === provider.id"
       @click="emit('toggleProvider', provider.id)"
     >
-      <SvgoGeminiShort
-        v-if="provider.id === 'google'"
-        class="w-4 fill-current"
-      />
-      <SvgoOpenai
-        v-else-if="provider.id === 'openai'"
-        class="w-4 fill-current"
-      />
-      <SvgoAnthropic
-        v-else-if="provider.id === 'anthropic'"
-        class="w-4 fill-current"
-      />
-      <span
-        v-else
-        class="text-xs font-semibold uppercase"
-      >
-        {{ provider.name.slice(0, 2) }}
+      <span class="indicator">
+        <ProviderIcon
+          :provider-id="provider.id"
+          :label="provider.name"
+          class="!size-4"
+        />
+        <span
+          v-if="isKeyless(provider.id)"
+          :data-testid="`models-picker-rail-${provider.id}-keyless`"
+          class="indicator-item indicator-end indicator-bottom size-2 rounded-full bg-accent pointer-events-none"
+        />
+        <span
+          v-else-if="getModelCount(provider)"
+          :data-testid="`models-picker-rail-${provider.id}-count`"
+          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none"
+        >
+          {{ formatRailCount(getModelCount(provider)) }}
+        </span>
       </span>
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { Providers } from '#shared/types/providers.d'
+import type { Provider, Providers } from '#shared/types/providers.d'
 
-defineProps<{
-  providers: Providers
-  activeProviderId: string | null
-  isFavoritesOnly: boolean
-  hasFavorites: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    providers: Providers
+    activeProviderId: string | null
+    isFavoritesOnly: boolean
+    hasFavorites: boolean
+    keylessProviderIds?: string[]
+  }>(),
+  {
+    keylessProviderIds: () => [],
+  },
+)
 
 const emit = defineEmits<{
   toggleProvider: [providerId: string]
   toggleFavorites: []
 }>()
+
+function isKeyless(providerId: string): boolean {
+  return props.keylessProviderIds.includes(providerId)
+}
+
+function getModelCount(provider: Provider): number {
+  return countSelectableModels(provider.models)
+}
+
+function getProviderTip(provider: Provider): string {
+  if (isKeyless(provider.id)) {
+    return `${provider.name} — API key required`
+  }
+
+  const count = getModelCount(provider)
+
+  if (!count) {
+    return provider.name
+  }
+
+  return `${provider.name} — ${formatModelCount(count)}`
+}
+
+function getProviderLabel(provider: Provider): string {
+  if (isKeyless(provider.id)) {
+    return `Show ${provider.name} models only — API key required`
+  }
+
+  const count = getModelCount(provider)
+
+  if (!count) {
+    return `Show ${provider.name} models only`
+  }
+
+  return `Show ${provider.name} models only — ${formatModelCount(count)}`
+}
 </script>

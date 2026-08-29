@@ -18,7 +18,7 @@
             class="size-4 text-base-content/80"
           />
         <span
-          class="font-medium text-xs"
+          class="flex min-w-0 items-baseline gap-1 font-medium text-xs"
           :class="[
             isReasoningStreaming
               ? 'skeleton skeleton-text reasoning-main-title-skeleton'
@@ -26,8 +26,13 @@
           ]"
         >
           <template v-if="isReasoningStreaming && activeStreamingTitle.length">
-            <span class="max-sm:hidden">Reasoning:</span>
-            {{ activeStreamingTitle }}
+            <span class="shrink-0 max-sm:hidden">Reasoning:</span>
+            <span
+              :title="activeStreamingTitle"
+              class="min-w-0 truncate"
+            >
+              {{ truncateReasoningTitle(activeStreamingTitle) }}
+            </span>
           </template>
           <template v-else>
             {{ mainTitle }}
@@ -35,6 +40,7 @@
           <span
             v-if="reasoningLabel.length > 0"
             data-testid="reasoning-timer-label"
+            class="shrink-0"
           >
             ({{ reasoningLabel }})
           </span>
@@ -50,23 +56,38 @@
       >
         <div class="max-h-[360px] overflow-y-auto overscroll-contain pr-1">
           <ul
-            class="
-              timeline timeline-compact timeline-snap-icon timeline-vertical
-            "
+            data-testid="reasoning-steps"
+            class="flex flex-col"
           >
             <li
               v-for="(step, index) in reasoningSteps"
               :key="step.id"
+              class="relative flex min-w-0 gap-2"
             >
-              <hr
-                v-if="index > 0"
-                class="bg-base-100"
+              <div
+                class="relative flex w-5 shrink-0 items-start justify-center"
               >
-              <div class="timeline-middle">
+                <span
+                  v-if="index > 0"
+                  aria-hidden="true"
+                  data-testid="reasoning-step-connector-top"
+                  class="
+                    absolute top-0 left-1/2 h-2 w-1 -translate-x-1/2 bg-base-100
+                  "
+                />
+                <span
+                  v-if="index < reasoningSteps.length - 1"
+                  aria-hidden="true"
+                  data-testid="reasoning-step-connector-bottom"
+                  class="
+                    absolute top-7 bottom-0 left-1/2 w-1 -translate-x-1/2
+                    bg-base-100
+                  "
+                />
                 <span
                   class="
-                    flex size-5 items-center justify-center rounded-full
-                    border border-base-100 bg-base-100
+                    relative z-10 mt-2 flex size-5 items-center justify-center
+                    rounded-full border border-base-100 bg-base-100
                   "
                 >
                   <SvgoLoader
@@ -82,35 +103,37 @@
               </div>
               <details
                 :open="expandedStepId === step.id"
-                class="group/point timeline-end collapse my-2.5 mx-2 w-full"
+                class="group/point collapse my-2.5 min-w-0 flex-1"
               >
                 <summary
                   :aria-controls="`reasoning-${message.id}-${step.id}-content`"
-                  class="collapse-title p-0 text-xs"
+                  class="collapse-title flex min-w-0 items-center p-0 text-xs"
                   @click.prevent="toggleStep(step.id)"
                 >
                   <span
-                    class="align-middle"
+                    :title="step.title"
+                    data-testid="reasoning-step-title"
+                    class="min-w-0 truncate"
                     :class="[
                       isStreamingStep(step.id)
                         ? 'skeleton skeleton-text reasoning-main-title-skeleton'
                         : undefined,
                     ]"
                   >
-                    {{ step.title }}
+                    {{ truncateReasoningTitle(step.title) }}
                   </span>
                   <Icon
                     name="lucide:chevron-right"
                     class="
-                      ml-1 inline-block size-4 align-middle
-                      transition-transform group-open/point:rotate-90
+                      ml-1 size-4 shrink-0 transition-transform
+                      group-open/point:rotate-90
                     "
                   />
                 </summary>
                 <div
                   v-if="step.body.length > 0"
                   :id="`reasoning-${message.id}-${step.id}-content`"
-                  class="collapse-content mt-2 pb-0 px-0"
+                  class="collapse-content mt-2 min-w-0 pb-0 px-0"
                 >
                   <MDCCached
                     :key="`reasoning-${message.id}-${step.id}-${status}`"
@@ -121,10 +144,6 @@
                   />
                 </div>
               </details>
-              <hr
-                v-if="index < reasoningSteps.length - 1"
-                class="bg-base-100"
-              >
             </li>
           </ul>
         </div>
@@ -218,15 +237,7 @@ const latestStreamingTitleCandidate = computed<string>(() => {
 })
 
 const mainTitle = computed<string>(() => {
-  if (!isReasoningStreaming.value) {
-    return 'Reasoning process'
-  }
-
-  if (streamingTitle.value.length > 0) {
-    return streamingTitle.value
-  }
-
-  return 'Reasoning'
+  return isReasoningStreaming.value ? 'Reasoning' : 'Reasoning process'
 })
 
 const activeStreamingTitle = computed<string>(() => {

@@ -60,6 +60,29 @@
       <span>{{ retireNotice }}</span>
     </p>
     <p
+      v-if="isKeyMissing"
+      data-testid="model-detail-key-notice"
+      class="mt-2 flex items-start gap-1.5 p-2 rounded-xl text-xs text-warning capability-chip"
+    >
+      <Icon
+        name="lucide:key-round"
+        size="13"
+        class="shrink-0 mt-px"
+      />
+      <span>
+        {{ providerName }} models need your own API key before they can be
+        selected.
+        <NuxtLink
+          to="/profile/keys"
+          data-testid="model-detail-key-link"
+          class="link font-semibold"
+        >
+          Add your {{ providerName }} key
+        </NuxtLink>
+        to enable them.
+      </span>
+    </p>
+    <p
       v-if="model.description"
       class="mt-1.5 text-xs opacity-70"
     >
@@ -119,6 +142,7 @@ interface SpecRow {
 const props = defineProps<{
   model: Model
   providerName: string
+  isKeyMissing?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -193,9 +217,9 @@ const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props
   const badges: CapabilityBadge[] = []
 
-  if (model.reasoning) {
+  if (model.reasoning || model.reasoningAlwaysOn) {
     badges.push({
-      label: 'Reasoning',
+      label: model.reasoningAlwaysOn ? 'Always-on reasoning' : 'Reasoning',
       icon: 'lucide:brain',
       class: 'badge-warning',
     })
@@ -215,6 +239,14 @@ const capabilities = computed<CapabilityBadge[]>(() => {
       icon: 'lucide:image-plus',
       class: '[--badge-color:var(--color-violet-700)] '
         + 'dark:[--badge-color:var(--color-violet-200)]',
+    })
+  }
+
+  if (hasVisionCapability(model)) {
+    badges.push({
+      label: 'Vision',
+      icon: 'lucide:eye',
+      class: 'badge-secondary',
     })
   }
 

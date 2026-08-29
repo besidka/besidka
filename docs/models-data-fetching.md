@@ -4,12 +4,17 @@ The model catalog is split in two halves that are merged at import time.
 
 | Half | Lives in | Owner |
 |---|---|---|
-| Capabilities and product decisions | `providers/google.ts`, `providers/openai.ts` | hand-curated |
+| Capabilities and product decisions | `providers/{anthropic,google,openai,xai,deepseek,moonshotai,qwen}.ts` | hand-curated |
 | Objective metadata | `providers/data/models-dev-snapshot.json` | generated from [models.dev](https://models.dev) |
 
 `providers/index.ts` joins them through `mergeModelMetadata()` in
 `providers/merge.ts` and exports the same fully shaped `Providers` array
 consumers have always read through `getProviders()`.
+
+This is the **curated, direct-provider** catalog — the only catalog. Every
+model the app can select is declared here; nothing is fetched at runtime.
+`docs/providers.md` records the per-provider capability decisions layered on
+top of this pipeline.
 
 ## Refreshing the snapshot
 

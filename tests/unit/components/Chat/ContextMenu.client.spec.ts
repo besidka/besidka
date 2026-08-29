@@ -1090,6 +1090,56 @@ describe('Chat/ContextMenu.client', () => {
     })
   })
 
+  describe('provider info rendering', () => {
+    it('shows "(direct)" and a key icon for a direct provider', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+        providerId: 'openai',
+        providerLabel: 'OpenAI',
+        providerKind: 'provider',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
+
+      expect(providerRow.text()).toContain('OpenAI (direct)')
+      expect(providerRow.get('.iconify').classes()).toContain(
+        'i-lucide:key-round',
+      )
+    })
+
+    it('hides the provider row when no provider info is present', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-provider"]').exists(),
+      ).toBe(false)
+    })
+  })
+
   describe('deep research tool label', () => {
     it('shows the deep research label and telescope icon', async () => {
       const info: MessageMenuInfo = {
@@ -1501,6 +1551,24 @@ describe('Chat/ContextMenu.client', () => {
       expect(guardCount().value).toBe(0)
 
       anchorElB.remove()
+    })
+  })
+
+  describe('overflow containment', () => {
+    it('opts out of the daisyUI menu column wrap so tall content scrolls vertically', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const classes = wrapper.find('ul').classes()
+
+      expect(classes).toContain('flex-nowrap')
+      expect(classes).toContain('overflow-y-auto')
+      expect(classes).toContain('overflow-x-hidden')
     })
   })
 })

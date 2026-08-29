@@ -15,20 +15,13 @@
       :aria-controls="panelId"
       @click="toggle"
     >
-      <SvgoGeminiShort
-        v-if="getModel(toValue(userModel)).provider?.id === 'google'"
-        class="w-4 fill-base-content/40"
-      />
-      <SvgoOpenai
-        v-if="getModel(toValue(userModel)).provider?.id === 'openai'"
-        class="w-4 fill-base-content/40"
-      />
-      <SvgoAnthropic
-        v-if="getModel(toValue(userModel)).provider?.id === 'anthropic'"
-        class="w-4 fill-base-content/40"
+      <ProviderIcon
+        v-if="selectedIconProviderId"
+        :provider-id="selectedIconProviderId"
+        class="!size-4 text-base-content/40"
       />
       <span class="block truncate text-left min-w-0">
-        {{ getModelName(toValue(userModel)) }}
+        {{ selectedModelName }}
       </span>
       <Icon
         name="lucide:chevron-down"
@@ -52,7 +45,16 @@
           <div
             class="bubble-without-background flex flex-col max-h-[60dvh] bg-base-100 border border-base-content/10 shadow-xl"
           >
+            <ChatInputModelsTriggerKeyPrompt
+              v-if="!hasAnyKey"
+              compact
+              title="No API keys yet"
+              description="Besidka runs on your own keys. Add one to start."
+              action-label="Add a key"
+              @navigate="close"
+            />
             <div
+              data-testid="models-picker-search-row"
               class="shrink-0 flex items-center gap-1 p-2 border-b border-base-content/10"
             >
               <ChatInputModelsTriggerSearch
@@ -69,11 +71,12 @@
             </div>
             <div class="flex flex-1 min-h-0">
               <ChatInputModelsTriggerProviderRail
-                v-if="!isSearching"
+                v-if="isRailVisible"
                 :providers="providers"
                 :active-provider-id="activeProviderId"
                 :is-favorites-only="isFavoritesOnly"
                 :has-favorites="hasFavorites"
+                :keyless-provider-ids="keylessProviderIds"
                 @toggle-provider="toggleProvider"
                 @toggle-favorites="toggleFavoritesOnly"
               />
@@ -113,14 +116,24 @@
                         <ChatInputModelsTriggerModelItem
                           :model="entry.model"
                           :provider-id="entry.providerId"
-                          :is-selected="userModel === entry.model.id"
+                          :provider-name="entry.providerName"
+                          :is-key-missing="
+                            isModelKeyMissing(entry.providerId)
+                          "
+                          :is-selected="
+                            selectedProviderModelId === entry.model.id
+                          "
                           :is-highlighted="
                             highlightedModelId === entry.model.id
                           "
-                          :is-favorite="favoriteModels.includes(entry.model.id)"
+                          :is-favorite="
+                            favoriteModels.includes(entry.model.id)
+                          "
                           :is-detail-open="detailModelId === entry.model.id"
                           @select="selectModel(entry.model.id)"
-                          @toggle-favorite="toggleFavoriteModel(entry.model.id)"
+                          @toggle-favorite="
+                            toggleFavoriteModel(entry.model.id)
+                          "
                           @toggle-detail="toggleDetail(entry.model.id)"
                         />
                         <li
@@ -131,6 +144,9 @@
                           <ChatInputModelsTriggerModelDetail
                             :model="entry.model"
                             :provider-name="entry.providerName"
+                            :is-key-missing="
+                              isModelKeyMissing(entry.providerId)
+                            "
                             @close="closeDetail"
                           />
                         </li>
@@ -244,6 +260,11 @@ defineProps<{
 const { userModel } = useUserModel()
 const { providers } = getProviders()
 const { favoriteModels, toggleFavoriteModel } = useUserSetting()
+const {
+  name: selectedModelName,
+  iconProviderId: selectedIconProviderId,
+} = useSelectedModelInfo()
+const { hasKeyForProvider, hasAnyKey } = useUserKeys()
 
 const isOpen = shallowRef<boolean>(false)
 const searchQuery = shallowRef<string>('')
@@ -260,6 +281,20 @@ const panelId = useId()
 const listboxId = useId()
 const legacyListId = useId()
 const legacyLabelId = useId()
+
+const keylessProviderIds = computed<string[]>(() => {
+  return providers
+    .filter((provider) => {
+      return !hasKeyForProvider(provider.id)
+    })
+    .map((provider) => {
+      return provider.id
+    })
+})
+
+const selectedProviderModelId = computed<string | null>(() => {
+  return userModel.value
+})
 
 const allModels = computed<PickerModel[]>(() => {
   return providers.flatMap((provider) => {
@@ -283,6 +318,10 @@ const isSearching = computed<boolean>(() => {
 
 const hasFavorites = computed<boolean>(() => {
   return favoriteModels.value.length > 0
+})
+
+const isRailVisible = computed<boolean>(() => {
+  return !isSearching.value
 })
 
 const isRailFilterApplied = computed<boolean>(() => {
@@ -339,6 +378,22 @@ const legacyModels = computed<PickerModel[]>(() => {
   })
 })
 
+function isModelKeyMissing(providerId: string): boolean {
+  return keylessProviderIds.value.includes(providerId)
+}
+
+/**
+ * Keyboard navigation and Enter-to-choose run over this list, not over
+ * `filteredModels`: a keyless row is rendered but not selectable, so letting
+ * the highlight land on one would hand the user an Enter key that silently
+ * does nothing.
+ */
+const selectableModels = computed<PickerModel[]>(() => {
+  return filteredModels.value.filter(({ providerId }) => {
+    return !isModelKeyMissing(providerId)
+  })
+})
+
 const legacyLabel = computed<string>(() => {
   const count = legacyModels.value.length
 
@@ -383,6 +438,7 @@ function close() {
   isOpen.value = false
   highlightedModelId.value = null
   searchQuery.value = ''
+  activeCategory.value = null
   isLegacyExpanded.value = false
   closeDetail()
 }
@@ -414,8 +470,8 @@ function toggle() {
  * outside the listbox the search input controls.
  */
 function getInitialHighlight(): string | null {
-  const selectedId = toValue(userModel)
-  const isSelectable = filteredModels.value.some(({ model }) => {
+  const selectedId = selectedProviderModelId.value
+  const isSelectable = selectableModels.value.some(({ model }) => {
     return model.id === selectedId
   })
 
@@ -423,7 +479,7 @@ function getInitialHighlight(): string | null {
     return selectedId
   }
 
-  return filteredModels.value[0]?.model.id ?? null
+  return selectableModels.value[0]?.model.id ?? null
 }
 
 function toggleProvider(providerId: string) {
@@ -454,6 +510,14 @@ function toggleDetail(modelId: string) {
 }
 
 function selectModel(modelId: string) {
+  const entry = allModels.value.find(({ model }) => {
+    return model.id === modelId
+  })
+
+  if (entry && isModelKeyMissing(entry.providerId)) {
+    return
+  }
+
   userModel.value = modelId
   closeAndRestoreFocus()
 }
@@ -483,17 +547,17 @@ function setHighlight(modelId: string | null) {
 }
 
 function highlightFirst() {
-  setHighlight(filteredModels.value[0]?.model.id ?? null)
+  setHighlight(selectableModels.value[0]?.model.id ?? null)
 }
 
 function highlightLast() {
-  const models = filteredModels.value
+  const models = selectableModels.value
 
   setHighlight(models[models.length - 1]?.model.id ?? null)
 }
 
 function moveHighlight(step: number) {
-  const models = filteredModels.value
+  const models = selectableModels.value
 
   if (!models.length) {
     return
@@ -563,7 +627,7 @@ watch(hasFavorites, (value) => {
 
 watch([searchTerm, activeCategory, activeProviderId, isFavoritesOnly], () => {
   closeDetail()
-  highlightedModelId.value = filteredModels.value[0]?.model.id ?? null
+  highlightedModelId.value = selectableModels.value[0]?.model.id ?? null
 })
 
 onClickOutside(root, () => {

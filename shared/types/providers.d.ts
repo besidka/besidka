@@ -1,6 +1,15 @@
 import type { ReasoningCapability } from './reasoning.d'
 import type { ModelResearchConfig } from './research.d'
 
+export type SupportedProviderId
+  = 'openai'
+    | 'google'
+    | 'anthropic'
+    | 'xai'
+    | 'deepseek'
+    | 'moonshotai'
+    | 'qwen'
+
 export type ModelTool = 'web_search' | 'image_generation'
 
 export interface ModelImageGenerationCapability {
@@ -34,6 +43,7 @@ export interface Model {
   tools: ModelTool[]
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  reasoningAlwaysOn?: true
   research?: ModelResearchConfig
 }
 

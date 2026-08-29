@@ -70,10 +70,6 @@ export default defineEventHandler(async (event) => {
     return chat.title
   }
 
-  const { provider, model } = useChatProvider(body.data.model)
-  const research = getModelResearch(model)
-  const titleModelId = research ? research.assistModel : model.id
-
   const initialMessage = chat.messages[0]
 
   if (!initialMessage) {
@@ -92,6 +88,10 @@ export default defineEventHandler(async (event) => {
   ) {
     title = buildMockChatTitle(initialMessages)
   } else {
+    const { provider, model } = useChatProvider(body.data.model)
+    const research = getModelResearch(model)
+    const titleModelId = research ? research.assistModel : model.id
+
     switch (provider.id) {
       case 'openai': {
         const { generateChatTitle } = await useOpenAI(
@@ -117,6 +117,50 @@ export default defineEventHandler(async (event) => {
       }
       case 'anthropic': {
         const { generateChatTitle } = await useAnthropic(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'xai': {
+        const { generateChatTitle } = await useXai(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'deepseek': {
+        const { generateChatTitle } = await useDeepSeek(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'moonshotai': {
+        const { generateChatTitle } = await useMoonshotAi(
+          session.user.id,
+          titleModelId,
+          [],
+          'off',
+        )
+
+        title = await generateChatTitle(initialMessages)
+        break
+      }
+      case 'qwen': {
+        const { generateChatTitle } = await useQwen(
           session.user.id,
           titleModelId,
           [],

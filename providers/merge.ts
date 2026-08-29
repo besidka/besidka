@@ -31,12 +31,20 @@ export interface CuratedModel {
   forProjectMemory?: boolean
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  reasoningAlwaysOn?: true
   research?: ModelResearchConfig
 }
 
 export interface CuratedProvider {
   id: string
   name: string
+  /**
+   * Overrides the models.dev top-level catalog key looked up by
+   * `scripts/fetch-models-metadata.mjs` when it diverges from `id` — for
+   * example this app's `qwen` provider id vs. models.dev's `alibaba` key.
+   * Defaults to `id` when omitted.
+   */
+  modelsDevKey?: string
   models: CuratedModel[]
 }
 
@@ -64,7 +72,7 @@ export type ModelSnapshot = Record<string, ModelSnapshotEntry>
 
 const highestPriceTier: ModelPriceTier = '$$$+'
 
-const tierCeilingsPerMillionTokens: [number, ModelPriceTier][] = [
+export const tierCeilingsPerMillionTokens: [number, ModelPriceTier][] = [
   [0.5, '$'],
   [2, '$$'],
   [5, '$$$'],
@@ -92,6 +100,17 @@ function resolveTier(
   }
 
   return highestPriceTier
+}
+
+/**
+ * Resolves a per-million-token USD amount against
+ * `tierCeilingsPerMillionTokens`, the single source of truth for provider
+ * pricing tiers.
+ */
+export function resolvePriceTierFromPerMillion(
+  amount: number,
+): ModelPriceTier {
+  return resolveTier(amount, tierCeilingsPerMillionTokens)
 }
 
 /**
@@ -150,7 +169,7 @@ function resolvePriceTier(
   }
 
   if (snapshot) {
-    return resolveTier(snapshot.cost.input, tierCeilingsPerMillionTokens)
+    return resolvePriceTierFromPerMillion(snapshot.cost.input)
   }
 
   const curatedInput = parseUpperBoundPrice(curated.price.input ?? '')
@@ -179,6 +198,9 @@ function curatedCapabilities(curated: CuratedModel) {
       ? { imageGeneration: curated.imageGeneration }
       : {}),
     ...(curated.reasoning ? { reasoning: curated.reasoning } : {}),
+    ...(curated.reasoningAlwaysOn
+      ? { reasoningAlwaysOn: curated.reasoningAlwaysOn }
+      : {}),
     ...(curated.research ? { research: curated.research } : {}),
   }
 }

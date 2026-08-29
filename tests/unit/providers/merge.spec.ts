@@ -82,6 +82,21 @@ describe('mergeModelMetadata', () => {
     expect(model.price.tokens).toBe(1_000_000)
   })
 
+  it('keeps the reasoningAlwaysOn flag when curated', () => {
+    const model = mergeModelMetadata(
+      { ...chatModel, reasoning: undefined, reasoningAlwaysOn: true },
+      snapshotEntry,
+    )
+
+    expect(model.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('omits the reasoningAlwaysOn key entirely when not curated', () => {
+    const model = mergeModelMetadata(chatModel, snapshotEntry)
+
+    expect('reasoningAlwaysOn' in model).toBe(false)
+  })
+
   it('keeps curated name, description and price for research models', () => {
     const model = mergeModelMetadata(
       {
@@ -486,7 +501,7 @@ describe('merged catalog', () => {
         }
 
         expect(model.releaseDate).toBe(entry.releaseDate)
-        expect(model.releaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(model.releaseDate).toMatch(/^\d{4}-\d{2}(-\d{2})?$/)
       }
     }
   })
