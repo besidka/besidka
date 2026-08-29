@@ -167,3 +167,51 @@ and `sessionStorage.getItem('nuxt:reload')`.
    unchanged SWR `cache-control`.
 4. `curl -s /_nuxt/builds/latest.json` reflects the new id; requesting
    `/_nuxt/builds/meta/<new>.json` succeeds.
+
+### Public pages get `no-cache`, not `no-store`
+WebKit refuses bfcache for any HTTPS main document served
+`Cache-Control: no-store`, so Safari back/forward on these pages re-fetches
+instead of restoring instantly. `/privacy-policy`, `/terms-of-use`,
+`/cookie-policy` and `/shared/<publicId>` are not the app shell and carry no
+per-user state, so the stale-restore concern above doesn't apply to them —
+`server/plugins/ssr-html-no-store.ts` gives them `no-cache` instead (stored,
+revalidated on normal navigation, same effective network behaviour since
+they carry no validators, but bfcache-eligible). The build-freshness plugin
+(Bug 2 fix, above) still runs unconditionally on every route including
+these, so a stale bfcache restore still gets caught and reloaded. `/` is
+unaffected either way — it already has its own SWR `cache-control` from
+`nuxt.config.ts`'s `routeRules`, so this plugin's early-return on an
+existing header skips it entirely. Under `no-cache`, a revoked share on
+`/shared/**` may still be restored once from that device's bfcache until
+the next reload — identical to pre-#372 behaviour and to bfcache anywhere,
+and accepted deliberately.
+
+## Deliberately not done: caching through the service worker
+
+Investigated and rejected. Re-litigate with new evidence, not by assuming it
+was overlooked.
+
+- **A `fetch` listener for caching, at all.** The worker stays push-only on
+  purpose (Bug 1, above). Do not add one without re-reading this section.
+- **Why it's all-or-nothing.** Once any `fetch` listener exists, every
+  in-scope request dispatches to the worker and pays worker start-up on the
+  critical path — the exact property PR #373 removed. There is no
+  "cache only `/api/v1/chats`" variant.
+- **File downloads.** `server/routes/files/[key].get.ts` serves
+  `private, no-store, max-age=0` on purpose — share revocation must stop
+  retrieval, and a CacheStorage copy would outlive revocation on-device.
+  Anti-recommended, not just unnecessary.
+- **Chat history / model list instant paint.** That's a client-cache
+  problem, not a worker one: `useFetch` + `getCachedData` (already used for
+  the landing GitHub-stars badge) or a last-known list in IndexedDB rendered
+  optimistically then revalidated. Same perceived speed, no worker in the
+  path, testable in the existing harness, sign-out cleanup is ordinary app
+  code. A worker cache of an authenticated API response also creates a
+  logout-purge obligation that's easy to forget.
+- **WebKit risk is unquantified for this path.** The first-load defect (Bug
+  1) is proven for stylesheets via `respondWith` in a fresh Web App process
+  and untested for `fetch()` JSON through the same code path. Any future
+  worker-caching proposal carries that unknown and must go through the
+  preview-Dock-app protocol (Web Inspector checklist, above) before merge.
+- **What would change this.** Offline reading of past chats as a product
+  goal, or richer push/background behaviour that needs the worker anyway.

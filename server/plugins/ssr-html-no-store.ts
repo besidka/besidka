@@ -4,13 +4,24 @@ interface CacheAwareContext {
   cache?: unknown
 }
 
+const BFCACHE_ELIGIBLE_EXACT_PATHS = new Set([
+  '/privacy-policy',
+  '/privacy-policy/',
+  '/terms-of-use',
+  '/terms-of-use/',
+  '/cookie-policy',
+  '/cookie-policy/',
+])
+
+const BFCACHE_ELIGIBLE_PREFIX = '/shared/'
+
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('render:response', (response, context) => {
-    applyNoStoreHeader(response, context)
+    applyDocumentCacheControl(response, context)
   })
 })
 
-export function applyNoStoreHeader(
+export function applyDocumentCacheControl(
   response: Partial<RenderResponse>,
   context: RenderContext,
 ): void {
@@ -29,5 +40,11 @@ export function applyNoStoreHeader(
     return
   }
 
-  response.headers = { ...headers, 'cache-control': 'private, no-store' }
+  const path = context.event.path.split('?')[0]
+  const isBfcacheEligible = BFCACHE_ELIGIBLE_EXACT_PATHS.has(path)
+    || path.startsWith(BFCACHE_ELIGIBLE_PREFIX)
+
+  const cacheControl = isBfcacheEligible ? 'no-cache' : 'private, no-store'
+
+  response.headers = { ...headers, 'cache-control': cacheControl }
 }
