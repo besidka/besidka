@@ -8,6 +8,7 @@ import {
   findChatOriginFiles,
 } from '~~/server/utils/files/chat-deletion-cleanup'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -53,6 +54,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const originFiles = await findChatOriginFiles(chat.id, userId)
+
+  await removeChatsFromSearchIndex({
+    db,
+    userId,
+    chatIds: [chat.id],
+    logger,
+    stage: 'chat-delete',
+  })
 
   await db.delete(schema.chats)
     .where(and(

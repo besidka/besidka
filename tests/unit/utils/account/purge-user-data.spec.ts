@@ -44,6 +44,7 @@ function createDb(storageKeys: string[], sessionTokens: string[] = []) {
         returning: deleteReturning,
       })),
     })),
+    run: vi.fn(async () => undefined),
   }
 }
 
@@ -120,6 +121,52 @@ describe('purgeUserData', () => {
       'auth:active-sessions-42',
     ])
     expect(result.sessionKeysDeleted).toBe(3)
+  })
+
+  it('deletes message_search rows scoped to the user owner tag', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+
+    await purgeUserData({ userId: 42, logger: { set: vi.fn() } })
+
+    expect(db.run).toHaveBeenCalledTimes(1)
+
+    const sqlArgument = db.run.mock.calls[0]![0] as {
+      queryChunks: Array<string | { value: string[] }>
+    }
+    const queryText = sqlArgument.queryChunks
+      .map((chunk) => {
+        return typeof chunk === 'string' ? chunk : chunk.value.join('')
+      })
+      .join('')
+
+    expect(queryText).toContain('delete from message_search')
+    expect(queryText).toContain('where owner =')
+    expect(sqlArgument.queryChunks).toContain('u42')
+  })
+
+  it('does not throw when the message_search delete fails', async () => {
+    const db = createDb([])
+    const storage = createStorage()
+    const logger = { set: vi.fn() }
+
+    db.run.mockRejectedValueOnce(new Error('fts5 unavailable'))
+    stubBindings(db, storage)
+
+    const { purgeUserData } = await importPurgeUserData()
+    const result = await purgeUserData({ userId: 1, logger })
+
+    expect(result.filesFound).toBe(0)
+    expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
+      accountPurge: expect.objectContaining({
+        phase: 'message-search-delete',
+        userId: 1,
+      }),
+    }))
   })
 
   it('chunks R2 deletes so no call exceeds the batch limit', async () => {

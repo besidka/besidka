@@ -53,6 +53,7 @@ import {
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -1154,6 +1155,19 @@ async function persistAssistantMessageFromStream(input: {
       },
       publicId: input.publicId,
     })
+
+    if (assistantMessage) {
+      await indexMessagesForSearch({
+        db: input.db,
+        userId: input.userId,
+        messages: [{
+          id: assistantMessage.id,
+          parts: normalizedParts,
+        }],
+        logger: input.logger,
+        stage: 'assistant-message',
+      })
+    }
 
     if (assistantMessage && generatedFileIds.length > 0) {
       let filesLinked = false
