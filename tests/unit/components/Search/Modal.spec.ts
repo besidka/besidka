@@ -123,6 +123,35 @@ describe('Search/Modal.client', () => {
     expect(document.activeElement).toBe(wrapper.find('input').element)
   })
 
+  it(
+    'focuses the modal panel instead of the input on coarse pointers',
+    async () => {
+      vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+        return {
+          matches: query === '(pointer: coarse)',
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        } as unknown as MediaQueryList
+      })
+
+      useSearchModal().isModalOpen.value = true
+
+      const wrapper = await mountModal()
+      await nextTick()
+      await nextTick()
+
+      expect(document.activeElement).toBe(
+        wrapper.find('[data-testid="search-modal"] .modal-box').element,
+      )
+      expect(document.activeElement).not.toBe(wrapper.find('input').element)
+    },
+  )
+
   it('sets role=listbox, an aria-label, and the js-search-modal class', async () => {
     const wrapper = await mountModal()
 
@@ -147,7 +176,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the six documented command rows in order for an empty query', async () => {
+  it('renders the five documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -157,7 +186,6 @@ describe('Search/Modal.client', () => {
       .map(option => option.attributes('id'))
 
     expect(ids).toEqual([
-      'search-option-new-chat',
       'search-option-history',
       'search-option-attachments',
       'search-option-theme',
@@ -178,7 +206,7 @@ describe('Search/Modal.client', () => {
     expect(headingTexts).toEqual(expect.arrayContaining(['Chat', 'Settings']))
   })
 
-  it('closes the modal before navigating to New Chat (B6)', async () => {
+  it('closes the modal before navigating to Manage Chat History (B6)', async () => {
     useSearchModal().isModalOpen.value = true
 
     let isModalOpenDuringNavigate: boolean | null = null
@@ -191,10 +219,10 @@ describe('Search/Modal.client', () => {
 
     const wrapper = await mountModal()
 
-    await wrapper.find('#search-option-new-chat').trigger('click')
+    await wrapper.find('#search-option-history').trigger('click')
 
     expect(isModalOpenDuringNavigate).toBe(false)
-    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/new')
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/history')
     expect(closeSpy).toHaveBeenCalled()
   })
 
@@ -451,17 +479,17 @@ describe('Search/Modal.client', () => {
     await nextTick()
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-new-chat')
+      .toBe('search-option-history')
 
     await wrapper.find('input').trigger('keydown', { key: 'ArrowDown' })
     await nextTick()
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-history')
+      .toBe('search-option-attachments')
 
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await nextTick()
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-new-chat')
+      .toBe('search-option-history')
   })
 
   it('wraps around to the last option when pressing ArrowUp at the top', async () => {
@@ -601,7 +629,7 @@ describe('Search/Modal.client', () => {
         .toBe(true)
     })
 
-    it('places the Recent group before New Chat in keyboard index order', async () => {
+    it('places the Recent group before Chat in keyboard index order', async () => {
       useSearchModal().isModalOpen.value = true
       mocks.fetchMock.mockResolvedValue(createHistoryResponse({
         chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
@@ -615,7 +643,7 @@ describe('Search/Modal.client', () => {
 
       expect(ids[0]).toBe('search-option-recent-recent-1')
       expect(ids.indexOf('search-option-recent-recent-1'))
-        .toBeLessThan(ids.indexOf('search-option-new-chat'))
+        .toBeLessThan(ids.indexOf('search-option-history'))
     })
 
     it('clears recentChats when the dialog is closed (resetState)', async () => {

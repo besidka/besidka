@@ -3,11 +3,15 @@
     <dialog
       ref="modal"
       data-testid="search-modal"
-      class="js-search-modal modal modal-bottom sm:modal-middle"
+      class="js-search-modal modal modal-top sm:modal-middle"
       aria-label="Search"
       @close="onDialogClosed"
     >
-      <div class="modal-box max-w-lg max-h-[80vh] flex flex-col gap-3">
+      <div
+        ref="panel"
+        tabindex="-1"
+        class="modal-box max-w-lg max-h-[80vh] flex flex-col gap-3"
+      >
         <div class="shrink-0">
           <UiSearchInput
             ref="searchInputRef"
@@ -130,6 +134,7 @@ const {
 } = useFilesModalHandoff()
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const panel = useTemplateRef<HTMLDivElement>('panel')
 const list = useTemplateRef<HTMLElement>('list')
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 
@@ -217,18 +222,6 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
   }
 
   commandGroups.push(
-    {
-      id: 'primary',
-      heading: null,
-      items: [
-        {
-          id: 'search-option-new-chat',
-          iconName: 'lucide:plus',
-          label: 'New Chat',
-          run: () => goTo('/chats/new'),
-        },
-      ],
-    },
     {
       id: 'chat',
       heading: 'Chat',
@@ -494,8 +487,18 @@ function onDialogClosed() {
   resetState()
 }
 
+function isCoarsePointer(): boolean {
+  return window.matchMedia('(pointer: coarse)').matches
+}
+
 async function focusSearchInput() {
   await nextTick()
+
+  if (isCoarsePointer()) {
+    panel.value?.focus()
+
+    return
+  }
 
   searchInputRef.value?.inputRef?.focus()
   syncActiveDescendant()
