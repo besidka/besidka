@@ -115,6 +115,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
+    'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
