@@ -779,6 +779,7 @@ if (import.meta.client) {
 
 const canDeleteSelectedMessage = computed<boolean>(() => {
   return !['submitted', 'streaming'].includes(chatSdk.status)
+    && chatSdk.messages.length > 1
 })
 
 async function deleteMessage(messageId: string) {

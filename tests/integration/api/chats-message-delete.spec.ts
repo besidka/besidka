@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { sql } from 'drizzle-orm'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -131,18 +132,30 @@ function createDb(
     return found ? { id: found.id } : undefined
   })
 
-  const deleteWhere = vi.fn(async () => undefined)
+  const deleteWhere = vi.fn(async () => ({
+    success: true,
+    meta: { changes: 1 },
+  }))
+
+  const selectHaving = vi.fn(() => sql`1`)
+  const selectChain = {
+    from: vi.fn(() => selectChain),
+    where: vi.fn(() => selectChain),
+    groupBy: vi.fn(() => selectChain),
+    having: selectHaving,
+  }
 
   const db = {
     query: {
       chats: { findFirst: chatsFindFirst },
       messages: { findFirst: messagesFindFirst },
     },
+    select: vi.fn(() => selectChain),
     delete: vi.fn(() => ({ where: deleteWhere })),
   }
 
   return {
-    db, chatsFindFirst, messagesFindFirst, deleteWhere,
+    db, chatsFindFirst, messagesFindFirst, deleteWhere, selectHaving,
   }
 }
 
@@ -280,7 +293,10 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db, deleteWhere, messagesFindFirst } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
+        [
+          { id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' },
+          { id: 'rowid-43', publicId: 'other-public-id', chatId: 'chat-1' },
+        ],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -316,7 +332,10 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db, deleteWhere, messagesFindFirst } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', publicId: null, chatId: 'chat-1' }],
+        [
+          { id: 'rowid-42', publicId: null, chatId: 'chat-1' },
+          { id: 'rowid-43', publicId: null, chatId: 'chat-1' },
+        ],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -358,7 +377,10 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
+        [
+          { id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' },
+          { id: 'rowid-43', publicId: 'other-public-id', chatId: 'chat-1' },
+        ],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -381,7 +403,10 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
+        [
+          { id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' },
+          { id: 'rowid-43', publicId: 'other-public-id', chatId: 'chat-1' },
+        ],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -413,7 +438,10 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
+        [
+          { id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' },
+          { id: 'rowid-43', publicId: 'other-public-id', chatId: 'chat-1' },
+        ],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -423,6 +451,56 @@ describe('chat message delete API', () => {
       } as never)
 
       expect(response).toEqual({ success: true })
+    },
+  )
+
+  it(
+    'rejects deleting the only message in a chat',
+    async () => {
+      const handler = await getHandler()
+      const { db, deleteWhere, selectHaving } = createDb(
+        { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
+        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
+      )
+
+      deleteWhere.mockResolvedValue({ success: true, meta: { changes: 0 } })
+
+      vi.stubGlobal('useDb', () => db)
+
+      await expect(handler({
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
+      } as never)).rejects.toThrow(
+        'Cannot delete the only message in a chat',
+      )
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+      expect(selectHaving).toHaveBeenCalledWith(sql`count(*) > 1`)
+      expect(mocks.removeMessageRowsFromSearchIndex).not.toHaveBeenCalled()
+      expect(mocks.cleanupFilesOrphanedByChatDeletion).not.toHaveBeenCalled()
+    },
+  )
+
+  it(
+    'deletes the message when the chat has exactly two messages '
+    + '(2-message boundary)',
+    async () => {
+      const handler = await getHandler()
+      const { db, deleteWhere, selectHaving } = createDb(
+        { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
+        [
+          { id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' },
+          { id: 'rowid-43', publicId: 'other-public-id', chatId: 'chat-1' },
+        ],
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
+      } as never)
+
+      expect(response).toEqual({ success: true })
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+      expect(selectHaving).toHaveBeenCalledWith(sql`count(*) > 1`)
     },
   )
 })

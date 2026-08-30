@@ -1,5 +1,7 @@
 import { useLogger, createError } from 'evlog'
-import { and, eq } from 'drizzle-orm'
+import {
+  and, eq, inArray, sql,
+} from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
   cleanupFilesOrphanedByChatDeletion,
@@ -83,11 +85,27 @@ export default defineEventHandler(async (event) => {
     ? []
     : await findMessageOriginFiles(messageRowId, userId)
 
-  await db.delete(schema.messages)
+  const deleteResult = await db.delete(schema.messages)
     .where(and(
       eq(schema.messages.id, message.id),
       eq(schema.messages.chatId, chat.id),
+      inArray(
+        schema.messages.chatId,
+        db.select({ chatId: schema.messages.chatId })
+          .from(schema.messages)
+          .where(eq(schema.messages.chatId, chat.id))
+          .groupBy(schema.messages.chatId)
+          .having(sql`count(*) > 1`),
+      ),
     ))
+
+  if (deleteResult.meta.changes < 1) {
+    throw createError({
+      message: 'Cannot delete the only message in a chat',
+      status: 400,
+      fix: 'Delete the chat instead',
+    })
+  }
 
   await removeMessageRowsFromSearchIndex({
     db,
