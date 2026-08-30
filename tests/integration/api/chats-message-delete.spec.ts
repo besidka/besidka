@@ -48,6 +48,7 @@ async function getHandler() {
 }
 
 const CHAT_SLUG = '01ARZ3NDEKTSV4RRFFQ69G5FB0'
+const MESSAGE_PUBLIC_ID = '01ARZ3NDEKTSV4RRFFQ69G5FB1'
 
 interface ChatFixture {
   id: string
@@ -57,7 +58,48 @@ interface ChatFixture {
 
 interface MessageFixture {
   id: string
+  publicId: string | null
   chatId: string
+}
+
+interface MessageWhere {
+  chatId?: string
+  id?: string
+  publicId?: string
+  OR?: Array<{ publicId?: string, id?: string }>
+}
+
+function messageMatchesWhere(
+  message: MessageFixture,
+  where: MessageWhere,
+): boolean {
+  if (where.chatId !== undefined && message.chatId !== where.chatId) {
+    return false
+  }
+
+  if (where.id !== undefined && message.id !== where.id) {
+    return false
+  }
+
+  if (where.publicId !== undefined && message.publicId !== where.publicId) {
+    return false
+  }
+
+  if (!where.OR) {
+    return true
+  }
+
+  return where.OR.some((condition) => {
+    if (condition.publicId !== undefined) {
+      return message.publicId === condition.publicId
+    }
+
+    if (condition.id !== undefined) {
+      return message.id === condition.id
+    }
+
+    return false
+  })
 }
 
 function createDb(
@@ -80,12 +122,10 @@ function createDb(
   })
 
   const messagesFindFirst = vi.fn(async (
-    { where }: { where: Record<string, unknown> },
+    { where }: { where: MessageWhere },
   ) => {
     const found = messageFixtures.find((message) => {
-      return Object.entries(where).every(([key, value]) => {
-        return (message as unknown as Record<string, unknown>)[key] === value
-      })
+      return messageMatchesWhere(message, where)
     })
 
     return found ? { id: found.id } : undefined
@@ -144,13 +184,13 @@ describe('chat message delete API', () => {
     const handler = await getHandler()
     const { db, deleteWhere } = createDb(
       { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-      [{ id: 'rowid-42', chatId: 'chat-1' }],
+      [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
     )
 
     vi.stubGlobal('useDb', () => db)
 
     await expect(handler({
-      params: { slug: CHAT_SLUG, id: 'rowid-42' },
+      params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
     } as never)).rejects.toThrow('Unauthorized')
     expect(deleteWhere).not.toHaveBeenCalled()
     expect(mocks.removeMessageRowsFromSearchIndex).not.toHaveBeenCalled()
@@ -166,13 +206,13 @@ describe('chat message delete API', () => {
     const handler = await getHandler()
     const { db, deleteWhere } = createDb(
       { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-      [{ id: 'rowid-42', chatId: 'chat-1' }],
+      [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
     )
 
     vi.stubGlobal('useDb', () => db)
 
     await expect(handler({
-      params: { slug: CHAT_SLUG, id: 'rowid-42' },
+      params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
     } as never)).rejects.toThrow('Chat not found')
     expect(deleteWhere).not.toHaveBeenCalled()
     expect(mocks.removeMessageRowsFromSearchIndex).not.toHaveBeenCalled()
@@ -186,13 +226,13 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db, deleteWhere } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', chatId: 'chat-other' }],
+        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-other' }],
       )
 
       vi.stubGlobal('useDb', () => db)
 
       await expect(handler({
-        params: { slug: CHAT_SLUG, id: 'rowid-42' },
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
       } as never)).rejects.toThrow('Message not found')
       expect(deleteWhere).not.toHaveBeenCalled()
       expect(mocks.removeMessageRowsFromSearchIndex).not.toHaveBeenCalled()
@@ -211,7 +251,7 @@ describe('chat message delete API', () => {
     vi.stubGlobal('useDb', () => db)
 
     await expect(handler({
-      params: { slug: CHAT_SLUG, id: 'rowid-42' },
+      params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
     } as never)).rejects.toThrow('Message not found')
     expect(deleteWhere).not.toHaveBeenCalled()
     expect(mocks.removeMessageRowsFromSearchIndex).not.toHaveBeenCalled()
@@ -226,7 +266,7 @@ describe('chat message delete API', () => {
     vi.stubGlobal('useDb', () => db)
 
     await expect(handler({
-      params: { slug: CHAT_SLUG, id: 'rowid-42' },
+      params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
     } as never)).rejects.toThrow('Chat not found')
     expect(deleteWhere).not.toHaveBeenCalled()
     expect(mocks.removeMessageRowsFromSearchIndex).not.toHaveBeenCalled()
@@ -240,7 +280,43 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db, deleteWhere, messagesFindFirst } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', chatId: 'chat-1' }],
+        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
+      )
+
+      vi.stubGlobal('useDb', () => db)
+
+      const response = await handler({
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
+      } as never)
+
+      expect(response).toEqual({ success: true })
+      expect(messagesFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            chatId: 'chat-1',
+            OR: [
+              { publicId: MESSAGE_PUBLIC_ID },
+              { id: MESSAGE_PUBLIC_ID },
+            ],
+          },
+        }),
+      )
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+      expect(mocks.removeMessageRowsFromSearchIndex).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageRowIds: [42],
+        }),
+      )
+    },
+  )
+
+  it(
+    'falls back to matching by id when publicId is null (legacy row)',
+    async () => {
+      const handler = await getHandler()
+      const { db, deleteWhere, messagesFindFirst } = createDb(
+        { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
+        [{ id: 'rowid-42', publicId: null, chatId: 'chat-1' }],
       )
 
       vi.stubGlobal('useDb', () => db)
@@ -252,7 +328,13 @@ describe('chat message delete API', () => {
       expect(response).toEqual({ success: true })
       expect(messagesFindFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'rowid-42', chatId: 'chat-1' },
+          where: {
+            chatId: 'chat-1',
+            OR: [
+              { publicId: 'rowid-42' },
+              { id: 'rowid-42' },
+            ],
+          },
         }),
       )
       expect(deleteWhere).toHaveBeenCalledTimes(1)
@@ -276,13 +358,13 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', chatId: 'chat-1' }],
+        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
       )
 
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
-        params: { slug: CHAT_SLUG, id: 'rowid-42' },
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
       } as never)
 
       expect(response).toEqual({ success: true })
@@ -299,13 +381,13 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', chatId: 'chat-1' }],
+        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
       )
 
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
-        params: { slug: CHAT_SLUG, id: 'rowid-42' },
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
       } as never)
 
       expect(response).toEqual({ success: true })
@@ -331,13 +413,13 @@ describe('chat message delete API', () => {
       const handler = await getHandler()
       const { db } = createDb(
         { id: 'chat-1', slug: CHAT_SLUG, userId: 1 },
-        [{ id: 'rowid-42', chatId: 'chat-1' }],
+        [{ id: 'rowid-42', publicId: MESSAGE_PUBLIC_ID, chatId: 'chat-1' }],
       )
 
       vi.stubGlobal('useDb', () => db)
 
       const response = await handler({
-        params: { slug: CHAT_SLUG, id: 'rowid-42' },
+        params: { slug: CHAT_SLUG, id: MESSAGE_PUBLIC_ID },
       } as never)
 
       expect(response).toEqual({ success: true })

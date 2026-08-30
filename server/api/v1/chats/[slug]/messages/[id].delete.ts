@@ -60,8 +60,11 @@ export default defineEventHandler(async (event) => {
 
   const message = await db.query.messages.findFirst({
     where: {
-      id: params.data.id,
       chatId: chat.id,
+      OR: [
+        { publicId: params.data.id },
+        { id: params.data.id },
+      ],
     },
     columns: {
       id: true,
