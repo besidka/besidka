@@ -226,6 +226,7 @@
         :info="selectedMessageInfo"
         :pointer="selectedPointer"
         :show-branch="data.allowBranch"
+        :show-delete="false"
         :copy-text="selectedMessageCopyText"
         @branch="onBranchFromMessage"
         @close="clearMessageSelection"

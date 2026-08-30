@@ -305,6 +305,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/chats/history/search.spec.ts',
     'tests/unit/utils/chats/history/search-cursor.spec.ts',
     'tests/integration/api/chats-history-content-search.spec.ts',
+    'tests/integration/api/chats-message-delete.spec.ts',
   ]
 
   const deepResearchTests = [
@@ -813,6 +814,16 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...historyProjectsTests,
         ...filesModuleTests,
+        'tests/integration/api/chats-message-delete.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^server\/api\/v1\/chats\/\[slug\]\/messages\/\[id\]\.delete\.ts$/,
+      tests: [
+        ...messageSearchTests,
+        ...contextMenuTests,
+        'tests/integration/api/chats-message-delete.spec.ts',
       ],
     },
     {

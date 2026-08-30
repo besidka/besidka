@@ -28,7 +28,7 @@ interface SearchIndexRow {
   bodyStem: string
 }
 
-function safeDecodePublicId(publicId: string): number | null {
+export function safeDecodePublicId(publicId: string): number | null {
   try {
     const decoded = decodePublicId(publicId)
 
@@ -211,7 +211,11 @@ export async function removeChatsFromSearchIndex(input: {
   return { deletedCount, failed }
 }
 
-/** Best-effort. NEVER throws. Used by the sweeper's GC pass. */
+/**
+ * Best-effort. NEVER throws. Used by the sweeper's GC pass and called
+ * directly from the message-delete endpoint. Does NOT scope by owner at the
+ * SQL layer — the caller MUST have already verified ownership of every id.
+ */
 export async function removeMessageRowsFromSearchIndex(input: {
   db: ReturnType<typeof useDb>
   messageRowIds: number[]
