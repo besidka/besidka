@@ -3,7 +3,7 @@
     <dialog
       ref="modal"
       data-testid="search-modal"
-      class="js-search-modal modal modal-top sm:modal-middle"
+      class="js-search-modal modal modal-bottom sm:modal-middle"
       aria-label="Search"
       @close="onDialogClosed"
     >
@@ -147,6 +147,7 @@ const isSearching = shallowRef<boolean>(false)
 const activeIndex = shallowRef<number>(0)
 
 let requestId = 0
+let recentChatsRequestId = 0
 
 const trimmedQuery = computed<string>(() => query.value.trim())
 
@@ -445,16 +446,16 @@ const runSearch = useDebounceFn(async () => {
 }, SEARCH_DEBOUNCE_MS)
 
 async function fetchRecentChats() {
-  requestId += 1
+  recentChatsRequestId += 1
 
-  const currentRequestId = requestId
+  const currentRecentChatsRequestId = recentChatsRequestId
 
   try {
     const response = await $fetch('/api/v1/chats/history', {
       query: { limit: RECENT_CHATS_LIMIT },
     })
 
-    if (currentRequestId !== requestId) {
+    if (currentRecentChatsRequestId !== recentChatsRequestId) {
       return
     }
 
@@ -465,11 +466,9 @@ async function fetchRecentChats() {
       return new Date(b.activityAt).getTime() - new Date(a.activityAt).getTime()
     }).slice(0, RECENT_CHATS_LIMIT)
   } catch {
-    if (currentRequestId !== requestId) {
+    if (currentRecentChatsRequestId !== recentChatsRequestId) {
       return
     }
-
-    recentChats.value = []
   }
 }
 
@@ -477,7 +476,6 @@ function resetState() {
   requestId += 1
   query.value = ''
   results.value = []
-  recentChats.value = []
   isSearching.value = false
   activeIndex.value = 0
 }
@@ -519,6 +517,15 @@ watch(trimmedQuery, (search) => {
 
 watch([hasSearchQuery, results], () => {
   activeIndex.value = 0
+})
+
+watch(loggedIn, (isLoggedIn) => {
+  if (isLoggedIn) {
+    return
+  }
+
+  recentChatsRequestId += 1
+  recentChats.value = []
 })
 
 watch(activeDescendantId, () => {
@@ -595,5 +602,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onGlobalKeydown)
   requestId += 1
+  recentChatsRequestId += 1
 })
 </script>

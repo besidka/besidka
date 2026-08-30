@@ -646,20 +646,96 @@ describe('Search/Modal.client', () => {
         .toBeLessThan(ids.indexOf('search-option-history'))
     })
 
-    it('clears recentChats when the dialog is closed (resetState)', async () => {
-      useSearchModal().isModalOpen.value = true
-      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
-        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
-      }))
+    it(
+      'keeps recentChats after the dialog closes (stale-while-revalidate)',
+      async () => {
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
 
-      const wrapper = await mountModal()
-      await waitForRecentChatsFetch()
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
 
-      expect(wrapper.find('#search-option-recent-recent-1').exists()).toBe(true)
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
 
-      await wrapper.find('dialog').trigger('close')
+        await wrapper.find('dialog').trigger('close')
 
-      expect(wrapper.find('#search-option-recent-recent-1').exists()).toBe(false)
-    })
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+      },
+    )
+
+    it(
+      'clears recentChats when loggedIn transitions from true to false (cross-user leak fix)',
+      async () => {
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        loggedIn.value = false
+        await nextTick()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(false)
+      },
+    )
+
+    it(
+      'does not clear recentChats on the rising edge (fresh login)',
+      async () => {
+        loggedIn.value = false
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        loggedIn.value = true
+        await nextTick()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+      },
+    )
+
+    it(
+      'keeps previously fetched recentChats when a background refresh fails',
+      async () => {
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValueOnce(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        mocks.fetchMock.mockRejectedValueOnce(new Error('network error'))
+
+        useSearchModal().isModalOpen.value = false
+        await nextTick()
+        useSearchModal().isModalOpen.value = true
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+      },
+    )
   })
 })
