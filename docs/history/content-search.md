@@ -109,6 +109,60 @@ useful match keys) at the cost of not bridging case #2 above. This is a
 deliberate precision/recall trade-off, verified against a battery of common
 nouns.
 
+## Adding another language
+
+Language routing today is **script-based, not language-based**.
+`server/utils/search/tokens.ts` has `isCyrillicToken()`, which checks
+whether at least half a token's letters are Cyrillic; tokens that pass are
+run through `stemUkrainianWord()` from
+`server/utils/search/ukrainian-stemmer.ts`. Every Latin-script token skips
+stemming entirely and is indexed/queried as its raw surface form.
+
+**Russian gets accidental, partial coverage.** A Cyrillic token is always
+routed through the *Ukrainian* rule table, regardless of whether it's
+actually Russian — "Cyrillic" is being used as a stand-in for "Ukrainian"
+because the two scripts overlap almost completely. Some Russian
+declensions happen to bridge through Ukrainian's suffix-stripping rules by
+coincidence; many don't. Doing this properly would need two separate
+things: a real Russian stemmer (Snowball has a proper one, so this would be
+a vendoring job rather than a from-scratch port) and an actual
+language-routing decision, since "is this token Cyrillic" and "is this
+token Russian" are not the same question.
+
+**Polish and other Latin-script inflected languages get nothing.** The
+`isCyrillicToken()` guard routes every Latin-script token straight past
+stemming, Polish included. Adding a language like Polish therefore needs
+two things, and the second is the harder one: (a) a vendored stemmer for
+that language, and (b) a language-detection heuristic for Latin-script
+tokens — no such heuristic exists yet, and "is this Latin-script word
+Polish, English, French, or a code identifier" is a materially harder
+problem than the Cyrillic/Latin script check this codebase currently gets
+away with.
+
+**Steps to add a language**, once the above is decided:
+
+1. Vendor a stemmer for it under `server/utils/search/` (see the Ukrainian
+   stemmer above for the vendoring pattern this repo follows — check
+   license terms and de-minify/port to TypeScript).
+2. Extend the routing logic in `tokens.ts` (`isCyrillicToken()`,
+   `stemSearchToken()`, and — for a Latin-script language — the
+   language-detection heuristic that doesn't exist yet) to call the new
+   stemmer for the right tokens.
+3. Run a backfill so already-indexed rows pick up the new stemming.
+
+**That backfill must be a deliberate, one-time reindex — it will not
+happen on its own.** The hourly sweeper's backfill pass
+(`server/utils/search/sweeper.ts`) is a strict anti-join against messages
+that have **no** `message_search` row yet. It only ever picks up
+never-indexed messages (new messages whose write failed, or the initial
+historical backfill). It will not re-stem, re-write, or otherwise touch a
+`message_search` row that already exists — so changing or adding a
+stemmer without a manual reindex leaves every already-indexed message's
+`body_stem` computed with the *old* stemming rules indefinitely. (This
+exact false claim — that the sweeper would pick up a stemmer change for
+free — was already made and corrected once in this document; it is
+recorded here deliberately so it doesn't get reintroduced.)
+
 ## Text Extraction and Normalization
 
 `server/utils/search/text.ts` extracts only `type === 'text'` parts from a
