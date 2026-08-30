@@ -34,9 +34,33 @@
       >
         {{ chat.title || 'Untitled Chat' }}
       </NuxtLink>
+      <p
+        v-if="chat.snippet"
+        data-testid="chat-row-snippet"
+        class="truncate text-xs opacity-70 mt-0.5"
+      >
+        <template
+          v-for="(segment, segmentIndex) in snippetSegments"
+          :key="segmentIndex"
+        >
+          <mark
+            v-if="segment.highlight"
+            class="bg-transparent text-primary font-medium"
+          >{{ segment.text }}</mark>
+          <template v-else>{{ segment.text }}</template>
+        </template>
+      </p>
       <div class="grid gap-2 mt-0.5">
         <span class="text-xs opacity-50 truncate">
           {{ activityAge }}
+        </span>
+        <span
+          v-if="chat.matchedIn === 'content'"
+          data-testid="chat-content-match-badge"
+          class="badge badge-ghost badge-sm gap-1"
+        >
+          <Icon name="lucide:message-square-text" size="10" />
+          In messages
         </span>
         <span
           v-if="chat.projectName"
@@ -74,6 +98,7 @@
 <script setup lang="ts">
 import type { HistoryChat } from '#shared/types/history.d'
 import { formatActivityAge } from '#shared/utils/date-groups'
+import { splitSnippetSegments } from '#shared/utils/search'
 
 const props = withDefaults(
   defineProps<{
@@ -101,6 +126,10 @@ const emit = defineEmits<{
 
 const activityAge = computed(() => {
   return formatActivityAge(new Date(props.chat.activityAt))
+})
+
+const snippetSegments = computed(() => {
+  return props.chat.snippet ? splitSnippetSegments(props.chat.snippet) : []
 })
 
 function onToggleSelect(event: MouseEvent) {

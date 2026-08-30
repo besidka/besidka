@@ -1,10 +1,12 @@
 import { parseError } from 'evlog'
 import type { HistoryChat, HistoryResponse } from '#shared/types/history.d'
+import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
 
 interface HistoryCacheEntry {
   pinned: HistoryChat[]
   chats: HistoryChat[]
   nextCursor: string | null
+  searchCapped: boolean
   hasLoaded: boolean
   lastFetchedAt: number | null
 }
@@ -61,6 +63,7 @@ export function useHistory() {
   const chats = useState<HistoryChat[]>('history:chats', () => [])
   const pinned = useState<HistoryChat[]>('history:pinned', () => [])
   const nextCursor = useState<string | null>('history:cursor', () => null)
+  const searchCapped = useState<boolean>('history:search-capped', () => false)
   const search = useState<string>('history:search', () => '')
 
   const isLoading = shallowRef<boolean>(false)
@@ -93,6 +96,7 @@ export function useHistory() {
       chats.value = entry.chats
       pinned.value = entry.pinned
       nextCursor.value = entry.nextCursor
+      searchCapped.value = entry.searchCapped
     }
   }
 
@@ -101,6 +105,7 @@ export function useHistory() {
       chats: response.chats,
       pinned: response.pinned,
       nextCursor: response.nextCursor,
+      searchCapped: response.searchCapped ?? false,
       hasLoaded: true,
       lastFetchedAt: Date.now(),
     })
@@ -116,6 +121,7 @@ export function useHistory() {
     chats.value = entry.chats
     pinned.value = entry.pinned
     nextCursor.value = entry.nextCursor
+    searchCapped.value = entry.searchCapped
 
     return true
   }
@@ -152,18 +158,26 @@ export function useHistory() {
       const currentChats = currentEntry?.chats || chats.value
       const currentPinned = currentEntry?.pinned || pinned.value
 
-      const response = await $fetch('/api/v1/chats/history', {
-        query: {
-          ...(nextCursor.value && !reset ? { cursor: nextCursor.value } : {}),
-          ...(requestSearch.length >= 2 ? { search: requestSearch } : {}),
+      const response = await $fetch<HistoryResponse>(
+        '/api/v1/chats/history',
+        {
+          query: {
+            ...(nextCursor.value && !reset
+              ? { cursor: nextCursor.value }
+              : {}),
+            ...(requestSearch.length >= MIN_SEARCH_LENGTH
+              ? { search: requestSearch }
+              : {}),
+          },
         },
-      })
+      )
 
       if (reset) {
         setEntry(requestKey, {
           chats: response.chats,
           pinned: response.pinned,
           nextCursor: response.nextCursor,
+          searchCapped: response.searchCapped ?? false,
           hasLoaded: true,
           lastFetchedAt: Date.now(),
         })
@@ -172,6 +186,7 @@ export function useHistory() {
           chats: [...currentChats, ...response.chats],
           pinned: currentPinned,
           nextCursor: response.nextCursor,
+          searchCapped: response.searchCapped ?? false,
           hasLoaded: true,
           lastFetchedAt: Date.now(),
         })
@@ -201,7 +216,7 @@ export function useHistory() {
         const retryHasCache = !!cache.value[retryKey]?.hasLoaded
 
         queuedResetKey.value = null
-        isSearching.value = search.value.length >= 2
+        isSearching.value = search.value.length >= MIN_SEARCH_LENGTH
         retryOptions = {
           background: retryHasCache,
         }
@@ -226,6 +241,7 @@ export function useHistory() {
       chats.value = []
       pinned.value = []
       nextCursor.value = null
+      searchCapped.value = false
     }
 
     await fetchHistory({
@@ -266,6 +282,7 @@ export function useHistory() {
         chats: chats.value,
         pinned: pinned.value,
         nextCursor: nextCursor.value,
+        searchCapped: searchCapped.value,
         hasLoaded: true,
         lastFetchedAt: Date.now(),
       }, activeKey.value)
@@ -275,6 +292,7 @@ export function useHistory() {
     chats.value = nextCache[activeKey.value]?.chats || []
     pinned.value = nextCache[activeKey.value]?.pinned || []
     nextCursor.value = nextCache[activeKey.value]?.nextCursor || null
+    searchCapped.value = nextCache[activeKey.value]?.searchCapped || false
   }
 
   function clearCompletedSelection(chatIds: string[]) {
@@ -844,7 +862,7 @@ export function useHistory() {
   }
 
   const debouncedSearch = useDebounceFn(() => {
-    isSearching.value = search.value.length >= 2
+    isSearching.value = search.value.length >= MIN_SEARCH_LENGTH
     hydrateAndRefresh()
   }, 180)
 
@@ -864,6 +882,7 @@ export function useHistory() {
     chats,
     pinned,
     nextCursor,
+    searchCapped,
     search,
     isLoading,
     isLoadingInitial,

@@ -70,6 +70,13 @@ async function waitForDebouncedSearch() {
   await nextTick()
 }
 
+async function waitForRecentChatsFetch() {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+  await nextTick()
+}
+
 let showModalSpy: ReturnType<typeof vi.spyOn>
 let closeSpy: ReturnType<typeof vi.spyOn>
 
@@ -311,7 +318,10 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').setValue('a')
     await waitForDebouncedSearch()
 
-    expect(mocks.fetchMock).not.toHaveBeenCalled()
+    expect(mocks.fetchMock).not.toHaveBeenCalledWith(
+      '/api/v1/chats/history',
+      { query: { search: 'a', limit: 5 } },
+    )
     expect(wrapper.find('[data-testid="search-result-row"]').exists())
       .toBe(false)
     expect(wrapper.find('[data-testid="search-command-row"]').exists())
@@ -501,5 +511,127 @@ describe('Search/Modal.client', () => {
     }))
 
     expect(useSearchModal().isModalOpen.value).toBe(false)
+  })
+
+  describe('recent chats (empty-query preview)', () => {
+    it('fetches recent chats with limit 3 when the modal opens with an empty query', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse())
+
+      await mountModal()
+      await waitForRecentChatsFetch()
+
+      expect(mocks.fetchMock).toHaveBeenCalledWith('/api/v1/chats/history', {
+        query: { limit: 3 },
+      })
+    })
+
+    it('merges pinned and non-pinned chats strictly by activityAt desc, capped at 3, without hoisting an older pinned chat', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const pinnedButOlder = createHistoryChat({
+        id: 'pinned-older',
+        slug: 'pinned-older',
+        pinnedAt: '2026-03-01T00:00:00.000Z',
+        activityAt: '2026-03-01T00:00:00.000Z',
+      })
+      const chatNewest = createHistoryChat({
+        id: 'chat-newest',
+        slug: 'chat-newest',
+        activityAt: '2026-03-11T00:00:00.000Z',
+      })
+      const chatMiddle = createHistoryChat({
+        id: 'chat-middle',
+        slug: 'chat-middle',
+        activityAt: '2026-03-08T00:00:00.000Z',
+      })
+      const chatExcluded = createHistoryChat({
+        id: 'chat-excluded',
+        slug: 'chat-excluded',
+        activityAt: '2026-02-01T00:00:00.000Z',
+      })
+
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        pinned: [pinnedButOlder],
+        chats: [chatNewest, chatMiddle, chatExcluded],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+        .filter((id): id is string => !!id?.startsWith('search-option-recent-'))
+
+      expect(ids).toHaveLength(3)
+      expect(ids).toEqual([
+        'search-option-recent-chat-newest',
+        'search-option-recent-chat-middle',
+        'search-option-recent-pinned-older',
+      ])
+      expect(ids[0]).not.toBe('search-option-recent-pinned-older')
+    })
+
+    it('shows a pin badge in place for a recent chat that is pinned, without reordering it', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const pinnedButOlder = createHistoryChat({
+        id: 'pinned-older',
+        slug: 'pinned-older',
+        pinnedAt: '2026-03-01T00:00:00.000Z',
+        activityAt: '2026-03-01T00:00:00.000Z',
+      })
+      const chatNewest = createHistoryChat({
+        id: 'chat-newest',
+        slug: 'chat-newest',
+        activityAt: '2026-03-11T00:00:00.000Z',
+      })
+
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        pinned: [pinnedButOlder],
+        chats: [chatNewest],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const pinnedRow = wrapper.find('#search-option-recent-pinned-older')
+
+      expect(pinnedRow.find('[data-testid="chat-pinned-badge"]').exists())
+        .toBe(true)
+    })
+
+    it('places the Recent group before New Chat in keyboard index order', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(ids[0]).toBe('search-option-recent-recent-1')
+      expect(ids.indexOf('search-option-recent-recent-1'))
+        .toBeLessThan(ids.indexOf('search-option-new-chat'))
+    })
+
+    it('clears recentChats when the dialog is closed (resetState)', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      expect(wrapper.find('#search-option-recent-recent-1').exists()).toBe(true)
+
+      await wrapper.find('dialog').trigger('close')
+
+      expect(wrapper.find('#search-option-recent-recent-1').exists()).toBe(false)
+    })
   })
 })

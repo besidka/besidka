@@ -124,6 +124,7 @@ export function getAffectedTests(changedFiles) {
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/ChatRow.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/projects.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
@@ -291,6 +292,19 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Search/ResultRow.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
+  ]
+
+  const messageSearchTests = [
+    'tests/unit/utils/search/text.spec.ts',
+    'tests/unit/utils/search/ukrainian-stemmer.spec.ts',
+    'tests/unit/utils/search/tokens.spec.ts',
+    'tests/unit/utils/search/query.spec.ts',
+    'tests/unit/utils/search/index-writer.spec.ts',
+    'tests/unit/utils/search/sweeper.spec.ts',
+    'tests/integration/server/message-search-sweep-plugin.spec.ts',
+    'tests/unit/utils/chats/history/search.spec.ts',
+    'tests/unit/utils/chats/history/search-cursor.spec.ts',
+    'tests/integration/api/chats-history-content-search.spec.ts',
   ]
 
   const deepResearchTests = [
@@ -545,8 +559,25 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/chats\/branch\.ts$/,
-      tests: [...chatShareTests, ...chatStreamBranchTests],
+      pattern: /^server\/utils\/search\/.*\.ts$/,
+      tests: messageSearchTests,
+    },
+    {
+      pattern: /^server\/plugins\/message-search-index-sweep\.ts$/,
+      tests: messageSearchTests,
+    },
+    {
+      pattern: /^server\/utils\/custom-db-types\.ts$/,
+      tests: messageSearchTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/chats\/(insert-message|persist-user-message|branch)\.ts$/,
+      tests: [
+        ...messageSearchTests,
+        ...chatShareTests,
+        ...chatStreamBranchTests,
+      ],
     },
     {
       pattern:
@@ -576,7 +607,9 @@ export function getAffectedTests(changedFiles) {
       pattern: /^shared\/utils\/search\.ts$/,
       tests: [
         ...searchModalTests,
+        ...messageSearchTests,
         'tests/unit/pages/chats/history/index.spec.ts',
+        'tests/unit/utils/search.spec.ts',
       ],
     },
     {
@@ -809,7 +842,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
-      tests: historyProjectsTests,
+      tests: [...historyProjectsTests, ...messageSearchTests],
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/history\/.*\.ts$/,
+      tests: [...historyProjectsTests, ...messageSearchTests],
     },
     {
       pattern: /^server\/utils\/projects\/.*\.ts$/,
@@ -817,7 +854,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/(types\/(history|projects)\.d\.ts|utils\/date-groups\.ts)$/,
-      tests: historyProjectsTests,
+      tests: [...historyProjectsTests, ...messageSearchTests],
     },
     {
       pattern: /^shared\/types\/files\.d\.ts$/,
