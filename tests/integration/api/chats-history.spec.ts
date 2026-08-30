@@ -3,6 +3,8 @@ import {
   createHistoryChat,
 } from '../../setup/helpers/history-fixtures'
 import { createHistoryCursor } from '../../../server/utils/chats/history/cursor'
+import { MAX_SEARCH_RESULTS } from '../../../server/utils/chats/history/search'
+import { createSearchCursor } from '../../../server/utils/chats/history/search-cursor'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -179,7 +181,7 @@ describe('chat history API', () => {
     }))
   })
 
-  it('caps pinned search matches and paginates matching chats', async () => {
+  it('caps pinned title matches and paginates title matches by offset', async () => {
     const handler = await getHistoryHandler()
     const pinnedMatch = withDateFields(createHistoryChat({
       id: 'chat-pinned',
@@ -197,13 +199,13 @@ describe('chat history API', () => {
       activityAt: '2026-03-09T11:00:00.000Z',
     }))
     const pinnedSelectChain = createSelectChain()
-    const chatsSelectChain = createSelectChain()
+    const titleSelectChain = createSelectChain()
     const db = {
       select: vi.fn()
-        .mockReturnValueOnce(chatsSelectChain)
+        .mockReturnValueOnce(titleSelectChain)
         .mockReturnValueOnce(pinnedSelectChain),
       batch: vi.fn(async () => {
-        return [[pinnedMatch], [firstMatch]]
+        return [[pinnedMatch], [firstMatch, secondMatch]]
       }),
     }
 
@@ -211,33 +213,42 @@ describe('chat history API', () => {
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
     const response = await handler({
-      query: { search: 'map', limit: '1' },
+      query: {
+        search: 'map', limit: '1', searchIn: 'title',
+      },
     } as never)
 
     expect(response.pinned.map((chat: { id: string }) => chat.id)).toEqual([
       'chat-pinned',
     ])
+    expect(response.pinned[0].matchedIn).toBe('title')
     expect(response.chats.map((chat: { id: string }) => chat.id)).toEqual([
       'chat-first',
     ])
-    expect(response.nextCursor).toBe(createHistoryCursor(firstMatch))
+    expect(response.chats[0].matchedIn).toBe('title')
+    expect(response.nextCursor).toBe(createSearchCursor(1))
     expect(pinnedSelectChain.limit).toHaveBeenCalledWith(50)
-    expect(chatsSelectChain.limit).toHaveBeenCalledWith(1)
+    expect(titleSelectChain.limit).toHaveBeenCalledWith(MAX_SEARCH_RESULTS)
     expect(db.batch).toHaveBeenCalledOnce()
 
-    db.select.mockReturnValueOnce(createSelectChain([secondMatch]))
+    db.select
+      .mockReturnValueOnce(createSelectChain())
+      .mockReturnValueOnce(createSelectChain())
     const nextPageResponse = await handler({
       query: {
         search: 'map',
         limit: '1',
-        cursor: createHistoryCursor(firstMatch),
+        searchIn: 'title',
+        cursor: createSearchCursor(1),
       },
     } as never)
 
     expect(nextPageResponse.pinned).toEqual([])
-    expect(nextPageResponse.chats).toEqual([secondMatch])
-    expect(nextPageResponse.nextCursor).toBe(createHistoryCursor(secondMatch))
-    expect(db.batch).toHaveBeenCalledOnce()
+    expect(
+      nextPageResponse.chats.map((chat: { id: string }) => chat.id),
+    ).toEqual(['chat-second'])
+    expect(nextPageResponse.nextCursor).toBeNull()
+    expect(db.batch).toHaveBeenCalledTimes(2)
   })
 
   it('falls back to the default limit when the history limit is invalid', async () => {
@@ -260,11 +271,14 @@ describe('chat history API', () => {
     vi.stubGlobal('getQuery', (event: { query: unknown }) => event.query)
 
     const response = await handler({
-      query: { search: 'map', limit: 'foo' },
+      query: { search: 'map', limit: 'foo', searchIn: 'title' },
     } as never)
 
-    expect(response.chats).toEqual([match])
-    expect(searchSelectChain.limit).toHaveBeenCalledWith(30)
+    expect(
+      response.chats.map((chat: { id: string }) => chat.id),
+    ).toEqual(['chat-1'])
+    expect(response.nextCursor).toBeNull()
+    expect(searchSelectChain.limit).toHaveBeenCalledWith(MAX_SEARCH_RESULTS)
   })
 
   it('skips pinned chats on cursor-based history pages', async () => {
