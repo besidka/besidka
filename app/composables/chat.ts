@@ -276,6 +276,17 @@ export function shouldBlockGenerationRecovery(
   return isDeepResearchModelSelected || hasResearchJob
 }
 
+// Issue #275 mount-time recovery: a chat whose last message is the user's
+// unanswered prompt (including a fresh single-message chat) means the
+// previous attempt never persisted before this load, so it should
+// auto-regenerate. A chat whose last message is the assistant's is already
+// answered and must never regenerate — otherwise `ai@7`'s regenerate()
+// resolves messageIndex to that assistant message and slices the history
+// down to nothing before sending the request.
+export function shouldRecoverGeneration(messages: UIMessage[]): boolean {
+  return messages.at(-1)?.role === 'user'
+}
+
 export function buildChatErrorLines(error: ChatErrorPayload): string[] {
   const lines = [error.message]
 
@@ -991,7 +1002,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   onMounted(() => {
     if (
-      (chat?.messages.length === 1 || chat?.messages.at(-1)?.role === 'user')
+      shouldRecoverGeneration(chat?.messages ?? [])
       && shouldAutoRegenerate.value
       && !shouldBlockGenerationRecovery.value
     ) {

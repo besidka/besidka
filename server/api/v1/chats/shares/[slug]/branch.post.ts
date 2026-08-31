@@ -179,6 +179,8 @@ export default defineEventHandler(async (event) => {
         parts: message.parts,
       }
     }),
+    userId,
+    logger,
   )
 
   await kv.put(cooldownKey, String(Date.now()), { expirationTtl: 60 })

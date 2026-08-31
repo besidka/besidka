@@ -3,11 +3,15 @@
     <dialog
       ref="modal"
       data-testid="search-modal"
-      class="js-search-modal modal modal-bottom sm:modal-middle"
+      class="js-search-modal modal modal-middle"
       aria-label="Search"
       @close="onDialogClosed"
     >
-      <div class="modal-box max-w-lg max-h-[80vh] flex flex-col gap-3">
+      <div
+        ref="panel"
+        tabindex="-1"
+        class="modal-box max-w-lg max-h-[80vh] flex flex-col gap-3"
+      >
         <div class="shrink-0">
           <UiSearchInput
             ref="searchInputRef"
@@ -130,15 +134,20 @@ const {
 } = useFilesModalHandoff()
 
 const modal = useTemplateRef<HTMLDialogElement>('modal')
+const panel = useTemplateRef<HTMLDivElement>('panel')
 const list = useTemplateRef<HTMLElement>('list')
 const searchInputRef = shallowRef<SearchInputInstance | null>(null)
 
+const RECENT_CHATS_LIMIT = 3
+
 const query = shallowRef<string>('')
 const results = shallowRef<HistoryChat[]>([])
+const recentChats = shallowRef<HistoryChat[]>([])
 const isSearching = shallowRef<boolean>(false)
 const activeIndex = shallowRef<number>(0)
 
 let requestId = 0
+let recentChatsRequestId = 0
 
 const trimmedQuery = computed<string>(() => query.value.trim())
 
@@ -197,19 +206,23 @@ async function findInChats() {
 }
 
 function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
-  return [
-    {
-      id: 'primary',
-      heading: null,
-      items: [
-        {
-          id: 'search-option-new-chat',
-          iconName: 'lucide:plus',
-          label: 'New Chat',
-          run: () => goTo('/chats/new'),
-        },
-      ],
-    },
+  const commandGroups: SearchModalGroup<SearchModalEntry>[] = []
+
+  if (recentChats.value.length) {
+    commandGroups.push({
+      id: 'recent',
+      heading: 'Recent',
+      items: recentChats.value.map((chat) => {
+        return {
+          id: `search-option-recent-${chat.id}`,
+          chat,
+          run: () => goTo(`/chats/${chat.slug}`),
+        }
+      }),
+    })
+  }
+
+  commandGroups.push(
     {
       id: 'chat',
       heading: 'Chat',
@@ -252,7 +265,9 @@ function buildCommandGroups(): SearchModalGroup<SearchModalEntry>[] {
         },
       ],
     },
-  ]
+  )
+
+  return commandGroups
 }
 
 function buildResultGroups(): SearchModalGroup<SearchModalEntry>[] {
@@ -430,6 +445,33 @@ const runSearch = useDebounceFn(async () => {
   isSearching.value = false
 }, SEARCH_DEBOUNCE_MS)
 
+async function fetchRecentChats() {
+  recentChatsRequestId += 1
+
+  const currentRecentChatsRequestId = recentChatsRequestId
+
+  try {
+    const response = await $fetch('/api/v1/chats/history', {
+      query: { limit: RECENT_CHATS_LIMIT },
+    })
+
+    if (currentRecentChatsRequestId !== recentChatsRequestId) {
+      return
+    }
+
+    recentChats.value = [
+      ...response.pinned,
+      ...response.chats,
+    ].sort((a, b) => {
+      return new Date(b.activityAt).getTime() - new Date(a.activityAt).getTime()
+    }).slice(0, RECENT_CHATS_LIMIT)
+  } catch {
+    if (currentRecentChatsRequestId !== recentChatsRequestId) {
+      return
+    }
+  }
+}
+
 function resetState() {
   requestId += 1
   query.value = ''
@@ -443,8 +485,18 @@ function onDialogClosed() {
   resetState()
 }
 
+function isCoarsePointer(): boolean {
+  return window.matchMedia('(pointer: coarse)').matches
+}
+
 async function focusSearchInput() {
   await nextTick()
+
+  if (isCoarsePointer()) {
+    panel.value?.focus()
+
+    return
+  }
 
   searchInputRef.value?.inputRef?.focus()
   syncActiveDescendant()
@@ -467,9 +519,20 @@ watch([hasSearchQuery, results], () => {
   activeIndex.value = 0
 })
 
+watch(loggedIn, (isLoggedIn) => {
+  if (isLoggedIn) {
+    return
+  }
+
+  recentChatsRequestId += 1
+  recentChats.value = []
+})
+
 watch(activeDescendantId, () => {
   syncActiveDescendant()
 }, { flush: 'post' })
+
+let hasOpenedDialog = false
 
 watch([isModalOpen, modal], ([open, dialog]) => {
   if (!dialog) {
@@ -477,17 +540,25 @@ watch([isModalOpen, modal], ([open, dialog]) => {
   }
 
   if (!open) {
+    hasOpenedDialog = false
     dialog.close()
 
     return
   }
 
-  if (dialog.open) {
+  if (hasOpenedDialog) {
     return
   }
 
+  hasOpenedDialog = true
   dialog.showModal()
   focusSearchInput()
+
+  if (!hasSearchQuery.value) {
+    setTimeout(() => {
+      fetchRecentChats()
+    })
+  }
 }, { immediate: true, flush: 'post' })
 
 watch(() => route.path, (routePath) => {
@@ -530,5 +601,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onGlobalKeydown)
+  requestId += 1
+  recentChatsRequestId += 1
 })
 </script>

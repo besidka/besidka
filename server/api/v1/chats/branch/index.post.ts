@@ -1,4 +1,5 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   buildBranchTitle,
@@ -13,6 +14,7 @@ const rules = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const logger = useLogger(event)
   const body = await readValidatedBody(event, rules.safeParse)
 
   if (body.error) {
@@ -116,6 +118,8 @@ export default defineEventHandler(async (event) => {
         createdAt: message.createdAt,
       }
     }),
+    userId,
+    logger,
   )
 
   await refreshProjectActivityAt([chat.projectId], userId, db)

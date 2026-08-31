@@ -70,6 +70,13 @@ async function waitForDebouncedSearch() {
   await nextTick()
 }
 
+async function waitForRecentChatsFetch() {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+  await nextTick()
+}
+
 let showModalSpy: ReturnType<typeof vi.spyOn>
 let closeSpy: ReturnType<typeof vi.spyOn>
 
@@ -116,6 +123,35 @@ describe('Search/Modal.client', () => {
     expect(document.activeElement).toBe(wrapper.find('input').element)
   })
 
+  it(
+    'focuses the modal panel instead of the input on coarse pointers',
+    async () => {
+      vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+        return {
+          matches: query === '(pointer: coarse)',
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        } as unknown as MediaQueryList
+      })
+
+      useSearchModal().isModalOpen.value = true
+
+      const wrapper = await mountModal()
+      await nextTick()
+      await nextTick()
+
+      expect(document.activeElement).toBe(
+        wrapper.find('[data-testid="search-modal"] .modal-box').element,
+      )
+      expect(document.activeElement).not.toBe(wrapper.find('input').element)
+    },
+  )
+
   it('sets role=listbox, an aria-label, and the js-search-modal class', async () => {
     const wrapper = await mountModal()
 
@@ -140,7 +176,7 @@ describe('Search/Modal.client', () => {
       .toBe('')
   })
 
-  it('renders the six documented command rows in order for an empty query', async () => {
+  it('renders the five documented command rows in order for an empty query', async () => {
     useSearchModal().isModalOpen.value = true
 
     const wrapper = await mountModal()
@@ -150,7 +186,6 @@ describe('Search/Modal.client', () => {
       .map(option => option.attributes('id'))
 
     expect(ids).toEqual([
-      'search-option-new-chat',
       'search-option-history',
       'search-option-attachments',
       'search-option-theme',
@@ -171,7 +206,7 @@ describe('Search/Modal.client', () => {
     expect(headingTexts).toEqual(expect.arrayContaining(['Chat', 'Settings']))
   })
 
-  it('closes the modal before navigating to New Chat (B6)', async () => {
+  it('closes the modal before navigating to Manage Chat History (B6)', async () => {
     useSearchModal().isModalOpen.value = true
 
     let isModalOpenDuringNavigate: boolean | null = null
@@ -184,10 +219,10 @@ describe('Search/Modal.client', () => {
 
     const wrapper = await mountModal()
 
-    await wrapper.find('#search-option-new-chat').trigger('click')
+    await wrapper.find('#search-option-history').trigger('click')
 
     expect(isModalOpenDuringNavigate).toBe(false)
-    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/new')
+    expect(mocks.navigateToMock).toHaveBeenCalledWith('/chats/history')
     expect(closeSpy).toHaveBeenCalled()
   })
 
@@ -311,7 +346,10 @@ describe('Search/Modal.client', () => {
     await wrapper.find('input').setValue('a')
     await waitForDebouncedSearch()
 
-    expect(mocks.fetchMock).not.toHaveBeenCalled()
+    expect(mocks.fetchMock).not.toHaveBeenCalledWith(
+      '/api/v1/chats/history',
+      { query: { search: 'a', limit: 5 } },
+    )
     expect(wrapper.find('[data-testid="search-result-row"]').exists())
       .toBe(false)
     expect(wrapper.find('[data-testid="search-command-row"]').exists())
@@ -441,17 +479,17 @@ describe('Search/Modal.client', () => {
     await nextTick()
 
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-new-chat')
+      .toBe('search-option-history')
 
     await wrapper.find('input').trigger('keydown', { key: 'ArrowDown' })
     await nextTick()
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-history')
+      .toBe('search-option-attachments')
 
     await wrapper.find('input').trigger('keydown', { key: 'ArrowUp' })
     await nextTick()
     expect(wrapper.find('input').attributes('aria-activedescendant'))
-      .toBe('search-option-new-chat')
+      .toBe('search-option-history')
   })
 
   it('wraps around to the last option when pressing ArrowUp at the top', async () => {
@@ -501,5 +539,203 @@ describe('Search/Modal.client', () => {
     }))
 
     expect(useSearchModal().isModalOpen.value).toBe(false)
+  })
+
+  describe('recent chats (empty-query preview)', () => {
+    it('fetches recent chats with limit 3 when the modal opens with an empty query', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse())
+
+      await mountModal()
+      await waitForRecentChatsFetch()
+
+      expect(mocks.fetchMock).toHaveBeenCalledWith('/api/v1/chats/history', {
+        query: { limit: 3 },
+      })
+    })
+
+    it('merges pinned and non-pinned chats strictly by activityAt desc, capped at 3, without hoisting an older pinned chat', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const pinnedButOlder = createHistoryChat({
+        id: 'pinned-older',
+        slug: 'pinned-older',
+        pinnedAt: '2026-03-01T00:00:00.000Z',
+        activityAt: '2026-03-01T00:00:00.000Z',
+      })
+      const chatNewest = createHistoryChat({
+        id: 'chat-newest',
+        slug: 'chat-newest',
+        activityAt: '2026-03-11T00:00:00.000Z',
+      })
+      const chatMiddle = createHistoryChat({
+        id: 'chat-middle',
+        slug: 'chat-middle',
+        activityAt: '2026-03-08T00:00:00.000Z',
+      })
+      const chatExcluded = createHistoryChat({
+        id: 'chat-excluded',
+        slug: 'chat-excluded',
+        activityAt: '2026-02-01T00:00:00.000Z',
+      })
+
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        pinned: [pinnedButOlder],
+        chats: [chatNewest, chatMiddle, chatExcluded],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+        .filter((id): id is string => !!id?.startsWith('search-option-recent-'))
+
+      expect(ids).toHaveLength(3)
+      expect(ids).toEqual([
+        'search-option-recent-chat-newest',
+        'search-option-recent-chat-middle',
+        'search-option-recent-pinned-older',
+      ])
+      expect(ids[0]).not.toBe('search-option-recent-pinned-older')
+    })
+
+    it('shows a pin badge in place for a recent chat that is pinned, without reordering it', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      const pinnedButOlder = createHistoryChat({
+        id: 'pinned-older',
+        slug: 'pinned-older',
+        pinnedAt: '2026-03-01T00:00:00.000Z',
+        activityAt: '2026-03-01T00:00:00.000Z',
+      })
+      const chatNewest = createHistoryChat({
+        id: 'chat-newest',
+        slug: 'chat-newest',
+        activityAt: '2026-03-11T00:00:00.000Z',
+      })
+
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        pinned: [pinnedButOlder],
+        chats: [chatNewest],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const pinnedRow = wrapper.find('#search-option-recent-pinned-older')
+
+      expect(pinnedRow.find('[data-testid="chat-pinned-badge"]').exists())
+        .toBe(true)
+    })
+
+    it('places the Recent group before Chat in keyboard index order', async () => {
+      useSearchModal().isModalOpen.value = true
+      mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+        chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+      }))
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+
+      expect(ids[0]).toBe('search-option-recent-recent-1')
+      expect(ids.indexOf('search-option-recent-recent-1'))
+        .toBeLessThan(ids.indexOf('search-option-history'))
+    })
+
+    it(
+      'keeps recentChats after the dialog closes (stale-while-revalidate)',
+      async () => {
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        await wrapper.find('dialog').trigger('close')
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+      },
+    )
+
+    it(
+      'clears recentChats when loggedIn transitions from true to false (cross-user leak fix)',
+      async () => {
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        loggedIn.value = false
+        await nextTick()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(false)
+      },
+    )
+
+    it(
+      'does not clear recentChats on the rising edge (fresh login)',
+      async () => {
+        loggedIn.value = false
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValue(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        loggedIn.value = true
+        await nextTick()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+      },
+    )
+
+    it(
+      'keeps previously fetched recentChats when a background refresh fails',
+      async () => {
+        useSearchModal().isModalOpen.value = true
+        mocks.fetchMock.mockResolvedValueOnce(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'recent-1', slug: 'recent-1' })],
+        }))
+
+        const wrapper = await mountModal()
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+
+        mocks.fetchMock.mockRejectedValueOnce(new Error('network error'))
+
+        useSearchModal().isModalOpen.value = false
+        await nextTick()
+        useSearchModal().isModalOpen.value = true
+        await waitForRecentChatsFetch()
+
+        expect(wrapper.find('#search-option-recent-recent-1').exists())
+          .toBe(true)
+      },
+    )
   })
 })

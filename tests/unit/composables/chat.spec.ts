@@ -14,6 +14,7 @@ import {
   shouldForceGenericLoadingIndicator,
   shouldShowGenericLoadingIndicator,
   shouldNotifyGenerationReadyWhileHidden,
+  shouldRecoverGeneration,
   shouldRecoverInterruptedGeneration,
   shouldSurfaceChatError,
   shouldSurfaceEmptyAssistantResponse,
@@ -768,5 +769,59 @@ describe('chat error helpers', () => {
 
   it('blocks recovery when both a deep-research model and a job are present', () => {
     expect(shouldBlockGenerationRecovery(true, true)).toBe(true)
+  })
+
+  it('does not recover a chat reduced to a single assistant message — the bug case', () => {
+    // Only reachable via single-message delete: the user deletes the first
+    // user message, leaving the AI's reply as the sole message. Regressing
+    // this would resolve messageIndex to 0 in ai@7's regenerate(), slicing
+    // the message array to [] and sending an invalid request body.
+    const messages: UIMessage[] = [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverGeneration(messages)).toBe(false)
+  })
+
+  it('recovers a fresh single-message chat with only an unanswered user prompt', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverGeneration(messages)).toBe(true)
+  })
+
+  it('recovers when the last message in a longer history is a user turn', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Hi there' }],
+      } as UIMessage,
+      {
+        id: 'user-2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Follow-up' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverGeneration(messages)).toBe(true)
+  })
+
+  it('does not recover an empty message list', () => {
+    expect(shouldRecoverGeneration([])).toBe(false)
   })
 })

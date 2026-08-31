@@ -196,7 +196,9 @@
       :info="selectedMessageInfo"
       :pointer="selectedPointer"
       :copy-text="selectedMessageCopyText"
+      :show-delete="canDeleteSelectedMessage"
       @branch="branchFromMessage"
+      @delete="deleteMessage"
       @close="clearMessageSelection"
     />
   </ClientOnly>
@@ -773,6 +775,44 @@ if (import.meta.client) {
 
     delete testWindow.__besidkaChatTest
   })
+}
+
+const canDeleteSelectedMessage = computed<boolean>(() => {
+  return !['submitted', 'streaming'].includes(chatSdk.status)
+    && chatSdk.messages.length > 1
+})
+
+async function deleteMessage(messageId: string) {
+  const result = await useConfirm({
+    text: 'Delete this message?',
+    subtitle: 'This message will be permanently removed. This cannot be '
+      + 'undone.',
+    actions: ['Delete'],
+    labelDecline: 'Cancel',
+    alert: true,
+  })
+
+  if (!result) {
+    return
+  }
+
+  try {
+    await $fetch(
+      `/api/v1/chats/${route.params.slug}/messages/${messageId}`,
+      { method: 'delete' },
+    )
+
+    chatSdk.messages = chatSdk.messages.filter((message) => {
+      return message.id !== messageId
+    })
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to delete message.',
+      parsedException.why,
+    )
+  }
 }
 
 const branchPending = shallowRef(false)

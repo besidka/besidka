@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -39,6 +40,14 @@ export default defineEventHandler(async (event) => {
     columns: {
       projectId: true,
     },
+  })
+
+  await removeChatsFromSearchIndex({
+    db,
+    userId,
+    chatIds: body.data.chatIds,
+    logger,
+    stage: 'chat-delete-bulk',
   })
 
   await db.delete(schema.chats)
