@@ -44,6 +44,12 @@ For the unblocker branch:
 - `app/components/History/RenameModal.vue`
 - `app/components/History/ProjectNameModal.vue`
 - `app/components/ChatInput/Files/Modal/Select/RenameModal.vue`
+- `app/components/Search/Modal.client.vue` (Cmd/Ctrl+K search modal; see
+  "Search modal (Cmd/Ctrl+K)" section below — investigated on
+  `feat/improved-search-by-chats-with-content`, separately from the tracks
+  above, because it has a placement/content shape this doc hadn't covered yet:
+  a variable-height list under a fixed input, opened from the sidebar on
+  mobile)
 
 ## Repo evidence
 
@@ -245,6 +251,116 @@ Conclusion:
   shell
 - do not optimize only one page variant and assume the other is solved
 
+## Search modal (Cmd/Ctrl+K)
+
+Investigated on `feat/improved-search-by-chats-with-content` (PR #376), as a
+narrower, separate track from the chat-input/sidebar work above. Reported by
+the account owner via real-device screenshots (iPhone, PWA and Safari tab),
+tested across three placement attempts in sequence. This section exists so a
+future session/branch can resume from real evidence instead of re-deriving it.
+
+### Attempt 1 — `modal-bottom sm:modal-middle` (pre-existing default), input autofocused on open
+
+- Baseline daisyUI bottom-sheet placement, matching every other mobile modal
+  in the app at the time.
+- The modal's own input was autofocused via `.focus()` immediately after
+  `dialog.showModal()` (no async gap before the call — consistent with the
+  "Confirmed implementation constraint" section below).
+- Real-device result (screenshots): the keyboard opened immediately on modal
+  open and covered the entire bottom-sheet modal. The user had to manually
+  scroll the page to reveal it.
+- Mechanism: iOS Safari does not resize the visual viewport when the keyboard
+  opens — it pans the *layout* viewport to keep the focused input in view.
+  `modal-bottom` pins the panel to the layout viewport's bottom edge, so that
+  pan pushes the whole modal off-screen. This is the same root behavior
+  described in "Working hypothesis" above (missing `visualViewport`
+  correction), observed here on a bottom-sheet modal specifically rather than
+  the chat composer.
+
+### Attempt 2 — `modal-top sm:modal-middle`, autofocus skipped on coarse pointers
+
+- Two changes together: (a) placement moved to the top of the layout
+  viewport, so Safari's focus-pan becomes a no-op (the input is already where
+  the pan would move it to); (b) on `matchMedia('(pointer: coarse)')`
+  devices, the initial `.focus()` call was skipped in favor of focusing the
+  modal panel (`tabindex="-1"`), so the keyboard no longer opens
+  automatically on modal open at all — it only opens once the user
+  deliberately taps the input.
+- User feedback: disliked the top placement visually, and pointed out that
+  since (b) alone already stops the keyboard from opening on modal open,
+  (a)'s specific mechanism (pan-becomes-a-no-op) was never actually being
+  exercised in practice — the keyboard just wasn't opening yet at that point,
+  regardless of where the modal was anchored. Requested `modal-bottom`
+  restored.
+- Conclusion carried forward: skip-autofocus-on-coarse-pointer is the change
+  that actually matters for the "keyboard covers the modal on open" case: it
+  is placement-independent.
+
+### Attempt 3 — `modal-bottom sm:modal-middle` restored, autofocus skip kept
+
+- With autofocus-on-open removed, initial appearance was confirmed fine on
+  real device (no keyboard, no overlap) — the user's own screenshot showed
+  the modal fully visible with the results list at rest.
+- **New finding, not previously documented anywhere in this doc set**: once
+  the user manually taps the input and starts typing, the modal's *content*
+  shrinks vertically (the results list re-renders shorter as query results
+  narrow), which changes the modal's own height. At that point the keyboard
+  overlap reappeared — the same visual symptom as Attempt 1, but triggered by
+  a live height change during an already-open keyboard, not by the initial
+  open. The user had to manually scroll again to see the modal.
+- This is a distinct mechanism from Attempts 1/2: it is not about the
+  keyboard opening and panning the viewport once, it is about a
+  variable-height modal box interacting with an already-open keyboard as its
+  own content reflows. None of the existing "Working hypothesis" or
+  "Confirmed implementation constraint" notes in this doc cover a
+  content-driven height change as a trigger — every other affected surface in
+  this doc (composer, small edit dialogs) has comparatively stable geometry
+  once open.
+
+### Attempt 4 — `modal-middle` (current shipped state)
+
+- Dropped the bottom/top placement split entirely in favor of daisyUI's
+  centered placement at all breakpoints, autofocus skip unchanged.
+- User's own on-device verdict (2026-08-31): keeping this for now. Explicitly
+  requested this document be updated with the full decision trail and a new
+  session/branch opened to continue investigating properly, rather than
+  iterating further placement guesses in this PR.
+
+### Decision record
+
+- **Shipped**: `modal-middle`, all breakpoints, autofocus skipped on coarse
+  pointers. Accepted as the interim state, not treated as solved.
+- **Rejected**: `modal-top` — technically sound for the open-time pan
+  mechanism, but the user found it visually undesirable and, since the
+  autofocus skip already prevents that specific failure mode, it added
+  placement risk without addressing the *actual* remaining failure (the
+  height-shrink-while-typing case), which no placement choice fixes on its
+  own.
+- **Explicitly not investigated in this PR**: `visualViewport`-driven dynamic
+  height clamping/repositioning while the modal is open and the keyboard is
+  already visible. This doc's own "New real-device findings" section above
+  (bottom-sheet gap, modal jump on manual scroll) already warns that raw,
+  live `visualViewport` metrics fed directly into modal geometry caused
+  regressions elsewhere in this codebase (composer jump, sheet-filler
+  breakage) — any follow-up here should read those findings first rather
+  than re-attempting a naive live-metrics approach.
+
+### Suggested starting point for the next session
+
+- Reproduce Attempt 3's exact failure (type into the search modal with the
+  keyboard already open, on a real iPhone) with the Stage 1 instrumentation
+  (`app/composables/device-keyboard.ts`, `--visual-viewport-height` etc.)
+  from the broader plan below, even though that instrumentation was rolled
+  back from the shipped app — it was built for exactly this class of
+  measurement.
+- Treat this as a case of "frozen inset after settle, not live scroll-driven
+  metrics" per the "Updated direction" section below, but note the settle
+  point itself moves here (content height changes independently of keyboard
+  animation), which the existing frozen-inset conclusion did not anticipate.
+- Decide whether this belongs on the modal track or deserves its own track,
+  given it is specific to variable-height modal content rather than any
+  bottom-sheet/keyboard-animation interaction already documented.
+
 ## Confirmed implementation constraint
 
 During real-device testing, an important iOS behavior was confirmed:
@@ -320,6 +436,10 @@ Each scenario should be repeated 10 times because the bug is intermittent.
 | 3d | Visual-only modal surface extension | Real device | No meaningful improvement | Not selected for unblocker branch |
 | 4 | Root shell refactor if needed | Deferred | Deferred | Next serious attempt should target shared chat layout |
 | 5 | Viewport meta experiments if needed | Pending | Pending | |
+| 6 | Search modal: `modal-bottom`, input autofocused on open | Real device (iPhone, PWA/Safari) | Failed | Keyboard opened on modal open, covered the whole sheet; see "Search modal" section |
+| 7 | Search modal: `modal-top`, autofocus skipped on coarse pointer | Real device (iPhone) | Rejected by user | Technically fixed the open-time pan, but disliked visually; autofocus skip alone already covers the open-time case |
+| 8 | Search modal: `modal-bottom` restored, autofocus skip kept | Real device (iPhone) | Failed (new failure mode) | Fine at rest; keyboard overlap reappears once typing shrinks the modal's own height — a content-driven trigger, not an open-time pan |
+| 9 | Search modal: `modal-middle`, autofocus skip kept | Real device (iPhone) | Shipped as interim state | User's own call after testing; not treated as solved — see "Suggested starting point for the next session" |
 
 ## Updated direction
 
@@ -352,3 +472,8 @@ But the current overlay implementation direction was wrong:
    `app/pages/chats/new.vue` and `app/pages/chats/[slug].vue`
 4. prioritize root-shell or overlay-layer refactor there instead of more modal
    experiments
+5. separately, resume the search-modal thread (see "Search modal (Cmd/Ctrl+K)"
+   above) in its own session/branch — shipped state is `modal-middle` as an
+   accepted interim, with the content-driven height-shrink failure mode still
+   unresolved and not yet attempted against any of the `visualViewport`
+   instrumentation this doc already describes
