@@ -91,6 +91,7 @@ export async function runMessageSearchSweepJob(
     logger.set({
       messageSearchSweepResult: {
         backfilledCount: result.backfilledCount,
+        emptyBodyBackfilledCount: result.emptyBodyBackfilledCount,
         garbageCollectedCount: result.garbageCollectedCount,
         hasMore: result.hasMore,
         runtimeMs: result.runtimeMs,

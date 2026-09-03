@@ -70,6 +70,27 @@ guarantee with far simpler failure semantics — a missed write or delete is
 invisible to users and self-heals within the hour, instead of failing (or
 silently corrupting) a user-facing request.
 
+**"Self-heals" only covers a missing row, not a wrong one.** The backfill
+anti-join (`where ms.rowid is null`) only ever looks at messages with no
+`message_search` row at all. Once a row exists — even with an empty or wrong
+`body` — it is permanently out of scope for every future sweep; there is no
+automatic repair path for a bad write that still counts as "indexed". This
+bit in production: `sweeper.ts` read `messages.parts` through a raw `sql`
+tagged template (`db.all(sql\`select ... m.parts as parts ...\`)`), which
+returns the driver's raw TEXT value instead of running it through Drizzle's
+`mode: 'json'` decoder — decoding only happens through the schema-aware query
+builder (`db.select().from(schema.messages)`), never for a raw column alias.
+`extractMessageSearchText()`'s `Array.isArray` guard silently turned that raw
+JSON string into an empty body, so the backfill inserted a real
+`message_search` row for every historical message with **zero indexed
+text** — `indexedCount` in the hourly log looked perfectly healthy the
+entire time. New messages were unaffected because their write path already
+holds the parsed `parts` in memory from the request. Fixed by parsing the
+raw string defensively in the sweeper before extraction; recovering
+already-broken rows in a deployed environment needs a one-time
+`DELETE FROM message_search WHERE length(body) = 0` **after** the fix ships,
+so the next sweep re-backfills them with real content.
+
 ## Ukrainian Stemmer
 
 `server/utils/search/ukrainian-stemmer.ts` is a vendored, de-minified

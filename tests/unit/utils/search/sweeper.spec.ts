@@ -91,12 +91,17 @@ describe('sweepMessageSearchIndex', () => {
     })
 
     expect(result.backfilledCount).toBe(2)
+    expect(result.emptyBodyBackfilledCount).toBe(0)
 
-    const indexedRowIds = testDb.sqlite.prepare(
-      'select rowid from message_search order by rowid asc',
-    ).all() as Array<{ rowid: number }>
+    const indexedRows = testDb.sqlite.prepare(
+      'select rowid, body from message_search order by rowid asc',
+    ).all() as Array<{ rowid: number, body: string }>
 
-    expect(indexedRowIds).toEqual([{ rowid: 1 }, { rowid: 2 }, { rowid: 3 }])
+    expect(indexedRows).toEqual([
+      { rowid: 1, body: 'first' },
+      { rowid: 2, body: 'second' },
+      { rowid: 3, body: 'third' },
+    ])
   })
 
   it('resets the cursor to 0 when a pass returns fewer than batchSize', async () => {

@@ -7,11 +7,13 @@ import {
   removeMessageRowsFromSearchIndex,
   type SearchIndexLogger,
 } from '~~/server/utils/search/index-writer'
+import { extractMessageSearchText } from '~~/server/utils/search/text'
 
 const SEARCH_INDEX_SWEEP_CURSOR_KEY = 'search-index:sweep-cursor'
 
 export interface MessageSearchSweepResult {
   backfilledCount: number
+  emptyBodyBackfilledCount: number
   garbageCollectedCount: number
   hasMore: boolean
   runtimeMs: number
@@ -41,6 +43,7 @@ export async function sweepMessageSearchIndex(input: {
   const db = input.db || useDb()
 
   let backfilledCount = 0
+  let emptyBodyBackfilledCount = 0
   let garbageCollectedCount = 0
   let hasMore = false
   let nextCursor = 0
@@ -86,20 +89,25 @@ export async function sweepMessageSearchIndex(input: {
         break
       }
 
+      const parsedMessages = userRows.map((row) => {
+        return {
+          id: encodePublicId(row.messageId),
+          parts: parseBackfillMessageParts(row.parts),
+        }
+      })
+
       const result = await indexMessagesForSearch({
         db,
         userId,
-        messages: userRows.map((row) => {
-          return {
-            id: encodePublicId(row.messageId),
-            parts: row.parts as UIMessage['parts'],
-          }
-        }),
+        messages: parsedMessages,
         logger: input.logger,
         stage: 'sweeper-backfill',
       })
 
       backfilledCount += result.indexedCount
+      emptyBodyBackfilledCount += parsedMessages.filter((message) => {
+        return !extractMessageSearchText(message.parts)
+      }).length
     }
 
     // A timed-out pass must NOT advance the cursor past rows it never
@@ -156,10 +164,34 @@ export async function sweepMessageSearchIndex(input: {
 
   return {
     backfilledCount,
+    emptyBodyBackfilledCount,
     garbageCollectedCount,
     hasMore,
     runtimeMs: Date.now() - startedAt,
     nextCursor,
+  }
+}
+
+/**
+ * `db.all(sql\`...\`)` returns the raw driver value for a `mode: 'json'`
+ * text column instead of running it through Drizzle's decoder, so `parts`
+ * arrives here as a JSON string rather than an already-parsed array.
+ */
+function parseBackfillMessageParts(parts: unknown): UIMessage['parts'] {
+  if (Array.isArray(parts)) {
+    return parts as UIMessage['parts']
+  }
+
+  if (typeof parts !== 'string') {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(parts)
+
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
   }
 }
 
