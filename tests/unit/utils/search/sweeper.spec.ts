@@ -104,7 +104,37 @@ describe('sweepMessageSearchIndex', () => {
     ])
   })
 
-  it('resets the cursor to 0 when a pass returns fewer than batchSize', async () => {
+  it('indexes a malformed non-JSON parts value as an empty body instead '
+    + 'of throwing', async () => {
+    testDb.insertChat({ id: 1, userId: 7 })
+    testDb.sqlite.prepare(
+      'insert into messages (id, chat_id, parts) values (?, ?, ?)',
+    ).run(1, 1, 'not-json')
+
+    const kv = createFakeKv()
+
+    vi.stubGlobal('useKV', () => kv)
+
+    const { sweepMessageSearchIndex } = await importSweeper()
+    const result = await sweepMessageSearchIndex({
+      batchSize: 10,
+      maxRuntimeMs: 20000,
+      logger,
+      db: testDb.db,
+    })
+
+    expect(result.backfilledCount).toBe(1)
+    expect(result.emptyBodyBackfilledCount).toBe(1)
+
+    const indexedRow = testDb.sqlite.prepare(
+      'select body from message_search where rowid = 1',
+    ).get() as { body: string }
+
+    expect(indexedRow.body).toBe('')
+  })
+
+  it('resets the cursor to 0 when a pass returns fewer than batchSize, '
+    + 'counting a legitimately empty message as an empty body', async () => {
     testDb.insertChat({ id: 1, userId: 7 })
     testDb.insertMessage({ id: 1, chatId: 1, parts: [] })
 
@@ -121,6 +151,7 @@ describe('sweepMessageSearchIndex', () => {
     })
 
     expect(result.nextCursor).toBe(0)
+    expect(result.emptyBodyBackfilledCount).toBe(1)
     expect(kv.put).toHaveBeenCalledWith('search-index:sweep-cursor', '0')
   })
 

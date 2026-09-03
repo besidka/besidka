@@ -88,8 +88,25 @@ entire time. New messages were unaffected because their write path already
 holds the parsed `parts` in memory from the request. Fixed by parsing the
 raw string defensively in the sweeper before extraction; recovering
 already-broken rows in a deployed environment needs a one-time
-`DELETE FROM message_search WHERE length(body) = 0` **after** the fix ships,
-so the next sweep re-backfills them with real content.
+`DELETE FROM message_search WHERE coalesce(length(body), 0) = 0` **after**
+the fix ships, so the next sweep re-backfills them with real content. That
+delete only gets re-picked up if the KV `search-index:sweep-cursor` is at (or
+resets to) `0` — the anti-join is `m.id > cursor`, so a cursor left above a
+deleted row's id would skip it until a later short pass wraps the cursor back
+to `0`. The sweeper's own `hasMore`/cursor-reset logic (see above) means this
+is already true once a full backfill pass has completed, but check the KV
+value before relying on it in a partially-backfilled environment. Recovery
+speed is bounded by `messageSearchSweepBatchSize` (200 by default) times one
+sweep per hour — thousands of deleted rows take on that order of hours to
+fully re-populate, not one cron tick.
+
+The sweep result's `emptyBodyBackfilledCount` (logged as part of
+`messageSearchSweepResult`) is **not** itself a failure signal — a
+tool-only assistant turn or a file-only user message legitimately extracts to
+an empty body, so this count is nonzero in every healthy sweep. What flagged
+the incident above is the *ratio*: `emptyBodyBackfilledCount` was
+approximately equal to `backfilledCount` (nearly every backfilled row was
+empty), not merely greater than zero.
 
 ## Ukrainian Stemmer
 
