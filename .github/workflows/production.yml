@@ -389,9 +389,11 @@ jobs:
           # A PR pushed more than once uploads multiple versions tagged
           # with the same alias; sort by creation time and take the
           # newest, since a merged PR must promote its latest commit.
+          # A missing created_on sorts first (oldest), never last, so it
+          # can never be mistaken for the newest version.
           VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${PR_NUMBER}" '
             [ .[] | select(.annotations."workers/alias" == $alias) ]
-            | sort_by(.metadata.created_on)
+            | sort_by(.metadata.created_on // "")
             | last
             | .id // empty
           ')
