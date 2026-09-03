@@ -386,11 +386,15 @@ jobs:
             exit 1
           }
 
+          # A PR pushed more than once uploads multiple versions tagged
+          # with the same alias; sort by creation time and take the
+          # newest, since a merged PR must promote its latest commit.
           VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${PR_NUMBER}" '
-            .[]
-            | select(.annotations."workers/alias" == $alias)
-            | .id
-          ' | head -n 1)
+            [ .[] | select(.annotations."workers/alias" == $alias) ]
+            | sort_by(.metadata.created_on)
+            | last
+            | .id // empty
+          ')
 
           if [ -z "$VERSION_ID" ]; then
             echo "No version found with alias pr-${PR_NUMBER}"
