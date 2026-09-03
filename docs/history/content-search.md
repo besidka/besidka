@@ -60,7 +60,13 @@ CREATE VIRTUAL TABLE message_search USING fts5(
   never-indexed messages; it does **not** re-process rows that already have
   an index entry. A future stemmer change would need a deliberate one-time
   re-index of already-indexed `body_stem` values — that does not happen
-  automatically.
+  automatically. `messageSearchSweepBatchSize` only sizes the sweeper's
+  read `LIMIT` and its in-memory per-user grouping — it is decoupled from
+  D1's ~100-bound-param-per-statement ceiling, because every write against
+  `message_search` is independently chunked at
+  `SEARCH_INDEX_ROWS_PER_STATEMENT`/`SEARCH_DELETE_IDS_PER_STATEMENT`
+  (`server/utils/search/index-writer.ts`) regardless of how large a batch
+  the sweep read. Raising the sweep batch size cannot hit that limit.
 
 Why standalone over content-table-with-triggers: triggers run in the same
 transaction as the write and add an extra layer of DB-side logic to reason
@@ -69,6 +75,44 @@ plus an hourly reconciling sweeper gives the same eventual consistency
 guarantee with far simpler failure semantics — a missed write or delete is
 invisible to users and self-heals within the hour, instead of failing (or
 silently corrupting) a user-facing request.
+
+**"Self-heals" only covers a missing row, not a wrong one.** The backfill
+anti-join (`where ms.rowid is null`) only ever looks at messages with no
+`message_search` row at all. Once a row exists — even with an empty or wrong
+`body` — it is permanently out of scope for every future sweep; there is no
+automatic repair path for a bad write that still counts as "indexed". This
+bit in production: `sweeper.ts` read `messages.parts` through a raw `sql`
+tagged template (`db.all(sql\`select ... m.parts as parts ...\`)`), which
+returns the driver's raw TEXT value instead of running it through Drizzle's
+`mode: 'json'` decoder — decoding only happens through the schema-aware query
+builder (`db.select().from(schema.messages)`), never for a raw column alias.
+`extractMessageSearchText()`'s `Array.isArray` guard silently turned that raw
+JSON string into an empty body, so the backfill inserted a real
+`message_search` row for every historical message with **zero indexed
+text** — `indexedCount` in the hourly log looked perfectly healthy the
+entire time. New messages were unaffected because their write path already
+holds the parsed `parts` in memory from the request. Fixed by parsing the
+raw string defensively in the sweeper before extraction; recovering
+already-broken rows in a deployed environment needs a one-time
+`DELETE FROM message_search WHERE coalesce(length(body), 0) = 0` **after**
+the fix ships, so the next sweep re-backfills them with real content. That
+delete only gets re-picked up if the KV `search-index:sweep-cursor` is at (or
+resets to) `0` — the anti-join is `m.id > cursor`, so a cursor left above a
+deleted row's id would skip it until a later short pass wraps the cursor back
+to `0`. The sweeper's own `hasMore`/cursor-reset logic (see above) means this
+is already true once a full backfill pass has completed, but check the KV
+value before relying on it in a partially-backfilled environment. Recovery
+speed is bounded by `messageSearchSweepBatchSize` (200 by default) times one
+sweep per hour — thousands of deleted rows take on that order of hours to
+fully re-populate, not one cron tick.
+
+The sweep result's `emptyBodyBackfilledCount` (logged as part of
+`messageSearchSweepResult`) is **not** itself a failure signal — a
+tool-only assistant turn or a file-only user message legitimately extracts to
+an empty body, so this count is nonzero in every healthy sweep. What flagged
+the incident above is the *ratio*: `emptyBodyBackfilledCount` was
+approximately equal to `backfilledCount` (nearly every backfilled row was
+empty), not merely greater than zero.
 
 ## Ukrainian Stemmer
 

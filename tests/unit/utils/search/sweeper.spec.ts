@@ -91,15 +91,50 @@ describe('sweepMessageSearchIndex', () => {
     })
 
     expect(result.backfilledCount).toBe(2)
+    expect(result.emptyBodyBackfilledCount).toBe(0)
 
-    const indexedRowIds = testDb.sqlite.prepare(
-      'select rowid from message_search order by rowid asc',
-    ).all() as Array<{ rowid: number }>
+    const indexedRows = testDb.sqlite.prepare(
+      'select rowid, body from message_search order by rowid asc',
+    ).all() as Array<{ rowid: number, body: string }>
 
-    expect(indexedRowIds).toEqual([{ rowid: 1 }, { rowid: 2 }, { rowid: 3 }])
+    expect(indexedRows).toEqual([
+      { rowid: 1, body: 'first' },
+      { rowid: 2, body: 'second' },
+      { rowid: 3, body: 'third' },
+    ])
   })
 
-  it('resets the cursor to 0 when a pass returns fewer than batchSize', async () => {
+  it('indexes a malformed non-JSON parts value as an empty body instead '
+    + 'of throwing', async () => {
+    testDb.insertChat({ id: 1, userId: 7 })
+    testDb.sqlite.prepare(
+      'insert into messages (id, chat_id, parts) values (?, ?, ?)',
+    ).run(1, 1, 'not-json')
+
+    const kv = createFakeKv()
+
+    vi.stubGlobal('useKV', () => kv)
+
+    const { sweepMessageSearchIndex } = await importSweeper()
+    const result = await sweepMessageSearchIndex({
+      batchSize: 10,
+      maxRuntimeMs: 20000,
+      logger,
+      db: testDb.db,
+    })
+
+    expect(result.backfilledCount).toBe(1)
+    expect(result.emptyBodyBackfilledCount).toBe(1)
+
+    const indexedRow = testDb.sqlite.prepare(
+      'select body from message_search where rowid = 1',
+    ).get() as { body: string }
+
+    expect(indexedRow.body).toBe('')
+  })
+
+  it('resets the cursor to 0 when a pass returns fewer than batchSize, '
+    + 'counting a legitimately empty message as an empty body', async () => {
     testDb.insertChat({ id: 1, userId: 7 })
     testDb.insertMessage({ id: 1, chatId: 1, parts: [] })
 
@@ -116,6 +151,7 @@ describe('sweepMessageSearchIndex', () => {
     })
 
     expect(result.nextCursor).toBe(0)
+    expect(result.emptyBodyBackfilledCount).toBe(1)
     expect(kv.put).toHaveBeenCalledWith('search-index:sweep-cursor', '0')
   })
 

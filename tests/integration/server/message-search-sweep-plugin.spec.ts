@@ -48,6 +48,7 @@ describe('message search index sweep plugin', () => {
     } as SweepLogger)
     const runSweep = vi.fn().mockResolvedValue({
       backfilledCount: 4,
+      emptyBodyBackfilledCount: 0,
       garbageCollectedCount: 1,
       hasMore: false,
       runtimeMs: 120,
@@ -85,6 +86,7 @@ describe('message search index sweep plugin', () => {
     expect(loggerSet).toHaveBeenCalledWith({
       messageSearchSweepResult: {
         backfilledCount: 4,
+        emptyBodyBackfilledCount: 0,
         garbageCollectedCount: 1,
         hasMore: false,
         runtimeMs: 120,
