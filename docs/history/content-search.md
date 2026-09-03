@@ -60,7 +60,13 @@ CREATE VIRTUAL TABLE message_search USING fts5(
   never-indexed messages; it does **not** re-process rows that already have
   an index entry. A future stemmer change would need a deliberate one-time
   re-index of already-indexed `body_stem` values — that does not happen
-  automatically.
+  automatically. `messageSearchSweepBatchSize` only sizes the sweeper's
+  read `LIMIT` and its in-memory per-user grouping — it is decoupled from
+  D1's ~100-bound-param-per-statement ceiling, because every write against
+  `message_search` is independently chunked at
+  `SEARCH_INDEX_ROWS_PER_STATEMENT`/`SEARCH_DELETE_IDS_PER_STATEMENT`
+  (`server/utils/search/index-writer.ts`) regardless of how large a batch
+  the sweep read. Raising the sweep batch size cannot hit that limit.
 
 Why standalone over content-table-with-triggers: triggers run in the same
 transaction as the write and add an extra layer of DB-side logic to reason
