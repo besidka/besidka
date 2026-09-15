@@ -111,6 +111,7 @@ describe('service worker activation', () => {
       }),
       delete: cacheDelete,
     })
+    vi.stubGlobal('self', { clients: { claim: vi.fn() } })
 
     const activateHandler = listeners.activate?.[0]
     let waitUntilPromise: Promise<unknown> | undefined
@@ -127,5 +128,28 @@ describe('service worker activation', () => {
     expect(cacheDelete).toHaveBeenCalledWith('workbox-precache-v1')
     expect(cacheDelete).toHaveBeenCalledWith('workbox-runtime')
     expect(cacheDelete).not.toHaveBeenCalledWith('other-cache')
+  })
+
+  it('claims uncontrolled clients on activate', async () => {
+    const clientsClaim = vi.fn()
+
+    vi.stubGlobal('caches', {
+      keys: vi.fn(async () => []),
+      delete: vi.fn(async () => true),
+    })
+    vi.stubGlobal('self', { clients: { claim: clientsClaim } })
+
+    const activateHandler = listeners.activate?.[0]
+    let waitUntilPromise: Promise<unknown> | undefined
+    const event = {
+      waitUntil: (promise: Promise<unknown>) => {
+        waitUntilPromise = promise
+      },
+    } as never
+
+    activateHandler?.(event)
+    await waitUntilPromise
+
+    expect(clientsClaim).toHaveBeenCalledTimes(1)
   })
 })

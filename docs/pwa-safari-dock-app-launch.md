@@ -1,8 +1,10 @@
 # macOS Safari Dock app launch bugs
 
-Two bugs on the installed macOS Safari Dock web app's launch: SW-served CSS
-not applying on first cold load (fixed, PR #373), and a stale-shell relaunch
-from WebKit's session-restore cache path (mitigated below).
+Three bugs on the installed macOS Safari Dock web app: SW-served CSS not
+applying on first cold load (fixed, PR #373), a stale-shell relaunch from
+WebKit's session-restore cache path (mitigated below), and the update-prompt
+banner reappearing/re-triggering across reloads and relaunches (mitigated
+below).
 
 ## Bug 1: SW-served CSS not applied on first load
 
@@ -185,6 +187,119 @@ existing header skips it entirely. Under `no-cache`, a revoked share on
 `/shared/**` may still be restored once from that device's bfcache until
 the next reload — identical to pre-#372 behaviour and to bfcache anywhere,
 and accepted deliberately.
+
+## Bug 3: refresh prompt reappears / re-triggers on relaunch
+
+### Symptom
+On both iOS Safari-installed and macOS Safari-installed ("Add to Dock") PWAs,
+the "The app has been updated. Please refresh it to see the latest changes."
+banner (`app/components/Pwa/Refresher.client.vue`, gated by `$pwa?.needRefresh`
+in `app/app.vue`) did not reliably clear on click. Clicking Refresh once
+often left the banner showing; a second click cleared it. Separately, fully
+quitting the installed app (⌘Q) and relaunching it re-showed the same banner
+even with no new deploy in between.
+
+### Root cause
+This app uses `@vite-pwa/nuxt` with `registerType` left at its default,
+`'prompt'` — a deliberate UX choice (manual banner + click-to-update, not
+`'autoUpdate'`). In `'prompt'` mode, `vite-plugin-pwa`'s client wrapper
+(`workbox-window` underneath) only posts `SKIP_WAITING` to the waiting worker
+when `updateServiceWorker(true)` is called; the actual page reload after
+activation is wired up internally via a `controllerchange` listener that the
+library re-registers every time a new `waiting` service worker is detected.
+
+This exact failure mode — a refresh prompt that survives one click and
+reappears on the next load with no new deploy — matches several **unresolved**
+upstream issues in vite-pwa/vite-plugin-pwa:
+[#282](https://github.com/vite-pwa/vite-plugin-pwa/issues/282)
+("onRegistered callback is called prompt again after reload in safari"),
+[#717](https://github.com/vite-pwa/vite-plugin-pwa/issues/717)
+("Prompt - Reload - not reloading"), and
+[#583](https://github.com/vite-pwa/vite-plugin-pwa/issues/583)
+("updateServiceWorker() not always working with multiple tabs"). There is no
+merged upstream fix for any of these. The accepted workaround, used here, is
+for the consuming app to own the reload itself via the raw
+`navigator.serviceWorker` API instead of trusting the library's internal
+reload wiring, which has known listener-leak and Safari `controllerchange`
+timing issues.
+
+### Fix
+`app/components/Pwa/Refresher.client.vue`'s Refresh button now drives its own
+reload instead of relying on `updateServiceWorker`'s internal wiring:
+1. A `controllerchange` listener is registered directly on
+   `navigator.serviceWorker` (`{ once: true }`) *before* calling
+   `updateServiceWorker`, so a fast activation can't race past it.
+2. A bounded ~4s fallback timer also triggers the reload if
+   `controllerchange` never fires, covering the cases the upstream issues
+   describe (Safari not firing the event reliably, or firing it before the
+   listener from a previous prompt cycle was cleaned up).
+3. Both paths funnel through a single `reloadOnce` guard so the page is never
+   reloaded twice, and a local `isRefreshing` flag (also disabling the button)
+   makes a second click while a refresh is already pending a no-op.
+4. `updateServiceWorker(true)` is still called — the `reloadPage` argument is
+   currently inert in this library version per the upstream issues above, but
+   passing it is harmless and future-proof if that changes.
+
+`app/service-worker/sw.ts`'s `activate` handler now also calls
+`self.clients.claim()` alongside `deleteLegacyCaches()`, and this is load-
+bearing, not just hygiene: activating a new worker does **not** by itself
+hand it control of a tab that was already open and controlled by the
+*previous* worker — that tab keeps its old controller until it reloads,
+navigates, or the new worker calls `clients.claim()`. `workbox-window`'s own
+source confirms this (`node_modules/workbox-window/Workbox.js`, the dev-only
+warning logged on the `'activated'` state: *"The registered service worker
+is active but not yet controlling the page. Reload or run `clients.claim()`
+in the service worker."*), matching MDN's `Clients.claim()` documentation.
+Without it, the already-open tab showing the banner would never see
+`controllerchange` fire from the fast path above — every refresh would
+silently degrade to the ~4s fallback timer instead. With it, `clients.claim()`
+takes over the open tab immediately on activation, so the fast
+`controllerchange` path (step 1 above) actually fires. The worker is
+currently push-only (no `fetch`/`respondWith` handler — see Bug 1), so
+`clients.claim()` taking control immediately has no effect on resource
+loading today; if a `fetch` handler is ever reintroduced, revisit this,
+since `clients.claim()` would then make the worker start intercepting the
+*current* page's in-flight requests immediately rather than after the next
+navigation.
+
+### Investigated and ruled out
+- **`/sw.js` edge caching.** Repeated `curl -I` against production showed a
+  consistent `cache-control: public, max-age=0, must-revalidate` —
+  Cloudflare's safe default for a non-hashed static asset, and not
+  implicated. `run_worker_first` is not set in `wrangler.jsonc`, so a Nitro
+  `routeRules` header override for `/sw.js` would be a no-op anyway (it's
+  asset-served directly, never reaching the Nitro pipeline) — not added.
+- **`periodicSyncForUpdates` unit.** `client.periodicSyncForUpdates: 60 * 5`
+  in `nuxt.config.ts` is correctly interpreted as seconds (5 minutes) by
+  `@vite-pwa/nuxt@1.1.1` — confirmed, not a bug, left untouched.
+- **A duplicate `navigator.serviceWorker.register()` call.**
+  `app/composables/push-notifications.ts` and
+  `app/plugins/push-navigation.client.ts` were both checked — neither
+  registers a service worker; there is exactly one registration path, owned
+  by `@vite-pwa/nuxt`.
+
+### Caveat
+This is a downstream workaround for an unresolved upstream library bug, not a
+root-cause fix inside `vite-plugin-pwa`/`workbox-window` itself. If those
+projects ship a fix for #282/#717/#583, this component's manual reload
+wiring becomes redundant (but still correct/harmless) rather than required —
+re-evaluate removing it against the fixed library version, don't assume it's
+safe to drop preemptively.
+
+### Web Inspector verification checklist
+1. Deploy a build that changes the service worker's bytes (any change to
+   `app/service-worker/**` or a new `buildId`); load the installed Dock app
+   once so it registers the new worker as *waiting*.
+2. The Refresher banner should appear once. Click Refresh once — the page
+   should reload and the banner should not reappear afterward on that same
+   session.
+3. Web Inspector → Console: `navigator.serviceWorker.controller.scriptURL`
+   should point at the newly deployed worker's URL immediately after the
+   reload from step 2.
+4. Fully quit the Dock app (⌘Q) and relaunch it. With no new deploy since
+   step 2, the banner must **not** reappear.
+5. Repeat steps 1–4 across a real deploy boundary: the banner should appear
+   at most once per actual deploy, and always clear in exactly one click.
 
 ## Deliberately not done: caching through the service worker
 
