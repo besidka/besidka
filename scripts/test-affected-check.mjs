@@ -104,6 +104,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/merge.spec.ts',
     'tests/unit/providers/anthropic.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
+    'tests/unit/scripts/detect-model-successors.spec.ts',
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     ...modelsTriggerTests,
@@ -351,7 +352,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(providers\/(index|merge|google|openai|anthropic)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
+        /^(providers\/(index|merge|google|openai|anthropic)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models|detect-model-successors|propose-model-successors|models-dev-catalog)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
     },
     {
