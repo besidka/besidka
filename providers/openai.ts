@@ -186,6 +186,120 @@ export default {
       },
     },
     {
+      id: 'o3',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gpt-4.1',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+    },
+    {
+      id: 'gpt-4.1-mini',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+    },
+    {
+      id: 'gpt-4o',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+    },
+    {
+      id: 'gpt-4o-mini',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+    },
+    {
+      id: 'o4-mini',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gpt-4.1-nano',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+    },
+    {
+      id: 'o3-mini',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'o1',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gpt-4-turbo',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: [],
+    },
+    {
+      id: 'gpt-4',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: [],
+    },
+    {
+      id: 'gpt-3.5-turbo',
+      status: 'deprecated',
+      retiredAt: '2026-10-23',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: [],
+    },
+    {
       id: 'gpt-image-2',
       name: 'GPT Image 2',
       price: {

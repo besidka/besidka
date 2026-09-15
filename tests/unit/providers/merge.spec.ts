@@ -510,4 +510,14 @@ describe('merged catalog', () => {
       }
     }
   })
+
+  it('marks every retiredAt date in valid YYYY-MM-DD format', () => {
+    for (const provider of providers) {
+      for (const model of provider.models) {
+        if ('retiredAt' in model) {
+          expect(model.retiredAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        }
+      }
+    }
+  })
 })

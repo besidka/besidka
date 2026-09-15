@@ -39,7 +39,7 @@ export default {
       },
     },
     {
-      id: 'gemini-3.6-flash',
+      id: 'gemini-3.8-flash',
       price: {
         tokens: 1_000_000,
       },
@@ -51,6 +51,17 @@ export default {
     },
     {
       id: 'gemini-3.7-flash',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gemini-3.6-flash',
       price: {
         tokens: 1_000_000,
       },

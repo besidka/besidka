@@ -35,12 +35,11 @@ import {
   formatDeprecatedCuratedModelsWarning,
   formatUncuratedModelsReport,
 } from './audit-curated-models.mjs'
+import { fetchCatalog } from './models-dev-catalog.mjs'
 import anthropic from '../providers/anthropic.ts'
 import google from '../providers/google.ts'
 import openai from '../providers/openai.ts'
 
-const CATALOG_URL = 'https://models.dev/api.json'
-const FETCH_TIMEOUT_MS = 60_000
 const SNAPSHOT_PATH = fileURLToPath(
   new URL('../providers/data/models-dev-snapshot.json', import.meta.url),
 )
@@ -169,26 +168,6 @@ console.log(formatUncuratedModelsReport(
     }
   }),
 ))
-
-async function fetchCatalog() {
-  try {
-    const response = await fetch(CATALOG_URL, {
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    })
-
-    if (!response.ok) {
-      console.error(
-        `${CATALOG_URL} responded ${response.status} ${response.statusText}`,
-      )
-      process.exit(1)
-    }
-
-    return await response.json()
-  } catch (exception) {
-    console.error(`Could not fetch ${CATALOG_URL}: ${exception.message}`)
-    process.exit(1)
-  }
-}
 
 function toSnapshotEntry(model) {
   const hasRequiredFields = typeof model.name === 'string'
