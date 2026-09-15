@@ -370,6 +370,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
     },
     {
+      pattern: /^app\/components\/Pwa\/Refresher\.client\.vue$/,
+      tests: ['tests/unit/components/Pwa/Refresher.spec.ts'],
+    },
+    {
       pattern: modelsTriggerPattern,
       tests: modelsTriggerTests,
     },

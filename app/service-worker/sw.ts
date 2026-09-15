@@ -22,7 +22,7 @@ self.addEventListener('message', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(deleteLegacyCaches())
+  event.waitUntil(Promise.all([deleteLegacyCaches(), self.clients.claim()]))
 })
 
 async function deleteLegacyCaches(): Promise<void> {
