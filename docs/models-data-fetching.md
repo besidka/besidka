@@ -196,7 +196,9 @@ the report). It fetches the catalog via the shared `fetchCatalog()` in
 and — outside dry-run, when there's at least one proposal — renders each
 one with `renderCuratedEntry()` and splices it into the right
 `providers/*.ts` file with `insertCuratedEntry()`, which always inserts
-immediately after an existing sibling model's closing brace. All files are
+immediately before its template's opening brace — the curated files are
+newest-first, and a successor is by definition newer than the template it
+extends, so it belongs ahead of it in the array. All files are
 built in memory first; if any insertion fails, nothing is written and the
 process exits non-zero. `scripts/detect-model-successors.mjs` is covered by
 `tests/unit/scripts/detect-model-successors.spec.ts`, kept side-effect-free

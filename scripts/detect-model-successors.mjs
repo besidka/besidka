@@ -81,8 +81,15 @@ export function isProposableTemplate(model) {
  * image-generation model (the true last array element of both
  * providers/openai.ts and providers/google.ts today, e.g. `gpt-image-2`,
  * pinned by tests/unit/utils/model.spec.ts with `.at(-1)`) from ever being
- * chosen as insertCuratedEntry's insertion anchor, since a successor is
- * always spliced in immediately after its template's closing brace.
+ * chosen as insertCuratedEntry's insertion anchor. That guarantee is what
+ * keeps the array's tail invariant intact regardless of which side of the
+ * anchor insertCuratedEntry splices into: inserting immediately before an
+ * anchor can only push the true last element (`.at(-1)`) further from the
+ * end if the anchor itself is that last element, and an image-generation
+ * model — the actual last element in both curated files today — can never
+ * be an anchor. The curated files are newest-first, so a successor — being
+ * newer than its template — is spliced in immediately before the template,
+ * never after.
  */
 function buildFamilyTemplates(provider) {
   const templatesByFamily = new Map()
@@ -382,13 +389,15 @@ export function renderCuratedEntry({ id, template }) {
 }
 
 /**
- * Splices a new curated-model block into `sourceText` immediately after the
- * closing brace of the existing sibling model whose `id: '<templateId>',`
- * line matches exactly. Throws if that id is missing or ambiguous in the
- * source, or if the sibling's closing brace can't be found before the next
- * model's opening brace. Purely a text-splicing operation — it has no
- * knowledge of families or which ids are safe to use as `templateId`; that
- * eligibility is decided by buildFamilyTemplates before this is called.
+ * Splices a new curated-model block into `sourceText` immediately before the
+ * opening brace of the existing sibling model whose `id: '<templateId>',`
+ * line matches exactly — the curated files are newest-first, and a
+ * successor is always newer than its template, so it belongs ahead of it in
+ * the array. Throws if that id is missing or ambiguous in the source, or if
+ * the sibling's opening brace can't be found before the start of the file.
+ * Purely a text-splicing operation — it has no knowledge of families or
+ * which ids are safe to use as `templateId`; that eligibility is decided by
+ * buildFamilyTemplates before this is called.
  */
 export function insertCuratedEntry(sourceText, templateId, entryText) {
   const lines = sourceText.split('\n')
@@ -413,30 +422,30 @@ export function insertCuratedEntry(sourceText, templateId, entryText) {
   }
 
   const idLineIndex = matchingIndexes[0]
-  let closingBraceIndex = -1
+  let openingBraceIndex = -1
 
-  for (let index = idLineIndex + 1; index < lines.length; index++) {
-    if (lines[index] === '    {') {
+  for (let index = idLineIndex - 1; index >= 0; index--) {
+    if (lines[index] === '    },') {
       throw new Error(
-        `Reached the next model's opening brace before finding the `
-        + `closing brace for "${templateId}".`,
+        `Reached the previous model's closing brace before finding the `
+        + `opening brace for "${templateId}".`,
       )
     }
 
-    if (lines[index] === '    },') {
-      closingBraceIndex = index
+    if (lines[index] === '    {') {
+      openingBraceIndex = index
 
       break
     }
   }
 
-  if (closingBraceIndex === -1) {
+  if (openingBraceIndex === -1) {
     throw new Error(
-      `Could not find the closing brace for curated model "${templateId}".`,
+      `Could not find the opening brace for curated model "${templateId}".`,
     )
   }
 
-  lines.splice(closingBraceIndex + 1, 0, entryText)
+  lines.splice(openingBraceIndex, 0, entryText)
 
   return lines.join('\n')
 }

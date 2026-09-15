@@ -103,6 +103,7 @@ export function getAffectedTests(changedFiles) {
   const modelCatalogTests = [
     'tests/unit/providers/merge.spec.ts',
     'tests/unit/providers/anthropic.spec.ts',
+    'tests/unit/providers/ordering.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/scripts/detect-model-successors.spec.ts',
     'tests/unit/utils/model.spec.ts',

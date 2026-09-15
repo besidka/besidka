@@ -689,19 +689,19 @@ describe('insertCuratedEntry', () => {
       id: 'gpt-5.1',
     },`
 
-  it('inserts after the target sibling and before the next model', () => {
+  it('inserts before the target sibling when it is the first model', () => {
     const expected = `export default {
   id: 'demo',
   models: [
+    {
+      id: 'gpt-5.1',
+    },
     {
       id: 'gpt-5',
       price: {
         tokens: 1_000_000,
       },
       tools: ['web_search'],
-    },
-    {
-      id: 'gpt-5.1',
     },
     {
       id: 'gpt-5-mini',
@@ -764,12 +764,12 @@ describe('insertCuratedEntry', () => {
     const insertedIndex = result.indexOf(entryText)
     const gpt5MiniIndex = result.indexOf('id: \'gpt-5-mini\',')
 
-    expect(gpt5Index).toBeGreaterThanOrEqual(0)
-    expect(insertedIndex).toBeGreaterThan(gpt5Index)
+    expect(insertedIndex).toBeGreaterThanOrEqual(0)
+    expect(insertedIndex).toBeLessThan(gpt5Index)
     expect(insertedIndex).toBeLessThan(gpt5MiniIndex)
   })
 
-  it('inserts after the last model and preserves the trailing bracket', () => {
+  it('inserts before the last model without disturbing its tail position', () => {
     const expected = `export default {
   id: 'demo',
   models: [
@@ -788,6 +788,9 @@ describe('insertCuratedEntry', () => {
       tools: ['web_search'],
     },
     {
+      id: 'gpt-5.1',
+    },
+    {
       id: 'gpt-image-2',
       price: {
         tokens: 1,
@@ -795,14 +798,24 @@ describe('insertCuratedEntry', () => {
       },
       tools: [],
     },
-    {
-      id: 'gpt-5.1',
-    },
   ],
 } satisfies CuratedProvider`
 
-    expect(insertCuratedEntry(fixtureSource, 'gpt-image-2', entryText))
-      .toBe(expected)
+    const result = insertCuratedEntry(fixtureSource, 'gpt-image-2', entryText)
+
+    expect(result).toBe(expected)
+    expect(result.trimEnd().endsWith(
+      `    {
+      id: 'gpt-image-2',
+      price: {
+        tokens: 1,
+        display: '$0.04 / image',
+      },
+      tools: [],
+    },
+  ],
+} satisfies CuratedProvider`,
+    )).toBe(true)
   })
 })
 
