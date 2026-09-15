@@ -53,6 +53,68 @@ jobs:
           echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
           exit 0
 
+      # First of two local commits that become this week's refresh PR. Made
+      # directly with git (not left uncommitted for create-pull-request to
+      # pick up) so the successor-proposal commit below can follow it as a
+      # separate, reviewable commit in the same PR.
+      - name: Commit snapshot refresh
+        if: steps.fetch.outputs.exit_code == '0'
+        id: commit-snapshot
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain providers/data/models-dev-snapshot.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add providers/data/models-dev-snapshot.json
+            git commit -m "chore(models): refresh models.dev metadata snapshot"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same-family successor detection (docs/models-data-fetching.md). The
+      # script writes proposed_count/proposed_ids/flagged_count/commit_subject
+      # to $GITHUB_OUTPUT itself. Never auto-merges anything — a proposal is
+      # only ever a second commit for a human to review in this PR.
+      - name: Propose same-family successors
+        if: steps.fetch.outputs.exit_code == '0'
+        id: successors
+        shell: bash
+        run: node scripts/propose-model-successors.mjs
+
+      # Newly curated ids need their own snapshot entry, or the next
+      # models:fetch would hard-fail on them as missing. Overwriting
+      # models-fetch.log here is fine — the post-proposal report is what
+      # should end up in the PR body.
+      - name: Refresh snapshot for proposed models
+        if: steps.fetch.outputs.exit_code == '0' && steps.successors.outputs.proposed_count != '0'
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm run models:fetch 2>&1 | tee "$RUNNER_TEMP/models-fetch.log"
+
+      # Gate before anything proposed gets committed or PR'd. The drift-check
+      # PR gets no pull_request-triggered CI (preview-build.yml doesn't fire
+      # for PRs opened via github.token), so this is the only validation a
+      # proposed curation gets before a human looks at the diff.
+      - name: Validate proposed curation
+        if: steps.fetch.outputs.exit_code == '0' && steps.successors.outputs.proposed_count != '0'
+        run: |
+          pnpm run lint
+          pnpm run typecheck
+          pnpm exec vitest run tests/unit/providers tests/unit/scripts tests/unit/utils/model.spec.ts tests/unit/utils/cost-map.spec.ts tests/unit/utils/models-picker.spec.ts tests/unit/components/ChatInput/ModelsTrigger.spec.ts tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts
+
+      - name: Commit proposed curation
+        if: steps.fetch.outputs.exit_code == '0' && steps.successors.outputs.proposed_count != '0'
+        shell: bash
+        env:
+          COMMIT_SUBJECT: ${{ steps.successors.outputs.commit_subject }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add providers/*.ts providers/data/models-dev-snapshot.json
+          git commit -m "$COMMIT_SUBJECT"
+
       - name: Write fetch log to job summary
         if: always()
         shell: bash
@@ -65,11 +127,28 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+          if [ -f "$RUNNER_TEMP/successors.log" ]; then
+            {
+              echo ""
+              echo "## propose-model-successors.mjs output"
+              echo ""
+              echo '```'
+              cat "$RUNNER_TEMP/successors.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # A purely-upstream-side new release used to produce NO snapshot diff
+      # and therefore no PR at all. Treating a successor proposal as its own
+      # "changed" signal closes that gap.
       - name: Check for snapshot changes
         if: steps.fetch.outputs.exit_code == '0'
         id: diff
+        env:
+          SNAPSHOT_COMMITTED: ${{ steps.commit-snapshot.outputs.committed }}
+          PROPOSED_COUNT: ${{ steps.successors.outputs.proposed_count }}
         run: |
-          if [ -n "$(git status --porcelain providers/data/models-dev-snapshot.json)" ]; then
+          if [ "$SNAPSHOT_COMMITTED" == "true" ] || [ "$PROPOSED_COUNT" != "0" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -77,6 +156,8 @@ jobs:
 
       - name: Build pull request body
         if: steps.fetch.outputs.exit_code == '0' && steps.diff.outputs.changed == 'true'
+        env:
+          PROPOSED_COUNT: ${{ steps.successors.outputs.proposed_count }}
         run: |
           {
             echo "Automated weekly refresh of"
@@ -91,15 +172,49 @@ jobs:
             echo '```'
           } > "$RUNNER_TEMP/pr-body.md"
 
+          if [ "$PROPOSED_COUNT" != "0" ]; then
+            {
+              echo ""
+              echo "## Same-family successors proposed"
+              echo ""
+              echo "Output from \`scripts/propose-model-successors.mjs\`:"
+              echo ""
+              echo '```'
+              cat "$RUNNER_TEMP/successors.log"
+              echo '```'
+              echo ""
+              echo "Reviewer checklist:"
+              echo "- Verify the proposed model's capability flags (web"
+              echo "  search, image generation, reasoning) against the"
+              echo "  provider's own docs — the detector only mechanically"
+              echo "  copies its template's flags."
+              echo "- If satisfied, no action needed — merging this PR"
+              echo "  curates the model."
+              echo "- If rejecting a proposal, add its id to \`DECLINED_IDS\`"
+              echo "  in \`scripts/detect-model-successors.mjs\` so it stops"
+              echo "  being re-proposed weekly."
+              echo "- Price-tier-flagged ids and \"needs a human\" families"
+              echo "  in the log above are informational only, never"
+              echo "  auto-proposed."
+            } >> "$RUNNER_TEMP/pr-body.md"
+          fi
+
+      # The working tree already has 1-2 local commits by this point (the
+      # snapshot refresh, and optionally the proposed curation), so there is
+      # nothing left uncommitted for this action to stage itself — it picks
+      # up commits already made during the workflow and pushes them to the
+      # PR branch. add-paths is deliberately omitted: with it set, any
+      # change outside the listed paths gets stashed and restored rather
+      # than included, which would silently drop the already-committed
+      # providers/*.ts changes.
       - name: Open pull request
         if: steps.fetch.outputs.exit_code == '0' && steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
-          commit-message: "chore(models): refresh models.dev metadata snapshot"
-          title: "chore(models): refresh models.dev metadata snapshot"
+          commit-message: "${{ steps.successors.outputs.proposed_count != '0' && 'chore(models): refresh snapshot and propose successors' || 'chore(models): refresh models.dev metadata snapshot' }}"
+          title: "${{ steps.successors.outputs.proposed_count != '0' && 'chore(models): refresh snapshot and propose successors' || 'chore(models): refresh models.dev metadata snapshot' }}"
           body-path: ${{ runner.temp }}/pr-body.md
           branch: chore/models-metadata-drift
-          add-paths: providers/data/models-dev-snapshot.json
           labels: dependencies
 
       # Failure path: a curated model id is missing or incomplete on
@@ -166,9 +281,10 @@ jobs:
           fi
 
       # Catch-all: fetch exited 0 but a later step failed (pull request
-      # creation, diff). Opens-or-comments a distinctly marked
-      # tracking issue instead of leaving a silent red X. Disjoint from the
-      # fetch-failure path above, which gates on exit_code != '0'.
+      # creation, diff, or the successor-proposal validation gate). Opens-or-
+      # comments a distinctly marked tracking issue instead of leaving a
+      # silent red X. Disjoint from the fetch-failure path above, which
+      # gates on exit_code != '0'.
       - name: Open or update workflow failure issue
         if: failure() && steps.fetch.outputs.exit_code == '0'
         shell: bash
@@ -185,7 +301,10 @@ jobs:
             echo ""
             echo "A \`models-metadata-drift\` workflow step failed **after**"
             echo "\`models:fetch\` exited successfully (exit code 0) — likely"
-            echo "the refresh-pull-request step. Check the run logs:"
+            echo "the refresh-pull-request step, or the successor-proposal"
+            echo "validation gate (lint/typecheck/targeted vitest) that runs"
+            echo "when a same-family successor was proposed. Check the run"
+            echo "logs:"
             echo ""
             echo "Workflow run: $RUN_URL"
             echo ""
@@ -220,6 +339,8 @@ jobs:
 
       - name: Fail job when models:fetch failed
         if: steps.fetch.outputs.exit_code != '0'
+        env:
+          EXIT_CODE: ${{ steps.fetch.outputs.exit_code }}
         run: |
-          echo "models:fetch exited ${{ steps.fetch.outputs.exit_code }}"
+          echo "models:fetch exited $EXIT_CODE"
           exit 1
