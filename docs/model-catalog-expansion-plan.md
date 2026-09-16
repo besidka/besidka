@@ -1,6 +1,30 @@
 # Model catalog expansion plan
 
-Status: PLANNED, nothing executed. Written 2026-09-16.
+Status: Waves 0-5 EXECUTED and committed, local to this worktree, not yet
+pushed. Written 2026-09-16.
+
+- Wave 0 (merge `origin/main`) — `5347f57f`.
+- Wave 1 (P0 DeepSeek retired ids) — `2f9324c6`.
+- Wave 2a (xAI +4 text models) — `c94e46cf`.
+- Wave 2b (Moonshot AI +2 models) — `4ddb4a75`.
+- Wave 2c (Qwen +43 models) — `ed3dc5fb`.
+- Wave 3 (`models:fetch`, snapshot committed at 110 entries) — `47488ace`.
+- Wave 4 (xAI image generation) — `e7af9a71`.
+- Wave 5 (re-run `models:fetch`, confirm the snapshot is unchanged with the
+  image model exempt) — verified, no commit: re-running the fetch after
+  wave 4 produced no diff, exactly as expected, so there was nothing to
+  commit.
+
+Remaining work: Wave 6a (tooling fixes, § 10 —
+`scripts/detect-model-successors.mjs`,
+`scripts/propose-model-successors.mjs`,
+`tests/unit/scripts/detect-model-successors.spec.ts`) is in progress by a
+separate concurrent agent as of this writing. Wave 6c (this document's own
+§ 12 documentation updates, plus `docs/providers.md` and
+`docs/models-data-fetching.md`) landed alongside it. Wave 7 (final
+cross-wave verification per § 13) has not yet run and is the one remaining
+gate before this plan is fully closed out.
+
 Branch: `feat/add-more-providers`
 Worktree: `/Users/inevix/dev/main/besidka/.herdr/worktrees/feat-add-more-providers`
 

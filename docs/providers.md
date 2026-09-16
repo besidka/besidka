@@ -14,55 +14,178 @@ the exact same pattern documented in `docs/models-data-fetching.md`:
 `providers/{xai,deepseek,moonshotai,qwen}.ts` hold curated capabilities,
 merged at import time against `providers/data/models-dev-snapshot.json`.
 
-- **xAI**: `grok-4.20-0309-non-reasoning` (default/first-listed),
-  `grok-4.20-0309-reasoning`, `grok-4.5`. Note the dated model ids — the
-  undated `grok-4.20-non-reasoning`/`grok-4.20-reasoning` forms do not exist
-  on models.dev or in xAI's own docs. `tools: ['web_search']` via
-  `xai.tools.webSearch({})`. No image-generation capability: xAI's image
-  generation is a separate model class (`xai.image(...)`), not a chat tool.
-  `grok-4.20-0309-reasoning` doesn't accept xAI's `reasoning_effort` param at
-  all (fixed behavior, confirmed via xAI's own docs) — it's curated with
+- **xAI** (8 models — 7 text + 1 image): `grok-4.20-0309-non-reasoning`
+  (default/first-listed), `grok-4.20-0309-reasoning`,
+  `grok-4.20-multi-agent-0309`, `grok-4.6`, `grok-4.5`, `grok-4.3`,
+  `grok-build-0.1`, and the image model `grok-imagine-image-2.0` (see "xAI
+  image generation" below). Note the dated model ids on the `-0309` pair —
+  the undated `grok-4.20-non-reasoning`/`grok-4.20-reasoning` forms do not
+  exist on models.dev or in xAI's own docs. `tools: ['web_search']` via
+  `xai.tools.webSearch({})` on every text model except
+  `grok-4.20-multi-agent-0309`, which is curated with `tools: []` because
+  models.dev reports `tool_call: false` for it upstream — sending a tool
+  declaration to a model that can't call tools would be a live-key error,
+  not a picker cosmetic. `grok-4.20-0309-reasoning` and `grok-build-0.1`
+  don't accept xAI's `reasoning_effort` param at all (fixed behavior,
+  confirmed via xAI's own docs) — both are curated with
   `reasoningAlwaysOn: true` instead of a `reasoning` toggle/levels
   capability, so the picker shows the brain icon without offering a control
   the model can't actually honor.
-- **DeepSeek**: `deepseek-chat` (default/first-listed, on/off `thinking`
-  toggle), `deepseek-reasoner` (always-on reasoning). No native web_search or
-  image_generation — re-verified against DeepSeek's official API docs, see
-  "Web search across the direct providers" below.
-- **Moonshot AI**: `kimi-k2.6` (default/first-listed), `kimi-k3`. The
-  `moonshot-v1-*` classic line is deliberately not curated — Moonshot is
-  sunsetting it. `kimi-k2.5` (originally the product owner's explicit pick)
-  was removed after real users hit "Not found the model kimi-k2.5 or
-  Permission denied" in the live app — Moonshot has an active sunset notice
-  for it on their platform. `kimi-k3` reasons unconditionally (Moonshot's own
-  docs confirm `reasoning_effort` only adjusts intensity — `low`/`high`/`max`
-  — with no way to disable reasoning), so it's curated with
-  `reasoningAlwaysOn: true` rather than a `reasoning` toggle; see the xAI
-  entry above for the parallel case and `providers/merge.ts`'s
-  `curatedCapabilities()` for how the flag is threaded. Both models now
-  declare `tools: ['web_search']` — see "Moonshot AI — implemented via the
-  Formula API" below.
-- **Qwen**: `qwen3.7-plus` (default/first-listed), `qwen3.7-max`,
-  `qwen3.6-flash`. All three get a toggle-only `reasoning` capability
-  (`enable_thinking`, see below); `qwen3.7-plus` and `qwen3.6-flash` also
-  declare `web_search` while `qwen3.7-max` deliberately does not — see
-  "Web search across the direct providers" below for the doc-sourced
-  scoping. Deliberately **not** curated
-  with the bare `qwen-max`/`qwen-plus`/`qwen-flash`/`qwen-turbo` ids Alibaba's
-  own docs lead with: Alibaba's own release notices confirm those unversioned
-  names are rolling aliases that get silently repointed to a newer dated
-  snapshot over time (e.g. `qwen-plus` → `qwen-plus-2025-07-28`), the same
-  "moving target" problem `docs/models-data-fetching.md` already rejected
-  OpenAI's `-latest` aliases for. The numbered `qwen3.x` releases are fixed
-  point releases instead. The very latest `qwen3.8-max` (released days before
-  this was written) was deliberately left out too — its reasoning is a
-  three-way `toggle`/`effort` (`low`/`medium`/`xhigh`)/`budget_tokens` choice,
-  and mapping this app's `low`/`medium`/`high` levels onto DashScope's
-  `xhigh` would need a dedicated translation this app's `ReasoningLevel` type
-  doesn't have prior art for. models.dev's own catalog shows all three
-  curated models also expose a `budget_tokens` option alongside the toggle —
-  this app deliberately wires only `enable_thinking` and leaves
-  `budget_tokens` unused, rather than the models having no other option.
+  - **`xhigh`/`none` reasoning levels don't exist in this app's vocabulary.**
+    `shared/types/reasoning.d.ts`'s `ReasoningEnabledLevel` is exactly
+    `'low' | 'medium' | 'high'`. models.dev reports `grok-4.6` and
+    `grok-4.20-multi-agent-0309` with an effort axis of
+    `low,medium,high,xhigh` — both are curated as
+    `levels: ['low', 'medium', 'high']`, truncating `xhigh` off entirely.
+    Widening the level type to add `xhigh` would touch the picker UI, the
+    DB-persisted reasoning value, and `toReasoningEffort()` — a separate
+    feature, not a catalog addition — so it's recorded here as a deferred
+    follow-up rather than attempted in this PR.
+  - **`grok-4.3`'s `none` level and the app's `'off'` state are not quite
+    the same thing.** models.dev reports `grok-4.3`'s effort axis as
+    `none,low,medium,high`; it's curated the same as every other levels-mode
+    xAI model, `levels: ['low', 'medium', 'high']`. The app's `'off'`
+    reasoning state sends no `reasoning_effort` param at all, which lets xAI
+    apply its own per-model default (e.g. `grok-4.5` defaults to `'high'`
+    when nothing is sent) rather than explicitly disabling reasoning the way
+    `none` would. This is pre-existing behavior, identical for the
+    already-curated `grok-4.5` — not a regression introduced by this PR —
+    and is left as-is rather than plumbing an explicit `none` value through.
+- **DeepSeek**: `deepseek-flash` (default/first-listed) and `deepseek-v4-pro`
+  — a full replacement of the previously curated `deepseek-chat` and
+  `deepseek-reasoner`, which were retired upstream on 2026-07-24 and no
+  longer exist in models.dev's `deepseek` catalog at all. The retirement
+  wasn't cosmetic: it broke `pnpm run models:fetch` outright ("models.dev no
+  longer lists 2 curated model(s)"), blocking every other catalog change in
+  this PR until it was fixed first. Both replacements are curated with
+  `reasoning: { mode: 'toggle' }`, not levels — DeepSeek's own effort axis
+  (`deepseek-flash`: `low,high,max`; `deepseek-v4-pro`: `high,max`, no `low`
+  at all) has no `medium` and no shared shape between the two models, so
+  there's no lossless mapping onto this app's `low`/`medium`/`high` levels;
+  the on/off toggle both models share is the only exact fit. DeepSeek also
+  bills a 2x peak/off-peak pricing multiplier that
+  `server/utils/ai/cost-map.ts`'s single flat per-model rate does not model
+  — a known, disclosed limitation, not something this PR attempts to fix.
+  Still no native web_search or image_generation — re-verified against
+  DeepSeek's official API docs, see "Web search across the direct providers"
+  below.
+- **Moonshot AI** (4 models): `kimi-k2.6` (default/first-listed), `kimi-k3`,
+  `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`. The `moonshot-v1-*` classic
+  line is deliberately not curated — Moonshot is sunsetting it. `kimi-k2.5`
+  (originally the product owner's explicit pick) was removed after real
+  users hit "Not found the model kimi-k2.5 or Permission denied" in the live
+  app — Moonshot has an active sunset notice for it on their platform.
+  **Three of the four models — `kimi-k3`, `kimi-k2.7-code`, and
+  `kimi-k2.7-code-highspeed` — are curated with `reasoningAlwaysOn: true`,
+  not a toggle**: models.dev reports an empty `reasoning_options: []` for
+  all three, meaning reasoning is always on with zero adjustable options, no
+  disable switch included. Sending `providerOptions.moonshotai.thinking =
+  { type: 'disabled' }` to a model with no `thinking` parameter at all would
+  be a live-key failure mode nothing in CI can catch. `kimi-k2.6` is the
+  *only* Moonshot model models.dev reports a real `[{"type":"toggle"}]` for,
+  so it's the only one curated with `reasoning: { mode: 'toggle' }`. Both
+  new code-focused models are ordinary singleton families
+  (`kimi-k{v}-code`, `kimi-k{v}-code-highspeed`) and don't interact with the
+  ordering question below. All four declare `tools: ['web_search']` — see
+  "Moonshot AI — implemented via the Formula API" below.
+  - **Ordering: `kimi-k2.6` deliberately stays first, ahead of the
+    newer-by-version `kimi-k3`.** Main's generic `parseModelFamily` groups
+    `kimi-k2.6` and `kimi-k3` into the same family `kimi-k{v}` and would rank
+    `kimi-k3` (version `3`) ahead of `kimi-k2.6` (version `2.6`) under a
+    strict newest-first rule. This app's actual convention is "first-listed
+    is the provider default," a *product* decision, not the *ergonomic*
+    newest-first convention the generic family parser encodes — and here
+    they collide: `kimi-k2.6` ($0.95/$4.00, reasoning toggleable off) is the
+    intended cheaper default, while `kimi-k3` ($3.00/$15.00, reasoning
+    mandatory) is the newer release. Reordering to satisfy the generic parser
+    would silently triple the cost of Moonshot's default. `kimi-k2.6` stays
+    first, and `tests/unit/providers/ordering.spec.ts`'s newest-first
+    invariant is scoped to `anthropic`, `google`, `openai` and `xai` only —
+    `moonshotai`, `deepseek` and `qwen` are deliberately excluded. The
+    clinching counter-example for why the generic parser can't be trusted
+    outside those four providers: run it over Qwen's ids and it produces
+    `qwen{v}b :: qwen3-32b(3-32) > qwen3-14b(3-14) > ... > qwen3.6-27b(3.6-27)
+    > qwen3.5-27b(3.5-27)` — ranking `qwen3-32b` as *newer* than
+    `qwen3.6-27b`, which is simply wrong. A spec built on that parser for
+    Qwen would enforce a meaningless order.
+- **Qwen** (46 models — 3 previously curated plus 43 new): the full list is
+  in `providers/qwen.ts`, ordered by the same "first-listed is the default"
+  convention as every other provider. Each new model's reasoning shape is
+  derived mechanically from its models.dev `reasoning_options`, not
+  hand-guessed per model:
+  - contains `{"type":"toggle"}` → `reasoning: { mode: 'toggle' }` (19 of
+    the 43 — this app only ever wires the `enable_thinking` boolean, which
+    is exactly that toggle);
+  - reports reasoning but **no** toggle (either `[]` or `budget_tokens`
+    only) → `reasoningAlwaysOn: true` (5 of the 43) — sending
+    `enable_thinking: false` to one of these would be a live-key error, the
+    same failure class as the Moonshot case above;
+  - no reasoning at all → no `reasoning` field, no `reasoningAlwaysOn` (19
+    of the 43).
+
+  **All 43 new models ship with `tools: []`.** The three previously curated
+  models (`qwen3.7-plus`, `qwen3.6-flash` get `web_search`; `qwen3.7-max`
+  doesn't) were scoped by reading Alibaba's own DashScope docs per model —
+  see "Web search across the direct providers" below. No equivalent
+  per-model verification exists yet for the 43 new ids, and models.dev
+  carries no web-search field to derive it from mechanically; shipping
+  `web_search` unverified would produce a picker toggle that silently does
+  nothing on a model DashScope doesn't support it for. A DashScope
+  per-model verification pass is the tracked follow-up — see "Owner action
+  items" below.
+
+  **Standing rule: never curate an Alibaba-hosted third-party model id.**
+  `deepseek-v4-flash-0731` and `glm-5.2` both appear in the live `alibaba`
+  models.dev catalog (Alibaba resells other vendors' models on DashScope) and
+  are deliberately excluded, permanently, not just for this PR. This app's
+  model catalog is keyed by a **flat id with no provider namespace**
+  (`getModel(id)` scans every provider and the last match wins), so curating
+  an Alibaba-hosted copy of a model this app already curates under its
+  native provider (DeepSeek, in this case) would be a latent id collision:
+  the moment two curated entries share an id, `getModel()` silently resolves
+  to whichever the provider loop hits last, and a request could route to the
+  wrong provider with the wrong key. This rule applies to every provider
+  going forward, not only DeepSeek/GLM (Zhipu) today.
+  - **First-party `@ai-sdk/alibaba@2.0.46` was evaluated and declined.** It
+    exists, its peer `zod: "^3.25.76 || ^4.1.8"` is compatible with this
+    app's `zod@^4`, and its default `baseURL` matches the endpoint this app
+    already targets — but its `providerOptions.alibaba` is a *closed*
+    `z.object({...})` (`enableThinking`, `thinkingBudget`,
+    `parallelToolCalls`, no `.passthrough()`). This app's Qwen web search
+    depends entirely on `enable_search` and
+    `search_options.search_strategy: 'agent'` being forwarded verbatim,
+    which works today only because `@ai-sdk/openai-compatible` passes
+    through unrecognized `providerOptions` keys. Migrating to
+    `@ai-sdk/alibaba` would silently strip both flags — Zod drops unknown
+    keys with no error and no warning — breaking Qwen web search with
+    nothing in CI able to catch it. `@ai-sdk/alibaba` also exposes no
+    image-generation capability at all, so migration buys nothing there
+    either. Qwen stays on `@ai-sdk/openai-compatible`; see "Qwen:
+    openai-compatible mechanism, not a dedicated SDK" below for the rest of
+    that wiring.
+  - **Reversal — `qwen3.8-max`'s `xhigh` exclusion.** This document
+    previously excluded `qwen3.8-max` because its reasoning is a three-way
+    `toggle`/`effort` (`low`/`medium`/`xhigh`)/`budget_tokens` choice and
+    mapping DashScope's `xhigh` onto this app's `low`/`medium`/`high` levels
+    had no prior art. **Reversed**, because that concern never actually
+    applies to Qwen: this app only ever wires the `enable_thinking` boolean
+    for every Qwen model — the effort axis (including `xhigh`) is never
+    sent regardless of which model is selected. `qwen3.8-max` is curated as
+    plain `reasoning: { mode: 'toggle' }`, identical in shape to every other
+    Group A Qwen model, and the `xhigh` incompatibility that blocks xAI's
+    `grok-4.6`/`grok-4.20-multi-agent-0309` above simply doesn't arise here.
+  - **Reversal — the rolling-alias exclusion.** This document previously
+    excluded the bare `qwen-max`/`qwen-plus`/`qwen-flash`/`qwen-turbo` ids
+    because Alibaba's release notices describe them as rolling aliases that
+    get silently repointed to a newer dated snapshot over time (e.g.
+    `qwen-plus` → `qwen-plus-2025-07-28`), the same "moving target" problem
+    this document rejected OpenAI's `-latest` aliases for. **Reversed**:
+    models.dev's live `alibaba` catalog carries **no dated Alibaba
+    snapshots at all** — the rolling aliases are the only reachable form of
+    these models through the endpoint this app calls. Excluding them would
+    mean excluding the models entirely, not picking a more stable id for the
+    same model. All four are now curated as ordinary Group C (no reasoning
+    field) entries.
 
 Server-side wiring lives in
 `server/utils/providers/{xai,deepseek,moonshotai,qwen}.ts`, matching the
@@ -76,7 +199,74 @@ only `providerOptions.moonshotai.thinking` directly.
 ship on a lower major than this app's `ai@7`/`@ai-sdk/provider@4` line
 (`@ai-sdk/xai@4.x` matches). Verified compatible via typecheck/build/full test
 suite, but this was never proven with a real live API call — see "Owner
-action items" below.
+action items" below. **Correction**: an earlier draft of this plan assumed
+`@ai-sdk/deepseek` needed a bump to `3.0.45` before it could support
+`reasoningEffort`. That's wrong — the installed `3.0.26` already ships the
+full `reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max"])`
+schema and the `thinking.type` field, read directly from
+`node_modules/@ai-sdk/deepseek/dist/index.js`. Bumping either package stays
+optional hygiene, not a blocker for anything in this catalog expansion:
+`@ai-sdk/deepseek`'s bump only affects the unreachable `mode: 'levels'`
+branch (see `server/utils/providers/deepseek.ts`'s doc comment), and
+`@ai-sdk/moonshotai`'s bump changes nothing because this app never sends a
+Moonshot reasoning effort at all — `server/utils/providers/moonshotai.ts`
+returns `reasoning: undefined` unconditionally.
+
+### xAI image generation
+
+`grok-imagine-image-2.0` is xAI's first image model in this catalog, wired
+through the same dedicated-image-model pattern as OpenAI (`gpt-image-2`) and
+Google — a hand-curated `imageGeneration: { controllerModel }` entry, never
+a chat tool the model invokes mid-turn.
+
+- **`xai.image(modelId)`, not `xai.tools.imageGeneration()`.** The installed
+  `@ai-sdk/xai@4.0.33` exposes both `xai.image`/`xai.imageModel` (confirmed
+  via `require()` — no SDK bump needed) and a conversational
+  `xai.tools.imageGeneration()` tool the chat model can call mid-turn. Only
+  the former fits this app's controller-model pattern: a dedicated image
+  model invoked once, outside the chat loop, the same shape
+  `server/utils/providers/xai.ts`'s `getImageModel()` already uses for
+  OpenAI/Google. `xai.tools.imageGeneration()` is also absent from the
+  installed SDK version regardless.
+- **`grok-imagine-image-2.0` is in `EXEMPT_IDS`.** models.dev lists the id,
+  but its entry carries **no `cost` object at all** — `toSnapshotEntry()` in
+  `scripts/fetch-models-metadata.mjs` requires `typeof model.cost?.input ===
+  'number'`, so without the exemption `pnpm run models:fetch` would hard-fail
+  with "models.dev no longer lists 1 curated model." The entry is instead
+  fully hand-curated in `providers/xai.ts` — `maxOutputTokens: 0` (matching
+  `gpt-image-2`'s own snapshot shape), `price.tokens: 1` to keep it out of
+  the per-token cost map (`getModelCostMap()` skips any model where
+  `price.tokens !== 1_000_000`), and `price.display: '$0.04 / image'` so
+  `resolvePriceTier()` still resolves a `'$'` tier.
+- **`size` is rejected outright; only top-level `aspectRatio` is sent.**
+  xAI's image model emits an unsupported-setting warning ("This model does
+  not support the `size` option. Use `aspectRatio` instead.") if `size` is
+  passed, making xAI the one image provider in this app that takes
+  `aspectRatio` and nothing else in `getProviderGenerationOptions()`
+  (`server/utils/ai/image-generation.ts`). All three of this app's
+  `ImageGenerationAspectRatio` values (`1:1`, `2:3`, `3:2`) are in xAI's
+  accepted set, so no UI change was needed.
+- **No `providerOptions.xai` is sent at all — deliberately.** The AI SDK's
+  own `XaiImageModelOptions` type lists `quality: 'low' | 'medium' | 'high'`
+  as valid, but xAI's own docs for `grok-imagine-image-2.0` accept only
+  `'low' | 'medium' | 'auto'` — **not** `'high'` — for this specific model.
+  The SDK passes `quality` straight through with no per-model validation, so
+  setting `'high'` type-checks cleanly and then 400s at request time against
+  a real key, a failure mode nothing in this repo's test suite can catch.
+  Omitting the object entirely leaves xAI's own default, `quality: 'auto'`,
+  which resolves to the `'low'` generation tier — the tier
+  `flatImageGenerationCostUsdByModelId`'s flat $0.04 is believed to
+  correspond to, unconfirmed without a live key (see "Owner action items"
+  below). `resolution` isn't a real xAI request parameter at all (only
+  `aspect_ratio`, `quality`, `output_format`, `sync_mode`, `user` are
+  documented) and does nothing if sent.
+- **Byte format**: xAI's image model hardcodes `response_format: "b64_json"`
+  in its request body (read from
+  `node_modules/@ai-sdk/xai/dist/index.js`), with a binary-download fallback
+  if xAI ever returns URLs instead. `generateImage()` therefore receives
+  base64 image bytes exactly the same way it does for OpenAI and Google, and
+  the existing `validateGeneratedImage()` PNG/JPEG/WebP signature check works
+  unchanged — no xAI-specific branch needed there.
 
 ### Qwen: openai-compatible mechanism, not a dedicated SDK
 
@@ -587,3 +777,45 @@ Nothing is required to deploy. Specifically:
 - The live-verification gate above is a strong recommendation, not a hard
   deploy blocker — BYOK means a failure only affects the specific user
   testing a specific provider, not the app as a whole.
+
+**Unverifiable without a live key (model catalog expansion, 2026-09-16).**
+Each of these was a recorded decision point
+(`docs/model-catalog-expansion-plan.md` § 8) resolved with a documented,
+best-evidence recommendation rather than a live call, because no live key
+for the provider is available in this
+environment:
+
+- **Removing `deepseek-chat`/`deepseek-reasoner` outright** rather than
+  keeping them as deprecated safety-net entries. Both ids are gone from
+  models.dev, so keeping them would need `EXEMPT_IDS` plus full hand
+  curation of models that hard-fail on every real send. A user with either
+  id persisted already falls back safely to the default model
+  (`app/composables/model.ts`'s `useUserModel()` guard) — confirm this
+  fallback in practice on the first live DeepSeek smoke test.
+- **Moonshot's 13 discontinued models** are assumed to hard-404 (Moonshot's
+  own docs call them "no longer maintained or supported," reading as a
+  harder cutoff than xAI/DeepSeek's silent-redirect-and-rebill pattern), but
+  this has not been confirmed against a real request. Check with a live key
+  before ever reconsidering curating any of them as legacy entries.
+- **`kimi-k2.7-code` and `kimi-k2.7-code-highspeed` really don't accept a
+  reasoning toggle.** Curated as `reasoningAlwaysOn: true` on the strength of
+  models.dev reporting `reasoning_options: []` for both — confirm with a
+  live key that sending `providerOptions.moonshotai.thinking` to either
+  model is in fact rejected (or simply ignored) rather than silently
+  accepted, which would mean they could be curated as toggle-mode instead.
+- **xAI's image output format and quality tier.** `grok-imagine-image-2.0`
+  is assumed to return PNG, JPEG, or WebP bytes (base64, per the
+  `response_format: "b64_json"` request the SDK hardcodes) — confirm with a
+  live key that `validateGeneratedImage()`'s signature check actually
+  accepts what comes back, and confirm which quality tier the flat $0.04
+  price in `flatImageGenerationCostUsdByModelId` corresponds to (this app
+  sends no explicit `quality`, so xAI's own `'auto'` default applies — see
+  "xAI image generation" above).
+- **Qwen web search on the 43 new models.** All 43 ship with `tools: []`
+  because no per-model DashScope documentation pass has verified which of
+  them actually support `enable_search` on the
+  `/compatible-mode/v1/chat/completions` endpoint this app calls (the
+  existing three curated models were scoped this way — see "Web search
+  across the direct providers" above). A DashScope per-model verification
+  pass is required before flipping any of the 43 to `tools: ['web_search']`
+  — shipping it unverified risks a picker toggle that silently does nothing.
