@@ -4,11 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   getModel: vi.fn(),
   getControllerModelId: vi.fn((model: Model) => model.id),
+  getImageGenerationModelId: vi.fn(
+    (model: Model, fallbackModelId: string) => {
+      return model.imageGeneration ? model.id : fallbackModelId
+    },
+  ),
 }))
 
 vi.mock('#shared/utils/model', () => ({
   getModel: mocks.getModel,
   getControllerModelId: mocks.getControllerModelId,
+  getImageGenerationModelId: mocks.getImageGenerationModelId,
 }))
 
 function createModel(overrides: Partial<Model> = {}): Model {
@@ -194,5 +200,69 @@ describe('useXai web search tool choice', () => {
     const result = await useXai('1', 'grok-4.5', ['web_search'], 'medium')
 
     expect(result.tools.toolChoice).toBeUndefined()
+  })
+})
+
+describe('useXai image generation', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('returns undefined for the image model unless image_generation is '
+    + 'requested', async () => {
+    stubModel(createModel({ id: 'grok-4.20-0309-non-reasoning' }))
+
+    const useXai = await importUseXai()
+    const result = await useXai(
+      '1',
+      'grok-4.20-0309-non-reasoning',
+      ['web_search'],
+      'off',
+    )
+
+    expect(result.imageModel).toBeUndefined()
+  })
+
+  it('resolves the image model and its id when image_generation is '
+    + 'requested', async () => {
+    stubModel(createModel({
+      id: 'grok-imagine-image-2.0',
+      imageGeneration: {
+        controllerModel: 'grok-4.20-0309-non-reasoning',
+      },
+    }))
+
+    const useXai = await importUseXai()
+    const result = await useXai(
+      '1',
+      'grok-imagine-image-2.0',
+      ['image_generation'],
+      'off',
+    )
+
+    expect(result.imageModelId).toBe('grok-imagine-image-2.0')
+    expect(result.imageModel).toBeDefined()
+  })
+
+  it('returns an empty tools object when image_generation is requested, '
+    + 'never attaching web search alongside the image tool', async () => {
+    stubModel(createModel({
+      id: 'grok-imagine-image-2.0',
+      imageGeneration: {
+        controllerModel: 'grok-4.20-0309-non-reasoning',
+      },
+    }))
+
+    const useXai = await importUseXai()
+    const result = await useXai(
+      '1',
+      'grok-imagine-image-2.0',
+      ['image_generation', 'web_search'],
+      'off',
+    )
+
+    expect(result.tools).toEqual({})
   })
 })

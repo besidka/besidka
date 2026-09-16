@@ -44,9 +44,21 @@ export async function useXai(
   }
 
   const controllerModelId = getControllerModelId(modelData)
+  const imageModelId = getImageGenerationModelId(
+    modelData,
+    'grok-imagine-image-2.0',
+  )
 
   function getInstance() {
     return xai(controllerModelId)
+  }
+
+  function getImageModel() {
+    if (!requestedTools.includes('image_generation')) {
+      return undefined
+    }
+
+    return xai.image(imageModelId)
   }
 
   async function generateChatTitle(message: string) {
@@ -63,7 +75,10 @@ export async function useXai(
   const reasoningAlwaysOn = !!modelData.reasoningAlwaysOn
 
   function getTools(): FormattedTools {
-    if (!requestedTools?.length) {
+    if (
+      !requestedTools?.length
+      || requestedTools.includes('image_generation')
+    ) {
       return {}
     }
 
@@ -120,6 +135,8 @@ export async function useXai(
 
   return {
     instance: getInstance(),
+    imageModel: getImageModel(),
+    imageModelId,
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),

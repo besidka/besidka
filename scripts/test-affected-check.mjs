@@ -82,6 +82,7 @@ export function getAffectedTests(changedFiles) {
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
+    'tests/unit/utils/ai/image-generation-xai.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',

@@ -605,6 +605,8 @@ export default defineEventHandler(async (event) => {
         case 'xai': {
           const {
             instance: xaiInstance,
+            imageModel: xaiImageModel,
+            imageModelId: xaiImageModelId,
             tools: xaiTools,
             providerOptions: xaiProviderOptions,
             reasoning: xaiReasoning,
@@ -621,6 +623,36 @@ export default defineEventHandler(async (event) => {
           Object.assign(providerOptions, {
             xai: xaiProviderOptions,
           })
+
+          if (requestedTools.includes('image_generation')) {
+            if (!xaiImageModel) {
+              throw createError({
+                message: 'Image generation is unavailable for this provider.',
+                status: 400,
+              })
+            }
+
+            const imageGenerationTool = createImageGenerationTool({
+              userId,
+              provider: 'xai',
+              model: xaiImageModelId,
+              imageModel: xaiImageModel,
+              logger: aiLogger,
+              requestId: getRequestId(event),
+              onGenerated: ({ aspectRatio }) => {
+                generatedImage = { modelId: xaiImageModelId, aspectRatio }
+              },
+            })
+            parsedTools = {
+              tools: {
+                generate_image: imageGenerationTool,
+              },
+              toolChoice: {
+                type: 'tool',
+                toolName: 'generate_image',
+              },
+            }
+          }
 
           break
         }

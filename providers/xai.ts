@@ -71,5 +71,25 @@ export default {
         tokens: 1_000_000,
       },
     },
+    {
+      id: 'grok-imagine-image-2.0',
+      name: 'Grok Imagine Image 2.0',
+      description: 'Image model for prompt-driven generation, editing, and visual design workflows',
+      contextLength: 64_000,
+      maxOutputTokens: 0,
+      releaseDate: '2026-08-07',
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['image'],
+      },
+      price: {
+        tokens: 1,
+        display: '$0.04 / image',
+      },
+      tools: [],
+      imageGeneration: {
+        controllerModel: 'grok-4.20-0309-non-reasoning',
+      },
+    },
   ],
 } satisfies CuratedProvider

@@ -57,10 +57,14 @@ const SNAPSHOT_PATH = fileURLToPath(
 //  - Retired-but-kept legacy ids models.dev no longer publishes at all.
 //    Fully curated in providers/*.ts with `status: 'deprecated'` so the
 //    legacy picker section and useChatProvider() guard keep working.
+//  - Image models models.dev lists but with no `cost` block, which
+//    toSnapshotEntry() below treats as incomplete. Fully curated in
+//    providers/*.ts instead.
 const EXEMPT_IDS = [
   'o3-deep-research',
   'o4-mini-deep-research',
   'gemini-3-pro-preview',
+  'grok-imagine-image-2.0',
 ]
 
 const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']
