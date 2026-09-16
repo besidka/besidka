@@ -260,10 +260,10 @@
     },
     "tieredPricing": true
   },
-  "gemini-3.6-flash": {
-    "name": "Gemini 3.6 Flash",
-    "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
-    "releaseDate": "2026-07-21",
+  "gemini-3.8-flash": {
+    "name": "Gemini 3.8 Flash",
+    "description": "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
+    "releaseDate": "2026-09-02",
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -310,10 +310,10 @@
       "output": 3.75
     }
   },
-  "gemini-3.8-flash": {
-    "name": "Gemini 3.8 Flash",
-    "description": "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
-    "releaseDate": "2026-09-02",
+  "gemini-3.6-flash": {
+    "name": "Gemini 3.6 Flash",
+    "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
+    "releaseDate": "2026-07-21",
     "limit": {
       "context": 1048576,
       "output": 65536
