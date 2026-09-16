@@ -13,8 +13,8 @@ vi.mock('#shared/utils/model', () => ({
 
 function createModel(overrides: Partial<Model> = {}): Model {
   return {
-    id: 'deepseek-chat',
-    name: 'DeepSeek Chat',
+    id: 'deepseek-flash',
+    name: 'DeepSeek Flash',
     description: 'General-purpose DeepSeek model',
     contextLength: 128_000,
     maxOutputTokens: 8_000,
@@ -78,12 +78,12 @@ describe('useDeepSeek reasoning wiring', () => {
 
   it('enables the thinking toggle without double-signaling reasoning', async () => {
     stubModel(createModel({
-      id: 'deepseek-chat',
+      id: 'deepseek-flash',
       reasoning: { mode: 'toggle' },
     }))
 
     const useDeepSeek = await importUseDeepSeek()
-    const result = await useDeepSeek('1', 'deepseek-chat', [], 'medium')
+    const result = await useDeepSeek('1', 'deepseek-flash', [], 'medium')
 
     expect(result.providerOptions).toEqual({
       thinking: { type: 'enabled' },
@@ -93,12 +93,12 @@ describe('useDeepSeek reasoning wiring', () => {
 
   it('disables the thinking toggle without double-signaling reasoning', async () => {
     stubModel(createModel({
-      id: 'deepseek-chat',
+      id: 'deepseek-v4-pro',
       reasoning: { mode: 'toggle' },
     }))
 
     const useDeepSeek = await importUseDeepSeek()
-    const result = await useDeepSeek('1', 'deepseek-chat', [], 'off')
+    const result = await useDeepSeek('1', 'deepseek-v4-pro', [], 'off')
 
     expect(result.providerOptions).toEqual({
       thinking: { type: 'disabled' },
@@ -106,27 +106,40 @@ describe('useDeepSeek reasoning wiring', () => {
     expect(result.reasoning).toBeUndefined()
   })
 
-  it('leaves providerOptions empty and forwards the reasoner level', async () => {
+  it('leaves providerOptions empty and forwards the level for a '
+    + 'synthetic levels-mode model, since no curated DeepSeek model uses '
+    + 'levels mode any more', async () => {
     stubModel(createModel({
-      id: 'deepseek-reasoner',
+      id: 'deepseek-synthetic-levels-model',
       reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
     }))
 
     const useDeepSeek = await importUseDeepSeek()
-    const result = await useDeepSeek('1', 'deepseek-reasoner', [], 'high')
+    const result = await useDeepSeek(
+      '1',
+      'deepseek-synthetic-levels-model',
+      [],
+      'high',
+    )
 
     expect(result.providerOptions).toEqual({})
     expect(result.reasoning).toBe('high')
   })
 
-  it('resolves an unsupported level to off for the reasoner model', async () => {
+  it('resolves an unsupported level to off for a synthetic levels-mode '
+    + 'model', async () => {
     stubModel(createModel({
-      id: 'deepseek-reasoner',
+      id: 'deepseek-synthetic-levels-model',
       reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
     }))
 
     const useDeepSeek = await importUseDeepSeek()
-    const result = await useDeepSeek('1', 'deepseek-reasoner', [], 'off')
+    const result = await useDeepSeek(
+      '1',
+      'deepseek-synthetic-levels-model',
+      [],
+      'off',
+    )
 
     expect(result.providerOptions).toEqual({})
     expect(result.reasoning).toBeUndefined()

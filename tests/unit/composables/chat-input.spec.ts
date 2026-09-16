@@ -185,7 +185,7 @@ describe('useChatInput image input capability', () => {
 
     const { userModel } = useUserModel()
 
-    userModel.value = 'deepseek-chat'
+    userModel.value = 'deepseek-v4-pro'
     await wrapper.vm.$nextTick()
 
     expect(

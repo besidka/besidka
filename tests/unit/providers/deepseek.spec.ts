@@ -3,8 +3,8 @@ import deepseek from '../../../providers/deepseek'
 import snapshot from '../../../providers/data/models-dev-snapshot.json'
 
 const expectedModelIds = [
-  'deepseek-chat',
-  'deepseek-reasoner',
+  'deepseek-flash',
+  'deepseek-v4-pro',
 ]
 
 describe('curated deepseek provider', () => {
@@ -15,8 +15,8 @@ describe('curated deepseek provider', () => {
     expect(new Set(ids)).toEqual(new Set(expectedModelIds))
   })
 
-  it('lists deepseek-chat first as the recommended default', () => {
-    expect(deepseek.models[0]?.id).toBe('deepseek-chat')
+  it('lists deepseek-flash first as the recommended default', () => {
+    expect(deepseek.models[0]?.id).toBe('deepseek-flash')
   })
 
   it('has no model marked as the app-wide default', () => {
@@ -44,21 +44,17 @@ describe('curated deepseek provider', () => {
     }
   })
 
-  it('gives deepseek-chat a toggle-only reasoning capability', () => {
-    const chat = deepseek.models.find(model => model.id === 'deepseek-chat')
-
-    expect(chat?.reasoning).toEqual({ mode: 'toggle' })
+  it('gives every curated model a toggle-only reasoning capability', () => {
+    for (const model of deepseek.models) {
+      expect(model.reasoning).toEqual({ mode: 'toggle' })
+    }
   })
 
-  it('gives deepseek-reasoner levels-based reasoning with low/medium/high', () => {
-    const reasoner = deepseek.models.find((model) => {
-      return model.id === 'deepseek-reasoner'
-    })
+  it('no longer curates the retired deepseek-chat/deepseek-reasoner aliases', () => {
+    const ids = deepseek.models.map(model => model.id)
 
-    expect(reasoner?.reasoning).toEqual({
-      mode: 'levels',
-      levels: ['low', 'medium', 'high'],
-    })
+    expect(ids).not.toContain('deepseek-chat')
+    expect(ids).not.toContain('deepseek-reasoner')
   })
 
   it('has a models.dev snapshot entry for every curated id', () => {

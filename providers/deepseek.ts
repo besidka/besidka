@@ -5,7 +5,7 @@ export default {
   name: 'DeepSeek',
   models: [
     {
-      id: 'deepseek-chat',
+      id: 'deepseek-flash',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -15,11 +15,10 @@ export default {
       },
     },
     {
-      id: 'deepseek-reasoner',
+      id: 'deepseek-v4-pro',
       tools: [],
       reasoning: {
-        mode: 'levels',
-        levels: ['low', 'medium', 'high'],
+        mode: 'toggle',
       },
       price: {
         tokens: 1_000_000,

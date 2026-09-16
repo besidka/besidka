@@ -67,15 +67,20 @@ export async function useDeepSeek(
   const isToggleCapability = modelData.reasoning?.mode === 'toggle'
 
   /**
-   * deepseek-chat only exposes an on/off `thinking` toggle, not adjustable
-   * effort levels. Setting it explicitly here (rather than relying on the
-   * top-level `reasoning` option) avoids the shipped provider also
-   * auto-deriving a `reasoning_effort` value from that option, which is
-   * unverified against deepseek-chat's live endpoint.
-   * deepseek-reasoner keeps the anthropic.ts-style empty providerOptions:
-   * the shipped provider derives both `thinking` and `reasoning_effort`
-   * from the top-level `reasoning` option, matching DeepSeek's own
-   * documented usage of the two together.
+   * deepseek-flash and deepseek-v4-pro only expose an on/off `thinking`
+   * toggle, not adjustable effort levels. Setting it explicitly here (rather
+   * than relying on the top-level `reasoning` option) avoids the shipped
+   * provider also auto-deriving a `reasoning_effort` value from that option,
+   * which is unverified against either model's live endpoint.
+   * The `mode === 'levels'` branch below (the anthropic.ts-style empty
+   * providerOptions, letting the shipped provider derive both `thinking` and
+   * `reasoning_effort` from the top-level `reasoning` option, matching
+   * DeepSeek's own documented usage of the two together) is unreachable for
+   * DeepSeek today — no curated DeepSeek model uses levels — but it is kept
+   * because it is the generic contract every `use<Provider>()` shares.
+   * @see node_modules/@ai-sdk/deepseek/dist/index.js's
+   * `thinking?.type !== "disabled" && reasoningEffort != null` guard, which
+   * confirms the bypass above is still required on the installed SDK version.
    * @see https://api-docs.deepseek.com/guides/reasoning_model
    */
   function getProviderOptions(): SharedV2ProviderOptions {
