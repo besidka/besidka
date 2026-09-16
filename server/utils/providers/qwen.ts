@@ -27,11 +27,12 @@ const QWEN_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
  * A first-party `@ai-sdk/alibaba@2.0.46` package does exist and is
  * zod-4-compatible (peer `zod: "^3.25.76 || ^4.1.8"`), but migrating to it
  * was deliberately declined: its `providerOptions.alibaba` is a closed
- * `z.object({...})` with exactly `enableThinking`, `thinkingBudget` and
- * `parallelToolCalls` and no `.passthrough()`, so Zod would silently strip
- * any unrecognized key. This app's Qwen web search depends entirely on
- * `enable_search` and `search_options.search_strategy: 'agent'` being
- * forwarded verbatim — which works today only because
+ * `z.object({...})` with exactly `enableThinking`, `thinkingBudget`,
+ * `parallelToolCalls` and `cacheControl` and no `.passthrough()`, so Zod
+ * would silently strip any unrecognized key. This app's Qwen web search
+ * depends entirely on `enable_search` and
+ * `search_options.search_strategy: 'agent'` being forwarded verbatim —
+ * which works today only because
  * `@ai-sdk/openai-compatible` passes through unknown `providerOptions` keys.
  * Migrating would break Qwen web search with no error and no warning. Do not
  * "fix" this comment by switching to `@ai-sdk/alibaba` without first building

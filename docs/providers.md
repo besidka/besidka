@@ -123,16 +123,17 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
   - no reasoning at all → no `reasoning` field, no `reasoningAlwaysOn` (19
     of the 43).
 
-  **All 43 new models ship with `tools: []`.** The three previously curated
-  models (`qwen3.7-plus`, `qwen3.6-flash` get `web_search`; `qwen3.7-max`
-  doesn't) were scoped by reading Alibaba's own DashScope docs per model —
-  see "Web search across the direct providers" below. No equivalent
-  per-model verification exists yet for the 43 new ids, and models.dev
-  carries no web-search field to derive it from mechanically; shipping
-  `web_search` unverified would produce a picker toggle that silently does
-  nothing on a model DashScope doesn't support it for. A DashScope
-  per-model verification pass is the tracked follow-up — see "Owner action
-  items" below.
+  **Web search (updated 2026-09-16).** A dedicated DashScope-docs research
+  pass (both the English and Chinese doc pages) found the Singapore-region
+  `enable_search` supported-model table covers 13 of the 46 curated models,
+  not the 2 this document originally shipped with — `qwen3.7-max` was
+  wrongly excluded on a stale reading, and 10 of the "43 new" ids from this
+  expansion are on the table too. All 13 are curated with
+  `tools: ['web_search']`; every other model, including the remaining 33 of
+  the 43 newly added ids, still ships `tools: []` because it genuinely does
+  not appear in DashScope's web-search allowlist. See "Web search across
+  the direct providers" below for the full list, the Qwen3.8 exclusion
+  rationale, and citations.
 
   **Standing rule: never curate an Alibaba-hosted third-party model id.**
   `deepseek-v4-flash-0731` and `glm-5.2` both appear in the live `alibaba`
@@ -151,7 +152,8 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
     app's `zod@^4`, and its default `baseURL` matches the endpoint this app
     already targets — but its `providerOptions.alibaba` is a *closed*
     `z.object({...})` (`enableThinking`, `thinkingBudget`,
-    `parallelToolCalls`, no `.passthrough()`). This app's Qwen web search
+    `parallelToolCalls`, `cacheControl`, no `.passthrough()`). This app's
+    Qwen web search
     depends entirely on `enable_search` and
     `search_options.search_strategy: 'agent'` being forwarded verbatim,
     which works today only because `@ai-sdk/openai-compatible` passes
@@ -332,13 +334,40 @@ round-3 record. Both conclusions below held with no code change required:
   would mean a bespoke second DashScope Responses wiring for one model's
   badge. The product owner explicitly signed off (2026-08-09) on accepting
   the gap rather than funding that wiring.
+
+  **Reversed (2026-09-16).** This conclusion was wrong. A dedicated
+  research pass re-read Alibaba's Singapore-region "Supported models"
+  table directly instead of trusting the round-4 summary above, and found
+  `qwen3.7-max` plainly listed there with no annotation at all. The
+  "(supported only by the Responses API)" annotation Alibaba's docs do use
+  is attached to specific *other* models (`glm-5.2` and `kimi-k3` as they
+  appear in DashScope's `alibaba` catalog — `glm-5.2` is an Alibaba-hosted
+  third-party model this app never curates under any provider; `kimi-k3`
+  is curated, but under `moonshotai`'s own native Moonshot API, never
+  under Qwen/DashScope), not to `qwen3.7-max`. There is no per-tier
+  capability gap: `qwen3.7-max`
+  supports `enable_search` on the same
+  `/compatible-mode/v1/chat/completions` endpoint this app already calls,
+  exactly like `qwen3.7-plus`. It is now curated as `tools: ['web_search']`
+  in `providers/qwen.ts`, alongside 10 other models the same research pass
+  confirmed on the same table — see "Web search across the direct
+  providers" below for the full list and citations.
 - **DeepSeek** — the API changelog now extends through 2026-07-31
   (DeepSeek-V4-Flash public beta) and still announces no search, grounding,
   or `enable_search` capability of any kind. Nothing changed since round 3;
   `providers/deepseek.ts` correctly keeps `tools: []`.
 
-Neither needed a code change; this record exists so round 5 doesn't
-re-litigate the same question a third time.
+  **Correction (2026-09-16), scoped narrowly.** The "no first-party
+  mechanism" conclusion for DeepSeek's OpenAI-compatible endpoint (the one
+  this app actually calls) still stands. But a separate research pass
+  found the earlier claim about DeepSeek's *Anthropic-compatible* endpoint
+  was wrong — it genuinely accepts Anthropic's `web_search_20250305`
+  server-tool type as documented functionality, not incidental schema
+  tolerance. See "DeepSeek — no first-party mechanism on the endpoint this
+  app uses" below for the corrected record and why this isn't wired yet.
+
+This record predates that 2026-09-16 correction; it is kept as-is above so
+the reversal itself stays legible, rather than silently rewritten.
 
 **Qwen — implemented.** DashScope's built-in web search is a plain
 `enable_search: true` body flag on the same chat-completions endpoint this
@@ -350,12 +379,30 @@ still returns `{}` (there is no AI SDK tool object and must be no
 `https://www.alibabacloud.com/help/en/model-studio/web-search` (and its
 region-tabbed `help.aliyun.com` twin):
 
-- `qwen3.7-plus` and `qwen3.6-flash` appear in the Singapore-region
-  "Supported models" table, so they are curated with
-  `tools: ['web_search']`. `qwen3.7-max` is **not** flagged: the same doc
-  states "Models such as qwen3.7-max support only the web search feature of
-  the Responses API" — a different API surface from the
-  `/compatible-mode/v1/chat/completions` endpoint this app uses.
+- **Allowlist rule (corrected 2026-09-16, superseding the round-4 record
+  above).** DashScope's Singapore-region "Supported models" table for
+  `enable_search` is the single source of truth for which Qwen ids are
+  curated with `tools: ['web_search']`. It covers `qwen3.7-max/plus`, the
+  `qwen3.6-*` family (`qwen3.6-flash`, `qwen3.6-max-preview`,
+  `qwen3.6-plus`, `qwen3.6-27b`, `qwen3.6-35b-a3b`), the `qwen3.5-*` family
+  (`qwen3.5-plus`, `qwen3.5-397b-a17b`, `qwen3.5-122b-a10b`,
+  `qwen3.5-27b`, `qwen3.5-35b-a3b`) and bare `qwen3-max` — 13 models in
+  total, matching `providers/qwen.ts` exactly. It does **not** cover:
+  Qwen3.8 (`qwen3.8-max`, `qwen3.8-flash` — see the dedicated note below);
+  the Beijing-only rolling-alias ids (`qwen-max`, `qwen-plus`,
+  `qwen-flash`, `qwen-turbo`, `qwq-plus` — this app calls the Singapore
+  endpoint, not Beijing); any `qwen3-vl-*`/`qwen-vl-*` vision model; any
+  `qwen3-coder-*` model; `qwen3-next-*`; the legacy `qwen2-5-*` models; or
+  the `qwen-mt-*` translation models. None of these appear in DashScope's
+  web-search-supported-model table at all, so they all stay `tools: []`
+  until a documented entry says otherwise.
+- **Qwen3.8 is deliberately excluded from web search.** Alibaba's Chat
+  Completions API for `qwen3.8-max`/`qwen3.8-flash` does not support
+  `search_strategy: 'agent'` — the only search strategy priced and
+  available on the Singapore endpoint this app calls (`turbo`/`max` are
+  Beijing-only). This is a documented incompatibility, not an oversight or
+  a pending verification item.
+  See https://www.alibabacloud.com/help/en/model-studio/web-search.
 - `search_options.search_strategy` is pinned to `'agent'`. The
   international-facing docs state only `agent` is supported outside
   China-mainland (`turbo`/`max` are Beijing-only, down to having no
@@ -385,9 +432,10 @@ region-tabbed `help.aliyun.com` twin):
 - Never live-verified (no DashScope key available in this environment) —
   see the dedicated item under "Known gaps requiring live verification".
 
-**DeepSeek — no first-party mechanism (verified non-fix).** DeepSeek's
-developer API has no built-in web search as of 2026-08. Checked: the Chat
-Completions reference
+**DeepSeek — no first-party mechanism on the endpoint this app uses
+(corrected 2026-09-16).** DeepSeek's OpenAI-compatible developer API — the
+transport this app actually calls via `@ai-sdk/deepseek` — has no built-in
+web search as of 2026-08. Checked: the Chat Completions reference
 (`https://api-docs.deepseek.com/api/create-chat-completion/`) documents no
 `enable_search`/`web_search`/`search_options` parameter, and its `tools`
 parameter states verbatim "Currently, only functions are supported as a
@@ -395,20 +443,28 @@ tool"; the full API change log (`https://api-docs.deepseek.com/updates/`,
 2024-05-17 through 2026-07-31, covering every model line through
 V4/V4-Flash) never announces a search or grounding feature; and the
 chat.deepseek.com consumer app's "Search" toggle is a product feature, not
-an API capability — an API request does not browse. One near-miss recorded
-so it isn't re-litigated: the Anthropic-compatible endpoint
-(`https://api-docs.deepseek.com/guides/anthropic_api`) lists
-`server_tool_use`/`web_search_tool_result` content blocks as "Supported" in
-its Message Fields table, but its Tools table documents only the
-custom-tool schema with no server-tool `type` (nothing like Anthropic's
-`web_search_20250305`), so those rows are schema tolerance for conversation
-history, not a way to request a server-side search. The only route DeepSeek
-offers is generic function calling against a caller-built search backend —
-that would be a Besidka-side search integration (with Besidka owning the
-search-API bill), not a provider capability. **The product owner explicitly
-declined that route (2026-08-09, "not now, skip")**: no app-owned,
-non-BYOK search component is to be built, and DeepSeek stays `tools: []`.
-Revisit only on a separate, future ask with new docs evidence.
+an API capability — an API request does not browse. That part of the
+2026-08-09 record still holds.
+
+**Correction: the Anthropic-compatible endpoint is a genuine second
+mechanism, not schema tolerance.** The 2026-08-09 record above
+misread the Anthropic-compatible endpoint
+(`https://api.deepseek.com/anthropic/v1/messages`, documented at
+`https://api-docs.deepseek.com/guides/anthropic_api`) as merely tolerating
+`server_tool_use`/`web_search_tool_result` content blocks for conversation
+history, with no way to actually request a server-side search. A separate,
+later research pass found this wrong: that endpoint genuinely accepts
+Anthropic's `web_search_20250305` server-tool type as documented DeepSeek
+functionality — a real first-party web search mechanism, just on a
+different transport (`@ai-sdk/anthropic` pointed at DeepSeek's Anthropic
+base URL) than the one this app currently uses for DeepSeek
+(`@ai-sdk/deepseek` against the OpenAI-compatible endpoint). Wiring it is
+deliberately **not** done in this round — see "Owner action items" below
+for the five live-key details that need verification first — so
+`providers/deepseek.ts` keeps every DeepSeek model at `tools: []` for now.
+This is a candidate follow-up, not the same "not now, skip" product
+decision recorded on 2026-08-09 against Besidka building its own
+non-BYOK search backend (that decision is unaffected and still stands).
 
 **Moonshot AI — implemented via the Formula API (Wave C-1, verified against
 current docs on 2026-08-10).** Round 3/4 documented two web-search surfaces
@@ -465,17 +521,26 @@ the canonical docs host used below.
   provider's existing `getProviderOptions()`), not to Formula-API tool
   eligibility — the tool declaration itself is a standard `type: "function"`
   tool, and nothing in either doc page scopes it to one model.
-- **The Anthropic-compatible endpoint is not a backdoor (checked, closed).**
-  Moonshot does expose `POST https://api.moonshot.ai/anthropic/v1/messages`
-  (documented for Claude Code integration; see MoonshotAI/Kimi-K2 GitHub
-  issue #129 for the community-reconstructed reference). Nothing in
-  Moonshot's docs claims Anthropic-style **server-side** tool types
-  (`web_search_20250305`) are accepted there, and DeepSeek's analogous
-  endpoint explicitly supports only custom function tools — so this is
-  schema compatibility for Claude Code's client tools, not a server-search
-  backdoor. Rewiring Moonshot onto `@ai-sdk/anthropic` against that endpoint
-  on an unverifiable hope would be a regression risk with no documented
-  payoff. **Not a path** — recorded so it isn't re-investigated.
+- **The Anthropic-compatible endpoint is not a backdoor (checked, closed;
+  correction 2026-09-16 on the DeepSeek comparison only).** Moonshot does
+  expose `POST https://api.moonshot.ai/anthropic/v1/messages` (documented
+  for Claude Code integration; see MoonshotAI/Kimi-K2 GitHub issue #129 for
+  the community-reconstructed reference). Nothing in Moonshot's own docs
+  claims Anthropic-style **server-side** tool types (`web_search_20250305`)
+  are accepted there — that conclusion, specific to Moonshot's endpoint,
+  is unchanged. The comparison this bullet originally drew to DeepSeek's
+  analogous endpoint is corrected: DeepSeek's Anthropic-compatible endpoint
+  does **not** support "only custom function tools" — a later research
+  pass found it genuinely accepts Anthropic's `web_search_20250305`
+  server-tool type as documented DeepSeek functionality (see "DeepSeek —
+  no first-party mechanism on the endpoint this app uses" above). That
+  correction doesn't change Moonshot's own conclusion, since Moonshot's
+  docs still make no equivalent claim for its own endpoint, so this
+  remains schema compatibility for Claude Code's client tools here, not a
+  server-search backdoor. Rewiring Moonshot onto `@ai-sdk/anthropic`
+  against that endpoint on an unverifiable hope would be a regression risk
+  with no documented payoff. **Not a path** — recorded so it isn't
+  re-investigated.
 - **No forced `toolChoice`.** Unlike this app's OpenAI/xAI wiring (which
   forces `toolChoice` onto their provider-executed search tools, safe
   because those never loop), the Moonshot tool is client-executed and
@@ -689,8 +754,8 @@ by its own PR's review and confirmed still open by the final cross-PR review:
 2. **Qwen `enable_search` on the international endpoint** — the wiring
    follows the Singapore-region docs (agent strategy, the region tab's
    supported-model table), but no live DashScope call was made, and
-   Alibaba's docs internally conflict on exactly the two curated models:
-   the Singapore tab's supported-models table lists
+   Alibaba's docs internally conflict on exactly the two originally curated
+   models: the Singapore tab's supported-models table lists
    `qwen3.7-plus`/`qwen3.6-flash` under the agent strategy, while the
    agent strategy's own applicability list names only 3.5-generation
    models plus bare `qwen3-max`, and no worked example anywhere in the doc
@@ -701,7 +766,12 @@ by its own PR's review and confirmed still open by the final cross-PR review:
    counts for the same prompt with and without the flag (a fired search
    inflates the prompt by hundreds-to-thousands of tokens). Verify on
    `qwen3.7-plus` and `qwen3.6-flash`, and confirm a flagged request is
-   not rejected when the model chooses not to search.
+   not rejected when the model chooses not to search. The same EN/ZH
+   `agent`-strategy-applicability disagreement applies to the 11 models
+   flipped on 2026-09-16, so extend this probe to at least one
+   newly-flipped 3.5-generation model (e.g. `qwen3.5-plus`) and one
+   3.6/3.7-generation model (e.g. `qwen3.6-plus` or `qwen3.7-max`) before
+   treating the wider allowlist as fully live-confirmed.
 3. **Moonshot's Formula-API `web_search` tool, end to end** (Wave C-1,
    2026-08-10) — no live Moonshot key exists in this environment, so
    nothing here was exercised against the real API. Everything in
@@ -811,11 +881,39 @@ environment:
   price in `flatImageGenerationCostUsdByModelId` corresponds to (this app
   sends no explicit `quality`, so xAI's own `'auto'` default applies — see
   "xAI image generation" above).
-- **Qwen web search on the 43 new models.** All 43 ship with `tools: []`
-  because no per-model DashScope documentation pass has verified which of
-  them actually support `enable_search` on the
-  `/compatible-mode/v1/chat/completions` endpoint this app calls (the
-  existing three curated models were scoped this way — see "Web search
-  across the direct providers" above). A DashScope per-model verification
-  pass is required before flipping any of the 43 to `tools: ['web_search']`
-  — shipping it unverified risks a picker toggle that silently does nothing.
+- **Qwen web search on the remaining 33 unflagged new models (updated
+  2026-09-16).** A DashScope-docs research pass confirmed 13 of the 46
+  curated Qwen models against the Singapore-region `enable_search`
+  supported-model table and flipped them to `tools: ['web_search']` — see
+  "Web search across the direct providers" above for the full list. The
+  other 33 (all from this expansion's "43 new" set) still ship
+  `tools: []` because they genuinely do not appear in that table, not
+  because verification is pending — a DashScope per-model pass already
+  ran over the full 46. Only a live-key probe (item 2 under "Known gaps
+  requiring live verification" above) remains open, not a documentation
+  gap.
+- **DeepSeek's Anthropic-compatible web search endpoint — candidate
+  follow-up, not wired this round.** DeepSeek genuinely supports
+  Anthropic's `web_search_20250305` server-tool type on its
+  Anthropic-compatible endpoint (`https://api.deepseek.com/anthropic/v1/
+  messages`), a real first-party mechanism this app does not currently use
+  — see "DeepSeek — no first-party mechanism on the endpoint this app
+  uses" above. Wiring it would mean adding `@ai-sdk/anthropic` pointed at
+  that base URL as a second DeepSeek transport, alongside the existing
+  `@ai-sdk/deepseek`-against-OpenAI-compatible wiring. Left unwired this
+  round pending live-key verification of:
+  1. whether the endpoint is accepted from typical BYOK client user-agents
+     outside Anthropic's own SDK/Claude Code, or whether it rejects or
+     rate-limits unrecognized callers;
+  2. reasoning-parameter shape differences on the Anthropic-compatible
+     endpoint versus the OpenAI-compatible endpoint this app already
+     handles in `server/utils/providers/deepseek.ts`;
+  3. `top_p` semantics differences between the two endpoints, which could
+     silently change generation behavior for non-search turns too if this
+     transport were ever used as a general replacement;
+  4. whether hidden search-result-summarization tokens the endpoint may
+     bill are captured by this app's existing cost-map, or would need a
+     new entry;
+  5. general endpoint behavior parity with the OpenAI-compatible
+     endpoint (error shapes, streaming semantics, model id acceptance)
+     before trusting it for anything beyond search.

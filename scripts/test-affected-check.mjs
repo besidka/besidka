@@ -423,6 +423,10 @@ export function getAffectedTests(changedFiles) {
       tests: providerReasoningWiringTests,
     },
     {
+      pattern: /^providers\/qwen\.ts$/,
+      tests: ['tests/unit/utils/providers/qwen.spec.ts'],
+    },
+    {
       pattern: /^server\/utils\/providers\/moonshotai-web-search\.ts$/,
       tests: moonshotWebSearchTests,
     },

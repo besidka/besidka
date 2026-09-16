@@ -134,20 +134,38 @@ describe('curated qwen provider', () => {
     }
   })
 
-  it('declares web search only on the two models verified against '
-    + 'DashScope docs for the international endpoint — every other model, '
-    + 'including all 43 newly added ones, ships unverified-by-default', () => {
-    const toolsById = new Map(
-      qwen.models.map(model => [model.id, model.tools]),
-    )
+  it('declares web search only on the models verified against DashScope\'s '
+    + 'Singapore-region enable_search allowlist — every other model ships '
+    + 'unverified-by-default', () => {
+    const webSearchIds = new Set([
+      'qwen3.7-plus',
+      'qwen3.7-max',
+      'qwen3.6-flash',
+      'qwen3.6-max-preview',
+      'qwen3.6-plus',
+      'qwen3.6-27b',
+      'qwen3.6-35b-a3b',
+      'qwen3.5-plus',
+      'qwen3.5-397b-a17b',
+      'qwen3.5-122b-a10b',
+      'qwen3.5-27b',
+      'qwen3.5-35b-a3b',
+      'qwen3-max',
+    ])
 
     for (const model of qwen.models) {
-      if (model.id === 'qwen3.7-plus' || model.id === 'qwen3.6-flash') {
-        expect(toolsById.get(model.id)).toEqual(['web_search'])
+      if (webSearchIds.has(model.id)) {
+        expect(model.tools).toEqual(['web_search'])
       } else {
-        expect(toolsById.get(model.id)).toEqual([])
+        expect(model.tools).toEqual([])
       }
     }
+  })
+
+  it('excludes Qwen3.8 from web search since its Chat Completions API '
+    + 'does not support the agent search strategy', () => {
+    expect(findModel('qwen3.8-max')?.tools).toEqual([])
+    expect(findModel('qwen3.8-flash')?.tools).toEqual([])
   })
 
   it('has no model exposing image generation', () => {

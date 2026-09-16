@@ -17,7 +17,7 @@ export default {
     },
     {
       id: 'qwen3.7-max',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -57,7 +57,7 @@ export default {
     },
     {
       id: 'qwen3.6-max-preview',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -67,7 +67,7 @@ export default {
     },
     {
       id: 'qwen3.6-plus',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -77,7 +77,7 @@ export default {
     },
     {
       id: 'qwen3.6-27b',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -87,7 +87,7 @@ export default {
     },
     {
       id: 'qwen3.6-35b-a3b',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -97,7 +97,7 @@ export default {
     },
     {
       id: 'qwen3.5-plus',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -107,7 +107,7 @@ export default {
     },
     {
       id: 'qwen3.5-397b-a17b',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -117,7 +117,7 @@ export default {
     },
     {
       id: 'qwen3.5-122b-a10b',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -127,7 +127,7 @@ export default {
     },
     {
       id: 'qwen3.5-27b',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -137,7 +137,7 @@ export default {
     },
     {
       id: 'qwen3.5-35b-a3b',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'toggle',
       },
@@ -267,7 +267,7 @@ export default {
     },
     {
       id: 'qwen3-max',
-      tools: [],
+      tools: ['web_search'],
       price: {
         tokens: 1_000_000,
       },

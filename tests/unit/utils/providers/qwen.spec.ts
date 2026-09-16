@@ -1,5 +1,6 @@
 import type { Model, Provider } from '#shared/types/providers.d'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import qwenProvider from '../../../../providers/qwen'
 
 const mocks = vi.hoisted(() => ({
   getModel: vi.fn(),
@@ -275,6 +276,63 @@ describe('useQwen web search wiring', () => {
     const result = await useQwen('1', 'qwen3.7-plus', [], 'off')
 
     expect(result.providerOptions).toEqual({})
+  })
+
+  const webSearchCatalogModels = qwenProvider.models.filter((model) => {
+    return model.tools.includes('web_search')
+  })
+
+  it(`covers every catalog-flagged web search model (currently `
+    + `${webSearchCatalogModels.length})`, () => {
+    expect(webSearchCatalogModels.length).toBeGreaterThan(0)
+  })
+
+  it.each(webSearchCatalogModels)(
+    'sends enable_search with the agent strategy for catalog model $id',
+    async (catalogModel) => {
+      stubModel(createModel({
+        id: catalogModel.id,
+        tools: catalogModel.tools,
+        reasoning: catalogModel.reasoning,
+        reasoningAlwaysOn: catalogModel.reasoningAlwaysOn,
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen(
+        '1',
+        catalogModel.id,
+        ['web_search'],
+        'off',
+      )
+
+      expect(result.providerOptions).toMatchObject({
+        enable_search: true,
+        search_options: {
+          search_strategy: 'agent',
+        },
+      })
+    },
+  )
+
+  it('leaves enable_search unset when web search is not requested, using '
+    + 'a real catalog model outside the allowlist (qwen3.8-max) as the '
+    + 'fixture', async () => {
+    const catalogModel = qwenProvider.models.find((model) => {
+      return model.id === 'qwen3.8-max'
+    })
+
+    expect(catalogModel?.tools).toEqual([])
+
+    stubModel(createModel({
+      id: catalogModel?.id,
+      tools: catalogModel?.tools,
+      reasoning: catalogModel?.reasoning,
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwen3.8-max', [], 'off')
+
+    expect(result.providerOptions).not.toHaveProperty('enable_search')
   })
 })
 
