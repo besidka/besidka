@@ -18,7 +18,7 @@
             class="size-4 text-base-content/80"
           />
         <span
-          class="flex min-w-0 items-baseline gap-1 font-medium text-xs"
+          class="flex min-w-0 items-baseline font-medium text-xs"
           :class="[
             isReasoningStreaming
               ? 'skeleton skeleton-text reasoning-main-title-skeleton'
@@ -26,7 +26,7 @@
           ]"
         >
           <template v-if="isReasoningStreaming && activeStreamingTitle.length">
-            <span class="shrink-0 max-sm:hidden">Reasoning:</span>
+            <span class="shrink-0 max-sm:hidden">Reasoning: </span>
             <span
               :title="activeStreamingTitle"
               class="min-w-0 truncate"
@@ -506,6 +506,10 @@ onBeforeUnmount(() => {
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 50%,
     color-mix(in oklab, var(--color-base-content) 55%, transparent) 60% 100%
   );
+}
+
+.reasoning-main-title-skeleton.flex {
+  display: flex;
 }
 
 :global([data-theme="dark"]) .reasoning-main-title-skeleton {

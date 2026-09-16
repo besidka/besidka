@@ -246,4 +246,20 @@ describe('Chat/Reasoning', () => {
 
     expect(wrapper.get('summary').classes()).toContain('min-h-0')
   })
+
+  it(
+    'separates the streaming "Reasoning:" prefix from the live summary '
+    + 'with a space, for any provider’s reasoning text',
+    async () => {
+      const wrapper = await mountAndStartReasoning(Date.now())
+
+      vi.advanceTimersByTime(250)
+      await wrapper.vm.$nextTick()
+
+      const summary = wrapper.get('summary')
+
+      expect(summary.text()).toContain('Reasoning: Thinking about the')
+      expect(summary.text()).not.toContain('Reasoning:Thinking')
+    },
+  )
 })
