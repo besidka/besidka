@@ -22,6 +22,98 @@
       "output": 25
     }
   },
+  "claude-opus-4-8": {
+    "name": "Claude Opus 4.8",
+    "description": "Top Claude Opus tier for the hardest reasoning, coding, and long-horizon agents",
+    "releaseDate": "2026-05-28",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-opus-4-7": {
+    "name": "Claude Opus 4.7",
+    "description": "Stronger Opus tier for advanced software work and high-stakes reasoning",
+    "releaseDate": "2026-04-14",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-opus-4-6": {
+    "name": "Claude Opus 4.6",
+    "description": "High-end Claude for difficult coding, planning, and slower expert reasoning",
+    "releaseDate": "2026-02-04",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
+  "claude-opus-4-5": {
+    "name": "Claude Opus 4.5 (latest)",
+    "description": "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
+    "releaseDate": "2025-11-24",
+    "limit": {
+      "context": 200000,
+      "output": 64000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25
+    }
+  },
   "claude-sonnet-5": {
     "name": "Claude Sonnet 5",
     "description": "Everyday Claude agent model for coding, planning, browsing, and general work",
@@ -43,6 +135,52 @@
     "cost": {
       "input": 2,
       "output": 10
+    }
+  },
+  "claude-sonnet-4-6": {
+    "name": "Claude Sonnet 4.6",
+    "description": "Claude workhorse for coding agents, careful analysis, and production cost control",
+    "releaseDate": "2026-02-17",
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 3,
+      "output": 15
+    }
+  },
+  "claude-sonnet-4-5": {
+    "name": "Claude Sonnet 4.5 (latest)",
+    "description": "Balanced Claude model for coding, analysis, agent workflows, and cost control",
+    "releaseDate": "2025-09-29",
+    "limit": {
+      "context": 1000000,
+      "output": 64000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 3,
+      "output": 15
     }
   },
   "claude-haiku-4-5": {
@@ -122,6 +260,56 @@
     },
     "tieredPricing": true
   },
+  "gemini-3.8-flash": {
+    "name": "Gemini 3.8 Flash",
+    "description": "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
+    "releaseDate": "2026-09-02",
+    "limit": {
+      "context": 1048576,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.75,
+      "output": 3.75
+    }
+  },
+  "gemini-3.7-flash": {
+    "name": "Gemini 3.7 Flash",
+    "description": "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
+    "releaseDate": "2026-08-13",
+    "limit": {
+      "context": 1048576,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.75,
+      "output": 3.75
+    }
+  },
   "gemini-3.6-flash": {
     "name": "Gemini 3.6 Flash",
     "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
@@ -143,8 +331,8 @@
       ]
     },
     "cost": {
-      "input": 1.5,
-      "output": 7.5
+      "input": 0.75,
+      "output": 3.75
     }
   },
   "gemini-3.5-flash": {
@@ -247,33 +435,6 @@
       "input": 0.25,
       "output": 1.5
     }
-  },
-  "gemini-3-pro-preview": {
-    "name": "Gemini 3 Pro Preview",
-    "description": "Preview Gemini flagship for complex reasoning, coding, and rich multimodal prompts",
-    "releaseDate": "2025-11-18",
-    "status": "deprecated",
-    "limit": {
-      "context": 1048576,
-      "output": 65536
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "video",
-        "audio",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 2,
-      "output": 12
-    },
-    "tieredPricing": true
   },
   "gemini-3-flash-preview": {
     "name": "Gemini 3 Flash Preview",
@@ -489,8 +650,8 @@
       ]
     },
     "cost": {
-      "input": 5,
-      "output": 30
+      "input": 4,
+      "output": 20
     },
     "tieredPricing": true
   },
@@ -742,6 +903,280 @@
     "cost": {
       "input": 0.05,
       "output": 0.4
+    }
+  },
+  "o3": {
+    "name": "o3",
+    "description": "Deliberate o-series reasoner for hard math, coding, and multi-step analysis",
+    "releaseDate": "2025-04-16",
+    "limit": {
+      "context": 200000,
+      "output": 100000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 8
+    }
+  },
+  "gpt-4.1": {
+    "name": "GPT-4.1",
+    "description": "Long-lived GPT workhorse for coding, instruction following, and production apps",
+    "releaseDate": "2025-04-14",
+    "limit": {
+      "context": 1047576,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 8
+    }
+  },
+  "gpt-4.1-mini": {
+    "name": "GPT-4.1 mini",
+    "description": "Affordable GPT-4.1 lane for fast coding help and structured extraction",
+    "releaseDate": "2025-04-14",
+    "limit": {
+      "context": 1047576,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.4,
+      "output": 1.6
+    }
+  },
+  "gpt-4o": {
+    "name": "GPT-4o",
+    "description": "Omni-era GPT for multimodal chat, practical coding, and general assistants",
+    "releaseDate": "2024-05-13",
+    "limit": {
+      "context": 128000,
+      "output": 16384
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2.5,
+      "output": 10
+    }
+  },
+  "gpt-4o-mini": {
+    "name": "GPT-4o mini",
+    "description": "Small omni GPT for cheap multimodal assistance and production-scale traffic",
+    "releaseDate": "2024-07-18",
+    "limit": {
+      "context": 128000,
+      "output": 16384
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.15,
+      "output": 0.6
+    }
+  },
+  "o4-mini": {
+    "name": "o4-mini",
+    "description": "Fast o-series model for compact reasoning, coding, and tool use",
+    "releaseDate": "2025-04-16",
+    "status": "deprecated",
+    "limit": {
+      "context": 200000,
+      "output": 100000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.1,
+      "output": 4.4
+    }
+  },
+  "gpt-4.1-nano": {
+    "name": "GPT-4.1 nano",
+    "description": "Tiny GPT-4.1 option for classification, routing, and very high-volume tasks",
+    "releaseDate": "2025-04-14",
+    "status": "deprecated",
+    "limit": {
+      "context": 1047576,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.1,
+      "output": 0.4
+    }
+  },
+  "o3-mini": {
+    "name": "o3-mini",
+    "description": "Smaller o-series reasoner for economical coding, math, and planning tasks",
+    "releaseDate": "2024-12-20",
+    "status": "deprecated",
+    "limit": {
+      "context": 200000,
+      "output": 100000
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.1,
+      "output": 4.4
+    }
+  },
+  "o1": {
+    "name": "o1",
+    "description": "O-series reasoning model for hard analysis, math, coding, and planning",
+    "releaseDate": "2024-12-05",
+    "status": "deprecated",
+    "limit": {
+      "context": 200000,
+      "output": 100000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 15,
+      "output": 60
+    }
+  },
+  "gpt-4-turbo": {
+    "name": "GPT-4 Turbo",
+    "description": "Compact GPT model for low-latency assistance and high-volume workloads",
+    "releaseDate": "2023-11-06",
+    "status": "deprecated",
+    "limit": {
+      "context": 128000,
+      "output": 4096
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 10,
+      "output": 30
+    }
+  },
+  "gpt-4": {
+    "name": "GPT-4",
+    "description": "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
+    "releaseDate": "2023-11-06",
+    "status": "deprecated",
+    "limit": {
+      "context": 8192,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 30,
+      "output": 60
+    }
+  },
+  "gpt-3.5-turbo": {
+    "name": "GPT-3.5-turbo",
+    "description": "Compact GPT model for low-latency assistance and high-volume workloads",
+    "releaseDate": "2023-03-01",
+    "status": "deprecated",
+    "limit": {
+      "context": 16385,
+      "output": 4096
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.5,
+      "output": 1.5
     }
   },
   "gpt-image-2": {

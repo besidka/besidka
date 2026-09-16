@@ -551,4 +551,81 @@ describe('useHistory', () => {
     }))
     await searchHydratePromise
   })
+
+  it('omits the search query param for a query shorter than MIN_SEARCH_LENGTH', async () => {
+    fetchMock.mockImplementation(() => {
+      return Promise.resolve(createHistoryResponse())
+    })
+
+    const history = createHistoryComposable()
+    history.search.value = 'a'
+    await history.hydrateAndRefresh()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chats/history', {
+      query: {},
+    })
+  })
+
+  it('carries searchCapped through prime() and a subsequent cache round-trip', async () => {
+    const chat = createHistoryChat({ id: 'chat-1', title: 'Chat 1' })
+
+    const history = createHistoryComposable()
+    history.prime(createHistoryResponse({
+      chats: [chat],
+      searchCapped: true,
+    }))
+
+    expect(history.searchCapped.value).toBe(true)
+
+    const otherHistory = createHistoryComposable()
+
+    expect(otherHistory.searchCapped.value).toBe(true)
+  })
+
+  it('resets searchCapped to false when switching back to an uncapped cached search', async () => {
+    vi.useFakeTimers()
+
+    const cappedChat = createHistoryChat({ id: 'chat-capped', title: 'Capped' })
+    const plainChat = createHistoryChat({ id: 'chat-plain', title: 'Plain' })
+
+    fetchMock.mockImplementation((url: string, options?: {
+      query?: {
+        search?: string
+      }
+    }) => {
+      if (options?.query?.search === 'invoice') {
+        return Promise.resolve(createHistoryResponse({
+          chats: [cappedChat],
+          searchCapped: true,
+        }))
+      }
+
+      return Promise.resolve(createHistoryResponse({
+        chats: [plainChat],
+        searchCapped: false,
+      }))
+    })
+
+    const history = createHistoryComposable()
+    history.prime(createHistoryResponse({
+      chats: [plainChat],
+      searchCapped: false,
+    }))
+
+    expect(history.searchCapped.value).toBe(false)
+
+    history.search.value = 'invoice'
+    await flushPromises()
+    vi.advanceTimersByTime(180)
+    await flushPromises()
+
+    expect(history.searchCapped.value).toBe(true)
+
+    history.search.value = ''
+    await flushPromises()
+    vi.advanceTimersByTime(180)
+    await flushPromises()
+
+    expect(history.searchCapped.value).toBe(false)
+  })
 })

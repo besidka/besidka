@@ -15,11 +15,11 @@ function getHashidsInstance(): Hashids {
   return hashidsInstance
 }
 
-function encodePublicId(id: number): string {
+export function encodePublicId(id: number): string {
   return getHashidsInstance().encode(id)
 }
 
-function decodePublicId(publicId: string): number {
+export function decodePublicId(publicId: string): number {
   const [id] = getHashidsInstance().decode(publicId)
 
   return Number(id)

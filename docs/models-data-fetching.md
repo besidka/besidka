@@ -35,7 +35,8 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `name` | fetched, unless the model is a research agent or models.dev publishes the bare id as the name |
 | `description` | fetched, unless the model is a research agent |
 | `contextLength`, `maxOutputTokens`, `modalities` | fetched |
-| `status` | fetched, present only when models.dev flags `deprecated`/`beta`/`alpha` |
+| `status` | fetched, unless hand-set in curated (curated wins — the owner can outrank models.dev) |
+| `retiredAt` | curated only — the provider's official shutdown date; models.dev has no retirement dates |
 | `price.input`, `price.output` | fetched, unless the model is a research agent (billed per task) |
 | `price.display` | curated (per-image copy) |
 | `price.tokens` | curated (the structural cost divisor) |
@@ -102,6 +103,115 @@ a hard failure — a deprecated model isn't necessarily already broken for
 BYOK users — but it's a stronger signal than "here's what's new upstream."
 See "Model status" below for what this caught on this pass.
 
+## Detecting same-family successors automatically
+
+The audit report above is read-only: a human still has to notice a new id
+and hand-add it to `providers/*.ts`. `scripts/detect-model-successors.mjs`
+goes one step further for the narrow, mechanical case where that human
+decision is actually trivial — a new upstream id that is obviously just the
+next point release of a model already curated in the exact same product
+shape (same price-tier divisor, same tool set, same reasoning shape).
+Example: curated `gemini-3.7-flash` plus upstream `gemini-3.8-flash` ->
+propose curating `gemini-3.8-flash`.
+
+**The family-derivation rule is generic, not per-provider.**
+`parseModelFamily(id)` finds the first run of digits (and `.`/`-`
+separators) in an id and replaces it with a placeholder: `gemini-3.7-flash`
+-> family `gemini-{v}-flash`, version `3.7`; `gpt-5.4-nano` -> family
+`gpt-{v}-nano`; `o3` -> family `o{v}`; `claude-opus-4-8` -> family
+`claude-opus-{v}`. One rule handles all three providers' current id shapes
+with no hardcoded per-provider regex. A future provider's ids either form a
+family this rule can work with, or they don't — and if they don't, nothing
+matches and nothing is proposed for that family; it just falls through to
+the existing human-read uncurated-models report above. The failure mode is
+always "nothing proposed," never "the wrong thing proposed."
+
+For each family, the **template** is the highest-version currently curated
+model in that family (by segment-wise numeric comparison, so `3.10` sorts
+above `3.9`). A template is only used as a copy source if it passes
+`isProposableTemplate()`: no curated `status`, a price shape of exactly
+`{ tokens: 1_000_000 }` (no hand-set `input`/`output`/`display`), and if it
+has a curated `reasoning` block, `mode` must be `'levels'`. A template that
+fails this check makes its whole family sit out the run, reported as
+"needs a human" — that family isn't silently skipped forever, it's just not
+mechanically copyable *this* run (for example, if `retiredAt` were ever set
+without `status`, that alone would not disqualify a template; only
+`status`, a non-standard price shape, or a non-`'levels'` reasoning mode
+do).
+
+**Guardrails**, applied to every upstream candidate before it can become a
+proposal — a hit on any of these is a skip, never a throw:
+
+- Already curated, or listed in `DECLINED_IDS` (below).
+- Doesn't parse into the same family, or isn't a strictly newer version than
+  the template.
+- **Duplicate-spec alias**: some *other* currently curated model on the same
+  provider has upstream `cost.input`, `cost.output`, and `release_date` all
+  identical to the candidate's. This is what correctly rejects bare
+  `gpt-5.6` as a duplicate of curated `gpt-5.6-sol` (models.dev reports
+  identical cost and release date for both) and rejects the dated Claude
+  snapshot alias `claude-haiku-4-5-20251001` as a duplicate of curated
+  `claude-haiku-4-5` — real cases this guard catches on the current
+  catalog, not hypotheticals.
+- Upstream `tool_call` isn't `true`.
+- Upstream `reasoning` (boolean, from models.dev) doesn't match whether the
+  template itself has a curated `reasoning` block.
+- Upstream `status` is set to anything (deprecated/alpha/beta).
+- Upstream `modalities.input`/`output` don't include `'text'`.
+- Upstream metadata is missing any field `toSnapshotEntry()` in
+  `scripts/fetch-models-metadata.mjs` requires — without this guard, a
+  curated id with incomplete upstream data would make the very next
+  `models:fetch` hard-fail.
+- **Price-tier band**: for both input and output cost, if the candidate is
+  more than 2x costlier or cheaper than the template (symmetric — either
+  direction trips it), it is NOT skipped silently — it's collected into a
+  separate, report-only `priceTierFlags` list. A new price tier (like the
+  declined `gpt-5-pro`/`gpt-6-astra` ids) is exactly the kind of decision
+  this detector must never make on its own.
+
+Only the single highest-version surviving candidate per family is kept —
+never more than one proposal per family in a run.
+
+`DECLINED_IDS` in `scripts/detect-model-successors.mjs` is a plain list of
+ids a human already reviewed and rejected (see "Ids deliberately not
+auto-added" below); append to it whenever declining a future proposal so
+the weekly job stops re-proposing the same id.
+
+This is a different mechanism from "Why a curated id can never pull in a
+junk model" above, not the same one: `scanProviderCandidates()` in
+`scripts/detect-model-successors.mjs` does iterate every id in the
+provider's remote catalog — it has to, since finding a successor means
+scanning for one. What stays tightly bounded is what can ever become a
+*proposal*: a candidate must parse into a family that already has an
+eligible, curated template; be strictly newer than it; and pass every
+guardrail below — and even then, only the single highest-version survivor
+per family is kept. An upstream id that doesn't fit an already-curated
+family's exact placeholder shape can never become a proposal, no matter how
+the scan finds it. So the detector's *output* still follows the same
+curated-first philosophy as the rest of this file: nothing reaches
+`providers/*.ts` unless it already resembles something a human already
+chose to curate, and even then only as a pull request a human must still
+review and merge.
+
+`scripts/propose-model-successors.mjs` is the CLI entry point
+(`node scripts/propose-model-successors.mjs`, or `--dry-run` to only print
+the report). It fetches the catalog via the shared `fetchCatalog()` in
+`scripts/models-dev-catalog.mjs` (also used by
+`scripts/fetch-models-metadata.mjs`), calls `findSuccessorProposals()`,
+and — outside dry-run, when there's at least one proposal — renders each
+one with `renderCuratedEntry()` and splices it into the right
+`providers/*.ts` file with `insertCuratedEntry()`, which always inserts
+immediately before its template's opening brace — the curated files are
+newest-first, and a successor is by definition newer than the template it
+extends, so it belongs ahead of it in the array. All files are
+built in memory first; if any insertion fails, nothing is written and the
+process exits non-zero. `scripts/detect-model-successors.mjs` is covered by
+`tests/unit/scripts/detect-model-successors.spec.ts`, kept side-effect-free
+for the same reason `audit-curated-models.mjs` is — a unit test can import
+it directly. `scripts/propose-model-successors.mjs` itself has top-level
+side effects (the network fetch, the conditional file writes), the same as
+`scripts/fetch-models-metadata.mjs`, so it is not unit tested directly.
+
 ## Model status (deprecated/beta/alpha)
 
 Some models.dev entries carry a `status` field (`"deprecated"`, `"beta"`, or
@@ -132,13 +242,24 @@ state:
   `localStorage`/devtools edit could otherwise still send a deprecated
   model id straight to the API).
 
-As of this pass, one currently curated id is flagged deprecated:
+As of this pass, curated ids carry deprecation state from two sources:
 
-- **`gemini-3-pro-preview`** — a standalone curated chat model whose
-  successor, `gemini-3.1-pro-preview`, is already curated separately. Left
-  in the catalog (not deleted — a user with it persisted would otherwise
-  see `getModel()` silently resolve to nothing) and handled entirely by the
-  legacy-section UI and server guard above.
+- **`gemini-2.5-flash-image`** — models.dev does not flag it, but Google's
+  official deprecations page schedules its shutdown for 2026-10-02. The
+  curated entry hand-sets `status: 'deprecated'` (curated status now
+  outranks the snapshot at merge time) plus `retiredAt: '2026-10-02'`, so
+  it moves to the legacy picker section and the `useChatProvider()` guard
+  blocks sending with it, in new and continued chats alike.
+- **`gemini-3-pro-preview`** — fully retired from models.dev (it previously
+  carried `status: 'deprecated'`). Kept in the catalog via `EXEMPT_IDS` and
+  fully curated in `providers/google.ts` with `status: 'deprecated'`, a
+  `releaseDate`, and its passed shutdown date `retiredAt: '2026-03-09'`,
+  so a user with it persisted still resolves normally while the
+  legacy-section picker UI and `useChatProvider()` guard stop offering it
+  as a new pick. Its successor, `gemini-3.1-pro-preview`, is already
+  curated separately. The next successful `models:fetch` drops the snapshot
+  row for this id — that is expected and correct; the curated half is now
+  the only source of its metadata.
 
 **`gemini-3.1-flash-lite-preview`** was ALSO flagged deprecated on an
 earlier pass of this audit, but that was a genuine bug, not a "leave it in
@@ -155,6 +276,69 @@ the next point release) before assuming the legacy-section treatment is the
 right fix — swapping the id is strictly better when a real successor
 exists.
 
+## Retirement dates and how we learn about them
+
+models.dev has no retirement data at all — it flags none of our curated
+models deprecated even when the provider officially schedules shutdown
+(proven: the whole gemini-2.5 family). Retirement knowledge therefore
+arrives through two layers:
+
+1. **The models.dev `status` tripwire.** The weekly drift check and every
+   manual `pnpm run models:fetch` print the deprecated-model warning (see
+   "Auditing curated vs. available models" above), and a fetched
+   `status: 'deprecated'` flows into the merge, driving the legacy picker
+   tab and the server guard automatically. This catches OpenAI-style flags,
+   where models.dev does mark a model deprecated.
+2. **Hand-curated `status` + `retiredAt`.** When models.dev stays silent,
+   the authoritative source is the provider's official deprecation page —
+   for Gemini https://ai.google.dev/gemini-api/docs/deprecations , for
+   OpenAI https://platform.openai.com/docs/deprecations , for Anthropic
+   https://platform.claude.com/docs/en/about-claude/model-deprecations .
+   The weekly cadence already forces a human look at the fetch output;
+   these pages are that human's reading list. A hand-set curated
+   `retiredAt` (`yyyy-mm-dd`, shown in the model detail panel) and, when
+   shutdown is near or past, a hand-set curated `status: 'deprecated'`
+   are set in `providers/*.ts`; curated status outranks the snapshot.
+
+Scraping the deprecation pages on a schedule was rejected (fragile HTML
+churn for little gain) and so was API probing (this repo is 100% BYOK and
+holds no provider keys — see "Optional owner-run spot-check" below).
+
+Semantics: `status: 'deprecated'` is the **gate** — legacy tab plus the
+`useChatProvider()` server guard block new chats with the model.
+`retiredAt` alone is **informational** — the model stays selectable but its
+detail panel shows the scheduled retirement date (`gemini-3.1-flash-lite`,
+retiring 2027-05-07, is the working example).
+
+Beware product-scoped dates: Google's Vertex AI and Gemini API (AI Studio)
+deprecate models on different schedules. The Oct 16 2026 shutdown date
+circulating for the gemini-2.5 text models is a Vertex AI date; the AI
+Studio page announces no shutdown date for them, so they stay untouched in
+the catalog.
+
+**Anthropic lineage** (updated 2026-08-26): the previous Claude
+generations (opus-4-8/4-7/4-6/4-5, sonnet-4-6/4-5) are IN the catalog as
+normal selectable models. The catalog is BYOK access, not taste
+curation — the app is not the provider and does not decide what users
+use — and it already keeps old Gemini generations (3.1/3.5/3.6
+alongside 3.7), so the same principle now covers Anthropic too: every
+active mainline chat generation upstream is offered. All six are
+Active ("Deprecated: N/A") in Anthropic's deprecations table; when
+Anthropic actually deprecates any of them, it moves to the legacy tab
+via curated `status` + `retiredAt`, like `gemini-2.5-flash-image`.
+Excluded on purpose: fable-5 ($10/$50 premium tier above Opus 5 —
+price overkill for a chat-only app, owner declined) and the
+dated-snapshot ids (`claude-opus-4-5-20251101`,
+`claude-sonnet-4-5-20250929`, `claude-haiku-4-5-20251001`), which are
+the same models as their dateless aliases. Older generations (Sonnet
+4, Haiku 4, Opus 4.1) are no longer listed on models.dev at all, so
+there is nothing to add or retire for them. `claude-opus-4-5` and
+`claude-sonnet-4-5` carry a curated `name` override because models.dev
+names those aliases with a "(latest)" suffix. Curated retirement
+floors ("not sooner than"): opus-5 ≥ 2027-07-24, sonnet-5 ≥ 2027-06-30,
+haiku-4-5 (snapshot claude-haiku-4-5-20251001) ≥ 2026-10-15 — the
+closest watch item.
+
 ## Hard failure on a retired model
 
 If a curated id disappears from models.dev, `pnpm run models:fetch` prints
@@ -163,11 +347,21 @@ point of fetching: a retired or renamed model becomes a loud, deliberate
 edit instead of silently stale hardcoded values.
 
 `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs` lists the ids that are
-knowingly absent upstream — currently `o3-deep-research` and
-`o4-mini-deep-research`, whose Deep Research snapshots OpenAI bills
-separately but models.dev does not track. Exempt models carry their full
-metadata in the curated file, and the merge throws at import time if any of
-it is missing.
+knowingly absent upstream — two kinds:
+
+- Deep Research snapshots OpenAI bills separately but models.dev does not
+  track (`o3-deep-research`, `o4-mini-deep-research`).
+- Retired-but-kept legacy ids models.dev no longer publishes at all
+  (`gemini-3-pro-preview`; see "Model status" below).
+
+Exempt models carry their **full metadata in the curated file**
+(`providers/*.ts`), not in the snapshot — `models:fetch` rebuilds the
+snapshot from `{}` every run and skips exempt ids, so a hand-edited
+snapshot row would be wiped on the next successful run. For a retired-but-
+kept model, set curated `status: 'deprecated'` (and optionally
+`releaseDate`) so the legacy picker section and `useChatProvider()` guard
+keep working after the snapshot row disappears. The merge throws at import
+time if any required curated field is missing.
 
 ## Optional owner-run spot-check
 
@@ -187,13 +381,87 @@ curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API
   | jq '.models[].name'
 ```
 
-## No scheduled refresh workflow
+## Scheduled drift check
 
-There is no cron workflow opening a refresh PR. The repo has no
-`create-pull-request` precedent in `.github/workflows/`, and a bot PR that
-renames user-visible models needs a human reading the diff anyway. Run
-`pnpm run models:fetch` when adding a model or when provider pricing
-changes.
+A weekly cron (`.github/workflows/models-drift-check.yml`, `0 9 * * 1`,
+also `workflow_dispatch`) runs `pnpm run models:fetch` so a stale
+snapshot never silently ships. It also runs the successor detector above,
+proposing same-family successors in the same weekly PR.
+
+Step order in the job:
+
+1. **Fetch model metadata** — `pnpm run models:fetch`, exit code captured
+   without short-circuiting later steps.
+2. **Commit snapshot refresh** — if the snapshot file is dirty, commits
+   `providers/data/models-dev-snapshot.json` directly with `git commit`
+   (bot identity, `chore(models): refresh models.dev metadata snapshot`).
+3. **Propose same-family successors** —
+   `node scripts/propose-model-successors.mjs`, writing its own
+   `proposed_count`/`proposed_ids`/`flagged_count`/`commit_subject` step
+   outputs and inserting any proposed entries into `providers/*.ts` on
+   disk (uncommitted at this point).
+4. **Refresh snapshot for proposed models** (only if a successor was
+   proposed) — reruns `pnpm run models:fetch` so the newly curated id gets
+   its own snapshot entry, or the next run would hard-fail on it as
+   missing.
+5. **Validate proposed curation** (same condition) — `pnpm run lint`,
+   `pnpm run typecheck`, and a `pnpm exec vitest run` covering every path in
+   `modelCatalogTests` from `scripts/test-affected-check.mjs` (the same set
+   the repo's own test-affected mapping considers relevant to a
+   `providers/*.ts` change), in sequence. This is the **only** validation a
+   proposed curation gets
+   before a human looks at the diff — the drift-check PR gets no
+   `pull_request`-triggered CI, because `preview-build.yml` doesn't fire
+   for PRs opened via `github.token`. A failure here halts the job before
+   anything proposed is committed or opened as a PR, and re-uses the
+   existing workflow-failure tracking issue (see below) — that week simply
+   gets no PR.
+6. **Commit proposed curation** (same condition) — a second `git commit`
+   covering `providers/*.ts` and the re-refreshed snapshot, with the
+   message the script computed (`feat(models): propose <id> as a
+   same-family successor`, or the plural form for more than one).
+7. Job summary gets both `models:fetch` and, when present,
+   `propose-model-successors.mjs` output.
+8. **Check for snapshot changes** — `changed=true` when *either* the
+   snapshot commit happened *or* a successor was proposed. This closes a
+   real gap: a purely-upstream-side new release with no snapshot diff used
+   to produce no PR at all, because nothing local had changed; a successor
+   proposal is exactly that case, and now trips `changed=true` on its own.
+9. **Build pull request body** — the normal audit-output body, plus (when a
+   successor was proposed) the successor report and a reviewer checklist:
+   verify capability flags against the provider's own docs, no action
+   needed if satisfied, add a rejected id to `DECLINED_IDS` in
+   `scripts/detect-model-successors.mjs`, and a note that price-tier-flagged
+   ids and "needs a human" families are informational only.
+10. **Open pull request** — by this point the working tree is clean with
+    one or two local commits already made (not left uncommitted for the
+    action to stage). `peter-evans/create-pull-request@v8` picks up commits
+    already made during the workflow, not only uncommitted changes, so it
+    pushes them as-is; `add-paths` is deliberately **not** set, because with
+    it, any change outside the listed paths gets stashed and restored
+    rather than included — which would silently drop the already-committed
+    `providers/*.ts` changes. Title and commit-message differ depending on
+    whether a successor was proposed.
+
+- **Success:** if the snapshot changed or a successor was proposed, the
+  workflow opens a refresh PR (label `dependencies`) carrying one or two
+  commits as above. A human still reads the diff — a refreshed snapshot can
+  rename a model users already picked, and a proposed successor still needs
+  its capability flags spot-checked against the provider's docs.
+- **Failure:** the job stays a loud red X and a human-visible tracking issue
+  is opened (or commented on, deduplicated). Two disjoint paths:
+  - If a curated id is missing or incomplete on models.dev, the fetch script
+    hard-fails (see below). The workflow captures the exit code, writes the
+    full fetch log to the job summary, and opens or comments on a single
+    tracking issue (deduped by a `<!-- models-drift-check -->` body marker).
+    The script's hard-fail is **not** softened — the deliberate catalog edit
+    is still made by hand.
+  - If `models:fetch` exits 0 but any later step fails (the
+    refresh-pull-request commit, or the successor-proposal validation gate),
+    a separate catch-all step opens or comments on its own tracking issue
+    (marker `<!-- models-drift-check-workflow-failure -->`). Bot commits in
+    this workflow skip husky hooks via a job-level `HUSKY: 0`, so they never
+    run dev-machine pre-commit tooling.
 
 ## Favorites are DB-persisted, not localStorage
 
@@ -268,28 +536,74 @@ deliberately not fixed now — logged here instead of silently dropped:
   server-side.** An id that doesn't match any known model is stored as-is
   and simply never rendered (see "Favorites are DB-persisted" above) —
   inert, not a correctness risk, so not worth rejecting at the API layer.
-- **models.dev has no retirement *date* field**, only `release_date` and
-  `last_updated` — so a "leaving on \<date\>" countdown badge isn't
-  derivable from this data source; that would need a hand-curated
-  retirement date per model. See "Model status" above for the coarse
-  present-tense `status` field this data source does carry instead, and
-  how it now drives the legacy-section UI and server guard.
+- **models.dev still has no retirement *date* field**, only `release_date`
+  and `last_updated` — the coarse present-tense `status` it does carry
+  drives the legacy-section UI and server guard, but any "leaving on
+  \<date\>" countdown needs a hand-curated date. That gap is now filled by
+  curated `retiredAt` (see "Retirement dates and how we learn about them"
+  above); what remains deferred is surfacing it as anything richer than
+  the detail-panel sentence.
+- **`isDuplicateOfCuratedSibling` only checks against already-curated
+  siblings, not against other candidates in the same run.** It exists to
+  reject a candidate whose upstream cost and release date exactly match an
+  already-curated sibling — the real `gpt-5.6`/`gpt-5.6-sol` case it was
+  built for. But it never compares two *uncurated* candidates against each
+  other: two ids that are both still uncurated, share identical upstream
+  cost and release date (mirroring that same `gpt-5.6`/`gpt-5.6-sol` shape
+  before either one is curated), and happen to parse into different
+  families could each independently pass every guardrail and both show up
+  in the same weekly proposal or flag report. Not a crash risk — a human
+  still reviews and merges every proposal — but it is a real scope gap in
+  the duplicate-spec-alias guardrail as currently written.
 
 ## New models added this pass — confidence on capability flags
 
-`gpt-5.6`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (OpenAI) and
+`gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` (OpenAI) and
 `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite` (Google) were
 added to the curated files this pass, found via the audit report above.
 
-**`tool_call`/`reasoning: true` are confirmed** for all seven from
+**`tool_call`/`reasoning: true` are confirmed** for all six from
 models.dev's own fields, and OpenAI's docs additionally confirm web search
 for `gpt-5.6-sol`/`terra`/`luna` explicitly. **`tools: ['image_generation']`
-on all seven is a convention copy from sibling models in the same lineage
+on all six is a convention copy from sibling models in the same lineage
 (every `gpt-5.x`/`gemini-3.x` mainline entry already gets it), not a
 per-model capability confirmed against any field models.dev exposes.** If a
 model in this set turns out not to actually support image generation, a user
 picking that tool would only find out at generation time. Worth a spot-check
 before relying on it for a model you haven't tried yet.
+
+A later pass added `gemini-3.7-flash` — the same-family successor of
+`gemini-3.6-flash`, curated with the identical structure and the same
+$0.75/$3.75 pricing, with name/description/limits pulled from the snapshot
+— and bare `gpt-5.6`, whose models.dev specs are identical to
+`gpt-5.6-sol` apart from id and name. The bare alias was later removed
+again as unnecessary duplication; only the explicit `gpt-5.6-sol` id
+stays curated (see "Ids
+deliberately not auto-added" below).
+
+A further pass added `gemini-3.8-flash` — the same-tier successor of
+`gemini-3.7-flash`, curated with the identical structure and the same
+$0.75/$3.75 pricing — plus twelve OpenAI ids in one batch. Five are
+active mainline models: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4o`, `gpt-4o-mini`,
+and `o3`. The first four carry no curated `reasoning` block because
+models.dev reports `reasoning: false` for them — confirmed safe, not new
+risk: `getReasoningCapability()` (`shared/utils/reasoning.ts`) returns
+`null` for a model with no `reasoning` field, which makes
+`resolveReasoningLevelForModel()` always resolve to `'off'` for these
+models regardless of what the UI requests, an already-existing code path.
+`o3` does get a curated `reasoning` block, matching its sibling
+`gpt-5.x`/`o1`-family entries.
+
+The other seven are legacy adds, all flagged `⚠ DEPRECATED` by the audit
+report and all retiring 2026-10-23 per OpenAI's deprecations page:
+`o4-mini`, `gpt-4.1-nano`, `o3-mini`, `o1`, `gpt-4-turbo`, `gpt-4`, and
+`gpt-3.5-turbo`. Each carries an explicit curated `status: 'deprecated'`
+even though models.dev already flags all seven deprecated today — the
+same precedent as `gemini-2.5-flash-image` above: curated status
+outranks fetched, and it keeps the file self-describing if models.dev
+ever flips the flag. `gpt-3.5-turbo` has `tool_call: false` upstream, so
+it's curated with `tools: []`, same as `gpt-4-turbo` and `gpt-4`, which
+carry no tool capability worth curating either.
 
 ## Ids deliberately not auto-added (owner review needed)
 
@@ -308,13 +622,26 @@ automatic add:
 - **`gpt-5.3-codex`, `gpt-5.3-codex-spark`** — coding-agent-specialized
   variants, a different product positioning than this app's general chat
   models (also: no plain `gpt-5.3` mainline model exists upstream at all).
-- **`gpt-5.6-sol`** — not a distinct model. OpenAI's own docs state
-  "Model ID: gpt-5.6-sol (aliased as gpt-5.6)", and its models.dev entry is
-  byte-identical to bare `gpt-5.6` (same cost, description, release date).
-  Curating both would show two indistinguishable rows for one model; the
-  bare `gpt-5.6` id was curated instead, matching how every other mainline
-  release in this lineage (`gpt-5`, `gpt-5.1`, `gpt-5.2`, `gpt-5.4`) has no
-  separate top-tier alias id.
+- **`gpt-5.6-sol`** — the curated id for this model, not a distinct
+  sibling: OpenAI's own docs state "Model ID: gpt-5.6-sol (aliased as
+  gpt-5.6)", and its models.dev entry is identical to bare `gpt-5.6`
+  apart from id and name (same cost, description, release date). The
+  bare `gpt-5.6` alias was
+  briefly curated too (#367), then removed again as unnecessary
+  duplication — the owner prefers the explicit Sol id — so bare
+  `gpt-5.6` stays on this deliberately-not-curated list.
+- **`claude-fable-5`** — a premium tier above Opus 5 ($10/$50 vs the
+  $5/$25 Opus pricing); it would add another price tier to the picker,
+  and the owner declined.
+- **`gpt-6-astra`** — $10/$50, 2.5x `gpt-5.6-sol`'s pricing; a genuine
+  new price tier, not a same-tier successor, so it needs an explicit
+  owner decision rather than an automatic add.
+- **`gemini-omni-flash-preview`** — models.dev shows `tool_call: false`
+  and a video-only output modality; not a chat model, and still preview
+  status besides.
+- **`claude-fable-5-1`** — the same declined premium tier as
+  `claude-fable-5` above, just a later dated release (2026-09-01).
+
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:
 

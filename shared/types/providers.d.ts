@@ -28,6 +28,7 @@ export interface Model {
   maxOutputTokens: number
   releaseDate?: string
   status?: 'deprecated' | 'beta' | 'alpha'
+  retiredAt?: string
   price: {
     tokens: number
     input: string

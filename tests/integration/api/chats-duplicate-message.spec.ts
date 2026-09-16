@@ -607,6 +607,180 @@ describe('chat duplicate message detection', () => {
   })
 })
 
+describe('chat tool selection for single-message chats', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+
+    vi.stubGlobal(
+      'defineEventHandler',
+      (handler: unknown) => handler,
+    )
+    vi.stubGlobal('createError', (input: {
+      statusCode?: number
+      statusMessage?: string
+    }) => {
+      const exception = new Error(
+        input.statusMessage || 'Error',
+      )
+
+      Object.assign(exception, input)
+
+      return exception
+    })
+    vi.stubGlobal('getValidatedRouterParams', async (
+      event: { params: unknown },
+      parser: (params: unknown) => unknown,
+    ) => {
+      return parser(event.params)
+    })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
+    vi.stubGlobal(
+      'useUserSession',
+      vi.fn().mockResolvedValue({ user: { id: '1' } }),
+    )
+    vi.stubGlobal(
+      'validateMessageFilePolicy',
+      vi.fn(async () => undefined),
+    )
+    vi.stubGlobal(
+      'convertFilesForAI',
+      vi.fn(async (messages: unknown) => ({
+        messages,
+        missingFiles: [],
+      })),
+    )
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
+    })))
+    vi.stubGlobal('attachCloudflareMeta', vi.fn())
+    vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
+    vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))
+    vi.stubGlobal('useKV', () => ({
+      get: vi.fn(async () => null),
+      put: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    }))
+  })
+
+  it(
+    'uses body.data.tools when the lone persisted message is the '
+    + 'assistant reply (first user message deleted, reply kept)',
+    async () => {
+      const handler = await getHandler()
+      const useOpenAIMock = vi.fn(async () => ({
+        instance: {},
+        tools: {},
+        providerOptions: {},
+      }))
+
+      vi.stubGlobal('useOpenAI', useOpenAIMock)
+
+      const assistantOnlyMessage = {
+        id: 'db-assistant-1',
+        publicId: 'assistant-public-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Previous answer' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:00:00Z'),
+      }
+      const { db, insertValues } = createDb({
+        messages: [assistantOnlyMessage],
+      })
+
+      vi.stubGlobal('useDb', () => db)
+
+      await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: ['web_search'],
+          reasoning: 'off',
+          messages: [{
+            id: 'new-user-public-id',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Continue the conversation' }],
+          }],
+        },
+      } as any)
+
+      expect(useOpenAIMock).toHaveBeenCalledWith(
+        '1',
+        'gpt-5-mini',
+        ['web_search'],
+        'off',
+      )
+
+      const userInserts = insertValues.mock.calls.filter(
+        ([value]) => value.role === 'user',
+      )
+
+      expect(userInserts).toHaveLength(1)
+      expect(userInserts[0][0]).toEqual(
+        expect.objectContaining({ tools: ['web_search'] }),
+      )
+    },
+  )
+
+  it(
+    'reuses the persisted tools for a genuine unanswered first '
+    + 'user message being regenerated',
+    async () => {
+      const handler = await getHandler()
+      const useOpenAIMock = vi.fn(async () => ({
+        instance: {},
+        tools: {},
+        providerOptions: {},
+      }))
+
+      vi.stubGlobal('useOpenAI', useOpenAIMock)
+
+      const unansweredUserMessage = {
+        id: 'db-user-1',
+        publicId: 'user-public-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'First question' }],
+        tools: ['web_search'] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:00:00Z'),
+      }
+      const { db } = createDb({
+        messages: [unansweredUserMessage],
+      })
+
+      vi.stubGlobal('useDb', () => db)
+
+      await handler({
+        params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+        body: {
+          model: 'gpt-5-mini',
+          tools: [],
+          reasoning: 'off',
+          messages: [{
+            id: 'user-public-1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'First question' }],
+          }],
+        },
+      } as any)
+
+      expect(useOpenAIMock).toHaveBeenCalledWith(
+        '1',
+        'gpt-5-mini',
+        ['web_search'],
+        'off',
+      )
+    },
+  )
+})
+
 async function collectStreamChunks(stream: any): Promise<any[]> {
   const reader = stream.getReader()
   const chunks: any[] = []

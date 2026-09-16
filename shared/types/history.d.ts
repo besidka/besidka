@@ -13,6 +13,8 @@ type HistoryChatRow = Pick<
   projectId: typeof schema.chats.$inferSelect['projectId'] | null
   projectName: typeof schema.projects.$inferSelect['name'] | null
   shared: boolean
+  matchedIn?: 'title' | 'content' | 'both'
+  snippet?: string | null
 }
 
 export type HistoryChat = Serialize<HistoryChatRow>
@@ -21,6 +23,7 @@ export interface HistoryResponse {
   pinned: HistoryChat[]
   chats: HistoryChat[]
   nextCursor: string | null
+  searchCapped?: boolean
 }
 
 type SharedChatRow = HistoryChatRow & {

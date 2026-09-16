@@ -33,6 +33,7 @@ jobs:
   resolve-preview-context:
     name: Resolve preview context
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     outputs:
       pr-number: ${{ steps.pr.outputs.number }}
       is-direct: ${{ steps.direct-push.outputs.is-direct }}
@@ -74,7 +75,7 @@ jobs:
     name: Build and Deploy to Production
     needs: resolve-preview-context
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 30
+    timeout-minutes: 20
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
       bundle-size: ${{ steps.bundle-size.outputs.bundle-size }}
@@ -358,6 +359,7 @@ jobs:
       - resolve-preview-context
       - build-production
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
     outputs:
       version-found: ${{ steps.find-version.outputs.found }}
     permissions:
@@ -386,11 +388,17 @@ jobs:
             exit 1
           }
 
+          # A PR pushed more than once uploads multiple versions tagged
+          # with the same alias; sort by creation time and take the
+          # newest, since a merged PR must promote its latest commit.
+          # A missing created_on sorts first (oldest), never last, so it
+          # can never be mistaken for the newest version.
           VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg alias "pr-${PR_NUMBER}" '
-            .[]
-            | select(.annotations."workers/alias" == $alias)
-            | .id
-          ' | head -n 1)
+            [ .[] | select(.annotations."workers/alias" == $alias) ]
+            | sort_by(.metadata.created_on // "")
+            | last
+            | .id // empty
+          ')
 
           if [ -z "$VERSION_ID" ]; then
             echo "No version found with alias pr-${PR_NUMBER}"
@@ -427,6 +435,7 @@ jobs:
       - update-preview
     if: needs.resolve-preview-context.outputs.is-direct == 'true' || needs.update-preview.outputs.version-found == 'false'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
     permissions:
       contents: read
 
@@ -490,6 +499,7 @@ jobs:
       - deploy-preview-fallback
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       actions: write
       contents: read

@@ -754,6 +754,7 @@ describe('Chat/ContextMenu.client', () => {
           messageId: 'm1',
           anchorEl,
           showBranch: false,
+          showDelete: false,
         },
         attachTo: document.body,
       })
@@ -787,6 +788,7 @@ describe('Chat/ContextMenu.client', () => {
           anchorEl,
           info,
           showBranch: false,
+          showDelete: false,
         },
         attachTo: document.body,
       })
@@ -796,6 +798,94 @@ describe('Chat/ContextMenu.client', () => {
       ).toBe(true)
       expect(wrapper.find('hr').exists()).toBe(false)
       expect(wrapper.text()).not.toContain('Branch chat from here')
+    })
+  })
+
+  describe('delete gating', () => {
+    function findDeleteButton(wrapper: VueWrapper) {
+      return wrapper.find('[data-testid="message-menu-delete"]')
+    }
+
+    it('shows the Delete item as the last item when showDelete is omitted', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      expect(findDeleteButton(wrapper).exists()).toBe(true)
+      expect(findDeleteButton(wrapper).text()).toBe('Delete')
+
+      const items = wrapper.findAll('li')
+
+      expect(items.at(-1)?.find(
+        '[data-testid="message-menu-delete"]',
+      ).exists()).toBe(true)
+    })
+
+    it('precedes the Delete item with a danger-zone divider', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const dividers = wrapper.findAll('hr')
+
+      expect(dividers.length).toBeGreaterThan(0)
+
+      const lastDivider = dividers.at(-1)
+
+      expect(lastDivider?.element.parentElement?.nextElementSibling)
+        .toBe(findDeleteButton(wrapper).element.closest('li'))
+    })
+
+    it('hides the Delete item and its divider when showDelete is false', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          showDelete: false,
+        },
+        attachTo: document.body,
+      })
+
+      expect(findDeleteButton(wrapper).exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('Delete')
+    })
+
+    it('emits delete with the messageId then close', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      await findDeleteButton(wrapper).trigger('click')
+
+      expect(wrapper.emitted('delete')).toEqual([['m1']])
+      expect(wrapper.emitted('close')).toHaveLength(1)
+    })
+
+    it('coexists with the branch button and its own divider', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          showBranch: true,
+        },
+        attachTo: document.body,
+      })
+
+      expect(wrapper.text()).toContain('Branch chat from here')
+      expect(findDeleteButton(wrapper).exists()).toBe(true)
+      expect(wrapper.findAll('hr').length).toBeGreaterThanOrEqual(1)
     })
   })
 

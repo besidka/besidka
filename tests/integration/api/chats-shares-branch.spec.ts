@@ -83,6 +83,11 @@ function createDb(overrides: {
     batch: vi.fn(async (queries: unknown[]) => {
       return queries.map(() => undefined)
     }),
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(async () => []),
+      })),
+    })),
   }
 
   return { db, insertValues }

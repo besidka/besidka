@@ -52,6 +52,24 @@ export async function findChatOriginFiles(
     ))
 }
 
+export async function findMessageOriginFiles(
+  messageId: number,
+  userId: number,
+): Promise<ChatOriginFile[]> {
+  const db = useDb()
+
+  return db
+    .select({
+      id: schema.files.id,
+      storageKey: schema.files.storageKey,
+    })
+    .from(schema.files)
+    .where(and(
+      eq(schema.files.originMessageId, messageId),
+      eq(schema.files.userId, userId),
+    ))
+}
+
 /**
  * A file's `originMessageId` only records where it was first uploaded or
  * generated — branching a chat copies message parts (including file URLs)
@@ -59,7 +77,7 @@ export async function findChatOriginFiles(
  * same file across unrelated chats, both without ever touching that column.
  * So a file whose origin message is being deleted may still be referenced by
  * a `file` part in some other surviving message. This must run after the
- * chat (and its messages) are already gone, so the origin chat's own
+ * origin row(s) being deleted are already gone, so the origin chat's own
  * self-references don't shadow the check.
  */
 async function findStorageKeysStillReferenced(

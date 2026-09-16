@@ -1,6 +1,11 @@
 import type { BatchItem } from 'drizzle-orm/batch'
 import type { UIMessage } from 'ai'
+import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import {
+  indexMessagesForSearch,
+  type SearchIndexLogger,
+} from '~~/server/utils/search/index-writer'
 
 const MESSAGE_BATCH_SIZE = 50
 
@@ -16,6 +21,8 @@ export async function insertBranchedMessages(
   db: ReturnType<typeof useDb>,
   chatId: string,
   messages: BranchMessageValues[],
+  userId: number,
+  logger?: SearchIndexLogger,
 ): Promise<void> {
   for (let offset = 0; offset < messages.length; offset += MESSAGE_BATCH_SIZE) {
     const chunk = messages.slice(offset, offset + MESSAGE_BATCH_SIZE)
@@ -31,6 +38,25 @@ export async function insertBranchedMessages(
 
     await db.batch(inserts)
   }
+
+  if (!messages.length) {
+    return
+  }
+
+  const insertedMessages = await db.select({
+    id: schema.messages.id,
+    parts: schema.messages.parts,
+  })
+    .from(schema.messages)
+    .where(eq(schema.messages.chatId, chatId))
+
+  await indexMessagesForSearch({
+    db,
+    userId,
+    messages: insertedMessages,
+    logger,
+    stage: 'branch-insert',
+  })
 }
 
 export function stripToolPartsFromBranchedMessage(

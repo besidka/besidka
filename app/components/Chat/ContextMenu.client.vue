@@ -207,6 +207,24 @@
           </button>
         </li>
       </template>
+      <li
+        v-if="showDelete"
+        aria-hidden="true"
+        class="pointer-events-none"
+      >
+        <hr class="border-base-200 !p-0 mt-1 mb-2">
+      </li>
+      <li v-if="showDelete">
+        <button
+          type="button"
+          data-testid="message-menu-delete"
+          class="flex w-full justify-start text-error"
+          @click="onDelete"
+        >
+          <Icon name="lucide:trash-2" size="14" />
+          Delete
+        </button>
+      </li>
     </ul>
   </Teleport>
 </template>
@@ -233,16 +251,19 @@ const props = withDefaults(defineProps<{
   info?: MessageMenuInfo | null
   pointer?: { x: number, y: number } | null
   showBranch?: boolean
+  showDelete?: boolean
   copyText?: string | null
 }>(), {
   info: null,
   pointer: null,
   showBranch: true,
+  showDelete: true,
   copyText: null,
 })
 
 const emit = defineEmits<{
   branch: [messageId: string]
+  delete: [messageId: string]
   close: []
 }>()
 
@@ -531,6 +552,13 @@ function onBranch() {
   if (!props.messageId) return
 
   emit('branch', props.messageId)
+  emit('close')
+}
+
+function onDelete() {
+  if (!props.messageId) return
+
+  emit('delete', props.messageId)
   emit('close')
 }
 

@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   markProjectsMemoryStale: vi.fn(async () => undefined),
   refreshProjectActivityAt: vi.fn(async () => undefined),
+  loggerSet: vi.fn(),
+}))
+
+vi.mock('evlog', () => ({
+  useLogger: () => ({
+    set: mocks.loggerSet,
+  }),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -80,6 +87,11 @@ function createDb(overrides: {
 
       return queries.map(() => undefined)
     }),
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(async () => []),
+      })),
+    })),
   }
 
   return { db, batchedQueries, insertValues }

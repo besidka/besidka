@@ -123,7 +123,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/moonshotai.spec.ts',
     'tests/unit/providers/qwen.spec.ts',
     'tests/unit/providers/default-model.spec.ts',
+    'tests/unit/providers/ordering.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
+    'tests/unit/scripts/detect-model-successors.spec.ts',
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     ...modelsTriggerTests,
@@ -150,6 +152,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-single-step-characterization.spec.ts',
     'tests/integration/api/chats-tool-loop.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
+    'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -159,6 +162,7 @@ export function getAffectedTests(changedFiles) {
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
+    'tests/unit/components/History/ChatRow.spec.ts',
     'tests/unit/composables/history.spec.ts',
     'tests/unit/composables/projects.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
@@ -289,6 +293,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/notification-prompt.spec.ts',
     'tests/unit/utils/push.spec.ts',
     'tests/unit/utils/push-encryption.spec.ts',
+    'tests/unit/service-worker/push.spec.ts',
+    'tests/unit/service-worker/sw.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/push-status.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
@@ -334,6 +340,20 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Search/ResultRow.spec.ts',
     'tests/unit/components/Sidebar.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
+  ]
+
+  const messageSearchTests = [
+    'tests/unit/utils/search/text.spec.ts',
+    'tests/unit/utils/search/ukrainian-stemmer.spec.ts',
+    'tests/unit/utils/search/tokens.spec.ts',
+    'tests/unit/utils/search/query.spec.ts',
+    'tests/unit/utils/search/index-writer.spec.ts',
+    'tests/unit/utils/search/sweeper.spec.ts',
+    'tests/integration/server/message-search-sweep-plugin.spec.ts',
+    'tests/unit/utils/chats/history/search.spec.ts',
+    'tests/unit/utils/chats/history/search-cursor.spec.ts',
+    'tests/integration/api/chats-history-content-search.spec.ts',
+    'tests/integration/api/chats-message-delete.spec.ts',
   ]
 
   const deepResearchTests = [
@@ -393,7 +413,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models)\.mjs|shared\/types\/providers\.d\.ts)$/,
+        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models|detect-model-successors|propose-model-successors|models-dev-catalog)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
     },
     {
@@ -421,6 +441,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
     },
     {
+      pattern: /^app\/components\/Pwa\/Refresher\.client\.vue$/,
+      tests: ['tests/unit/components/Pwa/Refresher.spec.ts'],
+    },
+    {
       pattern: modelsTriggerPattern,
       tests: modelsTriggerTests,
     },
@@ -443,7 +467,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|public\/sw-push\.js|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
+        /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
       tests: pushNotificationTests,
     },
     {
@@ -539,6 +563,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/plugins\/landing-cache-refresh\.ts$/,
       tests: landingTests,
+    },
+    {
+      pattern: /^server\/plugins\/ssr-html-no-store\.ts$/,
+      tests: ['tests/integration/server/ssr-html-no-store-plugin.spec.ts'],
+    },
+    {
+      pattern: /^app\/plugins\/01\.build-freshness\.client\.ts$/,
+      tests: ['tests/unit/plugins/01.build-freshness.client.spec.ts'],
     },
     {
       pattern: /^server\/middleware\/evlog-auth\.ts$/,
@@ -664,8 +696,25 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/chats\/branch\.ts$/,
-      tests: [...chatShareTests, ...chatStreamBranchTests],
+      pattern: /^server\/utils\/search\/.*\.ts$/,
+      tests: messageSearchTests,
+    },
+    {
+      pattern: /^server\/plugins\/message-search-index-sweep\.ts$/,
+      tests: messageSearchTests,
+    },
+    {
+      pattern: /^server\/utils\/custom-db-types\.ts$/,
+      tests: messageSearchTests,
+    },
+    {
+      pattern:
+        /^server\/utils\/chats\/(insert-message|persist-user-message|branch)\.ts$/,
+      tests: [
+        ...messageSearchTests,
+        ...chatShareTests,
+        ...chatStreamBranchTests,
+      ],
     },
     {
       pattern:
@@ -695,7 +744,9 @@ export function getAffectedTests(changedFiles) {
       pattern: /^shared\/utils\/search\.ts$/,
       tests: [
         ...searchModalTests,
+        ...messageSearchTests,
         'tests/unit/pages/chats/history/index.spec.ts',
+        'tests/unit/utils/search.spec.ts',
       ],
     },
     {
@@ -908,6 +959,16 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...historyProjectsTests,
         ...filesModuleTests,
+        'tests/integration/api/chats-message-delete.spec.ts',
+      ],
+    },
+    {
+      pattern:
+        /^server\/api\/v1\/chats\/\[slug\]\/messages\/\[id\]\.delete\.ts$/,
+      tests: [
+        ...messageSearchTests,
+        ...contextMenuTests,
+        'tests/integration/api/chats-message-delete.spec.ts',
       ],
     },
     {
@@ -940,7 +1001,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
-      tests: historyProjectsTests,
+      tests: [...historyProjectsTests, ...messageSearchTests],
+    },
+    {
+      pattern: /^server\/api\/v1\/chats\/history\/.*\.ts$/,
+      tests: [...historyProjectsTests, ...messageSearchTests],
     },
     {
       pattern: /^server\/utils\/projects\/.*\.ts$/,
@@ -948,7 +1013,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/(types\/(history|projects)\.d\.ts|utils\/date-groups\.ts)$/,
-      tests: historyProjectsTests,
+      tests: [...historyProjectsTests, ...messageSearchTests],
     },
     {
       pattern: /^shared\/types\/files\.d\.ts$/,

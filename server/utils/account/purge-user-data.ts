@@ -1,10 +1,11 @@
 import type { LoggerLike } from '~~/server/utils/files/logger'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { invalidateFileCache } from '~~/server/utils/files/convert-files-for-ai'
 import { resolveServerLogger } from '~~/server/utils/files/logger'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { buildSearchOwnerTag } from '~~/server/utils/search/query'
 
 const r2BatchDeleteLimit = 1000
 
@@ -36,7 +37,7 @@ export interface PurgeUserDataResult {
 /**
  * Removes every trace of a user that deleting the `users` row cannot reach.
  *
- * The D1 cascade takes care of the user's own tables, but four classes of
+ * The D1 cascade takes care of the user's own tables, but five classes of
  * data survive it and must be handled here:
  *   - R2 objects behind `files.storageKey` (a D1 cascade never touches R2),
  *   - KV cache entries holding file bytes and storage quota,
@@ -44,12 +45,20 @@ export interface PurgeUserDataResult {
  *     it ever reads D1, so a surviving KV entry keeps a deleted account
  *     authenticated until its TTL expires,
  *   - rows carrying a `userId` with no foreign key to `users`
- *     (`image_generation_locks`, and `verifications` whose `value` is the id).
+ *     (`image_generation_locks`, and `verifications` whose `value` is the id),
+ *   - `message_search` FTS5 rows: a standalone virtual table with no FK to
+ *     `messages`, scoped only by an `owner` tag column, so a deleted user's
+ *     indexed message text would otherwise sit until the hourly GC sweep
+ *     notices the underlying message row is gone.
  *
  * MUST run before the `users` row is deleted: once the cascade removes the
  * `files` rows, the R2 storage keys are gone and the objects are orphaned
- * forever. R2 failures are rethrown so the deletion aborts and stays
- * retryable rather than silently leaving blobs behind.
+ * forever. R2 and KV-session failures are rethrown so the deletion aborts
+ * and stays retryable rather than silently leaving blobs/sessions behind.
+ * The `message_search` delete is best-effort and never throws: the same
+ * rows become orphans once the cascade removes their `messages` rows
+ * regardless, so a failure here only delays cleanup to the next sweep
+ * rather than losing any correctness guarantee.
  */
 export async function purgeUserData(
   input: PurgeUserDataInput,
@@ -122,6 +131,26 @@ export async function purgeUserData(
     .returning({
       id: schema.verifications.id,
     })
+
+  const messageSearchOwnerTag = buildSearchOwnerTag(userId)
+
+  try {
+    await db.run(sql`
+      delete from message_search where owner = ${messageSearchOwnerTag}
+    `)
+  } catch (exception) {
+    logger.set({
+      accountPurge: {
+        phase: 'message-search-delete',
+        userId,
+      },
+      attributes: {
+        accountPurge: {
+          error: exceptionMessage(exception),
+        },
+      },
+    })
+  }
 
   const sessions = await db.query.sessions.findMany({
     where: { userId },

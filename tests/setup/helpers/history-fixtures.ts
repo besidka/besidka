@@ -17,6 +17,8 @@ export function createHistoryChat(
     projectId: overrides.projectId ?? null,
     projectName: overrides.projectName ?? null,
     shared: overrides.shared ?? false,
+    matchedIn: overrides.matchedIn,
+    snippet: overrides.snippet,
   }
 }
 
@@ -46,6 +48,7 @@ export function createHistoryResponse(
     pinned: overrides.pinned ?? [],
     chats: overrides.chats ?? [],
     nextCursor: overrides.nextCursor ?? null,
+    searchCapped: overrides.searchCapped,
   }
 }
 

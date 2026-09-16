@@ -61,5 +61,6 @@ export const messages = snakeCase.table(
     publicId: text('public_id').unique().$defaultFn(() => ulid()),
   }, table => [
     uniqueIndex('uq_message_chat').on(table.id, table.chatId),
+    index('idx_messages_chat_id').on(table.chatId),
   ],
 )

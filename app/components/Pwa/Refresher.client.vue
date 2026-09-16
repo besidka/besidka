@@ -16,12 +16,50 @@
       text="Refresh"
       size="xs"
       class="mt-2"
-      @click="$pwa?.updateServiceWorker(true)"
+      :disabled="isRefreshing"
+      @click="handleRefresh($pwa)"
     />
   </UiAlert>
 </template>
 
 <script setup lang="ts">
+import type { NuxtApp } from '#app'
+
+const REFRESH_FALLBACK_DELAY_MS = 4000
+
 const { mounted, visible } = useAnimateAppear()
 const isVisible = shallowRef<boolean>(true)
+const isRefreshing = shallowRef<boolean>(false)
+
+let hasReloaded = false
+let fallbackTimeoutId: ReturnType<typeof setTimeout> | undefined
+
+function reloadOnce() {
+  if (hasReloaded) {
+    return
+  }
+
+  hasReloaded = true
+  clearTimeout(fallbackTimeoutId)
+  navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce)
+  window.location.reload()
+}
+
+function handleRefresh(pwa: NuxtApp['$pwa']) {
+  if (isRefreshing.value) {
+    return
+  }
+
+  isRefreshing.value = true
+
+  navigator.serviceWorker.addEventListener('controllerchange', reloadOnce)
+  fallbackTimeoutId = setTimeout(reloadOnce, REFRESH_FALLBACK_DELAY_MS)
+
+  pwa?.updateServiceWorker(true)
+}
+
+onUnmounted(() => {
+  clearTimeout(fallbackTimeoutId)
+  navigator.serviceWorker.removeEventListener('controllerchange', reloadOnce)
+})
 </script>

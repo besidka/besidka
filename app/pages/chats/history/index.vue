@@ -13,11 +13,18 @@
           ref="searchInputRef"
           v-model="search"
           :is-searching="isSearching"
-          placeholder="Search chats..."
+          placeholder="Search chats and messages..."
           class="flex-1"
         />
       </div>
     </template>
+
+    <p
+      v-if="searchCapped"
+      class="text-xs opacity-60 -mt-2"
+    >
+      Showing the first 200 matches — refine your search
+    </p>
 
     <HistoryActionsToolbar
       :selected-count="selectedCount"
@@ -93,6 +100,7 @@ const {
   chats,
   pinned,
   search,
+  searchCapped,
   isLoading,
   isLoadingInitial,
   isSearching,

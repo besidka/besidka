@@ -7,6 +7,7 @@ import * as schema from '~~/server/db/schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 
 export interface PersistUserMessageInput {
   db: ReturnType<typeof useDb>
@@ -81,7 +82,7 @@ export async function persistUserMessage(
   const activityAt = new Date()
 
   try {
-    await insertMessageWithPublicId({
+    const insertedMessage = await insertMessageWithPublicId({
       db,
       values: {
         chatId: chat.id,
@@ -97,6 +98,19 @@ export async function persistUserMessage(
     await db.update(schema.chats)
       .set({ activityAt })
       .where(eq(schema.chats.id, chat.id))
+
+    if (insertedMessage) {
+      await indexMessagesForSearch({
+        db,
+        userId,
+        messages: [{
+          id: insertedMessage.id,
+          parts: newMessage.parts,
+        }],
+        logger,
+        stage: 'persist-user-message',
+      })
+    }
 
     if (chat.projectId) {
       await db.update(schema.projects)

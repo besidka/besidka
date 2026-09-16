@@ -8,6 +8,7 @@ jobs:
   update:
     name: "Update PRs"
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       id-token: write
       pull-requests: write

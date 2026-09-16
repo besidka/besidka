@@ -71,6 +71,8 @@ describe('HistoryChatSections', () => {
     })
 
     expect(wrapper.text()).toContain('No chats match your search')
-    expect(wrapper.text()).toContain('Try a different title.')
+    expect(wrapper.text()).toContain(
+      'Try different words — titles and message text are both searched.',
+    )
   })
 })

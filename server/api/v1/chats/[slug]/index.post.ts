@@ -60,6 +60,7 @@ import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import { resolveToolLoopOptions } from '~~/server/utils/ai/tool-loop'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -170,6 +171,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const selectedTools = chat.messages.length === 1
+    && chat.messages[0]?.role === 'user'
     ? chat.messages[0]?.tools || []
     : body.data.tools
 
@@ -791,6 +793,10 @@ export default defineEventHandler(async (event) => {
         }
 
         let result: ReturnType<typeof streamText>
+        const messagesForModel = buildMessagesForModel(
+          messagesForAI,
+          errorProviderId,
+        )
 
         try {
           // No abortSignal here: the cloudflare_module preset (Nitro 2.13 /
@@ -807,7 +813,7 @@ export default defineEventHandler(async (event) => {
               requestedTools,
             ),
             reasoning: reasoningEffort,
-            messages: await convertToModelMessages(messagesForAI),
+            messages: await convertToModelMessages(messagesForModel),
             experimental_transform: smoothStream(),
             onEnd({ usage }) {
               const textCost = computeModelCost(
@@ -1306,6 +1312,19 @@ async function persistAssistantMessageFromStream(input: {
       publicId: input.publicId,
     })
 
+    if (assistantMessage) {
+      await indexMessagesForSearch({
+        db: input.db,
+        userId: input.userId,
+        messages: [{
+          id: assistantMessage.id,
+          parts: normalizedParts,
+        }],
+        logger: input.logger,
+        stage: 'assistant-message',
+      })
+    }
+
     if (assistantMessage && generatedFileIds.length > 0) {
       let filesLinked = false
 
@@ -1444,6 +1463,38 @@ function toSupportedProviderId(
   return supportedProviderIds.find((id) => {
     return id === providerId
   })
+}
+
+const GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT = '(earlier message deleted)'
+
+// Google's Generative Language API rejects a `contents` array whose first
+// turn is not `user` — a chat's persisted history can legitimately start
+// with an assistant message after the single-message-delete feature removes
+// the original leading user turn. This prepends a synthetic user turn for
+// the Google provider only, scoped to the array actually sent to the model.
+// It must never replace `messagesForAI` itself, since that array also backs
+// `originalMessages` for AI SDK stream bookkeeping and must stay the true,
+// unmodified message history.
+function buildMessagesForModel(
+  messages: UIMessage[],
+  providerId: SupportedProviderId | undefined,
+): UIMessage[] {
+  if (providerId !== 'google' || messages[0]?.role !== 'assistant') {
+    return messages
+  }
+
+  return [buildGoogleLeadingAssistantPlaceholder(), ...messages]
+}
+
+function buildGoogleLeadingAssistantPlaceholder(): UIMessage {
+  return {
+    id: `google-leading-placeholder-${ulid()}`,
+    role: 'user',
+    parts: [{
+      type: 'text',
+      text: GOOGLE_LEADING_ASSISTANT_PLACEHOLDER_TEXT,
+    }],
+  }
 }
 
 function emitChatErrorLog(input: {
