@@ -23,6 +23,20 @@ const QWEN_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
  * Alibaba's own docs, and independently confirmed as models.dev's own `api`
  * field for the `alibaba` provider — keeps Qwen on the single-`apiKey`-field
  * shape every other direct provider in this app uses.
+ *
+ * A first-party `@ai-sdk/alibaba@2.0.46` package does exist and is
+ * zod-4-compatible (peer `zod: "^3.25.76 || ^4.1.8"`), but migrating to it
+ * was deliberately declined: its `providerOptions.alibaba` is a closed
+ * `z.object({...})` with exactly `enableThinking`, `thinkingBudget` and
+ * `parallelToolCalls` and no `.passthrough()`, so Zod would silently strip
+ * any unrecognized key. This app's Qwen web search depends entirely on
+ * `enable_search` and `search_options.search_strategy: 'agent'` being
+ * forwarded verbatim — which works today only because
+ * `@ai-sdk/openai-compatible` passes through unknown `providerOptions` keys.
+ * Migrating would break Qwen web search with no error and no warning. Do not
+ * "fix" this comment by switching to `@ai-sdk/alibaba` without first building
+ * a hand-rolled Qwen web-search tool the way
+ * `server/utils/providers/moonshotai-web-search.ts` already does.
  */
 export async function useQwen(
   userId: string,

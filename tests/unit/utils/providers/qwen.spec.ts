@@ -327,4 +327,20 @@ describe('useQwen reasoning wiring', () => {
     expect(result.providerOptions).toEqual({})
     expect(result.reasoning).toBeUndefined()
   })
+
+  it('sends neither enable_thinking nor a top-level reasoning option for a '
+    + 'reasoningAlwaysOn model, since the flag only drives the picker UI, '
+    + 'not provider wiring', async () => {
+    stubModel(createModel({
+      id: 'qwq-plus',
+      reasoning: undefined,
+      reasoningAlwaysOn: true,
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwq-plus', [], 'medium')
+
+    expect(result.providerOptions).toEqual({})
+    expect(result.reasoning).toBeUndefined()
+  })
 })
