@@ -137,7 +137,11 @@ export function getGenerateImageOutput(
     return null
   }
 
-  if (candidate.provider !== 'openai' && candidate.provider !== 'google') {
+  if (
+    candidate.provider !== 'openai'
+    && candidate.provider !== 'google'
+    && candidate.provider !== 'xai'
+  ) {
     return null
   }
 

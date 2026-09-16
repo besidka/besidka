@@ -23,13 +23,21 @@ describe('curated moonshotai provider', () => {
     expect(ids).not.toContain('kimi-k2.5')
   })
 
-  it('lists kimi-k2.6 first as the recommended default', () => {
-    expect(moonshotai.models[0]?.id).toBe('kimi-k2.6')
-  })
-
   it('keeps the cheaper kimi-k2.6 as the first-listed default even though '
     + 'kimi-k3 is newer in the same parsed family', () => {
     expect(moonshotai.models[0]?.id).toBe('kimi-k2.6')
+
+    const snapshotByModelId = snapshot as Record<
+      string,
+      { cost?: { input: number, output: number } }
+    >
+    const kimiK26Cost = snapshotByModelId['kimi-k2.6']?.cost
+    const kimiK3Cost = snapshotByModelId['kimi-k3']?.cost
+
+    expect(kimiK26Cost).toBeDefined()
+    expect(kimiK3Cost).toBeDefined()
+    expect(kimiK26Cost!.input).toBeLessThan(kimiK3Cost!.input)
+    expect(kimiK26Cost!.output).toBeLessThan(kimiK3Cost!.output)
   })
 
   it('does not curate the sunset moonshot-v1 line', () => {

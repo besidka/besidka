@@ -540,6 +540,57 @@ describe('assistant files scaffolding', () => {
     expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
   })
 
+  it('normalizes a ready output from the xai image provider', async () => {
+    const loggerSet = vi.fn()
+
+    stubGeneratedImageFile(createGeneratedImageFileRow({
+      originProvider: 'xai',
+    }))
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-3',
+        state: 'output-available',
+        input: { prompt: 'A quiet forest' },
+        output: {
+          status: 'ready',
+          file: {
+            id: 'file-1',
+            storageKey: 'generated.webp',
+            name: 'quiet-forest.webp',
+            size: 123,
+            type: 'image/webp',
+            source: 'assistant',
+            expiresAt: null,
+            url: 'javascript:alert(1)',
+            downloadUrl: 'https://attacker.example/steal',
+          },
+          provider: 'xai',
+          model: 'grok-imagine-image-2.0',
+        },
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'xai',
+      chatId: 'chat-5',
+      userId: 5,
+      logger: { set: loggerSet },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'quiet-forest.webp',
+        url: '/files/generated.webp?generated=1',
+      },
+    ])
+    expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
+  })
+
   it.each([
     {
       name: 'unowned file ID',

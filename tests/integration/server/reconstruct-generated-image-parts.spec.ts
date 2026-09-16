@@ -43,7 +43,7 @@ describe('reconstructGeneratedImageParts', () => {
     mocks.getOwnedGeneratedImageFilesByStorageKeys.mockReset()
   })
 
-  it('rewrites a direct-provider (openai/google) origin file into a '
+  it('rewrites a direct-provider (openai/google/xai) origin file into a '
     + 'tool-generate_image part', async () => {
     const file = createFileRow()
 
@@ -64,6 +64,31 @@ describe('reconstructGeneratedImageParts', () => {
       }),
     })
   })
+
+  it('rewrites an xai-origin file into a tool-generate_image part',
+    async () => {
+      const file = createFileRow({
+        originProvider: 'xai',
+        originModel: 'grok-imagine-image-2.0',
+      })
+
+      mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
+        new Map([[file.storageKey, file]]),
+      )
+
+      const messages = [buildMessage(`/files/${file.storageKey}`)]
+      const result = await reconstructGeneratedImageParts(messages, 1)
+
+      expect(result[0]?.parts[0]).toMatchObject({
+        type: 'tool-generate_image',
+        state: 'output-available',
+        output: expect.objectContaining({
+          status: 'ready',
+          provider: 'xai',
+          model: 'grok-imagine-image-2.0',
+        }),
+      })
+    })
 
   it('never reconstructs a file from a non-allowlisted origin provider, '
     + 'leaving the plain file part untouched so it keeps rendering through '

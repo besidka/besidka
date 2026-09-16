@@ -299,7 +299,11 @@ function isImageGenerationReady(
 
   if (
     !('provider' in output)
-    || (output.provider !== 'openai' && output.provider !== 'google')
+    || (
+      output.provider !== 'openai'
+      && output.provider !== 'google'
+      && output.provider !== 'xai'
+    )
     || (providerId !== undefined && output.provider !== providerId)
     || !('model' in output)
     || typeof output.model !== 'string'

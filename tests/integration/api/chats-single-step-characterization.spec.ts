@@ -484,6 +484,80 @@ describe('chat send pipeline: single-step characterization', () => {
     )
   })
 
+  it('(f) xai image-generation send stays single step, forces the tool '
+    + 'and persists the tool part with its image cost', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'xai' },
+      model: {
+        id: 'grok-4.20-0309-reasoning',
+        name: 'Grok 4.20',
+        tools: ['image_generation'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+    vi.stubGlobal('useXai', vi.fn(async () => ({
+      instance: {},
+      imageModel: {},
+      imageModelId: 'grok-imagine-image-2.0',
+      tools: {},
+      providerOptions: {},
+    })))
+
+    mocks.uiChunks = [
+      { type: 'start', messageId: 'assistant-1' },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'tool-1',
+        toolName: 'generate_image',
+        input: { prompt: 'A quiet forest', aspectRatio: '1:1' },
+      },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'tool-1',
+        output: {
+          status: 'ready',
+          provider: 'xai',
+          model: 'grok-imagine-image-2.0',
+          fileId: 'file-1',
+        },
+      },
+      { type: 'finish' },
+    ]
+
+    const { insertValues } = await runHandler(baseBody({
+      model: 'grok-4.20-0309-reasoning',
+      tools: ['image_generation'],
+    }))
+    const options = mocks.streamTextOptions[0]
+
+    expect(streamText).toHaveBeenCalledTimes(1)
+    expectSingleStepStreamTextCall(options)
+    expect(options?.tools).toEqual({
+      generate_image: expect.anything(),
+    })
+    expect(options?.toolChoice).toEqual({
+      type: 'tool',
+      toolName: 'generate_image',
+    })
+    expect(typeof options?.tools.generate_image.execute).toBe('function')
+
+    const assistantInsert = getAssistantInsert(insertValues)
+
+    expect(assistantInsert?.tools).toEqual(['image_generation'])
+    expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'tool-generate_image' }),
+    ]))
+    const textOutputCost = (
+      20 * (getModelCostMap()['grok-4.20-0309-reasoning']?.output ?? 0)
+    ) / 1_000_000
+    const imageCost = getImageGenerationCost('grok-imagine-image-2.0', '1:1')
+
+    expect(imageCost).toBeDefined()
+    expect(assistantInsert?.usage.outputCost).toBe(
+      textOutputCost + (imageCost ?? 0),
+    )
+  })
+
   it('emits exactly one finish-step per send across every path today',
     async () => {
       vi.stubGlobal('useChatProvider', vi.fn(() => ({

@@ -79,7 +79,7 @@ function collectFileStorageKeys<
 /**
  * Reconstruction only ever produces a `tool-generate_image` part, which the
  * client's `getGenerateImageOutput()` (`app/utils/generated-images.ts`)
- * renders only for `output.provider === 'openai' | 'google'` — the two
+ * renders only for `output.provider === 'openai' | 'google' | 'xai'` — the
  * direct providers with a real `generate_image` tool. A file with any other
  * `originProvider` has no tool behind it at all; letting it through this
  * allowlist would rewrite an already-correctly-rendering plain `file` part
@@ -89,11 +89,13 @@ function collectFileStorageKeys<
 function hasOriginMetadata(
   file: OwnedGeneratedImageFile,
 ): file is OwnedGeneratedImageFile & {
-  originProvider: 'openai' | 'google'
+  originProvider: 'openai' | 'google' | 'xai'
   originModel: string
 } {
   return (
-    file.originProvider === 'openai' || file.originProvider === 'google'
+    file.originProvider === 'openai'
+    || file.originProvider === 'google'
+    || file.originProvider === 'xai'
   ) && file.originModel !== null
 }
 

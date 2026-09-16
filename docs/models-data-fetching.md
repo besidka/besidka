@@ -147,12 +147,13 @@ template would produce a successor that silently loses the toggle and shows
 a reasoning control the model can't honor. Before the model catalog
 expansion (`docs/model-catalog-expansion-plan.md`), this excluded only a
 couple of models; after it, it permanently excludes **all of DeepSeek** (both
-`deepseek-flash` and `deepseek-v4-pro`), **21 Qwen models** (19 Group A
-`toggle`-mode models plus the two originally-curated `qwen3.7-plus` and
-`qwen3.6-flash`), and Moonshot's **`kimi-k2.6`**. The weekly drift check will
-therefore never auto-propose a successor for any DeepSeek or Qwen model, nor
-for `kimi-k2.6` specifically — that family sits out every run as "needs a
-human," permanently, not as a transient gap. This is the intended trade-off
+`deepseek-flash` and `deepseek-v4-pro`), **22 Qwen models** (19 Group A
+`toggle`-mode models plus the three originally-curated `qwen3.7-plus`,
+`qwen3.7-max`, and `qwen3.6-flash`), and Moonshot's **`kimi-k2.6`**. The
+weekly drift check will therefore never auto-propose a successor for any
+DeepSeek or Qwen model, nor for `kimi-k2.6` specifically — that family sits
+out every run as "needs a human," permanently, not as a transient gap. This
+is the intended trade-off
 of a `renderCuratedEntry()` that only knows how to emit `levels`, recorded
 here so it isn't later mistaken for the `modelsDevKey` bug below recurring.
 
@@ -162,8 +163,8 @@ than left to fail incidentally on the price-shape check (a
 `reasoningAlwaysOn` model has no `reasoning` object at all, so it would
 otherwise pass the `mode !== 'levels'` check by having no mode to check).
 This matters far more after the model catalog expansion than before it:
-`reasoningAlwaysOn` goes from 2 curated models to **12** (2 pre-existing xAI
-+ 2 new xAI + 3 Moonshot + 5 Qwen).
+`reasoningAlwaysOn` goes from 2 curated models to **10** (1 pre-existing xAI
++ 1 new xAI + 3 Moonshot + 5 Qwen).
 
 **Guardrails**, applied to every upstream candidate before it can become a
 proposal — a hit on any of these is a skip, never a throw:
@@ -267,7 +268,7 @@ side effects (the network fetch, the conditional file writes), the same as
 
 The model catalog expansion in `docs/model-catalog-expansion-plan.md` (xAI
 +4 text +1 image, Moonshot AI +2, Qwen +43, plus the DeepSeek retired-id
-replacement) grew `providers/data/models-dev-snapshot.json` from 42 to 110
+replacement) grew `providers/data/models-dev-snapshot.json` from 61 to 110
 entries. The merged catalog (curated files joined against this snapshot) is
 injected into `runtimeConfig.public.providers` in `nuxt.config.ts`, which
 Nuxt serializes into every page's client payload — there is no

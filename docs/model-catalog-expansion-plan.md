@@ -1,7 +1,6 @@
 # Model catalog expansion plan
 
-Status: Waves 0-5 EXECUTED and committed, local to this worktree, not yet
-pushed. Written 2026-09-16.
+Status: Waves 0-6c EXECUTED, committed, and pushed. Written 2026-09-16.
 
 - Wave 0 (merge `origin/main`) — `5347f57f`.
 - Wave 1 (P0 DeepSeek retired ids) — `2f9324c6`.
@@ -14,16 +13,25 @@ pushed. Written 2026-09-16.
   image model exempt) — verified, no commit: re-running the fetch after
   wave 4 produced no diff, exactly as expected, so there was nothing to
   commit.
+- Wave 6a (tooling fixes, § 10 — `scripts/detect-model-successors.mjs`,
+  `scripts/propose-model-successors.mjs`,
+  `tests/unit/scripts/detect-model-successors.spec.ts`) — `3127a706`.
+- Wave 6c (this document's own § 12 documentation updates, plus
+  `docs/providers.md` and `docs/models-data-fetching.md`) — `bac7a4eb`.
 
-Remaining work: Wave 6a (tooling fixes, § 10 —
-`scripts/detect-model-successors.mjs`,
-`scripts/propose-model-successors.mjs`,
-`tests/unit/scripts/detect-model-successors.spec.ts`) is in progress by a
-separate concurrent agent as of this writing. Wave 6c (this document's own
-§ 12 documentation updates, plus `docs/providers.md` and
-`docs/models-data-fetching.md`) landed alongside it. Wave 7 (final
-cross-wave verification per § 13) has not yet run and is the one remaining
-gate before this plan is fully closed out.
+Remaining work: a code-review pass over waves 0-6c found a handful of fixes
+— the xAI image-generation provider allowlist repeated (and missed) in four
+places (`app/utils/generated-images.ts`,
+`server/utils/files/reconstruct-generated-image-parts.ts`,
+`server/utils/files/assistant-files.ts`, and
+`server/api/v1/chats/[slug]/index.post.ts`), plus the numeric errors in
+`docs/models-data-fetching.md` and this file's own status block — those
+fixes land in a further commit on top of `bac7a4eb`. Wave 7 (final
+cross-wave verification per § 13) has already run multiple times across this
+process (after wave 3, after wave 5, and again during this review-fix pass,
+confirmed green with `pnpm run format && pnpm run typecheck && pnpm vitest
+run`); what remains is only a formality re-run once the review fixes above
+are committed, not a gate blocking anything still outstanding.
 
 Branch: `feat/add-more-providers`
 Worktree: `/Users/inevix/dev/main/besidka/.herdr/worktrees/feat-add-more-providers`

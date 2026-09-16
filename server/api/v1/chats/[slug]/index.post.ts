@@ -1123,7 +1123,11 @@ function getGeneratedImageCostFromParts(
       || !('status' in output)
       || output.status !== 'ready'
       || !('provider' in output)
-      || (output.provider !== 'openai' && output.provider !== 'google')
+      || (
+        output.provider !== 'openai'
+        && output.provider !== 'google'
+        && output.provider !== 'xai'
+      )
       || !('model' in output)
       || typeof output.model !== 'string'
       || !isKnownImageGenerationModel(output.model, output.provider)
