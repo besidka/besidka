@@ -33,6 +33,7 @@ jobs:
   check-pr-state:
     name: Check PR state
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -51,6 +52,7 @@ jobs:
     name: Check latest commit paths
     needs: check-pr-state
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     outputs:
       should-skip: ${{ steps.paths.outputs.should-skip }}
     steps:
@@ -114,7 +116,7 @@ jobs:
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 25
+    timeout-minutes: 20
     permissions:
       contents: read
       statuses: write

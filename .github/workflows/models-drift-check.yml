@@ -13,6 +13,7 @@ jobs:
   check-drift:
     name: Check models.dev drift
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
