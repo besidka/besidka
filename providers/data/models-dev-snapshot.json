@@ -1249,9 +1249,57 @@
     },
     "tieredPricing": true
   },
+  "grok-4.20-multi-agent-0309": {
+    "name": "Grok 4.20 Multi-Agent",
+    "description": "Grok model for agentic tool use, reasoning, coding, and live assistance",
+    "releaseDate": "2026-03-09",
+    "limit": {
+      "context": 1000000,
+      "output": 30000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.25,
+      "output": 2.5
+    },
+    "tieredPricing": true
+  },
+  "grok-4.6": {
+    "name": "Grok 4.6",
+    "description": "xAI's frontier model for long-running agents, coding, knowledge work, and visual projects",
+    "releaseDate": "2026-08-12",
+    "limit": {
+      "context": 500000,
+      "output": 500000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 6
+    },
+    "tieredPricing": true
+  },
   "grok-4.5": {
     "name": "Grok 4.5",
-    "description": "xAI's latest Grok for chat, coding, agentic tools, and lower hallucination risk",
+    "description": "xAI's Grok model for chat, coding, agentic tools, and lower hallucination risk",
     "releaseDate": "2026-07-08",
     "limit": {
       "context": 500000,
@@ -1273,31 +1321,80 @@
     },
     "tieredPricing": true
   },
-  "deepseek-chat": {
-    "name": "DeepSeek Chat",
-    "description": "DeepSeek chat model for instruction following, coding, and analysis",
-    "releaseDate": "2025-12-01",
+  "grok-4.3": {
+    "name": "Grok 4.3",
+    "description": "xAI's Grok for chat, coding, agentic tools, and lower hallucination risk",
+    "releaseDate": "2026-04-17",
     "limit": {
       "context": 1000000,
-      "output": 384000
+      "output": 30000
     },
     "modalities": {
       "input": [
-        "text"
+        "text",
+        "image",
+        "pdf"
       ],
       "output": [
         "text"
       ]
     },
     "cost": {
-      "input": 0.14,
-      "output": 0.28
+      "input": 1.25,
+      "output": 2.5
+    },
+    "tieredPricing": true
+  },
+  "grok-build-0.1": {
+    "name": "Grok Build 0.1",
+    "description": "Fast Grok coding model tuned for agentic engineering and iterative edits",
+    "releaseDate": "2026-04-16",
+    "limit": {
+      "context": 256000,
+      "output": 256000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1,
+      "output": 2
+    },
+    "tieredPricing": true
+  },
+  "deepseek-flash": {
+    "name": "DeepSeek V4.1 Flash",
+    "description": "DeepSeek V4.1 Flash model for reasoning and agentic coding",
+    "releaseDate": "2026-09-10",
+    "limit": {
+      "context": 1000000,
+      "output": 384000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.15,
+      "output": 0.6
     }
   },
-  "deepseek-reasoner": {
-    "name": "DeepSeek Reasoner",
-    "description": "DeepSeek reasoning model for multi-step analysis, math, coding, and tools",
-    "releaseDate": "2025-12-01",
+  "deepseek-v4-pro": {
+    "name": "DeepSeek V4 Pro",
+    "description": "DeepSeek V4 Pro snapshot with million-token context and support for thinking and non-thinking modes",
+    "releaseDate": "2026-08-12",
     "limit": {
       "context": 1000000,
       "output": 384000
@@ -1311,8 +1408,8 @@
       ]
     },
     "cost": {
-      "input": 0.14,
-      "output": 0.28
+      "input": 0.435,
+      "output": 0.87
     }
   },
   "kimi-k2.6": {
@@ -1359,6 +1456,52 @@
     "cost": {
       "input": 3,
       "output": 15
+    }
+  },
+  "kimi-k2.7-code": {
+    "name": "Kimi K2.7 Code",
+    "description": "Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking",
+    "releaseDate": "2026-06-12",
+    "limit": {
+      "context": 262144,
+      "output": 262144
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.95,
+      "output": 4
+    }
+  },
+  "kimi-k2.7-code-highspeed": {
+    "name": "Kimi K2.7 Code HighSpeed",
+    "description": "Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking",
+    "releaseDate": "2026-06-12",
+    "limit": {
+      "context": 262144,
+      "output": 262144
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.9,
+      "output": 8
     }
   },
   "qwen3.7-plus": {
@@ -1427,6 +1570,948 @@
     "cost": {
       "input": 0.1875,
       "output": 1.125
+    }
+  },
+  "qwen3.8-max": {
+    "name": "Qwen3.8 Max",
+    "description": "2.4-trillion-parameter MoE flagship for coding, professional work, multimodal understanding, and long-horizon agentic workflows",
+    "releaseDate": "2026-08-03",
+    "limit": {
+      "context": 1000000,
+      "output": 131072
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 6
+    }
+  },
+  "qwen3.8-flash": {
+    "name": "Qwen3.8 Flash",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-08-26",
+    "limit": {
+      "context": 1000000,
+      "output": 131072
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.15,
+      "output": 0.47
+    }
+  },
+  "qwen3.6-max-preview": {
+    "name": "Qwen3.6 Max Preview",
+    "description": "Flagship Qwen model for complex reasoning, coding, and agentic workflows",
+    "releaseDate": "2026-04-20",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.3,
+      "output": 7.8
+    }
+  },
+  "qwen3.6-plus": {
+    "name": "Qwen3.6 Plus",
+    "description": "Earlier Qwen multimodal workhorse for million-token agent and document tasks",
+    "releaseDate": "2026-04-02",
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.5,
+      "output": 3
+    },
+    "tieredPricing": true
+  },
+  "qwen3.6-27b": {
+    "name": "Qwen3.6 27B",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-04-22",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.6,
+      "output": 3.6
+    }
+  },
+  "qwen3.6-35b-a3b": {
+    "name": "Qwen3.6 35B-A3B",
+    "description": "Open multimodal Qwen MoE for local agents that need vision, audio, and code",
+    "releaseDate": "2026-04-17",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.248,
+      "output": 1.485
+    }
+  },
+  "qwen3.5-plus": {
+    "name": "Qwen3.5 Plus",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-02-16",
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.4,
+      "output": 2.4
+    }
+  },
+  "qwen3.5-397b-a17b": {
+    "name": "Qwen3.5 397B-A17B",
+    "description": "Large open Qwen multimodal MoE for visual agents and long technical tasks",
+    "releaseDate": "2026-02-15",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.6,
+      "output": 3.6
+    }
+  },
+  "qwen3.5-122b-a10b": {
+    "name": "Qwen3.5 122B-A10B",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-02-23",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.4,
+      "output": 3.2
+    }
+  },
+  "qwen3.5-27b": {
+    "name": "Qwen3.5 27B",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-02-23",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.3,
+      "output": 2.4
+    }
+  },
+  "qwen3.5-35b-a3b": {
+    "name": "Qwen3.5 35B-A3B",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2026-02-23",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "video",
+        "audio"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.25,
+      "output": 2
+    }
+  },
+  "qwen3-vl-plus": {
+    "name": "Qwen3-VL Plus",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2025-09-23",
+    "limit": {
+      "context": 262144,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.2,
+      "output": 1.6
+    }
+  },
+  "qwen3-235b-a22b": {
+    "name": "Qwen3 235B-A22B",
+    "description": "Large open Qwen MoE for multilingual reasoning, coding, and tool use",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 131072,
+      "output": 16384
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.7,
+      "output": 2.8
+    }
+  },
+  "qwen3-32b": {
+    "name": "Qwen3 32B",
+    "description": "Dense open Qwen model for self-hosted chat, reasoning, and coding",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 131072,
+      "output": 16384
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.7,
+      "output": 2.8
+    }
+  },
+  "qwen3-14b": {
+    "name": "Qwen3 14B",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.35,
+      "output": 1.4
+    }
+  },
+  "qwen3-8b": {
+    "name": "Qwen3 8B",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.18,
+      "output": 0.7
+    }
+  },
+  "qwen-plus": {
+    "name": "Qwen Plus",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2024-01-25",
+    "limit": {
+      "context": 1000000,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.4,
+      "output": 1.2
+    }
+  },
+  "qwen-flash": {
+    "name": "Qwen Flash",
+    "description": "Efficient Qwen model for fast chat, extraction, and high-volume workloads",
+    "releaseDate": "2025-07-28",
+    "limit": {
+      "context": 1000000,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.05,
+      "output": 0.4
+    }
+  },
+  "qwen-turbo": {
+    "name": "Qwen Turbo",
+    "description": "Efficient Qwen model for fast chat, extraction, and high-volume workloads",
+    "releaseDate": "2024-11-01",
+    "limit": {
+      "context": 1000000,
+      "output": 16384
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.05,
+      "output": 0.2
+    }
+  },
+  "qwq-plus": {
+    "name": "QwQ Plus",
+    "description": "Qwen reasoning model for deliberate problem solving, math, and coding",
+    "releaseDate": "2025-03-05",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.8,
+      "output": 2.4
+    }
+  },
+  "qvq-max": {
+    "name": "QVQ Max",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2025-03-25",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.2,
+      "output": 4.8
+    }
+  },
+  "qwen3-next-80b-a3b-thinking": {
+    "name": "Qwen3-Next 80B-A3B (Thinking)",
+    "description": "Efficient Qwen thinking model for local reasoning, math, and coding agents",
+    "releaseDate": "2025-09",
+    "limit": {
+      "context": 131072,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.5,
+      "output": 6
+    }
+  },
+  "qwen3-vl-235b-a22b": {
+    "name": "Qwen3-VL 235B-A22B",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 131072,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.7,
+      "output": 2.8
+    }
+  },
+  "qwen3-vl-30b-a3b": {
+    "name": "Qwen3-VL 30B-A3B",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 131072,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.2,
+      "output": 0.8
+    }
+  },
+  "qwen3-max": {
+    "name": "Qwen3 Max",
+    "description": "Flagship Qwen3 model for coding agents, complex reasoning, and tool use",
+    "releaseDate": "2025-09-23",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.2,
+      "output": 6
+    }
+  },
+  "qwen3-next-80b-a3b-instruct": {
+    "name": "Qwen3-Next 80B-A3B Instruct",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2025-09",
+    "limit": {
+      "context": 131072,
+      "output": 32768
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.5,
+      "output": 2
+    }
+  },
+  "qwen3-coder-plus": {
+    "name": "Qwen3 Coder Plus",
+    "description": "Hosted Qwen coder for software agents, repo edits, and long-context code",
+    "releaseDate": "2025-07-23",
+    "limit": {
+      "context": 1048576,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1,
+      "output": 5
+    }
+  },
+  "qwen3-coder-flash": {
+    "name": "Qwen3 Coder Flash",
+    "description": "Qwen coding model for software agents, repository edits, and code reasoning",
+    "releaseDate": "2025-07-28",
+    "limit": {
+      "context": 1000000,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.3,
+      "output": 1.5
+    }
+  },
+  "qwen3-coder-480b-a35b-instruct": {
+    "name": "Qwen3-Coder 480B-A35B Instruct",
+    "description": "Open Qwen coding heavyweight for repository reasoning and agentic engineering",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.5,
+      "output": 7.5
+    },
+    "tieredPricing": true
+  },
+  "qwen3-coder-30b-a3b-instruct": {
+    "name": "Qwen3-Coder 30B-A3B Instruct",
+    "description": "Smaller Qwen coder for efficient local agents and repo-level fixes",
+    "releaseDate": "2025-04",
+    "limit": {
+      "context": 262144,
+      "output": 65536
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.45,
+      "output": 2.25
+    },
+    "tieredPricing": true
+  },
+  "qwen-max": {
+    "name": "Qwen Max",
+    "description": "Flagship Qwen model for complex reasoning, coding, and agentic workflows",
+    "releaseDate": "2024-04-03",
+    "limit": {
+      "context": 32768,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.6,
+      "output": 6.4
+    }
+  },
+  "qwen-vl-max": {
+    "name": "Qwen-VL Max",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2024-04-08",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.8,
+      "output": 3.2
+    }
+  },
+  "qwen-vl-plus": {
+    "name": "Qwen-VL Plus",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2024-01-25",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.21,
+      "output": 0.63
+    }
+  },
+  "qwen-vl-ocr": {
+    "name": "Qwen-VL OCR",
+    "description": "OCR model for extracting structured text from documents and screenshots",
+    "releaseDate": "2024-10-28",
+    "limit": {
+      "context": 34096,
+      "output": 4096
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.72,
+      "output": 0.72
+    }
+  },
+  "qwen-plus-character-ja": {
+    "name": "Qwen Plus Character (Japanese)",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2024-01",
+    "limit": {
+      "context": 8192,
+      "output": 512
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.5,
+      "output": 1.4
+    }
+  },
+  "qwen-mt-plus": {
+    "name": "Qwen-MT Plus",
+    "description": "Translation model for multilingual conversion, localization, and cross-language workflows",
+    "releaseDate": "2025-01",
+    "limit": {
+      "context": 16384,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2.46,
+      "output": 7.37
+    }
+  },
+  "qwen-mt-turbo": {
+    "name": "Qwen-MT Turbo",
+    "description": "Translation model for multilingual conversion, localization, and cross-language workflows",
+    "releaseDate": "2025-01",
+    "limit": {
+      "context": 16384,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.16,
+      "output": 0.49
+    }
+  },
+  "qwen2-5-vl-72b-instruct": {
+    "name": "Qwen2.5-VL 72B Instruct",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2024-09",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2.8,
+      "output": 8.4
+    }
+  },
+  "qwen2-5-vl-7b-instruct": {
+    "name": "Qwen2.5-VL 7B Instruct",
+    "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+    "releaseDate": "2024-09",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.35,
+      "output": 1.05
+    }
+  },
+  "qwen2-5-72b-instruct": {
+    "name": "Qwen2.5 72B Instruct",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2024-09",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 1.4,
+      "output": 5.6
+    }
+  },
+  "qwen2-5-32b-instruct": {
+    "name": "Qwen2.5 32B Instruct",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2024-09",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.7,
+      "output": 2.8
+    }
+  },
+  "qwen2-5-14b-instruct": {
+    "name": "Qwen2.5 14B Instruct",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2024-09",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.35,
+      "output": 1.4
+    }
+  },
+  "qwen2-5-7b-instruct": {
+    "name": "Qwen2.5 7B Instruct",
+    "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
+    "releaseDate": "2024-09",
+    "limit": {
+      "context": 131072,
+      "output": 8192
+    },
+    "modalities": {
+      "input": [
+        "text"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.175,
+      "output": 0.7
     }
   }
 }
