@@ -5,6 +5,7 @@ import snapshot from '../../../providers/data/models-dev-snapshot.json'
 const expectedModelIds = [
   'qwen3.7-plus',
   'qwen3.7-max',
+  'qwen3.7-flash',
   'qwen3.6-flash',
   'qwen3.8-max',
   'qwen3.8-flash',
@@ -12,6 +13,7 @@ const expectedModelIds = [
   'qwen3.6-plus',
   'qwen3.6-27b',
   'qwen3.6-35b-a3b',
+  'qwen3.5-flash',
   'qwen3.5-plus',
   'qwen3.5-397b-a17b',
   'qwen3.5-122b-a10b',
@@ -54,6 +56,7 @@ const expectedModelIds = [
 const toggleReasoningIds = [
   'qwen3.7-plus',
   'qwen3.7-max',
+  'qwen3.7-flash',
   'qwen3.6-flash',
   'qwen3.8-max',
   'qwen3.8-flash',
@@ -61,6 +64,7 @@ const toggleReasoningIds = [
   'qwen3.6-plus',
   'qwen3.6-27b',
   'qwen3.6-35b-a3b',
+  'qwen3.5-flash',
   'qwen3.5-plus',
   'qwen3.5-397b-a17b',
   'qwen3.5-122b-a10b',
@@ -111,7 +115,7 @@ function findModel(id: string) {
 }
 
 describe('curated qwen provider', () => {
-  it('curates exactly the 46 expected models', () => {
+  it('curates exactly the 48 expected models', () => {
     const ids = qwen.models.map(model => model.id)
 
     expect(qwen.models).toHaveLength(expectedModelIds.length)
@@ -140,11 +144,13 @@ describe('curated qwen provider', () => {
     const webSearchIds = new Set([
       'qwen3.7-plus',
       'qwen3.7-max',
+      'qwen3.7-flash',
       'qwen3.6-flash',
       'qwen3.6-max-preview',
       'qwen3.6-plus',
       'qwen3.6-27b',
       'qwen3.6-35b-a3b',
+      'qwen3.5-flash',
       'qwen3.5-plus',
       'qwen3.5-397b-a17b',
       'qwen3.5-122b-a10b',
@@ -215,7 +221,7 @@ describe('curated qwen provider', () => {
 
   it('partitions every curated model into exactly one of the three '
     + 'reasoning groups', () => {
-    expect(toggleReasoningIds).toHaveLength(22)
+    expect(toggleReasoningIds).toHaveLength(24)
     expect(reasoningAlwaysOnIds).toHaveLength(5)
     expect(noReasoningIds).toHaveLength(19)
 
@@ -250,11 +256,46 @@ describe('curated qwen provider', () => {
     }
   })
 
-  it('has a models.dev snapshot entry for every curated id', () => {
+  it('has a models.dev snapshot entry for every curated id except the '
+    + 'exempt flash models', () => {
+    const exemptIds = ['qwen3.7-flash', 'qwen3.5-flash']
     const snapshotIds = Object.keys(snapshot)
+    const idsWithSnapshotEntries = expectedModelIds.filter((id) => {
+      return !exemptIds.includes(id)
+    })
 
-    for (const id of expectedModelIds) {
+    for (const id of idsWithSnapshotEntries) {
       expect(snapshotIds).toContain(id)
     }
+
+    for (const id of exemptIds) {
+      expect(snapshotIds).not.toContain(id)
+    }
+  })
+
+  it('fully hand-curates qwen3.7-flash and qwen3.5-flash since models.dev '
+    + 'does not yet track them under the international "alibaba" key',
+  () => {
+    const qwen37Flash = findModel('qwen3.7-flash')
+
+    expect(qwen37Flash?.name).toBe('Qwen3.7 Flash')
+    expect(qwen37Flash?.description).toBeTruthy()
+    expect(qwen37Flash?.contextLength).toBe(1_000_000)
+    expect(qwen37Flash?.maxOutputTokens).toBe(131_072)
+    expect(qwen37Flash?.modalities).toEqual({
+      input: ['text', 'image', 'video'],
+      output: ['text'],
+    })
+
+    const qwen35Flash = findModel('qwen3.5-flash')
+
+    expect(qwen35Flash?.name).toBe('Qwen3.5 Flash')
+    expect(qwen35Flash?.description).toBeTruthy()
+    expect(qwen35Flash?.contextLength).toBe(1_000_000)
+    expect(qwen35Flash?.maxOutputTokens).toBe(65_536)
+    expect(qwen35Flash?.modalities).toEqual({
+      input: ['text', 'image', 'video'],
+      output: ['text'],
+    })
   })
 })

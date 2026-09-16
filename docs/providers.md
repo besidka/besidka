@@ -108,8 +108,9 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
     > qwen3.5-27b(3.5-27)` — ranking `qwen3-32b` as *newer* than
     `qwen3.6-27b`, which is simply wrong. A spec built on that parser for
     Qwen would enforce a meaningless order.
-- **Qwen** (46 models — 3 previously curated plus 43 new): the full list is
-  in `providers/qwen.ts`, ordered by the same "first-listed is the default"
+- **Qwen** (48 models — 3 previously curated plus 43 new plus 2 hand-curated
+  `EXEMPT_IDS` additions): the full list is in `providers/qwen.ts`, ordered
+  by the same "first-listed is the default"
   convention as every other provider. Each new model's reasoning shape is
   derived mechanically from its models.dev `reasoning_options`, not
   hand-guessed per model:
@@ -134,6 +135,25 @@ merged at import time against `providers/data/models-dev-snapshot.json`.
   not appear in DashScope's web-search allowlist. See "Web search across
   the direct providers" below for the full list, the Qwen3.8 exclusion
   rationale, and citations.
+
+  **Hand-curated additions (updated 2026-09-17): `qwen3.7-flash` and
+  `qwen3.5-flash`.** models.dev does not yet track these two ids under its
+  international `alibaba` catalog key — only under the mainland-China
+  `alibaba-cn` key this app never queries. That is a models.dev
+  metadata-tracking gap, not a region restriction: Alibaba Cloud's own
+  dedicated docs pages for both models
+  (`https://www.alibabacloud.com/help/en/model-studio/qwen3-7-flash` and
+  `https://www.alibabacloud.com/help/en/model-studio/qwen3-5-flash`) state
+  `Scope: International` explicitly, confirming both genuinely run on the
+  Singapore/international DashScope endpoint this app calls. Both are
+  curated in `providers/qwen.ts` as fully hand-curated entries — the same
+  pattern as `grok-imagine-image-2.0` in `providers/xai.ts` — and added to
+  `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs` so `pnpm run
+  models:fetch` never attempts a models.dev lookup for them and they never
+  appear in `providers/data/models-dev-snapshot.json`. Both are curated with
+  `tools: ['web_search']` and `reasoning: { mode: 'toggle' }`, matching
+  their same-generation `flash`/`plus` siblings. This brings the totals to
+  48 curated Qwen models and 15 with web search enabled.
 
   **Standing rule: never curate an Alibaba-hosted third-party model id.**
   `deepseek-v4-flash-0731` and `glm-5.2` both appear in the live `alibaba`
@@ -396,6 +416,13 @@ region-tabbed `help.aliyun.com` twin):
   the `qwen-mt-*` translation models. None of these appear in DashScope's
   web-search-supported-model table at all, so they all stay `tools: []`
   until a documented entry says otherwise.
+- **Extended (2026-09-17) to `qwen3.7-flash` and `qwen3.5-flash`.** Both are
+  hand-curated `EXEMPT_IDS` additions (see the "Hand-curated additions"
+  note above); Alibaba's own docs for their same-generation `flash`/`plus`
+  siblings already on this allowlist, plus each model's dedicated docs
+  page, support the same `enable_search` availability, so both are curated
+  with `tools: ['web_search']`. This brings the allowlist total to 15
+  models, matching `providers/qwen.ts` exactly.
 - **Qwen3.8 is deliberately excluded from web search.** Alibaba's Chat
   Completions API for `qwen3.8-max`/`qwen3.8-flash` does not support
   `search_strategy: 'agent'` — the only search strategy priced and

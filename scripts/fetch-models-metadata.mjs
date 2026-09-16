@@ -60,11 +60,20 @@ const SNAPSHOT_PATH = fileURLToPath(
 //  - Image models models.dev lists but with no `cost` block, which
 //    toSnapshotEntry() below treats as incomplete. Fully curated in
 //    providers/*.ts instead.
+//  - Models genuinely available on this app's endpoint but not yet tracked
+//    by models.dev under the provider's international key. Example:
+//    `qwen3.7-flash`/`qwen3.5-flash` run on DashScope's Singapore
+//    (international) endpoint per Alibaba Cloud's own docs, but models.dev
+//    only tracks them under `alibaba-cn` (mainland China), not `alibaba`
+//    (international) — a metadata-tracking gap, not a region restriction.
+//    Fully curated in providers/qwen.ts.
 const EXEMPT_IDS = [
   'o3-deep-research',
   'o4-mini-deep-research',
   'gemini-3-pro-preview',
   'grok-imagine-image-2.0',
+  'qwen3.7-flash',
+  'qwen3.5-flash',
 ]
 
 const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']

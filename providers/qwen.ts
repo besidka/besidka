@@ -26,6 +26,27 @@ export default {
       },
     },
     {
+      id: 'qwen3.7-flash',
+      name: 'Qwen3.7 Flash',
+      description: 'Qwen vision-language model for visual reasoning, documents, and agent tasks',
+      contextLength: 1_000_000,
+      maxOutputTokens: 131_072,
+      releaseDate: '2026-07-15',
+      modalities: {
+        input: ['text', 'image', 'video'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'toggle',
+      },
+      price: {
+        tokens: 1_000_000,
+        input: 'from $0.03',
+        output: 'from $0.13',
+      },
+    },
+    {
       id: 'qwen3.6-flash',
       tools: ['web_search'],
       reasoning: {
@@ -93,6 +114,27 @@ export default {
       },
       price: {
         tokens: 1_000_000,
+      },
+    },
+    {
+      id: 'qwen3.5-flash',
+      name: 'Qwen3.5 Flash',
+      description: 'Qwen vision-language model for visual reasoning, documents, and agent tasks',
+      contextLength: 1_000_000,
+      maxOutputTokens: 65_536,
+      releaseDate: '2026-02-23',
+      modalities: {
+        input: ['text', 'image', 'video'],
+        output: ['text'],
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'toggle',
+      },
+      price: {
+        tokens: 1_000_000,
+        input: '$0.10',
+        output: '$0.40',
       },
     },
     {
