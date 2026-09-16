@@ -853,12 +853,13 @@ describe('assistant files scaffolding', () => {
   it('persists a visible error when a stream-level provider failure '
     + 'leaves no other content, for a turn that requested image '
     + 'generation', async () => {
+    const logger = { set: vi.fn() }
     const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
       parts: [],
       providerId: 'xai',
       chatId: 'chat-7',
       userId: 7,
-      logger: { set: vi.fn() },
+      logger,
       requestedTools: ['image_generation'],
       streamErrorText: JSON.stringify({
         code: 'provider-auth',
@@ -875,6 +876,17 @@ describe('assistant files scaffolding', () => {
         ].join(' '),
       },
     ])
+    expect(logger.set).toHaveBeenCalledWith({
+      imageGeneration: {
+        status: 'failed',
+      },
+      attributes: {
+        imageGeneration: {
+          provider: 'xai',
+          errorCode: 'image-generation-stream-error',
+        },
+      },
+    })
   })
 
   it('leaves empty parts empty when no image generation was requested, '

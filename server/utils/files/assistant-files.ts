@@ -157,11 +157,11 @@ function getImageGenerationStreamFailure(
   input.logger.set({
     imageGeneration: {
       status: 'failed',
-      errorCode: 'image-generation-stream-error',
     },
     attributes: {
       imageGeneration: {
         provider: input.providerId,
+        errorCode: 'image-generation-stream-error',
       },
     },
   })

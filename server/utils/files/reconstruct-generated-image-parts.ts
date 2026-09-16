@@ -26,6 +26,8 @@ export async function reconstructGeneratedImageParts<
     return messages
   }
 
+  const imageGenerationProviders = getImageGenerationProviders()
+
   return messages.map((message) => {
     const rewrittenParts = message.parts.map((part) => {
       if (part.type !== 'file') {
@@ -41,7 +43,7 @@ export async function reconstructGeneratedImageParts<
         return part
       }
 
-      if (!hasOriginMetadata(generatedFile)) {
+      if (!hasOriginMetadata(generatedFile, imageGenerationProviders)) {
         return part
       }
 
@@ -90,12 +92,13 @@ function collectFileStorageKeys<
  */
 function hasOriginMetadata(
   file: OwnedGeneratedImageFile,
+  imageGenerationProviders: ImageGenerationProvider[],
 ): file is OwnedGeneratedImageFile & {
   originProvider: ImageGenerationProvider
   originModel: string
 } {
   return file.originProvider !== null
-    && getImageGenerationProviders().includes(
+    && imageGenerationProviders.includes(
       file.originProvider as ImageGenerationProvider,
     )
     && file.originModel !== null

@@ -135,10 +135,6 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   getGeneratedImageFileIds: vi.fn(() => []),
   isKnownImageGenerationModel: vi.fn(() => true),
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),
-  // Mirrors only the one behavior under test here (a stream-level provider
-  // failure with no other content must not persist empty parts) - the real
-  // per-error-code text catalog is covered by the real implementation's own
-  // suite in tests/integration/server/assistant-files.spec.ts.
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: {
       parts: unknown[]
