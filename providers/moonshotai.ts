@@ -22,5 +22,21 @@ export default {
         tokens: 1_000_000,
       },
     },
+    {
+      id: 'kimi-k2.7-code',
+      tools: ['web_search'],
+      reasoningAlwaysOn: true,
+      price: {
+        tokens: 1_000_000,
+      },
+    },
+    {
+      id: 'kimi-k2.7-code-highspeed',
+      tools: ['web_search'],
+      reasoningAlwaysOn: true,
+      price: {
+        tokens: 1_000_000,
+      },
+    },
   ],
 } satisfies CuratedProvider

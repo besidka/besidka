@@ -70,18 +70,22 @@ export async function useMoonshotAi(
   const isToggleCapability = modelData.reasoning?.mode === 'toggle'
 
   /**
-   * Only kimi-k2.6 is curated with a toggle reasoning capability, and its
-   * `thinking` param is set explicitly here rather than through the
-   * top-level `reasoning` option: the base openai-compatible model this
-   * provider extends auto-derives a `reasoning_effort` field from that
-   * option, and Moonshot's API rejects a request that sends `thinking` and
-   * `reasoning_effort` together for this model. kimi-k3 is curated with
-   * `reasoningAlwaysOn` instead of a toggle capability (it dropped
-   * `thinking` in favour of a mandatory, differently-shaped
-   * `reasoning_effort` this app's reasoning levels don't cover — Moonshot's
-   * own docs confirm reasoning cannot be disabled for kimi-k3, only its
-   * effort adjusted), so it gets neither field and reasons at the
-   * provider's own default effort.
+   * Of the four curated models (kimi-k2.6, kimi-k3, kimi-k2.7-code,
+   * kimi-k2.7-code-highspeed), only kimi-k2.6 is curated with a toggle
+   * reasoning capability, and its `thinking` param is set explicitly here
+   * rather than through the top-level `reasoning` option: the base
+   * openai-compatible model this provider extends auto-derives a
+   * `reasoning_effort` field from that option, and Moonshot's API rejects a
+   * request that sends `thinking` and `reasoning_effort` together for this
+   * model. The other three (kimi-k3, kimi-k2.7-code,
+   * kimi-k2.7-code-highspeed) are curated with `reasoningAlwaysOn` instead
+   * of a toggle capability — they dropped `thinking` in favour of a
+   * mandatory, differently-shaped `reasoning_effort` this app's reasoning
+   * levels don't cover (Moonshot's own docs confirm reasoning cannot be
+   * disabled for kimi-k3, only its effort adjusted, and models.dev reports
+   * an empty `reasoning_options` for both kimi-k2.7 variants, meaning
+   * neither accepts a disable/enable toggle at all) — so they get neither
+   * field and reason at the provider's own default effort.
    */
   function getProviderOptions(): SharedV2ProviderOptions {
     if (!isToggleCapability) {

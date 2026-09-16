@@ -5,10 +5,12 @@ import snapshot from '../../../providers/data/models-dev-snapshot.json'
 const expectedModelIds = [
   'kimi-k2.6',
   'kimi-k3',
+  'kimi-k2.7-code',
+  'kimi-k2.7-code-highspeed',
 ]
 
 describe('curated moonshotai provider', () => {
-  it('curates exactly the two expected models', () => {
+  it('curates exactly the four expected models', () => {
     const ids = moonshotai.models.map(model => model.id)
 
     expect(moonshotai.models).toHaveLength(expectedModelIds.length)
@@ -22,6 +24,11 @@ describe('curated moonshotai provider', () => {
   })
 
   it('lists kimi-k2.6 first as the recommended default', () => {
+    expect(moonshotai.models[0]?.id).toBe('kimi-k2.6')
+  })
+
+  it('keeps the cheaper kimi-k2.6 as the first-listed default even though '
+    + 'kimi-k3 is newer in the same parsed family', () => {
     expect(moonshotai.models[0]?.id).toBe('kimi-k2.6')
   })
 
@@ -70,6 +77,25 @@ describe('curated moonshotai provider', () => {
 
     expect(k3?.reasoning).toBeUndefined()
     expect(k3?.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('curates kimi-k2.7-code as always-on reasoning without a toggle', () => {
+    const k27Code = moonshotai.models.find((model) => {
+      return model.id === 'kimi-k2.7-code'
+    })
+
+    expect(k27Code?.reasoning).toBeUndefined()
+    expect(k27Code?.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('curates kimi-k2.7-code-highspeed as always-on reasoning without a '
+    + 'toggle', () => {
+    const k27CodeHighspeed = moonshotai.models.find((model) => {
+      return model.id === 'kimi-k2.7-code-highspeed'
+    })
+
+    expect(k27CodeHighspeed?.reasoning).toBeUndefined()
+    expect(k27CodeHighspeed?.reasoningAlwaysOn).toBe(true)
   })
 
   it('has a models.dev snapshot entry for every curated id', () => {

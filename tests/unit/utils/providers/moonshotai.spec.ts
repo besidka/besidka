@@ -141,6 +141,31 @@ describe('useMoonshotAi reasoning wiring for kimi-k3', () => {
   })
 })
 
+describe('useMoonshotAi reasoning wiring for kimi-k2.7-code and '
+  + 'kimi-k2.7-code-highspeed', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it.each([
+    'kimi-k2.7-code',
+    'kimi-k2.7-code-highspeed',
+  ])('sends neither thinking nor reasoning_effort for %s, which does not '
+    + 'accept a disable/enable toggle at all', async (id) => {
+    stubModel(createModel({ id, reasoningAlwaysOn: true }))
+
+    const useMoonshotAi = await importUseMoonshotAi()
+    const result = await useMoonshotAi('1', id, [], 'medium')
+
+    expect(result.providerOptions).toEqual({})
+    expect(result.providerOptions).not.toHaveProperty('thinking')
+    expect(result.providerOptions).not.toHaveProperty('reasoning_effort')
+    expect(result.reasoning).toBeUndefined()
+  })
+})
+
 describe('useMoonshotAi web search wiring', () => {
   beforeEach(() => {
     vi.resetModules()
