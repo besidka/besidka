@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import anthropic from '../../../providers/anthropic'
 import google from '../../../providers/google'
 import openai from '../../../providers/openai'
+import xai from '../../../providers/xai'
 import {
   compareModelVersions,
   parseModelFamily,
@@ -154,4 +155,27 @@ describe('curated provider ordering', () => {
   it('keeps openai families in newest-first order', () => {
     expect(findOrderingViolations(openai.models)).toEqual([])
   })
+
+  it('keeps xai families in newest-first order', () => {
+    expect(findOrderingViolations(xai.models)).toEqual([])
+  })
+
+  // moonshotai, deepseek and qwen are deliberately excluded from this
+  // block. Moonshot's kimi-k2.6 and kimi-k3 parse into the same
+  // parseModelFamily family, so newest-first would demand kimi-k3 before
+  // kimi-k2.6 — but kimi-k2.6 ($0.95/$4.00, toggleable reasoning) is the
+  // documented, intended default over kimi-k3 ($3.00/$15.00, mandatory
+  // reasoning); "first-listed is the default" is a product decision this
+  // branch documents and tests, and "newest-first" is only an ergonomic
+  // convention that collides with it here. More broadly, the generic
+  // family parser is demonstrably unsound outside the
+  // OpenAI/Google/Anthropic/xAI id shapes. Concrete proof from Qwen,
+  // computed with main's own parseModelFamily/compareModelVersions:
+  //
+  //   qwen{v}b :: qwen3-32b(3-32) > qwen3-14b(3-14) > qwen3-8b(3-8)
+  //             > qwen3.6-27b(3.6-27) > qwen3.5-27b(3.5-27)
+  //
+  // The parser has grouped parameter-count variants and version variants
+  // into one "family" and ranked qwen3-32b as newer than qwen3.6-27b. A
+  // spec built on that would enforce a meaningless order.
 })

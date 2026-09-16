@@ -1,15 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import xai from '../../../providers/xai'
 import snapshot from '../../../providers/data/models-dev-snapshot.json'
+import { parseModelFamily } from '../../../scripts/detect-model-successors.mjs'
 
 const expectedModelIds = [
   'grok-4.20-0309-non-reasoning',
   'grok-4.20-0309-reasoning',
+  'grok-4.20-multi-agent-0309',
+  'grok-4.6',
   'grok-4.5',
+  'grok-4.3',
+  'grok-build-0.1',
 ]
 
+const expectedToolsById: Record<string, string[]> = {
+  'grok-4.20-0309-non-reasoning': ['web_search'],
+  'grok-4.20-0309-reasoning': ['web_search'],
+  'grok-4.20-multi-agent-0309': [],
+  'grok-4.6': ['web_search'],
+  'grok-4.5': ['web_search'],
+  'grok-4.3': ['web_search'],
+  'grok-build-0.1': ['web_search'],
+}
+
 describe('curated xai provider', () => {
-  it('curates exactly the three expected models', () => {
+  it('curates exactly the seven expected models', () => {
     const ids = xai.models.map(model => model.id)
 
     expect(xai.models).toHaveLength(expectedModelIds.length)
@@ -45,42 +60,65 @@ describe('curated xai provider', () => {
     }
   })
 
-  it('exposes web search on every model', () => {
+  it('gives each model the tools it is entitled to', () => {
     for (const model of xai.models) {
-      expect(model.tools).toContain('web_search')
+      expect(model.tools).toEqual(expectedToolsById[model.id])
     }
   })
 
-  it('only gives grok-4.5 adjustable reasoning levels', () => {
-    const grok45 = xai.models.find(model => model.id === 'grok-4.5')
-    const nonReasoning = xai.models.find((model) => {
-      return model.id === 'grok-4.20-0309-non-reasoning'
-    })
-    const reasoning = xai.models.find((model) => {
-      return model.id === 'grok-4.20-0309-reasoning'
-    })
+  it('gives grok-4.6, grok-4.5, grok-4.3 and '
+    + 'grok-4.20-multi-agent-0309 adjustable reasoning levels', () => {
+    const leveledIds = [
+      'grok-4.6',
+      'grok-4.5',
+      'grok-4.3',
+      'grok-4.20-multi-agent-0309',
+    ]
 
-    expect(grok45?.reasoning).toEqual({
-      mode: 'levels',
-      levels: ['low', 'medium', 'high'],
-    })
-    expect(nonReasoning?.reasoning).toBeUndefined()
-    expect(reasoning?.reasoning).toBeUndefined()
+    for (const id of leveledIds) {
+      const model = xai.models.find(candidate => candidate.id === id)
+
+      expect(model?.reasoning).toEqual({
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      })
+    }
   })
 
-  it('marks the reasoning variant as always-on rather than toggleable '
-    + 'or leveled', () => {
-    const grok45 = xai.models.find(model => model.id === 'grok-4.5')
-    const nonReasoning = xai.models.find((model) => {
-      return model.id === 'grok-4.20-0309-non-reasoning'
-    })
-    const reasoning = xai.models.find((model) => {
-      return model.id === 'grok-4.20-0309-reasoning'
+  it('marks grok-4.20-0309-reasoning and grok-build-0.1 as always-on '
+    + 'reasoning rather than toggleable or leveled', () => {
+    const alwaysOnIds = ['grok-4.20-0309-reasoning', 'grok-build-0.1']
+
+    for (const id of alwaysOnIds) {
+      const model = xai.models.find(candidate => candidate.id === id)
+
+      expect(model?.reasoningAlwaysOn).toBe(true)
+      expect(model?.reasoning).toBeUndefined()
+    }
+  })
+
+  it('gives grok-4.20-0309-non-reasoning neither adjustable reasoning '
+    + 'levels nor always-on reasoning', () => {
+    const model = xai.models.find((candidate) => {
+      return candidate.id === 'grok-4.20-0309-non-reasoning'
     })
 
-    expect(reasoning?.reasoningAlwaysOn).toBe(true)
-    expect(nonReasoning?.reasoningAlwaysOn).toBeUndefined()
-    expect(grok45?.reasoningAlwaysOn).toBeUndefined()
+    expect(model?.reasoning).toBeUndefined()
+    expect(model?.reasoningAlwaysOn).toBeUndefined()
+  })
+
+  it('orders the grok-{v} family newest-first', () => {
+    const familyIds = ['grok-4.6', 'grok-4.5', 'grok-4.3']
+
+    for (const id of familyIds) {
+      expect(parseModelFamily(id)?.family).toBe('grok-{v}')
+    }
+
+    const indexes = familyIds.map((id) => {
+      return xai.models.findIndex(model => model.id === id)
+    })
+
+    expect(indexes).toEqual([...indexes].sort((a, b) => a - b))
   })
 
   it('has a models.dev snapshot entry for every curated id', () => {
