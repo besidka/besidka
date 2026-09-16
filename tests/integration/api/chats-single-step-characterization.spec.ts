@@ -4,6 +4,9 @@ import { getModelCostMap } from '../../../server/utils/ai/cost-map'
 import {
   getImageGenerationCost,
 } from '../../../server/utils/ai/image-generation-cost'
+import {
+  normalizeAssistantMessagePartsForPersistence,
+} from '../../../server/utils/files/assistant-files'
 
 /**
  * Characterization suite for every send shape that must stay single step now
@@ -132,8 +135,27 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   getGeneratedImageFileIds: vi.fn(() => []),
   isKnownImageGenerationModel: vi.fn(() => true),
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),
+  // Mirrors only the one behavior under test here (a stream-level provider
+  // failure with no other content must not persist empty parts) - the real
+  // per-error-code text catalog is covered by the real implementation's own
+  // suite in tests/integration/server/assistant-files.spec.ts.
   normalizeAssistantMessagePartsForPersistence: vi.fn(
-    async (input: { parts: unknown }) => input.parts,
+    async (input: {
+      parts: unknown[]
+      streamErrorText?: string
+      requestedTools?: string[]
+    }) => {
+      if (
+        Array.isArray(input.parts)
+        && input.parts.length === 0
+        && input.streamErrorText
+        && input.requestedTools?.includes('image_generation')
+      ) {
+        return [{ type: 'text', text: 'Image generation failed.' }]
+      }
+
+      return input.parts
+    },
   ),
 }))
 
@@ -556,6 +578,56 @@ describe('chat send pipeline: single-step characterization', () => {
     expect(assistantInsert?.usage.outputCost).toBe(
       textOutputCost + (imageCost ?? 0),
     )
+  })
+
+  it('(g) xai image-generation send whose provider call fails persists a '
+    + 'visible error instead of an empty assistant message', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'xai' },
+      model: {
+        id: 'grok-imagine-image-2.0',
+        name: 'Grok Imagine',
+        tools: ['image_generation'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+    vi.stubGlobal('useXai', vi.fn(async () => ({
+      instance: {},
+      imageModel: {},
+      imageModelId: 'grok-imagine-image-2.0',
+      tools: {},
+      providerOptions: {},
+    })))
+
+    mocks.uiChunks = [
+      { type: 'start', messageId: 'assistant-1' },
+      {
+        type: 'error',
+        errorText: JSON.stringify({
+          code: 'provider-auth',
+          message: 'The provider rejected the saved API key.',
+          status: 401,
+        }),
+      },
+      { type: 'finish' },
+    ]
+
+    const { insertValues } = await runHandler(baseBody({
+      model: 'grok-imagine-image-2.0',
+      tools: ['image_generation'],
+    }))
+    const assistantInsert = getAssistantInsert(insertValues)
+
+    expect(normalizeAssistantMessagePartsForPersistence)
+      .toHaveBeenCalledWith(expect.objectContaining({
+        parts: [],
+        streamErrorText: expect.any(String),
+        requestedTools: ['image_generation'],
+      }))
+    expect(assistantInsert?.parts).not.toEqual([])
+    expect(assistantInsert?.parts).toEqual([
+      { type: 'text', text: 'Image generation failed.' },
+    ])
   })
 
   it('emits exactly one finish-step per send across every path today',

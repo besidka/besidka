@@ -266,3 +266,37 @@ describe('useXai image generation', () => {
     expect(result.tools).toEqual({})
   })
 })
+
+describe('useXai controller model resolution for image-only models', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('builds the language model instance from the imageGeneration '
+    + 'controller model, not the image-only model id itself', async () => {
+    const controllerModelId = 'grok-4.20-0309-non-reasoning'
+    const imageOnlyModel = createModel({
+      id: 'grok-imagine-image-2.0',
+      imageGeneration: { controllerModel: controllerModelId },
+    })
+
+    stubModel(imageOnlyModel)
+    mocks.getControllerModelId.mockImplementationOnce((model: Model) => {
+      return model.imageGeneration?.controllerModel ?? model.id
+    })
+
+    const useXai = await importUseXai()
+    const result = await useXai(
+      '1',
+      'grok-imagine-image-2.0',
+      ['image_generation'],
+      'off',
+    )
+
+    expect(mocks.getControllerModelId).toHaveBeenCalledWith(imageOnlyModel)
+    expect(result.instance.modelId).toBe(controllerModelId)
+    expect(result.instance.modelId).not.toBe('grok-imagine-image-2.0')
+  })
+})

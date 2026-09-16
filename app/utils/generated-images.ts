@@ -137,11 +137,7 @@ export function getGenerateImageOutput(
     return null
   }
 
-  if (
-    candidate.provider !== 'openai'
-    && candidate.provider !== 'google'
-    && candidate.provider !== 'xai'
-  ) {
+  if (!isImageGenerationProviderCandidate(candidate.provider)) {
     return null
   }
 
@@ -403,6 +399,13 @@ function isSafeFileSize(value: unknown): value is number {
 
 function isAcceptedImageType(value: unknown): value is string {
   return typeof value === 'string' && acceptedImageTypes.has(value)
+}
+
+function isImageGenerationProviderCandidate(
+  value: unknown,
+): value is ImageGenerationProvider {
+  return typeof value === 'string'
+    && (getImageGenerationProviders() as string[]).includes(value)
 }
 
 function isSafeModelName(value: unknown): value is string {

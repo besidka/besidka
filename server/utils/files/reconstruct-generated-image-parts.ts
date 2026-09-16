@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import type { ImageGenerationProvider } from '#shared/types/image-generation.d'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import {
   getOwnedGeneratedImageFilesByStorageKeys,
@@ -79,24 +80,25 @@ function collectFileStorageKeys<
 /**
  * Reconstruction only ever produces a `tool-generate_image` part, which the
  * client's `getGenerateImageOutput()` (`app/utils/generated-images.ts`)
- * renders only for `output.provider === 'openai' | 'google' | 'xai'` — the
- * direct providers with a real `generate_image` tool. A file with any other
- * `originProvider` has no tool behind it at all; letting it through this
- * allowlist would rewrite an already-correctly-rendering plain `file` part
- * into a `tool-generate_image` part the client rejects and renders as
- * nothing, making the image silently vanish on reload.
+ * renders only for a provider `getImageGenerationProviders()` recognizes —
+ * the direct providers with a real `generate_image` tool, derived from the
+ * curated catalog. A file with any other `originProvider` has no tool
+ * behind it at all; letting it through this allowlist would rewrite an
+ * already-correctly-rendering plain `file` part into a `tool-generate_image`
+ * part the client rejects and renders as nothing, making the image silently
+ * vanish on reload.
  */
 function hasOriginMetadata(
   file: OwnedGeneratedImageFile,
 ): file is OwnedGeneratedImageFile & {
-  originProvider: 'openai' | 'google' | 'xai'
+  originProvider: ImageGenerationProvider
   originModel: string
 } {
-  return (
-    file.originProvider === 'openai'
-    || file.originProvider === 'google'
-    || file.originProvider === 'xai'
-  ) && file.originModel !== null
+  return file.originProvider !== null
+    && getImageGenerationProviders().includes(
+      file.originProvider as ImageGenerationProvider,
+    )
+    && file.originModel !== null
 }
 
 function buildGeneratedImageToolPart(

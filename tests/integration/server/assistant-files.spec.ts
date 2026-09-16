@@ -850,6 +850,67 @@ describe('assistant files scaffolding', () => {
     expect(JSON.stringify(normalizedParts)).not.toContain('sk-secret')
   })
 
+  it('persists a visible error when a stream-level provider failure '
+    + 'leaves no other content, for a turn that requested image '
+    + 'generation', async () => {
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts: [],
+      providerId: 'xai',
+      chatId: 'chat-7',
+      userId: 7,
+      logger: { set: vi.fn() },
+      requestedTools: ['image_generation'],
+      streamErrorText: JSON.stringify({
+        code: 'provider-auth',
+        message: 'untrusted provider diagnostic',
+      }),
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'text',
+        text: [
+          'The image provider rejected the saved API key.',
+          'Update the provider key in settings, then try again.',
+        ].join(' '),
+      },
+    ])
+  })
+
+  it('leaves empty parts empty when no image generation was requested, '
+    + 'even if a stream error occurred', async () => {
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts: [],
+      providerId: 'openai',
+      chatId: 'chat-8',
+      userId: 8,
+      logger: { set: vi.fn() },
+      requestedTools: ['web_search'],
+      streamErrorText: JSON.stringify({ code: 'provider-auth' }),
+    })
+
+    expect(normalizedParts).toEqual([])
+  })
+
+  it('leaves already-meaningful parts untouched even when a stream error '
+    + 'was also observed', async () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'Partial answer before the failure.' },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'xai',
+      chatId: 'chat-9',
+      userId: 9,
+      logger: { set: vi.fn() },
+      requestedTools: ['image_generation'],
+      streamErrorText: JSON.stringify({ code: 'provider-auth' }),
+    })
+
+    expect(normalizedParts).toEqual(parts)
+  })
+
   it.each([
     'raw provider secret diagnostic sk-secret',
     JSON.stringify({

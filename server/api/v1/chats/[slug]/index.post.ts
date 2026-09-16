@@ -15,7 +15,10 @@ import type {
   Provider,
   SupportedProviderId,
 } from '#shared/types/providers.d'
-import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
+import type {
+  ImageGenerationAspectRatio,
+  ImageGenerationProvider,
+} from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
@@ -1123,10 +1126,9 @@ function getGeneratedImageCostFromParts(
       || !('status' in output)
       || output.status !== 'ready'
       || !('provider' in output)
-      || (
-        output.provider !== 'openai'
-        && output.provider !== 'google'
-        && output.provider !== 'xai'
+      || typeof output.provider !== 'string'
+      || !getImageGenerationProviders().includes(
+        output.provider as ImageGenerationProvider,
       )
       || !('model' in output)
       || typeof output.model !== 'string'
@@ -1262,11 +1264,16 @@ async function persistAssistantMessageFromStream(input: {
   }
 }): Promise<boolean> {
   let isAborted = false
+  let streamErrorText: string | undefined
   let responseMessage: UIMessage | null = null
   const trackedStream = input.stream.pipeThrough(new TransformStream({
     transform(chunk, controller) {
       if (chunk?.type === 'abort') {
         isAborted = true
+      }
+
+      if (chunk?.type === 'error' && typeof chunk.errorText === 'string') {
+        streamErrorText = chunk.errorText
       }
 
       controller.enqueue(chunk)
@@ -1291,6 +1298,8 @@ async function persistAssistantMessageFromStream(input: {
       chatId: input.chatId,
       userId: input.userId,
       logger: input.logger,
+      requestedTools: input.tools,
+      streamErrorText,
     }
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
