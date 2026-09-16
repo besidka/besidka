@@ -1181,7 +1181,7 @@ describe('Chat/ContextMenu.client', () => {
   })
 
   describe('provider info rendering', () => {
-    it('shows "(direct)" and a key icon for a direct provider', async () => {
+    it('shows the plain provider name and a key icon', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',
         createdAt: '2026-01-15T10:30:00.000Z',
@@ -1202,7 +1202,8 @@ describe('Chat/ContextMenu.client', () => {
 
       const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
 
-      expect(providerRow.text()).toContain('OpenAI (direct)')
+      expect(providerRow.text()).toContain('OpenAI')
+      expect(providerRow.text()).not.toContain('(direct)')
       expect(providerRow.get('.iconify').classes()).toContain(
         'i-lucide:key-round',
       )
