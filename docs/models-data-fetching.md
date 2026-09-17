@@ -13,8 +13,8 @@ consumers have always read through `getProviders()`.
 
 This is the **curated, direct-provider** catalog — the only catalog. Every
 model the app can select is declared here; nothing is fetched at runtime.
-`docs/providers.md` records the per-provider capability decisions layered on
-top of this pipeline.
+`docs/providers/general.md` records the per-provider capability decisions
+layered on top of this pipeline, and links out to each provider's own file.
 
 ## Refreshing the snapshot
 
@@ -210,9 +210,9 @@ looks candidates up via `catalog[provider.modelsDevKey ?? provider.id]?.models
 ?? {}` rather than assuming `provider.id` always matches the models.dev
 catalog key. Without this, Qwen — whose `provider.id` is `'qwen'` but whose
 models.dev entry lives under the top-level key `alibaba` (see "models.dev
-catalog key: `alibaba`, not `qwen`" in `docs/providers.md`) — would silently
-resolve to an always-empty `{}` and the detector would propose nothing for
-Qwen, forever, with no error surfaced anywhere.
+catalog key: `alibaba`, not `qwen`" in `docs/providers/alibaba.md`) — would
+silently resolve to an always-empty `{}` and the detector would propose
+nothing for Qwen, forever, with no error surfaced anywhere.
 
 **`qwen` is nonetheless still deliberately absent from
 `scripts/propose-model-successors.mjs`'s `providers` array**, even with the
@@ -742,8 +742,8 @@ From the model catalog expansion (`docs/model-catalog-expansion-plan.md`):
   longer maintained or supported, a harder cutoff than xAI/DeepSeek's
   silent-redirect pattern, and they're absent from models.dev, so each
   would need `EXEMPT_IDS` plus hand-curated metadata for a model that most
-  likely hard-404s on every send. See `docs/providers.md`'s "Owner action
-  items" for the unverified-without-a-live-key framing.
+  likely hard-404s on every send. See `docs/providers/moonshotai.md`'s
+  "Owner action items" for the unverified-without-a-live-key framing.
 - **Qwen's omni/realtime/ASR models** (`qwen3-omni-flash`,
   `qwen3-omni-flash-realtime`, `qwen-omni-turbo`,
   `qwen-omni-turbo-realtime`, `qwen2-5-omni-7b`, `qwen3-asr-flash`,
@@ -755,8 +755,9 @@ From the model catalog expansion (`docs/model-catalog-expansion-plan.md`):
   `glm-5.2` — both appear in the live `alibaba` models.dev catalog (Alibaba
   resells other vendors' models on DashScope) but are excluded under the
   standing rule against curating an Alibaba-hosted copy of an id another
-  provider already curates under its own name; see `docs/providers.md`'s
-  Qwen bullet for the full id-collision reasoning.
+  provider already curates under its own name; see
+  `docs/providers/alibaba.md`'s Qwen bullet for the full id-collision
+  reasoning.
 
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:

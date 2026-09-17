@@ -9,7 +9,7 @@ Process instruction from the user: prioritize the web-search/tools-mapping
 bug bucket first. A Fable-model planning agent was dispatched to investigate
 and produce an implementation plan before any code changes were made; that
 plan has since been executed and retired, and its durable findings live in
-`docs/providers.md`. Everything else in this file was explicitly deferred
+`docs/providers/general.md`. Everything else in this file was explicitly deferred
 until the user reviews it and asks to proceed, at which point it should be
 run as a full cycle (debugger subagent, browser verification, worker, tests).
 
@@ -20,10 +20,12 @@ run as a full cycle (debugger subagent, browser verification, worker, tests).
   web search via the Formula API both landed; Qwen's `qwen3.7-max`
   exclusion and DeepSeek's total absence of a search API were each
   re-verified as real vendor-side gaps and accepted as verified non-fixes.
-  All of that is now recorded permanently in `docs/providers.md`. The
+  All of that is now recorded permanently under `docs/providers/`. The
   entries under "Per-provider web search / tools mapping" below are that
   shipped bucket, kept verbatim as the original report — read
-  `docs/providers.md` for how each was resolved, and do not re-open them.
+  `docs/providers/deepseek.md`, `docs/providers/moonshotai.md`, and
+  `docs/providers/alibaba.md` for how each was resolved, and do not re-open
+  them.
 - **The rest of that bucket is moot.** The plan's remaining scope, and
   several bugs originally logged below, were scoped to the third-party
   model-routing/proxy integrations that have since been removed from the
