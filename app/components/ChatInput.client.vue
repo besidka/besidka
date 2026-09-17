@@ -122,6 +122,7 @@
                   v-if="!isDeepResearchModel"
                   hydrate-on-idle
                   :files="files"
+                  :is-image-input-supported="isImageInputSupported"
                   @detach-all="files = []"
                   @open="openFilesModal"
                 />
@@ -260,11 +261,11 @@
                 mode="accent"
                 soft
                 circle
-                title="Regenerate"
+                :title="regenerateButtonTitle"
                 icon-name="lucide:refresh-ccw"
                 icon-only
                 tooltip-position="left"
-                @click="regenerate"
+                @click="onRegenerate"
               />
               <UiButton
                 v-show="!displayStop && !canShowRegenerate"
@@ -300,6 +301,7 @@
     <LazyChatInputFilesModal
       ref="filesModalRef"
       :attached-ids="attachedIds"
+      :is-image-input-supported="isImageInputSupported"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
       @upload="uploadFiles"
@@ -344,11 +346,14 @@ const {
   isWebSearchSupported,
   isImageGenerationSupported,
   isImageGenerationRequired,
+  isImageInputSupported,
   isReasoningSupported,
   reasoningCapability,
   reasoningMode,
   isDeepResearchModel,
   researchConfig,
+  isSelectedModelKeyless,
+  selectedModelKeyOwnerLabel,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -374,7 +379,43 @@ const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
 })
 
+const missingKeyWarning = computed<string>(() => {
+  return `Add your ${selectedModelKeyOwnerLabel.value} API key to send this message`
+})
+
+const regenerateButtonTitle = computed<string>(() => {
+  if (isSelectedModelKeyless.value) {
+    return missingKeyWarning.value
+  }
+
+  return 'Regenerate'
+})
+
+/**
+ * Kept clickable rather than disabled: a dead button explains nothing on
+ * touch, where the title never surfaces, and this is a state the user has to
+ * leave deliberately by adding a key.
+ */
+function warnAboutMissingKey() {
+  useWarningMessage(
+    `${missingKeyWarning.value}.`,
+    'Open Profile → API Keys to add it, or pick a model you have a key for.',
+  )
+}
+
+function onRegenerate() {
+  if (isSelectedModelKeyless.value) {
+    return warnAboutMissingKey()
+  }
+
+  props.regenerate()
+}
+
 const sendButtonTitle = computed<string>(() => {
+  if (isSelectedModelKeyless.value) {
+    return missingKeyWarning.value
+  }
+
   if (props.researchJobActive) {
     return 'Research in progress — please wait'
   }
@@ -464,7 +505,24 @@ const {
   cancelAllUploads,
   removeAttachedFile,
   removeAllFiles,
-} = useChatFiles(files)
+} = useChatFiles(files, isImageInputSupported)
+
+watch(isImageInputSupported, (supported) => {
+  if (supported) {
+    return
+  }
+
+  const remainingFiles = files.value.filter((file) => {
+    return !isImageFile(file.type)
+  })
+
+  if (remainingFiles.length === files.value.length) {
+    return
+  }
+
+  files.value = remainingFiles
+  useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+}, { flush: 'post' })
 
 watch(
   [isReasoningSupported, reasoningCapability],
@@ -676,15 +734,22 @@ function onFilesAttached(
   attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
 ) {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
-  const newFiles = attachedFiles.filter(
+  const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
   )
+  const newFiles = isImageInputSupported.value
+    ? incomingFiles
+    : incomingFiles.filter(file => !isImageFile(file.type))
+
+  if (newFiles.length < incomingFiles.length) {
+    useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+  }
 
   if (newFiles.length === 0) {
     return
   }
 
-  files.value.push(...newFiles as FileMetadata[])
+  files.value = [...files.value, ...newFiles as FileMetadata[]]
 }
 
 function onFilesDetached(fileIds: string[]) {
@@ -705,6 +770,10 @@ function handleEnter(event: KeyboardEvent) {
 function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
+  }
+
+  if (isSelectedModelKeyless.value) {
+    return warnAboutMissingKey()
   }
 
   if (props.isClarifying) {

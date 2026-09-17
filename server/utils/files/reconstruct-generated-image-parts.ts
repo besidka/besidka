@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import type { ImageGenerationProvider } from '#shared/types/image-generation.d'
 import { extractLocalFileStorageKey } from '#shared/utils/files'
 import {
   getOwnedGeneratedImageFilesByStorageKeys,
@@ -25,6 +26,8 @@ export async function reconstructGeneratedImageParts<
     return messages
   }
 
+  const imageGenerationProviders = getImageGenerationProviders()
+
   return messages.map((message) => {
     const rewrittenParts = message.parts.map((part) => {
       if (part.type !== 'file') {
@@ -40,7 +43,7 @@ export async function reconstructGeneratedImageParts<
         return part
       }
 
-      if (!hasOriginMetadata(generatedFile)) {
+      if (!hasOriginMetadata(generatedFile, imageGenerationProviders)) {
         return part
       }
 
@@ -76,13 +79,29 @@ function collectFileStorageKeys<
   return Array.from(storageKeys)
 }
 
+/**
+ * Reconstruction only ever produces a `tool-generate_image` part, which the
+ * client's `getGenerateImageOutput()` (`app/utils/generated-images.ts`)
+ * renders only for a provider `getImageGenerationProviders()` recognizes —
+ * the direct providers with a real `generate_image` tool, derived from the
+ * curated catalog. A file with any other `originProvider` has no tool
+ * behind it at all; letting it through this allowlist would rewrite an
+ * already-correctly-rendering plain `file` part into a `tool-generate_image`
+ * part the client rejects and renders as nothing, making the image silently
+ * vanish on reload.
+ */
 function hasOriginMetadata(
   file: OwnedGeneratedImageFile,
+  imageGenerationProviders: ImageGenerationProvider[],
 ): file is OwnedGeneratedImageFile & {
-  originProvider: string
+  originProvider: ImageGenerationProvider
   originModel: string
 } {
-  return file.originProvider !== null && file.originModel !== null
+  return file.originProvider !== null
+    && imageGenerationProviders.includes(
+      file.originProvider as ImageGenerationProvider,
+    )
+    && file.originModel !== null
 }
 
 function buildGeneratedImageToolPart(

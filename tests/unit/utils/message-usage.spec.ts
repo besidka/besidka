@@ -131,6 +131,23 @@ describe('buildMessageUsage', () => {
     expect(result).not.toHaveProperty('reasoningTokens')
     expect(result).not.toHaveProperty('cachedInputTokens')
   })
+
+  it('never sets totalCost, which only ever comes from '
+    + 'already-persisted messages', () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    expect(result).not.toHaveProperty('totalCost')
+  })
 })
 
 describe('addImageGenerationCostToUsage', () => {

@@ -1,5 +1,8 @@
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
-import type { ModelCategory, ModelCategoryOption } from '~/types/models-picker'
+import type {
+  ModelCategory,
+  ModelCategoryOption,
+} from '~/types/models-picker'
 
 export const modelCategoryOptions: ModelCategoryOption[] = [
   { value: 'chat', label: 'Chat', icon: 'lucide:message-square' },
@@ -44,6 +47,14 @@ export function hasImageGenerationCapability(model: Model): boolean {
     || isImageGenerationModel(model)
 }
 
+/**
+ * Vision covers image/video/PDF *input*, fully separate from image
+ * *generation* above — a model can have either, both, or neither.
+ */
+export function hasVisionCapability(model: Model): boolean {
+  return model.modalities.input.includes('image')
+}
+
 export function getModelPriceTip(model: Model): string | undefined {
   if (model.research) {
     return `${model.research.costEstimate} · ${model.research.timeEstimate}`
@@ -72,6 +83,34 @@ export function formatModelTokenLimit(count: number): string {
   }
 
   return `${count.toLocaleString('en-US')} tokens`
+}
+
+/**
+ * What a rail count badge claims to describe: the models the picker will
+ * actually list for that provider. Deprecated entries live behind the
+ * collapsed legacy section and cannot be selected, so counting them would
+ * promise rows the user never reaches.
+ */
+export function countSelectableModels(models: Model[]): number {
+  return models.filter((model) => {
+    return model.status !== 'deprecated'
+  }).length
+}
+
+/**
+ * Keeps a rail badge to three glyphs. A vertical rail is one icon wide, and
+ * an uncapped count would grow the badge wider than the button it hangs off.
+ */
+export function formatRailCount(count: number): string {
+  return count > 99 ? '99+' : `${count}`
+}
+
+/**
+ * Spells the badge out for the tooltip and the accessible name, where the
+ * bare number has no unit to lean on.
+ */
+export function formatModelCount(count: number): string {
+  return `${count} ${count === 1 ? 'model' : 'models'}`
 }
 
 /**

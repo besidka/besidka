@@ -3,6 +3,7 @@ import {
   extractLastCompleteReasoningTitle,
   normalizeReasoningTitle,
   parseReasoningSections,
+  truncateReasoningTitle,
 } from '../../../app/utils/reasoning'
 
 describe('reasoning utils', () => {
@@ -141,5 +142,61 @@ describe('reasoning utils', () => {
   it('normalizes markdown-wrapped and empty titles', () => {
     expect(normalizeReasoningTitle('**Step 9**')).toBe('Step 9')
     expect(normalizeReasoningTitle('   ')).toBe('Reasoning')
+  })
+
+  it('leaves a title within the display limit untouched', () => {
+    expect(truncateReasoningTitle('Step 9')).toBe('Step 9')
+    expect(truncateReasoningTitle('Thinking about the request'))
+      .toBe('Thinking about the request')
+    expect(truncateReasoningTitle('Exactly thirty characters here'))
+      .toBe('Exactly thirty characters here')
+  })
+
+  it('caps a long title at a word boundary with an ellipsis', () => {
+    expect(
+      truncateReasoningTitle(
+        'Analyzing the request in considerable depth before answering',
+      ),
+    ).toBe('Analyzing the request in…')
+
+    expect(
+      truncateReasoningTitle(
+        'I\'m thinking about all the things I can assist with',
+      ),
+    ).toBe('I\'m thinking about all the…')
+  })
+
+  it('keeps every capped title within a compact render width', () => {
+    const titles = [
+      'Analyzing the request in considerable depth before answering',
+      'I\'m thinking about all the things I can assist with',
+      'Supercalifragilisticexpialidociousandthensomemore',
+      '我正在分析你的请求准备一个简洁的答案接下来我会给出可执行的步骤最后再检查一遍',
+    ]
+
+    for (const title of titles) {
+      const truncated = truncateReasoningTitle(title)
+
+      expect(truncated.length).toBeLessThanOrEqual(31)
+      expect(truncated.endsWith('…')).toBe(true)
+    }
+  })
+
+  it('hard-cuts a single long word that has no word boundary', () => {
+    expect(
+      truncateReasoningTitle('Supercalifragilisticexpialidociousandthensomemore'),
+    ).toBe('Supercalifragilisticexpialidoc…')
+  })
+
+  it('does not emit a doubled ellipsis or dangling punctuation', () => {
+    expect(truncateReasoningTitle('Considering the options…, then deciding'))
+      .toBe('Considering the options…')
+
+    expect(truncateReasoningTitle('Reviewing the plan, then writing the answer'))
+      .toBe('Reviewing the plan, then…')
+  })
+
+  it('trims a title before measuring it', () => {
+    expect(truncateReasoningTitle('   Step 9   ')).toBe('Step 9')
   })
 })

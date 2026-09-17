@@ -54,7 +54,7 @@
     />
     <p
       v-if="$slots.noteAfter"
-      class="fieldset-label mt-2 text-base-content/80 note"
+      class="fieldset-label mt-2 text-base-content/80 note flex-col items-start"
     >
       <slot name="noteAfter" />
     </p>

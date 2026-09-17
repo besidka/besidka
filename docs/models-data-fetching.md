@@ -4,12 +4,17 @@ The model catalog is split in two halves that are merged at import time.
 
 | Half | Lives in | Owner |
 |---|---|---|
-| Capabilities and product decisions | `providers/google.ts`, `providers/openai.ts` | hand-curated |
+| Capabilities and product decisions | `providers/{anthropic,google,openai,xai,deepseek,moonshotai,qwen}.ts` | hand-curated |
 | Objective metadata | `providers/data/models-dev-snapshot.json` | generated from [models.dev](https://models.dev) |
 
 `providers/index.ts` joins them through `mergeModelMetadata()` in
 `providers/merge.ts` and exports the same fully shaped `Providers` array
 consumers have always read through `getProviders()`.
+
+This is the **curated, direct-provider** catalog — the only catalog. Every
+model the app can select is declared here; nothing is fetched at runtime.
+`docs/providers/general.md` records the per-provider capability decisions
+layered on top of this pipeline, and links out to each provider's own file.
 
 ## Refreshing the snapshot
 
@@ -124,15 +129,42 @@ always "nothing proposed," never "the wrong thing proposed."
 For each family, the **template** is the highest-version currently curated
 model in that family (by segment-wise numeric comparison, so `3.10` sorts
 above `3.9`). A template is only used as a copy source if it passes
-`isProposableTemplate()`: no curated `status`, a price shape of exactly
+`isProposableTemplate()`: no curated `status`, no curated `reasoningAlwaysOn`
+(an explicit guard, not incidental — see below), a price shape of exactly
 `{ tokens: 1_000_000 }` (no hand-set `input`/`output`/`display`), and if it
 has a curated `reasoning` block, `mode` must be `'levels'`. A template that
 fails this check makes its whole family sit out the run, reported as
 "needs a human" — that family isn't silently skipped forever, it's just not
 mechanically copyable *this* run (for example, if `retiredAt` were ever set
 without `status`, that alone would not disqualify a template; only
-`status`, a non-standard price shape, or a non-`'levels'` reasoning mode
-do).
+`status`, `reasoningAlwaysOn`, a non-standard price shape, or a non-`'levels'`
+reasoning mode do).
+
+**`reasoning.mode: 'toggle'` models are permanently ineligible as
+templates, by design — not a bug.** `renderCuratedEntry()` only ever emits
+a `levels` array when generating a successor's curated code, so a toggle-mode
+template would produce a successor that silently loses the toggle and shows
+a reasoning control the model can't honor. Before the model catalog
+expansion (`docs/model-catalog-expansion-plan.md`), this excluded only a
+couple of models; after it, it permanently excludes **all of DeepSeek** (both
+`deepseek-flash` and `deepseek-v4-pro`), **22 Qwen models** (19 Group A
+`toggle`-mode models plus the three originally-curated `qwen3.7-plus`,
+`qwen3.7-max`, and `qwen3.6-flash`), and Moonshot's **`kimi-k2.6`**. The
+weekly drift check will therefore never auto-propose a successor for any
+DeepSeek or Qwen model, nor for `kimi-k2.6` specifically — that family sits
+out every run as "needs a human," permanently, not as a transient gap. This
+is the intended trade-off
+of a `renderCuratedEntry()` that only knows how to emit `levels`, recorded
+here so it isn't later mistaken for the `modelsDevKey` bug below recurring.
+
+**Similarly, `reasoningAlwaysOn: true` models are explicitly excluded from
+ever being a template**, guarded directly in `isProposableTemplate()` rather
+than left to fail incidentally on the price-shape check (a
+`reasoningAlwaysOn` model has no `reasoning` object at all, so it would
+otherwise pass the `mode !== 'levels'` check by having no mode to check).
+This matters far more after the model catalog expansion than before it:
+`reasoningAlwaysOn` goes from 2 curated models to **10** (1 pre-existing xAI
++ 1 new xAI + 3 Moonshot + 5 Qwen).
 
 **Guardrails**, applied to every upstream candidate before it can become a
 proposal — a hit on any of these is a skip, never a throw:
@@ -172,6 +204,31 @@ ids a human already reviewed and rejected (see "Ids deliberately not
 auto-added" below); append to it whenever declining a future proposal so
 the weekly job stops re-proposing the same id.
 
+**`scripts/detect-model-successors.mjs` honors `modelsDevKey`, the same way
+`scripts/fetch-models-metadata.mjs` already does.** `findSuccessorProposals()`
+looks candidates up via `catalog[provider.modelsDevKey ?? provider.id]?.models
+?? {}` rather than assuming `provider.id` always matches the models.dev
+catalog key. Without this, Qwen — whose `provider.id` is `'qwen'` but whose
+models.dev entry lives under the top-level key `alibaba` (see "models.dev
+catalog key: `alibaba`, not `qwen`" in `docs/providers/alibaba.md`) — would
+silently resolve to an always-empty `{}` and the detector would propose
+nothing for Qwen, forever, with no error surfaced anywhere.
+
+**`qwen` is nonetheless still deliberately absent from
+`scripts/propose-model-successors.mjs`'s `providers` array**, even with the
+`modelsDevKey` fix in place. The blocker isn't the lookup — it's that the
+generic `parseModelFamily`/`compareModelVersions` machinery the detector
+relies on is unsound for Qwen's id shapes. Concrete proof, computed with the
+real parser over the real Qwen catalog: it groups parameter-count variants
+and version variants into one "family" and produces
+`qwen{v}b :: qwen3-32b(3-32) > qwen3-14b(3-14) > qwen3-8b(3-8) >
+qwen3.6-27b(3.6-27) > qwen3.5-27b(3.5-27)` — ranking `qwen3-32b` as *newer*
+than `qwen3.6-27b`, which is simply wrong. Turning the detector loose on
+Qwen today would start silently proposing against families like that one.
+Adding `qwen` to the provider list is a follow-up gated on fixing (or
+special-casing) the family parser for Qwen's id shapes first, not on
+anything in this pass.
+
 This is a different mechanism from "Why a curated id can never pull in a
 junk model" above, not the same one: `scanProviderCandidates()` in
 `scripts/detect-model-successors.mjs` does iterate every id in the
@@ -206,6 +263,21 @@ for the same reason `audit-curated-models.mjs` is — a unit test can import
 it directly. `scripts/propose-model-successors.mjs` itself has top-level
 side effects (the network fetch, the conditional file writes), the same as
 `scripts/fetch-models-metadata.mjs`, so it is not unit tested directly.
+
+## Catalog size and client payload growth
+
+The model catalog expansion in `docs/model-catalog-expansion-plan.md` (xAI
++4 text +1 image, Moonshot AI +2, Qwen +43, plus the DeepSeek retired-id
+replacement) grew `providers/data/models-dev-snapshot.json` from 61 to 110
+entries. The merged catalog (curated files joined against this snapshot) is
+injected into `runtimeConfig.public.providers` in `nuxt.config.ts`, which
+Nuxt serializes into every page's client payload — there is no
+server-only/client-only split for it. Client payload therefore grows by
+roughly 25-30 KB uncompressed as a direct consequence of this catalog
+expansion. Acceptable for a BYOK chat picker, but worth knowing before the
+next large batch of curated models is added, so the growth is a deliberate
+trade-off each time rather than a surprise noticed later in a bundle-size
+regression.
 
 ## Model status (deprecated/beta/alpha)
 
@@ -342,12 +414,23 @@ point of fetching: a retired or renamed model becomes a loud, deliberate
 edit instead of silently stale hardcoded values.
 
 `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs` lists the ids that are
-knowingly absent upstream — two kinds:
+knowingly incomplete or absent upstream — three distinct reasons, not one:
 
-- Deep Research snapshots OpenAI bills separately but models.dev does not
-  track (`o3-deep-research`, `o4-mini-deep-research`).
-- Retired-but-kept legacy ids models.dev no longer publishes at all
+- **Not tracked by models.dev at all.** Deep Research snapshots OpenAI
+  bills separately but models.dev does not track (`o3-deep-research`,
+  `o4-mini-deep-research`).
+- **Retired-but-kept legacy ids** models.dev no longer publishes at all
   (`gemini-3-pro-preview`; see "Model status" below).
+- **Tracked, but with no `cost` block.** `toSnapshotEntry()` requires
+  `typeof model.cost?.input === 'number'`; a model whose models.dev entry
+  omits `cost` entirely returns `null` from that function, which lands the
+  id in `incompleteIds` and hard-fails the fetch exactly like a fully
+  missing id would. `grok-imagine-image-2.0` is the first model in this
+  category: models.dev lists it with `limit`, `modalities` and
+  `release_date` fields but no `cost` object whatsoever. `gpt-image-2`
+  doesn't need this treatment only because models.dev happens to carry a
+  `cost` block for it — the exemption is triggered by the missing field,
+  not by "being an image model" in general.
 
 Exempt models carry their **full metadata in the curated file**
 (`providers/*.ts`), not in the snapshot — `models:fetch` rebuilds the
@@ -636,6 +719,45 @@ automatic add:
   status besides.
 - **`claude-fable-5-1`** — the same declined premium tier as
   `claude-fable-5` above, just a later dated release (2026-09-01).
+
+From the model catalog expansion (`docs/model-catalog-expansion-plan.md`):
+
+- **xAI's retired slugs** (`grok-3`, `grok-4-0709`, `grok-code-fast-1`, and
+  others) — not added, not even as `status: 'deprecated'` entries. xAI
+  silently redirects a retired slug to a successor model **and bills at the
+  successor's price**, so a picker entry for a retired slug would
+  misrepresent both which model actually answers and what it costs. They
+  are also absent from models.dev entirely, so each would need its own
+  `EXEMPT_IDS` entry plus full hand curation.
+- **xAI video and realtime models** (`grok-imagine-video`,
+  `grok-imagine-video-1.5`, `Experimental_XaiRealtimeModel`) — video
+  generation and realtime voice are outside this app's capability set (chat
+  + image generation + deep research only).
+- **`grok-imagine-image-quality`** — retires 2026-11-02, roughly seven
+  weeks after this catalog change; adding a model that would need removing
+  in the same quarter is pure churn.
+- **`grok-imagine-image`** (1.0) — superseded by `grok-imagine-image-2.0`,
+  same modality, strictly older.
+- **Moonshot's 13 discontinued models** — Moonshot documents them as no
+  longer maintained or supported, a harder cutoff than xAI/DeepSeek's
+  silent-redirect pattern, and they're absent from models.dev, so each
+  would need `EXEMPT_IDS` plus hand-curated metadata for a model that most
+  likely hard-404s on every send. See `docs/providers/moonshotai.md`'s
+  "Owner action items" for the unverified-without-a-live-key framing.
+- **Qwen's omni/realtime/ASR models** (`qwen3-omni-flash`,
+  `qwen3-omni-flash-realtime`, `qwen-omni-turbo`,
+  `qwen-omni-turbo-realtime`, `qwen2-5-omni-7b`, `qwen3-asr-flash`,
+  `qwen3-livetranslate-flash-realtime`) — every one carries `audio` or
+  `video` in its output modalities, or is a realtime/ASR endpoint; same
+  capability filter that already keeps embedding/TTS models out of every
+  other provider's catalog.
+- **Two Alibaba-hosted third-party model ids**, `deepseek-v4-flash-0731` and
+  `glm-5.2` — both appear in the live `alibaba` models.dev catalog (Alibaba
+  resells other vendors' models on DashScope) but are excluded under the
+  standing rule against curating an Alibaba-hosted copy of an id another
+  provider already curates under its own name; see
+  `docs/providers/alibaba.md`'s Qwen bullet for the full id-collision
+  reasoning.
 
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:

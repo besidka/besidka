@@ -1,5 +1,10 @@
+import type { ReasoningCapability } from '#shared/types/reasoning.d'
+import { providerMeta } from '#shared/utils/provider-meta'
+
 export function useChatInput() {
   const { userModel } = useUserModel()
+  const { hasKeyForProvider } = useUserKeys()
+  const { isImageInputSupported } = useImageInputSupport()
 
   const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
@@ -34,7 +39,7 @@ export function useChatInput() {
     return isImageGenerationModel(selectedModel.value)
   })
 
-  const reasoningCapability = computed(() => {
+  const reasoningCapability = computed<ReasoningCapability | null>(() => {
     return getReasoningCapability(selectedModel.value)
   })
 
@@ -54,15 +59,47 @@ export function useChatInput() {
     return getReasoningDropdownLevels(reasoningCapability.value)
   })
 
+  /**
+   * The `providerMeta` id whose key unlocks the current selection.
+   * `useUserKeys` maps it to the `keys.provider` enum value, so no caller
+   * builds that string.
+   */
+  const selectedModelKeyOwnerId = computed<string | null>(() => {
+    return getModel(userModel.value).provider?.id ?? null
+  })
+
+  const selectedModelKeyOwnerLabel = computed<string>(() => {
+    const ownerId = selectedModelKeyOwnerId.value
+
+    if (!ownerId) {
+      return 'this provider'
+    }
+
+    return providerMeta[ownerId]?.label ?? ownerId
+  })
+
+  const isSelectedModelKeyless = computed<boolean>(() => {
+    const ownerId = selectedModelKeyOwnerId.value
+
+    if (!ownerId) {
+      return false
+    }
+
+    return !hasKeyForProvider(ownerId)
+  })
+
   return {
     isWebSearchSupported,
     isImageGenerationSupported,
     isImageGenerationRequired,
+    isImageInputSupported,
     reasoningCapability,
     reasoningMode,
     reasoningLevels,
     isReasoningSupported,
     researchConfig,
     isDeepResearchModel,
+    isSelectedModelKeyless,
+    selectedModelKeyOwnerLabel,
   }
 }

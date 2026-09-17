@@ -16,6 +16,8 @@ export interface NormalizeAssistantMessagePartsInput {
   chatId: string
   userId: number
   logger: LoggerLike
+  requestedTools?: string[]
+  streamErrorText?: string
 }
 
 const omittedFilePrefix = 'Previously attached file omitted from model context'
@@ -132,6 +134,44 @@ function getGeneratedFileText(part: UIMessage['parts'][number]): string {
   return `${generatedFilePrefix}: ${filename} (${part.mediaType}).`
 }
 
+/**
+ * A provider/model-level failure (for example an invalid API key
+ * discovered when the underlying language model call is actually made)
+ * never reaches the generate_image tool, so it produces no
+ * tool-generate_image part for normalizeGeneratedImageToolParts to convert
+ * to visible text, and the persisted assistant message would otherwise end
+ * up with an empty parts array and no indication anything went wrong.
+ */
+function getImageGenerationStreamFailure(
+  normalizedParts: UIMessage['parts'],
+  input: NormalizeAssistantMessagePartsInput,
+): UIMessage['parts'] | null {
+  if (
+    normalizedParts.length > 0
+    || !input.streamErrorText
+    || !input.requestedTools?.includes('image_generation')
+  ) {
+    return null
+  }
+
+  input.logger.set({
+    imageGeneration: {
+      status: 'failed',
+    },
+    attributes: {
+      imageGeneration: {
+        provider: input.providerId,
+        errorCode: 'image-generation-stream-error',
+      },
+    },
+  })
+
+  return [{
+    type: 'text',
+    text: getPersistedImageGenerationFailureText(input.streamErrorText),
+  }]
+}
+
 function getOmittedFileText(part: UIMessage['parts'][number]): string {
   if (part.type !== 'file') {
     return omittedFilePrefix
@@ -162,6 +202,15 @@ export async function normalizeAssistantMessagePartsForPersistence(
   input: NormalizeAssistantMessagePartsInput,
 ): Promise<UIMessage['parts']> {
   const normalizedParts = await normalizeGeneratedImageToolParts(input)
+  const imageGenerationStreamFailureParts = getImageGenerationStreamFailure(
+    normalizedParts,
+    input,
+  )
+
+  if (imageGenerationStreamFailureParts) {
+    return imageGenerationStreamFailureParts
+  }
+
   const assistantFileParts = normalizedParts.filter((part) => {
     return part.type === 'file' && !part.url.startsWith('/files/')
   })
@@ -299,7 +348,8 @@ function isImageGenerationReady(
 
   if (
     !('provider' in output)
-    || (output.provider !== 'openai' && output.provider !== 'google')
+    || typeof output.provider !== 'string'
+    || !(getImageGenerationProviders() as string[]).includes(output.provider)
     || (providerId !== undefined && output.provider !== providerId)
     || !('model' in output)
     || typeof output.model !== 'string'

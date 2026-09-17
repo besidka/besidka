@@ -116,7 +116,6 @@ export function useUserSetting() {
       trigger()
     },
   }))
-
   const reasoningExpanded = computed<boolean>(() => {
     if (
       !activeUserId.value

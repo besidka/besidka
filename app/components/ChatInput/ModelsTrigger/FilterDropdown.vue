@@ -27,7 +27,7 @@
       class="dropdown-content menu menu-sm z-50 mt-1 w-52 p-1 rounded-box bg-base-100 border border-base-content/10 shadow-lg"
     >
       <li
-        v-for="option in modelCategoryOptions"
+        v-for="option in options"
         :key="option.value"
         role="option"
         :aria-selected="selected === option.value"
@@ -71,7 +71,19 @@
 </template>
 
 <script setup lang="ts">
-import type { ModelCategory } from '~/types/models-picker'
+import type {
+  ModelCategory,
+  ModelCategoryOption,
+} from '~/types/models-picker'
+
+withDefaults(
+  defineProps<{
+    options?: ModelCategoryOption[]
+  }>(),
+  {
+    options: () => modelCategoryOptions,
+  },
+)
 
 const selected = defineModel<ModelCategory | null>({ default: null })
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')

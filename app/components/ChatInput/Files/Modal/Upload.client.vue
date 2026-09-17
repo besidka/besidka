@@ -47,7 +47,7 @@
           data-testid="files-upload-input"
           type="file"
           class="file-input file-input-bordered file-input-sm"
-          :accept="allowedFileFormats.join(',')"
+          :accept="effectiveFileFormats.join(',')"
           multiple
           @change="onFileInputChange"
           @click.stop
@@ -58,6 +58,12 @@
 </template>
 
 <script setup lang="ts">
+const props = withDefaults(defineProps<{
+  isImageInputSupported?: boolean
+}>(), {
+  isImageInputSupported: true,
+})
+
 const emit = defineEmits<{
   upload: [files: File[]]
 }>()
@@ -80,15 +86,25 @@ const { isOverDropZone } = useDropZone(dropZoneRef, {
 
 const { focused: isInputFocused } = useFocus(fileInput)
 
+const effectiveFileFormats = computed<string[]>(() => {
+  const formats = allowedFileFormats as string[]
+
+  if (props.isImageInputSupported) {
+    return formats
+  }
+
+  return formats.filter(format => !isImageFile(format))
+})
+
 const formattedFileFormats = computed<string>(() => {
-  return (allowedFileFormats as string[])
+  return effectiveFileFormats.value
     .map(format => format.split('/')[1])
     .filter(Boolean)
     .join(', ')
 })
 
 function filterValidFiles(files: File[]): File[] {
-  const formats = allowedFileFormats as string[]
+  const formats = effectiveFileFormats.value
   const valid: File[] = []
   const invalid: string[] = []
 

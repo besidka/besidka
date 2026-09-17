@@ -504,6 +504,50 @@ describe('chat stream message ids', () => {
     expect(insertValues).not.toHaveBeenCalled()
   })
 
+  it('rejects an image attachment when the model has no vision modality', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'deepseek' },
+      model: {
+        id: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+        tools: [],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+      modelName: 'DeepSeek Chat',
+    })))
+
+    const messageWithImage = {
+      id: 'message-1',
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'What is in this image?' },
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          url: 'https://example.com/photo.png',
+        },
+      ],
+    }
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'deepseek-chat',
+        tools: [],
+        reasoning: 'off',
+        messages: [messageWithImage],
+      },
+    } as any)).rejects.toThrow(
+      'DeepSeek Chat does not support image input.',
+    )
+
+    expect(insertValues).not.toHaveBeenCalled()
+  })
+
   it('rejects a deep research model with a 400', async () => {
     const handler = await getHandler()
     const { db } = createDb()

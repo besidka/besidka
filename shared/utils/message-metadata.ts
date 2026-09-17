@@ -4,11 +4,15 @@ import type {
 } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ProviderMeta } from '#shared/utils/provider-meta'
 
 export type MessageMenuInfo = {
   role: 'user' | 'assistant'
   createdAt?: string | number | Date
   model?: string
+  providerId?: string
+  providerLabel?: string
+  providerKind?: ProviderMeta['kind']
   usedTools?: Array<ModelTool | 'deep_research'>
   reasoning?: ReasoningLevel
   tokens?: number
@@ -180,6 +184,11 @@ function getFollowingAssistantUsage(
     : undefined
 }
 
+// Some already-persisted turns carry one blended `totalCost` instead of the
+// `inputCost`/`outputCost` split every current send path produces. That total
+// is shown in full on the assistant row, the one place `usage` is actually
+// persisted; the paired user row contributes nothing so sumMessageCosts()
+// below never double-counts it.
 function getPerMessageCost(
   messages: MenuMessage[],
   messageIndex: number,
@@ -193,6 +202,10 @@ function getPerMessageCost(
   if (message.role === 'assistant') {
     const usage = getMessageMetadata(message).usage
 
+    if (usage?.totalCost !== undefined) {
+      return resolveDisplayCost(usage, usage.totalCost)
+    }
+
     return resolveDisplayCost(usage, usage?.outputCost)
   }
 
@@ -202,7 +215,37 @@ function getPerMessageCost(
 
   const usage = getFollowingAssistantUsage(messages, messageIndex)
 
+  if (usage?.totalCost !== undefined) {
+    return undefined
+  }
+
   return resolveDisplayCost(usage, usage?.inputCost)
+}
+
+type ProviderDisplay = {
+  providerId: string
+  providerLabel: string
+  providerKind: ProviderMeta['kind']
+}
+
+function resolveProviderDisplay(
+  usage: MessageUsage | undefined,
+): ProviderDisplay | undefined {
+  if (!usage?.provider) {
+    return undefined
+  }
+
+  const meta = resolveProviderMetaByKeyProviderId(usage.provider)
+
+  if (!meta) {
+    return undefined
+  }
+
+  return {
+    providerId: meta.id,
+    providerLabel: meta.label,
+    providerKind: meta.kind,
+  }
 }
 
 function sumMessageCosts(
@@ -253,11 +296,15 @@ export function resolveMessageMenuInfo(
 
   if (message.role === 'assistant') {
     const usage = metadata.usage
+    const providerDisplay = resolveProviderDisplay(usage)
 
     return {
       role: 'assistant',
       createdAt: metadata.createdAt,
       model: usage?.model,
+      providerId: providerDisplay?.providerId,
+      providerLabel: providerDisplay?.providerLabel,
+      providerKind: providerDisplay?.providerKind,
       usedTools: getMessageUsedTools(message),
       reasoning: message.reasoning,
       tokens: resolveDisplayTokens(usage, usage?.outputTokens),

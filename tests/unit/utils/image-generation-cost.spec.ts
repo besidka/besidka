@@ -35,6 +35,18 @@ describe('getImageGenerationCost', () => {
     expect(getImageGenerationCost('gpt-image-2', '3:2')).toBe(0.053)
   })
 
+  it('returns the flat price for grok-imagine-image-2.0', () => {
+    expect(getImageGenerationCost('grok-imagine-image-2.0', '1:1'))
+      .toBe(0.04)
+  })
+
+  it('keeps the grok-imagine-image-2.0 price aspect-ratio independent', () => {
+    expect(getImageGenerationCost('grok-imagine-image-2.0', '1:1'))
+      .toBe(getImageGenerationCost('grok-imagine-image-2.0', '2:3'))
+    expect(getImageGenerationCost('grok-imagine-image-2.0', '1:1'))
+      .toBe(getImageGenerationCost('grok-imagine-image-2.0', '3:2'))
+  })
+
   it('returns undefined for a model with no known image price', () => {
     expect(getImageGenerationCost('gpt-5.4', '1:1')).toBeUndefined()
     expect(getImageGenerationCost('unknown-model', '1:1')).toBeUndefined()

@@ -540,6 +540,57 @@ describe('assistant files scaffolding', () => {
     expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
   })
 
+  it('normalizes a ready output from the xai image provider', async () => {
+    const loggerSet = vi.fn()
+
+    stubGeneratedImageFile(createGeneratedImageFileRow({
+      originProvider: 'xai',
+    }))
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'tool-generate_image',
+        toolCallId: 'image-3',
+        state: 'output-available',
+        input: { prompt: 'A quiet forest' },
+        output: {
+          status: 'ready',
+          file: {
+            id: 'file-1',
+            storageKey: 'generated.webp',
+            name: 'quiet-forest.webp',
+            size: 123,
+            type: 'image/webp',
+            source: 'assistant',
+            expiresAt: null,
+            url: 'javascript:alert(1)',
+            downloadUrl: 'https://attacker.example/steal',
+          },
+          provider: 'xai',
+          model: 'grok-imagine-image-2.0',
+        },
+      },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'xai',
+      chatId: 'chat-5',
+      userId: 5,
+      logger: { set: loggerSet },
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'quiet-forest.webp',
+        url: '/files/generated.webp?generated=1',
+      },
+    ])
+    expect(getGeneratedImageFileIds(parts)).toEqual(['file-1'])
+  })
+
   it.each([
     {
       name: 'unowned file ID',
@@ -797,6 +848,79 @@ describe('assistant files scaffolding', () => {
       },
     ])
     expect(JSON.stringify(normalizedParts)).not.toContain('sk-secret')
+  })
+
+  it('persists a visible error when a stream-level provider failure '
+    + 'leaves no other content, for a turn that requested image '
+    + 'generation', async () => {
+    const logger = { set: vi.fn() }
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts: [],
+      providerId: 'xai',
+      chatId: 'chat-7',
+      userId: 7,
+      logger,
+      requestedTools: ['image_generation'],
+      streamErrorText: JSON.stringify({
+        code: 'provider-auth',
+        message: 'untrusted provider diagnostic',
+      }),
+    })
+
+    expect(normalizedParts).toEqual([
+      {
+        type: 'text',
+        text: [
+          'The image provider rejected the saved API key.',
+          'Update the provider key in settings, then try again.',
+        ].join(' '),
+      },
+    ])
+    expect(logger.set).toHaveBeenCalledWith({
+      imageGeneration: {
+        status: 'failed',
+      },
+      attributes: {
+        imageGeneration: {
+          provider: 'xai',
+          errorCode: 'image-generation-stream-error',
+        },
+      },
+    })
+  })
+
+  it('leaves empty parts empty when no image generation was requested, '
+    + 'even if a stream error occurred', async () => {
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts: [],
+      providerId: 'openai',
+      chatId: 'chat-8',
+      userId: 8,
+      logger: { set: vi.fn() },
+      requestedTools: ['web_search'],
+      streamErrorText: JSON.stringify({ code: 'provider-auth' }),
+    })
+
+    expect(normalizedParts).toEqual([])
+  })
+
+  it('leaves already-meaningful parts untouched even when a stream error '
+    + 'was also observed', async () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'Partial answer before the failure.' },
+    ] as any
+
+    const normalizedParts = await normalizeAssistantMessagePartsForPersistence({
+      parts,
+      providerId: 'xai',
+      chatId: 'chat-9',
+      userId: 9,
+      logger: { set: vi.fn() },
+      requestedTools: ['image_generation'],
+      streamErrorText: JSON.stringify({ code: 'provider-auth' }),
+    })
+
+    expect(normalizedParts).toEqual(parts)
   })
 
   it.each([

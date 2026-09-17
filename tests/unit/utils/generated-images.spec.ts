@@ -9,14 +9,17 @@ import {
   shouldRenderGenerateImageToolPart,
 } from '../../../app/utils/generated-images'
 
-function createReadyPart() {
+function createReadyPart(
+  provider: string = 'openai',
+  model: string = 'gpt-image-2',
+) {
   return {
     type: 'tool-generate_image',
     state: 'output-available',
     output: {
       status: 'ready',
-      provider: 'openai',
-      model: 'gpt-image-2',
+      provider,
+      model,
       file: {
         id: 'file-1',
         storageKey: 'generated.webp',
@@ -38,6 +41,27 @@ describe('generated image utils', () => {
     expect(isVisibleGenerateImageToolPart(part)).toBe(true)
     expect(getGenerateImageOutput(part)).toEqual(part.output)
     expect(isVisibleGenerateImageToolPart({ type: 'text' })).toBe(false)
+  })
+
+  it.each([
+    { provider: 'openai', model: 'gpt-image-2' },
+    { provider: 'google', model: 'gemini-3-pro-image' },
+    { provider: 'xai', model: 'grok-imagine-image-2.0' },
+  ])(
+    'recognizes a ready $provider-origin image tool part',
+    ({ provider, model }) => {
+      const part = createReadyPart(provider, model)
+
+      expect(isVisibleGenerateImageToolPart(part)).toBe(true)
+      expect(getGenerateImageOutput(part)).toEqual(part.output)
+    },
+  )
+
+  it('rejects a ready output from a provider outside the allowlist', () => {
+    const part = createReadyPart('anthropic', 'claude-opus-5')
+
+    expect(getGenerateImageOutput(part)).toBeNull()
+    expect(isVisibleGenerateImageToolPart(part)).toBe(false)
   })
 
   it('derives safe URLs instead of trusting tool output URLs', () => {

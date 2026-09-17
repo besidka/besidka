@@ -1,3 +1,5 @@
+import type { SupportedProviderId } from './providers.d'
+
 export type ChatErrorCode
   = 'provider-rate-limit'
     | 'provider-quota-exceeded'
@@ -26,6 +28,6 @@ export interface ChatErrorPayload {
   fix?: string
   status?: number
   requestId?: string
-  providerId?: 'openai' | 'google' | 'anthropic'
+  providerId?: SupportedProviderId
   providerRequestId?: string
 }

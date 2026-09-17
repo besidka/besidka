@@ -22,6 +22,12 @@ mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useUserModel', () => mocks.useUserModel)
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 
+function createUserModelMock(modelId: string) {
+  const userModel = shallowRef<string>(modelId)
+
+  return { userModel }
+}
+
 const imageModel = {
   id: 'image-model',
   name: 'Image model',
@@ -104,9 +110,7 @@ describe('ChatInput/ModelsTrigger', () => {
       isAndroid: false,
       isDesktop: true,
     })
-    mocks.useUserModel.mockReturnValue({
-      userModel: shallowRef<string>('image-model'),
-    })
+    mocks.useUserModel.mockReturnValue(createUserModelMock('image-model'))
     mocks.useUserSetting.mockReturnValue({
       favoriteModels: shallowRef<string[]>([]),
       toggleFavoriteModel: mocks.toggleFavoriteModel,
@@ -169,7 +173,7 @@ describe('ChatInput/ModelsTrigger', () => {
   })
 
   it('selects a model and closes the picker', async () => {
-    const userModel = shallowRef<string>('other-model')
+    const { userModel } = createUserModelMock('other-model')
 
     mocks.useUserModel.mockReturnValue({ userModel })
 
@@ -281,9 +285,7 @@ describe('ChatInput/ModelsTrigger', () => {
 
   it('never aims the keyboard highlight at a deprecated selection', async () => {
     useLegacyCatalog()
-    mocks.useUserModel.mockReturnValue({
-      userModel: shallowRef<string>('legacy-model'),
-    })
+    mocks.useUserModel.mockReturnValue(createUserModelMock('legacy-model'))
 
     const wrapper = await mountPicker()
 

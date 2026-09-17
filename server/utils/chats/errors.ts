@@ -1,4 +1,5 @@
 import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
 import type { H3Event } from 'h3'
 import { getRequestHeader } from 'h3'
@@ -29,7 +30,7 @@ const chatErrorCodes: ChatErrorCode[] = [
 interface NormalizeChatErrorInput {
   error: unknown
   event?: H3Event
-  providerId?: 'openai' | 'google' | 'anthropic'
+  providerId?: SupportedProviderId
   code?: ChatErrorCode
   message?: string
   why?: string
@@ -86,6 +87,41 @@ export function normalizeChatError(
   }
 }
 
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/
+const HEADER_VALUE_ERROR_PATTERN
+  = /invalid header|not a legal header|illegal header/i
+
+/**
+ * A malformed credential (for example a pasted API token or account id with
+ * a trailing control character) can make the Fetch API's `Headers`
+ * constructor throw a `TypeError` whose message embeds the
+ * raw invalid value verbatim — e.g. Node/undici's
+ * `Headers.append: "<value>" is an invalid header value.`. An error message
+ * that contains a raw control character, or that reads like one of these
+ * header-construction errors, is treated as a potential credential leak
+ * rather than surfaced to the client or logs.
+ */
+function looksLikeHeaderValueLeak(message: string): boolean {
+  return CONTROL_CHARACTER_PATTERN.test(message)
+    || HEADER_VALUE_ERROR_PATTERN.test(message)
+}
+
+const IMAGE_INPUT_UNSUPPORTED_PATTERN = /image input|does not support image/i
+const IMAGE_INPUT_REJECTION_MESSAGE = 'This model does not support image'
+  + ' input. Remove the attached image or switch to a vision-capable model.'
+
+/**
+ * Some providers reject an image attachment at request time with a raw,
+ * unhelpful upstream message instead of a normal 400 the client-side vision
+ * gate would have already caught before sending. Detected by content rather
+ * than status code, since the same wording can come from more than one
+ * provider.
+ */
+function looksLikeImageInputRejection(message: string): boolean {
+  return IMAGE_INPUT_UNSUPPORTED_PATTERN.test(message)
+}
+
 function getPreferredChatMessage(input: {
   code: ChatErrorCode
   errorMessage: string | undefined
@@ -95,11 +131,29 @@ function getPreferredChatMessage(input: {
     return undefined
   }
 
-  if (
-    input.code === 'chat-request-invalid'
-    || input.code === 'unknown'
-  ) {
+  if (looksLikeImageInputRejection(input.errorMessage)) {
+    return IMAGE_INPUT_REJECTION_MESSAGE
+  }
+
+  if (input.code === 'chat-request-invalid') {
     return input.errorMessage
+  }
+
+  /**
+   * Unlike `chat-request-invalid` (always a caller-controlled, safe-to-show
+   * validation message), an `unknown` error can originate from any
+   * unclassified exception thrown anywhere in the request — including a
+   * `Headers` construction failure that embeds a raw credential or header
+   * value (see `looksLikeHeaderValueLeak`). Redacting only that narrow,
+   * detectable case — rather than every `unknown` message outright —
+   * preserves legitimate, non-sensitive `unknown`-coded messages (for
+   * example client-side setup validation like "Please select a model to
+   * continue.") while still closing the credential-leak path.
+   */
+  if (input.code === 'unknown') {
+    return looksLikeHeaderValueLeak(input.errorMessage)
+      ? undefined
+      : input.errorMessage
   }
 
   if (
@@ -299,6 +353,10 @@ function getDefaultChatWhy(
       return errorMessage
     case 'clarification-failed':
       return errorMessage
+    case 'unknown':
+      return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
+        ? errorMessage
+        : undefined
     default:
       return errorMessage
   }
