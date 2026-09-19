@@ -176,9 +176,14 @@ function createScriptedModel(steps: Array<Array<Record<string, unknown>>>) {
   }
 }
 
+let handlerImportCounter = 0
+
 async function getHandler() {
+  handlerImportCounter += 1
+
   const module = await import(
-    '../../../server/api/v1/chats/[slug]/index.post'
+    /* @vite-ignore */
+    `../../../server/api/v1/chats/[slug]/index.post?t=${handlerImportCounter}`
   )
 
   return module.default
