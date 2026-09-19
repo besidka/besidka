@@ -1370,9 +1370,20 @@ async function persistAssistantMessageFromStream(input: {
       requestedTools: input.tools,
       streamErrorText,
     }
+    const beforeNormalizeAt = Date.now()
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+
+    input.logger.set({
+      attributes: {
+        assistantPersist: {
+          afterNormalize: true,
+          normalizeMs: Date.now() - beforeNormalizeAt,
+        },
+      },
+    })
+
     const generatedFileIds = getGeneratedImageFileIds(
       responseParts,
       input.providerId,
@@ -1412,6 +1423,15 @@ async function persistAssistantMessageFromStream(input: {
         },
       })
     }
+
+    input.logger.set({
+      attributes: {
+        assistantPersist: {
+          afterUsageCapture: true,
+          usageIsDefined: usage !== undefined,
+        },
+      },
+    })
 
     input.logger.set({
       attributes: {
