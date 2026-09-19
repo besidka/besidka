@@ -32,16 +32,6 @@ function mountPage() {
   return mountSuspended(KeysPage, { global: { stubs: stubs() } })
 }
 
-function tabButtons(wrapper: any) {
-  return wrapper.findAll('nav button')
-}
-
-function visiblePanels(wrapper: any) {
-  return wrapper.findAll('[role="tabpanel"]').filter((panel: any) => {
-    return panel.attributes('style') !== 'display: none;'
-  })
-}
-
 describe('profile keys page', () => {
   beforeEach(() => {
     vi.stubGlobal('definePageMeta', vi.fn())
@@ -56,51 +46,10 @@ describe('profile keys page', () => {
     ]
   })
 
-  it('renders a single per-provider tab', async () => {
-    const wrapper = await mountPage()
-
-    const tabIds = tabButtons(wrapper).map((button: any) => {
-      return button.attributes('data-testid')
-    })
-
-    expect(tabIds).toEqual(['key-tab-providers'])
-  })
-
-  it('labels the tab for assistive tech even while icon-only', async () => {
-    const wrapper = await mountPage()
-
-    const labels = tabButtons(wrapper).map((button: any) => {
-      return button.attributes('aria-label')
-    })
-
-    expect(labels).toEqual(['Per provider'])
-  })
-
-  it('marks the single tab as current', async () => {
-    const wrapper = await mountPage()
-
-    const current = tabButtons(wrapper).filter((button: any) => {
-      return button.attributes('aria-current') === 'true'
-    })
-
-    expect(current).toHaveLength(1)
-    expect(current[0].attributes('data-testid')).toBe('key-tab-providers')
-    expect(current[0].classes()).toContain('tab-active')
-  })
-
-  it('shows the per-provider panel', async () => {
-    const wrapper = await mountPage()
-
-    expect(visiblePanels(wrapper)).toHaveLength(1)
-    expect(visiblePanels(wrapper)[0].attributes('data-testid'))
-      .toBe('key-panel-providers')
-  })
-
   it('lists every configured provider in catalog order', async () => {
     const wrapper = await mountPage()
 
     const providerIds = wrapper
-      .get('[data-testid="key-panel-providers"]')
       .findAll('[data-testid="provider-card"]')
       .map((card: any) => {
         return card.attributes('data-provider')
@@ -137,9 +86,7 @@ describe('profile keys page', () => {
   it('collapses provider cards into one shared accordion group', async () => {
     const wrapper = await mountPage()
 
-    const cards = wrapper
-      .get('[data-testid="key-panel-providers"]')
-      .findAll('[data-testid="provider-card"]')
+    const cards = wrapper.findAll('[data-testid="provider-card"]')
 
     cards.forEach((card: any) => {
       expect(card.attributes('data-group')).toBe('profile-provider-keys')
