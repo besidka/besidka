@@ -41,6 +41,26 @@ export interface PersistUserMessageInput {
   reasoning: 'off' | 'low' | 'medium' | 'high'
 }
 
+export function hasMeaningfulAssistantParts(
+  parts: UIMessage['parts'],
+): boolean {
+  return parts.some((part) => {
+    if (part.type === 'text' || part.type === 'reasoning') {
+      return Boolean(part.text?.trim().length)
+    }
+
+    return part.type === 'file'
+      || part.type === 'source-url'
+      || (
+        part.type === 'tool-generate_image'
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+      )
+  })
+}
+
 // Mirrors the persist/reconcile logic that used to live inline in
 // server/api/v1/chats/[slug]/index.post.ts (issue #263): a re-sent user
 // message that matches the last persisted one by id, or by content when the
@@ -54,26 +74,39 @@ export async function persistUserMessage(
     db, event, logger, userId, chat, previousMessages, newMessage, tools,
     reasoning,
   } = input
-  const lastPersistedMessage = previousMessages[previousMessages.length - 1]
+  const lastUserMessageIndex = previousMessages.findLastIndex((message) => {
+    return message.role === 'user'
+  })
+  const lastPersistedUserMessage = previousMessages[lastUserMessageIndex]
+  const trailingEmptyAssistantMessages = previousMessages
+    .slice(lastUserMessageIndex + 1)
+    .every((message) => {
+      return message.role === 'assistant'
+        && !hasMeaningfulAssistantParts(message.parts)
+    })
   const isDuplicateUserMessage = (
-    lastPersistedMessage?.role === 'user'
+    lastPersistedUserMessage?.role === 'user'
+    && trailingEmptyAssistantMessages
     && (
-      newMessage.id === lastPersistedMessage.id
+      newMessage.id === lastPersistedUserMessage.id
       || (
-        hasSameParts(lastPersistedMessage.parts, newMessage.parts)
-        && hasSameTools(lastPersistedMessage.tools, tools)
-        && lastPersistedMessage.reasoning === reasoning
+        hasSameParts(lastPersistedUserMessage.parts, newMessage.parts)
+        && hasSameTools(lastPersistedUserMessage.tools, tools)
+        && lastPersistedUserMessage.reasoning === reasoning
       )
     )
   )
 
   if (isDuplicateUserMessage) {
-    const lastMessage = chat.messages[chat.messages.length - 1]
+    const persistedUserMessage = chat.messages.find((message) => {
+      return message.publicId === lastPersistedUserMessage.id
+        || message.id === lastPersistedUserMessage.id
+    })
 
-    if (lastMessage) {
+    if (persistedUserMessage) {
       await db.update(schema.messages)
         .set({ publicId: newMessage.id })
-        .where(eq(schema.messages.id, lastMessage.id))
+        .where(eq(schema.messages.id, persistedUserMessage.id))
     }
 
     return
