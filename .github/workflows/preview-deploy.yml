@@ -13,7 +13,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy Preview
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # NOTE: GitHub-hosted runner, not Blacksmith — see
+    # docs/ci-runner-blacksmith-to-github.md for why.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: github.event.workflow_run.conclusion == 'success'
     permissions:

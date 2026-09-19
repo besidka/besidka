@@ -115,7 +115,9 @@ jobs:
       - check-pr-state
       - check-latest-commit
     if: needs.check-latest-commit.outputs.should-skip != 'true'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # NOTE: GitHub-hosted runner, not Blacksmith — see
+    # docs/ci-runner-blacksmith-to-github.md for why.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read

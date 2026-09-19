@@ -217,6 +217,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `alibaba.md` for per-provider capability decisions and wiring (Qwen
   DashScope search, Moonshot Formula-API search, direct-provider reasoning
   controls)
+- `docs/ci-runner-blacksmith-to-github.md` - Why CI runners moved from
+  Blacksmith to GitHub-hosted `ubuntu-24.04`: an 8-round diagnostic trail
+  proving a CI-only integration test failure was environment
+  non-determinism (byte-identical code/lockfile between a green and a red
+  run), not a code regression; the decision, and the revert path
 
 ### Tech Stack
 
