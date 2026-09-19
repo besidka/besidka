@@ -22,6 +22,7 @@ const LOOP_PROVIDER_ID = 'moonshotai'
  */
 const mocks = vi.hoisted(() => ({
   mergedStreams: [] as ReadableStream[],
+  loggerSet: vi.fn(),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -46,7 +47,7 @@ vi.mock('ai', async (importOriginal) => {
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
-    set: vi.fn(),
+    set: mocks.loggerSet,
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
@@ -264,7 +265,19 @@ async function runLoopSend(input: {
     return value.role === 'assistant'
   })?.[0]
 
-  return { doStream, assistantInsert }
+  return { doStream, assistantInsert, insertValues: created.insertValues }
+}
+
+function dumpAssistantPersistFailureDiagnostics(input: {
+  chunks: Array<Record<string, any>>
+  insertCalls: unknown[][]
+  loggerSetCalls: unknown[][]
+}) {
+  console.error(JSON.stringify({
+    chunks: input.chunks,
+    insertCalls: input.insertCalls,
+    loggerSetCalls: input.loggerSetCalls,
+  }, null, 2))
 }
 
 async function readClientChunks() {
@@ -447,7 +460,7 @@ describe('multi-step tool loop', () => {
   it('stops at the step cap when the model keeps calling the tool',
     async () => {
       const queries: string[] = []
-      const { doStream, assistantInsert } = await runLoopSend({
+      const { doStream, assistantInsert, insertValues } = await runLoopSend({
         steps: [
           createToolCallChunks('call-1'),
           createToolCallChunks('call-2'),
@@ -464,6 +477,15 @@ describe('multi-step tool loop', () => {
       expect(chunkTypes).not.toContain('abort')
       expect(chunkTypes).not.toContain('error')
       expect(chunkTypes).toContain('finish')
+
+      if (!assistantInsert) {
+        dumpAssistantPersistFailureDiagnostics({
+          chunks,
+          insertCalls: insertValues.mock.calls,
+          loggerSetCalls: mocks.loggerSet.mock.calls,
+        })
+      }
+
       expect(assistantInsert).toBeDefined()
     })
 

@@ -1297,6 +1297,17 @@ async function persistAssistantMessageFromStream(input: {
     }
 
     if (isAborted || !responseMessage) {
+      input.logger.set({
+        attributes: {
+          assistantPersist: {
+            skipped: true,
+            isAborted,
+            hasResponseMessage: responseMessage !== null,
+            streamErrorText,
+          },
+        },
+      })
+
       return false
     }
 
@@ -1376,6 +1387,15 @@ async function persistAssistantMessageFromStream(input: {
         }],
         logger: input.logger,
         stage: 'assistant-message',
+      })
+    } else {
+      input.logger.set({
+        attributes: {
+          assistantPersist: {
+            insertReturnedNull: true,
+            publicId: input.publicId,
+          },
+        },
       })
     }
 
