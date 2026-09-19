@@ -1281,8 +1281,11 @@ async function persistAssistantMessageFromStream(input: {
     let isAborted = false
     let streamErrorText: string | undefined
     let responseMessage: UIMessage | null = null
+    const persistenceChunkTypes: string[] = []
     const trackedStream = input.stream.pipeThrough(new TransformStream({
       transform(chunk, controller) {
+        persistenceChunkTypes.push(String(chunk?.type))
+
         if (chunk?.type === 'abort') {
           isAborted = true
         }
@@ -1293,9 +1296,13 @@ async function persistAssistantMessageFromStream(input: {
 
         controller.enqueue(chunk)
       },
+      flush() {
+        persistenceChunkTypes.push('__closed__')
+      },
     }))
 
-    for await (const message of readUIMessageStream<UIMessage>({
+    const iterationStartedAt = Date.now()
+    const iterator = readUIMessageStream<UIMessage>({
       stream: trackedStream,
       onError(error) {
         input.logger.set({
@@ -1306,9 +1313,37 @@ async function persistAssistantMessageFromStream(input: {
           },
         })
       },
-    })) {
-      responseMessage = message
+    })[Symbol.asyncIterator]()
+
+    let iterationCount = 0
+    let doneOnFirstCall: boolean | undefined
+
+    while (true) {
+      const step = await iterator.next()
+
+      iterationCount += 1
+
+      if (iterationCount === 1) {
+        doneOnFirstCall = step.done
+      }
+
+      if (step.done) {
+        break
+      }
+
+      responseMessage = step.value
     }
+
+    input.logger.set({
+      attributes: {
+        assistantPersist: {
+          iterationCount,
+          doneOnFirstCall,
+          iterationMs: Date.now() - iterationStartedAt,
+          persistenceChunkTypes,
+        },
+      },
+    })
 
     if (isAborted || !responseMessage) {
       input.logger.set({

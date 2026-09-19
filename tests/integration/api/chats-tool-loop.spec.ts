@@ -555,17 +555,15 @@ describe('multi-step tool loop', () => {
       expect(chunkTypes).not.toContain('error')
       expect(chunkTypes).toContain('finish')
 
-      if (!assistantInsert) {
-        dumpAssistantPersistFailureDiagnostics({
-          chunks,
-          insertCalls: insertValues.mock.calls,
-          insertLog,
-          instanceId,
-          loggerSetCalls: mocks.loggerSet.mock.calls,
-          loggerSetLog: mocks.loggerSetLog,
-          executeLifecycleLog: mocks.executeLifecycleLog,
-        })
-      }
+      dumpAssistantPersistFailureDiagnostics({
+        chunks,
+        insertCalls: insertValues.mock.calls,
+        insertLog,
+        instanceId,
+        loggerSetCalls: mocks.loggerSet.mock.calls,
+        loggerSetLog: mocks.loggerSetLog,
+        executeLifecycleLog: mocks.executeLifecycleLog,
+      })
 
       expect(assistantInsert).toBeDefined()
     })
