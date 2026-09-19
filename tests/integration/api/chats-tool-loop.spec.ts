@@ -23,6 +23,11 @@ const LOOP_PROVIDER_ID = 'moonshotai'
 const mocks = vi.hoisted(() => ({
   mergedStreams: [] as ReadableStream[],
   loggerSet: vi.fn(),
+  // A plain array, not a vi.fn() mock: immune to vitest's `mockReset: true`
+  // and to this file's own `vi.clearAllMocks()`, so it survives even if
+  // either one is ever triggered mid-test. Used only to double-check the
+  // `loggerSet.mock.calls` reading if a future CI failure looks suspicious.
+  loggerSetLog: [] as unknown[][],
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -47,7 +52,10 @@ vi.mock('ai', async (importOriginal) => {
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
-    set: mocks.loggerSet,
+    set: (...args: [Record<string, unknown>]) => {
+      mocks.loggerSetLog.push(args)
+      mocks.loggerSet(...args)
+    },
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
@@ -160,7 +168,20 @@ async function getHandler() {
   return module.default
 }
 
+let dbInstanceCounter = 0
+
+// `insertLog` is a plain array, not a vi.fn() mock: immune to vitest's
+// `mockReset: true` and to this file's own `vi.clearAllMocks()`. It exists
+// purely to cross-check `insertValues.mock.calls` if a future CI failure
+// looks like the insert happened but the mock's own call history doesn't
+// show it — the two must always agree; if they ever diverge, that itself is
+// the finding.
 function createDb() {
+  const instanceId = `db-${dbInstanceCounter}`
+  const insertLog: Array<{ instanceId: string, values: unknown }> = []
+
+  dbInstanceCounter += 1
+
   const insertValues = vi.fn()
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
@@ -169,16 +190,20 @@ function createDb() {
   const updateWhere = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: updateWhere }))
 
-  insertValues.mockImplementation(() => ({
-    returning: () => ({
-      get: insertGet,
-    }),
-    onConflictDoNothing: () => ({
+  insertValues.mockImplementation((values: unknown) => {
+    insertLog.push({ instanceId, values })
+
+    return {
       returning: () => ({
         get: insertGet,
       }),
-    }),
-  }))
+      onConflictDoNothing: () => ({
+        returning: () => ({
+          get: insertGet,
+        }),
+      }),
+    }
+  })
 
   return {
     db: {
@@ -202,6 +227,8 @@ function createDb() {
       update: vi.fn(() => ({ set: updateSet })),
     },
     insertValues,
+    insertLog,
+    instanceId,
   }
 }
 
@@ -265,18 +292,30 @@ async function runLoopSend(input: {
     return value.role === 'assistant'
   })?.[0]
 
-  return { doStream, assistantInsert, insertValues: created.insertValues }
+  return {
+    doStream,
+    assistantInsert,
+    insertValues: created.insertValues,
+    insertLog: created.insertLog,
+    instanceId: created.instanceId,
+  }
 }
 
 function dumpAssistantPersistFailureDiagnostics(input: {
   chunks: Array<Record<string, any>>
   insertCalls: unknown[][]
+  insertLog: Array<{ instanceId: string, values: unknown }>
+  instanceId: string
   loggerSetCalls: unknown[][]
+  loggerSetLog: unknown[][]
 }) {
   console.error(JSON.stringify({
     chunks: input.chunks,
     insertCalls: input.insertCalls,
+    insertLog: input.insertLog,
+    instanceId: input.instanceId,
     loggerSetCalls: input.loggerSetCalls,
+    loggerSetLog: input.loggerSetLog,
   }, null, 2))
 }
 
@@ -298,9 +337,17 @@ async function readClientChunks() {
 
 describe('multi-step tool loop', () => {
   beforeEach(() => {
+    // Hygiene, not the fix for the CI-only failure this file is
+    // instrumented for: without this, a global a test forgets to re-stub
+    // would silently carry over the previous test's value. Every global this
+    // file relies on IS re-stubbed below (or inside runLoopSend), so this is
+    // currently a no-op in practice, but it removes that class of leakage as
+    // a possibility going forward.
+    vi.unstubAllGlobals()
     vi.resetModules()
     vi.clearAllMocks()
     mocks.mergedStreams = []
+    mocks.loggerSetLog = []
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -460,7 +507,13 @@ describe('multi-step tool loop', () => {
   it('stops at the step cap when the model keeps calling the tool',
     async () => {
       const queries: string[] = []
-      const { doStream, assistantInsert, insertValues } = await runLoopSend({
+      const {
+        doStream,
+        assistantInsert,
+        insertValues,
+        insertLog,
+        instanceId,
+      } = await runLoopSend({
         steps: [
           createToolCallChunks('call-1'),
           createToolCallChunks('call-2'),
@@ -482,7 +535,10 @@ describe('multi-step tool loop', () => {
         dumpAssistantPersistFailureDiagnostics({
           chunks,
           insertCalls: insertValues.mock.calls,
+          insertLog,
+          instanceId,
           loggerSetCalls: mocks.loggerSet.mock.calls,
+          loggerSetLog: mocks.loggerSetLog,
         })
       }
 
