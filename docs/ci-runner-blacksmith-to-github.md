@@ -1,7 +1,12 @@
 # CI runners: Blacksmith → GitHub-hosted
 
-**Status: applied 2026-09-20.** All workflows now use `runs-on: ubuntu-24.04`
-(GitHub-hosted) instead of `runs-on: blacksmith-2vcpu-ubuntu-2404`.
+**Status: applied 2026-09-20, did NOT fix the underlying flake.** All
+workflows now use `runs-on: ubuntu-24.04` (GitHub-hosted) instead of
+`runs-on: blacksmith-2vcpu-ubuntu-2404`. The switch is being kept because
+GitHub-hosted runners are a reasonable default regardless, but see
+"Result" below: the CI-only failure this was meant to test as a Blacksmith-
+specific issue reproduced identically on GitHub's own runners, so
+Blacksmith is **ruled out**, not confirmed, as the cause.
 
 ## What happened
 
@@ -77,17 +82,27 @@ were in use, so this is a pure `runs-on:` label change across:
 - `.github/workflows/preview-fork-deploy.yml`
 - `.github/workflows/production.yml`
 
-## If this doesn't fix it
+## Result: it did not fix the failure
 
-If `chats-tool-loop.spec.ts` still fails intermittently on GitHub-hosted
-runners, that rules out Blacksmith specifically and points back at GitHub's
-own runner fleet or at something in the Vitest/Node/V8 combination itself
-under real hardware — worth revisiting with a live SSH session into a
-failing runner (GitHub's hosted runners don't offer this directly; Blacksmith
-did, via a `ssh -p <port> runner@<vm>.vm.blacksmith.sh` line printed in
-every job log — a `tmate` step would be the GitHub-hosted equivalent) rather
-than more static analysis, since 8 rounds of code-level diagnostics already
-exhausted every hypothesis reachable that way.
+The very next push (commit `64f9dfe`, the runner switch itself) failed CI
+with the exact same assertion on the exact same test, on a confirmed
+GitHub-hosted runner (`Current runner version: '2.337.0'`, no Blacksmith VM
+in the job log). This **rules out Blacksmith-specific hardware** as the
+cause — the non-determinism is either common to GitHub Actions-hosted
+runners in general (both Blacksmith and GitHub's own fleets, vs. any local
+dev machine or Docker-emulated environment), or something in the
+Vitest/Node/V8 combination that only manifests under real (non-emulated)
+CI-grade virtualization.
+
+The runner switch is being kept anyway (GitHub-hosted is a reasonable
+default and this rules out one variable), but it is not the fix. Revisiting
+this needs a live session on an actual failing runner: GitHub-hosted
+runners don't print an SSH command the way Blacksmith did, so a `tmate`
+step (`mxschmitt/action-tmate`) added temporarily to the workflow would be
+the equivalent — someone needs to be at the keyboard during a live,
+failing run to inspect the process/thread state directly, since 9 rounds of
+code-level diagnostics (see the commit history) already exhausted every
+hypothesis reachable through logging and static analysis alone.
 
 ## Reverting
 
