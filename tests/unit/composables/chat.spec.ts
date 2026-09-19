@@ -7,6 +7,7 @@ import {
   buildChatErrorMessage,
   getRenderableChatMessages,
   hasVisibleAssistantContent,
+  hasRetryableAssistantFailure,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
   normalizeChatClientError,
@@ -339,6 +340,46 @@ describe('chat error helpers', () => {
         id: 'assistant-1',
         role: 'assistant',
         parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ])).toBe(false)
+  })
+
+  it('marks a hydrated empty assistant response as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('does not mark a meaningful assistant response as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ])).toBe(false)
+  })
+
+  it('does not mark a lone empty assistant as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
       } as UIMessage,
     ])).toBe(false)
   })
@@ -870,6 +911,23 @@ describe('chat error helpers', () => {
         id: 'assistant-1',
         role: 'assistant',
         parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ]
+
+    expect(shouldRecoverGeneration(messages)).toBe(false)
+  })
+
+  it('does not auto-recover a hydrated empty assistant response', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
       } as UIMessage,
     ]
 

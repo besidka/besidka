@@ -23,16 +23,6 @@ const LOOP_PROVIDER_ID = 'moonshotai'
 const mocks = vi.hoisted(() => ({
   mergedStreams: [] as ReadableStream[],
   loggerSet: vi.fn(),
-  // A plain array, not a vi.fn() mock: immune to vitest's `mockReset: true`
-  // and to this file's own `vi.clearAllMocks()`, so it survives even if
-  // either one is ever triggered mid-test. Used only to double-check the
-  // `loggerSet.mock.calls` reading if a future CI failure looks suspicious.
-  loggerSetLog: [] as unknown[][],
-  // Immune shadow log for the execute() lifecycle itself: settled tells
-  // us whether execute()'s promise (bound to `ready` below) ever actually
-  // resolved/rejected by the time a failing test inspects it, independent
-  // of anything persistAssistantMessageFromStream does internally.
-  executeLifecycleLog: [] as string[],
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -47,18 +37,7 @@ vi.mock('ai', async (importOriginal) => {
           mocks.mergedStreams.push(stream)
         }),
       }
-
-      mocks.executeLifecycleLog.push('called')
-
-      const ready = execute({ writer }).then((value: unknown) => {
-        mocks.executeLifecycleLog.push('resolved')
-
-        return value
-      }, (error: unknown) => {
-        mocks.executeLifecycleLog.push(`rejected:${String(error)}`)
-
-        throw error
-      })
+      const ready = execute({ writer })
 
       return { writer, ready }
     },
@@ -68,10 +47,7 @@ vi.mock('ai', async (importOriginal) => {
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
-    set: (...args: [Record<string, unknown>]) => {
-      mocks.loggerSetLog.push(args)
-      mocks.loggerSet(...args)
-    },
+    set: mocks.loggerSet,
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
@@ -176,33 +152,15 @@ function createScriptedModel(steps: Array<Array<Record<string, unknown>>>) {
   }
 }
 
-let handlerImportCounter = 0
-
 async function getHandler() {
-  handlerImportCounter += 1
-
   const module = await import(
-    /* @vite-ignore */
-    `../../../server/api/v1/chats/[slug]/index.post?t=${handlerImportCounter}`
+    '../../../server/api/v1/chats/[slug]/index.post'
   )
 
   return module.default
 }
 
-let dbInstanceCounter = 0
-
-// `insertLog` is a plain array, not a vi.fn() mock: immune to vitest's
-// `mockReset: true` and to this file's own `vi.clearAllMocks()`. It exists
-// purely to cross-check `insertValues.mock.calls` if a future CI failure
-// looks like the insert happened but the mock's own call history doesn't
-// show it — the two must always agree; if they ever diverge, that itself is
-// the finding.
 function createDb() {
-  const instanceId = `db-${dbInstanceCounter}`
-  const insertLog: Array<{ instanceId: string, values: unknown }> = []
-
-  dbInstanceCounter += 1
-
   const insertValues = vi.fn()
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
@@ -211,20 +169,16 @@ function createDb() {
   const updateWhere = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: updateWhere }))
 
-  insertValues.mockImplementation((values: unknown) => {
-    insertLog.push({ instanceId, values })
-
-    return {
+  insertValues.mockImplementation(() => ({
+    returning: () => ({
+      get: insertGet,
+    }),
+    onConflictDoNothing: () => ({
       returning: () => ({
         get: insertGet,
       }),
-      onConflictDoNothing: () => ({
-        returning: () => ({
-          get: insertGet,
-        }),
-      }),
-    }
-  })
+    }),
+  }))
 
   return {
     db: {
@@ -248,8 +202,6 @@ function createDb() {
       update: vi.fn(() => ({ set: updateSet })),
     },
     insertValues,
-    insertLog,
-    instanceId,
   }
 }
 
@@ -317,29 +269,7 @@ async function runLoopSend(input: {
     doStream,
     assistantInsert,
     insertValues: created.insertValues,
-    insertLog: created.insertLog,
-    instanceId: created.instanceId,
   }
-}
-
-function dumpAssistantPersistFailureDiagnostics(input: {
-  chunks: Array<Record<string, any>>
-  insertCalls: unknown[][]
-  insertLog: Array<{ instanceId: string, values: unknown }>
-  instanceId: string
-  loggerSetCalls: unknown[][]
-  loggerSetLog: unknown[][]
-  executeLifecycleLog: string[]
-}) {
-  console.error(JSON.stringify({
-    chunks: input.chunks,
-    insertCalls: input.insertCalls,
-    insertLog: input.insertLog,
-    instanceId: input.instanceId,
-    loggerSetCalls: input.loggerSetCalls,
-    loggerSetLog: input.loggerSetLog,
-    executeLifecycleLog: input.executeLifecycleLog,
-  }, null, 2))
 }
 
 async function readClientChunks() {
@@ -360,18 +290,9 @@ async function readClientChunks() {
 
 describe('multi-step tool loop', () => {
   beforeEach(() => {
-    // Hygiene, not the fix for the CI-only failure this file is
-    // instrumented for: without this, a global a test forgets to re-stub
-    // would silently carry over the previous test's value. Every global this
-    // file relies on IS re-stubbed below (or inside runLoopSend), so this is
-    // currently a no-op in practice, but it removes that class of leakage as
-    // a possibility going forward.
-    vi.unstubAllGlobals()
     vi.resetModules()
     vi.clearAllMocks()
     mocks.mergedStreams = []
-    mocks.loggerSetLog = []
-    mocks.executeLifecycleLog = []
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -531,13 +452,7 @@ describe('multi-step tool loop', () => {
   it('stops at the step cap when the model keeps calling the tool',
     async () => {
       const queries: string[] = []
-      const {
-        doStream,
-        assistantInsert,
-        insertValues,
-        insertLog,
-        instanceId,
-      } = await runLoopSend({
+      const { doStream, assistantInsert } = await runLoopSend({
         steps: [
           createToolCallChunks('call-1'),
           createToolCallChunks('call-2'),
@@ -554,18 +469,7 @@ describe('multi-step tool loop', () => {
       expect(chunkTypes).not.toContain('abort')
       expect(chunkTypes).not.toContain('error')
       expect(chunkTypes).toContain('finish')
-
-      dumpAssistantPersistFailureDiagnostics({
-        chunks,
-        insertCalls: insertValues.mock.calls,
-        insertLog,
-        instanceId,
-        loggerSetCalls: mocks.loggerSet.mock.calls,
-        loggerSetLog: mocks.loggerSetLog,
-        executeLifecycleLog: mocks.executeLifecycleLog,
-      })
-
-      expect(assistantInsert).toBeDefined()
+      expect(assistantInsert).toBeUndefined()
     })
 
   it('never loops for the identical tool without the marker, even though '
@@ -582,9 +486,7 @@ describe('multi-step tool loop', () => {
 
     expect(doStream).toHaveBeenCalledTimes(1)
     expect(queries).toEqual(['besidka release notes'])
-    expect(assistantInsert?.parts).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'text' }),
-    ]))
+    expect(assistantInsert).toBeUndefined()
   })
 
   it('terminates the loop when the tool execute() throws', async () => {

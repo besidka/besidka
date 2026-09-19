@@ -475,6 +475,119 @@ describe('chat duplicate message detection', () => {
     expect(chunks.at(-1)).toEqual({ type: 'finish' })
   })
 
+  it('retries past an empty assistant row with one user prompt', async () => {
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Question' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const emptyAssistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db, insertValues } = createDb({
+      messages: [userMessage, emptyAssistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    await collectStreamChunks(stream)
+
+    expect(streamText).toHaveBeenCalledTimes(1)
+    expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [{
+        id: 'user-public-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Question' }],
+      }],
+    }))
+    expect(insertValues.mock.calls.filter(([value]) => {
+      return value.role === 'user'
+    })).toHaveLength(0)
+  })
+
+  it('replays a later meaningful assistant after an empty row', async () => {
+    const handler = await getHandler()
+    const messages = [
+      {
+        id: 'db-user-1',
+        publicId: 'user-public-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Question' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:14:31Z'),
+      },
+      {
+        id: 'db-assistant-empty',
+        publicId: 'assistant-empty-public-1',
+        role: 'assistant',
+        parts: [],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:14:43Z'),
+      },
+      {
+        id: 'db-assistant-1',
+        publicId: 'assistant-public-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Stored answer' }],
+        tools: [] as string[],
+        reasoning: 'off',
+        createdAt: new Date('2026-06-22T14:14:45Z'),
+      },
+    ]
+    const { db } = createDb({ messages })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+
+    expect(streamText).not.toHaveBeenCalled()
+    expect(chunks[0]).toEqual({
+      type: 'start',
+      messageId: 'assistant-public-1',
+    })
+  })
+
   it('replays the assistant adjacent to the matched user message, not a later turn', async () => {
     const handler = await getHandler()
     const messages = [

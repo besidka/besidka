@@ -43,7 +43,10 @@ import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost
 import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
-import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
+import {
+  hasMeaningfulAssistantParts,
+  persistUserMessage,
+} from '~~/server/utils/chats/persist-user-message'
 import {
   chatToolSchema,
   incomingUserMessageSchema,
@@ -221,6 +224,10 @@ export default defineEventHandler(async (event) => {
   const previousMessages = chat.messages
     .filter((message) => {
       return isPersistedMessageRole(message.role)
+        && (
+          message.role !== 'assistant'
+          || hasMeaningfulAssistantParts(message.parts)
+        )
     })
     .map(message => ({
       id: message.publicId ?? message.id,
@@ -250,13 +257,10 @@ export default defineEventHandler(async (event) => {
   const persistedUserIndex = previousMessages.findIndex((message) => {
     return message.role === 'user' && message.id === newMessage.id
   })
-  const followingPersistedMessage = persistedUserIndex >= 0
-    ? previousMessages[persistedUserIndex + 1]
-    : undefined
-  const persistedAssistantMessage
-    = followingPersistedMessage?.role === 'assistant'
-      ? followingPersistedMessage
-      : undefined
+  const persistedAssistantMessage = findPersistedAssistantReply(
+    previousMessages,
+    persistedUserIndex,
+  )
 
   if (newMessage.role === 'user' && persistedAssistantMessage) {
     logger.set({
@@ -329,7 +333,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const allMessages = [...previousMessages, newMessage]
+  const allMessages = [
+    ...previousMessages.filter((message) => {
+      return message.id !== newMessage.id
+    }),
+    newMessage,
+  ]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
   const projectSystemPrompt = buildProjectSystemPrompt(chat.project
     ? {
@@ -1263,29 +1272,12 @@ async function persistAssistantMessageFromStream(input: {
     set: (fields: Record<string, unknown>) => void
   }
 }): Promise<boolean> {
-  const insertMockInspect = input.db.insert as unknown as {
-    mock?: { calls: unknown[] }
-  }
-
-  input.logger.set({
-    attributes: {
-      assistantPersist: {
-        entered: true,
-        insertIsMockFn: typeof insertMockInspect.mock !== 'undefined',
-        insertMockCallsAtEntry: insertMockInspect.mock?.calls?.length ?? null,
-      },
-    },
-  })
-
   try {
     let isAborted = false
     let streamErrorText: string | undefined
     let responseMessage: UIMessage | null = null
-    const persistenceChunkTypes: string[] = []
     const trackedStream = input.stream.pipeThrough(new TransformStream({
       transform(chunk, controller) {
-        persistenceChunkTypes.push(String(chunk?.type))
-
         if (chunk?.type === 'abort') {
           isAborted = true
         }
@@ -1296,13 +1288,9 @@ async function persistAssistantMessageFromStream(input: {
 
         controller.enqueue(chunk)
       },
-      flush() {
-        persistenceChunkTypes.push('__closed__')
-      },
     }))
 
-    const iterationStartedAt = Date.now()
-    const iterator = readUIMessageStream<UIMessage>({
+    for await (const message of readUIMessageStream<UIMessage>({
       stream: trackedStream,
       onError(error) {
         input.logger.set({
@@ -1313,37 +1301,9 @@ async function persistAssistantMessageFromStream(input: {
           },
         })
       },
-    })[Symbol.asyncIterator]()
-
-    let iterationCount = 0
-    let doneOnFirstCall: boolean | undefined
-
-    while (true) {
-      const step = await iterator.next()
-
-      iterationCount += 1
-
-      if (iterationCount === 1) {
-        doneOnFirstCall = step.done
-      }
-
-      if (step.done) {
-        break
-      }
-
-      responseMessage = step.value
+    })) {
+      responseMessage = message
     }
-
-    input.logger.set({
-      attributes: {
-        assistantPersist: {
-          iterationCount,
-          doneOnFirstCall,
-          iterationMs: Date.now() - iterationStartedAt,
-          persistenceChunkTypes,
-        },
-      },
-    })
 
     if (isAborted || !responseMessage) {
       input.logger.set({
@@ -1370,19 +1330,13 @@ async function persistAssistantMessageFromStream(input: {
       requestedTools: input.tools,
       streamErrorText,
     }
-    const beforeNormalizeAt = Date.now()
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
 
-    input.logger.set({
-      attributes: {
-        assistantPersist: {
-          afterNormalize: true,
-          normalizeMs: Date.now() - beforeNormalizeAt,
-        },
-      },
-    })
+    if (!hasMeaningfulAssistantParts(normalizedParts)) {
+      return false
+    }
 
     const generatedFileIds = getGeneratedImageFileIds(
       responseParts,
@@ -1424,28 +1378,6 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
-    input.logger.set({
-      attributes: {
-        assistantPersist: {
-          afterUsageCapture: true,
-          usageIsDefined: usage !== undefined,
-        },
-      },
-    })
-
-    input.logger.set({
-      attributes: {
-        assistantPersist: {
-          beforeInsertCall: true,
-          dbMatchesLiveUseDb: input.db
-            === (globalThis as unknown as { useDb?: () => unknown })
-              .useDb?.(),
-          insertMockCallsBeforeCall: insertMockInspect.mock?.calls?.length
-            ?? null,
-        },
-      },
-    })
-
     const assistantMessage = await insertMessageWithPublicId({
       db: input.db,
       values: {
@@ -1457,17 +1389,6 @@ async function persistAssistantMessageFromStream(input: {
         usage: usage ?? null,
       },
       publicId: input.publicId,
-    })
-
-    input.logger.set({
-      attributes: {
-        assistantPersist: {
-          afterInsertCall: true,
-          assistantMessageTruthy: Boolean(assistantMessage),
-          insertMockCallsAfterCall: insertMockInspect.mock?.calls?.length
-            ?? null,
-        },
-      },
     })
 
     if (assistantMessage) {
@@ -1587,6 +1508,42 @@ async function persistAssistantMessageFromStream(input: {
 
     throw chatError
   }
+}
+
+function findPersistedAssistantReply(
+  messages: Array<{
+    id: string
+    role: string
+    parts: UIMessage['parts']
+    tools: ModelTool[]
+    reasoning: 'off' | 'low' | 'medium' | 'high'
+  }>,
+  userMessageIndex: number,
+) {
+  if (userMessageIndex < 0) {
+    return undefined
+  }
+
+  for (
+    let messageIndex = userMessageIndex + 1;
+    messageIndex < messages.length;
+    messageIndex += 1
+  ) {
+    const message = messages[messageIndex]
+
+    if (!message || message.role === 'user') {
+      return undefined
+    }
+
+    if (
+      message.role === 'assistant'
+      && hasMeaningfulAssistantParts(message.parts)
+    ) {
+      return message
+    }
+  }
+
+  return undefined
 }
 
 function generationInProgressKvKey(
