@@ -241,8 +241,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     const wrapper = await mountModelItem(model)
     const vision = wrapper.get('[data-testid="model-vision-capability"]')
 
-    expect(vision.classes()).toContain('text-secondary')
-    expect(vision.attributes('data-tip')).toBe('Vision')
+    expect(vision.classes()).toContain('text-accent')
+    expect(vision.attributes('data-tip'))
+      .toBe('Vision — can see and analyze images')
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(false)
