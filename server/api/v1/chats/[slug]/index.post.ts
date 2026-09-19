@@ -1263,10 +1263,16 @@ async function persistAssistantMessageFromStream(input: {
     set: (fields: Record<string, unknown>) => void
   }
 }): Promise<boolean> {
+  const insertMockInspect = input.db.insert as unknown as {
+    mock?: { calls: unknown[] }
+  }
+
   input.logger.set({
     attributes: {
       assistantPersist: {
         entered: true,
+        insertIsMockFn: typeof insertMockInspect.mock !== 'undefined',
+        insertMockCallsAtEntry: insertMockInspect.mock?.calls?.length ?? null,
       },
     },
   })
@@ -1372,6 +1378,19 @@ async function persistAssistantMessageFromStream(input: {
       })
     }
 
+    input.logger.set({
+      attributes: {
+        assistantPersist: {
+          beforeInsertCall: true,
+          dbMatchesLiveUseDb: input.db
+            === (globalThis as unknown as { useDb?: () => unknown })
+              .useDb?.(),
+          insertMockCallsBeforeCall: insertMockInspect.mock?.calls?.length
+            ?? null,
+        },
+      },
+    })
+
     const assistantMessage = await insertMessageWithPublicId({
       db: input.db,
       values: {
@@ -1383,6 +1402,17 @@ async function persistAssistantMessageFromStream(input: {
         usage: usage ?? null,
       },
       publicId: input.publicId,
+    })
+
+    input.logger.set({
+      attributes: {
+        assistantPersist: {
+          afterInsertCall: true,
+          assistantMessageTruthy: Boolean(assistantMessage),
+          insertMockCallsAfterCall: insertMockInspect.mock?.calls?.length
+            ?? null,
+        },
+      },
     })
 
     if (assistantMessage) {
