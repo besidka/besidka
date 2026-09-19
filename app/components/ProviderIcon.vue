@@ -18,14 +18,17 @@ import { providerMeta } from '#shared/utils/provider-meta'
  * Iconify names per provider, resolved at runtime through
  * `icon.serverBundle.remote` — no local asset ships for these.
  *
- * `simple-icons` is the default collection because this app renders every
- * provider icon through `@nuxt/icon`'s `css` mode, which masks the glyph and
- * paints it with `currentColor`. `simple-icons` marks are single-path and
- * survive that intact; `logos` marks are multi-color artwork whose knocked-out
- * details disappear when flattened (`logos:qwen-icon` masks to a solid blob).
- * `xai` is the deliberate exception: `simple-icons` ships no Grok/xAI entry,
- * and `logos:grok-icon` is itself a single uncolored path, so masking it is
- * lossless.
+ * `simple-icons` is the default collection because every icon body in it
+ * ships with an explicit `fill="currentColor"`. `@nuxt/icon`'s `css` mode
+ * (via `@iconify/utils`'s `getIconCSS`) only renders an icon as a `mask` —
+ * theme-aware, painted with `currentColor` — when its body string contains
+ * the literal text `currentColor`; otherwise it falls back to `background`
+ * mode, embedding the icon as a static image with whatever fill it shipped
+ * with (usually none, which SVG defaults to solid black). `xai` is the
+ * deliberate exception: `simple-icons` ships no Grok/xAI entry, and
+ * `logos:grok-icon` has no `currentColor` in its body, so it rendered as a
+ * black blob in every theme. `bxl:grok` is the same mark with
+ * `fill="currentColor"` baked in, so it mask-renders correctly.
  */
 const providerIconNames: Record<string, string> = {
   anthropic: 'simple-icons:anthropic',
@@ -34,7 +37,7 @@ const providerIconNames: Record<string, string> = {
   moonshotai: 'simple-icons:moonshotai',
   openai: 'simple-icons:openai',
   qwen: 'simple-icons:qwen',
-  xai: 'logos:grok-icon',
+  xai: 'bxl:grok',
 }
 
 const props = defineProps<{

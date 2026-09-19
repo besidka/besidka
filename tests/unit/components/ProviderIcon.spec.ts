@@ -7,7 +7,7 @@ const expectedIconNames: Record<string, string> = {
   google: 'simple-icons:googlegemini',
   openai: 'simple-icons:openai',
   anthropic: 'simple-icons:anthropic',
-  xai: 'logos:grok-icon',
+  xai: 'bxl:grok',
   deepseek: 'simple-icons:deepseek',
   moonshotai: 'simple-icons:moonshotai',
   qwen: 'simple-icons:qwen',
@@ -30,15 +30,15 @@ describe('ProviderIcon', () => {
       }
     })
 
-  it('renders a single-color simple-icons glyph for every provider except '
-    + 'xai, which has no monochrome Grok mark in any collection', () => {
+  it('renders a simple-icons glyph for every provider except xai, which has '
+    + 'no Grok entry in that collection', () => {
     const nonSimpleIcons = Object.entries(expectedIconNames).filter(
       ([, iconName]) => {
         return !iconName.startsWith('simple-icons:')
       },
     )
 
-    expect(nonSimpleIcons).toEqual([['xai', 'logos:grok-icon']])
+    expect(nonSimpleIcons).toEqual([['xai', 'bxl:grok']])
   })
 
   it('falls back to a two-letter badge from the raw id for an unmapped '
