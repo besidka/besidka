@@ -456,9 +456,14 @@ describe('multi-step tool loop', () => {
         ],
         onExecute: query => queries.push(query),
       })
+      const chunks = await readClientChunks()
+      const chunkTypes = chunks.map(chunk => chunk.type)
 
       expect(doStream).toHaveBeenCalledTimes(3)
       expect(queries).toHaveLength(3)
+      expect(chunkTypes).not.toContain('abort')
+      expect(chunkTypes).not.toContain('error')
+      expect(chunkTypes).toContain('finish')
       expect(assistantInsert).toBeDefined()
     })
 
