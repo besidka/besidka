@@ -67,6 +67,7 @@
               />
               <ChatInputModelsTriggerFilterDropdown
                 v-model="activeCategory"
+                v-model:vision-only="isVisionOnly"
               />
             </div>
             <div class="flex flex-1 min-h-0">
@@ -271,6 +272,7 @@ const searchQuery = shallowRef<string>('')
 const activeProviderId = shallowRef<string | null>(null)
 const isFavoritesOnly = shallowRef<boolean>(false)
 const activeCategory = shallowRef<ModelCategory | null>(null)
+const isVisionOnly = shallowRef<boolean>(false)
 const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
 const isLegacyExpanded = shallowRef<boolean>(false)
@@ -333,7 +335,9 @@ const isRailFilterApplied = computed<boolean>(() => {
 })
 
 const hasActiveFilters = computed<boolean>(() => {
-  return activeCategory.value !== null || isRailFilterApplied.value
+  return activeCategory.value !== null
+    || isVisionOnly.value
+    || isRailFilterApplied.value
 })
 
 function matchesActiveFilters({ model, providerId }: PickerModel): boolean {
@@ -348,6 +352,10 @@ function matchesActiveFilters({ model, providerId }: PickerModel): boolean {
     activeCategory.value !== null
     && getModelCategory(model) !== activeCategory.value
   ) {
+    return false
+  }
+
+  if (isVisionOnly.value && !hasVisionCapability(model)) {
     return false
   }
 
@@ -439,6 +447,7 @@ function close() {
   highlightedModelId.value = null
   searchQuery.value = ''
   activeCategory.value = null
+  isVisionOnly.value = false
   isLegacyExpanded.value = false
   closeDetail()
 }
@@ -496,6 +505,7 @@ function toggleFavoritesOnly() {
 
 function clearFilters() {
   activeCategory.value = null
+  isVisionOnly.value = false
   activeProviderId.value = null
   isFavoritesOnly.value = false
   searchQuery.value = ''
@@ -625,7 +635,13 @@ watch(hasFavorites, (value) => {
   isFavoritesOnly.value = false
 })
 
-watch([searchTerm, activeCategory, activeProviderId, isFavoritesOnly], () => {
+watch([
+  searchTerm,
+  activeCategory,
+  isVisionOnly,
+  activeProviderId,
+  isFavoritesOnly,
+], () => {
   closeDetail()
   highlightedModelId.value = selectableModels.value[0]?.model.id ?? null
 })

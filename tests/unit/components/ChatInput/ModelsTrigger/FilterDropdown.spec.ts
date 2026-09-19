@@ -10,12 +10,19 @@ const mocks = vi.hoisted(() => ({
 
 mockNuxtImport('onClickOutside', () => mocks.onClickOutside)
 
-async function mountFilterDropdown(selected: ModelCategory | null = null) {
+async function mountFilterDropdown(
+  selected: ModelCategory | null = null,
+  visionOnly = false,
+) {
   const wrapper = await mountSuspended(FilterDropdown, {
     props: {
       'modelValue': selected,
       'onUpdate:modelValue': (value: ModelCategory | null) => {
         wrapper.setProps({ modelValue: value })
+      },
+      'visionOnly': visionOnly,
+      'onUpdate:visionOnly': (value: boolean) => {
+        wrapper.setProps({ visionOnly: value })
       },
     },
   })
@@ -155,6 +162,46 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([null])
     expect(dropdown.element.open).toBe(false)
+  })
+
+  it('toggles vision-only on and off, closing the dropdown each time', async () => {
+    const wrapper = await mountFilterDropdown()
+    const dropdown = wrapper.get('details')
+    const vision = wrapper.get('[data-testid="models-picker-filter-vision"]')
+
+    dropdown.element.open = true
+    await vision.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([true])
+    expect(dropdown.element.open).toBe(false)
+
+    dropdown.element.open = true
+    await vision.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([false])
+    expect(dropdown.element.open).toBe(false)
+  })
+
+  it('badges the trigger while only vision-only is applied', async () => {
+    const wrapper = await mountFilterDropdown(null, true)
+    const trigger = wrapper.get(
+      '[data-testid="models-picker-filter-trigger"]',
+    )
+
+    expect(trigger.classes()).toContain('text-accent')
+    expect(trigger.find('.badge').exists()).toBe(true)
+  })
+
+  it('enables the clear action while only vision-only is applied', async () => {
+    const wrapper = await mountFilterDropdown(null, true)
+    const clear = wrapper.get('[data-testid="models-picker-filter-clear"]')
+
+    expect(clear.classes()).not.toContain('menu-disabled')
+    expect(clear.get('button').attributes('disabled')).toBeUndefined()
+
+    await clear.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([false])
   })
 
   it('closes the open dropdown on an outside click', async () => {
