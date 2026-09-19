@@ -34,7 +34,10 @@ import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost
 import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
-import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
+import {
+  hasMeaningfulAssistantParts,
+  persistUserMessage,
+} from '~~/server/utils/chats/persist-user-message'
 import {
   chatToolSchema,
   incomingUserMessageSchema,
@@ -188,6 +191,10 @@ export default defineEventHandler(async (event) => {
   const previousMessages = chat.messages
     .filter((message) => {
       return isPersistedMessageRole(message.role)
+        && (
+          message.role !== 'assistant'
+          || hasMeaningfulAssistantParts(message.parts)
+        )
     })
     .map(message => ({
       id: message.publicId ?? message.id,
@@ -217,13 +224,10 @@ export default defineEventHandler(async (event) => {
   const persistedUserIndex = previousMessages.findIndex((message) => {
     return message.role === 'user' && message.id === newMessage.id
   })
-  const followingPersistedMessage = persistedUserIndex >= 0
-    ? previousMessages[persistedUserIndex + 1]
-    : undefined
-  const persistedAssistantMessage
-    = followingPersistedMessage?.role === 'assistant'
-      ? followingPersistedMessage
-      : undefined
+  const persistedAssistantMessage = findPersistedAssistantReply(
+    previousMessages,
+    persistedUserIndex,
+  )
 
   if (newMessage.role === 'user' && persistedAssistantMessage) {
     logger.set({
@@ -296,7 +300,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const allMessages = [...previousMessages, newMessage]
+  const allMessages = [
+    ...previousMessages.filter((message) => {
+      return message.id !== newMessage.id
+    }),
+    newMessage,
+  ]
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
   const projectSystemPrompt = buildProjectSystemPrompt(chat.project
     ? {
@@ -1112,6 +1121,11 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+
+    if (!hasMeaningfulAssistantParts(normalizedParts)) {
+      return false
+    }
+
     const generatedFileIds = getGeneratedImageFileIds(
       responseMessage.parts as UIMessage['parts'],
       input.providerId,
@@ -1269,6 +1283,42 @@ async function persistAssistantMessageFromStream(input: {
 
     throw chatError
   }
+}
+
+function findPersistedAssistantReply(
+  messages: Array<{
+    id: string
+    role: string
+    parts: UIMessage['parts']
+    tools: ModelTool[]
+    reasoning: 'off' | 'low' | 'medium' | 'high'
+  }>,
+  userMessageIndex: number,
+) {
+  if (userMessageIndex < 0) {
+    return undefined
+  }
+
+  for (
+    let messageIndex = userMessageIndex + 1;
+    messageIndex < messages.length;
+    messageIndex += 1
+  ) {
+    const message = messages[messageIndex]
+
+    if (!message || message.role === 'user') {
+      return undefined
+    }
+
+    if (
+      message.role === 'assistant'
+      && hasMeaningfulAssistantParts(message.parts)
+    ) {
+      return message
+    }
+  }
+
+  return undefined
 }
 
 function generationInProgressKvKey(

@@ -737,6 +737,89 @@ describe('chat stream message ids', () => {
     expect(assistantInserts).toHaveLength(0)
   })
 
+  it('does not persist an assistant row for an error-only response', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    mocks.persistedResponseParts = []
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const assistantInserts = insertValues.mock.calls.filter(
+      ([payload]) => payload.role === 'assistant',
+    )
+
+    expect(assistantInserts).toHaveLength(0)
+  })
+
+  it('does not persist an assistant row for internal-only stream parts', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    mocks.persistedResponseParts = [{ type: 'step-start' }]
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const assistantInserts = insertValues.mock.calls.filter(
+      ([payload]) => payload.role === 'assistant',
+    )
+
+    expect(assistantInserts).toHaveLength(0)
+  })
+
+  it('persists an assistant row when a response has partial text', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    mocks.persistedResponseParts = [{
+      type: 'text',
+      text: 'Partial answer',
+    }]
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Partial answer' }],
+    }))
+  })
+
   it('does not insert or delete when stream setup fails', async () => {
     const handler = await getHandler()
     const { db, insertValues } = createDb()

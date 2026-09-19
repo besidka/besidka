@@ -241,6 +241,15 @@ export function shouldSurfaceEmptyAssistantResponse(
   return !hasMeaningfulAssistantParts(lastMessage)
 }
 
+export function hasRetryableAssistantFailure(messages: UIMessage[]): boolean {
+  const lastMessage = messages.at(-1)
+  const previousMessage = messages.at(-2)
+
+  return lastMessage?.role === 'assistant'
+    && previousMessage?.role === 'user'
+    && !hasMeaningfulAssistantParts(lastMessage)
+}
+
 // Issue #275: iOS suspends the page on screen-lock or app-switch with no
 // grace period, killing the in-flight stream client-side while the server
 // (per the tee+persist pipeline below) keeps generating regardless. On
@@ -896,8 +905,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const displayRegenerate = computed<boolean>(() => {
-    return (isStopped.value || chatSdk.status === 'error')
-      && !isResearchModelSelected.value
+    return (
+      isStopped.value
+      || chatSdk.status === 'error'
+      || hasRetryableAssistantFailure(chatSdk.messages)
+    )
+    && !isResearchModelSelected.value
   })
 
   function clearScheduledGenerationRetry(): void {
