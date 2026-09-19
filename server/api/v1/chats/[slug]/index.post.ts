@@ -1263,6 +1263,14 @@ async function persistAssistantMessageFromStream(input: {
     set: (fields: Record<string, unknown>) => void
   }
 }): Promise<boolean> {
+  input.logger.set({
+    attributes: {
+      assistantPersist: {
+        entered: true,
+      },
+    },
+  })
+
   try {
     let isAborted = false
     let streamErrorText: string | undefined

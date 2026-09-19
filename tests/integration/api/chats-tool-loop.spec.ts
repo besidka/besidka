@@ -28,6 +28,11 @@ const mocks = vi.hoisted(() => ({
   // either one is ever triggered mid-test. Used only to double-check the
   // `loggerSet.mock.calls` reading if a future CI failure looks suspicious.
   loggerSetLog: [] as unknown[][],
+  // Immune shadow log for the execute() lifecycle itself: settled tells
+  // us whether execute()'s promise (bound to `ready` below) ever actually
+  // resolved/rejected by the time a failing test inspects it, independent
+  // of anything persistAssistantMessageFromStream does internally.
+  executeLifecycleLog: [] as string[],
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -42,7 +47,18 @@ vi.mock('ai', async (importOriginal) => {
           mocks.mergedStreams.push(stream)
         }),
       }
-      const ready = execute({ writer })
+
+      mocks.executeLifecycleLog.push('called')
+
+      const ready = execute({ writer }).then((value: unknown) => {
+        mocks.executeLifecycleLog.push('resolved')
+
+        return value
+      }, (error: unknown) => {
+        mocks.executeLifecycleLog.push(`rejected:${String(error)}`)
+
+        throw error
+      })
 
       return { writer, ready }
     },
@@ -308,6 +324,7 @@ function dumpAssistantPersistFailureDiagnostics(input: {
   instanceId: string
   loggerSetCalls: unknown[][]
   loggerSetLog: unknown[][]
+  executeLifecycleLog: string[]
 }) {
   console.error(JSON.stringify({
     chunks: input.chunks,
@@ -316,6 +333,7 @@ function dumpAssistantPersistFailureDiagnostics(input: {
     instanceId: input.instanceId,
     loggerSetCalls: input.loggerSetCalls,
     loggerSetLog: input.loggerSetLog,
+    executeLifecycleLog: input.executeLifecycleLog,
   }, null, 2))
 }
 
@@ -348,6 +366,7 @@ describe('multi-step tool loop', () => {
     vi.clearAllMocks()
     mocks.mergedStreams = []
     mocks.loggerSetLog = []
+    mocks.executeLifecycleLog = []
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -539,6 +558,7 @@ describe('multi-step tool loop', () => {
           instanceId,
           loggerSetCalls: mocks.loggerSet.mock.calls,
           loggerSetLog: mocks.loggerSetLog,
+          executeLifecycleLog: mocks.executeLifecycleLog,
         })
       }
 
