@@ -1263,34 +1263,43 @@ async function persistAssistantMessageFromStream(input: {
     set: (fields: Record<string, unknown>) => void
   }
 }): Promise<boolean> {
-  let isAborted = false
-  let streamErrorText: string | undefined
-  let responseMessage: UIMessage | null = null
-  const trackedStream = input.stream.pipeThrough(new TransformStream({
-    transform(chunk, controller) {
-      if (chunk?.type === 'abort') {
-        isAborted = true
-      }
-
-      if (chunk?.type === 'error' && typeof chunk.errorText === 'string') {
-        streamErrorText = chunk.errorText
-      }
-
-      controller.enqueue(chunk)
-    },
-  }))
-
-  for await (const message of readUIMessageStream<UIMessage>({
-    stream: trackedStream,
-  })) {
-    responseMessage = message
-  }
-
-  if (isAborted || !responseMessage) {
-    return false
-  }
-
   try {
+    let isAborted = false
+    let streamErrorText: string | undefined
+    let responseMessage: UIMessage | null = null
+    const trackedStream = input.stream.pipeThrough(new TransformStream({
+      transform(chunk, controller) {
+        if (chunk?.type === 'abort') {
+          isAborted = true
+        }
+
+        if (chunk?.type === 'error' && typeof chunk.errorText === 'string') {
+          streamErrorText = chunk.errorText
+        }
+
+        controller.enqueue(chunk)
+      },
+    }))
+
+    for await (const message of readUIMessageStream<UIMessage>({
+      stream: trackedStream,
+      onError(error) {
+        input.logger.set({
+          attributes: {
+            assistantStreamParse: {
+              error: exceptionMessage(error),
+            },
+          },
+        })
+      },
+    })) {
+      responseMessage = message
+    }
+
+    if (isAborted || !responseMessage) {
+      return false
+    }
+
     const responseParts = responseMessage.parts as UIMessage['parts']
     const normalizationInput = {
       parts: responseParts,
