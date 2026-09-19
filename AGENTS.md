@@ -218,10 +218,16 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   DashScope search, Moonshot Formula-API search, direct-provider reasoning
   controls)
 - `docs/ci-runner-blacksmith-to-github.md` - Why CI runners moved from
-  Blacksmith to GitHub-hosted `ubuntu-24.04`: an 8-round diagnostic trail
-  proving a CI-only integration test failure was environment
-  non-determinism (byte-identical code/lockfile between a green and a red
-  run), not a code regression; the decision, and the revert path
+  Blacksmith to GitHub-hosted `ubuntu-24.04`: kept as a reasonable
+  default, but this was a dead end for the CI-only failure it was meant
+  to fix — see the doc below for the real cause
+- `docs/ci-pull-request-checkout-ref.md` - The real root cause of a
+  CI-only integration test failure chased across many diagnostic rounds:
+  `preview-build.yml`'s `build` job checked out `refs/pull/<n>/merge`
+  (GitHub's ephemeral merge preview) instead of the PR head, so once an
+  unrelated PR changed assistant-persistence semantics on `main`, every
+  CI run silently tested code that existed in no real checkout; the fix,
+  and the lesson for diagnosing CI-only failures on long-lived branches
 
 ### Tech Stack
 

@@ -1,12 +1,16 @@
 # CI runners: Blacksmith → GitHub-hosted
 
-**Status: applied 2026-09-20, did NOT fix the underlying flake.** All
-workflows now use `runs-on: ubuntu-24.04` (GitHub-hosted) instead of
-`runs-on: blacksmith-2vcpu-ubuntu-2404`. The switch is being kept because
-GitHub-hosted runners are a reasonable default regardless, but see
-"Result" below: the CI-only failure this was meant to test as a Blacksmith-
-specific issue reproduced identically on GitHub's own runners, so
-Blacksmith is **ruled out**, not confirmed, as the cause.
+**Status: applied 2026-09-20. Kept, but was never the actual fix — see
+`docs/ci-pull-request-checkout-ref.md` for the real root cause and
+resolution.** All workflows now use `runs-on: ubuntu-24.04` (GitHub-hosted)
+instead of `runs-on: blacksmith-2vcpu-ubuntu-2404`. The switch is being
+kept because GitHub-hosted runners are a reasonable default regardless,
+but the CI-only failure that prompted it turned out to have nothing to do
+with the runner: `preview-build.yml`'s `build` job was checking out
+`refs/pull/362/merge` (a GitHub-computed merge preview) instead of the PR
+branch's own head commit, so every run after an unrelated PR (#383) landed
+on `main` was silently testing this branch merged with #383's code — on
+any runner.
 
 ## What happened
 
