@@ -67,6 +67,7 @@
             :turn-started-at="currentTurnStartedAt"
             :reasoning-accumulated-ms="currentTurnReasoningAccumulatedMs"
             :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
+            :is-turn-thinking-held="isTurnThinkingHeld"
           />
           <div
             v-for="(part, index) in m.parts"
@@ -338,6 +339,7 @@ const {
   currentTurnStartedAt,
   currentTurnReasoningAccumulatedMs,
   currentReasoningSegmentStartedAt,
+  isTurnThinkingHeld,
   pendingClarification,
   pendingResearchTopic,
   isClarifying,

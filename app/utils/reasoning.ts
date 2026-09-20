@@ -130,6 +130,18 @@ export function hasStreamingReasoningPart(
   })
 }
 
+export function hasAnyTextPart(
+  parts: UIMessage['parts'] | undefined,
+): boolean {
+  if (!parts) {
+    return false
+  }
+
+  return parts.some((part) => {
+    return part.type === 'text'
+  })
+}
+
 export function getToolPartName(part: UIMessage['parts'][number]): string {
   if (part.type === 'dynamic-tool') {
     return (part as ToolLikeUIPart).toolName ?? ''

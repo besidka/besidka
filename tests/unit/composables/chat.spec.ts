@@ -1,10 +1,11 @@
 import type { UIMessage } from 'ai'
-import { computed, shallowRef, triggerRef } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { computed, nextTick, shallowRef, triggerRef } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
+  createReasoningSegmentTracker,
   foldReasoningSegment,
   getRenderableChatMessages,
   hasVisibleAssistantContent,
@@ -13,6 +14,7 @@ import {
   isChatErrorTextPart,
   isReasoningActiveForTurn,
   normalizeChatClientError,
+  REASONING_SEGMENT_GRACE_WINDOW_MS,
   shouldBlockGenerationRecovery,
   shouldDisplayRegenerate,
   shouldForceGenericLoadingIndicator,
@@ -1131,20 +1133,40 @@ describe('isReasoningActiveForTurn', () => {
     ).toBe(true)
   })
 
-  it('is false once every reasoning part has settled to done', () => {
-    expect(
-      isReasoningActiveForTurn('streaming', reasoningMessage('done')),
-    ).toBe(false)
+  it('is false once every reasoning part has settled to done and text has appeared', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
   })
 
-  it('ignores a reasoning part left streaming with no text', () => {
+  it('ignores a reasoning part left streaming with no text, once text has appeared elsewhere', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: '', state: 'streaming' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true for a bodyless reasoning part before any text has appeared (dead zone)', () => {
     const message = {
       id: 'assistant-1',
       role: 'assistant',
       parts: [{ type: 'reasoning', text: '', state: 'streaming' }],
     } as UIMessage
 
-    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
   })
 
   it('is true again for a second reasoning part after a tool call', () => {
@@ -1174,13 +1196,27 @@ describe('isReasoningActiveForTurn', () => {
     expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
   })
 
-  it('is false once reasoning and the tool call have both settled', () => {
+  it('is true once reasoning and the tool call have both settled but no text has appeared yet (dead zone)', () => {
     const message = {
       id: 'assistant-1',
       role: 'assistant',
       parts: [
         { type: 'reasoning', text: 'Thinking…', state: 'done' },
         { type: 'tool-web_search_preview', state: 'output-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('turns off the dead zone once text appears after reasoning and the tool call have settled', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'tool-web_search_preview', state: 'output-available' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
       ],
     } as UIMessage
 
@@ -1199,7 +1235,20 @@ describe('isReasoningActiveForTurn', () => {
     expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
   })
 
-  it('is false for a pending generate_image tool call', () => {
+  it('is false for a pending generate_image tool call once text has appeared', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-generate_image', state: 'input-available' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true for a pending generate_image tool call before any text has appeared (dead zone; image generation is not itself excluded from this clause)', () => {
     const message = {
       id: 'assistant-1',
       role: 'assistant',
@@ -1208,7 +1257,7 @@ describe('isReasoningActiveForTurn', () => {
       ],
     } as UIMessage
 
-    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
   })
 
   it('is false for a pending tool call when the status is not streaming', () => {
@@ -1258,5 +1307,117 @@ describe('foldReasoningSegment', () => {
 
   it('leaves the total unchanged when no segment start was ever recorded', () => {
     expect(foldReasoningSegment(true, 5_000, 0, Date.now())).toBe(5_000)
+  })
+})
+
+describe('createReasoningSegmentTracker', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function createTracker() {
+    const isActive = shallowRef<boolean>(false)
+    const isStreaming = shallowRef<boolean>(true)
+    const tracker = createReasoningSegmentTracker(
+      isActive,
+      () => isStreaming.value,
+    )
+
+    return { isActive, isStreaming, tracker }
+  }
+
+  it('keeps the same segment across a transient gap recovered within the grace window', async () => {
+    const { isActive, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    const segmentStartedAt = tracker.segmentStartedAt.value
+
+    vi.advanceTimersByTime(1000)
+
+    isActive.value = false
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS - 100)
+
+    isActive.value = true
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+    expect(tracker.accumulatedMs.value).toBe(0)
+    expect(tracker.segmentStartedAt.value).toBe(segmentStartedAt)
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+    expect(tracker.accumulatedMs.value).toBe(0)
+  })
+
+  it('folds immediately with no grace window once status itself leaves streaming', async () => {
+    const { isActive, isStreaming, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    vi.advanceTimersByTime(1500)
+
+    isStreaming.value = false
+    isActive.value = false
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(false)
+    expect(tracker.accumulatedMs.value).toBeGreaterThanOrEqual(1500)
+
+    const accumulatedAfterFold = tracker.accumulatedMs.value
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.accumulatedMs.value).toBe(accumulatedAfterFold)
+  })
+
+  it('folds the segment once the grace window elapses with no recovery', async () => {
+    const { isActive, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    vi.advanceTimersByTime(1000)
+
+    isActive.value = false
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(false)
+    expect(tracker.accumulatedMs.value).toBeGreaterThanOrEqual(1000)
+  })
+
+  it('clears a pending grace-window fold on reset, so it cannot corrupt the next turn', async () => {
+    const { isActive, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    vi.advanceTimersByTime(1000)
+
+    isActive.value = false
+    await nextTick()
+
+    tracker.reset()
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.accumulatedMs.value).toBe(0)
+    expect(tracker.segmentStartedAt.value).toBe(0)
+    expect(tracker.isTurnThinkingHeld.value).toBe(false)
   })
 })

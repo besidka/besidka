@@ -5,6 +5,7 @@ import type {
   ReasoningUIPart,
   ChatStatus,
 } from 'ai'
+import type { Ref, ComputedRef } from 'vue'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { Chat, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
@@ -619,11 +620,15 @@ const MAX_GENERATION_RETRY_ATTEMPTS = 150
 const GENERATION_RETRY_DELAY_MS = 4_000
 
 // A turn counts as active "thinking" while the last message is the
-// assistant's in-progress reply and either at least one of its reasoning
-// parts is still being streamed by the provider, or a non-image tool call
-// is currently in flight — never inferred from the presence of a text
-// part, since xAI/OpenAI-agentic/Google turns can reopen reasoning or call
-// tools after a gap that already produced visible text.
+// assistant's in-progress reply and EITHER at least one of its reasoning
+// parts is still being streamed by the provider or a non-image tool call is
+// currently in flight (never inferred from the presence of a text part
+// ALONE, since xAI/OpenAI-agentic/Google turns can reopen reasoning or call
+// tools after a gap that already produced visible text) OR no text part has
+// appeared at all yet. That second clause covers both the moment before the
+// very first token and the real multi-second gap after reasoning/tool calls
+// finish but before the model's answer starts streaming — there is no SDK
+// event to hook into for that gap, so absence of text is the only signal.
 export function isReasoningActiveForTurn(
   status: ChatStatus,
   lastMessage: UIMessage | undefined,
@@ -637,6 +642,100 @@ export function isReasoningActiveForTurn(
   }
 
   return isThinkingActive(lastMessage.parts)
+    || !hasAnyTextPart(lastMessage.parts)
+}
+
+export const REASONING_SEGMENT_GRACE_WINDOW_MS = 500
+
+export interface ReasoningSegmentTracker {
+  accumulatedMs: Ref<number>
+  segmentStartedAt: Ref<number>
+  isTurnThinkingHeld: ComputedRef<boolean>
+  reset: () => void
+}
+
+// Wraps the raw, un-debounced isTurnReasoningActive signal with hysteresis so
+// a genuinely momentary part-level gap (xAI settling one web search and
+// opening the next as two fully separate SDK events leaves a real sub-second
+// gap with nothing pending, confirmed via a live recording) doesn't fold the
+// segment and restart the "time spent thinking" clock or flip the header
+// wording several times a second. A real end of turn — status itself leaving
+// 'streaming' — still folds immediately, since there is no more turn left to
+// resume within.
+export function createReasoningSegmentTracker(
+  isTurnReasoningActive: Ref<boolean>,
+  isTurnStreaming: () => boolean,
+): ReasoningSegmentTracker {
+  const accumulatedMs = shallowRef<number>(0)
+  const segmentStartedAt = shallowRef<number>(0)
+  let pendingFoldTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  const isTurnThinkingHeld = computed<boolean>(() => {
+    return segmentStartedAt.value !== 0
+  })
+
+  function clearPendingFold(): void {
+    if (pendingFoldTimeoutId === null) {
+      return
+    }
+
+    clearTimeout(pendingFoldTimeoutId)
+    pendingFoldTimeoutId = null
+  }
+
+  function fold(endedAt: number): void {
+    accumulatedMs.value = foldReasoningSegment(
+      true,
+      accumulatedMs.value,
+      segmentStartedAt.value,
+      endedAt,
+    )
+    segmentStartedAt.value = 0
+  }
+
+  watch(isTurnReasoningActive, (isActive) => {
+    if (isActive) {
+      clearPendingFold()
+
+      if (!segmentStartedAt.value) {
+        segmentStartedAt.value = Date.now()
+      }
+
+      return
+    }
+
+    if (!isTurnStreaming()) {
+      clearPendingFold()
+      fold(Date.now())
+
+      return
+    }
+
+    // Captured now, at the false edge -- not inside the timeout callback --
+    // so a gap that is never recovered folds as ending here, not 500ms later.
+    // Using the timer's own fire time would silently pad every unrecovered
+    // gap's "time spent thinking" by up to the grace window itself.
+    const goneInactiveAt = Date.now()
+
+    clearPendingFold()
+    pendingFoldTimeoutId = setTimeout(() => {
+      pendingFoldTimeoutId = null
+      fold(goneInactiveAt)
+    }, REASONING_SEGMENT_GRACE_WINDOW_MS)
+  })
+
+  function reset(): void {
+    clearPendingFold()
+    accumulatedMs.value = 0
+    segmentStartedAt.value = 0
+  }
+
+  return {
+    accumulatedMs,
+    segmentStartedAt,
+    isTurnThinkingHeld,
+    reset,
+  }
 }
 
 // Folds a just-ended thinking segment (streaming reasoning or an in-flight
@@ -727,17 +826,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // the same currentTurnStartedAt and immediately computes the correct
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
-  // Sum of completed reasoning segments for the current turn, plus the live
-  // segment's anchor below — together they let Reasoning.vue show genuine
-  // "time spent thinking" rather than wall-clock-since-turn-start, even for
-  // providers (xAI, OpenAI agentic tool loops, Google) that reopen reasoning
-  // after a tool-calling gap. Detection lives here rather than in
-  // Reasoning.vue for the same remount-survival reason as currentTurnStartedAt
-  // above: the recovery-poll loop can destroy/recreate the component mid
-  // segment, and only this page-lifetime composable is guaranteed to observe
-  // the segment's true start and end.
-  const currentTurnReasoningAccumulatedMs = shallowRef<number>(0)
-  const currentReasoningSegmentStartedAt = shallowRef<number>(0)
 
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
 
@@ -931,21 +1019,23 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return isReasoningActiveForTurn(sdkStatus.value, sdkMessages.value.at(-1))
   })
 
-  watch(isTurnReasoningActive, (isActive, wasActive) => {
-    if (isActive) {
-      currentReasoningSegmentStartedAt.value = Date.now()
-
-      return
-    }
-
-    currentTurnReasoningAccumulatedMs.value = foldReasoningSegment(
-      Boolean(wasActive),
-      currentTurnReasoningAccumulatedMs.value,
-      currentReasoningSegmentStartedAt.value,
-      Date.now(),
-    )
-    currentReasoningSegmentStartedAt.value = 0
-  })
+  // Sum of completed reasoning segments for the current turn, plus the live
+  // segment's anchor — together they let Reasoning.vue show genuine "time
+  // spent thinking" rather than wall-clock-since-turn-start, even for
+  // providers (xAI, OpenAI agentic tool loops, Google) that reopen reasoning
+  // after a tool-calling gap. Tracked here rather than in Reasoning.vue
+  // because the recovery-poll loop can destroy/recreate that component mid
+  // segment, and only this page-lifetime composable is guaranteed to observe
+  // the segment's true start and end.
+  const reasoningSegmentTracker = createReasoningSegmentTracker(
+    isTurnReasoningActive,
+    () => sdkStatus.value === 'streaming',
+  )
+  const currentTurnReasoningAccumulatedMs
+    = reasoningSegmentTracker.accumulatedMs
+  const currentReasoningSegmentStartedAt
+    = reasoningSegmentTracker.segmentStartedAt
+  const isTurnThinkingHeld = reasoningSegmentTracker.isTurnThinkingHeld
 
   const chatSdk = {
     get messages() {
@@ -1133,8 +1223,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // "still generating" poll loop as a live recovery, not just a replay.
       isAwaitingGeneration.value = true
       currentTurnStartedAt.value = Date.now()
-      currentTurnReasoningAccumulatedMs.value = 0
-      currentReasoningSegmentStartedAt.value = 0
+      reasoningSegmentTracker.reset()
       wakeLock.acquire()
       chatSdk.regenerate()
     }
@@ -1147,6 +1236,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
+    reasoningSegmentTracker.reset()
     disposeChatResearch()
     wakeLock.release()
   })
@@ -1302,8 +1392,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
-    currentTurnReasoningAccumulatedMs.value = 0
-    currentReasoningSegmentStartedAt.value = 0
+    reasoningSegmentTracker.reset()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
 
@@ -1328,8 +1417,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     currentTurnStartedAt.value = 0
-    currentTurnReasoningAccumulatedMs.value = 0
-    currentReasoningSegmentStartedAt.value = 0
+    reasoningSegmentTracker.reset()
     wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
@@ -1348,8 +1436,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
-    currentTurnReasoningAccumulatedMs.value = 0
-    currentReasoningSegmentStartedAt.value = 0
+    reasoningSegmentTracker.reset()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
     chatSdk.regenerate()
@@ -1454,6 +1541,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     currentTurnStartedAt,
     currentTurnReasoningAccumulatedMs,
     currentReasoningSegmentStartedAt,
+    isTurnThinkingHeld,
     pendingClarification,
     pendingResearchTopic,
     isClarifying,

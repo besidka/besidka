@@ -4,6 +4,7 @@ import { shallowRef } from 'vue'
 import type { UIMessage } from 'ai'
 import type { VueWrapper } from '@vue/test-utils'
 import Reasoning from '../../../../app/components/Chat/Reasoning.vue'
+import { isThinkingActive } from '../../../../app/utils/reasoning'
 
 const mocks = vi.hoisted(() => ({
   useUserSetting: vi.fn(),
@@ -39,6 +40,10 @@ function createMessage(parts: UIMessage['parts']): UIMessage {
   } as UIMessage
 }
 
+function heldFor(parts: UIMessage['parts']): boolean {
+  return isThinkingActive(parts)
+}
+
 function timerLabel(wrapper: VueWrapper): string {
   return wrapper.find('[data-testid="reasoning-timer-label"]').text()
 }
@@ -52,14 +57,19 @@ function isMainExpanded(wrapper: VueWrapper): boolean {
 }
 
 async function mountSettledReasoning(text: string): Promise<VueWrapper> {
+  const parts: UIMessage['parts'] = [
+    { type: 'reasoning', text, state: 'done' },
+  ]
+
   return await mountSuspended(Reasoning, {
     props: {
-      message: createMessage([{ type: 'reasoning', text, state: 'done' }]),
+      message: createMessage(parts),
       status: 'ready',
       reasoningLevel: 'low',
       turnStartedAt: Date.now(),
       reasoningAccumulatedMs: 0,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: heldFor(parts),
     },
     global: {
       stubs: {
@@ -80,17 +90,21 @@ async function mountAndStartReasoning(
       turnStartedAt,
       reasoningAccumulatedMs: 0,
       reasoningSegmentStartedAt: turnStartedAt,
+      isTurnThinkingHeld: heldFor([]),
     },
   })
 
+  const streamingParts: UIMessage['parts'] = [
+    {
+      type: 'reasoning',
+      text: 'Thinking about the request.',
+      state: 'streaming',
+    },
+  ]
+
   await wrapper.setProps({
-    message: createMessage([
-      {
-        type: 'reasoning',
-        text: 'Thinking about the request.',
-        state: 'streaming',
-      },
-    ]),
+    message: createMessage(streamingParts),
+    isTurnThinkingHeld: heldFor(streamingParts),
   })
   await wrapper.vm.$nextTick()
 
@@ -141,6 +155,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 10000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -163,6 +178,7 @@ describe('Chat/Reasoning', () => {
         },
         { type: 'text', text: 'Here is the answer.', state: 'streaming' },
       ]),
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -177,6 +193,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 10000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -199,6 +216,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: segmentStartedAt,
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: segmentStartedAt,
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -231,6 +249,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: 0,
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -256,6 +275,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt,
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: turnStartedAt,
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -279,6 +299,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now() - 20_000,
         reasoningAccumulatedMs: 4000,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -324,6 +345,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
       global: {
         stubs: {
@@ -343,6 +365,7 @@ describe('Chat/Reasoning', () => {
         },
       ]),
       reasoningSegmentStartedAt: segmentStartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -370,6 +393,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 2000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -393,6 +417,7 @@ describe('Chat/Reasoning', () => {
         },
         { type: 'text', text: 'Answer', state: 'streaming' },
       ]),
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -409,6 +434,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -419,6 +445,7 @@ describe('Chat/Reasoning', () => {
         { type: 'reasoning', text: 'First pass.', state: 'streaming' },
       ]),
       reasoningSegmentStartedAt: segment1StartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -434,6 +461,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 2000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -454,6 +482,7 @@ describe('Chat/Reasoning', () => {
         { type: 'reasoning', text: 'Second pass.', state: 'streaming' },
       ]),
       reasoningSegmentStartedAt: segment2StartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -474,6 +503,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 3000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -493,6 +523,7 @@ describe('Chat/Reasoning', () => {
           turnStartedAt: Date.now(),
           reasoningAccumulatedMs: 0,
           reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
         },
       })
 
@@ -501,6 +532,7 @@ describe('Chat/Reasoning', () => {
           { type: 'reasoning', text: 'First pass.', state: 'streaming' },
         ]),
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       })
       await wrapper.vm.$nextTick()
 
@@ -513,6 +545,7 @@ describe('Chat/Reasoning', () => {
         ]),
         reasoningAccumulatedMs: 1000,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       })
       await wrapper.vm.$nextTick()
 
@@ -525,6 +558,7 @@ describe('Chat/Reasoning', () => {
           { type: 'reasoning', text: 'Second pass.', state: 'streaming' },
         ]),
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       })
       await wrapper.vm.$nextTick()
 
@@ -540,6 +574,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -550,6 +585,7 @@ describe('Chat/Reasoning', () => {
         { type: 'reasoning', text: 'Step A.', state: 'streaming' },
       ]),
       reasoningSegmentStartedAt: segmentAStartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -564,6 +600,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 3000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -574,6 +611,7 @@ describe('Chat/Reasoning', () => {
         { type: 'reasoning', text: 'Step A.', state: 'done' },
         { type: 'tool-web_search', state: 'input-available' },
       ]),
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -591,6 +629,7 @@ describe('Chat/Reasoning', () => {
         { type: 'reasoning', text: 'Step B.', state: 'streaming' },
       ]),
       reasoningSegmentStartedAt: segmentBStartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -608,6 +647,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 7000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -624,6 +664,7 @@ describe('Chat/Reasoning', () => {
         { type: 'tool-web_search', state: 'output-available' },
         { type: 'text', text: 'Final answer.', state: 'streaming' },
       ]),
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -642,6 +683,7 @@ describe('Chat/Reasoning', () => {
         { type: 'reasoning', text: 'Step C.', state: 'streaming' },
       ]),
       reasoningSegmentStartedAt: segmentCStartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -793,6 +835,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -818,6 +861,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -846,6 +890,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 2000,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -861,6 +906,7 @@ describe('Chat/Reasoning', () => {
         { type: 'tool-web_search_preview', state: 'input-available' },
       ]),
       reasoningSegmentStartedAt: segmentStartedAt,
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -887,6 +933,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 5000,
       reasoningSegmentStartedAt: 0,
+      isTurnThinkingHeld: false,
     })
     await wrapper.vm.$nextTick()
 
@@ -907,6 +954,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
       global: {
         stubs: {
@@ -924,6 +972,7 @@ describe('Chat/Reasoning', () => {
         },
       ]),
       reasoningSegmentStartedAt: Date.now(),
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -944,6 +993,7 @@ describe('Chat/Reasoning', () => {
       ]),
       reasoningAccumulatedMs: 1000,
       reasoningSegmentStartedAt: Date.now(),
+      isTurnThinkingHeld: true,
     })
     await wrapper.vm.$nextTick()
 
@@ -967,6 +1017,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -987,6 +1038,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -1008,6 +1060,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -1029,6 +1082,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -1050,6 +1104,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -1077,6 +1132,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -1101,6 +1157,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       },
     })
 
@@ -1128,6 +1185,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
       global: {
         stubs: {
@@ -1157,6 +1215,7 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
@@ -1185,6 +1244,7 @@ describe('Chat/Reasoning', () => {
           turnStartedAt: Date.now(),
           reasoningAccumulatedMs: 0,
           reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
         },
       })
 
@@ -1196,6 +1256,7 @@ describe('Chat/Reasoning', () => {
           },
         ]),
         reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
       })
       await wrapper.vm.$nextTick()
 
@@ -1220,9 +1281,44 @@ describe('Chat/Reasoning', () => {
         turnStartedAt: Date.now(),
         reasoningAccumulatedMs: 0,
         reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
       },
     })
 
     expect(wrapper.get('summary').text()).not.toContain('Reasoning')
+  })
+
+  it('trusts the held prop over its own derivation from parts, keeping the live wording and timer running for fully settled parts while a turn is held active', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          {
+            type: 'reasoning',
+            text: 'Thinking about the request.',
+            state: 'done',
+          },
+          { type: 'tool-web_search_preview', state: 'output-available' },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 2000,
+        reasoningSegmentStartedAt: Date.now(),
+        isTurnThinkingHeld: true,
+      },
+    })
+
+    expect(wrapper.get('summary').text()).toContain('Reasoning')
+    expect(wrapper.get('summary').text()).not.toContain('Reasoning process')
+
+    const headerTitle = wrapper.get('[data-testid="reasoning-timer-label"]')
+      .element.parentElement
+
+    expect(headerTitle?.classList.contains('skeleton')).toBe(true)
+
+    vi.advanceTimersByTime(3000)
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(5s)')
   })
 })

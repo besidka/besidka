@@ -179,6 +179,7 @@ const props = defineProps<{
   turnStartedAt: number
   reasoningAccumulatedMs: number
   reasoningSegmentStartedAt: number
+  isTurnThinkingHeld: boolean
 }>()
 
 interface ReasoningStep {
@@ -218,11 +219,7 @@ const isReasoningTextStreaming = computed<boolean>(() => {
 })
 
 const isThinkingStreaming = computed<boolean>(() => {
-  if (props.status !== 'streaming') {
-    return false
-  }
-
-  return isThinkingActive(props.message.parts)
+  return props.status === 'streaming' && props.isTurnThinkingHeld
 })
 
 const reasoningSteps = computed<ReasoningStep[]>(() => {
