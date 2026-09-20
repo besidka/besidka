@@ -114,7 +114,8 @@ Once `docs/ci-pull-request-checkout-ref.md`'s fix (pinning the `build`
 job's checkout `ref`) was confirmed green on GitHub-hosted `ubuntu-24.04`,
 all four files were reverted back to `runs-on:
 blacksmith-2vcpu-ubuntu-2404` — the runner switch was never the fix, so
-there was no reason to keep it once the real cause was found. Verification
-that CI is still green on Blacksmith with the real fix in place is
-tracked in this same PR's check history for the commit that made this
-revert.
+there was no reason to keep it once the real cause was found. Confirmed
+green again on a genuine Blacksmith runner
+(`blacksmith-2vcpu-ubuntu-2404-Runner-d7400d0d9f`, PR #362 commit
+`459e9d5`), verifying the checkout-ref fix is runner-independent, as
+expected.
