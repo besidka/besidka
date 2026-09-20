@@ -626,6 +626,57 @@ describe('chat send pipeline: single-step characterization', () => {
     ])
   })
 
+  it('(h) persists a paragraph break between text resumed after a '
+    + 'provider-executed tool call, not just in the live stream', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'xai' },
+      model: {
+        id: 'grok-4.5',
+        name: 'Grok 4.5',
+        tools: ['web_search'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+    vi.stubGlobal('useXai', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    })))
+
+    mocks.uiChunks = [
+      { type: 'start', messageId: 'assistant-1' },
+      { type: 'text-start', id: 'text-1' },
+      { type: 'text-delta', id: 'text-1', delta: 'Let me search.' },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'tool-1',
+        toolName: 'web_search_preview',
+        input: {},
+      },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'tool-1',
+        output: {},
+      },
+      { type: 'text-delta', id: 'text-1', delta: '**Result:** done.' },
+      { type: 'text-end', id: 'text-1' },
+      { type: 'finish' },
+    ]
+
+    const { insertValues } = await runHandler(baseBody({
+      model: 'grok-4.5',
+      tools: ['web_search'],
+    }))
+    const assistantInsert = getAssistantInsert(insertValues)
+
+    expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'text',
+        text: 'Let me search.\n\n**Result:** done.',
+      }),
+    ]))
+  })
+
   it('emits exactly one finish-step per send across every path today',
     async () => {
       vi.stubGlobal('useChatProvider', vi.fn(() => ({

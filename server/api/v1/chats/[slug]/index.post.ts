@@ -41,7 +41,10 @@ import {
 } from '~~/server/utils/ai/message-usage'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
 import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
-import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
+import {
+  filterRecoverableUIMessageStreamErrors,
+  insertParagraphBreakAfterNonTextGap,
+} from '~~/server/utils/chats/filter-ui-message-stream'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
 import {
   hasMeaningfulAssistantParts,
@@ -983,7 +986,10 @@ export default defineEventHandler(async (event) => {
             return JSON.stringify(chatError)
           },
         })
-        const [clientStream, persistenceStream] = uiMessageStream.tee()
+        const correctedUiMessageStream = insertParagraphBreakAfterNonTextGap(
+          uiMessageStream,
+        )
+        const [clientStream, persistenceStream] = correctedUiMessageStream.tee()
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
 
