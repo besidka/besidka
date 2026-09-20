@@ -14,6 +14,7 @@ import {
   isReasoningActiveForTurn,
   normalizeChatClientError,
   shouldBlockGenerationRecovery,
+  shouldDisplayRegenerate,
   shouldForceGenericLoadingIndicator,
   shouldShowGenericLoadingIndicator,
   shouldNotifyGenerationReadyWhileHidden,
@@ -444,6 +445,96 @@ describe('chat error helpers', () => {
     ]
 
     expect(shouldRecoverInterruptedGeneration('ready', messages)).toBe(false)
+  })
+
+  it('does not show regenerate while a fresh assistant message is streaming', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ]
+
+    expect(
+      shouldDisplayRegenerate('streaming', false, messages, false),
+    ).toBe(false)
+  })
+
+  it('does not show regenerate for a lone empty assistant while streaming', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ]
+
+    expect(
+      shouldDisplayRegenerate('streaming', false, messages, false),
+    ).toBe(false)
+  })
+
+  it('shows regenerate for a genuinely errored empty assistant reply', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ]
+
+    expect(
+      shouldDisplayRegenerate('error', false, messages, false),
+    ).toBe(true)
+  })
+
+  it('shows regenerate after the user stops an in-flight generation', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Completed answer' }],
+      } as UIMessage,
+    ]
+
+    expect(
+      shouldDisplayRegenerate('ready', true, messages, false),
+    ).toBe(true)
+  })
+
+  it('does not show regenerate for a research model even when otherwise retryable', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      } as UIMessage,
+    ]
+
+    expect(
+      shouldDisplayRegenerate('error', false, messages, true),
+    ).toBe(false)
   })
 
   it('auto-recovers from a Safari "Load failed" disconnect even when the SDK does not flag isDisconnect', () => {

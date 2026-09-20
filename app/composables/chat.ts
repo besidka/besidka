@@ -268,6 +268,35 @@ export function shouldRecoverInterruptedGeneration(
   return shouldSurfaceEmptyAssistantResponse(messages)
 }
 
+// A freshly-created assistant message starts with empty `parts: []` and is
+// only populated into `chatSdk.messages` on the stream's first `write()`
+// call (the `start` chunk), which renders before `start-step`/`text-start`
+// give it real parts. During that window `hasRetryableAssistantFailure`
+// reads as true for an in-progress turn, not a failed one, and would show
+// Regenerate alongside Stop. This mirrors displayStop's own generating
+// check (including its `!isStopped` escape hatch for the abort→ready
+// transition) so a genuinely failed/errored turn still shows Regenerate.
+export function shouldDisplayRegenerate(
+  status: ChatStatus,
+  isStopped: boolean,
+  messages: UIMessage[],
+  isResearchModelSelected: boolean,
+): boolean {
+  const isActivelyGenerating = ['submitted', 'streaming'].includes(status)
+    && !isStopped
+
+  if (isActivelyGenerating) {
+    return false
+  }
+
+  return (
+    isStopped
+    || status === 'error'
+    || hasRetryableAssistantFailure(messages)
+  )
+  && !isResearchModelSelected
+}
+
 // Issue #263/#268 follow-up: recovery/regenerate of an unanswered last user
 // turn must never hit the streaming endpoint for a deep-research chat —
 // research turns are answered asynchronously by the poll loop, and the
@@ -984,12 +1013,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   })
 
   const displayRegenerate = computed<boolean>(() => {
-    return (
-      isStopped.value
-      || chatSdk.status === 'error'
-      || hasRetryableAssistantFailure(chatSdk.messages)
+    return shouldDisplayRegenerate(
+      chatSdk.status,
+      isStopped.value,
+      chatSdk.messages,
+      isResearchModelSelected.value,
     )
-    && !isResearchModelSelected.value
   })
 
   function clearScheduledGenerationRetry(): void {
