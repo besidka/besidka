@@ -43,6 +43,10 @@ function timerLabel(wrapper: VueWrapper): string {
   return wrapper.find('[data-testid="reasoning-timer-label"]').text()
 }
 
+function headerSpan(wrapper: VueWrapper) {
+  return wrapper.get('summary').get('span.flex')
+}
+
 function isMainExpanded(wrapper: VueWrapper): boolean {
   return wrapper.get('details').element.hasAttribute('open')
 }
@@ -258,7 +262,7 @@ describe('Chat/Reasoning', () => {
     expect(timerLabel(wrapper)).toBe('(12s)')
   })
 
-  it('seeds the frozen duration on a recovery-poll remount that lands after reasoning already finished', async () => {
+  it('seeds the frozen duration on a recovery-poll remount that lands after reasoning and any tool calls have already finished, with answer text now streaming', async () => {
     const wrapper = await mountSuspended(Reasoning, {
       props: {
         message: createMessage([
@@ -267,7 +271,8 @@ describe('Chat/Reasoning', () => {
             text: 'Thinking about the request.',
             state: 'done',
           },
-          { type: 'tool-web_search', state: 'input-available' },
+          { type: 'tool-web_search', state: 'output-available' },
+          { type: 'text', text: 'Here is the answer.', state: 'streaming' },
         ]),
         status: 'streaming',
         reasoningLevel: 'low',
@@ -346,7 +351,9 @@ describe('Chat/Reasoning', () => {
     vi.advanceTimersByTime(250)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('summary').text()).toContain('Reasoning: Thinking')
+    expect(wrapper.get('summary').text()).toContain('Reasoning:')
+    expect(wrapper.get('summary').text()).toContain('Thinking')
+    expect(headerSpan(wrapper).classes()).toContain('gap-1')
 
     vi.advanceTimersByTime(1750)
     await wrapper.vm.$nextTick()
@@ -455,7 +462,8 @@ describe('Chat/Reasoning', () => {
     vi.advanceTimersByTime(1000)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('summary').text()).toContain('Reasoning: Second pass')
+    expect(wrapper.get('summary').text()).toContain('Reasoning:')
+    expect(wrapper.get('summary').text()).toContain('Second pass')
     expect(timerLabel(wrapper)).toBe('(3s)')
 
     await wrapper.setProps({
@@ -727,6 +735,26 @@ describe('Chat/Reasoning', () => {
     expect(title.attributes('title')).toBe('Thinking about the request')
   })
 
+  it(
+    'renders the full untruncated title, wrapping instead of clipping, '
+    + 'for a bodyless step with a long single-sentence title',
+    async () => {
+      const longSentence
+        = 'The user wants to compare the Toyota Corolla and Camry 2026 '
+          + 'to the Kia Ceed.'
+      const wrapper = await mountSettledReasoning(longSentence)
+
+      const title = wrapper.get('[data-testid="reasoning-step-title"]')
+      const expectedTitle = longSentence.slice(0, -1)
+
+      expect(title.text()).toBe(expectedTitle)
+      expect(title.attributes('title')).toBe(expectedTitle)
+      expect(title.classes()).not.toContain('truncate')
+      expect(title.classes()).toContain('break-words')
+      expect(title.classes()).toContain('min-w-0')
+    },
+  )
+
   it('applies the min-h-0 padding treatment to the main summary', async () => {
     const wrapper = await mountSettledReasoning('Thinking about the request.')
 
@@ -735,7 +763,7 @@ describe('Chat/Reasoning', () => {
 
   it(
     'separates the streaming "Reasoning:" prefix from the live summary '
-    + 'with a space, for any provider’s reasoning text',
+    + 'with a flex gap, for any provider’s reasoning text',
     async () => {
       const wrapper = await mountAndStartReasoning(Date.now())
 
@@ -744,8 +772,457 @@ describe('Chat/Reasoning', () => {
 
       const summary = wrapper.get('summary')
 
-      expect(summary.text()).toContain('Reasoning: Thinking about the')
-      expect(summary.text()).not.toContain('Reasoning:Thinking')
+      expect(summary.text()).toContain('Reasoning:')
+      expect(summary.text()).toContain('Thinking about the')
+      expect(headerSpan(wrapper).classes()).toContain('gap-1')
     },
   )
+
+  it('renders a step and mounts the box for a tool part alone', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          {
+            type: 'tool-web_search_preview',
+            toolCallId: 'call-1',
+            state: 'input-available',
+          },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: Date.now(),
+      },
+    })
+
+    expect(wrapper.find('details').exists()).toBe(true)
+
+    const titles = wrapper.findAll('[data-testid="reasoning-step-title"]')
+
+    expect(titles).toHaveLength(1)
+    expect(titles[0]?.text()).toBe('Searching the web')
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(0)
+  })
+
+  it('interleaves reasoning and tool steps in true chronological order', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'reasoning', text: 'Step A.', state: 'done' },
+          { type: 'tool-web_search_preview', state: 'output-available' },
+          { type: 'reasoning', text: 'Step B.', state: 'streaming' },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: Date.now(),
+      },
+    })
+
+    const titles = wrapper.findAll('[data-testid="reasoning-step-title"]')
+
+    expect(titles.map(title => title.text())).toEqual([
+      'Step A',
+      'Searched the web',
+      'Step B',
+    ])
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(2)
+  })
+
+  it('keeps the header live via a pending tool call after reasoning has finished', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          {
+            type: 'reasoning',
+            text: 'Thinking about the request.',
+            state: 'done',
+          },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 2000,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const segmentStartedAt = Date.now()
+
+    await wrapper.setProps({
+      message: createMessage([
+        {
+          type: 'reasoning',
+          text: 'Thinking about the request.',
+          state: 'done',
+        },
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ]),
+      reasoningSegmentStartedAt: segmentStartedAt,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(2s)')
+
+    const headerTitle = wrapper.get('[data-testid="reasoning-timer-label"]')
+      .element.parentElement
+
+    expect(headerTitle?.classList.contains('skeleton')).toBe(true)
+
+    vi.advanceTimersByTime(3000)
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(5s)')
+
+    await wrapper.setProps({
+      message: createMessage([
+        {
+          type: 'reasoning',
+          text: 'Thinking about the request.',
+          state: 'done',
+        },
+        { type: 'tool-web_search_preview', state: 'output-available' },
+      ]),
+      reasoningAccumulatedMs: 5000,
+      reasoningSegmentStartedAt: 0,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(5s)')
+
+    vi.advanceTimersByTime(5000)
+    await wrapper.vm.$nextTick()
+
+    expect(timerLabel(wrapper)).toBe('(5s)')
+  })
+
+  it('switches the header title to the pending tool once reasoning has finished', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+      global: {
+        stubs: {
+          MDCCached: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      message: createMessage([
+        {
+          type: 'reasoning',
+          text: '**Thinking**\n\nWorking through the details.',
+          state: 'streaming',
+        },
+      ]),
+      reasoningSegmentStartedAt: Date.now(),
+    })
+    await wrapper.vm.$nextTick()
+
+    vi.advanceTimersByTime(250)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('summary').text()).toContain('Reasoning:')
+    expect(wrapper.get('summary').text()).toContain('Thinking')
+
+    await wrapper.setProps({
+      message: createMessage([
+        {
+          type: 'reasoning',
+          text: '**Thinking**\n\nWorking through the details.',
+          state: 'done',
+        },
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ]),
+      reasoningAccumulatedMs: 1000,
+      reasoningSegmentStartedAt: Date.now(),
+    })
+    await wrapper.vm.$nextTick()
+
+    vi.advanceTimersByTime(250)
+    await wrapper.vm.$nextTick()
+
+    const summary = wrapper.get('summary').text()
+
+    expect(summary).toContain('Searching the web')
+    expect(summary).not.toContain('Thinking')
+  })
+
+  it('shows the done title and no spinner once a tool call settles to output-available', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'output-available' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const title = wrapper.get('[data-testid="reasoning-step-title"]')
+
+    expect(title.text()).toBe('Searched the web')
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(1)
+  })
+
+  it('renders a failed title for output-error, never spinning indefinitely', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'output-error' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const title = wrapper.get('[data-testid="reasoning-step-title"]')
+
+    expect(title.text()).toBe('Search failed')
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(0)
+    expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
+  })
+
+  it('renders a failed title for output-denied, never spinning indefinitely', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'output-denied' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const title = wrapper.get('[data-testid="reasoning-step-title"]')
+
+    expect(title.text()).toBe('Search failed')
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(0)
+    expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(1)
+  })
+
+  it('renders the plain done title and green dot for approval-requested, not spinning nor failed', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'approval-requested' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const title = wrapper.get('[data-testid="reasoning-step-title"]')
+
+    expect(title.text()).toBe('Searched the web')
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(1)
+    expect(wrapper.findAll('.reasoning-step-failed')).toHaveLength(0)
+  })
+
+  it('treats an orphaned pending tool call as settled once status leaves streaming', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'input-available' },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: Date.now(),
+      },
+    })
+
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(0)
+
+    await wrapper.setProps({ status: 'ready' })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.reasoning-step-complete')).toHaveLength(1)
+  })
+
+  it('never turns a generate_image tool part into a reasoning step', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          {
+            type: 'reasoning',
+            text: 'Thinking about the request.',
+            state: 'done',
+          },
+          { type: 'tool-generate_image', state: 'input-available' },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const titles = wrapper.findAll('[data-testid="reasoning-step-title"]')
+
+    expect(titles).toHaveLength(1)
+    expect(titles[0]?.text()).toBe('Thinking about the request')
+    expect(
+      wrapper.find('[data-testid="reasoning-timer-label"]').exists(),
+    ).toBe(false)
+  })
+
+  it('titles a Moonshot-shaped dynamic tool key and a generic tool name', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-$web_search', state: 'input-available' },
+          { type: 'tool-some_other_thing', state: 'input-available' },
+        ]),
+        status: 'streaming',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: Date.now(),
+      },
+    })
+
+    const titles = wrapper.findAll('[data-testid="reasoning-step-title"]')
+
+    expect(titles.map(title => title.text())).toEqual([
+      'Searching the web',
+      'Using some other thing',
+    ])
+  })
+
+  it('still auto-expands the single expandable step once settled, with a tool step present', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          {
+            type: 'reasoning',
+            text: '**Step 1**\n\nSome body text.',
+            state: 'done',
+          },
+          { type: 'tool-web_search_preview', state: 'output-available' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+      global: {
+        stubs: {
+          MDCCached: true,
+        },
+      },
+    })
+
+    await wrapper.get('summary').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(isMainExpanded(wrapper)).toBe(true)
+
+    const reasoningStepDetails = wrapper.findAll('details')[1]
+
+    expect(reasoningStepDetails?.attributes('open')).toBeDefined()
+  })
+
+  it('exposes no chevron for a bodyless tool step and ignores clicks on it', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'output-available' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    const stepDetails = wrapper.findAll('details')[1]
+    const stepSummary = stepDetails!.get('summary')
+
+    expect(stepSummary.find('.iconify').exists()).toBe(false)
+
+    await stepSummary.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.findAll('details')[1]?.attributes('open'),
+    ).toBeUndefined()
+  })
+
+  it(
+    'keeps the live tool title bare, without a leaked "Reasoning:" '
+    + 'prefix, for a tool-only turn with zero reasoning-kind steps',
+    async () => {
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage([]),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+        },
+      })
+
+      await wrapper.setProps({
+        message: createMessage([
+          {
+            type: 'tool-web_search_preview',
+            state: 'input-available',
+          },
+        ]),
+        reasoningSegmentStartedAt: Date.now(),
+      })
+      await wrapper.vm.$nextTick()
+
+      vi.advanceTimersByTime(250)
+      await wrapper.vm.$nextTick()
+
+      const summary = wrapper.get('summary').text()
+
+      expect(summary).toContain('Searching the web')
+      expect(summary).not.toContain('Reasoning:')
+    },
+  )
+
+  it('uses non-"Reasoning" wording for a tool-only box with zero reasoning-kind steps', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          { type: 'tool-web_search_preview', state: 'output-available' },
+        ]),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+      },
+    })
+
+    expect(wrapper.get('summary').text()).not.toContain('Reasoning')
+  })
 })

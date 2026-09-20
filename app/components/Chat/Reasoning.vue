@@ -18,15 +18,18 @@
             class="size-4 text-base-content/80"
           />
         <span
-          class="flex min-w-0 items-baseline font-medium text-xs"
+          class="flex min-w-0 items-baseline gap-1 font-medium text-xs"
           :class="[
-            isReasoningStreaming
+            isThinkingStreaming
               ? 'skeleton skeleton-text reasoning-main-title-skeleton'
               : 'text-base-content/90',
           ]"
         >
-          <template v-if="isReasoningStreaming && activeStreamingTitle.length">
-            <span class="shrink-0 max-sm:hidden">Reasoning: </span>
+          <template v-if="isThinkingStreaming && activeStreamingTitle.length">
+            <span
+              v-if="hasReasoningKindStep"
+              class="shrink-0 max-sm:hidden"
+            >Reasoning:</span>
             <span
               :title="activeStreamingTitle"
               class="min-w-0 truncate"
@@ -91,8 +94,13 @@
                   "
                 >
                   <SvgoLoader
-                    v-if="isStreamingStep(step.id)"
+                    v-if="step.pending"
                     class="size-3.5 text-accent"
+                  />
+                  <span
+                    v-else-if="step.failed"
+                    aria-hidden="true"
+                    class="reasoning-step-failed"
                   />
                   <span
                     v-else
@@ -108,21 +116,29 @@
                 <summary
                   :aria-controls="`reasoning-${message.id}-${step.id}-content`"
                   class="collapse-title flex min-w-0 items-center p-0 text-xs"
-                  @click.prevent="toggleStep(step.id)"
+                  @click.prevent="toggleStep(step)"
                 >
                   <span
                     :title="step.title"
                     data-testid="reasoning-step-title"
-                    class="min-w-0 truncate"
+                    class="min-w-0"
                     :class="[
-                      isStreamingStep(step.id)
+                      step.body.length > 0
+                        ? 'truncate'
+                        : 'break-words',
+                      step.pending
                         ? 'skeleton skeleton-text reasoning-main-title-skeleton'
                         : undefined,
                     ]"
                   >
-                    {{ truncateReasoningTitle(step.title) }}
+                    {{
+                      step.body.length > 0
+                        ? truncateReasoningTitle(step.title)
+                        : step.title
+                    }}
                   </span>
                   <Icon
+                    v-if="step.body.length > 0"
                     name="lucide:chevron-right"
                     class="
                       ml-1 size-4 shrink-0 transition-transform
@@ -169,6 +185,9 @@ interface ReasoningStep {
   id: string
   title: string
   body: string
+  kind: 'reasoning' | 'tool'
+  pending: boolean
+  failed: boolean
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -190,25 +209,7 @@ const hasTextPart = computed<boolean>(() => {
   })
 })
 
-const reasoningSteps = computed<ReasoningStep[]>(() => {
-  const steps: ReasoningStep[] = []
-
-  for (const [partIndex, part] of reasoningParts.value.entries()) {
-    const sections = parseReasoningSections(part.text)
-
-    for (const [sectionIndex, section] of sections.entries()) {
-      steps.push({
-        id: `${partIndex}-${sectionIndex}`,
-        title: section.title,
-        body: section.body,
-      })
-    }
-  }
-
-  return steps
-})
-
-const isReasoningStreaming = computed<boolean>(() => {
+const isReasoningTextStreaming = computed<boolean>(() => {
   if (props.status !== 'streaming') {
     return false
   }
@@ -216,12 +217,87 @@ const isReasoningStreaming = computed<boolean>(() => {
   return hasStreamingReasoningPart(props.message.parts)
 })
 
-const activeStreamingStepId = computed<string>(() => {
-  if (!isReasoningStreaming.value) {
-    return ''
+const isThinkingStreaming = computed<boolean>(() => {
+  if (props.status !== 'streaming') {
+    return false
   }
 
-  return reasoningSteps.value.at(-1)?.id || ''
+  return isThinkingActive(props.message.parts)
+})
+
+const reasoningSteps = computed<ReasoningStep[]>(() => {
+  const steps: ReasoningStep[] = []
+  let reasoningPartIndex = 0
+  let lastReasoningStepIndex = -1
+
+  for (const [partIndex, part] of props.message.parts.entries()) {
+    if (part.type === 'reasoning') {
+      if (!part.text?.length) {
+        continue
+      }
+
+      for (const [sectionIndex, section] of parseReasoningSections(
+        part.text,
+      ).entries()) {
+        lastReasoningStepIndex = steps.length
+        steps.push({
+          id: `${reasoningPartIndex}-${sectionIndex}`,
+          title: section.title,
+          body: section.body,
+          kind: 'reasoning',
+          pending: false,
+          failed: false,
+        })
+      }
+
+      reasoningPartIndex += 1
+
+      continue
+    }
+
+    if (!isThinkingToolPart(part)) {
+      continue
+    }
+
+    const isPending = props.status === 'streaming' && isPendingToolPart(part)
+    const isFailed = isFailedToolPart(part)
+    const toolCallId = (part as { toolCallId?: string }).toolCallId
+
+    steps.push({
+      id: `tool-${toolCallId || partIndex}`,
+      title: getToolStepTitle(getToolPartName(part), isPending, isFailed),
+      body: '',
+      kind: 'tool',
+      pending: isPending,
+      failed: isFailed,
+    })
+  }
+
+  if (lastReasoningStepIndex >= 0 && isReasoningTextStreaming.value) {
+    const lastReasoningStep = steps[lastReasoningStepIndex]
+
+    if (lastReasoningStep) {
+      lastReasoningStep.pending = true
+    }
+  }
+
+  return steps
+})
+
+const expandableSteps = computed<ReasoningStep[]>(() => {
+  return reasoningSteps.value.filter((step) => {
+    return step.body.length > 0
+  })
+})
+
+const latestExpandableStepId = computed<string>(() => {
+  return expandableSteps.value.at(-1)?.id || ''
+})
+
+const hasReasoningKindStep = computed<boolean>(() => {
+  return reasoningSteps.value.some((step) => {
+    return step.kind === 'reasoning'
+  })
 })
 
 const streamingTitle = shallowRef<string>('')
@@ -229,17 +305,31 @@ const streamingTitleUpdateTimer = shallowRef<
   ReturnType<typeof setTimeout> | null
 >(null)
 const latestStreamingTitleCandidate = computed<string>(() => {
-  const latestReasoningText = reasoningParts.value.at(-1)?.text || ''
+  const pendingToolStep = reasoningSteps.value
+    .filter((step) => {
+      return step.kind === 'tool' && step.pending
+    })
+    .at(-1)
 
-  return extractLastCompleteReasoningTitle(latestReasoningText)
+  if (pendingToolStep && !isReasoningTextStreaming.value) {
+    return pendingToolStep.title
+  }
+
+  return extractLastCompleteReasoningTitle(
+    reasoningParts.value.at(-1)?.text || '',
+  )
 })
 
 const mainTitle = computed<string>(() => {
-  return isReasoningStreaming.value ? 'Reasoning' : 'Reasoning process'
+  if (hasReasoningKindStep.value) {
+    return isThinkingStreaming.value ? 'Reasoning' : 'Reasoning process'
+  }
+
+  return isThinkingStreaming.value ? 'Working' : 'Steps'
 })
 
 const activeStreamingTitle = computed<string>(() => {
-  if (!isReasoningStreaming.value) {
+  if (!isThinkingStreaming.value) {
     return ''
   }
 
@@ -262,25 +352,38 @@ const reasoningInterval = shallowRef<
 >(null)
 
 const reasoningLabel = computed<string>(() => {
-  if (isReasoningStreaming.value && reasoningSeconds.value > 0) {
+  if (isThinkingStreaming.value && reasoningSeconds.value > 0) {
     return `${reasoningSeconds.value}s`
   }
 
-  if (!isReasoningStreaming.value && reasoningDurationSeconds.value > 0) {
+  if (!isThinkingStreaming.value && reasoningDurationSeconds.value > 0) {
     return `${reasoningDurationSeconds.value}s`
   }
 
   return ''
 })
 
+// The gate (streaming + "some step exists") still checks the latest step
+// regardless of body, since the very first streamed chunk of a real
+// reasoning turn is always bodyless (no title/sentence boundary yet) and
+// must still auto-open the box. Only the step targeted for expansion is
+// restricted to latestExpandableStepId, so a bodyless tool step can never
+// steal expansion away from a reasoning step that actually has content.
 watch(
   [
-    isReasoningStreaming,
+    isThinkingStreaming,
     () => reasoningSteps.value.at(-1)?.id,
+    latestExpandableStepId,
     isReasoningExpanded,
     isStreamingExpandOverride,
   ],
-  ([streaming, latestStepId, expandedSetting, overrideExpanded]) => {
+  ([
+    streaming,
+    latestStepId,
+    latestExpandableId,
+    expandedSetting,
+    overrideExpanded,
+  ]) => {
     if (!streaming || !latestStepId) {
       return
     }
@@ -294,7 +397,7 @@ watch(
     }
 
     isMainExpanded.value = true
-    expandedStepId.value = latestStepId
+    expandedStepId.value = latestExpandableId
   },
   {
     flush: 'post',
@@ -321,7 +424,7 @@ watch(hasTextPart, (textStarted, hadText) => {
 // immediate: true — a recovery-poll remount (see turnStartedAt prop above)
 // can create this component directly in an already-streaming state, with
 // no false->true edge for a non-immediate watcher to ever observe.
-watch(isReasoningStreaming, (streaming, wasStreaming) => {
+watch(isThinkingStreaming, (streaming, wasStreaming) => {
   if (streaming) {
     startReasoningTimer()
 
@@ -332,20 +435,20 @@ watch(isReasoningStreaming, (streaming, wasStreaming) => {
     // Only expandedStepId is wiped here, not isStreamingExpandOverride — on
     // OpenAI's Responses API this transition can fire once per reasoning
     // summary part (a real done->streaming boundary between two summary
-    // parts of the same reasoning block, not a resume after a tool gap), and
-    // clearing the user's manual "keep this open" override on every one of
-    // those would silently reset it several times per turn.
+    // parts of the same reasoning block), because a tool-calling gap no
+    // longer ends a thinking segment at all under isThinkingStreaming.
     expandedStepId.value = ''
   } else if (
     wasStreaming === undefined
     && props.status === 'streaming'
     && props.reasoningAccumulatedMs > 0
   ) {
-    // A recovery-poll remount landing after this turn's reasoning has
-    // already fully finished (but the turn itself is still going, e.g. a
-    // tool call is in flight) would otherwise show no duration label at all
-    // for the rest of the message, since stopReasoningTimer() below is a
-    // no-op when no local interval was ever started.
+    // A recovery-poll remount landing after this turn's reasoning AND any
+    // tool calls have already finished (e.g. reasoning is done, the tool
+    // call it triggered is also done, and answer text is now streaming)
+    // would otherwise show no duration label at all for the rest of the
+    // message, since stopReasoningTimer() below is a no-op when no local
+    // interval was ever started.
     reasoningDurationSeconds.value = computeElapsedReasoningSeconds()
   }
 
@@ -355,7 +458,7 @@ watch(isReasoningStreaming, (streaming, wasStreaming) => {
 })
 
 watch(
-  [isReasoningStreaming, latestStreamingTitleCandidate],
+  [isThinkingStreaming, latestStreamingTitleCandidate],
   ([streaming, candidateTitle]) => {
     if (!streaming) {
       streamingTitle.value = ''
@@ -379,11 +482,11 @@ watch(
 watch(
   [
     isMainExpanded,
-    () => reasoningSteps.value.length,
-    isReasoningStreaming,
+    () => expandableSteps.value.length,
+    isThinkingStreaming,
   ],
-  ([mainExpanded, stepsLength, streaming]) => {
-    if (!mainExpanded || stepsLength !== 1) {
+  ([mainExpanded, expandableStepsLength, streaming]) => {
+    if (!mainExpanded || expandableStepsLength !== 1) {
       return
     }
 
@@ -391,7 +494,7 @@ watch(
       return
     }
 
-    const onlyStepId = reasoningSteps.value[0]?.id
+    const onlyStepId = expandableSteps.value[0]?.id
 
     if (!onlyStepId || expandedStepId.value === onlyStepId) {
       return
@@ -418,7 +521,7 @@ function toggleMain() {
 
   isMainExpanded.value = willExpand
 
-  if (!isReasoningStreaming.value) {
+  if (!isThinkingStreaming.value) {
     return
   }
 
@@ -431,7 +534,7 @@ function toggleMain() {
 
   isStreamingExpandOverride.value = true
 
-  const latestStepId = reasoningSteps.value.at(-1)?.id
+  const latestStepId = latestExpandableStepId.value
 
   if (!latestStepId) {
     return
@@ -440,22 +543,18 @@ function toggleMain() {
   expandedStepId.value = latestStepId
 }
 
-function toggleStep(stepId: string) {
-  if (expandedStepId.value === stepId) {
+function toggleStep(step: ReasoningStep) {
+  if (!step.body.length) {
+    return
+  }
+
+  if (expandedStepId.value === step.id) {
     expandedStepId.value = ''
 
     return
   }
 
-  expandedStepId.value = stepId
-}
-
-function isStreamingStep(stepId: string): boolean {
-  if (!activeStreamingStepId.value) {
-    return false
-  }
-
-  return activeStreamingStepId.value === stepId
+  expandedStepId.value = step.id
 }
 
 // Elapsed time is computed from props owned by useChat() (see its comments
@@ -466,12 +565,14 @@ function isStreamingStep(stepId: string): boolean {
 // freshly remounted instance immediately computes the correct elapsed time
 // regardless of how many times it has been torn down and rebuilt.
 //
-// The result is the sum of every completed reasoning segment this turn
+// The result is the sum of every completed thinking segment this turn
 // (reasoningAccumulatedMs) plus however long the current live segment has
 // been running (now - reasoningSegmentStartedAt) — genuine "time spent
-// thinking", not wall-clock-since-turn-start, so a tool-calling gap between
-// two reasoning segments is never counted. turnStartedAt is kept only as the
-// "is this prop wiring live at all" gate (0 on the shared/read-only page).
+// thinking", not wall-clock-since-turn-start. The total now covers both
+// streaming reasoning and in-flight non-image tool calls (both count as
+// "thinking"), while still excluding answer-text streaming and idle time.
+// turnStartedAt is kept only as the "is this prop wiring live at all" gate
+// (0 on the shared/read-only page).
 function computeElapsedReasoningSeconds(): number {
   if (!props.turnStartedAt) {
     return 0
@@ -560,6 +661,18 @@ onBeforeUnmount(() => {
   background-color: color-mix(
     in oklab,
     var(--color-accent) 20%,
+    transparent
+  );
+}
+
+.reasoning-step-failed {
+  display: inline-flex;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 9999px;
+  background-color: color-mix(
+    in oklab,
+    var(--color-error) 20%,
     transparent
   );
 }

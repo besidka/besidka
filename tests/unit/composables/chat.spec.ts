@@ -675,6 +675,37 @@ describe('chat error helpers', () => {
     expect(isAssistantVisible.value).toBe(true)
   })
 
+  it('treats a tool-only assistant message with no text or reasoning as visible content', () => {
+    const toolOnlyMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(toolOnlyMessage)).toBe(true)
+  })
+
+  it('leaves a generate_image-only message governed by the existing image path', () => {
+    const generateImageOnlyMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-generate_image',
+          state: 'input-available',
+          input: { prompt: 'A quiet forest' },
+        },
+      ],
+    } as unknown as UIMessage
+
+    // Already true via isVisibleGenerateImageToolPart (input-available is a
+    // visible in-progress state for image generation) — unaffected by the
+    // new isThinkingToolPart clause, since generate_image is excluded there.
+    expect(hasVisibleAssistantContent(generateImageOnlyMessage)).toBe(true)
+  })
+
   it('treats a persisted file-only reply as visible assistant content', () => {
     const fileAssistantMessage = {
       id: 'assistant-1',
@@ -1037,6 +1068,80 @@ describe('isReasoningActiveForTurn', () => {
     } as UIMessage
 
     expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is true while reasoning is done but a web-search tool call is pending', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is false once reasoning and the tool call have both settled', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'tool-web_search_preview', state: 'output-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true for a pending tool call with no reasoning at all', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is false for a pending generate_image tool call', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-generate_image', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is false for a pending tool call when the status is not streaming', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('ready', message)).toBe(false)
+  })
+
+  it('is false for a pending tool call on a user-role last message', () => {
+    const message = {
+      id: 'user-1',
+      role: 'user',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
   })
 })
 

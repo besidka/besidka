@@ -8,6 +8,34 @@ export interface ParsedReasoningSection {
 const TITLE_LENGTH_LIMIT = 80
 const TITLE_DISPLAY_LIMIT = 30
 const TITLE_DISPLAY_WORD_BOUNDARY_MINIMUM = 20
+const TOOL_PART_TYPE_PREFIX = 'tool-'
+const EXCLUDED_TOOL_STEP_NAMES = new Set<string>(['generate_image'])
+const PENDING_TOOL_STATES = new Set<string>([
+  'input-streaming',
+  'input-available',
+])
+const FAILED_TOOL_STATES = new Set<string>([
+  'output-error',
+  'output-denied',
+])
+const TOOL_STEP_TITLES = new Map<string, {
+  pending: string
+  done: string
+  failed: string
+}>([
+  ['web_search_preview', {
+    pending: 'Searching the web',
+    done: 'Searched the web',
+    failed: 'Search failed',
+  }],
+])
+
+interface ToolLikeUIPart {
+  type: string
+  state?: string
+  toolName?: string
+  preliminary?: boolean
+}
 
 export function truncateReasoningTitle(rawTitle: string): string {
   const title = rawTitle.trim()
@@ -100,6 +128,119 @@ export function hasStreamingReasoningPart(
       && part.state === 'streaming'
     )
   })
+}
+
+export function getToolPartName(part: UIMessage['parts'][number]): string {
+  if (part.type === 'dynamic-tool') {
+    return (part as ToolLikeUIPart).toolName ?? ''
+  }
+
+  if (part.type.startsWith(TOOL_PART_TYPE_PREFIX)) {
+    return part.type.slice(TOOL_PART_TYPE_PREFIX.length)
+  }
+
+  return ''
+}
+
+export function isThinkingToolPart(
+  part: UIMessage['parts'][number],
+): boolean {
+  const name = getToolPartName(part)
+
+  return name.length > 0 && !EXCLUDED_TOOL_STEP_NAMES.has(name)
+}
+
+export function isPendingToolPart(
+  part: UIMessage['parts'][number],
+): boolean {
+  if (!isThinkingToolPart(part)) {
+    return false
+  }
+
+  const toolPart = part as ToolLikeUIPart
+
+  return PENDING_TOOL_STATES.has(toolPart.state ?? '')
+    || (toolPart.state === 'output-available' && toolPart.preliminary === true)
+}
+
+export function isFailedToolPart(
+  part: UIMessage['parts'][number],
+): boolean {
+  if (!isThinkingToolPart(part)) {
+    return false
+  }
+
+  const toolPart = part as ToolLikeUIPart
+
+  return FAILED_TOOL_STATES.has(toolPart.state ?? '')
+}
+
+export function hasPendingToolPart(
+  parts: UIMessage['parts'] | undefined,
+): boolean {
+  if (!parts) {
+    return false
+  }
+
+  return parts.some(isPendingToolPart)
+}
+
+// Deliberately status-agnostic — both call sites gate on status === 'streaming'
+// themselves.
+export function isThinkingActive(
+  parts: UIMessage['parts'] | undefined,
+): boolean {
+  return hasStreamingReasoningPart(parts) || hasPendingToolPart(parts)
+}
+
+function humanizeToolName(name: string): string {
+  const humanized = name
+    .replace(/^[^a-zA-Z0-9]+/, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (humanized.length === 0) {
+    return 'a tool'
+  }
+
+  return humanized
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+export function getToolStepTitle(
+  toolName: string,
+  isPending: boolean,
+  isFailed: boolean,
+): string {
+  const knownTitles = TOOL_STEP_TITLES.get(toolName)
+
+  if (knownTitles) {
+    if (isFailed) {
+      return knownTitles.failed
+    }
+
+    return isPending ? knownTitles.pending : knownTitles.done
+  }
+
+  if (toolName.toLowerCase().includes('search')) {
+    if (isFailed) {
+      return 'Search failed'
+    }
+
+    return isPending ? 'Searching the web' : 'Searched the web'
+  }
+
+  const humanized = humanizeToolName(toolName)
+
+  if (isFailed) {
+    return `${capitalize(humanized)} failed`
+  }
+
+  return isPending ? `Using ${humanized}` : `Used ${humanized}`
 }
 
 export function extractLastCompleteReasoningTitle(text: string): string {

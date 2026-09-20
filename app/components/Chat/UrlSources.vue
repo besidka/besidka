@@ -86,7 +86,11 @@ async function openLink(source: SourceUrlUIPart) {
 }
 
 function getLabel(source: SourceUrlUIPart): string {
-  if (source.title && source.title.length <= MAX_TITLE_LENGTH) {
+  if (
+    source.title
+    && source.title.length <= MAX_TITLE_LENGTH
+    && !/^\d+$/.test(source.title)
+  ) {
     return source.title
   }
 

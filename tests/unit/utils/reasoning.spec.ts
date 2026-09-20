@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
 import {
   extractLastCompleteReasoningTitle,
+  getToolPartName,
+  getToolStepTitle,
+  hasPendingToolPart,
   hasStreamingReasoningPart,
+  isFailedToolPart,
+  isThinkingActive,
+  isThinkingToolPart,
   normalizeReasoningTitle,
   parseReasoningSections,
   truncateReasoningTitle,
@@ -249,5 +255,219 @@ describe('hasStreamingReasoningPart', () => {
     ]
 
     expect(hasStreamingReasoningPart(parts)).toBe(true)
+  })
+})
+
+describe('isThinkingToolPart / getToolPartName', () => {
+  it('names a static tool-prefixed part and treats it as a thinking part', () => {
+    const part = {
+      type: 'tool-web_search_preview',
+      state: 'input-available',
+    } as UIMessage['parts'][number]
+
+    expect(getToolPartName(part)).toBe('web_search_preview')
+    expect(isThinkingToolPart(part)).toBe(true)
+  })
+
+  it('never treats a generate_image tool part as a thinking part', () => {
+    const states = ['input-streaming', 'input-available', 'output-available', 'output-error']
+
+    for (const state of states) {
+      const part = {
+        type: 'tool-generate_image',
+        state,
+      } as UIMessage['parts'][number]
+
+      expect(getToolPartName(part)).toBe('generate_image')
+      expect(isThinkingToolPart(part)).toBe(false)
+    }
+  })
+
+  it('names a dynamic-tool part from its toolName field', () => {
+    const part = {
+      type: 'dynamic-tool',
+      toolName: 'whatever',
+      state: 'input-available',
+    } as UIMessage['parts'][number]
+
+    expect(getToolPartName(part)).toBe('whatever')
+    expect(isThinkingToolPart(part)).toBe(true)
+  })
+
+  it('returns an empty name for non-tool parts', () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'Answer' },
+      { type: 'reasoning', text: 'Thinking', state: 'done' },
+      {
+        type: 'source-url',
+        sourceId: 'source-1',
+        url: 'https://example.com',
+      },
+    ]
+
+    for (const part of parts) {
+      expect(getToolPartName(part)).toBe('')
+      expect(isThinkingToolPart(part)).toBe(false)
+    }
+  })
+})
+
+describe('hasPendingToolPart', () => {
+  it('returns false for an empty or undefined parts list', () => {
+    expect(hasPendingToolPart(undefined)).toBe(false)
+    expect(hasPendingToolPart([])).toBe(false)
+  })
+
+  it('treats input-streaming and input-available as pending', () => {
+    expect(hasPendingToolPart([
+      { type: 'tool-web_search', state: 'input-streaming' },
+    ] as UIMessage['parts'])).toBe(true)
+
+    expect(hasPendingToolPart([
+      { type: 'tool-web_search', state: 'input-available' },
+    ] as UIMessage['parts'])).toBe(true)
+  })
+
+  it('does not treat settled states as pending — allowlist regression guard', () => {
+    const settledStates = [
+      'output-available',
+      'output-error',
+      'output-denied',
+      'approval-requested',
+    ]
+
+    for (const state of settledStates) {
+      expect(hasPendingToolPart([
+        { type: 'tool-web_search', state },
+      ] as UIMessage['parts'])).toBe(false)
+    }
+  })
+
+  it('treats a preliminary output-available as pending', () => {
+    expect(hasPendingToolPart([
+      { type: 'tool-web_search', state: 'output-available', preliminary: true },
+    ] as UIMessage['parts'])).toBe(true)
+  })
+
+  it('never treats a pending generate_image part as pending', () => {
+    expect(hasPendingToolPart([
+      { type: 'tool-generate_image', state: 'input-available' },
+    ] as UIMessage['parts'])).toBe(false)
+  })
+
+  it('treats a pending dynamic-tool part as pending', () => {
+    expect(hasPendingToolPart([
+      { type: 'dynamic-tool', toolName: 'search', state: 'input-available' },
+    ] as UIMessage['parts'])).toBe(true)
+  })
+})
+
+describe('isThinkingActive', () => {
+  it('is true when reasoning alone is streaming', () => {
+    expect(isThinkingActive([
+      { type: 'reasoning', text: 'Thinking…', state: 'streaming' },
+    ] as UIMessage['parts'])).toBe(true)
+  })
+
+  it('is true when reasoning is done but a tool call is pending', () => {
+    expect(isThinkingActive([
+      { type: 'reasoning', text: 'Thinking…', state: 'done' },
+      { type: 'tool-web_search', state: 'input-available' },
+    ] as UIMessage['parts'])).toBe(true)
+  })
+
+  it('is false when reasoning and the tool call are both done', () => {
+    expect(isThinkingActive([
+      { type: 'reasoning', text: 'Thinking…', state: 'done' },
+      { type: 'tool-web_search', state: 'output-available' },
+    ] as UIMessage['parts'])).toBe(false)
+  })
+
+  it('is false when only a pending generate_image part is present', () => {
+    expect(isThinkingActive([
+      { type: 'tool-generate_image', state: 'input-available' },
+    ] as UIMessage['parts'])).toBe(false)
+  })
+})
+
+describe('getToolStepTitle', () => {
+  it('titles a known web_search_preview tool by pending state', () => {
+    expect(getToolStepTitle('web_search_preview', true, false))
+      .toBe('Searching the web')
+    expect(getToolStepTitle('web_search_preview', false, false))
+      .toBe('Searched the web')
+  })
+
+  it('titles a Moonshot-shaped dynamic search tool name without leaking symbols', () => {
+    const title = getToolStepTitle('$web_search', true, false)
+
+    expect(title).toBe('Searching the web')
+    expect(title).not.toContain('$')
+  })
+
+  it('titles an arbitrary tool name with a humanized fallback', () => {
+    expect(getToolStepTitle('my_custom_tool', true, false))
+      .toBe('Using my custom tool')
+    expect(getToolStepTitle('my_custom_tool', false, false))
+      .toBe('Used my custom tool')
+  })
+
+  it('falls back to "a tool" for an empty name with no trailing space', () => {
+    expect(getToolStepTitle('', true, false)).toBe('Using a tool')
+  })
+
+  it('titles a known web_search_preview tool as failed', () => {
+    expect(getToolStepTitle('web_search_preview', false, true))
+      .toBe('Search failed')
+  })
+
+  it('titles a generic search-matching tool as failed', () => {
+    expect(getToolStepTitle('some_search_tool', false, true))
+      .toBe('Search failed')
+  })
+
+  it('titles an arbitrary failed tool with a humanized, capitalized fallback', () => {
+    expect(getToolStepTitle('my_custom_tool', false, true))
+      .toBe('My custom tool failed')
+  })
+
+  it('falls back to "A tool failed" for an empty failed tool name', () => {
+    expect(getToolStepTitle('', false, true)).toBe('A tool failed')
+  })
+})
+
+describe('isFailedToolPart', () => {
+  it('treats output-error and output-denied as failed', () => {
+    expect(isFailedToolPart(
+      { type: 'tool-web_search', state: 'output-error' } as
+        UIMessage['parts'][number],
+    )).toBe(true)
+    expect(isFailedToolPart(
+      { type: 'tool-web_search', state: 'output-denied' } as
+        UIMessage['parts'][number],
+    )).toBe(true)
+  })
+
+  it('does not treat pending, done, or approval states as failed', () => {
+    const nonFailedStates = [
+      'input-streaming',
+      'input-available',
+      'output-available',
+      'approval-requested',
+      'approval-responded',
+    ]
+
+    for (const state of nonFailedStates) {
+      expect(isFailedToolPart(
+        { type: 'tool-web_search', state } as UIMessage['parts'][number],
+      )).toBe(false)
+    }
+  })
+
+  it('never treats a failed generate_image part as failed', () => {
+    expect(isFailedToolPart(
+      { type: 'tool-generate_image', state: 'output-error' } as
+        UIMessage['parts'][number],
+    )).toBe(false)
   })
 })

@@ -359,6 +359,15 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
       return true
     }
 
+    // A non-image tool part alone (no reasoning, no text yet) must count as
+    // visible content, otherwise shouldDisplayMessage hides the whole
+    // message bubble and the reasoning box's tool-call step can never
+    // render — this is a load-bearing dependency of the tool-call-as-
+    // reasoning-step feature, not a cosmetic change.
+    if (isThinkingToolPart(part)) {
+      return true
+    }
+
     if (
       part.type !== 'text'
       && part.type !== 'reasoning'
@@ -580,11 +589,12 @@ function reportChatClientError(payload: ChatClientErrorReport) {
 const MAX_GENERATION_RETRY_ATTEMPTS = 150
 const GENERATION_RETRY_DELAY_MS = 4_000
 
-// A turn's reasoning is "active" only while the last message is the
-// assistant's in-progress reply and at least one of its reasoning parts is
-// still being streamed by the provider — never inferred from the presence
-// of a text part, since xAI/OpenAI-agentic/Google turns can reopen
-// reasoning after a tool-calling gap that already produced text.
+// A turn counts as active "thinking" while the last message is the
+// assistant's in-progress reply and either at least one of its reasoning
+// parts is still being streamed by the provider, or a non-image tool call
+// is currently in flight — never inferred from the presence of a text
+// part, since xAI/OpenAI-agentic/Google turns can reopen reasoning or call
+// tools after a gap that already produced visible text.
 export function isReasoningActiveForTurn(
   status: ChatStatus,
   lastMessage: UIMessage | undefined,
@@ -597,13 +607,14 @@ export function isReasoningActiveForTurn(
     return false
   }
 
-  return hasStreamingReasoningPart(lastMessage.parts)
+  return isThinkingActive(lastMessage.parts)
 }
 
-// Folds a just-ended reasoning segment's duration into the running total.
-// wasActive false or a missing segmentStartedAt means there was no live
-// segment to fold (e.g. the very first evaluation, or a turn that never
-// reasoned at all), so the accumulated total is returned unchanged.
+// Folds a just-ended thinking segment (streaming reasoning or an in-flight
+// tool call) duration into the running total. wasActive false or a missing
+// segmentStartedAt means there was no live segment to fold (e.g. the very
+// first evaluation, or a turn that never reasoned at all), so the
+// accumulated total is returned unchanged.
 export function foldReasoningSegment(
   wasActive: boolean,
   accumulatedMs: number,
