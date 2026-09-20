@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { UIMessage } from 'ai'
 import {
   extractLastCompleteReasoningTitle,
+  hasStreamingReasoningPart,
   normalizeReasoningTitle,
   parseReasoningSections,
   truncateReasoningTitle,
@@ -198,5 +200,54 @@ describe('reasoning utils', () => {
 
   it('trims a title before measuring it', () => {
     expect(truncateReasoningTitle('   Step 9   ')).toBe('Step 9')
+  })
+})
+
+describe('hasStreamingReasoningPart', () => {
+  it('returns false for an empty or undefined parts list', () => {
+    expect(hasStreamingReasoningPart(undefined)).toBe(false)
+    expect(hasStreamingReasoningPart([])).toBe(false)
+  })
+
+  it('returns true when a reasoning part with text is streaming', () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'reasoning', text: 'Thinking…', state: 'streaming' },
+    ]
+
+    expect(hasStreamingReasoningPart(parts)).toBe(true)
+  })
+
+  it('returns false once the reasoning part has settled to done', () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'reasoning', text: 'Thinking…', state: 'done' },
+    ]
+
+    expect(hasStreamingReasoningPart(parts)).toBe(false)
+  })
+
+  it('ignores a streaming reasoning part with no text yet', () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'reasoning', text: '', state: 'streaming' },
+    ]
+
+    expect(hasStreamingReasoningPart(parts)).toBe(false)
+  })
+
+  it('ignores non-reasoning parts, even a streaming text part', () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'Answer', state: 'streaming' },
+    ]
+
+    expect(hasStreamingReasoningPart(parts)).toBe(false)
+  })
+
+  it('is true for a second reasoning part after an earlier one settled', () => {
+    const parts: UIMessage['parts'] = [
+      { type: 'reasoning', text: 'First pass', state: 'done' },
+      { type: 'tool-web_search', state: 'input-available' },
+      { type: 'reasoning', text: 'Second pass', state: 'streaming' },
+    ]
+
+    expect(hasStreamingReasoningPart(parts)).toBe(true)
   })
 })

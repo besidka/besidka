@@ -65,6 +65,8 @@
             :reasoning-level="getMessageReasoning(m, messageIndex)"
             :status="chatSdk.status"
             :turn-started-at="currentTurnStartedAt"
+            :reasoning-accumulated-ms="currentTurnReasoningAccumulatedMs"
+            :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
           />
           <div
             v-for="(part, index) in m.parts"
@@ -334,6 +336,8 @@ const {
   shouldDisplayMessage,
   files,
   currentTurnStartedAt,
+  currentTurnReasoningAccumulatedMs,
+  currentReasoningSegmentStartedAt,
   pendingClarification,
   pendingResearchTopic,
   isClarifying,

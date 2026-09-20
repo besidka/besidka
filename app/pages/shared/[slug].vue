@@ -175,6 +175,8 @@
             :reasoning-level="m.reasoning"
             status="ready"
             :turn-started-at="0"
+            :reasoning-accumulated-ms="0"
+            :reasoning-segment-started-at="0"
           />
           <div
             v-for="(part, index) in m.parts"

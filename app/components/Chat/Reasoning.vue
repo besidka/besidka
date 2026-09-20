@@ -161,6 +161,8 @@ const props = defineProps<{
   status: ChatStatus
   reasoningLevel: ReasoningLevel
   turnStartedAt: number
+  reasoningAccumulatedMs: number
+  reasoningSegmentStartedAt: number
 }>()
 
 interface ReasoningStep {
@@ -211,11 +213,7 @@ const isReasoningStreaming = computed<boolean>(() => {
     return false
   }
 
-  if (hasTextPart.value) {
-    return false
-  }
-
-  return reasoningParts.value.length > 0
+  return hasStreamingReasoningPart(props.message.parts)
 })
 
 const activeStreamingStepId = computed<string>(() => {
@@ -258,6 +256,7 @@ const {
 const isMainExpanded = shallowRef<boolean>(false)
 const expandedStepId = shallowRef<string>('')
 const isStreamingExpandOverride = shallowRef<boolean>(false)
+const hasAutoHiddenThisMessage = shallowRef<boolean>(false)
 const reasoningInterval = shallowRef<
   ReturnType<typeof setInterval> | null
 >(null)
@@ -286,6 +285,10 @@ watch(
       return
     }
 
+    if (hasAutoHiddenThisMessage.value) {
+      return
+    }
+
     if (!expandedSetting && !overrideExpanded) {
       return
     }
@@ -310,6 +313,7 @@ watch(hasTextPart, (textStarted, hadText) => {
   isMainExpanded.value = false
   expandedStepId.value = ''
   isStreamingExpandOverride.value = false
+  hasAutoHiddenThisMessage.value = true
 }, {
   flush: 'post',
 })
@@ -325,8 +329,24 @@ watch(isReasoningStreaming, (streaming, wasStreaming) => {
   }
 
   if (wasStreaming) {
+    // Only expandedStepId is wiped here, not isStreamingExpandOverride — on
+    // OpenAI's Responses API this transition can fire once per reasoning
+    // summary part (a real done->streaming boundary between two summary
+    // parts of the same reasoning block, not a resume after a tool gap), and
+    // clearing the user's manual "keep this open" override on every one of
+    // those would silently reset it several times per turn.
     expandedStepId.value = ''
-    isStreamingExpandOverride.value = false
+  } else if (
+    wasStreaming === undefined
+    && props.status === 'streaming'
+    && props.reasoningAccumulatedMs > 0
+  ) {
+    // A recovery-poll remount landing after this turn's reasoning has
+    // already fully finished (but the turn itself is still going, e.g. a
+    // tool call is in flight) would otherwise show no duration label at all
+    // for the rest of the message, since stopReasoningTimer() below is a
+    // no-op when no local interval was ever started.
+    reasoningDurationSeconds.value = computeElapsedReasoningSeconds()
   }
 
   stopReasoningTimer()
@@ -361,14 +381,13 @@ watch(
     isMainExpanded,
     () => reasoningSteps.value.length,
     isReasoningStreaming,
-    hasTextPart,
   ],
-  ([mainExpanded, stepsLength, streaming, textStarted]) => {
+  ([mainExpanded, stepsLength, streaming]) => {
     if (!mainExpanded || stepsLength !== 1) {
       return
     }
 
-    if (streaming && !textStarted) {
+    if (streaming) {
       return
     }
 
@@ -439,22 +458,34 @@ function isStreamingStep(stepId: string): boolean {
   return activeStreamingStepId.value === stepId
 }
 
-// Elapsed time is computed from props.turnStartedAt (owned by useChat(),
-// see its comment there) rather than a timestamp captured locally by this
-// component — the recovery-poll loop destroys and remounts this exact
-// component every few seconds while a turn is being resent, so any locally
-// captured "started at" value would reset on every poll and perpetually
-// show ~1s. Deriving from the stable prop means a freshly remounted
-// instance immediately computes the correct elapsed time regardless of how
-// many times it has been torn down and rebuilt.
+// Elapsed time is computed from props owned by useChat() (see its comments
+// there) rather than a timestamp captured locally by this component — the
+// recovery-poll loop destroys and remounts this exact component every few
+// seconds while a turn is being resent, so any locally captured "started at"
+// value would reset on every poll. Deriving from the stable props means a
+// freshly remounted instance immediately computes the correct elapsed time
+// regardless of how many times it has been torn down and rebuilt.
+//
+// The result is the sum of every completed reasoning segment this turn
+// (reasoningAccumulatedMs) plus however long the current live segment has
+// been running (now - reasoningSegmentStartedAt) — genuine "time spent
+// thinking", not wall-clock-since-turn-start, so a tool-calling gap between
+// two reasoning segments is never counted. turnStartedAt is kept only as the
+// "is this prop wiring live at all" gate (0 on the shared/read-only page).
 function computeElapsedReasoningSeconds(): number {
   if (!props.turnStartedAt) {
     return 0
   }
 
+  const liveSegmentElapsedMs = props.reasoningSegmentStartedAt
+    ? Date.now() - props.reasoningSegmentStartedAt
+    : 0
+
   return Math.max(
     1,
-    Math.round((Date.now() - props.turnStartedAt) / 1000),
+    Math.round(
+      (props.reasoningAccumulatedMs + liveSegmentElapsedMs) / 1000,
+    ),
   )
 }
 

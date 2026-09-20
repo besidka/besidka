@@ -580,6 +580,43 @@ function reportChatClientError(payload: ChatClientErrorReport) {
 const MAX_GENERATION_RETRY_ATTEMPTS = 150
 const GENERATION_RETRY_DELAY_MS = 4_000
 
+// A turn's reasoning is "active" only while the last message is the
+// assistant's in-progress reply and at least one of its reasoning parts is
+// still being streamed by the provider — never inferred from the presence
+// of a text part, since xAI/OpenAI-agentic/Google turns can reopen
+// reasoning after a tool-calling gap that already produced text.
+export function isReasoningActiveForTurn(
+  status: ChatStatus,
+  lastMessage: UIMessage | undefined,
+): boolean {
+  if (status !== 'streaming') {
+    return false
+  }
+
+  if (lastMessage?.role !== 'assistant') {
+    return false
+  }
+
+  return hasStreamingReasoningPart(lastMessage.parts)
+}
+
+// Folds a just-ended reasoning segment's duration into the running total.
+// wasActive false or a missing segmentStartedAt means there was no live
+// segment to fold (e.g. the very first evaluation, or a turn that never
+// reasoned at all), so the accumulated total is returned unchanged.
+export function foldReasoningSegment(
+  wasActive: boolean,
+  accumulatedMs: number,
+  segmentStartedAt: number,
+  now: number,
+): number {
+  if (!wasActive || !segmentStartedAt) {
+    return accumulatedMs
+  }
+
+  return accumulatedMs + (now - segmentStartedAt)
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
@@ -650,6 +687,17 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   // the same currentTurnStartedAt and immediately computes the correct
   // elapsed time, with no special-casing needed for the remount itself.
   const currentTurnStartedAt = shallowRef<number>(0)
+  // Sum of completed reasoning segments for the current turn, plus the live
+  // segment's anchor below — together they let Reasoning.vue show genuine
+  // "time spent thinking" rather than wall-clock-since-turn-start, even for
+  // providers (xAI, OpenAI agentic tool loops, Google) that reopen reasoning
+  // after a tool-calling gap. Detection lives here rather than in
+  // Reasoning.vue for the same remount-survival reason as currentTurnStartedAt
+  // above: the recovery-poll loop can destroy/recreate the component mid
+  // segment, and only this page-lifetime composable is guaranteed to observe
+  // the segment's true start and end.
+  const currentTurnReasoningAccumulatedMs = shallowRef<number>(0)
+  const currentReasoningSegmentStartedAt = shallowRef<number>(0)
 
   const hydratedMessages = chat.messages.map(hydrateMessageUsage)
 
@@ -839,6 +887,26 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return getRenderableChatMessages(sdkMessages.value)
   })
 
+  const isTurnReasoningActive = computed<boolean>(() => {
+    return isReasoningActiveForTurn(sdkStatus.value, sdkMessages.value.at(-1))
+  })
+
+  watch(isTurnReasoningActive, (isActive, wasActive) => {
+    if (isActive) {
+      currentReasoningSegmentStartedAt.value = Date.now()
+
+      return
+    }
+
+    currentTurnReasoningAccumulatedMs.value = foldReasoningSegment(
+      Boolean(wasActive),
+      currentTurnReasoningAccumulatedMs.value,
+      currentReasoningSegmentStartedAt.value,
+      Date.now(),
+    )
+    currentReasoningSegmentStartedAt.value = 0
+  })
+
   const chatSdk = {
     get messages() {
       return renderableMessages.value
@@ -1025,6 +1093,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // "still generating" poll loop as a live recovery, not just a replay.
       isAwaitingGeneration.value = true
       currentTurnStartedAt.value = Date.now()
+      currentTurnReasoningAccumulatedMs.value = 0
+      currentReasoningSegmentStartedAt.value = 0
       wakeLock.acquire()
       chatSdk.regenerate()
     }
@@ -1192,6 +1262,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
+    currentTurnReasoningAccumulatedMs.value = 0
+    currentReasoningSegmentStartedAt.value = 0
     clearScheduledGenerationRetry()
     wakeLock.acquire()
 
@@ -1216,6 +1288,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     currentTurnStartedAt.value = 0
+    currentTurnReasoningAccumulatedMs.value = 0
+    currentReasoningSegmentStartedAt.value = 0
     wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
@@ -1234,6 +1308,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
+    currentTurnReasoningAccumulatedMs.value = 0
+    currentReasoningSegmentStartedAt.value = 0
     clearScheduledGenerationRetry()
     wakeLock.acquire()
     chatSdk.regenerate()
@@ -1336,6 +1412,8 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     shouldDisplayMessage,
     files,
     currentTurnStartedAt,
+    currentTurnReasoningAccumulatedMs,
+    currentReasoningSegmentStartedAt,
     pendingClarification,
     pendingResearchTopic,
     isClarifying,

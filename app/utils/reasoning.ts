@@ -1,3 +1,5 @@
+import type { UIMessage } from 'ai'
+
 export interface ParsedReasoningSection {
   title: string
   body: string
@@ -82,6 +84,22 @@ export function parseReasoningSections(text: string): ParsedReasoningSection[] {
   }
 
   return sections
+}
+
+export function hasStreamingReasoningPart(
+  parts: UIMessage['parts'] | undefined,
+): boolean {
+  if (!parts) {
+    return false
+  }
+
+  return parts.some((part) => {
+    return (
+      part.type === 'reasoning'
+      && Boolean(part.text?.length)
+      && part.state === 'streaming'
+    )
+  })
 }
 
 export function extractLastCompleteReasoningTitle(text: string): string {

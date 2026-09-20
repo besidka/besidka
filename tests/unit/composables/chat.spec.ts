@@ -5,11 +5,13 @@ import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
+  foldReasoningSegment,
   getRenderableChatMessages,
   hasVisibleAssistantContent,
   hasRetryableAssistantFailure,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
+  isReasoningActiveForTurn,
   normalizeChatClientError,
   shouldBlockGenerationRecovery,
   shouldForceGenericLoadingIndicator,
@@ -970,5 +972,95 @@ describe('chat error helpers', () => {
 
   it('does not recover an empty message list', () => {
     expect(shouldRecoverGeneration([])).toBe(false)
+  })
+})
+
+describe('isReasoningActiveForTurn', () => {
+  function reasoningMessage(
+    state: 'streaming' | 'done',
+    text = 'Thinking…',
+  ): UIMessage {
+    return {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text, state }],
+    } as UIMessage
+  }
+
+  it('is false when the chat status is not streaming', () => {
+    expect(
+      isReasoningActiveForTurn('ready', reasoningMessage('streaming')),
+    ).toBe(false)
+  })
+
+  it('is false when the last message is not the assistant', () => {
+    const message = {
+      id: 'user-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true while the last message has a streaming reasoning part', () => {
+    expect(
+      isReasoningActiveForTurn('streaming', reasoningMessage('streaming')),
+    ).toBe(true)
+  })
+
+  it('is false once every reasoning part has settled to done', () => {
+    expect(
+      isReasoningActiveForTurn('streaming', reasoningMessage('done')),
+    ).toBe(false)
+  })
+
+  it('ignores a reasoning part left streaming with no text', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: '', state: 'streaming' }],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true again for a second reasoning part after a tool call', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'First pass', state: 'done' },
+        { type: 'tool-web_search', state: 'input-available' },
+        { type: 'reasoning', text: 'Second pass', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+})
+
+describe('foldReasoningSegment', () => {
+  it('adds the elapsed segment duration into the accumulated total', () => {
+    const now = Date.now()
+    const segmentStartedAt = now - 1_700
+
+    expect(foldReasoningSegment(true, 0, segmentStartedAt, now)).toBe(1_700)
+  })
+
+  it('adds on top of an already-accumulated total from prior segments', () => {
+    const now = Date.now()
+    const segmentStartedAt = now - 2_000
+
+    expect(foldReasoningSegment(true, 5_000, segmentStartedAt, now))
+      .toBe(7_000)
+  })
+
+  it('leaves the total unchanged when there was no active segment', () => {
+    expect(foldReasoningSegment(false, 5_000, 0, Date.now())).toBe(5_000)
+  })
+
+  it('leaves the total unchanged when no segment start was ever recorded', () => {
+    expect(foldReasoningSegment(true, 5_000, 0, Date.now())).toBe(5_000)
   })
 })
