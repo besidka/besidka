@@ -13,9 +13,7 @@ jobs:
     if: >
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '/deploy-preview')
-    # NOTE: GitHub-hosted runner, not Blacksmith — see
-    # docs/ci-runner-blacksmith-to-github.md for why.
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       id-token: write

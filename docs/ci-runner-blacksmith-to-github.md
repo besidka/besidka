@@ -1,16 +1,16 @@
-# CI runners: Blacksmith → GitHub-hosted
+# CI runners: Blacksmith → GitHub-hosted → reverted to Blacksmith
 
-**Status: applied 2026-09-20. Kept, but was never the actual fix — see
+**Status: reverted 2026-09-20. This was a dead end — see
 `docs/ci-pull-request-checkout-ref.md` for the real root cause and
-resolution.** All workflows now use `runs-on: ubuntu-24.04` (GitHub-hosted)
-instead of `runs-on: blacksmith-2vcpu-ubuntu-2404`. The switch is being
-kept because GitHub-hosted runners are a reasonable default regardless,
-but the CI-only failure that prompted it turned out to have nothing to do
-with the runner: `preview-build.yml`'s `build` job was checking out
-`refs/pull/362/merge` (a GitHub-computed merge preview) instead of the PR
-branch's own head commit, so every run after an unrelated PR (#383) landed
-on `main` was silently testing this branch merged with #383's code — on
-any runner.
+resolution.** All workflows briefly used `runs-on: ubuntu-24.04`
+(GitHub-hosted) instead of `runs-on: blacksmith-2vcpu-ubuntu-2404`, on the
+hypothesis that Blacksmith's runner fleet had host-level non-determinism.
+That hypothesis was wrong (see "Result" below), the actual bug was a
+`pull_request` checkout defaulting to the wrong ref, unrelated to which
+runner provider ran the job — so once the real fix landed and was
+confirmed green on GitHub-hosted runners, the runner choice itself was
+reverted back to Blacksmith to leave no unexplained infrastructure change
+in place, and re-verified green there too (see "Reverted" below).
 
 ## What happened
 
@@ -108,9 +108,13 @@ failing run to inspect the process/thread state directly, since 9 rounds of
 code-level diagnostics (see the commit history) already exhausted every
 hypothesis reachable through logging and static analysis alone.
 
-## Reverting
+## Reverted
 
-If GitHub-hosted runners turn out to be slower or costlier than Blacksmith
-for this repo's CI volume, revert by restoring `runs-on:
-blacksmith-2vcpu-ubuntu-2404` in the four files above — no other changes
-depend on the runner provider.
+Once `docs/ci-pull-request-checkout-ref.md`'s fix (pinning the `build`
+job's checkout `ref`) was confirmed green on GitHub-hosted `ubuntu-24.04`,
+all four files were reverted back to `runs-on:
+blacksmith-2vcpu-ubuntu-2404` — the runner switch was never the fix, so
+there was no reason to keep it once the real cause was found. Verification
+that CI is still green on Blacksmith with the real fix in place is
+tracked in this same PR's check history for the commit that made this
+revert.

@@ -74,9 +74,7 @@ jobs:
   build-production:
     name: Build and Deploy to Production
     needs: resolve-preview-context
-    # NOTE: GitHub-hosted runner, not Blacksmith — see
-    # docs/ci-runner-blacksmith-to-github.md for why.
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     outputs:
       deployment-url: ${{ steps.deploy.outputs.deployment-url }}
@@ -360,9 +358,7 @@ jobs:
     needs:
       - resolve-preview-context
       - build-production
-    # NOTE: GitHub-hosted runner, not Blacksmith — see
-    # docs/ci-runner-blacksmith-to-github.md for why.
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     outputs:
       version-found: ${{ steps.find-version.outputs.found }}
@@ -438,9 +434,7 @@ jobs:
       - build-production
       - update-preview
     if: needs.resolve-preview-context.outputs.is-direct == 'true' || needs.update-preview.outputs.version-found == 'false'
-    # NOTE: GitHub-hosted runner, not Blacksmith — see
-    # docs/ci-runner-blacksmith-to-github.md for why.
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:
       contents: read
