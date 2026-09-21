@@ -64,6 +64,13 @@ NUXT_AXIOM_AUDIT_TOKEN=
 NUXT_AXIOM_CONSENT_DATASET=
 NUXT_AXIOM_CONSENT_TOKEN=
 
+# Google Search grounding cost (Gemini "Grounding with Google Search" is
+# billed separately from tokens). See the PR description and
+# https://ai.google.dev/gemini-api/docs/google-search for the real rates —
+# do not put real dollar values in this file.
+NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=
+NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=
+
 # Nuxt Studio — credentials for the PRODUCTION self-hosted editor (optional).
 # NOT needed for local development: with `pnpm run dev` the editor is the
 # "Edit this page" floating button (bottom-left) that writes straight to the

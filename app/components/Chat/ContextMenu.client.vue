@@ -100,6 +100,18 @@
                 </span>
               </div>
               <div
+                v-if="searchGroundingLabel"
+                data-testid="message-menu-search-grounding"
+                class="flex items-center justify-between gap-3 pl-2 text-xs"
+              >
+                <span class="shrink-0 font-normal text-base-content/50">
+                  Web search
+                </span>
+                <span class="min-w-0 truncate font-normal text-base-content">
+                  {{ searchGroundingLabel }}
+                </span>
+              </div>
+              <div
                 v-if="info.costToMessage !== undefined"
                 data-testid="message-menu-cost-to-message"
                 class="flex items-center justify-between gap-3 pl-2 text-xs"
@@ -214,6 +226,7 @@ import { markdownToPlainText } from '#shared/utils/markdown-plain'
 import {
   formatMessageCost,
   formatMessageDateTime,
+  formatSearchGroundingUnits,
   formatTokenCount,
 } from '#shared/utils/message-format'
 
@@ -316,6 +329,8 @@ const hasCostInfo = computed<boolean>(() => {
     props.info?.cost !== undefined
     || props.info?.costToMessage !== undefined
     || props.info?.chatTotalCost !== undefined
+    || props.info?.searchCost !== undefined
+    || props.info?.searchUnits !== undefined
   )
 })
 
@@ -324,7 +339,23 @@ const hasEstimatedCost = computed<boolean>(() => {
     !!props.info?.costIsEstimated
     || !!props.info?.costToMessageIsEstimated
     || !!props.info?.chatTotalCostIsEstimated
+    || props.info?.searchCost !== undefined
   )
+})
+
+const searchGroundingLabel = computed<string>(() => {
+  const units = formatSearchGroundingUnits(
+    props.info?.searchUnits,
+    props.info?.searchBillingUnit,
+  )
+
+  if (props.info?.searchCost === undefined) {
+    return units
+  }
+
+  const cost = formatMessageCost(props.info.searchCost, true)
+
+  return units ? `${cost} (${units})` : cost
 })
 
 const bubbleEl = computed<HTMLElement | null>(() => {

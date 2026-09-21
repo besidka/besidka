@@ -74,6 +74,25 @@ export function formatMessageCost(
   return `${prefix}$${formatter.format(cost)}`
 }
 
+export function formatSearchGroundingUnits(
+  units: number | undefined | null,
+  billingUnit?: 'query' | 'grounded-prompt',
+): string {
+  if (units === undefined || units === null) {
+    return ''
+  }
+
+  const formattedCount = TOKEN_COUNT_FORMATTER.format(units)
+  const label = billingUnit === 'grounded-prompt'
+    ? 'grounded request'
+    : 'query'
+  const pluralLabel = billingUnit === 'grounded-prompt'
+    ? 'grounded requests'
+    : 'queries'
+
+  return `${formattedCount} ${units === 1 ? label : pluralLabel}`
+}
+
 export function formatMessageDateTime(
   value: string | number | Date | undefined | null,
 ): { date: string, time: string } {
