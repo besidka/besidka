@@ -218,6 +218,51 @@ describe('reasoning utils', () => {
     ])
   })
 
+  it('does not orphan a quote when a period sits inside the first '
+    + 'quoted clause but the string ends with an unquoted period', () => {
+    const input = 'The user asked in Ukrainian: "а тепер в Україні. '
+      + 'тільки швидше і коротше" which means "and now in Ukraine. '
+      + 'only faster and shorter".'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: 'The user asked in Ukrainian',
+        body: '"а тепер в Україні. тільки швидше і коротше" which means '
+          + '"and now in Ukraine. only faster and shorter".',
+      },
+    ])
+
+    expect(extractLastCompleteReasoningTitle(input)).toBe(
+      'The user asked in Ukrainian',
+    )
+    expect(extractLastCompleteReasoningTitle(input)).not.toContain('"')
+  })
+
+  it('still splits a plain unquoted sentence on its period, unchanged', () => {
+    const input = 'This is a plain sentence. This is the remainder text '
+      + 'that follows here.'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: 'This is a plain sentence',
+        body: 'This is the remainder text that follows here.',
+      },
+    ])
+  })
+
+  it('returns the whole string as the title when the only sentence '
+    + 'boundary is trapped inside an unclosed quote', () => {
+    const input = 'Reading the note "buy gold. sell silver and then wait '
+      + 'for the next quarterly report to land'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: input,
+        body: '',
+      },
+    ])
+  })
+
   it('normalizes markdown-wrapped and empty titles', () => {
     expect(normalizeReasoningTitle('**Step 9**')).toBe('Step 9')
     expect(normalizeReasoningTitle('   ')).toBe('Reasoning')

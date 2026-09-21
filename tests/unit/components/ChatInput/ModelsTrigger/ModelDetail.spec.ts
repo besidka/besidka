@@ -248,6 +248,8 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(vision?.classes()).toContain('tooltip')
     expect(vision?.classes()).toContain('tooltip-soft')
     expect(vision?.classes()).toContain('tooltip-bottom')
+    expect(vision?.classes()).toContain('badge-accent')
+    expect(vision?.classes()).not.toContain('badge-secondary')
     expect(vision?.attributes('data-tip')).toBe('Can see images')
 
     expect(webSearch?.classes()).not.toContain('tooltip')

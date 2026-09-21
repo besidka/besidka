@@ -55,7 +55,7 @@
         <span
           v-else-if="getModelCount(provider)"
           :data-testid="`models-picker-rail-${provider.id}-count`"
-          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none"
+          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none scale-[0.8]"
         >
           {{ formatRailCount(getModelCount(provider)) }}
         </span>

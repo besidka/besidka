@@ -348,10 +348,9 @@ function splitBySentence(text: string): {
   head: string
   tail: string
 } {
-  const match = text.match(/[.!?。！？]/)
-  const boundary = match?.index
+  const boundary = findUnquotedIndex(text, /[.!?。！？]/)
 
-  if (boundary === undefined) {
+  if (boundary === -1) {
     return {
       head: text.trim(),
       tail: '',

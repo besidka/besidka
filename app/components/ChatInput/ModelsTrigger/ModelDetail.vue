@@ -251,7 +251,7 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     badges.push({
       label: 'Vision',
       icon: 'lucide:eye',
-      class: 'badge-secondary',
+      class: 'badge-accent',
       tooltip: 'Can see images',
     })
   }

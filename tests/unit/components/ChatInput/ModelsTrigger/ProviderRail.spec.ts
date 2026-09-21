@@ -241,6 +241,7 @@ describe('ChatInput/ModelsTrigger/ProviderRail', () => {
       expect(badge.classes()).toContain('indicator-item')
       expect(badge.classes()).toContain('indicator-end')
       expect(badge.classes()).toContain('indicator-bottom')
+      expect(badge.classes()).toContain('scale-[0.8]')
     })
 
     it('wraps the icon in an indicator so the badge anchors to it',
