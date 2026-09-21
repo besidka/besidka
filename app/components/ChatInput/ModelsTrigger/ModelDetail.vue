@@ -97,7 +97,11 @@
         v-for="capability in capabilities"
         :key="capability.label"
         class="badge badge-sm badge-soft"
-        :class="capability.class"
+        :class="[
+          capability.class,
+          { 'tooltip tooltip-soft tooltip-bottom': capability.tooltip },
+        ]"
+        :data-tip="capability.tooltip"
       >
         <Icon
           :name="capability.icon"
@@ -132,6 +136,7 @@ interface CapabilityBadge {
   label: string
   icon: string
   class: string
+  tooltip?: string
 }
 
 interface SpecRow {
@@ -247,6 +252,7 @@ const capabilities = computed<CapabilityBadge[]>(() => {
       label: 'Vision',
       icon: 'lucide:eye',
       class: 'badge-secondary',
+      tooltip: 'Can see images',
     })
   }
 

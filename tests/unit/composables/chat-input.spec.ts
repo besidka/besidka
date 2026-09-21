@@ -50,8 +50,8 @@ function createHost() {
         h('span', { 'data-testid': 'reasoning-mode' }, [
           chatInput.reasoningMode.value,
         ]),
-        h('span', { 'data-testid': 'reasoning-levels' }, [
-          chatInput.reasoningLevels.value.join(','),
+        h('span', { 'data-testid': 'reasoning-menu-levels' }, [
+          chatInput.reasoningMenuLevels.value.join(','),
         ]),
         h('span', { 'data-testid': 'is-image-input-supported' }, [
           String(chatInput.isImageInputSupported.value),
@@ -204,6 +204,42 @@ describe('useChatInput image input capability', () => {
     expect(
       wrapper.get('[data-testid="is-image-input-supported"]').text(),
     ).toBe('true')
+  })
+})
+
+describe('useChatInput reasoning menu levels', () => {
+  it('reports a single "medium" level with no "off" prefix for a '
+    + 'toggle-mode model', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'qwen3.7-plus'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="reasoning-mode"]').text(),
+    ).toBe('toggle')
+    expect(
+      wrapper.get('[data-testid="reasoning-menu-levels"]').text(),
+    ).toBe('medium')
+  })
+
+  it('reports the real levels with no leading "off" for a '
+    + 'levels-mode model', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gemini-3.8-flash'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="reasoning-mode"]').text(),
+    ).toBe('levels')
+    expect(
+      wrapper.get('[data-testid="reasoning-menu-levels"]').text(),
+    ).toBe('low,medium,high')
   })
 })
 

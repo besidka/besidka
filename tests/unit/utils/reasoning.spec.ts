@@ -147,6 +147,77 @@ describe('reasoning utils', () => {
     )
   })
 
+  it('does not orphan a closing quote when the only comma sits inside it', () => {
+    const input = 'The user is asking again: "what is the current price of '
+      + 'gold per ounce, search for the latest"'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: 'The user is asking again',
+        body: '"what is the current price of gold per ounce, '
+          + 'search for the latest"',
+      },
+    ])
+
+    expect(extractLastCompleteReasoningTitle(input)).toBe(
+      'The user is asking again',
+    )
+    expect(extractLastCompleteReasoningTitle(input)).not.toContain('"')
+  })
+
+  it('still splits on a comma outside any quotes after a closed pair', () => {
+    const input = 'He said "yes" during the earlier planning conversation, '
+      + 'so I should now go and confirm the pricing'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: 'He said "yes" during the earlier planning conversation',
+        body: 'so I should now go and confirm the pricing',
+      },
+    ])
+  })
+
+  it('keeps the whole string as the title when no legal split exists', () => {
+    const input = 'Reading the note "buy gold, sell silver and then wait '
+      + 'for the next quarterly report to land'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: input,
+        body: '',
+      },
+    ])
+  })
+
+  it('splits at the earliest legal boundary, not always the quoted clause', () => {
+    const input = 'Plan A discussion happened earlier in the day, then the '
+      + 'user said: "do X, then also do Y for the report"'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: 'Plan A discussion happened earlier in the day',
+        body: 'then the user said: "do X, then also do Y for the report"',
+      },
+    ])
+
+    expect(extractLastCompleteReasoningTitle(input)).toBe(
+      'Plan A discussion happened earlier in the day',
+    )
+  })
+
+  it('recognizes non-ASCII quote pairs after a colon', () => {
+    const input = 'The user is asking again: “what is the current price of '
+      + 'gold per ounce, search for the latest”'
+
+    expect(parseReasoningSections(input)).toEqual([
+      {
+        title: 'The user is asking again',
+        body: '“what is the current price of gold per ounce, '
+          + 'search for the latest”',
+      },
+    ])
+  })
+
   it('normalizes markdown-wrapped and empty titles', () => {
     expect(normalizeReasoningTitle('**Step 9**')).toBe('Step 9')
     expect(normalizeReasoningTitle('   ')).toBe('Reasoning')

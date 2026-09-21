@@ -4,6 +4,7 @@ import type { VueWrapper } from '@vue/test-utils'
 import type { Model } from '#shared/types/providers.d'
 import ModelDetail
   from '../../../../../app/components/ChatInput/ModelsTrigger/ModelDetail.vue'
+import { providers } from '../../../../../providers'
 
 function createModel(overrides: Partial<Model> = {}): Model {
   return {
@@ -226,6 +227,56 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       })
 
     expect(badges).toEqual(['Vision'])
+  })
+
+  it('gives only the Vision badge a tooltip explaining the capability', async () => {
+    const model = createModel({
+      tools: ['web_search'],
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+    const vision = badges.find((badge) => {
+      return badge.text() === 'Vision'
+    })
+    const webSearch = badges.find((badge) => {
+      return badge.text() === 'Web search'
+    })
+
+    expect(vision?.classes()).toContain('tooltip')
+    expect(vision?.classes()).toContain('tooltip-soft')
+    expect(vision?.classes()).toContain('tooltip-bottom')
+    expect(vision?.attributes('data-tip')).toBe('Can see images')
+
+    expect(webSearch?.classes()).not.toContain('tooltip')
+    expect(webSearch?.attributes('data-tip')).toBeUndefined()
+  })
+
+  it('renders the Vision badge for the real gpt-4.1 catalog model, tied '
+    + 'to the same Input row', async () => {
+    const openai = providers.find((provider) => {
+      return provider.id === 'openai'
+    })
+    const model = openai?.models.find((candidate) => {
+      return candidate.id === 'gpt-4.1'
+    })
+
+    expect(model).toBeDefined()
+
+    const wrapper = await mountDetail(model as Model, {
+      providerName: 'OpenAI',
+    })
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
+
+    expect(badges).toContain('Vision')
+    expect(readSpecs(wrapper).Input).toContain('image')
   })
 
   it('renders no capability badges for a plain model', async () => {

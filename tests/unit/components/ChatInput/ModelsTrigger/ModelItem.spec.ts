@@ -242,8 +242,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     const vision = wrapper.get('[data-testid="model-vision-capability"]')
 
     expect(vision.classes()).toContain('text-accent')
-    expect(vision.attributes('data-tip'))
-      .toBe('Vision — can see and analyze images')
+    expect(vision.attributes('data-tip')).toBe('Vision')
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(false)

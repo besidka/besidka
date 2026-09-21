@@ -76,6 +76,7 @@
       <li
         role="presentation"
         data-testid="models-picker-filter-clear"
+        class="mt-1 pt-1 border-t border-base-content/10"
         :class="{ 'menu-disabled': !hasActiveFilter }"
       >
         <button

@@ -6,6 +6,8 @@ export interface ParsedReasoningSection {
 }
 
 const TITLE_LENGTH_LIMIT = 80
+const QUOTE_OPENERS = new Set(['"', '“', '«'])
+const QUOTE_CLOSERS = new Set(['"', '”', '»'])
 const TITLE_DISPLAY_LIMIT = 30
 const TITLE_DISPLAY_WORD_BOUNDARY_MINIMUM = 20
 const TOOL_PART_TYPE_PREFIX = 'tool-'
@@ -319,11 +321,11 @@ function extractFallbackTitleAndRemainder(text: string): {
   let remainder = sentenceSplit.tail
 
   if (titleSource.length > TITLE_LENGTH_LIMIT) {
-    const commaSplit = splitByComma(titleSource)
+    const split = splitAtEarliestLegalBoundary(titleSource)
 
-    if (commaSplit.tail.length > 0) {
-      titleSource = commaSplit.head
-      remainder = [commaSplit.tail, remainder]
+    if (split && split.tail.length > 0) {
+      titleSource = split.head
+      remainder = [split.tail, remainder]
         .filter((part) => {
           return part.length > 0
         })
@@ -365,11 +367,60 @@ function splitBySentence(text: string): {
   }
 }
 
+function splitAtEarliestLegalBoundary(text: string): {
+  head: string
+  tail: string
+} | null {
+  const commaBoundary = findUnquotedIndex(text, /[,，]/)
+  const quotedClauseMatch = text.match(/[:：]\s*["“«]/)
+  const quotedClauseBoundary = quotedClauseMatch?.index ?? -1
+  const hasCommaBoundary = commaBoundary !== -1
+  const hasQuotedClauseBoundary = quotedClauseBoundary !== -1
+
+  if (!hasCommaBoundary && !hasQuotedClauseBoundary) {
+    return null
+  }
+
+  if (hasCommaBoundary && hasQuotedClauseBoundary) {
+    return commaBoundary < quotedClauseBoundary
+      ? splitByComma(text)
+      : splitByQuotedClause(text)
+  }
+
+  return hasCommaBoundary
+    ? splitByComma(text)
+    : splitByQuotedClause(text)
+}
+
+function splitByQuotedClause(text: string): {
+  head: string
+  tail: string
+} {
+  const match = text.match(/[:：]\s*["“«]/)
+
+  if (!match || match.index === undefined) {
+    return {
+      head: text.trim(),
+      tail: '',
+    }
+  }
+
+  const boundary = match.index
+  const quoteIndex = boundary + match[0].length - 1
+  const head = text.slice(0, boundary).trim()
+  const tail = text.slice(quoteIndex).trim()
+
+  return {
+    head,
+    tail,
+  }
+}
+
 function splitByComma(text: string): {
   head: string
   tail: string
 } {
-  const boundary = text.search(/[,，]/)
+  const boundary = findUnquotedIndex(text, /[,，]/)
 
   if (boundary === -1) {
     return {
@@ -385,6 +436,34 @@ function splitByComma(text: string): {
     head,
     tail,
   }
+}
+
+function findUnquotedIndex(text: string, pattern: RegExp): number {
+  let isInsideQuote = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text.charAt(index)
+
+    if (isInsideQuote) {
+      if (QUOTE_CLOSERS.has(character)) {
+        isInsideQuote = false
+      }
+
+      continue
+    }
+
+    if (QUOTE_OPENERS.has(character)) {
+      isInsideQuote = true
+
+      continue
+    }
+
+    if (pattern.test(character)) {
+      return index
+    }
+  }
+
+  return -1
 }
 
 function trimTrailingPunctuation(text: string): string {

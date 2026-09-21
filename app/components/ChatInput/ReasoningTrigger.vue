@@ -16,14 +16,14 @@
         'btn-circle': !isReasoningActive,
       }"
       aria-label="Set reasoning level"
-      :title="`Reasoning: ${reasoning}`"
+      :title="`Reasoning: ${reasoningLabel}`"
     >
       <component
         :is="getIconComponent(reasoning)"
         class="size-4 text-current"
       />
       <span v-if="isReasoningActive" class="capitalize">
-        {{ reasoning }}
+        {{ reasoningLabel }}
       </span>
     </summary>
     <ClientOnly>
@@ -64,6 +64,18 @@ const isDropdownHovered = useElementHover(dropdown)
 
 const isReasoningActive = computed<boolean>(() => {
   return reasoning.value !== 'off'
+})
+
+const isToggleMode = computed<boolean>(() => {
+  return props.levels.length === 1
+})
+
+const reasoningLabel = computed<ReasoningLevel | 'On'>(() => {
+  if (isToggleMode.value && isReasoningActive.value) {
+    return 'On'
+  }
+
+  return reasoning.value
 })
 
 onClickOutside(dropdown, () => {

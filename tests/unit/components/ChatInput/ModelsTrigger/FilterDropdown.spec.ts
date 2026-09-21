@@ -146,6 +146,9 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
 
     expect(clear.classes()).toContain('menu-disabled')
     expect(clear.get('button').attributes('disabled')).toBeDefined()
+    expect(clear.classes()).toContain('border-t')
+    expect(clear.classes()).toContain('mt-1')
+    expect(clear.classes()).toContain('pt-1')
   })
 
   it('clears the selected category and closes the dropdown', async () => {

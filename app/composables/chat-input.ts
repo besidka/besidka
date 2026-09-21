@@ -1,4 +1,7 @@
-import type { ReasoningCapability } from '#shared/types/reasoning.d'
+import type {
+  ReasoningCapability,
+  ReasoningEnabledLevel,
+} from '#shared/types/reasoning.d'
 import { providerMeta } from '#shared/utils/provider-meta'
 
 export function useChatInput() {
@@ -55,8 +58,8 @@ export function useChatInput() {
     return reasoningCapability.value.mode
   })
 
-  const reasoningLevels = computed(() => {
-    return getReasoningDropdownLevels(reasoningCapability.value)
+  const reasoningMenuLevels = computed<ReasoningEnabledLevel[]>(() => {
+    return getReasoningMenuLevels(reasoningCapability.value)
   })
 
   /**
@@ -95,7 +98,7 @@ export function useChatInput() {
     isImageInputSupported,
     reasoningCapability,
     reasoningMode,
-    reasoningLevels,
+    reasoningMenuLevels,
     isReasoningSupported,
     researchConfig,
     isDeepResearchModel,

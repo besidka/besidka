@@ -118,7 +118,7 @@
             data-testid="model-vision-capability"
             class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-accent"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Vision — can see and analyze images"
+            data-tip="Vision"
           >
             <Icon name="lucide:eye" />
           </span>

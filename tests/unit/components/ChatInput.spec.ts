@@ -116,6 +116,7 @@ describe('ChatInput.client', () => {
       isReasoningSupported: shallowRef(false),
       reasoningCapability: shallowRef(null),
       reasoningMode: shallowRef('none'),
+      reasoningMenuLevels: shallowRef([]),
       isDeepResearchModel: shallowRef(false),
       researchConfig: shallowRef(null),
       isSelectedModelKeyless: shallowRef(false),
@@ -250,6 +251,7 @@ describe('ChatInput.client', () => {
         isReasoningSupported: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(true),
@@ -426,6 +428,7 @@ describe('ChatInput.client', () => {
         isReasoningSupported: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
         isDeepResearchModel: shallowRef(false),
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
@@ -486,5 +489,115 @@ describe('ChatInput.client', () => {
       expect(attachedFileNames(wrapper)).toEqual([])
       expect(mocks.useWarningMessage).toHaveBeenCalledWith(expectedWarning)
     })
+  })
+
+  describe('toggle-mode reasoning', () => {
+    function reasoningLevelButtonTexts(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+    ): string[] {
+      const trigger = wrapper.get('[data-testid="reasoning-trigger"]')
+      const dropdown = trigger.element.closest('details')
+
+      return Array.from(
+        dropdown?.querySelectorAll('.menu li > button') ?? [],
+      ).map(button => button.textContent?.trim() ?? '')
+    }
+
+    function useToggleModeSelection() {
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isImageGenerationSupported: shallowRef(false),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(true),
+        reasoningCapability: shallowRef({ mode: 'toggle' }),
+        reasoningMode: shallowRef('toggle'),
+        reasoningMenuLevels: shallowRef(['medium']),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+      })
+    }
+
+    function useLevelsModeSelection() {
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isImageGenerationSupported: shallowRef(false),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(true),
+        reasoningCapability: shallowRef({
+          mode: 'levels',
+          levels: ['low', 'medium', 'high'],
+        }),
+        reasoningMode: shallowRef('levels'),
+        reasoningMenuLevels: shallowRef(['low', 'medium', 'high']),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+      })
+    }
+
+    function useDeepResearchSelection() {
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isImageGenerationSupported: shallowRef(false),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(true),
+        reasoningCapability: shallowRef({ mode: 'toggle' }),
+        reasoningMode: shallowRef('toggle'),
+        reasoningMenuLevels: shallowRef(['medium']),
+        isDeepResearchModel: shallowRef(true),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+      })
+    }
+
+    it('renders the reasoning trigger with an effective Off/On level '
+      + 'list for a toggle-mode model', async () => {
+      useToggleModeSelection()
+
+      const wrapper = await mountChatInput()
+      const levelButtonTexts = reasoningLevelButtonTexts(wrapper)
+
+      expect(levelButtonTexts).toEqual(['off', 'On'])
+    })
+
+    it('never renders a bare reasoning toggle button for a '
+      + 'toggle-mode model', async () => {
+      useToggleModeSelection()
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[title="Enable reasoning"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[title="Disable reasoning"]').exists())
+        .toBe(false)
+    })
+
+    it('passes the model\'s real multi-level array through for a '
+      + 'levels-mode model, with no "off" duplicated in it', async () => {
+      useLevelsModeSelection()
+
+      const wrapper = await mountChatInput()
+      const levelButtonTexts = reasoningLevelButtonTexts(wrapper)
+
+      expect(levelButtonTexts).toEqual(['off', 'low', 'medium', 'high'])
+    })
+
+    it('never renders the reasoning trigger for a deep research model',
+      async () => {
+        useDeepResearchSelection()
+
+        const wrapper = await mountChatInput()
+
+        expect(
+          wrapper.find('[data-testid="reasoning-trigger"]').exists(),
+        ).toBe(false)
+      })
   })
 })

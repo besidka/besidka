@@ -172,41 +172,12 @@
                   }"
                   @click="toggleWebSearch"
                 />
-                <template v-if="!isDeepResearchModel">
-                  <LazyChatInputReasoningTrigger
-                    v-if="isReasoningSupported && reasoningMode === 'levels'"
-                    v-model:reasoning="reasoning"
-                    :is-web-search-enabled="isWebSearchEnabled"
-                    :levels="reasoningCapability?.mode === 'levels'
-                      ? reasoningCapability.levels
-                      : []
-                    "
-                  />
-                  <UiButton
-                    v-else-if="isReasoningSupported"
-                    mode="accent"
-                    :ghost="isReasoningActive ? undefined : true"
-                    :circle="!isReasoningActive"
-                    :icon-only="!isReasoningActive"
-                    text="Reasoning"
-                    :icon-size="16"
-                    :title="isReasoningActive
-                      ? 'Disable reasoning'
-                      : 'Enable reasoning'
-                    "
-                    tooltip-position="top"
-                    size="xs"
-                    class="rounded-full pl-[5px]"
-                    :class="{
-                      'btn-active': isReasoningActive,
-                    }"
-                    @click="toggleReasoning"
-                  >
-                    <template #icon>
-                      <SvgoThinkMedium class="size-4 text-current" />
-                    </template>
-                  </UiButton>
-                </template>
+                <LazyChatInputReasoningTrigger
+                  v-if="isReasoningSupported && !isDeepResearchModel"
+                  v-model:reasoning="reasoning"
+                  :is-web-search-enabled="isWebSearchEnabled"
+                  :levels="reasoningMenuLevels"
+                />
                 <LazyChatInputDeepResearchTrigger
                   v-if="isDeepResearchModel"
                   :research="researchConfig"
@@ -222,12 +193,8 @@
                 :is-image-generation-required="isImageGenerationRequired"
                 :is-reasoning-supported="isReasoningSupported"
                 :is-reasoning-active="isReasoningActive"
-                :reasoning-mode="reasoningMode"
                 :reasoning="reasoning"
-                :levels="reasoningCapability?.mode === 'levels'
-                  ? reasoningCapability.levels
-                  : []
-                "
+                :levels="reasoningMenuLevels"
                 :is-deep-research-model="isDeepResearchModel"
                 :research="researchConfig"
                 :display-project-picker="shouldDisplayProjectPicker"
@@ -240,7 +207,6 @@
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
                 @select-reasoning-level="reasoning = $event"
-                @toggle-reasoning="toggleReasoning"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -349,7 +315,7 @@ const {
   isImageInputSupported,
   isReasoningSupported,
   reasoningCapability,
-  reasoningMode,
+  reasoningMenuLevels,
   isDeepResearchModel,
   researchConfig,
   isSelectedModelKeyless,
@@ -694,16 +660,6 @@ function toggleImageGeneration() {
   tools.value = tools.value.filter((tool) => {
     return tool !== 'image_generation'
   })
-}
-
-function toggleReasoning() {
-  if (isReasoningActive.value) {
-    reasoning.value = 'off'
-
-    return
-  }
-
-  reasoning.value = 'medium'
 }
 
 onMounted(async () => {

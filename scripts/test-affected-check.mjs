@@ -86,6 +86,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/chat-input.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+    'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
@@ -419,8 +420,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/utils\/reasoning\.ts|shared\/types\/reasoning\.d\.ts)$/,
+        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
+    },
+    {
+      pattern: /^shared\/utils\/reasoning\.ts$/,
+      tests: [
+        ...providerReasoningWiringTests,
+        'tests/unit/composables/chat-input.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+      ],
     },
     {
       pattern: /^providers\/qwen\.ts$/,
@@ -1099,7 +1109,17 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,
-      tests: profileSettingsTests,
+      tests: [
+        ...profileSettingsTests,
+        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/ChatInput\/ReasoningMenuItems\.vue$/,
+      tests: [
+        ...profileSettingsTests,
+        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+      ],
     },
     {
       pattern: /^app\/plugins\/.*user-settings.*\.ts$/,

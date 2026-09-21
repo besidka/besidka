@@ -17,29 +17,7 @@
       <div class="bg-base-100 rounded-box w-full shadow-sm">
         <ul class="menu menu-xs w-full">
           <template
-            v-if="isReasoningSupported
-              && reasoningMode === 'toggle'
-              && !isDeepResearchModel
-            "
-          >
-            <li>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <SvgoThinkMedium class="size-4 text-current" />
-                <span class="grow">Reasoning</span>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-xs toggle-accent"
-                  :checked="isReasoningActive"
-                  @change="emit('toggle-reasoning')"
-                >
-              </label>
-            </li>
-          </template>
-          <template
-            v-if="isReasoningSupported
-              && reasoningMode === 'levels'
-              && !isDeepResearchModel
-            "
+            v-if="isReasoningSupported && !isDeepResearchModel"
           >
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
@@ -155,7 +133,6 @@ const props = defineProps<{
   isImageGenerationRequired?: boolean
   isReasoningSupported?: boolean
   isReasoningActive?: boolean
-  reasoningMode?: 'none' | 'toggle' | 'levels'
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
   isDeepResearchModel?: boolean
@@ -176,7 +153,6 @@ const emit = defineEmits<{
   'open-files-select': []
   'open-files-upload': []
   'select-reasoning-level': [level: ReasoningLevel]
-  'toggle-reasoning': []
 }>()
 
 const { isIos, isAndroid } = useDevice()
@@ -197,11 +173,7 @@ const isAnyFeatureActive = computed<boolean>(() => {
 
 const hasReasoningSection = computed<boolean>(() => {
   return !!(
-    (props.isReasoningSupported
-      && !props.isDeepResearchModel
-      && (props.reasoningMode === 'toggle'
-        || props.reasoningMode === 'levels')
-    )
+    (props.isReasoningSupported && !props.isDeepResearchModel)
     || (props.isDeepResearchModel && props.research)
   )
 })
