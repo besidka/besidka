@@ -1,7 +1,9 @@
 import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it } from 'vitest'
+import type { GoogleSearchGrounding } from '../../../server/utils/ai/google-search-cost'
 import {
   addImageGenerationCostToUsage,
+  addGoogleSearchUsage,
   addResearchCostEstimateToUsage,
   buildMessageUsage,
 } from '../../../server/utils/ai/message-usage'
@@ -188,6 +190,97 @@ describe('addImageGenerationCostToUsage', () => {
     const result = addImageGenerationCostToUsage(undefined, 0.067)
 
     expect(result).toBeUndefined()
+  })
+})
+
+describe('addGoogleSearchUsage', () => {
+  const queryGrounding: GoogleSearchGrounding = {
+    queries: 3,
+    groundedSteps: 1,
+    billingUnit: 'query',
+  }
+  const groundedPromptGrounding: GoogleSearchGrounding = {
+    queries: 3,
+    groundedSteps: 2,
+    billingUnit: 'grounded-prompt',
+  }
+
+  function buildBaseUsage() {
+    return buildMessageUsage(
+      createUsage({
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      }),
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+  }
+
+  it('attaches search fields while leaving cost/estimate fields untouched', () => {
+    const usage = buildBaseUsage()
+    const outputCostBefore = usage?.outputCost
+    const inputCostBefore = usage?.inputCost
+
+    const result = addGoogleSearchUsage(usage, queryGrounding, 0.036)
+
+    expect(result?.searchUnits).toBe(3)
+    expect(result?.searchBillingUnit).toBe('query')
+    expect(result?.searchCost).toBe(0.036)
+    expect(result?.outputCost).toBe(outputCostBefore)
+    expect(result?.inputCost).toBe(inputCostBefore)
+    expect(result?.costEstimated).toBeUndefined()
+  })
+
+  it('records the count with no searchCost key when cost is undefined', () => {
+    const usage = buildBaseUsage()
+
+    const result = addGoogleSearchUsage(usage, queryGrounding, undefined)
+
+    expect(result?.searchUnits).toBe(3)
+    expect(result && 'searchCost' in result).toBe(false)
+  })
+
+  it('uses groundedSteps as searchUnits for a grounded-prompt grounding', () => {
+    const usage = buildBaseUsage()
+
+    const result = addGoogleSearchUsage(
+      usage,
+      groundedPromptGrounding,
+      0.08,
+    )
+
+    expect(result?.searchUnits).toBe(2)
+    expect(result?.searchBillingUnit).toBe('grounded-prompt')
+  })
+
+  it('returns usage unchanged for undefined usage', () => {
+    const result = addGoogleSearchUsage(undefined, queryGrounding, 0.036)
+
+    expect(result).toBeUndefined()
+  })
+
+  it('returns usage unchanged for undefined grounding', () => {
+    const usage = buildBaseUsage()
+
+    const result = addGoogleSearchUsage(usage, undefined, 0.036)
+
+    expect(result).toEqual(usage)
+  })
+
+  it('records a zero search unit count with no cost key when billable units is zero', () => {
+    const usage = buildBaseUsage()
+    const zeroGrounding: GoogleSearchGrounding = {
+      queries: 0,
+      groundedSteps: 1,
+      billingUnit: 'query',
+    }
+
+    const result = addGoogleSearchUsage(usage, zeroGrounding, undefined)
+
+    expect(result?.searchUnits).toBe(0)
+    expect(result?.searchBillingUnit).toBe('query')
+    expect(result && 'searchCost' in result).toBe(false)
   })
 })
 

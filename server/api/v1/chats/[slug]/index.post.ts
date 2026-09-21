@@ -13,6 +13,7 @@ import type { ModelTool } from '#shared/types/providers.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
+import type { GoogleSearchRates } from '~~/server/utils/ai/google-search-cost'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
@@ -29,7 +30,13 @@ import * as schema from '~~/server/db/schema'
 import {
   buildMessageUsage,
   addImageGenerationCostToUsage,
+  addGoogleSearchUsage,
 } from '~~/server/utils/ai/message-usage'
+import {
+  getGoogleSearchGrounding,
+  getGoogleSearchCost,
+  resolveGoogleSearchRates,
+} from '~~/server/utils/ai/google-search-cost'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
 import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
@@ -434,6 +441,7 @@ export default defineEventHandler(async (event) => {
     modelId: string
     aspectRatio: ImageGenerationAspectRatio
   } | undefined
+  const googleSearchRates = resolveGoogleSearchRates(useRuntimeConfig(event))
 
   try {
     switch (provider.id) {
@@ -683,7 +691,7 @@ export default defineEventHandler(async (event) => {
             reasoning: reasoningEffort,
             messages: await convertToModelMessages(messagesForModel),
             experimental_transform: smoothStream(),
-            onEnd({ usage }) {
+            onEnd({ usage, steps }) {
               const textCost = computeModelCost(model.id, provider.id, usage)
               const imageCost = generatedImage
                 ? getImageGenerationCost(
@@ -691,6 +699,14 @@ export default defineEventHandler(async (event) => {
                   generatedImage.aspectRatio,
                 )
                 : undefined
+              const grounding = getGoogleSearchGrounding(steps, model.id)
+              const searchCost = getGoogleSearchCost(
+                grounding,
+                googleSearchRates,
+              )
+              const hasCost = textCost !== undefined
+                || imageCost !== undefined
+                || searchCost !== undefined
 
               aiLogger.set({
                 ai: {
@@ -701,11 +717,24 @@ export default defineEventHandler(async (event) => {
                     total: usage.totalTokens
                       ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
                   },
-                  cost: textCost !== undefined || imageCost !== undefined
-                    ? (textCost ?? 0) + (imageCost ?? 0)
+                  cost: hasCost
+                    ? (textCost ?? 0) + (imageCost ?? 0) + (searchCost ?? 0)
                     : undefined,
                 },
               })
+
+              if (grounding) {
+                aiLogger.set({
+                  attributes: {
+                    ai: {
+                      googleSearchQueries: grounding.queries,
+                      googleSearchGroundedSteps: grounding.groundedSteps,
+                      googleSearchBillingUnit: grounding.billingUnit,
+                      googleSearchCost: searchCost,
+                    },
+                  },
+                })
+              }
             },
             ...parsedTools,
             providerOptions,
@@ -740,6 +769,13 @@ export default defineEventHandler(async (event) => {
           throw chatError
         }
 
+        // `messageMetadata` runs for every stream part, and every
+        // `finish-step` part (which carries the step's providerMetadata) is
+        // emitted before the single `finish` part. Collecting them here and
+        // reading them on `finish` is ordered by the stream itself — unlike
+        // reading a value produced by streamText's `onEnd`, whose ordering
+        // relative to this transform is not guaranteed.
+        const finishedSteps: Array<{ providerMetadata?: unknown }> = []
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
           originalMessages: messagesForAI,
@@ -747,6 +783,12 @@ export default defineEventHandler(async (event) => {
           sendSources: true,
           sendReasoning: body.data.reasoning !== 'off',
           messageMetadata({ part }) {
+            if (part.type === 'finish-step') {
+              finishedSteps.push({ providerMetadata: part.providerMetadata })
+
+              return undefined
+            }
+
             if (part.type !== 'finish') {
               return undefined
             }
@@ -762,9 +804,14 @@ export default defineEventHandler(async (event) => {
                 generatedImage.aspectRatio,
               )
               : undefined
-            const usage = addImageGenerationCostToUsage(
-              baseUsage,
-              imageGenerationCost,
+            const grounding = getGoogleSearchGrounding(
+              finishedSteps,
+              model.id,
+            )
+            const usage = addGoogleSearchUsage(
+              addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
+              grounding,
+              getGoogleSearchCost(grounding, googleSearchRates),
             )
 
             return {
@@ -820,6 +867,7 @@ export default defineEventHandler(async (event) => {
           reasoning: body.data.reasoning,
           tools: requestedTools,
           publicId: messagePublicId,
+          googleSearchRates,
           logger,
         })
 
@@ -1084,6 +1132,7 @@ async function persistAssistantMessageFromStream(input: {
   reasoning: 'off' | 'low' | 'medium' | 'high'
   tools: string[]
   publicId: string
+  googleSearchRates: GoogleSearchRates
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
@@ -1150,8 +1199,16 @@ async function persistAssistantMessageFromStream(input: {
       const imageGenerationCost = getGeneratedImageCostFromParts(
         responseMessage.parts as UIMessage['parts'],
       )
+      const grounding = getGoogleSearchGrounding(
+        await input.result.steps,
+        input.modelId,
+      )
 
-      usage = addImageGenerationCostToUsage(baseUsage, imageGenerationCost)
+      usage = addGoogleSearchUsage(
+        addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
+        grounding,
+        getGoogleSearchCost(grounding, input.googleSearchRates),
+      )
     } catch (exception) {
       input.logger.set({
         attributes: {

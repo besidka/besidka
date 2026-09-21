@@ -1180,6 +1180,105 @@ describe('Chat/ContextMenu.client', () => {
     })
   })
 
+  describe('Google Search grounding row', () => {
+    it('renders the cost and query count together', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.036,
+        searchUnits: 3,
+        searchBillingUnit: 'query',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search')
+      expect(row.text()).toContain('~$')
+      expect(row.text()).toContain('(3 queries)')
+    })
+
+    it('renders only the count when no rate is configured', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchUnits: 3,
+        searchBillingUnit: 'query',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).not.toContain('$')
+      expect(row.text()).toContain('3 queries')
+    })
+
+    it('shows the row when only searchUnits is present with no cost', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchUnits: 1,
+        searchBillingUnit: 'grounded-prompt',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-search-grounding"]')
+          .exists(),
+      ).toBe(true)
+    })
+
+    it('omits the row when neither searchCost nor searchUnits is set', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        cost: 0.0177,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-search-grounding"]')
+          .exists(),
+      ).toBe(false)
+    })
+  })
+
   describe('deep research tool label', () => {
     it('shows the deep research label and telescope icon', async () => {
       const info: MessageMenuInfo = {

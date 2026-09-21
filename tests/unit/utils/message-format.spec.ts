@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatMessageCost,
   formatMessageDateTime,
+  formatSearchGroundingUnits,
   formatTokenCount,
 } from '../../../shared/utils/message-format'
 
@@ -57,6 +58,31 @@ describe('formatMessageCost', () => {
 
   it('prefixes the near-zero lower bound when estimated', () => {
     expect(formatMessageCost(0.00005, true)).toBe('~< $0.0001')
+  })
+})
+
+describe('formatSearchGroundingUnits', () => {
+  it('renders an empty string for undefined or null', () => {
+    expect(formatSearchGroundingUnits(undefined)).toBe('')
+    expect(formatSearchGroundingUnits(null)).toBe('')
+  })
+
+  it('renders singular and plural query wording', () => {
+    expect(formatSearchGroundingUnits(1, 'query')).toBe('1 query')
+    expect(formatSearchGroundingUnits(3, 'query')).toBe('3 queries')
+  })
+
+  it('renders singular and plural grounded-request wording', () => {
+    expect(formatSearchGroundingUnits(1, 'grounded-prompt')).toBe(
+      '1 grounded request',
+    )
+    expect(formatSearchGroundingUnits(2, 'grounded-prompt')).toBe(
+      '2 grounded requests',
+    )
+  })
+
+  it('defaults to query wording when billingUnit is omitted', () => {
+    expect(formatSearchGroundingUnits(4)).toBe('4 queries')
   })
 })
 
