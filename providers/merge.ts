@@ -27,6 +27,7 @@ export interface CuratedModel {
   price: CuratedModelPrice
   modalities?: Model['modalities']
   tools: ModelTool[]
+  toolCall?: boolean
   default?: boolean
   forProjectMemory?: boolean
   imageGeneration?: ModelImageGenerationCapability
@@ -53,6 +54,7 @@ export interface ModelSnapshotEntry {
   description: string
   releaseDate?: string
   status?: 'deprecated' | 'beta' | 'alpha'
+  toolCall?: boolean
   limit: {
     context: number
     output: number
@@ -226,6 +228,7 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     contextLength,
     maxOutputTokens,
     modalities,
+    toolCall,
   } = curated
 
   if (
@@ -234,12 +237,13 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     || contextLength === undefined
     || maxOutputTokens === undefined
     || modalities === undefined
+    || toolCall === undefined
   ) {
     throw new Error(
       `Model "${id}" has no models.dev snapshot entry. Run `
       + '`pnpm run models:fetch`, or curate name, description, '
-      + 'contextLength, maxOutputTokens and modalities for it the way '
-      + 'EXEMPT_IDS models are curated.',
+      + 'contextLength, maxOutputTokens, modalities and toolCall for it '
+      + 'the way EXEMPT_IDS models are curated.',
     )
   }
 
@@ -259,6 +263,7 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     ),
     priceTier: resolvePriceTier(curated, undefined),
     modalities,
+    toolCall,
     ...curatedCapabilities(curated),
   }
 }
@@ -316,6 +321,7 @@ export function mergeModelMetadata(
     ),
     priceTier: resolvePriceTier(curated, snapshot),
     modalities: snapshot.modalities,
+    toolCall: snapshot.toolCall ?? curated.toolCall ?? false,
     ...curatedCapabilities(curated),
   }
 }

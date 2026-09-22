@@ -221,6 +221,9 @@ function toSnapshotEntry(model) {
     ...(KNOWN_MODEL_STATUSES.includes(model.status)
       ? { status: model.status }
       : {}),
+    ...(typeof model.tool_call === 'boolean'
+      ? { toolCall: model.tool_call }
+      : {}),
     limit: {
       context: model.limit.context,
       output: model.limit.output,

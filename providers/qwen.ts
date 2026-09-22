@@ -37,6 +37,7 @@ export default {
         output: ['text'],
       },
       tools: ['web_search'],
+      toolCall: true,
       reasoning: {
         mode: 'toggle',
       },
@@ -128,6 +129,7 @@ export default {
         output: ['text'],
       },
       tools: ['web_search'],
+      toolCall: true,
       reasoning: {
         mode: 'toggle',
       },

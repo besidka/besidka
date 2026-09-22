@@ -25,6 +25,7 @@ function createModel(overrides: Partial<Model> = {}): Model {
       output: ['text'],
     },
     tools: [],
+    toolCall: true,
     ...overrides,
   }
 }

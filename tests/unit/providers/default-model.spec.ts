@@ -21,6 +21,7 @@ function buildProvider(
         priceTier: '$',
         modalities: { input: [], output: [] },
         tools: [],
+        toolCall: false,
       }
     }),
   }

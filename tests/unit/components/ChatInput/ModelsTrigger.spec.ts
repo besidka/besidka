@@ -46,6 +46,7 @@ const imageModel = {
     output: ['image'],
   },
   tools: ['image_generation'],
+  toolCall: false,
   reasoning: false,
 }
 

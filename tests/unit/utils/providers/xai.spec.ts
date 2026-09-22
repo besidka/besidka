@@ -35,6 +35,7 @@ function createModel(overrides: Partial<Model> = {}): Model {
       output: ['text'],
     },
     tools: ['web_search'],
+    toolCall: true,
     ...overrides,
   }
 }

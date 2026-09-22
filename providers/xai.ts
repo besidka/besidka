@@ -87,6 +87,7 @@ export default {
         display: '$0.04 / image',
       },
       tools: [],
+      toolCall: false,
       imageGeneration: {
         controllerModel: 'grok-4.20-0309-non-reasoning',
       },

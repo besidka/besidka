@@ -41,6 +41,7 @@ export interface Model {
     output: string[]
   }
   tools: ModelTool[]
+  toolCall: boolean
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
   reasoningAlwaysOn?: true

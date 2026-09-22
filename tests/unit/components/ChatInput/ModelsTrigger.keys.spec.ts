@@ -47,6 +47,7 @@ const baseModel = {
     output: ['text'],
   },
   tools: [],
+  toolCall: false,
   reasoning: false,
 }
 

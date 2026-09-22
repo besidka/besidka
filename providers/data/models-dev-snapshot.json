@@ -3,6 +3,7 @@
     "name": "Claude Opus 5",
     "description": "Strongest Claude Opus model for coding, agents, and professional work",
     "releaseDate": "2026-07-24",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 128000
@@ -26,6 +27,7 @@
     "name": "Claude Opus 4.8",
     "description": "Top Claude Opus tier for the hardest reasoning, coding, and long-horizon agents",
     "releaseDate": "2026-05-28",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 128000
@@ -49,6 +51,7 @@
     "name": "Claude Opus 4.7",
     "description": "Stronger Opus tier for advanced software work and high-stakes reasoning",
     "releaseDate": "2026-04-14",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 128000
@@ -72,6 +75,7 @@
     "name": "Claude Opus 4.6",
     "description": "High-end Claude for difficult coding, planning, and slower expert reasoning",
     "releaseDate": "2026-02-04",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 128000
@@ -95,6 +99,7 @@
     "name": "Claude Opus 4.5 (latest)",
     "description": "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
     "releaseDate": "2025-11-24",
+    "toolCall": true,
     "limit": {
       "context": 200000,
       "output": 64000
@@ -118,6 +123,7 @@
     "name": "Claude Sonnet 5",
     "description": "Everyday Claude agent model for coding, planning, browsing, and general work",
     "releaseDate": "2026-06-29",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 128000
@@ -141,6 +147,7 @@
     "name": "Claude Sonnet 4.6",
     "description": "Claude workhorse for coding agents, careful analysis, and production cost control",
     "releaseDate": "2026-02-17",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 128000
@@ -164,6 +171,7 @@
     "name": "Claude Sonnet 4.5 (latest)",
     "description": "Balanced Claude model for coding, analysis, agent workflows, and cost control",
     "releaseDate": "2025-09-29",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 64000
@@ -187,6 +195,7 @@
     "name": "Claude Haiku 4.5 (latest)",
     "description": "Fast Claude lane for lightweight agents, office tasks, and responsive chat",
     "releaseDate": "2025-10-15",
+    "toolCall": true,
     "limit": {
       "context": 200000,
       "output": 64000
@@ -210,6 +219,7 @@
     "name": "Deep Research Max Preview (Apr-21-2026)",
     "description": "Maximum-comprehensiveness agentic researcher for multi-step investigation, synthesis, and cited reports",
     "releaseDate": "2026-04-21",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 65536
@@ -237,6 +247,7 @@
     "name": "Deep Research Preview (Apr-21-2026)",
     "description": "Agentic model for autonomous multi-step research, synthesis, and cited reports",
     "releaseDate": "2026-04-21",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 65536
@@ -264,6 +275,7 @@
     "name": "Gemini 3.8 Flash",
     "description": "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
     "releaseDate": "2026-09-02",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -289,6 +301,7 @@
     "name": "Gemini 3.7 Flash",
     "description": "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
     "releaseDate": "2026-08-13",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -314,6 +327,7 @@
     "name": "Gemini 3.6 Flash",
     "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
     "releaseDate": "2026-07-21",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -339,6 +353,7 @@
     "name": "Gemini 3.5 Flash",
     "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
     "releaseDate": "2026-05-19",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -364,6 +379,7 @@
     "name": "Gemini 3.5 Flash Lite",
     "description": "Fast Gemini model balancing multimodal reasoning, tool use, and cost",
     "releaseDate": "2026-07-21",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -389,6 +405,7 @@
     "name": "Gemini 3.1 Pro Preview",
     "description": "Reasoning-first Gemini preview for agentic coding and complex problem solving",
     "releaseDate": "2026-02-19",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -415,6 +432,7 @@
     "name": "Gemini 3.1 Flash Lite",
     "description": "Low-latency Gemini model for high-volume multimodal and agent workloads",
     "releaseDate": "2026-05-07",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -440,6 +458,7 @@
     "name": "Gemini 3 Flash Preview",
     "description": "New Gemini flash lane bringing frontier-style multimodal reasoning to cheaper runs",
     "releaseDate": "2025-12-17",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -465,6 +484,7 @@
     "name": "Gemini 2.5 Pro",
     "description": "Google's proven reasoning model for coding, math, and multimodal analysis",
     "releaseDate": "2025-06-17",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -491,6 +511,7 @@
     "name": "Gemini 2.5 Flash",
     "description": "Fast Gemini workhorse for multimodal apps where latency and price matter",
     "releaseDate": "2025-06-17",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -516,6 +537,7 @@
     "name": "Gemini 2.5 Flash-Lite",
     "description": "Lean Gemini 2.5 lane for cheap multimodal traffic and quick agents",
     "releaseDate": "2025-06-17",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -541,6 +563,7 @@
     "name": "Nano Banana 2",
     "description": "Image model for prompt-driven generation, editing, and visual design workflows",
     "releaseDate": "2026-05-28",
+    "toolCall": false,
     "limit": {
       "context": 65536,
       "output": 65536
@@ -566,6 +589,7 @@
     "name": "Nano Banana 2 Lite",
     "description": "Fastest, most cost-efficient Gemini image model for high-volume 1K generation and editing",
     "releaseDate": "2026-06-30",
+    "toolCall": true,
     "limit": {
       "context": 65536,
       "output": 65536
@@ -589,6 +613,7 @@
     "name": "Nano Banana Pro",
     "description": "Nano Banana Pro for higher-fidelity image generation and design-heavy edits",
     "releaseDate": "2026-05-28",
+    "toolCall": false,
     "limit": {
       "context": 131072,
       "output": 32768
@@ -612,6 +637,7 @@
     "name": "Nano Banana",
     "description": "Nano Banana image model for fast generation, edits, and character-consistent assets",
     "releaseDate": "2025-08-26",
+    "toolCall": false,
     "limit": {
       "context": 32768,
       "output": 32768
@@ -635,6 +661,7 @@
     "name": "GPT-5.6 Sol",
     "description": "Frontier GPT-5.6 model for complex professional work, coding, and agentic workflows",
     "releaseDate": "2026-07-09",
+    "toolCall": true,
     "limit": {
       "context": 1050000,
       "output": 128000
@@ -659,6 +686,7 @@
     "name": "GPT-5.6 Terra",
     "description": "Balanced GPT-5.6 model for capable, cost-efficient everyday work",
     "releaseDate": "2026-07-09",
+    "toolCall": true,
     "limit": {
       "context": 1050000,
       "output": 128000
@@ -683,6 +711,7 @@
     "name": "GPT-5.6 Luna",
     "description": "Cost-efficient GPT-5.6 model for fast, high-volume workloads",
     "releaseDate": "2026-07-09",
+    "toolCall": true,
     "limit": {
       "context": 1050000,
       "output": 128000
@@ -707,6 +736,7 @@
     "name": "GPT-5.5",
     "description": "Default frontier GPT for coding, computer use, research, and knowledge work",
     "releaseDate": "2026-04-23",
+    "toolCall": true,
     "limit": {
       "context": 1050000,
       "output": 128000
@@ -731,6 +761,7 @@
     "name": "GPT-5.4",
     "description": "Agent-ready GPT for coding and computer-use workflows at a lower cost",
     "releaseDate": "2026-03-05",
+    "toolCall": true,
     "limit": {
       "context": 1050000,
       "output": 128000
@@ -755,6 +786,7 @@
     "name": "GPT-5.4 mini",
     "description": "Strong small GPT for coding subagents, quick tool use, and high-volume work",
     "releaseDate": "2026-03-17",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -777,6 +809,7 @@
     "name": "GPT-5.4 nano",
     "description": "Cheapest GPT-5.4 lane for simple routing, extraction, and bulk automation",
     "releaseDate": "2026-03-17",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -799,6 +832,7 @@
     "name": "GPT-5.2",
     "description": "Reliable GPT generation for broad coding, writing, and tool-assisted product work",
     "releaseDate": "2025-12-11",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -821,6 +855,7 @@
     "name": "GPT-5.1",
     "description": "Sharper GPT-5 generation for coding, product work, and tool-assisted tasks",
     "releaseDate": "2025-11-13",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -843,6 +878,7 @@
     "name": "GPT-5",
     "description": "Original GPT-5 workhorse for reasoning, coding, writing, and tool workflows",
     "releaseDate": "2025-08-07",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -865,6 +901,7 @@
     "name": "GPT-5 Mini",
     "description": "Small GPT-5 for responsive agents, coding help, and everyday automation",
     "releaseDate": "2025-08-07",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -887,6 +924,7 @@
     "name": "GPT-5 Nano",
     "description": "Tiny GPT-5 lane for routing, extraction, classification, and bulk jobs",
     "releaseDate": "2025-08-07",
+    "toolCall": true,
     "limit": {
       "context": 400000,
       "output": 128000
@@ -909,6 +947,7 @@
     "name": "o3",
     "description": "Deliberate o-series reasoner for hard math, coding, and multi-step analysis",
     "releaseDate": "2025-04-16",
+    "toolCall": true,
     "limit": {
       "context": 200000,
       "output": 100000
@@ -932,6 +971,7 @@
     "name": "GPT-4.1",
     "description": "Long-lived GPT workhorse for coding, instruction following, and production apps",
     "releaseDate": "2025-04-14",
+    "toolCall": true,
     "limit": {
       "context": 1047576,
       "output": 32768
@@ -955,6 +995,7 @@
     "name": "GPT-4.1 mini",
     "description": "Affordable GPT-4.1 lane for fast coding help and structured extraction",
     "releaseDate": "2025-04-14",
+    "toolCall": true,
     "limit": {
       "context": 1047576,
       "output": 32768
@@ -978,6 +1019,7 @@
     "name": "GPT-4o",
     "description": "Omni-era GPT for multimodal chat, practical coding, and general assistants",
     "releaseDate": "2024-05-13",
+    "toolCall": true,
     "limit": {
       "context": 128000,
       "output": 16384
@@ -1001,6 +1043,7 @@
     "name": "GPT-4o mini",
     "description": "Small omni GPT for cheap multimodal assistance and production-scale traffic",
     "releaseDate": "2024-07-18",
+    "toolCall": true,
     "limit": {
       "context": 128000,
       "output": 16384
@@ -1025,6 +1068,7 @@
     "description": "Fast o-series model for compact reasoning, coding, and tool use",
     "releaseDate": "2025-04-16",
     "status": "deprecated",
+    "toolCall": true,
     "limit": {
       "context": 200000,
       "output": 100000
@@ -1048,6 +1092,7 @@
     "description": "Tiny GPT-4.1 option for classification, routing, and very high-volume tasks",
     "releaseDate": "2025-04-14",
     "status": "deprecated",
+    "toolCall": true,
     "limit": {
       "context": 1047576,
       "output": 32768
@@ -1071,6 +1116,7 @@
     "description": "Smaller o-series reasoner for economical coding, math, and planning tasks",
     "releaseDate": "2024-12-20",
     "status": "deprecated",
+    "toolCall": true,
     "limit": {
       "context": 200000,
       "output": 100000
@@ -1093,6 +1139,7 @@
     "description": "O-series reasoning model for hard analysis, math, coding, and planning",
     "releaseDate": "2024-12-05",
     "status": "deprecated",
+    "toolCall": true,
     "limit": {
       "context": 200000,
       "output": 100000
@@ -1117,6 +1164,7 @@
     "description": "Compact GPT model for low-latency assistance and high-volume workloads",
     "releaseDate": "2023-11-06",
     "status": "deprecated",
+    "toolCall": true,
     "limit": {
       "context": 128000,
       "output": 4096
@@ -1140,6 +1188,7 @@
     "description": "GPT model for general reasoning, writing, coding, and tool-assisted tasks",
     "releaseDate": "2023-11-06",
     "status": "deprecated",
+    "toolCall": true,
     "limit": {
       "context": 8192,
       "output": 8192
@@ -1162,6 +1211,7 @@
     "description": "Compact GPT model for low-latency assistance and high-volume workloads",
     "releaseDate": "2023-03-01",
     "status": "deprecated",
+    "toolCall": false,
     "limit": {
       "context": 16385,
       "output": 4096
@@ -1183,6 +1233,7 @@
     "name": "gpt-image-2",
     "description": "Image model for prompt-driven generation, editing, and visual design workflows",
     "releaseDate": "2026-04-21",
+    "toolCall": false,
     "limit": {
       "context": 0,
       "output": 0
@@ -1205,6 +1256,7 @@
     "name": "Grok 4.20 (Non-Reasoning)",
     "description": "Grok model for agentic tool use, reasoning, coding, and live assistance",
     "releaseDate": "2026-03-09",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 30000
@@ -1229,6 +1281,7 @@
     "name": "Grok 4.20 (Reasoning)",
     "description": "Reasoning Grok for document-heavy analysis and long-horizon tool use",
     "releaseDate": "2026-03-09",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 30000
@@ -1253,6 +1306,7 @@
     "name": "Grok 4.20 Multi-Agent",
     "description": "Grok model for agentic tool use, reasoning, coding, and live assistance",
     "releaseDate": "2026-03-09",
+    "toolCall": false,
     "limit": {
       "context": 1000000,
       "output": 30000
@@ -1277,6 +1331,7 @@
     "name": "Grok 4.6",
     "description": "xAI's frontier model for long-running agents, coding, knowledge work, and visual projects",
     "releaseDate": "2026-08-12",
+    "toolCall": true,
     "limit": {
       "context": 500000,
       "output": 500000
@@ -1301,6 +1356,7 @@
     "name": "Grok 4.5",
     "description": "xAI's Grok model for chat, coding, agentic tools, and lower hallucination risk",
     "releaseDate": "2026-07-08",
+    "toolCall": true,
     "limit": {
       "context": 500000,
       "output": 500000
@@ -1325,6 +1381,7 @@
     "name": "Grok 4.3",
     "description": "xAI's Grok for chat, coding, agentic tools, and lower hallucination risk",
     "releaseDate": "2026-04-17",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 30000
@@ -1349,6 +1406,7 @@
     "name": "Grok Build 0.1",
     "description": "Fast Grok coding model tuned for agentic engineering and iterative edits",
     "releaseDate": "2026-04-16",
+    "toolCall": true,
     "limit": {
       "context": 256000,
       "output": 256000
@@ -1373,6 +1431,7 @@
     "name": "DeepSeek V4.1 Flash",
     "description": "DeepSeek V4.1 Flash model for reasoning and agentic coding",
     "releaseDate": "2026-09-10",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 384000
@@ -1395,6 +1454,7 @@
     "name": "DeepSeek V4 Pro",
     "description": "DeepSeek V4 Pro snapshot with million-token context and support for thinking and non-thinking modes",
     "releaseDate": "2026-08-12",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 384000
@@ -1416,6 +1476,7 @@
     "name": "Kimi K2.6",
     "description": "Multimodal Kimi workhorse for agent loops, coding tasks, and visual context",
     "releaseDate": "2026-04-21",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 262144
@@ -1439,6 +1500,7 @@
     "name": "Kimi K3",
     "description": "Multimodal Kimi model with 1M context and toggleable max-effort thinking for long-horizon agent work",
     "releaseDate": "2026-07-16",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 131072
@@ -1462,6 +1524,7 @@
     "name": "Kimi K2.7 Code",
     "description": "Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking",
     "releaseDate": "2026-06-12",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 262144
@@ -1485,6 +1548,7 @@
     "name": "Kimi K2.7 Code HighSpeed",
     "description": "Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking",
     "releaseDate": "2026-06-12",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 262144
@@ -1508,6 +1572,7 @@
     "name": "Qwen3.7 Plus",
     "description": "Multimodal Qwen workhorse for long-context agents, visual inputs, and coding",
     "releaseDate": "2026-06-02",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 65536
@@ -1532,6 +1597,7 @@
     "name": "Qwen3.7 Max",
     "description": "Qwen frontier model tuned for agent frameworks, coding assistants, and long tasks",
     "releaseDate": "2026-05-21",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 65536
@@ -1553,6 +1619,7 @@
     "name": "Qwen3.6 Flash",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-04-27",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 65536
@@ -1576,6 +1643,7 @@
     "name": "Qwen3.8 Max",
     "description": "2.4-trillion-parameter MoE flagship for coding, professional work, multimodal understanding, and long-horizon agentic workflows",
     "releaseDate": "2026-08-03",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 131072
@@ -1600,6 +1668,7 @@
     "name": "Qwen3.8 Flash",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-08-26",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 131072
@@ -1623,6 +1692,7 @@
     "name": "Qwen3.6 Max Preview",
     "description": "Flagship Qwen model for complex reasoning, coding, and agentic workflows",
     "releaseDate": "2026-04-20",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1644,6 +1714,7 @@
     "name": "Qwen3.6 Plus",
     "description": "Earlier Qwen multimodal workhorse for million-token agent and document tasks",
     "releaseDate": "2026-04-02",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 65536
@@ -1668,6 +1739,7 @@
     "name": "Qwen3.6 27B",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-04-22",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1692,6 +1764,7 @@
     "name": "Qwen3.6 35B-A3B",
     "description": "Open multimodal Qwen MoE for local agents that need vision, audio, and code",
     "releaseDate": "2026-04-17",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1716,6 +1789,7 @@
     "name": "Qwen3.5 Plus",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-02-16",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 65536
@@ -1739,6 +1813,7 @@
     "name": "Qwen3.5 397B-A17B",
     "description": "Large open Qwen multimodal MoE for visual agents and long technical tasks",
     "releaseDate": "2026-02-15",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1763,6 +1838,7 @@
     "name": "Qwen3.5 122B-A10B",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-02-23",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1787,6 +1863,7 @@
     "name": "Qwen3.5 27B",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-02-23",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1811,6 +1888,7 @@
     "name": "Qwen3.5 35B-A3B",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2026-02-23",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -1835,6 +1913,7 @@
     "name": "Qwen3-VL Plus",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2025-09-23",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 32768
@@ -1857,6 +1936,7 @@
     "name": "Qwen3 235B-A22B",
     "description": "Large open Qwen MoE for multilingual reasoning, coding, and tool use",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 16384
@@ -1878,6 +1958,7 @@
     "name": "Qwen3 32B",
     "description": "Dense open Qwen model for self-hosted chat, reasoning, and coding",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 16384
@@ -1899,6 +1980,7 @@
     "name": "Qwen3 14B",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -1920,6 +2002,7 @@
     "name": "Qwen3 8B",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -1941,6 +2024,7 @@
     "name": "Qwen Plus",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2024-01-25",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 32768
@@ -1962,6 +2046,7 @@
     "name": "Qwen Flash",
     "description": "Efficient Qwen model for fast chat, extraction, and high-volume workloads",
     "releaseDate": "2025-07-28",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 32768
@@ -1983,6 +2068,7 @@
     "name": "Qwen Turbo",
     "description": "Efficient Qwen model for fast chat, extraction, and high-volume workloads",
     "releaseDate": "2024-11-01",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 16384
@@ -2004,6 +2090,7 @@
     "name": "QwQ Plus",
     "description": "Qwen reasoning model for deliberate problem solving, math, and coding",
     "releaseDate": "2025-03-05",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2025,6 +2112,7 @@
     "name": "QVQ Max",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2025-03-25",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2047,6 +2135,7 @@
     "name": "Qwen3-Next 80B-A3B (Thinking)",
     "description": "Efficient Qwen thinking model for local reasoning, math, and coding agents",
     "releaseDate": "2025-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 32768
@@ -2068,6 +2157,7 @@
     "name": "Qwen3-VL 235B-A22B",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 32768
@@ -2090,6 +2180,7 @@
     "name": "Qwen3-VL 30B-A3B",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 32768
@@ -2112,6 +2203,7 @@
     "name": "Qwen3 Max",
     "description": "Flagship Qwen3 model for coding agents, complex reasoning, and tool use",
     "releaseDate": "2025-09-23",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -2133,6 +2225,7 @@
     "name": "Qwen3-Next 80B-A3B Instruct",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2025-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 32768
@@ -2154,6 +2247,7 @@
     "name": "Qwen3 Coder Plus",
     "description": "Hosted Qwen coder for software agents, repo edits, and long-context code",
     "releaseDate": "2025-07-23",
+    "toolCall": true,
     "limit": {
       "context": 1048576,
       "output": 65536
@@ -2175,6 +2269,7 @@
     "name": "Qwen3 Coder Flash",
     "description": "Qwen coding model for software agents, repository edits, and code reasoning",
     "releaseDate": "2025-07-28",
+    "toolCall": true,
     "limit": {
       "context": 1000000,
       "output": 65536
@@ -2196,6 +2291,7 @@
     "name": "Qwen3-Coder 480B-A35B Instruct",
     "description": "Open Qwen coding heavyweight for repository reasoning and agentic engineering",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -2218,6 +2314,7 @@
     "name": "Qwen3-Coder 30B-A3B Instruct",
     "description": "Smaller Qwen coder for efficient local agents and repo-level fixes",
     "releaseDate": "2025-04",
+    "toolCall": true,
     "limit": {
       "context": 262144,
       "output": 65536
@@ -2240,6 +2337,7 @@
     "name": "Qwen Max",
     "description": "Flagship Qwen model for complex reasoning, coding, and agentic workflows",
     "releaseDate": "2024-04-03",
+    "toolCall": true,
     "limit": {
       "context": 32768,
       "output": 8192
@@ -2261,6 +2359,7 @@
     "name": "Qwen-VL Max",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2024-04-08",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2283,6 +2382,7 @@
     "name": "Qwen-VL Plus",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2024-01-25",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2305,6 +2405,7 @@
     "name": "Qwen-VL OCR",
     "description": "OCR model for extracting structured text from documents and screenshots",
     "releaseDate": "2024-10-28",
+    "toolCall": false,
     "limit": {
       "context": 34096,
       "output": 4096
@@ -2327,6 +2428,7 @@
     "name": "Qwen Plus Character (Japanese)",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2024-01",
+    "toolCall": true,
     "limit": {
       "context": 8192,
       "output": 512
@@ -2348,6 +2450,7 @@
     "name": "Qwen-MT Plus",
     "description": "Translation model for multilingual conversion, localization, and cross-language workflows",
     "releaseDate": "2025-01",
+    "toolCall": false,
     "limit": {
       "context": 16384,
       "output": 8192
@@ -2369,6 +2472,7 @@
     "name": "Qwen-MT Turbo",
     "description": "Translation model for multilingual conversion, localization, and cross-language workflows",
     "releaseDate": "2025-01",
+    "toolCall": false,
     "limit": {
       "context": 16384,
       "output": 8192
@@ -2390,6 +2494,7 @@
     "name": "Qwen2.5-VL 72B Instruct",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2024-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2412,6 +2517,7 @@
     "name": "Qwen2.5-VL 7B Instruct",
     "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
     "releaseDate": "2024-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2434,6 +2540,7 @@
     "name": "Qwen2.5 72B Instruct",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2024-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2455,6 +2562,7 @@
     "name": "Qwen2.5 32B Instruct",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2024-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2476,6 +2584,7 @@
     "name": "Qwen2.5 14B Instruct",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2024-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
@@ -2497,6 +2606,7 @@
     "name": "Qwen2.5 7B Instruct",
     "description": "Qwen instruction model for multilingual chat, reasoning, and tool use",
     "releaseDate": "2024-09",
+    "toolCall": true,
     "limit": {
       "context": 131072,
       "output": 8192
