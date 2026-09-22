@@ -474,4 +474,41 @@ describe('chats external search validation', () => {
 
     expect(insertValues).not.toHaveBeenCalled()
   })
+
+  it('rejects a web search tool for a tool-calling model that always generates images', async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'gpt-image-2',
+        name: 'GPT Image 2',
+        tools: ['web_search'],
+        toolCall: true,
+        modalities: { input: ['text'], output: ['image'] },
+        imageGeneration: {
+          controllerModel: 'gpt-5-nano',
+        },
+      },
+      modelName: 'GPT Image 2',
+    })))
+
+    await expect(handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-image-2',
+        tools: ['web_search_brave'],
+        reasoning: 'off',
+        messages: [createMessage('Draw a forest')],
+      },
+    } as any)).rejects.toEqual(expect.objectContaining({
+      message: 'The selected model does not support the requested tool.',
+      why: 'GPT Image 2 always generates images and cannot also perform a web search.',
+      fix: 'Choose a different model to enable web search.',
+    }))
+
+    expect(insertValues).not.toHaveBeenCalled()
+  })
 })

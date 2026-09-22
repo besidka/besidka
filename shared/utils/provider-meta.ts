@@ -44,6 +44,7 @@ export const providerMeta: Record<string, ProviderMeta> = {
     id: 'google',
     kind: 'provider',
     label: 'Google AI Studio',
+    shortLabel: 'Google',
     keyProviderId: 'google',
     dashboardUrl: 'https://aistudio.google.com/app/apikey',
     keyFields: [apiKeyField],

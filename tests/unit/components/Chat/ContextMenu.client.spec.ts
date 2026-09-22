@@ -1433,6 +1433,33 @@ describe('Chat/ContextMenu.client', () => {
       expect(row.text()).toContain('Web search (Exa)')
     })
 
+    it('labels the row "Web search (Google)" when searchProvider is google', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.01,
+        searchUnits: 1,
+        searchBillingUnit: 'grounded-prompt',
+        searchProvider: 'google',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search (Google)')
+      expect(row.text()).not.toContain('Web search (Google AI Studio)')
+    })
+
     it('renders the unadorned "Web search" label when searchProvider is absent', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',

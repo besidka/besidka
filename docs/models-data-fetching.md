@@ -34,7 +34,7 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `id` | curated (the lookup key) |
 | `name` | fetched, unless the model is a research agent or models.dev publishes the bare id as the name |
 | `description` | fetched, unless the model is a research agent |
-| `contextLength`, `maxOutputTokens`, `modalities` | fetched |
+| `contextLength`, `maxOutputTokens`, `modalities`, `toolCall` | fetched |
 | `status` | fetched, unless hand-set in curated (curated wins — the owner can outrank models.dev) |
 | `retiredAt` | curated only — the provider's official shutdown date; models.dev has no retirement dates |
 | `price.input`, `price.output` | fetched, unless the model is a research agent (billed per task) |
@@ -439,7 +439,9 @@ snapshot row would be wiped on the next successful run. For a retired-but-
 kept model, set curated `status: 'deprecated'` (and optionally
 `releaseDate`) so the legacy picker section and `useChatProvider()` guard
 keep working after the snapshot row disappears. The merge throws at import
-time if any required curated field is missing.
+time if any required curated field is missing — including `toolCall`,
+which an exempt model must now supply explicitly in the curated file since
+there is no snapshot entry for `mergeModelMetadata()` to fall back to.
 
 ## Optional owner-run spot-check
 

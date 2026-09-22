@@ -148,10 +148,14 @@ deliverable. Provider-executed tools are doubly safe: the SDK's
 continuation condition skips tool calls flagged `providerExecuted: true`.
 
 Moonshot's Formula-API `web_search` tool
-(`server/utils/providers/moonshotai-web-search.ts`) is the first real
+(`server/utils/providers/moonshotai-web-search.ts`) was the first real
 caller of the marker — see
 [`moonshotai.md`](./moonshotai.md#web-search--implemented-via-the-formula-api).
-The loop mechanics themselves remain proven generically by a test-only
+Brave and Exa's BYOK search tools (`server/utils/search/brave.ts`,
+`server/utils/search/exa.ts`) now also mark their tool with
+`withFollowUpTurn()`, for the same reason: the model must read the search
+results before it can answer in natural language. The loop mechanics
+themselves remain proven generically by a test-only
 fixture tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the
 real send pipeline with a real `streamText` and a `MockLanguageModelV4`;
 that fixture must never be wired into a provider builder.

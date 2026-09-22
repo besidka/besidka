@@ -190,6 +190,12 @@ enforcement logic inline. The rule is keyed by the authenticated
 | Path | Window | Max |
 | --- | --- | --- |
 | `GET /api/v1/profiles/keys` | 60s | 30 |
+| `GET /api/v1/profiles/keys/brave` | 60s | 10 |
+| `POST /api/v1/profiles/keys/brave` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/brave` | 60s | 10 |
+| `GET /api/v1/profiles/keys/exa` | 60s | 10 |
+| `POST /api/v1/profiles/keys/exa` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/exa` | 60s | 10 |
 
 This route is read-mostly, user-initiated, and low-frequency — a
 single DB lookup with no secret decryption cost beyond one
@@ -198,6 +204,13 @@ single DB lookup with no secret decryption cost beyond one
 route/provider/method combination that calls it gets an independent
 bucket keyed by `session.user.id`; sharing one bucket across methods or
 providers would let one flow's traffic silently erode another's budget.
+
+The Brave and Exa key routes (`server/api/v1/profiles/keys/brave/index.
+{get,post,delete}.ts` and their `exa` counterparts) each call
+`enforceKeysRateLimit()` with their own `keyPrefix`, giving all six
+routes an independent 10-per-60s bucket per verb — tighter than the
+summary route's 30-per-60s because these verbs write and decrypt a
+secret rather than just reading a boolean.
 
 The seven pre-existing single-provider key routes
 (`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`/`qwen`) remain

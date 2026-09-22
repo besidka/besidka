@@ -239,6 +239,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  let encryptedBraveApiKey: string | undefined
+  let encryptedExaApiKey: string | undefined
+
   if (selectedBraveSearch) {
     const braveKey = await db.query.keys.findFirst({
       where: { userId, provider: 'brave' },
@@ -253,6 +256,8 @@ export default defineEventHandler(async (event) => {
         fix: 'Add one at /profile/keys → Search providers.',
       })
     }
+
+    encryptedBraveApiKey = braveKey.apiKey
   }
 
   if (selectedExaSearch) {
@@ -269,6 +274,8 @@ export default defineEventHandler(async (event) => {
         fix: 'Add one at /profile/keys → Search providers.',
       })
     }
+
+    encryptedExaApiKey = exaKey.apiKey
   }
 
   const supportedTools = [...model.tools, ...requiredTools]
@@ -865,23 +872,9 @@ export default defineEventHandler(async (event) => {
         ? 'exa'
         : undefined
 
-  if (externalSearchProvider === 'brave') {
-    const braveKey = await db.query.keys.findFirst({
-      where: { userId, provider: 'brave' },
-      columns: { apiKey: true },
-    })
-
-    if (!braveKey?.apiKey) {
-      throw createError({
-        message: 'A Brave Search API key is required for this tool.',
-        status: 400,
-        why: 'No Brave Search API key is saved for this account.',
-        fix: 'Add one at /profile/keys → Search providers.',
-      })
-    }
-
+  if (externalSearchProvider === 'brave' && encryptedBraveApiKey) {
     const { tools: braveTools } = await getBraveWebSearchTools(
-      await useDecryptText(braveKey.apiKey),
+      await useDecryptText(encryptedBraveApiKey),
       aiLogger,
     )
 
@@ -891,23 +884,9 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (externalSearchProvider === 'exa') {
-    const exaKey = await db.query.keys.findFirst({
-      where: { userId, provider: 'exa' },
-      columns: { apiKey: true },
-    })
-
-    if (!exaKey?.apiKey) {
-      throw createError({
-        message: 'An Exa API key is required for this tool.',
-        status: 400,
-        why: 'No Exa API key is saved for this account.',
-        fix: 'Add one at /profile/keys → Search providers.',
-      })
-    }
-
+  if (externalSearchProvider === 'exa' && encryptedExaApiKey) {
     const { tools: exaTools } = await getExaWebSearchTools(
-      await useDecryptText(exaKey.apiKey),
+      await useDecryptText(encryptedExaApiKey),
       aiLogger,
     )
 

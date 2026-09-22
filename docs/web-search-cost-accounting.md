@@ -446,6 +446,26 @@ relevant, asserting the response still carries `groundingMetadata` /
 `server_tool_use` / `web_search_call` — docs-reading isn't verification
 here.
 
+**Partially resolved since the above was written, for an unrelated reason:**
+a real empirical spike run ahead of the gateway-restoration work (not this
+Brave/Exa effort) made exactly that live call — see
+`docs/gateway-restoration-and-search-providers-plan.md` § R12 for the full
+evidence trail. **Vercel AI Gateway: confirmed PASS.**
+`openai.tools.webSearch({})` and `google.tools.googleSearch({})` routed
+through `gateway(...)` both genuinely invoked the search tool (real
+`tool-call`/`tool-result` steps, real source URLs, live results) and were
+billed a separate `billableWebSearchCalls`/`cost` line distinct from
+inference cost — proof the tool executed, not an inference from
+architecture. **Cloudflare AI Gateway: still inconclusive, blocked on the
+owner's account state, not a demonstrated stripping bug.** The request
+reached the correct gateway endpoint with `tools:[{type:'web_search'}]`
+intact, but every gateway on the tested account rejected it before a 200
+(no funded wholesale credits, or no BYOK OpenAI key configured on the
+gateway) — an owner action item, not an engineering finding. Treat
+Cloudflare as unresolved until an owner funds credits or adds a key and the
+saved `test2-cloudflare-gateway-openai-search.mjs` script is re-run to a
+real 200.
+
 Separately, and more interesting than the passthrough question: Vercel AI
 Gateway ships its **own** model-agnostic search tools usable with any model
 regardless of native support — Perplexity $5/1,000, Exa $7/1,000, Tako
@@ -469,7 +489,14 @@ adopts a Gateway for other reasons first.
 
 ## Sketch: external search backends
 
-**This is a shape, not a plan. Nothing below is decided or scheduled.**
+**Implemented.** Epic 0 and Epic 1 of
+`docs/gateway-restoration-and-search-providers-plan.md` built Brave and Exa
+web search substantially as sketched below: BYOK function tools, Brave
+first, tool keys distinct from `web_search_preview`
+(`web_search_brave`/`web_search_exa`), a separate key-storage surface rather
+than a widened `keys` enum, and capability-first routing. What follows is
+kept for its reasoning trail, not as a live proposal — see the plan doc for
+what actually shipped.
 
 ### Candidates
 
@@ -573,6 +600,11 @@ This document doesn't propose building anything. Specifically out of scope:
   landed have no `searchUnits` and can't gain one.
 
 ## If we build this next
+
+**Superseded — this happened.** The ordered list below records the
+decisions actually made during Epic 0/1 of
+`docs/gateway-restoration-and-search-providers-plan.md`, not a
+forward-looking plan; see that document for the execution detail.
 
 Ordered decisions, each blocking the next, before any code:
 
