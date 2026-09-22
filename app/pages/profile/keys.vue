@@ -10,25 +10,103 @@
     <Icon name="lucide:info" size="16" />
     All keys are stored securely and encrypted in database
   </div>
-  <ul class="grid gap-4">
-    <li
-      v-for="provider in enabledProviders"
-      :key="provider.id"
+  <nav
+    aria-label="Key sections"
+    class="tabs tabs-box tabs-sm mb-6"
+  >
+    <button
+      v-for="tab in tabs"
+      :id="`key-tab-${tab.id}`"
+      :key="tab.id"
+      type="button"
+      class="tab grow gap-2"
+      :class="{ 'tab-active': activeTab === tab.id }"
+      :aria-controls="`key-panel-${tab.id}`"
+      :aria-current="activeTab === tab.id ? 'true' : undefined"
+      :aria-label="tab.label"
+      :title="tab.label"
+      :data-testid="`key-tab-${tab.id}`"
+      @click="activeTab = tab.id"
     >
-      <UiBubble>
-        <LazyProfileKeysProviderKeyCard
-          :provider-id="provider.id"
-          :group="providersAccordionGroup"
-        />
-      </UiBubble>
-    </li>
-  </ul>
+      <ProviderIcon
+        v-if="tab.providerId"
+        :provider-id="tab.providerId"
+        :label="tab.label"
+        class="!size-4 shrink-0"
+      />
+      <Icon
+        v-else
+        name="lucide:key-round"
+        size="16"
+        class="shrink-0"
+      />
+      <span v-if="activeTab === tab.id">{{ tab.label }}</span>
+    </button>
+  </nav>
+  <div
+    v-show="activeTab === providersTabId"
+    :id="`key-panel-${providersTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${providersTabId}`"
+    :data-testid="`key-panel-${providersTabId}`"
+  >
+    <ul class="grid gap-4">
+      <li
+        v-for="provider in enabledProviders"
+        :key="provider.id"
+      >
+        <UiBubble>
+          <LazyProfileKeysProviderKeyCard
+            :provider-id="provider.id"
+            :group="providersAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
+  <div
+    v-show="activeTab === searchTabId"
+    :id="`key-panel-${searchTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${searchTabId}`"
+    :data-testid="`key-panel-${searchTabId}`"
+  >
+    <p class="mb-6 text-center">
+      Search providers give any tool-calling model web search using your own
+      search key, instead of the model provider's built-in search.
+    </p>
+    <ul class="grid gap-4">
+      <li
+        v-for="providerId in enabledSearchProviders"
+        :key="providerId"
+      >
+        <UiBubble>
+          <LazyProfileKeysProviderKeyCard
+            :provider-id="providerId"
+            :group="searchAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
 </template>
 <script setup lang="ts">
 import type { Providers, Provider } from '#shared/types/providers.d'
-import { providerMeta } from '#shared/utils/provider-meta'
+import {
+  enabledSearchProviders,
+  providerMeta,
+} from '#shared/utils/provider-meta'
 
+interface KeyTab {
+  id: string
+  label: string
+  providerId?: string
+}
+
+const providersTabId = 'providers'
+const searchTabId = 'search'
 const providersAccordionGroup = 'profile-provider-keys'
+const searchAccordionGroup = 'profile-search-provider-keys'
 
 definePageMeta({
   layout: 'profile',
@@ -44,6 +122,8 @@ useSeoMeta({
 
 const config = useRuntimeConfig().public
 
+const activeTab = shallowRef<string>(providersTabId)
+
 const providers = computed<Providers>(() => {
   return config?.providers as Providers ?? []
 })
@@ -52,5 +132,12 @@ const enabledProviders = computed<Providers>(() => {
   return providers.value.filter((provider: Provider) => {
     return !!providerMeta[provider.id]
   })
+})
+
+const tabs = computed<KeyTab[]>(() => {
+  return [
+    { id: providersTabId, label: 'Per provider' },
+    { id: searchTabId, label: 'Search providers' },
+  ]
 })
 </script>

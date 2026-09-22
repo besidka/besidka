@@ -49,7 +49,10 @@ describe('profile keys page', () => {
   it('lists every configured provider in catalog order', async () => {
     const wrapper = await mountPage()
 
-    const providerIds = wrapper
+    const providersPanel = wrapper.get(
+      '[data-testid="key-panel-providers"]',
+    )
+    const providerIds = providersPanel
       .findAll('[data-testid="provider-card"]')
       .map((card: any) => {
         return card.attributes('data-provider')
@@ -73,7 +76,10 @@ describe('profile keys page', () => {
 
     const wrapper = await mountPage()
 
-    const providerIds = wrapper
+    const providersPanel = wrapper.get(
+      '[data-testid="key-panel-providers"]',
+    )
+    const providerIds = providersPanel
       .findAll('[data-testid="provider-card"]')
       .map((card: any) => {
         return card.attributes('data-provider')
@@ -86,11 +92,93 @@ describe('profile keys page', () => {
   it('collapses provider cards into one shared accordion group', async () => {
     const wrapper = await mountPage()
 
-    const cards = wrapper.findAll('[data-testid="provider-card"]')
+    const providersPanel = wrapper.get(
+      '[data-testid="key-panel-providers"]',
+    )
+    const cards = providersPanel.findAll('[data-testid="provider-card"]')
 
     cards.forEach((card: any) => {
       expect(card.attributes('data-group')).toBe('profile-provider-keys')
       expect(card.attributes('data-open')).toBe('false')
     })
   })
+
+  it('renders a tab bar with the providers tab active by default',
+    async () => {
+      const wrapper = await mountPage()
+
+      const providersTab = wrapper.get('[data-testid="key-tab-providers"]')
+      const searchTab = wrapper.get('[data-testid="key-tab-search"]')
+
+      expect(providersTab.classes()).toContain('tab-active')
+      expect(providersTab.text()).toContain('Per provider')
+      expect(searchTab.classes()).not.toContain('tab-active')
+      expect(searchTab.text()).not.toContain('Search providers')
+    })
+
+  it('shows the providers panel and hides the search panel by default',
+    async () => {
+      const wrapper = await mountPage()
+
+      const providersPanel = wrapper.get(
+        '[data-testid="key-panel-providers"]',
+      )
+      const searchPanel = wrapper.get('[data-testid="key-panel-search"]')
+
+      expect((providersPanel.element as HTMLElement).style.display)
+        .not.toBe('none')
+      expect((searchPanel.element as HTMLElement).style.display)
+        .toBe('none')
+    })
+
+  it('swaps to the search panel when the search tab is clicked',
+    async () => {
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="key-tab-search"]').trigger('click')
+
+      const providersPanel = wrapper.get(
+        '[data-testid="key-panel-providers"]',
+      )
+      const searchPanel = wrapper.get('[data-testid="key-panel-search"]')
+      const searchTab = wrapper.get('[data-testid="key-tab-search"]')
+
+      expect((searchPanel.element as HTMLElement).style.display)
+        .not.toBe('none')
+      expect((providersPanel.element as HTMLElement).style.display)
+        .toBe('none')
+      expect(searchTab.classes()).toContain('tab-active')
+      expect(searchTab.text()).toContain('Search providers')
+    })
+
+  it('lists Brave then Exa in the search panel, in that order',
+    async () => {
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="key-tab-search"]').trigger('click')
+
+      const searchPanel = wrapper.get('[data-testid="key-panel-search"]')
+      const providerIds = searchPanel
+        .findAll('[data-testid="provider-card"]')
+        .map((card: any) => {
+          return card.attributes('data-provider')
+        })
+
+      expect(providerIds).toEqual(['brave', 'exa'])
+    })
+
+  it('collapses search provider cards into their own accordion group',
+    async () => {
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="key-tab-search"]').trigger('click')
+
+      const searchPanel = wrapper.get('[data-testid="key-panel-search"]')
+      const cards = searchPanel.findAll('[data-testid="provider-card"]')
+
+      cards.forEach((card: any) => {
+        expect(card.attributes('data-group'))
+          .toBe('profile-search-provider-keys')
+      })
+    })
 })

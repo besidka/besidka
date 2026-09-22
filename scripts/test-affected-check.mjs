@@ -323,6 +323,8 @@ export function getAffectedTests(changedFiles) {
 
   const keysApiTests = [
     'tests/integration/api/profile-keys-qwen.spec.ts',
+    'tests/integration/api/profile-keys-brave.spec.ts',
+    'tests/integration/api/profile-keys-exa.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
