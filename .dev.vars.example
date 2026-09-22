@@ -83,6 +83,16 @@ NUXT_BRAVE_SEARCH_API_KEY=
 # Exa.ai API (owner dev/testing key) — https://dashboard.exa.ai/
 NUXT_EXA_API_KEY=
 
+# Vercel AI Gateway (owner dev/testing key) — https://vercel.com/dashboard/ai-gateway
+NUXT_VERCEL_AI_GATEWAY_API_KEY=
+
+# Cloudflare AI Gateway (owner dev/testing key)
+NUXT_CLOUDFLARE_AI_GATEWAY_API_KEY=
+NUXT_CLOUDFLARE_AI_GATEWAY_ACCOUNT_ID=
+
+# OpenRouter (owner dev/testing key) — https://openrouter.ai/settings/keys
+NUXT_OPENROUTER_API_KEY=
+
 # Nuxt Studio — credentials for the PRODUCTION self-hosted editor (optional).
 # NOT needed for local development: with `pnpm run dev` the editor is the
 # "Edit this page" floating button (bottom-left) that writes straight to the
