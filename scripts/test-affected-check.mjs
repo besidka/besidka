@@ -155,6 +155,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-tool-loop.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
+    'tests/integration/api/chats-external-search-validation.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -452,6 +453,8 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/integration/api/chats-message-id-stream.spec.ts',
         'tests/integration/api/chats-new.spec.ts',
+        'tests/unit/utils/chats/request-schema.spec.ts',
+        'tests/integration/api/chats-external-search-validation.spec.ts',
       ],
     },
     {
@@ -656,7 +659,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost|web-search-cost|search-usage)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
+        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost|web-search-cost|search-usage)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts|shared\/types\/providers\.d\.ts)$/,
       tests: messageUsageTests,
     },
     {

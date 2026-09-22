@@ -1112,12 +1112,10 @@ describe('chat stream message ids', () => {
     expect(insertValues).not.toHaveBeenCalled()
   })
 
-  it('gives image generation precedence over provider web search', async () => {
+  it('rejects web search combined with image generation before calling the provider', async () => {
     const handler = await getHandler()
     const { db } = createDb()
-
-    vi.stubGlobal('useDb', () => db)
-    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+    const useOpenAIMock = vi.fn(async () => ({
       instance: {},
       imageModel: {},
       imageModelId: 'gpt-image-2',
@@ -1131,9 +1129,12 @@ describe('chat stream message ids', () => {
         },
       },
       providerOptions: {},
-    })))
+    }))
 
-    const response = await handler({
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useOpenAI', useOpenAIMock)
+
+    await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gpt-5-mini',
@@ -1141,33 +1142,20 @@ describe('chat stream message ids', () => {
         reasoning: 'off',
         messages: [createMessage('Draw a forest')],
       },
-    } as any)
+    } as any)).rejects.toEqual(expect.objectContaining({
+      message: 'Invalid request body',
+      why: expect.stringContaining(
+        'Web search and image generation cannot be combined.',
+      ),
+    }))
 
-    await response.ready
-
-    expect(mocks.streamTextOptions[0]?.tools).toEqual({
-      generate_image: expect.anything(),
-    })
-    expect(mocks.streamTextOptions[0]?.toolChoice).toEqual({
-      type: 'tool',
-      toolName: 'generate_image',
-    })
+    expect(useOpenAIMock).not.toHaveBeenCalled()
   })
 
-  it('omits Google Search when the image tool is selected', async () => {
+  it('rejects web search combined with image generation for Google models before calling the provider', async () => {
     const handler = await getHandler()
     const { db } = createDb()
-
-    vi.stubGlobal('useDb', () => db)
-    vi.stubGlobal('useChatProvider', vi.fn(() => ({
-      provider: { id: 'google' },
-      model: {
-        id: 'gemini-2.5-flash',
-        name: 'Gemini 2.5 Flash',
-        tools: ['web_search', 'image_generation'],
-      },
-    })))
-    vi.stubGlobal('useGoogle', vi.fn(async () => ({
+    const useGoogleMock = vi.fn(async () => ({
       instance: {},
       imageModel: {},
       imageModelId: 'gemini-3.1-flash-image',
@@ -1181,9 +1169,20 @@ describe('chat stream message ids', () => {
         },
       },
       providerOptions: {},
-    })))
+    }))
 
-    const response = await handler({
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'google' },
+      model: {
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
+        tools: ['web_search', 'image_generation'],
+      },
+    })))
+    vi.stubGlobal('useGoogle', useGoogleMock)
+
+    await expect(handler({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       body: {
         model: 'gemini-2.5-flash',
@@ -1191,15 +1190,14 @@ describe('chat stream message ids', () => {
         reasoning: 'off',
         messages: [createMessage('Draw a forest')],
       },
-    } as any)
+    } as any)).rejects.toEqual(expect.objectContaining({
+      message: 'Invalid request body',
+      why: expect.stringContaining(
+        'Web search and image generation cannot be combined.',
+      ),
+    }))
 
-    await response.ready
-
-    expect(mocks.streamTextOptions[0]?.tools).toEqual({
-      generate_image: expect.anything(),
-    })
-    expect(mocks.streamTextOptions[0]?.tools)
-      .not.toHaveProperty('web_search_preview')
+    expect(useGoogleMock).not.toHaveBeenCalled()
   })
 
   it('syncs a generated file into an active file-sharing grant', async () => {

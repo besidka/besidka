@@ -10,7 +10,11 @@ export type SupportedProviderId
     | 'moonshotai'
     | 'qwen'
 
-export type ModelTool = 'web_search' | 'image_generation'
+export type ModelTool
+  = 'web_search'
+    | 'web_search_brave'
+    | 'web_search_exa'
+    | 'image_generation'
 
 export interface ModelImageGenerationCapability {
   controllerModel: string

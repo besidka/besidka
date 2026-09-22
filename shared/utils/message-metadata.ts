@@ -46,8 +46,18 @@ type MenuMessage = {
 
 const persistedModelTools: ModelTool[] = [
   'web_search',
+  'web_search_brave',
+  'web_search_exa',
   'image_generation',
 ]
+
+export function isWebSearchTool(
+  tool: unknown,
+): tool is 'web_search' | 'web_search_brave' | 'web_search_exa' {
+  return tool === 'web_search'
+    || tool === 'web_search_brave'
+    || tool === 'web_search_exa'
+}
 
 export function getMessageMetadata(
   message: { metadata?: unknown, createdAt?: string | number | Date },
@@ -168,7 +178,11 @@ export function getMessageUsedTools(
 
   return persistedModelTools.filter((tool) => {
     return storedTools.includes(tool)
-      || (tool === 'web_search' && hasWebSearchPart)
+      || (
+        tool === 'web_search'
+        && hasWebSearchPart
+        && !storedTools.some(isWebSearchTool)
+      )
       || (tool === 'image_generation' && hasImageGenerationPart)
   })
 }

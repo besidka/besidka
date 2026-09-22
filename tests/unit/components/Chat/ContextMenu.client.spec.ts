@@ -1428,6 +1428,48 @@ describe('Chat/ContextMenu.client', () => {
       expect(toolsRow.text()).toContain('Web search')
       expect(toolsRow.get('.iconify').classes()).toContain('i-lucide:globe')
     })
+
+    it('shows the Brave-attributed label for web_search_brave', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['web_search_brave'],
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+
+      expect(toolsRow.text()).toContain('Web search (Brave)')
+    })
+
+    it('shows the Exa-attributed label for web_search_exa', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['web_search_exa'],
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+
+      expect(toolsRow.text()).toContain('Web search (Exa)')
+    })
   })
 
   describe('copy actions', () => {

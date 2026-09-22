@@ -21,6 +21,7 @@ import type {
 } from '#shared/types/image-generation.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
+import { isWebSearchTool } from '#shared/utils/message-metadata'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import type { SearchRates } from '~~/server/utils/ai/search-usage'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
@@ -57,7 +58,7 @@ import {
   persistUserMessage,
 } from '~~/server/utils/chats/persist-user-message'
 import {
-  chatToolSchema,
+  chatToolsSchema,
   incomingUserMessageSchema,
 } from '~~/server/utils/chats/request-schema'
 import {
@@ -93,7 +94,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    tools: z.array(chatToolSchema),
+    tools: chatToolsSchema,
     reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
     messages: z.array(incomingUserMessageSchema).length(1),
   }).safeParse)
@@ -209,8 +210,69 @@ export default defineEventHandler(async (event) => {
   }
 
   const requiredTools = getRequiredModelTools(model)
+
+  if (
+    requiredTools.includes('image_generation')
+    && selectedTools.some(isWebSearchTool)
+  ) {
+    throw createError({
+      message: 'The selected model does not support the requested tool.',
+      status: 400,
+      why: `${model.name} always generates images and cannot also perform a web search.`,
+      fix: 'Choose a different model to enable web search.',
+    })
+  }
+
+  const selectedBraveSearch = selectedTools.includes('web_search_brave')
+  const selectedExaSearch = selectedTools.includes('web_search_exa')
+
+  if ((selectedBraveSearch || selectedExaSearch) && !model.toolCall) {
+    throw createError({
+      message: 'The selected model does not support the requested tool.',
+      status: 400,
+      why: `${model.name} does not support tool calling.`,
+      fix: 'Choose a tool-calling model, or use the model\'s built-in web search.',
+    })
+  }
+
+  if (selectedBraveSearch) {
+    const braveKey = await db.query.keys.findFirst({
+      where: { userId, provider: 'brave' },
+      columns: { apiKey: true },
+    })
+
+    if (!braveKey?.apiKey) {
+      throw createError({
+        message: 'A Brave Search API key is required for this tool.',
+        status: 400,
+        why: 'No Brave Search API key is saved for this account.',
+        fix: 'Add one at /profile/keys → Search providers.',
+      })
+    }
+  }
+
+  if (selectedExaSearch) {
+    const exaKey = await db.query.keys.findFirst({
+      where: { userId, provider: 'exa' },
+      columns: { apiKey: true },
+    })
+
+    if (!exaKey?.apiKey) {
+      throw createError({
+        message: 'An Exa API key is required for this tool.',
+        status: 400,
+        why: 'No Exa API key is saved for this account.',
+        fix: 'Add one at /profile/keys → Search providers.',
+      })
+    }
+  }
+
   const supportedTools = [...model.tools, ...requiredTools]
-  const unsupportedTool = selectedTools.find((selectedTool) => {
+  const toolsForSupportCheck = selectedTools.filter((selectedTool) => {
+    return selectedTool !== 'web_search_brave'
+      && selectedTool !== 'web_search_exa'
+  })
+  const unsupportedTool = toolsForSupportCheck.find((selectedTool) => {
     return !supportedTools.includes(selectedTool)
   })
 

@@ -188,6 +188,40 @@ describe('getMessageUsedTools', () => {
 
     expect(result).toEqual(['deep_research'])
   })
+
+  it('reads persisted web_search_brave when parts is missing', () => {
+    expect(getMessageUsedTools({ tools: ['web_search_brave'] }))
+      .toEqual(['web_search_brave'])
+  })
+
+  it('reads persisted web_search_exa when parts is missing', () => {
+    expect(getMessageUsedTools({ tools: ['web_search_exa'] }))
+      .toEqual(['web_search_exa'])
+  })
+
+  it('does not double-label a Brave turn as web_search when its source-url parts are present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'source-url' },
+      ],
+      tools: ['web_search_brave'],
+    })
+
+    expect(result).toEqual(['web_search_brave'])
+  })
+
+  it('does not double-label an Exa turn as web_search when its source-url parts are present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'source-url' },
+      ],
+      tools: ['web_search_exa'],
+    })
+
+    expect(result).toEqual(['web_search_exa'])
+  })
 })
 
 describe('resolveMessageMenuInfo', () => {

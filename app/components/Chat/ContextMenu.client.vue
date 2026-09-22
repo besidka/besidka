@@ -254,6 +254,8 @@ import {
 
 const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search: 'Web search',
+  web_search_brave: 'Web search (Brave)',
+  web_search_exa: 'Web search (Exa)',
   image_generation: 'Image generation',
   deep_research: 'Deep research',
 }
