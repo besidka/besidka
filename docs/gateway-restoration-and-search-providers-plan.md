@@ -1424,7 +1424,7 @@ pnpm vitest run tests/unit/utils/filter-ui-message-stream.spec.ts \
 Browser verification is folded into WP 1.5's end-to-end script, since a
 visible citation needs a visible way to trigger a search.
 
-- [ ] WP 1.4 complete
+- [x] WP 1.4 complete (commit `24fde38`)
 
 ## WP 1.5 — The web-search-provider picker (client)
 
