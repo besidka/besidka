@@ -366,6 +366,15 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-message-delete.spec.ts',
   ]
 
+  const externalSearchTests = [
+    'tests/unit/utils/search/brave.spec.ts',
+    'tests/unit/utils/search/exa.spec.ts',
+    'tests/unit/utils/ai/external-search-cost.spec.ts',
+    'tests/unit/config/wrangler-search-rates.spec.ts',
+    'tests/unit/utils/search-usage.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+  ]
+
   const deepResearchTests = [
     'tests/unit/utils/research.spec.ts',
     'tests/unit/utils/research-ui.spec.ts',
@@ -719,8 +728,17 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/search\/.*\.ts$/,
+      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|types\.d\.ts).*\.ts$/,
       tests: messageSearchTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/search\/(brave|exa|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
+      tests: externalSearchTests,
+    },
+    {
+      pattern: /^wrangler\.jsonc$/,
+      tests: ['tests/unit/config/wrangler-search-rates.spec.ts'],
     },
     {
       pattern: /^server\/plugins\/message-search-index-sweep\.ts$/,

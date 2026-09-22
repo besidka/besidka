@@ -206,6 +206,8 @@ export default defineNuxtConfig({
     googleSearchCostPerThousandGroundedPromptsUsd: '',
     anthropicWebSearchCostPerThousandSearchesUsd: '',
     openaiWebSearchCostPerThousandCallsUsd: '',
+    braveSearchCostPerThousandRequestsUsd: '',
+    exaSearchCostPerThousandRequestsUsd: '',
     vapidPrivateKey: '',
     vapidSubject: '',
     public: {

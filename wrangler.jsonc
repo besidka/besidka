@@ -59,7 +59,25 @@
 		// Both as of 2026-09-22 and documentation-only — NOT
 		// invoice-verified the way the Gemini 3.x rate was.
 		"NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
-		"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10"
+		"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
+		// Brave Search (Web & LLM Context plan) and Exa are BYOK external
+		// search backends, not native provider tools — see
+		// docs/gateway-restoration-and-search-providers-plan.md Epic 1.
+		// Public, provider-published rates. Brave: $5 / 1,000 requests,
+		// documentation-only (as of 2026-09-22), api-dashboard.search.brave.com
+		// pricing, NOT invoice-verified. Exa: $7 / 1,000 base search requests
+		// (exa.ai/pricing) — this fallback rate is used only when Exa's own
+		// response omits `costDollars`, which the live path always prefers.
+		// Exa's pricing page separately lists a $1/1,000-per-extracted-page
+		// highlights charge that would put this app's fixed 10-result,
+		// highlights-on request shape at $17/1,000 — but two real smoke-test
+		// calls against that exact shape on 2026-09-22 both reported
+		// `costDollars.total: 0.007` ($7/1,000, base fee only, no separate
+		// highlights line). Set to the empirically-observed $7, not the
+		// theoretical $17 the pricing page alone would suggest — re-verify
+		// with more samples before raising it back.
+		"NUXT_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+		"NUXT_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
 	},
 	"d1_databases": [
 		{
@@ -199,7 +217,25 @@
 				// Both as of 2026-09-22 and documentation-only — NOT
 				// invoice-verified the way the Gemini 3.x rate was.
 				"NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
-				"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10"
+				"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
+				// Brave Search (Web & LLM Context plan) and Exa are BYOK external
+				// search backends, not native provider tools — see
+				// docs/gateway-restoration-and-search-providers-plan.md Epic 1.
+				// Public, provider-published rates. Brave: $5 / 1,000 requests,
+				// documentation-only (as of 2026-09-22), api-dashboard.search.brave.com
+				// pricing, NOT invoice-verified. Exa: $7 / 1,000 base search requests
+				// (exa.ai/pricing) — this fallback rate is used only when Exa's own
+				// response omits `costDollars`, which the live path always prefers.
+				// Exa's pricing page separately lists a $1/1,000-per-extracted-page
+				// highlights charge that would put this app's fixed 10-result,
+				// highlights-on request shape at $17/1,000 — but two real smoke-test
+				// calls against that exact shape on 2026-09-22 both reported
+				// `costDollars.total: 0.007` ($7/1,000, base fee only, no separate
+				// highlights line). Set to the empirically-observed $7, not the
+				// theoretical $17 the pricing page alone would suggest — re-verify
+				// with more samples before raising it back.
+				"NUXT_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+				"NUXT_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
 			},
 			"d1_databases": [
 				{
