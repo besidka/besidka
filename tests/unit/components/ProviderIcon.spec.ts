@@ -11,6 +11,7 @@ const expectedIconNames: Record<string, string> = {
   deepseek: 'simple-icons:deepseek',
   moonshotai: 'simple-icons:moonshotai',
   qwen: 'simple-icons:qwen',
+  brave: 'simple-icons:brave',
 }
 
 async function getIconName(providerId: string): Promise<string | undefined> {
@@ -73,11 +74,28 @@ describe('ProviderIcon', () => {
     expect(wrapper.get('span').text()).toBe('bl')
   })
 
-  it('resolves a real icon for every provider in providerMeta, '
+  it('resolves a real icon for every provider-kind entry in providerMeta, '
     + 'so a newly added one cannot silently fall through to the badge',
   async () => {
-    for (const providerId of Object.keys(providerMeta)) {
+    const providerKindIds = Object.values(providerMeta).filter((meta) => {
+      return meta.kind === 'provider'
+    }).map(meta => meta.id)
+
+    for (const providerId of providerKindIds) {
       expect(await getIconName(providerId)).toBeTruthy()
     }
+  })
+
+  it('resolves a real icon for the brave search provider, and leaves exa '
+    + 'on the badge fallback since it has no verified brand icon yet',
+  async () => {
+    expect(await getIconName('brave')).toBe('simple-icons:brave')
+
+    const wrapper = await mountSuspended(ProviderIcon, {
+      props: { providerId: 'exa' },
+    })
+
+    expect(wrapper.findComponent({ name: 'NuxtIcon' }).exists()).toBe(false)
+    expect(wrapper.get('span').text()).toBe('Ex')
   })
 })

@@ -327,6 +327,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/components/ProviderIcon.spec.ts',
+    'tests/unit/utils/provider-meta.spec.ts',
   ]
 
   const turnstileTests = [
@@ -468,10 +470,8 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/components\/ProviderIcon\.vue|shared\/utils\/provider-meta\.ts)$/,
+        /^(app\/components\/ProviderIcon\.vue|shared\/utils\/provider-meta\.ts|server\/db\/schemas\/keys\.ts)$/,
       tests: [
-        'tests/unit/components/ProviderIcon.spec.ts',
-        'tests/unit/utils/provider-meta.spec.ts',
         ...userKeysTests,
         ...keysApiTests,
         'tests/integration/api/chats-title.spec.ts',

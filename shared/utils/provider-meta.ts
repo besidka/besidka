@@ -1,5 +1,5 @@
 export interface ProviderMetaKeyField {
-  name: 'apiKey' | 'accountId'
+  name: 'apiKey' | 'accountId' | 'gatewayId'
   label: string
   secret: boolean
   required: boolean
@@ -7,7 +7,7 @@ export interface ProviderMetaKeyField {
 
 export interface ProviderMeta {
   id: string
-  kind: 'provider'
+  kind: 'provider' | 'search' | 'gateway'
   label: string
   keyProviderId: string
   dashboardUrl: string
@@ -85,15 +85,37 @@ export const providerMeta: Record<string, ProviderMeta> = {
     dashboardLabel: 'Alibaba Cloud Model Studio → API-KEY (this app uses the international endpoint — switch to a non-China region in the console before creating your key, or it will fail)',
     keyFields: [apiKeyField],
   },
+  brave: {
+    id: 'brave',
+    kind: 'search',
+    label: 'Brave Search',
+    keyProviderId: 'brave',
+    dashboardUrl: 'https://api-dashboard.search.brave.com/app/keys',
+    dashboardLabel: 'Brave Search API → Subscriptions (the Search plan; '
+      + 'a card is required even for the free monthly credit)',
+    keyFields: [apiKeyField],
+  },
+  exa: {
+    id: 'exa',
+    kind: 'search',
+    label: 'Exa',
+    keyProviderId: 'exa',
+    dashboardUrl: 'https://dashboard.exa.ai/api-keys',
+    keyFields: [apiKeyField],
+  },
 }
+
+export const enabledSearchProviders: string[] = ['brave', 'exa']
 
 /**
  * Resolves a persisted `MessageUsage.provider` value back to its
  * `providerMeta` entry, matching against `keyProviderId` rather than the
- * object key directly. Messages sent through a now-removed integration
- * persisted a value that never matched a `providerMeta` key — those simply
- * resolve to `undefined` here, which callers already treat as "no provider
- * row to render."
+ * object key directly. This indirection exists only because a persisted
+ * `keys.provider` value does not always equal its `providerMeta` object key
+ * — for example `vercel-gateway` is stored with the suffix, but its
+ * `providerMeta` entry's `keyProviderId` may differ from the object key it
+ * lives under. Callers treat an `undefined` result as "no provider row to
+ * render."
  */
 export function resolveProviderMetaByKeyProviderId(
   keyProviderId: string,

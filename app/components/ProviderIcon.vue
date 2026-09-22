@@ -32,6 +32,7 @@ import { providerMeta } from '#shared/utils/provider-meta'
  */
 const providerIconNames: Record<string, string> = {
   anthropic: 'simple-icons:anthropic',
+  brave: 'simple-icons:brave',
   deepseek: 'simple-icons:deepseek',
   google: 'simple-icons:googlegemini',
   moonshotai: 'simple-icons:moonshotai',
