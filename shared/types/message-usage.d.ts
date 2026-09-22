@@ -27,13 +27,16 @@ export type MessageUsage = {
   // path writes it; it is kept so already-persisted messages that carry one
   // still render their cost instead of showing nothing.
   totalCost?: number
-  // Google Search grounding, Anthropic's web_search server tool, and
-  // OpenAI's web_search Responses tool are all billed by their providers
-  // separately from tokens and deliberately kept out of outputCost: the
-  // provider bill is higher than the token cost alone and must stay
+  // Google Search grounding, Anthropic's web_search server tool, OpenAI's
+  // web_search Responses tool, and the BYOK Brave/Exa search tools are all
+  // billed separately from tokens and deliberately kept out of outputCost:
+  // the provider bill is higher than the token cost alone and must stay
   // visible as its own line. searchCost is always an approximation (the
   // app cannot know a BYOK user's real billing tier), so the UI always
-  // renders it with "~".
+  // renders it with "~". searchCost is never set when the search fee is
+  // already inside a gateway's blended totalCost (OpenRouter's `web`
+  // plugin, Vercel's `perplexitySearch()`) — that would double-count the
+  // same charge.
   searchUnits?: number
   searchBillingUnit?: SearchBillingUnit
   searchCost?: number

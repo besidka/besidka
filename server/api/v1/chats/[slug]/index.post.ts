@@ -77,6 +77,9 @@ import { resolveToolLoopOptions } from '~~/server/utils/ai/tool-loop'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
+import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
+import { getExaWebSearchTools } from '~~/server/utils/search/exa'
+import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -854,6 +857,65 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const externalSearchProvider: ExternalSearchProviderId | undefined
+    = requestedTools.includes('web_search_brave')
+      ? 'brave'
+      : requestedTools.includes('web_search_exa')
+        ? 'exa'
+        : undefined
+
+  if (externalSearchProvider === 'brave') {
+    const braveKey = await db.query.keys.findFirst({
+      where: { userId, provider: 'brave' },
+      columns: { apiKey: true },
+    })
+
+    if (!braveKey?.apiKey) {
+      throw createError({
+        message: 'A Brave Search API key is required for this tool.',
+        status: 400,
+        why: 'No Brave Search API key is saved for this account.',
+        fix: 'Add one at /profile/keys → Search providers.',
+      })
+    }
+
+    const { tools: braveTools } = await getBraveWebSearchTools(
+      await useDecryptText(braveKey.apiKey),
+      aiLogger,
+    )
+
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...braveTools },
+    }
+  }
+
+  if (externalSearchProvider === 'exa') {
+    const exaKey = await db.query.keys.findFirst({
+      where: { userId, provider: 'exa' },
+      columns: { apiKey: true },
+    })
+
+    if (!exaKey?.apiKey) {
+      throw createError({
+        message: 'An Exa API key is required for this tool.',
+        status: 400,
+        why: 'No Exa API key is saved for this account.',
+        fix: 'Add one at /profile/keys → Search providers.',
+      })
+    }
+
+    const { tools: exaTools } = await getExaWebSearchTools(
+      await useDecryptText(exaKey.apiKey),
+      aiLogger,
+    )
+
+    parsedTools = {
+      ...parsedTools,
+      tools: { ...parsedTools.tools, ...exaTools },
+    }
+  }
+
   const toolLoopOptions = resolveToolLoopOptions(parsedTools.tools)
 
   const stream = createUIMessageStream({
@@ -948,6 +1010,7 @@ export default defineEventHandler(async (event) => {
                 modelId: model.id,
                 steps,
                 rates: searchRates,
+                externalSearchProvider,
               })
               const searchCost = search?.cost
               const hasCost = textCost !== undefined
@@ -976,6 +1039,7 @@ export default defineEventHandler(async (event) => {
                       webSearchUnits: search.units,
                       webSearchBillingUnit: search.billingUnit,
                       webSearchCost: search.cost,
+                      webSearchProvider: search.provider,
                       googleSearchQueries: search.googleQueries,
                       googleSearchGroundedSteps: search.googleGroundedSteps,
                       googleSearchBillingUnit:
@@ -1087,6 +1151,7 @@ export default defineEventHandler(async (event) => {
               modelId: model.id,
               steps: finishedSteps,
               rates: searchRates,
+              externalSearchProvider,
             })
             const usage = addSearchUsage(
               addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
@@ -1150,6 +1215,7 @@ export default defineEventHandler(async (event) => {
           tools: requestedTools,
           publicId: messagePublicId,
           searchRates,
+          externalSearchProvider,
           logger,
         })
 
@@ -1418,6 +1484,7 @@ async function persistAssistantMessageFromStream(input: {
   tools: string[]
   publicId: string
   searchRates: SearchRates
+  externalSearchProvider: ExternalSearchProviderId | undefined
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
@@ -1518,6 +1585,7 @@ async function persistAssistantMessageFromStream(input: {
         modelId: input.modelId,
         steps: await input.result.steps,
         rates: input.searchRates,
+        externalSearchProvider: input.externalSearchProvider,
       })
 
       usage = addSearchUsage(
@@ -1721,6 +1789,21 @@ function buildChatInstructions(
       'with a complete visual prompt based on the user request. Do not',
       'decline a valid image request or claim image generation is unavailable.',
       'The tool saves the result in the user private file library.',
+    ].join(' '))
+  }
+
+  const externalSearchToolName = requestedTools.includes('web_search_brave')
+    ? 'web_search_brave'
+    : requestedTools.includes('web_search_exa')
+      ? 'web_search_exa'
+      : undefined
+
+  if (externalSearchToolName) {
+    instructions.push([
+      `Web search is available via the \`${externalSearchToolName}\` tool.`,
+      'Call it when the question depends on current information, recent',
+      'events, or anything you are not confident about. Cite the sources',
+      'you used.',
     ].join(' '))
   }
 

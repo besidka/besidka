@@ -264,6 +264,7 @@ describe('chats external search validation', () => {
       tools: {},
       providerOptions: {},
     })))
+    vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
     vi.stubGlobal('shipWideEventToAxiom', vi.fn(async () => undefined))

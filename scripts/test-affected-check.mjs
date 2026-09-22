@@ -159,6 +159,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
     'tests/integration/api/chats-external-search-validation.spec.ts',
+    'tests/integration/api/chats-external-search.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -376,6 +377,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/config/wrangler-search-rates.spec.ts',
     'tests/unit/utils/search-usage.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
+    'tests/integration/api/chats-external-search.spec.ts',
   ]
 
   const deepResearchTests = [

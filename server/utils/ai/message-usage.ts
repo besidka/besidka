@@ -78,13 +78,16 @@ export function addImageGenerationCostToUsage(
 
 /**
  * Records separately-billed search-tool usage (Google Search grounding,
- * Anthropic web_search, OpenAI web_search) onto a message's usage as its
- * own line, never folded into outputCost/inputCost — the provider bills
- * this separately from tokens, and merging it in would misrepresent the
- * token cost while hiding the actual reason the bill is higher. The unit
- * count is recorded unconditionally so an operator can cross-reference it
- * against a real provider invoice even when no rate is configured; the
- * dollar cost is added only when a rate resolved.
+ * Anthropic web_search, OpenAI web_search, and the BYOK Brave/Exa tools)
+ * onto a message's usage as its own line, never folded into
+ * outputCost/inputCost — the provider bills this separately from tokens,
+ * and merging it in would misrepresent the token cost while hiding the
+ * actual reason the bill is higher. The unit count is recorded
+ * unconditionally so an operator can cross-reference it against a real
+ * provider invoice even when no rate is configured; the dollar cost is
+ * added only when a rate resolved. `searchProvider` names which one ran, so
+ * the context-menu cost row can say "Web search (Brave)" instead of a bare
+ * "Web search".
  */
 export function addSearchUsage(
   usage: MessageUsage | undefined,
@@ -101,6 +104,9 @@ export function addSearchUsage(
       ? {}
       : { searchBillingUnit: search.billingUnit }),
     ...(search.cost === undefined ? {} : { searchCost: search.cost }),
+    ...(search.provider === undefined
+      ? {}
+      : { searchProvider: search.provider }),
   }
 }
 

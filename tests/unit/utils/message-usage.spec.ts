@@ -288,6 +288,30 @@ describe('addSearchUsage', () => {
     expect(result?.searchCost).toBe(0.04)
   })
 
+  it('sets searchProvider when the search usage carries one', () => {
+    const usage = buildBaseUsage()
+    const braveSearch: SearchUsage = {
+      units: 1,
+      billingUnit: 'search',
+      cost: 0.005,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+      provider: 'brave',
+    }
+
+    const result = addSearchUsage(usage, braveSearch)
+
+    expect(result?.searchProvider).toBe('brave')
+  })
+
+  it('omits searchProvider when the search usage does not carry one', () => {
+    const usage = buildBaseUsage()
+
+    const result = addSearchUsage(usage, querySearch)
+
+    expect(result && 'searchProvider' in result).toBe(false)
+  })
+
   it('returns usage unchanged for undefined usage', () => {
     const result = addSearchUsage(undefined, querySearch)
 
