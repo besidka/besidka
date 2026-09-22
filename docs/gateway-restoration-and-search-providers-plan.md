@@ -923,7 +923,7 @@ pnpm vitest run tests/unit/utils/chats/request-schema.spec.ts \
 No browser verification in isolation — the UI that produces these values
 arrives in WP 1.5.
 
-- [ ] WP 1.1 complete
+- [x] WP 1.1 complete (commit `7ee1210`)
 
 ## WP 1.2 — Brave and Exa tool modules + rate configuration
 
@@ -1113,7 +1113,7 @@ not from a live call against this app's exact request.
 
 No browser verification — nothing is wired into the send path until WP 1.3.
 
-- [ ] WP 1.2 complete
+- [x] WP 1.2 complete (commit `6a01fc6`)
 
 ## WP 1.3 — Send-path wiring: tool injection, cost, telemetry
 
@@ -1728,7 +1728,7 @@ pnpm vitest run tests/unit/components/ChatInput/ModelsTrigger/
    narrows, confirm "Clear" resets it, and confirm it composes correctly with
    "Vision only" and a category selection.
 
-- [ ] WP 1.6 complete
+- [x] WP 1.6 complete (commit `6995e73`)
 
 ## WP 1.7 — Cost row attribution and reasoning-step titles
 
@@ -1815,7 +1815,7 @@ Additionally: open an **old** chat whose messages predate this work and
 confirm its Web search rows still render the unadorned label and throw
 nothing.
 
-- [ ] WP 1.7 complete
+- [x] WP 1.7 complete (commit `64e9e87`)
 
 ## Epic 1 gate
 
@@ -3578,14 +3578,31 @@ genuinely suppresses every non-web vertical.
 
 ## R3 — The Exa rate is a modelling decision, not a looked-up number
 
-`$17/1,000` is derived: `$7` base + `$1 × 10` highlight pages. If the shipped
-request shape ever changes — a different `numResults`, `contents.text`
-instead of `highlights`, a different `type` — **the rate silently becomes
-wrong** and the cost comparison this effort exists to enable becomes
-misleading. Two mitigations, both in WP 1.2: the request shape is a module
-constant and explicitly not user-configurable, and the live path prefers
-Exa's own reported `costDollars` over the rate. A comment at the config site
-must state the derivation.
+> **RESOLVED, corrected by real evidence during WP 1.2.** This originally
+> proposed `$17/1,000` (`$7` base + `$1 × 10` highlight pages, read
+> literally off Exa's pricing page). **Two live smoke-test calls against the
+> exact shipped request shape (`numResults: 10`, `contents.highlights:
+> true`) both returned `costDollars.total: 0.007` — exactly the $7/1,000
+> base fee, with no separate highlights line.** The fallback rate is now
+> `$7/1,000`, not `$17/1,000` (`wrangler.jsonc`, both blocks, commit
+> `6a01fc6`). The live send path already prefers Exa's own reported
+> `costDollars` whenever present, so this fallback rate has a small blast
+> radius regardless — but per this project's own doctrine (never hardcode
+> an unverified number when a real one is available), the fallback should
+> match observed reality, not a plausible-sounding derivation two real
+> calls already contradicted. If a future request against a differently-
+> shaped Exa call (more results, no highlights, a different `type`) reveals
+> highlights genuinely do bill separately under some condition, re-open
+> this and re-derive — two samples is not exhaustive evidence, just better
+> evidence than a theoretical read of a pricing page.
+
+If the shipped request shape ever changes — a different `numResults`,
+`contents.text` instead of `highlights`, a different `type` — **the rate
+silently becomes wrong** and the cost comparison this effort exists to
+enable becomes misleading. Two mitigations, both in WP 1.2: the request
+shape is a module constant and explicitly not user-configurable, and the
+live path prefers Exa's own reported `costDollars` over the rate. A comment
+at the config site states the derivation and the correction.
 
 ## R4 — `minimumReleaseAge`: file 00's blind spot #9 is wrong
 
