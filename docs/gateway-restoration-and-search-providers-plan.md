@@ -1819,18 +1819,32 @@ nothing.
 
 ## Epic 1 gate
 
-- [ ] CI green on PR #362 with all seven packages landed
+- [ ] CI green on PR #362 with all seven packages landed (all 7 packages plus
+      2 reviewer-flagged fixes committed and pushed as of `1d09948`; CI run
+      for this commit in progress — confirm before Epic 2 workers start)
 - [ ] WP 1.5's full 11-step browser script passed, including a real Brave
-      send and a real Exa send with visible citations and a cost row
+      send and a real Exa send with visible citations and a cost row —
+      **blocked on the owner saving real Brave/Exa keys on `/profile/keys` →
+      Search providers**; an agent cannot type an API key into a form
 - [ ] WP 1.6's 5-step picker script passed
-- [ ] `pnpm run db:generate` produced no migration
-- [ ] `docs/web-search-cost-accounting.md` updated: its "Sketch: external
-      search backends" section annotated as **implemented**, with the shipped
-      Exa rate rationale ($17/1,000 for the fixed 10-result + highlights
-      request) recorded, and the superseded key-storage recommendation
-      annotated rather than deleted (that document's own convention is to
-      keep superseded conclusions in place with a **Reversed**/**Correction**
-      note)
+- [x] `pnpm run db:generate` produced no migration (confirmed independently
+      across every Epic 1 package)
+- [x] `docs/web-search-cost-accounting.md` updated — annotated "Sketch:
+      external search backends" and "If we build this next" as implemented,
+      pointing at this plan doc; annotated "The AI Gateway question" with the
+      real R12 spike verdict (Vercel PASS, Cloudflare inconclusive/owner-
+      blocked). The shipped Exa rate is $7/1,000, not the originally-sketched
+      $17/1,000 — see `wrangler.jsonc`'s comment and this plan's R3 for the
+      empirical correction; the superseded key-storage recommendation in
+      that doc is annotated in place, not deleted, per its own convention.
+- [x] Independent code review pass completed (`abf6795`... see commit
+      `1d09948`'s message) — found and fixed: a duplicate D1 key lookup, a
+      mislabeled Google search-cost row ("Web search (Google AI Studio)"
+      instead of "Web search (Google)" — the same bug class already fixed
+      for Brave, not backfilled onto the pre-existing `google` entry), and a
+      test that didn't prove what it claimed. `docs/auth-security.md`,
+      `docs/models-data-fetching.md`, `docs/providers/general.md` also
+      updated per the review's documentation-debt findings.
 
 ---
 
