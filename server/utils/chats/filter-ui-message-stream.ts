@@ -149,6 +149,97 @@ export function insertParagraphBreakAfterNonTextGap<
   }))
 }
 
+interface ExternalSearchResultLike {
+  title?: string
+  url?: string
+}
+
+interface ExternalSearchToolOutputLike {
+  provider?: string
+  results?: ExternalSearchResultLike[]
+}
+
+interface ToolOutputChunkLike {
+  type?: string
+  output?: unknown
+}
+
+interface SourceUrlChunkLike {
+  type: 'source-url'
+  sourceId: string
+  url: string
+  title?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isExternalSearchToolOutput(
+  output: unknown,
+): output is ExternalSearchToolOutputLike {
+  return isRecord(output)
+    && (output.provider === 'brave' || output.provider === 'exa')
+}
+
+/**
+ * Brave and Exa are plain tool calls, not provider-native search — the model
+ * never emits `source-url` parts for them on its own. This mirrors their
+ * `tool-output-available` results into the same `source-url` part type
+ * native search uses, so citations render through the existing
+ * `UrlSources.vue` path and `getMessageUsedTools()`'s existing
+ * `source-url`/`source-document` inference lights up the Web search badge,
+ * with no new client-side detection branch.
+ *
+ * The tool is identified by the `provider` field WP 1.2 puts on the output
+ * object, not by tool name: in the AI SDK v7 UI-message-stream, a
+ * `tool-output-available` chunk carries `toolCallId` and `output` but no
+ * `toolName` — the name only appears on the earlier `tool-input-start` /
+ * `tool-input-available` chunks for that same `toolCallId`.
+ */
+export function emitSourcesForExternalSearchResults<
+  T extends ToolOutputChunkLike,
+>(
+  stream: ReadableStream<T>,
+): ReadableStream<T | SourceUrlChunkLike> {
+  if (typeof stream?.pipeThrough !== 'function') {
+    return stream
+  }
+
+  const emittedUrls = new Set<string>()
+
+  return stream.pipeThrough(new TransformStream({
+    transform(
+      chunk: T,
+      controller: TransformStreamDefaultController<T | SourceUrlChunkLike>,
+    ) {
+      controller.enqueue(chunk)
+
+      if (
+        chunk.type !== 'tool-output-available'
+        || !isExternalSearchToolOutput(chunk.output)
+      ) {
+        return
+      }
+
+      for (const result of chunk.output.results ?? []) {
+        if (!result.url || emittedUrls.has(result.url)) {
+          continue
+        }
+
+        emittedUrls.add(result.url)
+
+        controller.enqueue({
+          type: 'source-url',
+          sourceId: crypto.randomUUID(),
+          url: result.url,
+          title: result.title,
+        })
+      }
+    },
+  }))
+}
+
 function isRecoverableRateLimitError(
   errorText: string | undefined,
 ): boolean {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  emitSourcesForExternalSearchResults,
   filterRecoverableUIMessageStreamErrors,
   insertParagraphBreakAfterNonTextGap,
 } from '../../../server/utils/chats/filter-ui-message-stream'
@@ -438,5 +439,181 @@ describe('insertParagraphBreakAfterNonTextGap', () => {
     const notAStream = { pipeThrough: undefined } as unknown as ReadableStream
 
     expect(insertParagraphBreakAfterNonTextGap(notAStream)).toBe(notAStream)
+  })
+})
+
+describe('emitSourcesForExternalSearchResults', () => {
+  it('emits the original chunk plus derived source-url chunks for a '
+    + 'Brave tool-output', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: {
+            provider: 'brave',
+            results: [
+              { title: 'First result', url: 'https://example.com/first' },
+              { title: 'Second result', url: 'https://example.com/second' },
+            ],
+          },
+        })
+        controller.close()
+      },
+    })
+
+    const chunks = await readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )
+
+    expect(chunks).toHaveLength(3)
+    expect(chunks[0]).toEqual({
+      type: 'tool-output-available',
+      toolCallId: 'call-1',
+      output: {
+        provider: 'brave',
+        results: [
+          { title: 'First result', url: 'https://example.com/first' },
+          { title: 'Second result', url: 'https://example.com/second' },
+        ],
+      },
+    })
+    expect(chunks[1]).toEqual(expect.objectContaining({
+      type: 'source-url',
+      url: 'https://example.com/first',
+      title: 'First result',
+    }))
+    expect(chunks[2]).toEqual(expect.objectContaining({
+      type: 'source-url',
+      url: 'https://example.com/second',
+      title: 'Second result',
+    }))
+  })
+
+  it('emits derived source-url chunks for an Exa tool-output', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: {
+            provider: 'exa',
+            results: [
+              { title: 'Exa result', url: 'https://example.com/exa' },
+            ],
+          },
+        })
+        controller.close()
+      },
+    })
+
+    const chunks = await readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )
+
+    expect(chunks).toHaveLength(2)
+    expect(chunks[1]).toEqual(expect.objectContaining({
+      type: 'source-url',
+      url: 'https://example.com/exa',
+      title: 'Exa result',
+    }))
+  })
+
+  it('deduplicates repeated URLs within the same message', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: {
+            provider: 'brave',
+            results: [
+              { title: 'First result', url: 'https://example.com/dup' },
+            ],
+          },
+        })
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-2',
+          output: {
+            provider: 'brave',
+            results: [
+              { title: 'Duplicate result', url: 'https://example.com/dup' },
+            ],
+          },
+        })
+        controller.close()
+      },
+    })
+
+    const chunks = await readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )
+
+    const sourceUrlChunks = chunks.filter((chunk) => {
+      return chunk.type === 'source-url'
+    })
+
+    expect(sourceUrlChunks).toHaveLength(1)
+  })
+
+  it('emits only the tool chunk for a malformed or empty output', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: { provider: 'brave', results: [] },
+        })
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-2',
+          output: null,
+        })
+        controller.close()
+      },
+    })
+
+    await expect(readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )).resolves.toEqual([
+      {
+        type: 'tool-output-available',
+        toolCallId: 'call-1',
+        output: { provider: 'brave', results: [] },
+      },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'call-2',
+        output: null,
+      },
+    ])
+  })
+
+  it('passes through a non-search tool chunk untouched', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: { provider: 'openai', results: [] },
+        })
+        controller.close()
+      },
+    })
+
+    await expect(readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )).resolves.toEqual([{
+      type: 'tool-output-available',
+      toolCallId: 'call-1',
+      output: { provider: 'openai', results: [] },
+    }])
+  })
+
+  it('passes through unchanged when given a non-stream value', () => {
+    const notAStream = { pipeThrough: undefined } as unknown as ReadableStream
+
+    expect(emitSourcesForExternalSearchResults(notAStream)).toBe(notAStream)
   })
 })

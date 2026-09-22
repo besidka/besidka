@@ -49,6 +49,7 @@ import {
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
 import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import {
+  emitSourcesForExternalSearchResults,
   filterRecoverableUIMessageStreamErrors,
   insertParagraphBreakAfterNonTextGap,
 } from '~~/server/utils/chats/filter-ui-message-stream'
@@ -1193,8 +1194,8 @@ export default defineEventHandler(async (event) => {
             return JSON.stringify(chatError)
           },
         })
-        const correctedUiMessageStream = insertParagraphBreakAfterNonTextGap(
-          uiMessageStream,
+        const correctedUiMessageStream = emitSourcesForExternalSearchResults(
+          insertParagraphBreakAfterNonTextGap(uiMessageStream),
         )
         const [clientStream, persistenceStream] = correctedUiMessageStream.tee()
 

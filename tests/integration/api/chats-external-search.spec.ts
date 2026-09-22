@@ -394,6 +394,11 @@ describe('external search send-path wiring', () => {
         type: 'tool-web_search_brave',
         state: 'output-available',
       }),
+      expect.objectContaining({
+        type: 'source-url',
+        url: 'https://example.com/release-notes',
+        title: 'Besidka release notes',
+      }),
     ]))
     expect(assistantInsert?.usage).toEqual(expect.objectContaining({
       searchProvider: 'brave',
@@ -420,6 +425,11 @@ describe('external search send-path wiring', () => {
       expect.objectContaining({
         type: 'tool-web_search_exa',
         state: 'output-available',
+      }),
+      expect.objectContaining({
+        type: 'source-url',
+        url: 'https://example.com/release-notes',
+        title: 'Besidka release notes',
       }),
     ]))
     expect(assistantInsert?.usage).toEqual(expect.objectContaining({
