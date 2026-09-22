@@ -2236,9 +2236,22 @@ of WP 0.2's shell.
 The nine route files and the 261-line Cloudflare card come back verbatim from
 WP 2.1's checkout. Verify rather than rewrite:
 
-- Each route's rate-limit prefix is `keys-rate-limit:<gateway>:<verb>`,
-  window 60 / max 10, via the surviving generic
-  `server/utils/keys-rate-limit.ts`.
+- Each route's rate-limit prefix is `keys-rate-limit:<gateway>:<verb>` via
+  the surviving generic `server/utils/keys-rate-limit.ts`.
+
+  > **Correction found during WP 0.2 (verified against
+  > `git show 24df3b5^:server/api/v1/profiles/keys/openrouter/index.get.ts`):
+  > the deleted gateway routes were window 60 / max 10 on POST and DELETE
+  > only — GET was window 60 / max 30**, matching the keys-summary route's
+  > limit. WP 0.2 chose 60/10 uniformly (including GET) for the new Brave/Exa
+  > routes, since the plan's original text (inaccurately) said all three
+  > verbs were 60/10 for gateways. **Decision: keep this WP 2.4 checkout's
+  > verbatim gateway GET at 60/30 as originally coded** rather than tightening
+  > it to match Brave/Exa's 60/10 — do not "fix" it to match Brave/Exa. The
+  > resulting three-way inconsistency (gateway GET 30, Brave/Exa GET 10) is
+  > accepted as low-stakes: `ProviderKeyCard.vue` never calls a per-provider
+  > GET route directly, only the aggregate summary endpoint, so neither limit
+  > is exercised by normal UI use. Do not spend a package reconciling this.
 - `server/api/v1/profiles/keys/index.get.ts` needs **zero** changes — it
   iterates `schema.keys.provider.enumValues` dynamically, and WP 0.1 already
   widened that enum, so gateways are already being listed.
