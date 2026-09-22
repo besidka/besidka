@@ -13,7 +13,7 @@ import type { ModelTool } from '#shared/types/providers.d'
 import type { ImageGenerationAspectRatio } from '#shared/types/image-generation.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import type { FormattedTools } from '~~/server/types/tools.d'
-import type { GoogleSearchRates } from '~~/server/utils/ai/google-search-cost'
+import type { SearchRates } from '~~/server/utils/ai/search-usage'
 import { useLogger, createError, createRequestLogger, log } from 'evlog'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
@@ -30,13 +30,12 @@ import * as schema from '~~/server/db/schema'
 import {
   buildMessageUsage,
   addImageGenerationCostToUsage,
-  addGoogleSearchUsage,
+  addSearchUsage,
 } from '~~/server/utils/ai/message-usage'
 import {
-  getGoogleSearchGrounding,
-  getGoogleSearchCost,
-  resolveGoogleSearchRates,
-} from '~~/server/utils/ai/google-search-cost'
+  resolveSearchRates,
+  resolveSearchUsage,
+} from '~~/server/utils/ai/search-usage'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
 import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
 import { filterRecoverableUIMessageStreamErrors } from '~~/server/utils/chats/filter-ui-message-stream'
@@ -441,7 +440,7 @@ export default defineEventHandler(async (event) => {
     modelId: string
     aspectRatio: ImageGenerationAspectRatio
   } | undefined
-  const googleSearchRates = resolveGoogleSearchRates(useRuntimeConfig(event))
+  const searchRates = resolveSearchRates(useRuntimeConfig(event))
 
   try {
     switch (provider.id) {
@@ -699,11 +698,13 @@ export default defineEventHandler(async (event) => {
                   generatedImage.aspectRatio,
                 )
                 : undefined
-              const grounding = getGoogleSearchGrounding(steps, model.id)
-              const searchCost = getGoogleSearchCost(
-                grounding,
-                googleSearchRates,
-              )
+              const search = resolveSearchUsage({
+                providerId: provider.id,
+                modelId: model.id,
+                steps,
+                rates: searchRates,
+              })
+              const searchCost = search?.cost
               const hasCost = textCost !== undefined
                 || imageCost !== undefined
                 || searchCost !== undefined
@@ -723,14 +724,22 @@ export default defineEventHandler(async (event) => {
                 },
               })
 
-              if (grounding) {
+              if (search) {
                 aiLogger.set({
                   attributes: {
                     ai: {
-                      googleSearchQueries: grounding.queries,
-                      googleSearchGroundedSteps: grounding.groundedSteps,
-                      googleSearchBillingUnit: grounding.billingUnit,
-                      googleSearchCost: searchCost,
+                      webSearchUnits: search.units,
+                      webSearchBillingUnit: search.billingUnit,
+                      webSearchCost: search.cost,
+                      googleSearchQueries: search.googleQueries,
+                      googleSearchGroundedSteps: search.googleGroundedSteps,
+                      googleSearchBillingUnit:
+                        search.googleQueries === undefined
+                          ? undefined
+                          : search.billingUnit,
+                      googleSearchCost: search.googleQueries === undefined
+                        ? undefined
+                        : search.cost,
                     },
                   },
                 })
@@ -774,8 +783,17 @@ export default defineEventHandler(async (event) => {
         // emitted before the single `finish` part. Collecting them here and
         // reading them on `finish` is ordered by the stream itself — unlike
         // reading a value produced by streamText's `onEnd`, whose ordering
-        // relative to this transform is not guaranteed.
-        const finishedSteps: Array<{ providerMetadata?: unknown }> = []
+        // relative to this transform is not guaranteed. `tool-call`,
+        // `tool-result`, and `tool-error` parts are buffered per step and
+        // flushed into `finishedSteps` on that step's `finish-step` part, so
+        // the Anthropic/OpenAI web_search structural fallback (which reads a
+        // step's `content` array) sees the same shape it would from
+        // `StepResult.content`.
+        const finishedSteps: Array<{
+          providerMetadata?: unknown
+          content: unknown[]
+        }> = []
+        const pendingStepContent: unknown[] = []
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
           originalMessages: messagesForAI,
@@ -783,8 +801,22 @@ export default defineEventHandler(async (event) => {
           sendSources: true,
           sendReasoning: body.data.reasoning !== 'off',
           messageMetadata({ part }) {
+            if (
+              part.type === 'tool-call'
+              || part.type === 'tool-result'
+              || part.type === 'tool-error'
+            ) {
+              pendingStepContent.push(part)
+
+              return undefined
+            }
+
             if (part.type === 'finish-step') {
-              finishedSteps.push({ providerMetadata: part.providerMetadata })
+              finishedSteps.push({
+                providerMetadata: part.providerMetadata,
+                content: [...pendingStepContent],
+              })
+              pendingStepContent.length = 0
 
               return undefined
             }
@@ -804,14 +836,15 @@ export default defineEventHandler(async (event) => {
                 generatedImage.aspectRatio,
               )
               : undefined
-            const grounding = getGoogleSearchGrounding(
-              finishedSteps,
-              model.id,
-            )
-            const usage = addGoogleSearchUsage(
+            const search = resolveSearchUsage({
+              providerId: provider.id,
+              modelId: model.id,
+              steps: finishedSteps,
+              rates: searchRates,
+            })
+            const usage = addSearchUsage(
               addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
-              grounding,
-              getGoogleSearchCost(grounding, googleSearchRates),
+              search,
             )
 
             return {
@@ -867,7 +900,7 @@ export default defineEventHandler(async (event) => {
           reasoning: body.data.reasoning,
           tools: requestedTools,
           publicId: messagePublicId,
-          googleSearchRates,
+          searchRates,
           logger,
         })
 
@@ -1132,7 +1165,7 @@ async function persistAssistantMessageFromStream(input: {
   reasoning: 'off' | 'low' | 'medium' | 'high'
   tools: string[]
   publicId: string
-  googleSearchRates: GoogleSearchRates
+  searchRates: SearchRates
   logger: {
     set: (fields: Record<string, unknown>) => void
   }
@@ -1199,15 +1232,16 @@ async function persistAssistantMessageFromStream(input: {
       const imageGenerationCost = getGeneratedImageCostFromParts(
         responseMessage.parts as UIMessage['parts'],
       )
-      const grounding = getGoogleSearchGrounding(
-        await input.result.steps,
-        input.modelId,
-      )
+      const search = resolveSearchUsage({
+        providerId: input.providerId,
+        modelId: input.modelId,
+        steps: await input.result.steps,
+        rates: input.searchRates,
+      })
 
-      usage = addGoogleSearchUsage(
+      usage = addSearchUsage(
         addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
-        grounding,
-        getGoogleSearchCost(grounding, input.googleSearchRates),
+        search,
       )
     } catch (exception) {
       input.logger.set({

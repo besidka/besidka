@@ -1180,7 +1180,7 @@ describe('Chat/ContextMenu.client', () => {
     })
   })
 
-  describe('Google Search grounding row', () => {
+  describe('Web search row', () => {
     it('renders the cost and query count together', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',
@@ -1276,6 +1276,58 @@ describe('Chat/ContextMenu.client', () => {
         wrapper.find('[data-testid="message-menu-search-grounding"]')
           .exists(),
       ).toBe(false)
+    })
+
+    it('renders the cost and search count together for Anthropic/OpenAI', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.03,
+        searchUnits: 3,
+        searchBillingUnit: 'search',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search')
+      expect(row.text()).toContain('~$')
+      expect(row.text()).toContain('(3 searches)')
+    })
+
+    it('renders a count-only search row with no cost', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchUnits: 1,
+        searchBillingUnit: 'search',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).not.toContain('$')
+      expect(row.text()).toContain('1 search')
     })
   })
 

@@ -168,6 +168,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-usage.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     'tests/unit/utils/google-search-cost.spec.ts',
+    'tests/unit/utils/web-search-cost.spec.ts',
+    'tests/unit/utils/search-usage.spec.ts',
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
   ]
@@ -518,7 +520,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
+        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost|web-search-cost|search-usage)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
       tests: messageUsageTests,
     },
     {

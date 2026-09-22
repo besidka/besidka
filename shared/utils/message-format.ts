@@ -1,3 +1,5 @@
+import type { SearchBillingUnit } from '#shared/types/message-usage.d'
+
 const TOKEN_COUNT_FORMATTER = new Intl.NumberFormat('en-US')
 
 const COST_ABOVE_CENT_FORMATTER = new Intl.NumberFormat('en-US', {
@@ -74,23 +76,25 @@ export function formatMessageCost(
   return `${prefix}$${formatter.format(cost)}`
 }
 
+const SEARCH_UNIT_LABELS: Record<SearchBillingUnit, [string, string]> = {
+  'query': ['query', 'queries'],
+  'grounded-prompt': ['grounded request', 'grounded requests'],
+  'search': ['search', 'searches'],
+}
+
 export function formatSearchGroundingUnits(
   units: number | undefined | null,
-  billingUnit?: 'query' | 'grounded-prompt',
+  billingUnit?: SearchBillingUnit,
 ): string {
   if (units === undefined || units === null) {
     return ''
   }
 
   const formattedCount = TOKEN_COUNT_FORMATTER.format(units)
-  const label = billingUnit === 'grounded-prompt'
-    ? 'grounded request'
-    : 'query'
-  const pluralLabel = billingUnit === 'grounded-prompt'
-    ? 'grounded requests'
-    : 'queries'
+  const [singularLabel, pluralLabel]
+    = SEARCH_UNIT_LABELS[billingUnit ?? 'query'] ?? SEARCH_UNIT_LABELS.query
 
-  return `${formattedCount} ${units === 1 ? label : pluralLabel}`
+  return `${formattedCount} ${units === 1 ? singularLabel : pluralLabel}`
 }
 
 export function formatMessageDateTime(
