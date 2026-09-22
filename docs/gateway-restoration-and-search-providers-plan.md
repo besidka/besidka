@@ -412,7 +412,7 @@ pnpm run db:generate   # MUST print "No schema changes, nothing to migrate"
 
 No browser verification — nothing user-visible ships in this package alone.
 
-- [ ] WP 0.1 complete
+- [x] WP 0.1 complete (commit `18e89d5`)
 
 ## WP 0.2 — Brave/Exa key API routes + `/profile/keys` tab shell rebuild
 
@@ -556,7 +556,7 @@ pnpm vitest run tests/unit/pages/profile/keys.spec.ts \
 9. Resize to a narrow viewport and confirm the tab bar does not overflow or
    wrap into an unusable state.
 
-- [ ] WP 0.2 complete
+- [x] WP 0.2 complete (commit `e272920`)
 
 ## WP 0.3 — `Model.toolCall` through the models.dev fetch pipeline
 
@@ -687,14 +687,26 @@ pnpm run db:generate   # MUST print "No schema changes, nothing to migrate"
 
 No browser verification — no UI reads `toolCall` until Epic 1 WP 1.6.
 
-- [ ] WP 0.3 complete
+- [x] WP 0.3 complete (commit `09c08a2`)
 
 ## Epic 0 gate
 
-- [ ] CI green on PR #362 with all three packages landed
-- [ ] `/profile/keys` browser script (WP 0.2) passed, including saving and
-      deleting a real Brave key and a real Exa key
-- [ ] `pnpm run db:generate` produced no migration
+- [ ] CI green on PR #362 with all three packages landed (Build PR pending
+      as of commit `e6c1997`; Check PR state and Check latest commit paths
+      already pass)
+- [~] `/profile/keys` browser script (WP 0.2) — steps 1-5 and the tab/panel/
+      card-order/dashboard-link checks verified live against local dev
+      (`Rail Test` session): tab bar renders, providers panel unchanged,
+      search panel shows the blurb and exactly Brave-then-Exa, Brave's
+      dashboard link resolves to `https://api-dashboard.search.brave.com/app/keys`,
+      Exa correctly falls back to its 2-letter badge. Step 9 (narrow-viewport
+      overflow) was not confirmed — the browser tool's window resize did not
+      affect the captured viewport in this environment; needs a real device
+      or a differently-instrumented check. **Steps 6-8 (saving/deleting a
+      real key) require the owner** — an agent must not type an API key into
+      a form.
+- [x] `pnpm run db:generate` produced no migration (confirmed independently
+      in all three work packages: "No schema changes, nothing to migrate")
 
 ---
 
