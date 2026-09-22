@@ -4,6 +4,7 @@ import { getModel } from '#shared/utils/model'
 import { getModelResearch } from '#shared/utils/research'
 import { hasUnknownTokenSplit } from '#shared/utils/message-metadata'
 import { getModelCostMap } from '~~/server/utils/ai/cost-map'
+import type { SearchUsage } from '~~/server/utils/ai/search-usage'
 
 /**
  * Build the persisted/streamed usage shape for one assistant message from
@@ -72,6 +73,34 @@ export function addImageGenerationCostToUsage(
   return {
     ...usage,
     outputCost: (usage.outputCost ?? 0) + imageGenerationCost,
+  }
+}
+
+/**
+ * Records separately-billed search-tool usage (Google Search grounding,
+ * Anthropic web_search, OpenAI web_search) onto a message's usage as its
+ * own line, never folded into outputCost/inputCost — the provider bills
+ * this separately from tokens, and merging it in would misrepresent the
+ * token cost while hiding the actual reason the bill is higher. The unit
+ * count is recorded unconditionally so an operator can cross-reference it
+ * against a real provider invoice even when no rate is configured; the
+ * dollar cost is added only when a rate resolved.
+ */
+export function addSearchUsage(
+  usage: MessageUsage | undefined,
+  search: SearchUsage | undefined,
+): MessageUsage | undefined {
+  if (!usage || !search) {
+    return usage
+  }
+
+  return {
+    ...usage,
+    searchUnits: search.units,
+    ...(search.billingUnit === undefined
+      ? {}
+      : { searchBillingUnit: search.billingUnit }),
+    ...(search.cost === undefined ? {} : { searchCost: search.cost }),
   }
 }
 

@@ -179,6 +179,15 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   schema limit, the `attributes` map-field convention that fixes it, the
   `scripts/axiom-declare-map-field.mjs` rollout step that MUST run before
   deploying, and why the fix doesn't reclaim existing schema headroom
+- `docs/web-search-cost-accounting.md` - Why provider-native web search
+  tools (Google grounding, Anthropic/OpenAI `web_search`) are billed
+  separately from tokens with no standardized unit and no automated pricing
+  source; the `google-search-cost.ts`/`web-search-cost.ts`/`search-usage.ts`
+  dispatcher architecture, the "always record count, conditionally record
+  cost" contract, and why real rates live in `wrangler.jsonc` as public
+  pricing (not secrets); gray zones for adding more providers, the AI
+  Gateway pass-through question, and a non-decided sketch for a
+  Brave/Exa-backed external search tool
 - `docs/legal.md` - Privacy Policy / Terms / Cookie Policy as Nuxt Content: why
   three separate documents, the `{{ privacyEmail }}` config-not-content binding
   (and its silent-empty failure mode), why no postal address is published

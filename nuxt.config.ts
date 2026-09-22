@@ -202,6 +202,10 @@ export default defineNuxtConfig({
     axiomAuditToken: '',
     axiomConsentDataset: '',
     axiomConsentToken: '',
+    googleSearchCostPerThousandQueriesUsd: '',
+    googleSearchCostPerThousandGroundedPromptsUsd: '',
+    anthropicWebSearchCostPerThousandSearchesUsd: '',
+    openaiWebSearchCostPerThousandCallsUsd: '',
     vapidPrivateKey: '',
     vapidSubject: '',
     public: {

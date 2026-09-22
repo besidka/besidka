@@ -1,6 +1,7 @@
 import type {
   ChatMessageMetadata,
   MessageUsage,
+  SearchBillingUnit,
 } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
@@ -23,6 +24,9 @@ export type MessageMenuInfo = {
   costToMessageIsEstimated?: boolean
   chatTotalCost?: number
   chatTotalCostIsEstimated?: boolean
+  searchCost?: number
+  searchUnits?: number
+  searchBillingUnit?: SearchBillingUnit
 }
 
 type DisplayCost = {
@@ -248,6 +252,35 @@ function resolveProviderDisplay(
   }
 }
 
+// searchCost (Google Search grounding, Anthropic web_search, or OpenAI
+// web_search) is independent of hasUnknownTokenSplit/resolveDisplayCost: it
+// is billed separately from tokens, so a message's search cost is always
+// trustworthy even when its token split is unknown. This is why
+// cumulative totals (costToMessage/chatTotalCost) can flip to estimated
+// while a message's own `cost` (Current message, token/image cost only)
+// stays unflagged.
+function getPerMessageSearchCost(
+  messages: MenuMessage[],
+  messageIndex: number,
+): DisplayCost | undefined {
+  const message = messages[messageIndex]
+
+  if (message?.role !== 'assistant') {
+    return undefined
+  }
+
+  const searchCost = getMessageMetadata(message).usage?.searchCost
+
+  if (searchCost === undefined) {
+    return undefined
+  }
+
+  return { amount: searchCost, isEstimated: true }
+}
+
+// searchCost is independent of the token split (see getPerMessageSearchCost),
+// so it is accumulated separately from getPerMessageCost rather than being
+// gated by the same continue that skips messages with no token cost.
 function sumMessageCosts(
   messages: MenuMessage[],
   endIndex: number,
@@ -258,14 +291,19 @@ function sumMessageCosts(
 
   for (let index = 0; index <= endIndex; index += 1) {
     const cost = getPerMessageCost(messages, index)
+    const searchCost = getPerMessageSearchCost(messages, index)
 
-    if (cost === undefined) {
-      continue
+    if (cost !== undefined) {
+      hasCost = true
+      total += cost.amount
+      isEstimated = isEstimated || cost.isEstimated
     }
 
-    hasCost = true
-    total += cost.amount
-    isEstimated = isEstimated || cost.isEstimated
+    if (searchCost !== undefined) {
+      hasCost = true
+      total += searchCost.amount
+      isEstimated = isEstimated || searchCost.isEstimated
+    }
   }
 
   return hasCost ? { amount: total, isEstimated } : undefined
@@ -315,6 +353,9 @@ export function resolveMessageMenuInfo(
       costToMessageIsEstimated: costToMessage?.isEstimated || undefined,
       chatTotalCost: chatTotalCost?.amount,
       chatTotalCostIsEstimated: chatTotalCost?.isEstimated || undefined,
+      searchCost: usage?.searchCost,
+      searchUnits: usage?.searchUnits,
+      searchBillingUnit: usage?.searchBillingUnit,
     }
   }
 

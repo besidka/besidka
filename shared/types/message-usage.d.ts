@@ -1,3 +1,5 @@
+export type SearchBillingUnit = 'query' | 'grounded-prompt' | 'search'
+
 export type MessageUsage = {
   model: string
   provider: string
@@ -17,6 +19,16 @@ export type MessageUsage = {
   // path writes it; it is kept so already-persisted messages that carry one
   // still render their cost instead of showing nothing.
   totalCost?: number
+  // Google Search grounding, Anthropic's web_search server tool, and
+  // OpenAI's web_search Responses tool are all billed by their providers
+  // separately from tokens and deliberately kept out of outputCost: the
+  // provider bill is higher than the token cost alone and must stay
+  // visible as its own line. searchCost is always an approximation (the
+  // app cannot know a BYOK user's real billing tier), so the UI always
+  // renders it with "~".
+  searchUnits?: number
+  searchBillingUnit?: SearchBillingUnit
+  searchCost?: number
 }
 
 export type ChatMessageMetadata = {

@@ -691,3 +691,215 @@ describe('resolveMessageMenuInfo cumulative cost totals', () => {
     expect(info?.costToMessage).toBe(chatTotal)
   })
 })
+
+describe('resolveMessageMenuInfo Google Search grounding', () => {
+  const assistantUsage = {
+    model: 'gpt-5.4',
+    provider: 'openai',
+    inputTokens: 5240,
+    outputTokens: 1180,
+    totalTokens: 6420,
+    inputCost: 0.0131,
+    outputCost: 0.0177,
+  }
+  const groundedUsage = {
+    ...assistantUsage,
+    searchUnits: 3,
+    searchBillingUnit: 'query' as const,
+    searchCost: 0.036,
+  }
+
+  it('exposes searchCost, searchUnits, and searchBillingUnit', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: groundedUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchCost).toBe(0.036)
+    expect(info?.searchUnits).toBe(3)
+    expect(info?.searchBillingUnit).toBe('query')
+  })
+
+  it('excludes searchCost from the current-message cost and leaves it unflagged', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: groundedUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.0177)
+    expect(info?.costIsEstimated).toBeFalsy()
+  })
+
+  it('includes searchCost in the cumulative totals and flags them estimated', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: groundedUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.costToMessage).toBeCloseTo(0.0177 + 0.036)
+    expect(info?.costToMessageIsEstimated).toBe(true)
+    expect(info?.chatTotalCost).toBeCloseTo(0.0177 + 0.036)
+    expect(info?.chatTotalCostIsEstimated).toBe(true)
+  })
+
+  it('surfaces a count-only search grounding without affecting cost totals', () => {
+    const countOnlyUsage = {
+      ...assistantUsage,
+      searchUnits: 3,
+      searchBillingUnit: 'query' as const,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: countOnlyUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchUnits).toBe(3)
+    expect(info?.searchCost).toBeUndefined()
+    expect(info?.costToMessage).toBe(0.0177)
+    expect(info?.costToMessageIsEstimated).toBeFalsy()
+    expect(info?.chatTotalCost).toBe(0.0177)
+    expect(info?.chatTotalCostIsEstimated).toBeFalsy()
+  })
+
+  it('counts the search cost exactly once, not doubled by a preceding user message', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'first' } },
+      { id: 'a1', role: 'assistant', metadata: { usage: groundedUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.chatTotalCost).toBeCloseTo(0.0131 + 0.0177 + 0.036)
+  })
+
+  it('accumulates searchCost even when the token cost is unknown', () => {
+    const unknownSplitGroundedUsage = {
+      model: 'gemini-3-pro-preview',
+      provider: 'google',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 6420,
+      searchUnits: 3,
+      searchBillingUnit: 'query' as const,
+      searchCost: 0.036,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: unknownSplitGroundedUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBeUndefined()
+    expect(info?.costToMessage).toBeCloseTo(0.036)
+    expect(info?.costToMessageIsEstimated).toBe(true)
+    expect(info?.chatTotalCost).toBeCloseTo(0.036)
+    expect(info?.chatTotalCostIsEstimated).toBe(true)
+  })
+})
+
+describe('resolveMessageMenuInfo Anthropic/OpenAI web search', () => {
+  it('surfaces searchBillingUnit "search" on an Anthropic assistant message', () => {
+    const anthropicWebSearchUsage = {
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+      searchUnits: 3,
+      searchBillingUnit: 'search' as const,
+      searchCost: 0.03,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: anthropicWebSearchUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchCost).toBe(0.03)
+    expect(info?.searchUnits).toBe(3)
+    expect(info?.searchBillingUnit).toBe('search')
+  })
+
+  it('sums searchCost across a chat mixing a Google and an Anthropic message', () => {
+    const googleUsage = {
+      model: 'gemini-3.8-flash',
+      provider: 'google',
+      inputTokens: 1000,
+      outputTokens: 200,
+      totalTokens: 1200,
+      inputCost: 0.001,
+      outputCost: 0.002,
+      searchUnits: 2,
+      searchBillingUnit: 'query' as const,
+      searchCost: 0.028,
+    }
+    const anthropicUsage = {
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+      searchUnits: 3,
+      searchBillingUnit: 'search' as const,
+      searchCost: 0.03,
+    }
+    const messages = [
+      { id: 'a1', role: 'assistant', metadata: { usage: googleUsage } },
+      { id: 'a2', role: 'assistant', metadata: { usage: anthropicUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'a2')
+
+    expect(info?.chatTotalCost).toBeCloseTo(
+      0.002 + 0.028 + 0.0177 + 0.03,
+    )
+    expect(info?.chatTotalCostIsEstimated).toBe(true)
+  })
+
+  it('reports searchCost and contributes to totals even with an unknown token split', () => {
+    const unknownSplitUsage = {
+      model: 'gpt-4o',
+      provider: 'openai',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 900,
+      searchUnits: 2,
+      searchBillingUnit: 'search' as const,
+      searchCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: unknownSplitUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBeUndefined()
+    expect(info?.searchCost).toBe(0.05)
+    expect(info?.costToMessage).toBeCloseTo(0.05)
+    expect(info?.costToMessageIsEstimated).toBe(true)
+    expect(info?.chatTotalCost).toBeCloseTo(0.05)
+    expect(info?.chatTotalCostIsEstimated).toBe(true)
+  })
+})

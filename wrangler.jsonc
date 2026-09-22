@@ -42,7 +42,24 @@
 		"NUXT_MESSAGE_SEARCH_SWEEP_ENABLED": true,
 		"NUXT_MESSAGE_SEARCH_SWEEP_BATCH_SIZE": 1000,
 		"NUXT_MESSAGE_SEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
-		"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+		"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+		// Grounding with Google Search pricing, per ai.google.dev/gemini-api/docs/google-search
+		// and .../pricing (as of 2026-09-21). Public, provider-published rates —
+		// not a secret. Gemini 3.x rate invoice-verified (see PR #385); the
+		// Gemini <=2.5 rate is documentation-only.
+		"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
+		"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
+		// Anthropic web_search and OpenAI web_search are billed per search
+		// call, separately from tokens. Public, provider-published rates —
+		// not secrets. Anthropic: flat $10 / 1,000 searches, identical
+		// across Opus/Sonnet/Haiku (platform.claude.com/docs). OpenAI: this
+		// app calls the non-preview `web_search` tool, which bills a flat
+		// $10 / 1,000 calls for every OpenAI model, no reasoning/
+		// non-reasoning split (developers.openai.com/api/docs/pricing).
+		// Both as of 2026-09-22 and documentation-only — NOT
+		// invoice-verified the way the Gemini 3.x rate was.
+		"NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
+		"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10"
 	},
 	"d1_databases": [
 		{
@@ -165,7 +182,24 @@
 				"NUXT_AXIOM_DATASET": "besidka-prod",
 				"NUXT_AXIOM_AUDIT_DATASET": "besidka-audit-prod",
 				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod",
-				"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAEFMAZiwbUuiy0qi"
+				"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAEFMAZiwbUuiy0qi",
+				// Grounding with Google Search pricing, per ai.google.dev/gemini-api/docs/google-search
+				// and .../pricing (as of 2026-09-21). Public, provider-published rates —
+				// not a secret. Gemini 3.x rate invoice-verified (see PR #385); the
+				// Gemini <=2.5 rate is documentation-only.
+				"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
+				"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
+				// Anthropic web_search and OpenAI web_search are billed per search
+				// call, separately from tokens. Public, provider-published rates —
+				// not secrets. Anthropic: flat $10 / 1,000 searches, identical
+				// across Opus/Sonnet/Haiku (platform.claude.com/docs). OpenAI: this
+				// app calls the non-preview `web_search` tool, which bills a flat
+				// $10 / 1,000 calls for every OpenAI model, no reasoning/
+				// non-reasoning split (developers.openai.com/api/docs/pricing).
+				// Both as of 2026-09-22 and documentation-only — NOT
+				// invoice-verified the way the Gemini 3.x rate was.
+				"NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
+				"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10"
 			},
 			"d1_databases": [
 				{
