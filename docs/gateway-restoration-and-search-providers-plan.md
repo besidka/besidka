@@ -1306,7 +1306,7 @@ The last two are regression guards: they cover the direct-provider tool loop
 and the single-step characterisation, and a mistake in tool injection breaks
 them first.
 
-- [ ] WP 1.3 complete
+- [x] WP 1.3 complete (commit `da88f71`)
 
 ## WP 1.4 — Convert Brave/Exa results into `source-url` chunks
 
