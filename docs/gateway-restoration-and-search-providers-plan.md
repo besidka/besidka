@@ -1819,9 +1819,9 @@ nothing.
 
 ## Epic 1 gate
 
-- [ ] CI green on PR #362 with all seven packages landed (all 7 packages plus
-      2 reviewer-flagged fixes committed and pushed as of `1d09948`; CI run
-      for this commit in progress — confirm before Epic 2 workers start)
+- [x] CI green on PR #362 with all seven packages landed (confirmed on
+      commit `0e46727`: Build PR, Check PR state, Check latest commit paths,
+      Preview Deploy all passed)
 - [ ] WP 1.5's full 11-step browser script passed, including a real Brave
       send and a real Exa send with visible citations and a cost row —
       **blocked on the owner saving real Brave/Exa keys on `/profile/keys` →
