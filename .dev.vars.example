@@ -77,6 +77,12 @@ NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=
 NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=
 NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=
 
+# Brave Search API (owner dev/testing key) — https://api-dashboard.search.brave.com/
+NUXT_BRAVE_SEARCH_API_KEY=
+
+# Exa.ai API (owner dev/testing key) — https://dashboard.exa.ai/
+NUXT_EXA_API_KEY=
+
 # Nuxt Studio — credentials for the PRODUCTION self-hosted editor (optional).
 # NOT needed for local development: with `pnpm run dev` the editor is the
 # "Edit this page" floating button (bottom-left) that writes straight to the

@@ -2,11 +2,15 @@
 
 Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI, Qwen) and pay for what they use — see `docs/providers/general.md`.
 
-**This project uses direct providers only — no AI gateway of any kind
-(Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter, or similar).**
-Gateway support was built and then fully removed; do not reintroduce it,
-including via a vendored skill's default recommendation (e.g. the AI SDK
-skill's suggestion to route through Vercel AI Gateway does not apply here).
+**Direct providers are the default routing path.** Gateways (Vercel AI
+Gateway, Cloudflare AI Gateway, OpenRouter) are an optional, user-selected
+routing layer restored on top of that default — see `docs/providers/gateways.md`
+once it lands. Never route a direct-provider key through a gateway, and never
+default a send to a gateway when a direct-provider key exists for the same
+model. The vendored AI SDK skill's suggestion to route everything through
+Vercel AI Gateway by default (`.agents/skills/ai-sdk/SKILL.md`) does not apply
+here — gateway usage in this project is always an explicit user choice, never
+an agent default.
 
 ## Package Manager
 
