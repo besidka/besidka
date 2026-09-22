@@ -1632,7 +1632,7 @@ real Brave and Exa keys saved from Epic 0):
     dropdown and select Brave. Confirm image generation switches itself off
     (they are mutually exclusive) rather than both appearing active.
 
-- [ ] WP 1.5 complete
+- [x] WP 1.5 complete (commit `bed5ddb`)
 
 ## WP 1.6 — Tool-calling capability chip and badge in the model picker
 
