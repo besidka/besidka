@@ -198,6 +198,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       'Image generation',
       'Vision',
       'Deep research',
+      'Tool calling',
     ])
   })
 
@@ -212,7 +213,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
         return badge.text()
       })
 
-    expect(badges).toEqual(['Always-on reasoning', 'Vision'])
+    expect(badges).toEqual(['Always-on reasoning', 'Vision', 'Tool calling'])
   })
 
   it('lists vision as a separate badge from image generation', async () => {
@@ -227,7 +228,39 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
         return badge.text()
       })
 
-    expect(badges).toEqual(['Vision'])
+    expect(badges).toEqual(['Vision', 'Tool calling'])
+  })
+
+  it('renders a Tool calling badge with the wrench icon', async () => {
+    const model = createModel({
+      modalities: { input: ['text'], output: ['text'] },
+      toolCall: true,
+    })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+    const toolCall = badges.find((badge) => {
+      return badge.text() === 'Tool calling'
+    })
+
+    expect(toolCall).toBeDefined()
+    expect(toolCall?.findComponent({ name: 'NuxtIcon' }).props('name'))
+      .toBe('lucide:wrench')
+    expect(toolCall?.classes())
+      .toContain('[--badge-color:var(--color-slate-700)]')
+  })
+
+  it('omits the Tool calling badge for a model without toolCall', async () => {
+    const model = createModel({
+      modalities: { input: ['text'], output: ['text'] },
+      toolCall: false,
+    })
+    const wrapper = await mountDetail(model)
+
+    expect(
+      wrapper.find('[data-testid="model-detail-capabilities"]').exists(),
+    ).toBe(false)
   })
 
   it('gives only the Vision badge a tooltip explaining the capability', async () => {
@@ -285,6 +318,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
   it('renders no capability badges for a plain model', async () => {
     const wrapper = await mountDetail(createModel({
       modalities: { input: ['text'], output: ['text'] },
+      toolCall: false,
     }))
 
     expect(wrapper.find('[data-testid="model-detail-capabilities"]').exists())

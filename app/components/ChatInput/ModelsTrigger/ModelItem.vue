@@ -130,6 +130,15 @@
           >
             <Icon name="lucide:telescope" />
           </span>
+          <span
+            v-if="model.toolCall"
+            data-testid="model-tool-call-capability"
+            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-slate-700 dark:text-slate-300"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Supports tool calling — can use Brave or Exa web search"
+          >
+            <Icon name="lucide:wrench" />
+          </span>
         </span>
       </component>
       <span
@@ -231,6 +240,7 @@ const hasCapabilities = computed<boolean>(() => {
     || hasImageGenerationCapability(model)
     || hasVisionCapability(model)
     || !!model.research
+    || model.toolCall
 })
 
 const selectLabel = computed<string>(() => {

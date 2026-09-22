@@ -264,6 +264,15 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     })
   }
 
+  if (model.toolCall) {
+    badges.push({
+      label: 'Tool calling',
+      icon: 'lucide:wrench',
+      class: '[--badge-color:var(--color-slate-700)] '
+        + 'dark:[--badge-color:var(--color-slate-300)]',
+    })
+  }
+
   return badges
 })
 

@@ -154,6 +154,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
   it('renders no capability icons for a plain model', async () => {
     const wrapper = await mountModelItem(createModel({
       modalities: { input: ['text'], output: ['text'] },
+      toolCall: false,
     }))
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
@@ -166,6 +167,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     ).exists()).toBe(false)
     expect(wrapper.find(
       '[data-testid="model-vision-capability"]',
+    ).exists()).toBe(false)
+    expect(wrapper.find(
+      '[data-testid="model-tool-call-capability"]',
     ).exists()).toBe(false)
   })
 
@@ -231,6 +235,41 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     ).exists()).toBe(true)
     expect(wrapper.find(
       '[data-testid="model-vision-capability"]',
+    ).exists()).toBe(true)
+    expect(wrapper.find(
+      '[data-testid="model-tool-call-capability"]',
+    ).exists()).toBe(true)
+  })
+
+  it('shows the tool-calling icon for a model with toolCall, with a '
+    + 'tooltip naming Brave and Exa', async () => {
+    const wrapper = await mountModelItem(createModel({ toolCall: true }))
+    const toolCall = wrapper.get('[data-testid="model-tool-call-capability"]')
+
+    expect(toolCall.classes()).toContain('text-slate-700')
+    expect(toolCall.attributes('data-tip'))
+      .toBe('Supports tool calling — can use Brave or Exa web search')
+  })
+
+  it('hides the tool-calling icon for a model without toolCall', async () => {
+    const wrapper = await mountModelItem(createModel({ toolCall: false }))
+
+    expect(wrapper.find(
+      '[data-testid="model-tool-call-capability"]',
+    ).exists()).toBe(false)
+  })
+
+  it('still renders the capability group for a model whose only '
+    + 'capability is tool calling', async () => {
+    const wrapper = await mountModelItem(createModel({
+      modalities: { input: ['text'], output: ['text'] },
+      toolCall: true,
+    }))
+
+    expect(wrapper.find('[data-testid="model-capabilities"]').exists())
+      .toBe(true)
+    expect(wrapper.find(
+      '[data-testid="model-tool-call-capability"]',
     ).exists()).toBe(true)
   })
 
