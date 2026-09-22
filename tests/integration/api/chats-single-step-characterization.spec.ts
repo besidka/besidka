@@ -67,7 +67,7 @@ vi.mock('ai', async (importOriginal) => {
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
     streamText: vi.fn((options: Record<string, any>) => {
       mocks.streamTextOptions.push(options)
-      options.onEnd?.({ usage: mocks.usage })
+      options.onEnd?.({ usage: mocks.usage, steps: [] })
 
       return {
         consumeStream: vi.fn(),
