@@ -410,6 +410,16 @@ describe('isThinkingToolPart / getToolPartName', () => {
     expect(isThinkingToolPart(part)).toBe(true)
   })
 
+  it('accepts a tool-web_search_exa part as a thinking part', () => {
+    const part = {
+      type: 'tool-web_search_exa',
+      state: 'input-available',
+    } as UIMessage['parts'][number]
+
+    expect(getToolPartName(part)).toBe('web_search_exa')
+    expect(isThinkingToolPart(part)).toBe(true)
+  })
+
   it('returns an empty name for non-tool parts', () => {
     const parts: UIMessage['parts'] = [
       { type: 'text', text: 'Answer' },
@@ -549,6 +559,24 @@ describe('getToolStepTitle', () => {
 
   it('falls back to "A tool failed" for an empty failed tool name', () => {
     expect(getToolStepTitle('', false, true)).toBe('A tool failed')
+  })
+
+  it('titles web_search_brave by pending, done, and failed state', () => {
+    expect(getToolStepTitle('web_search_brave', true, false))
+      .toBe('Searching with Brave')
+    expect(getToolStepTitle('web_search_brave', false, false))
+      .toBe('Searched with Brave')
+    expect(getToolStepTitle('web_search_brave', false, true))
+      .toBe('Brave search failed')
+  })
+
+  it('titles web_search_exa by pending, done, and failed state', () => {
+    expect(getToolStepTitle('web_search_exa', true, false))
+      .toBe('Searching with Exa')
+    expect(getToolStepTitle('web_search_exa', false, false))
+      .toBe('Searched with Exa')
+    expect(getToolStepTitle('web_search_exa', false, true))
+      .toBe('Exa search failed')
   })
 })
 

@@ -1380,6 +1380,84 @@ describe('Chat/ContextMenu.client', () => {
       expect(row.text()).not.toContain('$')
       expect(row.text()).toContain('1 search')
     })
+
+    it('labels the row "Web search (Brave)" when searchProvider is brave', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.02,
+        searchUnits: 2,
+        searchBillingUnit: 'search',
+        searchProvider: 'brave',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search (Brave)')
+    })
+
+    it('labels the row "Web search (Exa)" when searchProvider is exa', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.017,
+        searchUnits: 1,
+        searchBillingUnit: 'search',
+        searchProvider: 'exa',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search (Exa)')
+    })
+
+    it('renders the unadorned "Web search" label when searchProvider is absent', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.036,
+        searchUnits: 3,
+        searchBillingUnit: 'query',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+      const label = row.find('span.shrink-0')
+
+      expect(label.text()).toBe('Web search')
+    })
   })
 
   describe('deep research tool label', () => {

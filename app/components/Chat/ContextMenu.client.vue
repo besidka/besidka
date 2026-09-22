@@ -127,7 +127,7 @@
                 class="flex items-center justify-between gap-3 pl-2 text-xs"
               >
                 <span class="shrink-0 font-normal text-base-content/50">
-                  Web search
+                  {{ searchRowLabel }}
                 </span>
                 <span class="min-w-0 truncate font-normal text-base-content">
                   {{ searchGroundingLabel }}
@@ -251,6 +251,7 @@ import {
   formatSearchGroundingUnits,
   formatTokenCount,
 } from '#shared/utils/message-format'
+import { providerMeta } from '#shared/utils/provider-meta'
 
 const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search: 'Web search',
@@ -369,6 +370,18 @@ const hasEstimatedCost = computed<boolean>(() => {
     || !!props.info?.chatTotalCostIsEstimated
     || props.info?.searchCost !== undefined
   )
+})
+
+const searchRowLabel = computed<string>(() => {
+  const provider = props.info?.searchProvider
+
+  if (!provider) {
+    return 'Web search'
+  }
+
+  const meta = providerMeta[provider]
+
+  return `Web search (${meta?.shortLabel ?? meta?.label ?? provider})`
 })
 
 const searchGroundingLabel = computed<string>(() => {

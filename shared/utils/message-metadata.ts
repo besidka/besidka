@@ -2,6 +2,7 @@ import type {
   ChatMessageMetadata,
   MessageUsage,
   SearchBillingUnit,
+  SearchProvider,
 } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
@@ -27,6 +28,7 @@ export type MessageMenuInfo = {
   searchCost?: number
   searchUnits?: number
   searchBillingUnit?: SearchBillingUnit
+  searchProvider?: SearchProvider
 }
 
 type DisplayCost = {
@@ -370,6 +372,7 @@ export function resolveMessageMenuInfo(
       searchCost: usage?.searchCost,
       searchUnits: usage?.searchUnits,
       searchBillingUnit: usage?.searchBillingUnit,
+      searchProvider: usage?.searchProvider,
     }
   }
 

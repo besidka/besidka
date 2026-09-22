@@ -30,6 +30,16 @@ const TOOL_STEP_TITLES = new Map<string, {
     done: 'Searched the web',
     failed: 'Search failed',
   }],
+  ['web_search_brave', {
+    pending: 'Searching with Brave',
+    done: 'Searched with Brave',
+    failed: 'Brave search failed',
+  }],
+  ['web_search_exa', {
+    pending: 'Searching with Exa',
+    done: 'Searched with Exa',
+    failed: 'Exa search failed',
+  }],
 ])
 
 interface ToolLikeUIPart {

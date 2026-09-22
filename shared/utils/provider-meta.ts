@@ -9,6 +9,11 @@ export interface ProviderMeta {
   id: string
   kind: 'provider' | 'search' | 'gateway'
   label: string
+  // A shorter form of `label` for inline use next to a noun it's already
+  // qualifying, e.g. "Web search (Brave)" rather than "Web search (Brave
+  // Search)". Only set where it differs from `label` — falls back to
+  // `label` otherwise.
+  shortLabel?: string
   keyProviderId: string
   dashboardUrl: string
   dashboardLabel?: string
@@ -89,6 +94,7 @@ export const providerMeta: Record<string, ProviderMeta> = {
     id: 'brave',
     kind: 'search',
     label: 'Brave Search',
+    shortLabel: 'Brave',
     keyProviderId: 'brave',
     dashboardUrl: 'https://api-dashboard.search.brave.com/app/keys',
     dashboardLabel: 'Brave Search API → Subscriptions (the Search plan; '

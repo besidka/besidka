@@ -937,3 +937,54 @@ describe('resolveMessageMenuInfo Anthropic/OpenAI web search', () => {
     expect(info?.chatTotalCostIsEstimated).toBe(true)
   })
 })
+
+describe('resolveMessageMenuInfo searchProvider attribution', () => {
+  it('flows searchProvider from MessageUsage to MessageMenuInfo', () => {
+    const braveUsage = {
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+      searchUnits: 2,
+      searchBillingUnit: 'search' as const,
+      searchCost: 0.02,
+      searchProvider: 'brave' as const,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: braveUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchProvider).toBe('brave')
+  })
+
+  it('leaves searchProvider undefined when the usage carries none', () => {
+    const legacyGroundedUsage = {
+      model: 'gemini-3-pro-preview',
+      provider: 'google',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+      searchUnits: 3,
+      searchBillingUnit: 'query' as const,
+      searchCost: 0.036,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: legacyGroundedUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchProvider).toBeUndefined()
+  })
+})
