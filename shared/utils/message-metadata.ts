@@ -1,6 +1,7 @@
 import type {
   ChatMessageMetadata,
   MessageUsage,
+  SearchBillingUnit,
 } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
@@ -21,7 +22,7 @@ export type MessageMenuInfo = {
   chatTotalCostIsEstimated?: boolean
   searchCost?: number
   searchUnits?: number
-  searchBillingUnit?: 'query' | 'grounded-prompt'
+  searchBillingUnit?: SearchBillingUnit
 }
 
 type DisplayCost = {
@@ -208,7 +209,8 @@ function getPerMessageCost(
   return resolveDisplayCost(usage, usage?.inputCost)
 }
 
-// searchCost is independent of hasUnknownTokenSplit/resolveDisplayCost: it
+// searchCost (Google Search grounding, Anthropic web_search, or OpenAI
+// web_search) is independent of hasUnknownTokenSplit/resolveDisplayCost: it
 // is billed separately from tokens, so a message's search cost is always
 // trustworthy even when its token split is unknown. This is why
 // cumulative totals (costToMessage/chatTotalCost) can flip to estimated

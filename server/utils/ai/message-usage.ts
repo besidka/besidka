@@ -4,8 +4,7 @@ import { getModel } from '#shared/utils/model'
 import { getModelResearch } from '#shared/utils/research'
 import { hasUnknownTokenSplit } from '#shared/utils/message-metadata'
 import { getModelCostMap } from '~~/server/utils/ai/cost-map'
-import type { GoogleSearchGrounding } from '~~/server/utils/ai/google-search-cost'
-import { getGoogleSearchBillableUnits } from '~~/server/utils/ai/google-search-cost'
+import type { SearchUsage } from '~~/server/utils/ai/search-usage'
 
 /**
  * Build the persisted/streamed usage shape for one assistant message from
@@ -78,32 +77,30 @@ export function addImageGenerationCostToUsage(
 }
 
 /**
- * Records Google Search grounding onto a message's usage as its own line,
- * never folded into outputCost/inputCost — the provider bills grounding
- * separately from tokens, and merging it in would misrepresent the token
- * cost while hiding the actual reason the bill is higher. The unit count is
- * recorded unconditionally (whenever any grounding happened) so an operator
- * can cross-reference it against a real provider invoice even when no rate
- * is configured; the dollar cost is added only when a rate resolved.
+ * Records separately-billed search-tool usage (Google Search grounding,
+ * Anthropic web_search, OpenAI web_search) onto a message's usage as its
+ * own line, never folded into outputCost/inputCost — the provider bills
+ * this separately from tokens, and merging it in would misrepresent the
+ * token cost while hiding the actual reason the bill is higher. The unit
+ * count is recorded unconditionally so an operator can cross-reference it
+ * against a real provider invoice even when no rate is configured; the
+ * dollar cost is added only when a rate resolved.
  */
-export function addGoogleSearchUsage(
+export function addSearchUsage(
   usage: MessageUsage | undefined,
-  grounding: GoogleSearchGrounding | undefined,
-  searchCost: number | undefined,
+  search: SearchUsage | undefined,
 ): MessageUsage | undefined {
-  if (!usage || !grounding) {
+  if (!usage || !search) {
     return usage
   }
 
-  const units = getGoogleSearchBillableUnits(grounding)
-
   return {
     ...usage,
-    searchUnits: units,
-    ...(grounding.billingUnit === undefined
+    searchUnits: search.units,
+    ...(search.billingUnit === undefined
       ? {}
-      : { searchBillingUnit: grounding.billingUnit }),
-    ...(searchCost === undefined ? {} : { searchCost }),
+      : { searchBillingUnit: search.billingUnit }),
+    ...(search.cost === undefined ? {} : { searchCost: search.cost }),
   }
 }
 

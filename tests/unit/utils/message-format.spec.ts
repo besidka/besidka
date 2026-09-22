@@ -84,6 +84,20 @@ describe('formatSearchGroundingUnits', () => {
   it('defaults to query wording when billingUnit is omitted', () => {
     expect(formatSearchGroundingUnits(4)).toBe('4 queries')
   })
+
+  it('renders singular and plural search wording', () => {
+    expect(formatSearchGroundingUnits(1, 'search')).toBe('1 search')
+    expect(formatSearchGroundingUnits(3, 'search')).toBe('3 searches')
+  })
+
+  it('falls back to query wording for an unrecognized billing unit instead of throwing', () => {
+    expect(() => {
+      formatSearchGroundingUnits(3, 'some-future-unit' as never)
+    }).not.toThrow()
+    expect(formatSearchGroundingUnits(3, 'some-future-unit' as never)).toBe(
+      '3 queries',
+    )
+  })
 })
 
 describe('formatMessageDateTime', () => {

@@ -204,6 +204,8 @@ export default defineNuxtConfig({
     axiomConsentToken: '',
     googleSearchCostPerThousandQueriesUsd: '',
     googleSearchCostPerThousandGroundedPromptsUsd: '',
+    anthropicWebSearchCostPerThousandSearchesUsd: '',
+    openaiWebSearchCostPerThousandCallsUsd: '',
     vapidPrivateKey: '',
     vapidSubject: '',
     public: {

@@ -1,9 +1,9 @@
 import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it } from 'vitest'
-import type { GoogleSearchGrounding } from '../../../server/utils/ai/google-search-cost'
+import type { SearchUsage } from '../../../server/utils/ai/search-usage'
 import {
   addImageGenerationCostToUsage,
-  addGoogleSearchUsage,
+  addSearchUsage,
   addResearchCostEstimateToUsage,
   buildMessageUsage,
 } from '../../../server/utils/ai/message-usage'
@@ -193,16 +193,20 @@ describe('addImageGenerationCostToUsage', () => {
   })
 })
 
-describe('addGoogleSearchUsage', () => {
-  const queryGrounding: GoogleSearchGrounding = {
-    queries: 3,
-    groundedSteps: 1,
+describe('addSearchUsage', () => {
+  const querySearch: SearchUsage = {
+    units: 3,
     billingUnit: 'query',
+    cost: 0.036,
+    googleQueries: 3,
+    googleGroundedSteps: 1,
   }
-  const groundedPromptGrounding: GoogleSearchGrounding = {
-    queries: 3,
-    groundedSteps: 2,
+  const groundedPromptSearch: SearchUsage = {
+    units: 2,
     billingUnit: 'grounded-prompt',
+    cost: 0.08,
+    googleQueries: 3,
+    googleGroundedSteps: 2,
   }
 
   function buildBaseUsage() {
@@ -222,7 +226,7 @@ describe('addGoogleSearchUsage', () => {
     const outputCostBefore = usage?.outputCost
     const inputCostBefore = usage?.inputCost
 
-    const result = addGoogleSearchUsage(usage, queryGrounding, 0.036)
+    const result = addSearchUsage(usage, querySearch)
 
     expect(result?.searchUnits).toBe(3)
     expect(result?.searchBillingUnit).toBe('query')
@@ -235,48 +239,63 @@ describe('addGoogleSearchUsage', () => {
   it('records the count with no searchCost key when cost is undefined', () => {
     const usage = buildBaseUsage()
 
-    const result = addGoogleSearchUsage(usage, queryGrounding, undefined)
+    const result = addSearchUsage(usage, { ...querySearch, cost: undefined })
 
     expect(result?.searchUnits).toBe(3)
     expect(result && 'searchCost' in result).toBe(false)
   })
 
-  it('uses groundedSteps as searchUnits for a grounded-prompt grounding', () => {
+  it('records a grounded-prompt search as its own billing unit', () => {
     const usage = buildBaseUsage()
 
-    const result = addGoogleSearchUsage(
-      usage,
-      groundedPromptGrounding,
-      0.08,
-    )
+    const result = addSearchUsage(usage, groundedPromptSearch)
 
     expect(result?.searchUnits).toBe(2)
     expect(result?.searchBillingUnit).toBe('grounded-prompt')
   })
 
+  it('records a search-unit search from Anthropic/OpenAI', () => {
+    const usage = buildBaseUsage()
+    const webSearch: SearchUsage = {
+      units: 4,
+      billingUnit: 'search',
+      cost: 0.04,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+    }
+
+    const result = addSearchUsage(usage, webSearch)
+
+    expect(result?.searchUnits).toBe(4)
+    expect(result?.searchBillingUnit).toBe('search')
+    expect(result?.searchCost).toBe(0.04)
+  })
+
   it('returns usage unchanged for undefined usage', () => {
-    const result = addGoogleSearchUsage(undefined, queryGrounding, 0.036)
+    const result = addSearchUsage(undefined, querySearch)
 
     expect(result).toBeUndefined()
   })
 
-  it('returns usage unchanged for undefined grounding', () => {
+  it('returns usage unchanged for undefined search', () => {
     const usage = buildBaseUsage()
 
-    const result = addGoogleSearchUsage(usage, undefined, 0.036)
+    const result = addSearchUsage(usage, undefined)
 
     expect(result).toEqual(usage)
   })
 
-  it('records a zero search unit count with no cost key when billable units is zero', () => {
+  it('records a zero search unit count with no cost key when units is zero', () => {
     const usage = buildBaseUsage()
-    const zeroGrounding: GoogleSearchGrounding = {
-      queries: 0,
-      groundedSteps: 1,
+    const zeroSearch: SearchUsage = {
+      units: 0,
       billingUnit: 'query',
+      cost: undefined,
+      googleQueries: 0,
+      googleGroundedSteps: 1,
     }
 
-    const result = addGoogleSearchUsage(usage, zeroGrounding, undefined)
+    const result = addSearchUsage(usage, zeroSearch)
 
     expect(result?.searchUnits).toBe(0)
     expect(result?.searchBillingUnit).toBe('query')
