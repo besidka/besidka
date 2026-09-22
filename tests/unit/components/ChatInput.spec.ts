@@ -110,6 +110,8 @@ describe('ChatInput.client', () => {
 
     mocks.useChatInput.mockReturnValue({
       isWebSearchSupported: shallowRef(false),
+      isToolCallingSupported: shallowRef(false),
+      webSearchProviderOptions: shallowRef([]),
       isImageGenerationSupported: shallowRef(false),
       isImageGenerationRequired: shallowRef(false),
       isImageInputSupported: shallowRef(true),
@@ -245,6 +247,8 @@ describe('ChatInput.client', () => {
     function useKeylessSelection() {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
@@ -422,6 +426,8 @@ describe('ChatInput.client', () => {
     ) {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported,
@@ -506,6 +512,8 @@ describe('ChatInput.client', () => {
     function useToggleModeSelection() {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
@@ -523,6 +531,8 @@ describe('ChatInput.client', () => {
     function useLevelsModeSelection() {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
@@ -543,6 +553,8 @@ describe('ChatInput.client', () => {
     function useDeepResearchSelection() {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
         isImageGenerationSupported: shallowRef(false),
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
@@ -599,5 +611,307 @@ describe('ChatInput.client', () => {
           wrapper.find('[data-testid="reasoning-trigger"]').exists(),
         ).toBe(false)
       })
+  })
+
+  describe('web search provider picker', () => {
+    function nativeOption(enabled = true) {
+      return {
+        value: 'web_search',
+        label: 'Model\'s built-in search',
+        enabled,
+        disabledReason: enabled
+          ? undefined
+          : 'This model has no built-in web search.',
+      }
+    }
+
+    function braveOption(enabled = true) {
+      return {
+        value: 'web_search_brave',
+        label: 'Brave Search',
+        providerId: 'brave',
+        enabled,
+        disabledReason: enabled
+          ? undefined
+          : 'Add a Brave Search key in Search providers.',
+      }
+    }
+
+    function exaOption(enabled = true) {
+      return {
+        value: 'web_search_exa',
+        label: 'Exa',
+        providerId: 'exa',
+        enabled,
+        disabledReason: enabled
+          ? undefined
+          : 'Add an Exa key in Search providers.',
+      }
+    }
+
+    function useWebSearchSelection(options: {
+      isWebSearchSupported?: boolean
+      isToolCallingSupported?: boolean
+      webSearchProviderOptions?: ReturnType<typeof nativeOption>[]
+    } = {}) {
+      const {
+        isWebSearchSupported = true,
+        isToolCallingSupported = true,
+        webSearchProviderOptions = [
+          nativeOption(true),
+          braveOption(true),
+          exaOption(true),
+        ],
+      } = options
+
+      const isToolCallingSupportedRef = shallowRef(isToolCallingSupported)
+      const webSearchProviderOptionsRef = shallowRef(webSearchProviderOptions)
+
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(isWebSearchSupported),
+        isToolCallingSupported: isToolCallingSupportedRef,
+        webSearchProviderOptions: webSearchProviderOptionsRef,
+        isImageGenerationSupported: shallowRef(true),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(false),
+        reasoningCapability: shallowRef(null),
+        reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+      })
+
+      return { webSearchProviderOptionsRef, isToolCallingSupportedRef }
+    }
+
+    function webSearchDropdown(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+    ) {
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      return trigger.element.closest('details')
+    }
+
+    function webSearchOptionButtons(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+    ) {
+      const dropdown = webSearchDropdown(wrapper)
+
+      return Array.from(
+        dropdown?.querySelectorAll('.menu li > button') ?? [],
+      ) as HTMLButtonElement[]
+    }
+
+    function webSearchOptionLabel(button: HTMLButtonElement): string {
+      return button.querySelector(':scope > span:last-child')
+        ?.textContent?.trim() ?? ''
+    }
+
+    function clickWebSearchOption(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+      label: string,
+    ) {
+      const button = webSearchOptionButtons(wrapper).find((candidate) => {
+        return webSearchOptionLabel(candidate) === label
+      })
+
+      if (!button) {
+        throw new Error(`No web search option button labelled "${label}"`)
+      }
+
+      button.dispatchEvent(new Event('click', { bubbles: true }))
+    }
+
+    it('renders a ghost circle globe when nothing is selected', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.classes()).toContain('btn-circle')
+      expect(trigger.text()).toBe('')
+    })
+
+    it('does not render the trigger when neither native search nor tool '
+      + 'calling is supported', async () => {
+      useWebSearchSelection({
+        isWebSearchSupported: false,
+        isToolCallingSupported: false,
+        webSearchProviderOptions: [nativeOption(false)],
+      })
+
+      const wrapper = await mountChatInput()
+
+      expect(
+        wrapper.find('[data-testid="web-search-trigger"]').exists(),
+      ).toBe(false)
+    })
+
+    it('lists Off, native search, Brave and Exa in that order', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+      const labels = webSearchOptionButtons(wrapper).map(webSearchOptionLabel)
+
+      expect(labels).toEqual([
+        'Off',
+        'Model\'s built-in search',
+        'Brave Search',
+        'Exa',
+      ])
+    })
+
+    it('collapses Brave and Exa into one explanatory line when the model '
+      + 'cannot call tools', async () => {
+      useWebSearchSelection({
+        isToolCallingSupported: false,
+        webSearchProviderOptions: [
+          nativeOption(true),
+          braveOption(false),
+          exaOption(false),
+        ],
+      })
+
+      const wrapper = await mountChatInput()
+      const dropdown = webSearchDropdown(wrapper)
+
+      expect(dropdown?.textContent).toContain(
+        'does not support tool calling',
+      )
+      expect(
+        webSearchOptionButtons(wrapper).some((button) => {
+          return webSearchOptionLabel(button) === 'Brave Search'
+        }),
+      ).toBe(false)
+    })
+
+    it('selects native search and collapses to an active pill', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Model\'s built-in search')
+      await nextTick()
+
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.text()).toContain('Search')
+      expect(trigger.classes()).not.toContain('btn-circle')
+    })
+
+    it('never keeps two search providers selected at once', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Model\'s built-in search')
+      await nextTick()
+      clickWebSearchOption(wrapper, 'Brave Search')
+      await nextTick()
+
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.text()).toContain('Brave')
+      expect(trigger.text()).not.toContain('Search')
+    })
+
+    it('returns to a ghost circle globe when Off is selected', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Exa')
+      await nextTick()
+      clickWebSearchOption(wrapper, 'Off')
+      await nextTick()
+
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.classes()).toContain('btn-circle')
+    })
+
+    it('turns off image generation once a search provider is chosen',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput()
+
+        await wrapper.get('[title="Create an image"]').trigger('click')
+
+        clickWebSearchOption(wrapper, 'Brave Search')
+        await nextTick()
+
+        expect(
+          wrapper.find('[title="Image creation is required for this model"]')
+            .exists(),
+        ).toBe(false)
+        expect(
+          wrapper.find('[title="Disable image creation"]').exists(),
+        ).toBe(false)
+      })
+
+    it('clears the search selection once image generation is enabled',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput()
+
+        clickWebSearchOption(wrapper, 'Brave Search')
+        await nextTick()
+
+        await wrapper.get('[title="Create an image"]').trigger('click')
+        await nextTick()
+
+        const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+        expect(trigger.classes()).toContain('btn-circle')
+      })
+
+    it('prunes an external selection once the model loses tool calling '
+      + 'or its key', async () => {
+      const { webSearchProviderOptionsRef } = useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Brave Search')
+      await nextTick()
+
+      let trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.text()).toContain('Brave')
+
+      webSearchProviderOptionsRef.value = [
+        nativeOption(true),
+        braveOption(false),
+        exaOption(true),
+      ]
+      await nextTick()
+      await nextTick()
+
+      trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.classes()).toContain('btn-circle')
+      expect(trigger.text()).toBe('')
+    })
+
+    it('auto-enables only native search when a URL is pasted, never an '
+      + 'external provider', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+      const textarea = wrapper.get('textarea')
+
+      await textarea.setValue('check this out https://example.com')
+      await nextTick()
+
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.text()).toContain('Search')
+      expect(trigger.text()).not.toContain('Brave')
+      expect(trigger.text()).not.toContain('Exa')
+    })
   })
 })

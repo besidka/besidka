@@ -3,8 +3,8 @@
     ref="dropdown"
     class="dropdown dropdown-top"
     :class="{
-      'dropdown-end': isWebSearchEnabled,
-      'max-xs:dropdown-start xs:dropdown-end': !isWebSearchEnabled
+      'dropdown-end': align === 'end',
+      'max-xs:dropdown-start xs:dropdown-end': align !== 'end'
     }"
   >
     <summary
@@ -50,7 +50,7 @@ import type {
 
 const props = defineProps<{
   levels: ReasoningEnabledLevel[]
-  isWebSearchEnabled?: boolean
+  align?: 'start' | 'end'
 }>()
 
 const reasoning = defineModel<ReasoningLevel>('reasoning', {

@@ -151,31 +151,19 @@
                   }"
                   @click="toggleImageGeneration"
                 />
-                <UiButton
-                  v-if="isWebSearchSupported && !isDeepResearchModel"
-                  mode="accent"
-                  :ghost="isWebSearchEnabled ? undefined : true"
-                  :circle="!isWebSearchEnabled"
-                  icon-name="lucide:globe"
-                  :icon-size="16"
-                  :icon-only="!isWebSearchEnabled"
-                  :title="isWebSearchEnabled
-                    ? 'Disable web search'
-                    : 'Enable web search'
-                  "
-                  text="Search"
-                  tooltip-position="top"
-                  size="xs"
-                  class="rounded-full"
-                  :class="{
-                    'pl-[5px] btn-active': isWebSearchEnabled,
-                  }"
-                  @click="toggleWebSearch"
+                <LazyChatInputWebSearchTrigger
+                  v-if="(isWebSearchSupported || isToolCallingSupported)
+                    && !isDeepResearchModel"
+                  :selected="selectedWebSearchProvider"
+                  :options="webSearchProviderOptions"
+                  :is-tool-calling-supported="isToolCallingSupported"
+                  :align="toolbarDropdownAlign"
+                  @select-provider="selectWebSearchProvider"
                 />
                 <LazyChatInputReasoningTrigger
                   v-if="isReasoningSupported && !isDeepResearchModel"
                   v-model:reasoning="reasoning"
-                  :is-web-search-enabled="isWebSearchEnabled"
+                  :align="toolbarDropdownAlign"
                   :levels="reasoningMenuLevels"
                 />
                 <LazyChatInputDeepResearchTrigger
@@ -188,6 +176,9 @@
                 hydrate-on-idle
                 :is-web-search-supported="isWebSearchSupported"
                 :is-web-search-enabled="isWebSearchEnabled"
+                :is-tool-calling-supported="isToolCallingSupported"
+                :web-search-options="webSearchProviderOptions"
+                :selected-web-search-provider="selectedWebSearchProvider"
                 :is-image-generation-supported="isImageGenerationSupported"
                 :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-image-generation-required="isImageGenerationRequired"
@@ -200,7 +191,7 @@
                 :display-project-picker="shouldDisplayProjectPicker"
                 :project-context="projectContext"
                 :files-count="files.length"
-                @toggle-web-search="toggleWebSearch"
+                @select-web-search-provider="selectWebSearchProvider"
                 @toggle-image-generation="toggleImageGeneration"
                 @open-project-picker="emit('open-project-picker')"
                 @clear-project-context="emit('clear-project-context')"
@@ -279,7 +270,9 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { isWebSearchTool } from '#shared/utils/message-metadata'
 import type { FileSourceFilter } from '~/types/file-manager'
+import type { WebSearchSelection } from '~/types/web-search'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -310,6 +303,8 @@ const route = useRoute()
 const { isDesktop } = useDevice()
 const {
   isWebSearchSupported,
+  isToolCallingSupported,
+  webSearchProviderOptions,
   isImageGenerationSupported,
   isImageGenerationRequired,
   isImageInputSupported,
@@ -511,12 +506,12 @@ watch(
 
 watch(
   [
-    isWebSearchSupported,
+    webSearchProviderOptions,
     isImageGenerationSupported,
     isImageGenerationRequired,
   ],
   ([
-    webSearchSupported,
+    searchOptions,
     imageGenerationSupported,
     imageGenerationRequired,
   ], [
@@ -537,8 +532,12 @@ watch(
     }
 
     tools.value = tools.value.filter((tool) => {
-      if (tool === 'web_search') {
-        return webSearchSupported && !tools.value.includes('image_generation')
+      if (isWebSearchTool(tool)) {
+        const option = searchOptions.find((candidate) => {
+          return candidate.value === tool
+        })
+
+        return !!option?.enabled && !tools.value.includes('image_generation')
       }
 
       if (tool === 'image_generation') {
@@ -566,12 +565,41 @@ const canShowRegenerate = computed<boolean>(() => {
   return !!props.displayRegenerate && !hasMessage.value
 })
 
+const selectedWebSearchProvider = computed<WebSearchSelection>(() => {
+  if (tools.value.includes('web_search_brave')) {
+    return 'web_search_brave'
+  }
+
+  if (tools.value.includes('web_search_exa')) {
+    return 'web_search_exa'
+  }
+
+  if (tools.value.includes('web_search')) {
+    return 'web_search'
+  }
+
+  return 'off'
+})
+
 const isWebSearchEnabled = computed<boolean>(() => {
-  return tools.value.includes('web_search')
+  return selectedWebSearchProvider.value !== 'off'
 })
 
 const isImageGenerationEnabled = computed<boolean>(() => {
   return tools.value.includes('image_generation')
+})
+
+/**
+ * The single alignment source both the web-search and reasoning dropdowns
+ * read, replacing the old boolean that only the web-search toggle used to
+ * set. It generalises the same "does a wider control sit before me"
+ * signal (now web search OR image generation) to whichever pair of
+ * dropdowns ends up adjacent in the toolbar.
+ */
+const toolbarDropdownAlign = computed<'start' | 'end'>(() => {
+  return isImageGenerationEnabled.value || isWebSearchEnabled.value
+    ? 'end'
+    : 'start'
 })
 
 const textareaPlaceholder = computed<string>(() => {
@@ -620,25 +648,27 @@ watchPostEffect(() => {
   nuxtApp.callHook('chat-input:visibility-changed', isChatInputVisibleOnScroll.value)
 })
 
-function toggleWebSearch() {
+function selectWebSearchProvider(option: WebSearchSelection) {
   if (isImageGenerationRequired.value) {
     return
   }
 
-  if (!isWebSearchEnabled.value) {
-    tools.value = [
-      ...tools.value.filter((tool) => {
-        return tool !== 'image_generation'
-      }),
-      'web_search',
-    ]
+  const withoutSearch = tools.value.filter((tool) => {
+    return !isWebSearchTool(tool)
+  })
+
+  if (option === 'off') {
+    tools.value = withoutSearch
 
     return
   }
 
-  tools.value = tools.value.filter((tool) => {
-    return tool !== 'web_search'
-  })
+  tools.value = [
+    ...withoutSearch.filter((tool) => {
+      return tool !== 'image_generation'
+    }),
+    option,
+  ]
 }
 
 function toggleImageGeneration() {
@@ -649,7 +679,7 @@ function toggleImageGeneration() {
   if (!isImageGenerationEnabled.value) {
     tools.value = [
       ...tools.value.filter((tool) => {
-        return tool !== 'web_search'
+        return !isWebSearchTool(tool)
       }),
       'image_generation',
     ]

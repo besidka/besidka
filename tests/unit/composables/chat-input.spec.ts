@@ -44,6 +44,12 @@ function createHost() {
         h('span', { 'data-testid': 'is-web-search-supported' }, [
           String(chatInput.isWebSearchSupported.value),
         ]),
+        h('span', { 'data-testid': 'is-tool-calling-supported' }, [
+          String(chatInput.isToolCallingSupported.value),
+        ]),
+        h('span', { 'data-testid': 'web-search-options' }, [
+          JSON.stringify(chatInput.webSearchProviderOptions.value),
+        ]),
         h('span', { 'data-testid': 'is-reasoning-supported' }, [
           String(chatInput.isReasoningSupported.value),
         ]),
@@ -296,5 +302,89 @@ describe('useChatInput research config', () => {
     expect(
       wrapper.get('[data-testid="research-assist-model"]').text(),
     ).toBe('')
+  })
+})
+
+describe('useChatInput web search provider options', () => {
+  it('reports tool calling supported and full options for a model with '
+    + 'both native search and tool calling', async () => {
+    keyedProviderIds.value = ['brave']
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gemini-3.8-flash'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('true')
+
+    const options = JSON.parse(
+      wrapper.get('[data-testid="web-search-options"]').text(),
+    )
+
+    expect(options).toEqual([
+      { value: 'web_search', label: 'Model\'s built-in search', enabled: true },
+      {
+        value: 'web_search_brave',
+        label: 'Brave Search',
+        providerId: 'brave',
+        enabled: true,
+      },
+      {
+        value: 'web_search_exa',
+        label: 'Exa',
+        providerId: 'exa',
+        enabled: false,
+        disabledReason: 'Add an Exa key in Search providers.',
+      },
+    ])
+  })
+
+  it('collapses Brave and Exa to a single tool-calling reason for a '
+    + 'model that cannot call tools', async () => {
+    keyedProviderIds.value = ['brave', 'exa']
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'grok-imagine-image-2.0'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('false')
+
+    const options = JSON.parse(
+      wrapper.get('[data-testid="web-search-options"]').text(),
+    )
+    const noToolCallReason = 'This model does not support tool calling, so '
+      + 'it cannot use an external search provider.'
+
+    expect(options).toEqual([
+      {
+        value: 'web_search',
+        label: 'Model\'s built-in search',
+        enabled: false,
+        disabledReason: 'This model has no built-in web search.',
+      },
+      {
+        value: 'web_search_brave',
+        label: 'Brave Search',
+        providerId: 'brave',
+        enabled: false,
+        disabledReason: noToolCallReason,
+      },
+      {
+        value: 'web_search_exa',
+        label: 'Exa',
+        providerId: 'exa',
+        enabled: false,
+        disabledReason: noToolCallReason,
+      },
+    ])
   })
 })

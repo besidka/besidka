@@ -3,6 +3,10 @@ import type {
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 import { providerMeta } from '#shared/utils/provider-meta'
+import type { WebSearchOption } from '~/types/web-search'
+
+const noToolCallReason = 'This model does not support tool calling, so it '
+  + 'cannot use an external search provider.'
 
 export function useChatInput() {
   const { userModel } = useUserModel()
@@ -29,6 +33,67 @@ export function useChatInput() {
 
   const isWebSearchSupported = computed<boolean>(() => {
     return !!selectedModel.value?.tools.includes('web_search')
+  })
+
+  const isToolCallingSupported = computed<boolean>(() => {
+    return selectedModel.value?.toolCall === true
+  })
+
+  const webSearchProviderOptions = computed<WebSearchOption[]>(() => {
+    const options: WebSearchOption[] = [
+      {
+        value: 'web_search',
+        label: 'Model\'s built-in search',
+        enabled: isWebSearchSupported.value,
+        disabledReason: isWebSearchSupported.value
+          ? undefined
+          : 'This model has no built-in web search.',
+      },
+    ]
+
+    if (!isToolCallingSupported.value) {
+      options.push(
+        {
+          value: 'web_search_brave',
+          label: 'Brave Search',
+          providerId: 'brave',
+          enabled: false,
+          disabledReason: noToolCallReason,
+        },
+        {
+          value: 'web_search_exa',
+          label: 'Exa',
+          providerId: 'exa',
+          enabled: false,
+          disabledReason: noToolCallReason,
+        },
+      )
+
+      return options
+    }
+
+    options.push(
+      {
+        value: 'web_search_brave',
+        label: 'Brave Search',
+        providerId: 'brave',
+        enabled: hasKeyForProvider('brave'),
+        disabledReason: hasKeyForProvider('brave')
+          ? undefined
+          : 'Add a Brave Search key in Search providers.',
+      },
+      {
+        value: 'web_search_exa',
+        label: 'Exa',
+        providerId: 'exa',
+        enabled: hasKeyForProvider('exa'),
+        disabledReason: hasKeyForProvider('exa')
+          ? undefined
+          : 'Add an Exa key in Search providers.',
+      },
+    )
+
+    return options
   })
 
   const isImageGenerationSupported = computed<boolean>(() => {
@@ -93,6 +158,8 @@ export function useChatInput() {
 
   return {
     isWebSearchSupported,
+    isToolCallingSupported,
+    webSearchProviderOptions,
     isImageGenerationSupported,
     isImageGenerationRequired,
     isImageInputSupported,

@@ -100,18 +100,17 @@
               >
             </label>
           </li>
-          <li v-if="isWebSearchSupported && !isDeepResearchModel">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <Icon name="lucide:globe" size="16" />
-              <span class="grow">Web search</span>
-              <input
-                type="checkbox"
-                class="toggle toggle-xs toggle-accent"
-                :checked="isWebSearchEnabled"
-                @change="emit('toggle-web-search')"
-              >
-            </label>
-          </li>
+          <template
+            v-if="(isWebSearchSupported || isToolCallingSupported)
+              && !isDeepResearchModel"
+          >
+            <ChatInputWebSearchMenuItems
+              :selected="selectedWebSearchProvider ?? 'off'"
+              :options="webSearchOptions ?? []"
+              :is-tool-calling-supported="!!isToolCallingSupported"
+              @select-provider="emit('select-web-search-provider', $event)"
+            />
+          </template>
         </ul>
       </div>
     </div>
@@ -124,10 +123,17 @@ import type {
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 import type { ModelResearchConfig } from '#shared/types/research.d'
+import type {
+  WebSearchOption,
+  WebSearchSelection,
+} from '~/types/web-search'
 
 const props = defineProps<{
   isWebSearchSupported?: boolean
   isWebSearchEnabled?: boolean
+  isToolCallingSupported?: boolean
+  webSearchOptions?: WebSearchOption[]
+  selectedWebSearchProvider?: WebSearchSelection
   isImageGenerationSupported?: boolean
   isImageGenerationEnabled?: boolean
   isImageGenerationRequired?: boolean
@@ -146,7 +152,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'toggle-web-search': []
+  'select-web-search-provider': [value: WebSearchSelection]
   'toggle-image-generation': []
   'open-project-picker': []
   'clear-project-context': []
