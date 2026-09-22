@@ -3658,12 +3658,68 @@ gateway-plus-search story changes shape — and Brave/Exa (which are
 gateway-agnostic by construction) become the only search path on a
 gateway-routed model.
 
-> **UPDATED: this is now answerable.** Gateway credentials exist, and
-> **WP 2.6 step 9 is the call that settles it.** Run it early in Epic 2
-> rather than at the end — the answer determines whether the gateway rail
-> should advertise native web search at all, and a "yes, it strips them"
-> result is a product-behaviour change, not just a doc update. Record the
-> outcome in `docs/providers/gateways.md` whichever way it falls.
+> **RESOLVED (partially), by a real empirical spike run before Epic 2
+> started** (scratchpad:
+> `r12-gateway-search-spike/`, raw JSON evidence in its `*.log` files). Do
+> not re-run WP 2.6 step 9 as an open question — read this verdict and wire
+> Epic 2 to match it:
+>
+> - **Vercel AI Gateway: PASS, strong evidence.**
+>   `gateway('openai/gpt-4o-mini')` + `openai.tools.webSearch({})` and
+>   `gateway('google/gemini-2.5-flash')` + `google.tools.googleSearch({})`
+>   both actually invoked the search tool (real `tool-call`/`tool-result`
+>   steps, real source URLs, live Sept 2026 news in the answer) and were
+>   billed a separate `billableWebSearchCalls`/`cost` line distinct from
+>   `inferenceCost` — proof the tool executed, not just a confident-sounding
+>   answer. **The gateway rail may advertise native web search for
+>   Vercel-routed models exactly as the direct-provider path does**, per
+>   `WebSearchResolution: 'native'`, as originally planned.
+> - **Cloudflare AI Gateway: still open — blocked by account state, not a
+>   demonstrated tool-stripping bug.** The request reached the correct
+>   `https://gateway.ai.cloudflare.com/v1/<account>/<gateway>/openai/responses`
+>   endpoint with `tools:[{type:'web_search'}]` intact, but every gateway on
+>   this Cloudflare account rejected it before a 200: HTTP 402 "Insufficient
+>   wholesale credits" (no funded credits) or HTTP 401 (no BYOK OpenAI key
+>   configured on the gateway — Cloudflare forwarded the CF token itself to
+>   OpenAI, which correctly rejected it as an invalid OpenAI key). **This is
+>   an owner action item, not an engineering one**: either fund Cloudflare
+>   AI Gateway wholesale credits, or add a real OpenAI API key as a BYOK
+>   credential on a Cloudflare gateway, then re-run the saved
+>   `test2-cloudflare-gateway-openai-search.mjs <gateway-slug>` script. Until
+>   then, **WP 2.8 must not advertise native web search as confirmed for
+>   Cloudflare-routed models** — gate it behind a code comment citing this
+>   finding, default to Brave/Exa or no-search-affordance for Cloudflare
+>   until re-verified. Cloudflare's own current docs
+>   (`developers.cloudflare.com/ai-gateway/usage/web-search/`) independently
+>   describe this exact passthrough as supported, which is *consistent* with
+>   a PASS but is documentation, not the verification this project's own
+>   standard requires ("docs-reading isn't verification here").
+> - **OpenRouter: confirmed structurally incompatible with the
+>   AI-SDK-native provider-tool object, not a passthrough at all.** Sending
+>   `openai.tools.webSearch({})` through
+>   `openrouter('openai/gpt-4o-mini')` fails outright — OpenAI's Chat
+>   Completions API (which is what OpenRouter calls) returns HTTP 400
+>   ("Invalid value: 'openai:web_search'. Supported values are: 'function'
+>   and 'custom'."). OpenRouter's own `plugins: [{ id: 'web' }]`
+>   request-level flag **does** work (verified: real scraped source content
+>   in `providerMetadata.openrouter.content`, its own separate fee in
+>   `usage.cost` vs `costDetails.upstreamInferenceCost`) but is a distinct
+>   mechanism, matching `WebSearchResolution: 'universal'` from the
+>   pre-removal design, not `'native'`. **WP 2.6's OpenRouter branch must
+>   never attempt to pass a provider-native tool object — it must construct
+>   `plugins: [{ id: 'web' }]` instead, exactly as the original (deleted)
+>   code did.** This was already the pre-removal design; the spike confirms
+>   it is still correct and still required, not optional.
+>
+> Net effect on WP 2.8's capability gating: `isGatewayToolAllowed()`'s
+> `WebSearchResolution` model (`'native' | 'universal' | undefined`) is
+> **correct as originally restored** — Vercel gets `'native'`, OpenRouter
+> gets `'universal'`, and Cloudflare should be treated as `undefined`
+> (no advertised web search) until an owner funds credits or adds a key and
+> Test 2 is re-run to a real 200. Record all three verdicts, with the raw
+> evidence file paths, in `docs/providers/gateways.md` and annotate
+> `docs/web-search-cost-accounting.md` § "The AI Gateway question" with the
+> resolved (and still-open) parts.
 
 ## R13 — Open question: the tool-gating edge case was disclosed and never fixed
 
@@ -3845,29 +3901,20 @@ this addendum as the only place the change is recorded**:
 - **R1** and **R12** — reframed from "cannot verify" to "must verify, here is
   where".
 
-## The one thing to run first
+## The one thing that was run first — R12 is resolved (Vercel + OpenRouter), Cloudflare is owner-blocked
 
-Of everything this unlocks, **R12 / WP 2.6 step 9 is the highest-value
-call**: does routing through a BYOK gateway strip provider-native web search?
-`docs/web-search-cost-accounting.md` § "The AI Gateway question" says both
-Vercel and Cloudflare pass native tools through unmodified, but states
-plainly that both claims are **inferences from architecture descriptions, not
-end-to-end guarantees**, and that settling it "needs one live call…
-docs-reading isn't verification here."
-
-Run it **early in Epic 2, not at the end of it.** The answer is
-product-shaping, not cosmetic:
-
-- **If native search survives a gateway**, the gateway rail can advertise web
-  search per model exactly as the direct-provider path does, and
-  `isGatewayReasoningSupported()`/`isGatewayToolAllowed()`'s existing
-  `WebSearchResolution` model (`'native' | 'universal' | undefined`) is
-  correct as restored.
-- **If it does not**, every gateway model's web search must fall back to the
-  `'universal'` path or to Brave/Exa, the picker must stop showing a native
-  search affordance on gateway models, and WP 2.8's capability gating needs a
-  change this plan does not currently specify.
-
-Either way, record the result in `docs/providers/gateways.md` and annotate
-`docs/web-search-cost-accounting.md` § "The AI Gateway question" — that
-section explicitly asks for this answer and has been waiting for it.
+**Run before Epic 0 finished, in parallel with WP 0.1/0.3, per the
+orchestrator's advisor's recommendation to not wait until Epic 2.** See the
+full verdict in R12 above; summary: **Vercel PASS** (native search survives
+and is billed separately — advertise it), **OpenRouter confirmed
+mechanism-incompatible** (must build `plugins: [{ id: 'web' }]`, never a
+native tool object — this was always the plan, now confirmed necessary),
+**Cloudflare inconclusive and blocked on the owner's account** (no funded
+wholesale credits, no BYOK OpenAI key on a gateway — HTTP 402/401 before any
+tool could be exercised). WP 2.6 step 9 and WP 2.8's capability gating should
+be written directly to this verdict rather than re-treating it as open; only
+the Cloudflare half needs a follow-up owner action (fund credits or add a
+key) and a re-run of the saved spike script before it can be advertised as
+working. Record all three verdicts in `docs/providers/gateways.md` and
+annotate `docs/web-search-cost-accounting.md` § "The AI Gateway question"
+when Epic 2 lands.
