@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   resolveToolLoopOptions,
   TOOL_LOOP_MAX_STEPS,
+  TOOL_LOOP_MAX_TOOL_STEPS,
   TOOL_LOOP_TOOL_TIMEOUT_MS,
   TOOL_LOOP_TOTAL_TIMEOUT_MS,
   toolRequiresFollowUpTurn,
@@ -93,6 +94,7 @@ describe('tool loop trigger', () => {
         totalMs: TOOL_LOOP_TOTAL_TIMEOUT_MS,
         toolMs: TOOL_LOOP_TOOL_TIMEOUT_MS,
       },
+      prepareStep: expect.any(Function),
     })
   })
 
@@ -106,7 +108,8 @@ describe('tool loop trigger', () => {
   })
 
   it('caps the loop below the 600s generation-in-progress guard', () => {
-    expect(TOOL_LOOP_MAX_STEPS).toBe(3)
+    expect(TOOL_LOOP_MAX_TOOL_STEPS).toBe(3)
+    expect(TOOL_LOOP_MAX_STEPS).toBe(TOOL_LOOP_MAX_TOOL_STEPS + 1)
     expect(TOOL_LOOP_TOTAL_TIMEOUT_MS).toBeLessThan(600_000)
     expect(TOOL_LOOP_TOOL_TIMEOUT_MS).toBeLessThan(TOOL_LOOP_TOTAL_TIMEOUT_MS)
   })
@@ -134,6 +137,64 @@ describe('tool loop trigger', () => {
     expect(withFollowUpTurn({ a: 1 })).toEqual({
       a: 1,
       requiresFollowUpTurn: true,
+    })
+  })
+
+  describe('final-step prepareStep', () => {
+    function getPrepareStep() {
+      const options = resolveToolLoopOptions({
+        fixture_search: createFixtureFollowUpTool(),
+      })
+
+      if (!options) {
+        throw new Error('expected tool loop options to be defined')
+      }
+
+      return options.prepareStep
+    }
+
+    it('does nothing before the final allowed step', async () => {
+      const prepareStep = getPrepareStep()
+      const earlierStepNumbers = Array.from(
+        { length: TOOL_LOOP_MAX_STEPS - 1 },
+        (_, index) => index,
+      )
+
+      for (const stepNumber of earlierStepNumbers) {
+        const result = await prepareStep({ stepNumber } as any)
+
+        expect(result).toBeUndefined()
+      }
+    })
+
+    it('forces toolChoice: none and appends the answer-now instructions '
+      + 'for a non-Anthropic model on the final step', async () => {
+      const prepareStep = getPrepareStep()
+      const result = await prepareStep({
+        stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+        model: { provider: 'openai.chat' },
+        instructions: 'Base instructions.',
+      } as any)
+
+      expect(result?.toolChoice).toBe('none')
+      expect(typeof result?.instructions).toBe('string')
+      expect(result?.instructions as string)
+        .toContain('Base instructions.')
+      expect((result?.instructions as string).length).toBeGreaterThan(0)
+    })
+
+    it('leaves tools declared and only nudges via instructions for an '
+      + 'Anthropic model on the final step', async () => {
+      const prepareStep = getPrepareStep()
+      const result = await prepareStep({
+        stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+        model: { provider: 'anthropic.messages' },
+        instructions: undefined,
+      } as any)
+
+      expect(result?.toolChoice).toBeUndefined()
+      expect(typeof result?.instructions).toBe('string')
+      expect((result?.instructions as string).length).toBeGreaterThan(0)
     })
   })
 })

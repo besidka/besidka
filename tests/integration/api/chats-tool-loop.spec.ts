@@ -118,6 +118,48 @@ function createToolCallChunks(toolCallId: string) {
   ]
 }
 
+function createReasoningChunks(id: string, text: string) {
+  return [
+    { type: 'reasoning-start' as const, id },
+    { type: 'reasoning-delta' as const, id, delta: text },
+    { type: 'reasoning-end' as const, id },
+  ]
+}
+
+function createSourceUrlChunks(prefix: string, count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    type: 'source' as const,
+    sourceType: 'url' as const,
+    id: `${prefix}-source-${index}`,
+    url: `https://example.com/${prefix}-${index}`,
+    title: `Result ${index} for ${prefix}`,
+  }))
+}
+
+function createReasoningToolCallStepChunks(toolCallId: string) {
+  return [
+    ...createReasoningChunks(
+      `reasoning-${toolCallId}`,
+      'Deciding what to search for next.',
+    ),
+    {
+      type: 'tool-call' as const,
+      toolCallId,
+      toolName: FIXTURE_FOLLOW_UP_TOOL_NAME,
+      input: JSON.stringify({ query: 'besidka release notes' }),
+    },
+    ...createSourceUrlChunks(toolCallId, 10),
+    {
+      type: 'finish' as const,
+      finishReason: {
+        unified: 'tool-calls' as const,
+        raw: undefined,
+      },
+      usage: createUsage(),
+    },
+  ]
+}
+
 function createTextChunks(text: string) {
   return [
     { type: 'text-start' as const, id: 'text-1' },
@@ -224,6 +266,7 @@ async function runLoopSend(input: {
   onExecute?: (query: string) => void
   shouldThrow?: boolean
   withoutMarker?: boolean
+  bodyOverrides?: Record<string, unknown>
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
   const markedTool = createFixtureFollowUpTool({
@@ -256,7 +299,7 @@ async function runLoopSend(input: {
 
   const result = await handler({
     params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-    body: baseBody(),
+    body: baseBody(input.bodyOverrides),
   } as any)
 
   await result.ready
@@ -449,28 +492,71 @@ describe('multi-step tool loop', () => {
     expect(assistantInsert?.usage?.totalCost).toBeUndefined()
   })
 
-  it('stops at the step cap when the model keeps calling the tool',
-    async () => {
-      const queries: string[] = []
-      const { doStream, assistantInsert } = await runLoopSend({
-        steps: [
-          createToolCallChunks('call-1'),
-          createToolCallChunks('call-2'),
-          createToolCallChunks('call-3'),
-          createToolCallChunks('call-4'),
-        ],
-        onExecute: query => queries.push(query),
-      })
-      const chunks = await readClientChunks()
-      const chunkTypes = chunks.map(chunk => chunk.type)
-
-      expect(doStream).toHaveBeenCalledTimes(3)
-      expect(queries).toHaveLength(3)
-      expect(chunkTypes).not.toContain('abort')
-      expect(chunkTypes).not.toContain('error')
-      expect(chunkTypes).toContain('finish')
-      expect(assistantInsert).toBeUndefined()
+  it('forces a final answer at the step cap instead of truncating the '
+    + 'reply', async () => {
+    const queries: string[] = []
+    const { doStream, assistantInsert } = await runLoopSend({
+      steps: [
+        createToolCallChunks('call-1'),
+        createToolCallChunks('call-2'),
+        createToolCallChunks('call-3'),
+        createTextChunks('Here is what I found so far.'),
+      ],
+      onExecute: query => queries.push(query),
     })
+    const chunks = await readClientChunks()
+    const chunkTypes = chunks.map(chunk => chunk.type)
+
+    expect(doStream).toHaveBeenCalledTimes(4)
+    expect(queries).toHaveLength(3)
+    expect(chunkTypes).not.toContain('abort')
+    expect(chunkTypes).not.toContain('error')
+    expect(chunkTypes).toContain('finish')
+
+    const firstStepCallOptions = doStream.mock.calls[0]?.[0]
+    const finalStepCallOptions = doStream.mock.calls[3]?.[0]
+
+    expect(firstStepCallOptions?.toolChoice).toEqual({ type: 'auto' })
+    expect(finalStepCallOptions?.toolChoice).toEqual({ type: 'none' })
+    expect(finalStepCallOptions?.prompt[0]).toEqual(
+      expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining('search budget is used up'),
+      }),
+    )
+    expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'text',
+        text: 'Here is what I found so far.',
+      }),
+    ]))
+  })
+
+  it('persists a real answer for the production-shaped rows the bug left '
+    + 'blank: reasoning and source-url parts alongside every tool call',
+  async () => {
+    const { doStream, assistantInsert } = await runLoopSend({
+      steps: [
+        createReasoningToolCallStepChunks('call-1'),
+        createReasoningToolCallStepChunks('call-2'),
+        createReasoningToolCallStepChunks('call-3'),
+        createTextChunks('Here is the answer, grounded in those sources.'),
+      ],
+      bodyOverrides: { reasoning: 'high' },
+    })
+
+    expect(doStream).toHaveBeenCalledTimes(4)
+    expect(doStream.mock.calls[3]?.[0]?.toolChoice)
+      .toEqual({ type: 'none' })
+    expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'reasoning' }),
+      expect.objectContaining({ type: 'source-url' }),
+      expect.objectContaining({
+        type: 'text',
+        text: 'Here is the answer, grounded in those sources.',
+      }),
+    ]))
+  })
 
   it('never loops for the identical tool without the marker, even though '
     + 'it has the same execute()', async () => {

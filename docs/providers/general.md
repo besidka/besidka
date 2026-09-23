@@ -160,13 +160,25 @@ fixture tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the
 real send pipeline with a real `streamText` and a `MockLanguageModelV4`;
 that fixture must never be wired into a provider builder.
 
-**Bounds.** `TOOL_LOOP_MAX_STEPS` is 3 (request the tool, answer from the
-result, one spare refinement round). `timeout: { totalMs: 540_000, toolMs:
-60_000 }` is set on the loop path only: the KV generation-in-progress guard
-this route writes expires after 600s, so the loop's total budget must stay
-under that — otherwise a client retry arriving after the guard expired would
-start a second concurrent generation for the same turn. A tool `execute()`
-that throws produces a `tool-error` output, which the model sees and answers
+**Bounds.** `TOOL_LOOP_MAX_TOOL_STEPS` is 3 search rounds, plus one
+guaranteed final step (`TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1`)
+that forces an answer instead of another tool call.
+`stepCountIs(TOOL_LOOP_MAX_STEPS)` stops the loop the instant a step
+completes, with no regard for whether that step was itself a tool call, so
+without the forced final step the model could spend its whole budget on tool
+calls and the send would persist zero text — three real production rows hit
+exactly this before the fix. `prepareStep()` enforces the final step by
+setting `toolChoice: 'none'` and appending an "answer now" instruction; for
+Anthropic models it only adds the instruction; `@ai-sdk/anthropic@4.0.34`
+maps `toolChoice: 'none'` to `tools: undefined` while still sending the
+prior turns' `tool_use`/`tool_result` history, an unverified combination
+against Anthropic's API, so Anthropic's final step is a best-effort nudge,
+not a guarantee. `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on
+the loop path only: the KV generation-in-progress guard this route writes
+expires after 600s, so the loop's total budget must stay under that —
+otherwise a client retry arriving after the guard expired would start a
+second concurrent generation for the same turn. A tool `execute()` that
+throws produces a `tool-error` output, which the model sees and answers
 from, so a failing tool terminates the loop rather than retrying it.
 
 **`toolMs` is cooperative, not enforced.** The AI SDK only passes it to
