@@ -25,6 +25,14 @@ function stubs() {
         '<div data-testid="provider-card" :data-provider="providerId"'
         + ' :data-group="group" :data-open="String(open)" />',
     },
+    ProfileKeysCloudflareGateway: {
+      props: {
+        open: { type: Boolean, default: false },
+      },
+      template:
+        '<div data-testid="cloudflare-gateway-card"'
+        + ' :data-open="String(open)" />',
+    },
   }
 }
 
@@ -180,5 +188,69 @@ describe('profile keys page', () => {
         expect(card.attributes('data-group'))
           .toBe('profile-search-provider-keys')
       })
+    })
+
+  it('renders five tabs in the order providers, search, cloudflare, '
+    + 'openrouter, vercel', async () => {
+    const wrapper = await mountPage()
+
+    const tabIds = wrapper.findAll('[class~="tab"]').map((tab: any) => {
+      return tab.attributes('id')
+    })
+
+    expect(tabIds).toEqual([
+      'key-tab-providers',
+      'key-tab-search',
+      'key-tab-cloudflare',
+      'key-tab-openrouter',
+      'key-tab-vercel',
+    ])
+  })
+
+  it('renders the gateway blurb and one pre-expanded card per gateway tab',
+    async () => {
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="key-tab-cloudflare"]').trigger('click')
+
+      const cloudflarePanel = wrapper.get(
+        '[data-testid="key-panel-cloudflare"]',
+      )
+
+      expect(cloudflarePanel.text()).toContain(
+        'Gateways proxy to many models using your own gateway account, '
+        + 'instead of a single provider\'s key',
+      )
+      expect(
+        cloudflarePanel.find('[data-testid="cloudflare-gateway-card"]')
+          .attributes('data-open'),
+      ).toBe('true')
+      expect(
+        cloudflarePanel.find('[data-testid="provider-card"]').exists(),
+      ).toBe(false)
+
+      await wrapper.get('[data-testid="key-tab-openrouter"]').trigger('click')
+
+      const openrouterPanel = wrapper.get(
+        '[data-testid="key-panel-openrouter"]',
+      )
+      const openrouterCard = openrouterPanel.get(
+        '[data-testid="provider-card"]',
+      )
+
+      expect(openrouterCard.attributes('data-provider')).toBe('openrouter')
+      expect(openrouterCard.attributes('data-open')).toBe('true')
+      expect(
+        openrouterPanel.find('[data-testid="cloudflare-gateway-card"]')
+          .exists(),
+      ).toBe(false)
+
+      await wrapper.get('[data-testid="key-tab-vercel"]').trigger('click')
+
+      const vercelPanel = wrapper.get('[data-testid="key-panel-vercel"]')
+      const vercelCard = vercelPanel.get('[data-testid="provider-card"]')
+
+      expect(vercelCard.attributes('data-provider')).toBe('vercel')
+      expect(vercelCard.attributes('data-open')).toBe('true')
     })
 })

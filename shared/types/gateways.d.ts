@@ -46,4 +46,17 @@ export interface GatewayModel {
    * at all, not "confirmed no image output".
    */
   supportsImageGeneration?: boolean
+  /**
+   * Strict, always-defined tool-calling gate for Brave/Exa availability on a
+   * gateway-routed model — the `GatewayModel` counterpart of
+   * `Model.toolCall` (`shared/types/providers.d.ts`). Unlike the advisory,
+   * optional `supportsTools` above (`undefined` when a gateway simply
+   * doesn't report the signal, feeding only the picker's capability badge),
+   * `toolCall` is always `true` or `false` so a send-path validation check
+   * can gate on it exactly the way direct providers gate on
+   * `model.toolCall === true`. `false` covers both "genuinely no tool
+   * support" and "the gateway's catalog didn't say" — never treat it as
+   * proof the model cannot call tools, only as "do not offer Brave/Exa".
+   */
+  toolCall: boolean
 }

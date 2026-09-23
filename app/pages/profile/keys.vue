@@ -89,10 +89,36 @@
       </li>
     </ul>
   </div>
+  <div
+    v-for="gatewayId in enabledGateways"
+    v-show="activeTab === gatewayId"
+    :id="`key-panel-${gatewayId}`"
+    :key="gatewayId"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${gatewayId}`"
+    :data-testid="`key-panel-${gatewayId}`"
+  >
+    <p class="mb-6 text-center">
+      Gateways proxy to many models using your own gateway account,
+      instead of a single provider's key
+    </p>
+    <UiBubble>
+      <LazyProfileKeysCloudflareGateway
+        v-if="gatewayId === 'cloudflare'"
+        open
+      />
+      <LazyProfileKeysProviderKeyCard
+        v-else
+        :provider-id="gatewayId"
+        open
+      />
+    </UiBubble>
+  </div>
 </template>
 <script setup lang="ts">
 import type { Providers, Provider } from '#shared/types/providers.d'
 import {
+  enabledGateways,
   enabledSearchProviders,
   providerMeta,
 } from '#shared/utils/provider-meta'
@@ -138,6 +164,13 @@ const tabs = computed<KeyTab[]>(() => {
   return [
     { id: providersTabId, label: 'Per provider' },
     { id: searchTabId, label: 'Search providers' },
+    ...enabledGateways.map((gatewayId) => {
+      return {
+        id: gatewayId,
+        label: providerMeta[gatewayId]?.label || gatewayId,
+        providerId: gatewayId,
+      }
+    }),
   ]
 })
 </script>

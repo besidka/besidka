@@ -15,11 +15,13 @@ const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
 /**
  * Bump whenever `GatewayModel`'s shape changes in a way old cached entries
  * don't carry (e.g. round 4 added `supportsImageGeneration` and changed
- * `supportsWebSearch` from a boolean to a resolution string) — a KV entry
- * written under the old schema would otherwise keep serving stale-shaped
- * data for up to `GATEWAY_CATALOG_CACHE_TTL_MS` after deploy.
+ * `supportsWebSearch` from a boolean to a resolution string; this
+ * restoration's own round added the required `toolCall` field, which older
+ * cached entries never wrote at all) — a KV entry written under the old
+ * schema would otherwise keep serving stale-shaped data for up to
+ * `GATEWAY_CATALOG_CACHE_TTL_MS` after deploy.
  */
-const GATEWAY_CATALOG_SCHEMA_VERSION = 'v2'
+const GATEWAY_CATALOG_SCHEMA_VERSION = 'v3'
 /**
  * Cloudflare's catalog is a per-account resource (it requires the caller's
  * own account id + token), not a shared public one like Vercel's or
@@ -147,6 +149,20 @@ function normalizeVercelGatewayModel(
       isImageGenerationModel: supportsImageGeneration,
     }),
     supportsImageGeneration,
+    /**
+     * Deliberately read from the `tool-use` tag rather than
+     * `supported_parameters.includes('tools')` (which `supportsTools`
+     * above already uses) — the Brave/Exa gate wants the same
+     * coarse-but-curated capability roster `supportsReasoning` and
+     * `supportsWebSearch`'s native signal read from, not the raw
+     * per-request parameter list, so all three stay sourced from the same
+     * kind of field. Verified against a live fetch: every one of 246
+     * language models carrying `'tool-use'` in `tags` also carries `'tools'`
+     * in `supported_parameters` in the current catalog, so the two sources
+     * agree today — this picks the one specified for a gateway-model
+     * `toolCall` gate.
+     */
+    toolCall: Boolean(model.tags?.includes('tool-use')),
   }
 }
 
@@ -205,6 +221,17 @@ function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
       isImageGenerationModel: supportsImageGeneration,
     }),
     supportsImageGeneration,
+    /**
+     * `tool_choice` is checked alongside `tools` because OpenRouter's own
+     * schema lists both as independent `supported_parameters` entries — a
+     * live fetch confirmed every model carrying `tool_choice` also carries
+     * `tools` today, but the two are documented as separate capabilities and
+     * this reads both rather than relying on that being permanently true.
+     */
+    toolCall: Boolean(
+      model.supported_parameters?.includes('tools')
+      || model.supported_parameters?.includes('tool_choice'),
+    ),
   }
 }
 
@@ -439,6 +466,18 @@ function normalizeCloudflareGatewayModel(
       isImageGenerationModel: supportsImageGeneration,
     }),
     supportsImageGeneration,
+    /**
+     * The marketplace shape's own `supported_parameters.tools` key (already
+     * read into `supportsTools` above) is per-modality and, per this file's
+     * own schema-fidelity note, has never been verified against a live
+     * Cloudflare response. The specified source for the strict `toolCall`
+     * gate is the default-format `function_calling` property instead, which
+     * `enrichCloudflareGatewayModel` below fills in once the second fetch
+     * resolves. `false` here is a placeholder pending that enrichment, not a
+     * real "no tool support" signal — see `toolCall`'s own doc comment in
+     * `shared/types/gateways.d.ts`.
+     */
+    toolCall: false,
   }
 }
 
@@ -743,6 +782,14 @@ function extractCloudflarePricing(
  * Backfills only what the marketplace response left `undefined` — a value the
  * primary shape already provided is never overwritten, so enrichment can add
  * signals but never contradict them.
+ *
+ * `toolCall` is the one exception, because it is a required, always-`false`
+ * -or-`true` field rather than an optional advisory one: the marketplace
+ * normalizer above can never set it to a real value (there is no reliable
+ * marketplace-shape source for it), so its `false` is a placeholder, not a
+ * genuine signal a `??` backfill would need to protect. This still never
+ * *contradicts* a genuine signal, because there isn't one yet to contradict —
+ * it resolves the field for the first time.
  */
 function enrichCloudflareGatewayModel(
   model: GatewayModel,
@@ -768,6 +815,9 @@ function enrichCloudflareGatewayModel(
     supportsReasoning: model.supportsReasoning ?? coerceCloudflareBoolean(
       findCloudflarePropertyValue(properties, 'reasoning'),
     ),
+    toolCall: coerceCloudflareBoolean(
+      findCloudflarePropertyValue(properties, 'function_calling'),
+    ) ?? model.toolCall,
   }
 }
 

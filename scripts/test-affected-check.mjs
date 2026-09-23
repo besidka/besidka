@@ -106,6 +106,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [
@@ -224,6 +228,15 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/message-usage.spec.ts',
   ]
 
+  const gatewayCatalogTests = [
+    'tests/unit/utils/gateways/vercel.spec.ts',
+    'tests/unit/utils/gateways/openrouter.spec.ts',
+    'tests/unit/utils/gateways/cloudflare.spec.ts',
+    'tests/unit/utils/gateways/index.spec.ts',
+    'tests/unit/utils/gateway-catalog-normalize.spec.ts',
+    'tests/integration/api/gateways-models.spec.ts',
+  ]
+
   const chatShareTests = [
     'tests/integration/server/chat-share.spec.ts',
     'tests/integration/server/rewrite-share-file-urls.spec.ts',
@@ -339,8 +352,12 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/profile-keys-brave.spec.ts',
     'tests/integration/api/profile-keys-exa.spec.ts',
     'tests/integration/api/profile-keys-summary.spec.ts',
+    'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
+    'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
+    'tests/integration/api/profile-keys-openrouter.spec.ts',
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/components/ProviderIcon.spec.ts',
     'tests/unit/utils/provider-meta.spec.ts',
@@ -540,7 +557,12 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(shared\/(types\/gateways\.d\.ts|utils\/(gateways|gateway-(capabilities|model-id|pricing)|model-selection|provider-meta)\.ts))$/,
-      tests: gatewaySharedTests,
+      tests: [...gatewaySharedTests, ...gatewayCatalogTests],
+    },
+    {
+      pattern:
+        /^(server\/utils\/gateways\/.+\.ts|server\/api\/v1\/gateways\/.+|app\/composables\/gateway-catalog\.ts)$/,
+      tests: gatewayCatalogTests,
     },
     {
       pattern: /^app\/composables\/user-setting\.ts$/,
