@@ -258,6 +258,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateways/index.spec.ts',
     'tests/unit/utils/gateway-catalog-normalize.spec.ts',
     'tests/integration/api/gateways-models.spec.ts',
+    'tests/unit/composables/gateway-catalog.spec.ts',
   ]
 
   const chatShareTests = [
@@ -585,6 +586,7 @@ export function getAffectedTests(changedFiles) {
         ...gatewaySharedTests,
         ...gatewayCatalogTests,
         ...gatewayChatTests,
+        ...modelsTriggerTests,
       ],
     },
     {

@@ -74,6 +74,32 @@
         </button>
       </li>
       <li
+        v-for="option in capabilityOptions"
+        :key="option.value"
+        role="presentation"
+        :data-testid="`models-picker-filter-${option.value}`"
+        @click="toggleCapability(option.value)"
+      >
+        <button
+          type="button"
+          :aria-pressed="capabilities.includes(option.value)"
+          :class="{ 'menu-active': capabilities.includes(option.value) }"
+          class="flex items-center gap-2"
+        >
+          <Icon
+            :name="option.icon"
+            size="14"
+            class="opacity-60"
+          />
+          <span class="grow">{{ option.label }}</span>
+          <Icon
+            v-if="capabilities.includes(option.value)"
+            name="lucide:check"
+            size="14"
+          />
+        </button>
+      </li>
+      <li
         role="presentation"
         data-testid="models-picker-filter-clear"
         class="mt-1 pt-1 border-t border-base-content/10"
@@ -98,6 +124,8 @@
 
 <script setup lang="ts">
 import type {
+  GatewayCapabilityFilter,
+  GatewayCapabilityFilterOption,
   ModelCategory,
   ModelCategoryOption,
 } from '~/types/models-picker'
@@ -105,18 +133,25 @@ import type {
 withDefaults(
   defineProps<{
     options?: ModelCategoryOption[]
+    capabilityOptions?: GatewayCapabilityFilterOption[]
   }>(),
   {
     options: () => modelCategoryOptions,
+    capabilityOptions: () => [],
   },
 )
 
 const selected = defineModel<ModelCategory | null>({ default: null })
 const visionOnly = defineModel<boolean>('visionOnly', { default: false })
+const capabilities = defineModel<GatewayCapabilityFilter[]>('capabilities', {
+  default: () => [],
+})
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
 
 const hasActiveFilter = computed<boolean>(() => {
-  return selected.value !== null || visionOnly.value
+  return selected.value !== null
+    || visionOnly.value
+    || capabilities.value.length > 0
 })
 
 onClickOutside(dropdown, () => {
@@ -141,9 +176,19 @@ function toggleVisionOnly() {
   close()
 }
 
+function toggleCapability(value: GatewayCapabilityFilter) {
+  capabilities.value = capabilities.value.includes(value)
+    ? capabilities.value.filter((filter) => {
+      return filter !== value
+    })
+    : [...capabilities.value, value]
+  close()
+}
+
 function onClear() {
   selected.value = null
   visionOnly.value = false
+  capabilities.value = []
   close()
 }
 </script>

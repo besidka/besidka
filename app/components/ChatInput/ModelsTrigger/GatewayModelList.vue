@@ -23,6 +23,20 @@
       <p class="text-xs opacity-60">
         Could not load {{ gatewayLabel }} models.
       </p>
+      <p
+        v-if="errorDetails?.why"
+        data-testid="gateway-models-error-why"
+        class="text-2xs opacity-60 break-words"
+      >
+        {{ errorDetails.why }}
+      </p>
+      <p
+        v-if="errorDetails?.fix"
+        data-testid="gateway-models-error-fix"
+        class="text-xs break-words"
+      >
+        {{ errorDetails.fix }}
+      </p>
       <button
         type="button"
         data-testid="gateway-models-retry"
@@ -114,8 +128,10 @@
 </template>
 
 <script setup lang="ts">
+import { parseError } from 'evlog'
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type {
+  GatewayCapabilityFilter,
   GatewayPickerSection,
   GatewayProviderGroup,
 } from '~/types/models-picker'
@@ -129,6 +145,7 @@ const props = defineProps<{
   isFavoritesOnly: boolean
   isFreeOnly: boolean
   isVisionOnly: boolean
+  capabilityFilters: GatewayCapabilityFilter[]
   activeProviderPrefix: string | null
   favoriteModelIds: string[]
   selectedModelId: string | null
@@ -159,6 +176,10 @@ const isPending = computed<boolean>(() => {
   return pending.value && !models.value.length
 })
 
+const errorDetails = computed(() => {
+  return error.value ? parseError(error.value) : null
+})
+
 /**
  * What the provider strip describes: the catalog minus the filters that
  * outlive a search, and deliberately NOT minus the search term or the
@@ -166,7 +187,9 @@ const isPending = computed<boolean>(() => {
  * other count read zero, and letting a search narrow it would make a
  * provider with no hit for the current term vanish from the groups — which
  * the parent reads as "this provider is gone" and answers by dropping the
- * filter the user set before they started typing.
+ * filter the user set before they started typing. `capabilityFilters` AND
+ * together the same way Free and Vision do, through
+ * `matchesGatewayCapabilityFilters()`.
  */
 const groupableModels = computed<GatewayModel[]>(() => {
   return models.value.filter((model) => {
@@ -178,7 +201,11 @@ const groupableModels = computed<GatewayModel[]>(() => {
       return false
     }
 
-    return !props.isVisionOnly || !!model.modalities?.input.includes('image')
+    if (props.isVisionOnly && !model.modalities?.input.includes('image')) {
+      return false
+    }
+
+    return matchesGatewayCapabilityFilters(model, props.capabilityFilters)
   })
 })
 
@@ -215,6 +242,7 @@ const filteredModels = computed<GatewayModel[]>(() => {
 const hasActiveFilters = computed<boolean>(() => {
   return props.isFreeOnly
     || props.isVisionOnly
+    || props.capabilityFilters.length > 0
     || props.isFavoritesOnly
     || !!props.activeProviderPrefix
     || !!props.searchTerm.trim()
@@ -321,6 +349,30 @@ function selectHighlighted() {
   emit('select', highlightedModelId.value)
 }
 
+/**
+ * Re-highlights the selected model if it's visible, else the first row,
+ * scrolls it into view, and re-emits `highlight` unconditionally. Called on
+ * every open because the panel stays mounted across close/reopen, so a
+ * highlight set before close would otherwise never re-announce itself.
+ */
+function resetHighlight() {
+  const selectedIsVisible = orderedModels.value.some((model) => {
+    return model.id === props.selectedModelId
+  })
+
+  setHighlight(
+    selectedIsVisible
+      ? props.selectedModelId
+      : orderedModels.value[0]?.id ?? null,
+  )
+  emit(
+    'highlight',
+    highlightedModelId.value
+      ? `gateway-model-option-${highlightedModelId.value}`
+      : null,
+  )
+}
+
 watch(highlightedModelId, (value) => {
   emit('highlight', value ? `gateway-model-option-${value}` : null)
 }, { immediate: true })
@@ -356,5 +408,6 @@ defineExpose({
   highlightFirst,
   highlightLast,
   selectHighlighted,
+  resetHighlight,
 })
 </script>

@@ -8,12 +8,14 @@ import {
   formatModelTokenLimit,
   formatRailCount,
   formatReleaseDate,
+  gatewayCapabilityFilterOptions,
   gatewayModelCategoryOptions,
   getGatewayProviderGroups,
   getModelCategory,
   getModelPriceTip,
   getPriceTierClass,
   hasImageGenerationCapability,
+  matchesGatewayCapabilityFilters,
   modelCategoryOptions,
   sortGatewayModelsByProvider,
 } from '../../../app/utils/models-picker'
@@ -393,5 +395,92 @@ describe('rail count badges', () => {
     expect(formatModelCount(1)).toBe('1 model')
     expect(formatModelCount(0)).toBe('0 models')
     expect(formatModelCount(95)).toBe('95 models')
+  })
+})
+
+describe('gatewayCapabilityFilterOptions', () => {
+  it('offers reasoning, web search and tool calling in that order', () => {
+    expect(gatewayCapabilityFilterOptions).toEqual([
+      { value: 'reasoning', label: 'Reasoning only', icon: 'lucide:brain' },
+      { value: 'web-search', label: 'Web search only', icon: 'lucide:globe' },
+      {
+        value: 'tool-calling',
+        label: 'Tool calling only',
+        icon: 'lucide:wrench',
+      },
+    ])
+  })
+})
+
+describe('matchesGatewayCapabilityFilters', () => {
+  function createCapabilityModel(
+    overrides: Partial<GatewayModel> = {},
+  ): GatewayModel {
+    return {
+      id: 'anthropic/claude-opus-5',
+      name: 'Claude Opus 5',
+      toolCall: false,
+      ...overrides,
+    }
+  }
+
+  it('matches everything when no filter is active', () => {
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), []))
+      .toBe(true)
+  })
+
+  it('passes the reasoning filter only for an explicit true', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsReasoning: true }),
+      ['reasoning'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsReasoning: false }),
+      ['reasoning'],
+    )).toBe(false)
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), [
+      'reasoning',
+    ])).toBe(false)
+  })
+
+  it('passes the web search filter for either resolution, not undefined', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsWebSearch: 'native' }),
+      ['web-search'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsWebSearch: 'universal' }),
+      ['web-search'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), [
+      'web-search',
+    ])).toBe(false)
+  })
+
+  it('passes the tool calling filter only for a strict true', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ toolCall: true }),
+      ['tool-calling'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ toolCall: false }),
+      ['tool-calling'],
+    )).toBe(false)
+  })
+
+  it('ANDs every active filter together', () => {
+    const model = createCapabilityModel({
+      supportsReasoning: true,
+      toolCall: true,
+    })
+
+    expect(matchesGatewayCapabilityFilters(model, [
+      'reasoning',
+      'tool-calling',
+    ])).toBe(true)
+    expect(matchesGatewayCapabilityFilters(model, [
+      'reasoning',
+      'web-search',
+    ])).toBe(false)
   })
 })

@@ -35,9 +35,11 @@
         leave-active-class="transition-[opacity,scale] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] origin-bottom"
         enter-from-class="opacity-0 scale-95"
         leave-to-class="opacity-0 scale-95"
+        @after-leave="resetTransientState"
       >
         <div
-          v-if="isOpen"
+          v-if="hasOpened"
+          v-show="isOpen"
           :id="panelId"
           data-testid="models-picker-panel"
           class="absolute bottom-full left-0 z-50 mb-2 w-[min(30rem,calc(100vw-4rem))]"
@@ -87,8 +89,9 @@
               class="shrink-0 flex items-center gap-1 p-2 border-b border-base-content/10"
             >
               <ChatInputModelsTriggerSearch
+                ref="search"
                 v-model="searchQuery"
-                :autofocus="$device.isDesktop"
+                :autofocus="isDesktop"
                 :controls="listboxId"
                 :active-descendant="highlightedOptionId"
                 class="grow min-w-0"
@@ -97,7 +100,9 @@
               <ChatInputModelsTriggerFilterDropdown
                 v-model="activeCategory"
                 v-model:vision-only="isVisionOnly"
+                v-model:capabilities="activeCapabilityFilters"
                 :options="filterCategoryOptions"
+                :capability-options="filterCapabilityOptions"
               />
             </div>
             <div class="flex flex-1 min-h-0">
@@ -142,6 +147,7 @@
                   :is-favorites-only="isFavoritesOnly"
                   :is-free-only="isFreeOnly"
                   :is-vision-only="isVisionOnly"
+                  :capability-filters="activeCapabilityFilters"
                   :active-provider-prefix="activeGatewayProviderPrefix"
                   :favorite-model-ids="activeGatewayFavorites"
                   :selected-model-id="selectedGatewayModelId"
@@ -237,7 +243,9 @@
                       data-testid="models-picker-legacy-toggle"
                       class="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-[0.65rem] font-semibold uppercase tracking-wide opacity-50 cursor-pointer transition-colors hover:bg-base-content/5 hover:opacity-80"
                       :aria-expanded="isLegacyExpanded"
-                      :aria-controls="legacyListId"
+                      :aria-controls="
+                        isLegacyExpanded ? legacyListId : undefined
+                      "
                       @click="toggleLegacy"
                     >
                       <Icon
@@ -249,7 +257,7 @@
                       {{ legacyLabel }}
                     </button>
                     <ul
-                      v-show="isLegacyExpanded"
+                      v-if="isLegacyExpanded"
                       :id="legacyListId"
                       data-testid="models-picker-legacy-list"
                       role="listbox"
@@ -326,6 +334,8 @@
 <script setup lang="ts">
 import type { GatewayId } from '#shared/types/gateways.d'
 import type {
+  GatewayCapabilityFilter,
+  GatewayCapabilityFilterOption,
   GatewayProviderGroup,
   ModelCategory,
   ModelCategoryOption,
@@ -333,6 +343,7 @@ import type {
   PickerModel,
   PickerSection,
 } from '~/types/models-picker'
+import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
 import { enabledGateways, providerMeta } from '#shared/utils/provider-meta'
 
 interface GatewayListHandle {
@@ -340,6 +351,7 @@ interface GatewayListHandle {
   highlightFirst: () => void
   highlightLast: () => void
   selectHighlighted: () => void
+  resetHighlight: () => void
 }
 
 defineProps<{
@@ -361,6 +373,7 @@ const {
   iconProviderId: selectedIconProviderId,
 } = useSelectedModelInfo()
 const { hasKeyForProvider, hasAnyKey } = useUserKeys()
+const { isDesktop } = useDevice()
 
 const pickerMode = shallowRef<PickerMode>({ source: 'provider' })
 const gatewayHighlightedOptionId = shallowRef<string | null>(null)
@@ -368,17 +381,20 @@ const gatewayProviderGroups = shallowRef<GatewayProviderGroup[]>([])
 const activeGatewayProviderPrefix = shallowRef<string | null>(null)
 const isGatewayCatalogPending = shallowRef<boolean>(false)
 const gatewayList = useTemplateRef<GatewayListHandle>('gatewayList')
+const hasOpened = shallowRef<boolean>(false)
 const isOpen = shallowRef<boolean>(false)
 const searchQuery = shallowRef<string>('')
 const activeProviderId = shallowRef<string | null>(null)
 const isFavoritesOnly = shallowRef<boolean>(false)
 const activeCategory = shallowRef<ModelCategory | null>(null)
 const isVisionOnly = shallowRef<boolean>(false)
+const activeCapabilityFilters = shallowRef<GatewayCapabilityFilter[]>([])
 const detailModelId = shallowRef<string | null>(null)
 const highlightedModelId = shallowRef<string | null>(null)
 const isLegacyExpanded = shallowRef<boolean>(false)
 const root = useTemplateRef<HTMLDivElement>('root')
 const trigger = useTemplateRef<HTMLButtonElement>('trigger')
+const search = useTemplateRef<{ focus: () => void }>('search')
 const resultsContainer = useTemplateRef<HTMLDivElement>('resultsContainer')
 const panelId = useId()
 const listboxId = useId()
@@ -516,6 +532,7 @@ const isRailFilterApplied = computed<boolean>(() => {
 const hasActiveFilters = computed<boolean>(() => {
   return activeCategory.value !== null
     || isVisionOnly.value
+    || activeCapabilityFilters.value.length > 0
     || isRailFilterApplied.value
     || !!activeGatewayProviderPrefix.value
 })
@@ -531,6 +548,25 @@ const filterCategoryOptions = computed<ModelCategoryOption[]>(() => {
     ? gatewayModelCategoryOptions
     : modelCategoryOptions
 })
+
+/**
+ * Hides "web-search" for a gateway whose send path can never carry it
+ * (Cloudflare) — offering a filter no model could ever match would be a
+ * dead control.
+ */
+const filterCapabilityOptions
+  = computed<GatewayCapabilityFilterOption[]>(() => {
+    const gateway = activeGateway.value
+
+    if (!gateway) {
+      return []
+    }
+
+    return gatewayCapabilityFilterOptions.filter((option) => {
+      return option.value !== 'web-search'
+        || isGatewayToolAllowed(gateway.id, 'web_search')
+    })
+  })
 
 const isFreeOnly = computed<boolean>(() => {
   return activeCategory.value === 'free'
@@ -670,15 +706,23 @@ const emptyMessage = computed<string>(() => {
   return `No models match “${searchQuery.value.trim()}”.`
 })
 
-function close() {
-  isOpen.value = false
-  highlightedModelId.value = null
-  gatewayHighlightedOptionId.value = null
+/**
+ * Runs at the start of every open and on `@after-leave` — a reopen mid-fade
+ * never fires `after-leave`. Leaves `gatewayHighlightedOptionId` alone; that
+ * belongs to the gateway list's own `resetHighlight()`.
+ */
+function resetTransientState() {
   searchQuery.value = ''
   activeCategory.value = null
   isVisionOnly.value = false
+  activeCapabilityFilters.value = []
   isLegacyExpanded.value = false
+  highlightedModelId.value = null
   closeDetail()
+}
+
+function close() {
+  isOpen.value = false
 }
 
 function toggleLegacy() {
@@ -709,21 +753,42 @@ function getModeFromSelection(): PickerMode {
   return { source: 'gateway', gatewayId: current.gatewayId }
 }
 
-function toggle() {
+/**
+ * `focusSearch()` runs fire-and-forget. The gateway branch awaits a tick
+ * before `resetHighlight()`: on the first open the list hasn't mounted yet,
+ * so its template ref isn't populated until Vue finishes patching the DOM.
+ */
+async function toggle() {
   if (isOpen.value) {
     close()
 
     return
   }
 
+  resetTransientState()
   pickerMode.value = getModeFromSelection()
+  hasOpened.value = true
   isOpen.value = true
+  focusSearch()
 
   if (activeGateway.value) {
+    await nextTick()
+    gatewayList.value?.resetHighlight()
+
     return
   }
 
   setHighlight(getInitialHighlight())
+}
+
+async function focusSearch() {
+  await nextTick()
+
+  if (!isDesktop) {
+    return
+  }
+
+  search.value?.focus()
 }
 
 function switchMode(mode: PickerMode) {
@@ -735,6 +800,7 @@ function switchMode(mode: PickerMode) {
   searchQuery.value = ''
   activeCategory.value = null
   isVisionOnly.value = false
+  activeCapabilityFilters.value = []
   activeProviderId.value = null
   isFavoritesOnly.value = false
   isLegacyExpanded.value = false
@@ -793,6 +859,7 @@ function toggleFavoritesOnly() {
 function clearFilters() {
   activeCategory.value = null
   isVisionOnly.value = false
+  activeCapabilityFilters.value = []
   activeProviderId.value = null
   activeGatewayProviderPrefix.value = null
   isFavoritesOnly.value = false
@@ -1030,12 +1097,13 @@ watch([
   searchTerm,
   activeCategory,
   isVisionOnly,
+  activeCapabilityFilters,
   activeProviderId,
   isFavoritesOnly,
 ], () => {
   closeDetail()
 
-  if (activeGateway.value) {
+  if (!isOpen.value || activeGateway.value) {
     return
   }
 

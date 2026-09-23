@@ -35,3 +35,12 @@ export interface GatewayProviderGroup {
   prefix: string
   count: number
 }
+
+export type GatewayCapabilityFilter
+  = 'reasoning' | 'web-search' | 'tool-calling'
+
+export interface GatewayCapabilityFilterOption {
+  value: GatewayCapabilityFilter
+  label: string
+  icon: string
+}

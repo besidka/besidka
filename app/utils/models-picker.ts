@@ -1,6 +1,8 @@
 import type { GatewayModel } from '#shared/types/gateways.d'
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
 import type {
+  GatewayCapabilityFilter,
+  GatewayCapabilityFilterOption,
   GatewayProviderGroup,
   ModelCategory,
   ModelCategoryOption,
@@ -24,6 +26,12 @@ export const modelCategoryOptions: ModelCategoryOption[] = [
  */
 export const gatewayModelCategoryOptions: ModelCategoryOption[] = [
   { value: 'free', label: 'Free', icon: 'lucide:banknote-x' },
+]
+
+export const gatewayCapabilityFilterOptions: GatewayCapabilityFilterOption[] = [
+  { value: 'reasoning', label: 'Reasoning only', icon: 'lucide:brain' },
+  { value: 'web-search', label: 'Web search only', icon: 'lucide:globe' },
+  { value: 'tool-calling', label: 'Tool calling only', icon: 'lucide:wrench' },
 ]
 
 const priceTierClasses: Record<ModelPriceTier, string> = {
@@ -97,6 +105,17 @@ export function formatModelTokenLimit(count: number): string {
   return `${count.toLocaleString('en-US')} tokens`
 }
 
+const pricePerMillionFormatters: Record<2 | 3, Intl.NumberFormat> = {
+  2: new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }),
+  3: new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }),
+}
+
 /**
  * Gateways quote prices PER TOKEN as decimal strings, while the curated
  * catalog quotes per million. The explicit scale-up here is what makes the
@@ -114,10 +133,7 @@ function formatPricePerMillionTokens(perTokenPrice: string): string | null {
   const perMillion = perToken * 1_000_000
   const fractionDigits = perMillion > 0 && perMillion < 1 ? 3 : 2
 
-  return `$${perMillion.toLocaleString('en-US', {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  })}`
+  return `$${pricePerMillionFormatters[fractionDigits].format(perMillion)}`
 }
 
 function toPricePair(
@@ -161,6 +177,27 @@ export function formatGatewayPriceDetail(
   }
 
   return `${pair.input} in / ${pair.output} out per 1M tokens`
+}
+
+/**
+ * Fails closed on `undefined` — a catalog that doesn't report a signal is
+ * treated as "does not match", never as "unknown, so let it through".
+ */
+export function matchesGatewayCapabilityFilters(
+  model: GatewayModel,
+  filters: GatewayCapabilityFilter[],
+): boolean {
+  return filters.every((filter) => {
+    if (filter === 'reasoning') {
+      return model.supportsReasoning === true
+    }
+
+    if (filter === 'web-search') {
+      return !!model.supportsWebSearch
+    }
+
+    return model.toolCall === true
+  })
 }
 
 /**

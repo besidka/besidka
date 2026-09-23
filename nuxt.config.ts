@@ -60,6 +60,8 @@ const buildId = process.env.NUXT_BUILD_ID
   || process.env.GITHUB_SHA
   || randomUUID()
 
+const iconCollections = ['lucide', 'simple-icons', 'bxl', 'streamline-logos']
+
 const modules = [
   '@nuxt/content',
   'nuxt-studio',
@@ -351,8 +353,10 @@ export default defineNuxtConfig({
     }
     : {}),
   icon: {
+    collections: iconCollections,
     serverBundle: {
       remote: 'jsdelivr',
+      collections: iconCollections,
     },
     clientBundle: {
       icons: ['lucide:git-branch-plus'],

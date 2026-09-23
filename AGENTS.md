@@ -179,6 +179,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `esbuild`: a Vite 8 default-change + DaisyUI/Lightning CSS `:is()`
   specificity bug that broke the light theme in production builds only;
   when to prefer lightningcss vs esbuild, and revert criteria
+- `docs/nuxt-icon-collections.md` - Why `icon.collections`/
+  `icon.serverBundle.collections` are pinned to four prefixes: `@nuxt/icon`'s
+  per-`<Icon>` reactive-array sort over the default ~220-entry catalog, the
+  rule for adding a new prefix, why `thesvg` stays excluded, and revert
+  criteria
 - `docs/axiom-map-fields.md` - Why `besidka-prod` hit Axiom's 256-field
   schema limit, the `attributes` map-field convention that fixes it, the
   `scripts/axiom-declare-map-field.mjs` rollout step that MUST run before

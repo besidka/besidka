@@ -50,7 +50,7 @@ export function useGatewayCatalog(
       return
     }
 
-    gatewayCatalogCache.value[value.gateway] = value.models
+    gatewayCatalogCache.value[value.gateway] = markRaw(value.models)
   })
 
   const models = computed(() => data.value?.models ?? [])
