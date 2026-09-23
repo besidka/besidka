@@ -3651,9 +3651,18 @@ pnpm vitest run  # the landingTests group
    picked up the new/edited entries automatically.
 5. Confirm `#about-the-name` still matches `alternateName`.
 
-- [ ] WP 3.1 dispatched to an Opus coder (2026-09-23), per the owner's own
-      request that this whole epic was overdue — the plan above was written
-      but never executed while Epic 2/the UX-review batch ran. In progress.
+- [x] WP 3.1 implemented and committed as `d7cc50a` (2026-09-23):
+      "content: bring the home page up to seven providers, three gateways,
+      two search providers". Automated verification passed — `pnpm run
+      typecheck`, `pnpm run lint`, and a full `pnpm vitest run` (292 files,
+      3432 tests) all green.
+  - [ ] The 5-step manual browser verification script above has **not** been
+        run yet.
+  - Explicitly left open by this commit, not lost:
+    - the comparison table's `priceDate: June 2026` and the competitor price
+      figures were **not** re-verified this pass
+    - the T3 Chat cells in the two new comparison-table rows are inferred
+      from public docs, not confirmed live
 
 ## WP 3.2 — Legal pages
 
@@ -3772,12 +3781,37 @@ pnpm vitest run   # the landing/legal groups
 5. **Owner review of the controller/processor classification before merge.**
    This step is a human gate, not an agent check.
 
-- [ ] WP 3.2 dispatched to an Opus coder (2026-09-23), in parallel with
-      WP 3.1 (disjoint files). The gateway controller/processor
-      classification is deliberately left `@TODO owner` in the draft — that
-      cell does not get resolved by an agent, see the Epic 3 gate below.
+- [x] WP 3.2 implemented and committed as `9186a26` (2026-09-23):
+      "legal: cover gateways and search providers in privacy, terms and
+      cookie policy". All three `updatedAt` dates bumped to `2026-09-23`.
+      Automated verification passed — `pnpm run typecheck`, `pnpm run lint`,
+      and a full `pnpm vitest run` (292 files, 3432 tests) all green.
+  - [ ] The 5-step manual browser verification script above, including
+        clicking every new vendor privacy-policy link, has **not** been run
+        yet.
+  - **The gateway controller/processor classification remains
+    `@TODO owner` in the privacy policy's recipients table, unresolved.**
+    Per the note above, this is a legal-review item for the owner, not an
+    executor or agent decision, and it was deliberately left open — see the
+    Epic 3 gate below.
+
+- [x] Review of WP 3.1 found a real, pre-existing gap in
+      `scripts/test-affected-check.mjs`: `content/index.md` had zero mapping
+      entries, unlike `app/pages/index.vue`, `content/legal/**`, and every
+      other landing-related path — a PR touching only that file would have
+      skipped the landing test group and the JSON-LD spec. Fixed and
+      committed as `be61714`: "ci: run landing tests when content/index.md
+      changes".
 
 ## Epic 3 gate
+
+**Status note (2026-09-23):** automated verification has passed for both
+work packages — `pnpm run typecheck`, `pnpm run lint`, and a full
+`pnpm vitest run` (292 test files, 3432 tests) are all green on commits
+`d7cc50a`, `9186a26` and `be61714`. That is not the same as this gate being
+satisfied: CI-on-PR, both manual browser scripts, and the owner's
+controller/processor sign-off are still outstanding. Checkboxes below stay
+unchecked until each is actually done.
 
 - [ ] CI green on PR #362
 - [ ] WP 3.1's 5-step landing script passed
