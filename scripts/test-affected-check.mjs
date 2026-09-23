@@ -647,6 +647,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
+      pattern: /^content\/index\.md$/,
+      tests: [...landingTests, 'tests/unit/utils/landing-jsonld.spec.ts'],
+    },
+    {
       pattern: /^app\/components\/landing\/.*\.vue$/,
       tests: landingTests,
     },
