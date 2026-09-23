@@ -222,6 +222,37 @@ describe('getMessageUsedTools', () => {
 
     expect(result).toEqual(['web_search_exa'])
   })
+
+  // Real persisted assistant rows never carry `tools` themselves — only the
+  // paired user message does (see persist-user-message.ts) — so `tools` is
+  // always `[]` here in production. This is the shape a real DB row has,
+  // confirmed live: id 1917 on besidka-preview persisted
+  // tools: "[]" alongside a tool-web_search_brave part.
+  it('attributes a Brave turn correctly even though the assistant row has no stored tools', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'tool-web_search_brave', toolCallId: 'call-1' },
+        { type: 'source-url' },
+      ],
+      tools: [],
+    })
+
+    expect(result).toEqual(['web_search_brave'])
+  })
+
+  it('attributes an Exa turn correctly even though the assistant row has no stored tools', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'tool-web_search_exa', toolCallId: 'call-1' },
+        { type: 'source-url' },
+      ],
+      tools: [],
+    })
+
+    expect(result).toEqual(['web_search_exa'])
+  })
 })
 
 describe('resolveMessageMenuInfo', () => {

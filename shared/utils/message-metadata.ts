@@ -178,11 +178,37 @@ export function getMessageUsedTools(
     )
   })
 
+  // `message.tools` is only ever populated on the persisted *user* message
+  // row, never on the assistant row this function is normally called with
+  // (see persist-user-message.ts) — so `storedTools` is always `[]` in
+  // practice here, and the two checks below can never rely on it alone.
+  // Brave/Exa's own tool-call part type is a reliable, always-persisted
+  // stand-in: unlike native search, it names the exact provider, so we
+  // don't need to fall back to the generic `hasWebSearchPart` inference for
+  // them the way plain `web_search` does.
+  const usedExternalSearchTool = parts.find((part): part is {
+    type: 'tool-web_search_brave' | 'tool-web_search_exa'
+  } => {
+    return (
+      typeof part === 'object'
+      && part !== null
+      && 'type' in part
+      && (part.type === 'tool-web_search_brave'
+        || part.type === 'tool-web_search_exa')
+    )
+  })?.type
+
   return persistedModelTools.filter((tool) => {
+    if (tool === 'web_search_brave' || tool === 'web_search_exa') {
+      return storedTools.includes(tool)
+        || usedExternalSearchTool === `tool-${tool}`
+    }
+
     return storedTools.includes(tool)
       || (
         tool === 'web_search'
         && hasWebSearchPart
+        && !usedExternalSearchTool
         && !storedTools.some(isWebSearchTool)
       )
       || (tool === 'image_generation' && hasImageGenerationPart)
