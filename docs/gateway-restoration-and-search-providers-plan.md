@@ -3365,14 +3365,30 @@ comm -23 \
 
 Expect **no output**. Any line printed is a spec that will never run on a PR.
 
-- [ ] WP 2.10 complete
+- [x] WP 2.10 complete (commit `7afab58`) - independently re-verified
+      (diff review of `docs/providers/gateways.md`'s accuracy against
+      current code, the `ContextMenu` revert, the `auth-security.md`
+      rate-limit numbers against the real `RATE_LIMIT_RULE` constants; re-ran
+      typecheck, the full suite, `db:generate`, and the `comm -23`
+      registration audit — all matched the coder's report exactly). The new
+      doc's "Live-verification status" section states R12 as still OPEN and
+      Cloudflare's live send path as owner-blocked, matching this plan's own
+      record — not overclaimed. One self-correction the coder made and I
+      verified directly: `GATEWAY_TOOL_POLICY` was NOT replaced by
+      `isProviderResolvedTool()` (my own dispatch brief said "replaces" —
+      imprecise); it still exists and still gates `web_search`/
+      `image_generation`, Brave/Exa simply bypass it. Full suite: 290 files
+      / 3343 tests, 0 failures — genuinely green for the first time in this
+      epic.
 
 ## Epic 2 gate
 
 - [ ] CI green on PR #362 with all ten packages landed, full suite passing
-- [ ] `pnpm run db:generate` emitted exactly one `ALTER TABLE … ADD
-      favorite_gateway_models text` with no `DROP TABLE`, and a second run
-      emitted nothing
+- [x] `pnpm run db:generate` emitted exactly one `ALTER TABLE … ADD
+      favorite_gateway_models text` with no `DROP TABLE` (WP 2.2,
+      `.drizzle/migrations/20260923065554_flimsy_gladiator`), and a second
+      run at the end of WP 2.10 emitted nothing ("No schema changes, nothing
+      to migrate")
 - [ ] WP 2.4's 7-step keys-page script passed
 - [ ] WP 2.8's 11-step picker script passed, including a real OpenRouter and
       Vercel catalog load and a persisted gateway favourite
