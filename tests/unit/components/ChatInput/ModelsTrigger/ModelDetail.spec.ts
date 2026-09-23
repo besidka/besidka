@@ -77,7 +77,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(panel.attributes('role')).toBeUndefined()
   })
 
-  it('renders the name, description and price tier badge with a tooltip', async () => {
+  it('renders the name, description and price tier badge with a title', async () => {
     const wrapper = await mountDetail()
     const priceTier = wrapper.get('[data-testid="model-detail-price-tier"]')
 
@@ -85,10 +85,10 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(wrapper.text()).toContain('Flagship chat model')
     expect(priceTier.text()).toContain('$$')
     expect(priceTier.classes()).toContain('badge-info')
-    expect(priceTier.classes()).toContain('tooltip')
-    expect(priceTier.classes()).toContain('tooltip-soft')
-    expect(priceTier.classes()).toContain('tooltip-bottom')
-    expect(priceTier.attributes('data-tip')).toBe('from $2.50 / from $15.00')
+    expect(priceTier.classes()).not.toContain('tooltip')
+    expect(priceTier.classes()).not.toContain('tooltip-soft')
+    expect(priceTier.classes()).not.toContain('tooltip-bottom')
+    expect(priceTier.attributes('title')).toBe('from $2.50 / from $15.00')
   })
 
   it('explains why a deprecated model should not be used', async () => {
@@ -263,7 +263,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     ).toBe(false)
   })
 
-  it('gives only the Vision badge a tooltip explaining the capability', async () => {
+  it('gives only the Vision badge a title explaining the capability', async () => {
     const model = createModel({
       tools: ['web_search'],
       modalities: { input: ['text', 'image'], output: ['text'] },
@@ -279,15 +279,13 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       return badge.text() === 'Web search'
     })
 
-    expect(vision?.classes()).toContain('tooltip')
-    expect(vision?.classes()).toContain('tooltip-soft')
-    expect(vision?.classes()).toContain('tooltip-bottom')
+    expect(vision?.classes()).not.toContain('tooltip')
     expect(vision?.classes()).toContain('badge-accent')
     expect(vision?.classes()).not.toContain('badge-secondary')
-    expect(vision?.attributes('data-tip')).toBe('Can see images')
+    expect(vision?.attributes('title')).toBe('Can see images')
 
     expect(webSearch?.classes()).not.toContain('tooltip')
-    expect(webSearch?.attributes('data-tip')).toBeUndefined()
+    expect(webSearch?.attributes('title')).toBeUndefined()
   })
 
   it('renders the Vision badge for the real gpt-4.1 catalog model, tied '

@@ -61,12 +61,12 @@
         <span
           v-if="model.priceTier"
           data-testid="model-price-tier"
-          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
+          class="badge badge-xs badge-soft shrink-0 font-semibold"
           :class="[
             getPriceTierClass(model.priceTier),
             { 'max-xs:ml-5': !isKeyMissing },
           ]"
-          :data-tip="priceTip"
+          :title="priceTip"
         >
           {{ model.priceTier }}
           <span
@@ -87,57 +87,69 @@
         >
           <span
             v-if="model.reasoning || model.reasoningAlwaysOn"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            :data-tip="model.reasoningAlwaysOn
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-warning"
+            :title="model.reasoningAlwaysOn
               ? 'Always-on reasoning'
               : 'Reasoning'
             "
           >
-            <Icon name="lucide:brain" />
+            <Icon
+              name="lucide:brain"
+              size="12"
+            />
           </span>
           <span
             v-if="model.tools.includes('web_search')"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-info"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Web search"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-info"
+            title="Web search"
           >
-            <Icon name="lucide:globe" />
+            <Icon
+              name="lucide:globe"
+              size="12"
+            />
           </span>
           <span
             v-if="hasImageGenerationCapability(model)"
             data-testid="model-image-generation-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-violet-700 dark:text-violet-200"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Image generation"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-violet-700 dark:text-violet-200"
+            title="Image generation"
           >
-            <Icon name="lucide:image-plus" />
+            <Icon
+              name="lucide:image-plus"
+              size="12"
+            />
           </span>
           <span
             v-if="hasVisionCapability(model)"
             data-testid="model-vision-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-accent"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Vision"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-accent"
+            title="Vision"
           >
-            <Icon name="lucide:eye" />
+            <Icon
+              name="lucide:eye"
+              size="12"
+            />
           </span>
           <span
             v-if="model.research"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-success"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Deep research"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-success"
+            title="Deep research"
           >
-            <Icon name="lucide:telescope" />
+            <Icon
+              name="lucide:telescope"
+              size="12"
+            />
           </span>
           <span
             v-if="model.toolCall"
             data-testid="model-tool-call-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-slate-700 dark:text-slate-300"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Supports tool calling — can use Brave or Exa web search"
+            class="shrink-0 flex items-center p-1 rounded-full bg-base-200 dark:bg-base-300 text-slate-700 dark:text-slate-300"
+            title="Tool calling"
           >
-            <Icon name="lucide:wrench" />
+            <Icon
+              name="lucide:wrench"
+              size="12"
+            />
           </span>
         </span>
       </component>
@@ -165,14 +177,14 @@
           v-if="!isLegacy"
           type="button"
           data-testid="model-favorite-toggle"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
           :class="{ 'text-warning': isFavorite }"
           :aria-label="isFavorite
             ? `Remove ${model.name} from favorites`
             : `Add ${model.name} to favorites`
           "
           :aria-pressed="isFavorite"
-          :data-tip="isFavorite
+          :title="isFavorite
             ? 'Remove from favorites'
             : 'Add to favorites'
           "
@@ -211,8 +223,6 @@ const emit = defineEmits<{
   toggleDetail: []
 }>()
 
-const { isDesktop } = useDevice()
-
 const priceTip = computed<string | undefined>(() => {
   return getModelPriceTip(props.model)
 })
@@ -225,10 +235,6 @@ const keyMissingLabel = computed<string>(() => {
   const owner = props.providerName || 'this provider'
 
   return `Add your ${owner} API key to use this model.`
-})
-
-const hasTooltip = computed<boolean>(() => {
-  return isDesktop && !props.isLegacy
 })
 
 const hasCapabilities = computed<boolean>(() => {
