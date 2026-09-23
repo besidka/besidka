@@ -220,9 +220,9 @@ which isn't guaranteed.
   `webSearchBillingUnit` for all three providers, plus the four
   Google-specific keys (`googleSearchQueries`, `googleSearchGroundedSteps`,
   `googleSearchBillingUnit`, `googleSearchCost`) kept byte-identical to
-  PR #385 for dashboard continuity. No `webSearchProvider` key was added —
-  the same wide event already carries a flat `providerId`/`modelId`, so
-  filtering the generic keys by provider needs no new field.
+  PR #385 for dashboard continuity. **Superseded:** a `webSearchProvider`
+  key was added later, once Brave/Exa made "which provider ran the search"
+  different from `providerId` — see "Dashboard queries" below.
 
 The `attributes` nesting isn't stylistic. Per `docs/axiom-map-fields.md`,
 `besidka-prod` is at Axiom's 256-field-per-dataset cap, and any new flat
@@ -290,6 +290,128 @@ chat models do too, with a handful of exceptions (`gpt-5-nano`,
 `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo`). As of this fix, **all three
 providers' search spend is accounted for** — before it, only Google's third
 of the picker was.
+
+## Dashboard queries
+
+### The problem
+
+The owner's existing Axiom widgets group by `providerId` — the model's own
+direct provider (google/anthropic/openai/xai). That conflates the model's
+provider with which search tool actually ran: a Brave or Exa search fired
+on a Google model still gets bucketed under `google`, so an external BYOK
+search never shows up as its own series. The field that actually
+distinguishes them, `attributes.ai.webSearchProvider` (set at
+`server/api/v1/chats/[slug]/index.post.ts:1134`, typed as `SearchProvider`
+in `shared/types/message-usage.d.ts:8-9` — `'google' | 'anthropic' |
+'openai' | 'xai' | 'brave' | 'exa'`), already carries this distinction. The
+widgets just don't group by it yet.
+
+### The fix
+
+Both widgets change their `by` clause from `provider = ['providerId']` to
+`searchProvider = tostring(attributes['ai']['webSearchProvider'])`.
+
+**Web search queries per provider:**
+
+```
+['besidka-prod']
+| where operation == 'ai-stream'
+| where isnotnull(attributes['ai']['webSearchUnits'])
+| summarize searchUnits = sum(toint(attributes['ai']['webSearchUnits']))
+  by bin(_time, 30d),
+     searchProvider = tostring(attributes['ai']['webSearchProvider'])
+```
+
+**Web search cost per provider:**
+
+```
+['besidka-prod']
+| where operation == 'ai-stream'
+| where isnotnull(attributes['ai']['webSearchCost'])
+| summarize searchCostUsd = sum(todouble(attributes['ai']['webSearchCost']))
+  by bin(_time, 30d),
+     searchProvider = tostring(attributes['ai']['webSearchProvider'])
+```
+
+The cost widget sums with `todouble`, not `toint` — `webSearchCost` is a
+dollar figure and routinely well under 1.
+
+**Optional: native vs. gateway split.** Not required — the owner called
+this "nice to have," not needed. Add an `extend` before the `summarize`
+and a second `by` dimension:
+
+```
+| extend route = iff(isnotnull(attributes['chat']['gateway']),
+    strcat('via ', tostring(attributes['chat']['gateway'])), 'native')
+| summarize searchUnits = sum(toint(attributes['ai']['webSearchUnits']))
+  by bin(_time, 30d),
+     searchProvider = tostring(attributes['ai']['webSearchProvider']),
+     route
+```
+
+`attributes.chat.gateway` (`server/api/v1/chats/[slug]/index.post.ts:549-559`)
+is set to `'vercel' | 'openrouter' | 'cloudflare'` only when the send is
+gateway-routed; it's absent entirely for a direct-provider send, which is
+exactly what `isnotnull` is testing for.
+
+### Caveats
+
+- **Unverified live.** Nobody has confirmed `webSearchProvider` is actually
+  populated for a real Brave or Exa row in `besidka-prod` (or the preview
+  dataset) yet. Run a one-off, read-only check before trusting either
+  widget:
+  ```
+  ['besidka-prod']
+  | where attributes['ai']['webSearchProvider'] in ('brave', 'exa')
+  | take 5
+  ```
+  The field was added on `feat/add-more-providers`
+  (`da88f71 feat(chat): wire Brave/Exa tools into the send path, cost,
+  telemetry`), which is not yet on `main`. Until that branch deploys,
+  `besidka-prod` has zero rows carrying this field, so the check above
+  returning nothing is expected pre-deploy, not evidence of a bug.
+- **No map-field re-declaration needed.** Per `docs/axiom-map-fields.md`,
+  the declaration lives on `attributes` itself, at any depth: "anything
+  nested under it, at any depth, is exempt from the field-count check, no
+  matter how many different sub-keys different call sites add over time."
+  `webSearchProvider` is a new key under the already-declared `attributes`
+  map, not a new top-level field, so `scripts/axiom-declare-map-field.mjs`
+  does not need to run again for it.
+- **Rows predating this field.** A message persisted before
+  `webSearchProvider` existed has no value for it —
+  `tostring(attributes['ai']['webSearchProvider'])` on a missing key
+  resolves to an empty string, so historical rows appear as an unlabeled
+  `""` series rather than disappearing. If continuity with old data
+  matters more than a clean split, replace the bare `tostring(...)` with
+  `coalesce(tostring(attributes['ai']['webSearchProvider']),
+  tostring(['providerId']))` in both widgets.
+- **This lives in Axiom, not this repo.** The dashboard is a separate,
+  ungitted Axiom project (its own widget-editor UI) — this section is the
+  reference the owner pastes the APL from, not something this codebase
+  deploys.
+- **Gateway-native search stays invisible here, by design.** OpenRouter's
+  `web` plugin and Vercel's bundled search tools (`perplexitySearch()` and
+  similar) never populate `webSearchUnits`/`webSearchProvider` at all:
+  `resolveUnbundledSearchUsage`
+  (`server/api/v1/chats/[slug]/index.post.ts:1552-1571`) returns
+  `undefined` whenever a gateway is in play without a BYOK external-search
+  provider, because that search's cost already lives inside the gateway's
+  blended `totalCost` — see "Double counting, once an external backend
+  exists" below. That's correct for cost (nothing is double-billed), but
+  it means a `webSearchUnits`-based widget will never show
+  OpenRouter- or Vercel-native search volume, even after this fix.
+- **`xai` is a defined `SearchProvider` value that never populates today.**
+  xAI wires a native `web_search` tool
+  (`server/utils/providers/xai.ts:87-103`), but `resolveSearchUsage`'s
+  fallback branch only tags `provider` for `anthropic`/`openai`
+  (`server/utils/ai/search-usage.ts:139-142`), and `getWebSearchUsage`
+  itself gates on those same two providers
+  (`server/utils/ai/web-search-cost.ts:49`) — so an xAI search-enabled
+  turn returns `undefined` from `resolveSearchUsage` before
+  `webSearchProvider` is ever set. An `xai` series appearing in either
+  widget would mean that gate changed, not that xAI search is being
+  counted today. Pre-existing gap in the counting code, unrelated to this
+  query fix.
 
 ## Gray zones
 
