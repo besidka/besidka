@@ -1,9 +1,13 @@
+import type { GatewayModel } from '#shared/types/gateways.d'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, h, shallowRef } from 'vue'
 import { providerMeta } from '#shared/utils/provider-meta'
 import { useChatInput } from '../../../app/composables/chat-input'
 import { defaultModel, providers } from '../../../providers'
+
+const noToolCallReason = 'This model does not support tool calling, so it '
+  + 'cannot use an external search provider.'
 
 function defaultModelProviderLabel(): string {
   for (const provider of providers) {
@@ -386,5 +390,256 @@ describe('useChatInput web search provider options', () => {
         disabledReason: noToolCallReason,
       },
     ])
+  })
+})
+
+describe('useChatInput gateway model capability', () => {
+  it('fails closed on web search, tool calling, image generation, and '
+    + 'reasoning before the catalog has been fetched', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-web-search-supported"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="is-reasoning-supported"]').text(),
+    ).toBe('false')
+
+    const options = JSON.parse(
+      wrapper.get('[data-testid="web-search-options"]').text(),
+    )
+
+    expect(options[1]).toEqual({
+      value: 'web_search_brave',
+      label: 'Brave Search',
+      providerId: 'brave',
+      enabled: false,
+      disabledReason: noToolCallReason,
+    })
+  })
+
+  it('supports native web search, tool calling, and levels reasoning for a '
+    + 'fully-capable OpenRouter model once the catalog loads', async () => {
+    keyedProviderIds.value = ['brave', 'exa']
+
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.openrouter = [{
+      id: 'anthropic/claude-opus-5',
+      name: 'Claude Opus 5',
+      supportsWebSearch: 'native',
+      supportsReasoning: true,
+      toolCall: true,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-web-search-supported"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="is-reasoning-supported"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="reasoning-mode"]').text(),
+    ).toBe('levels')
+
+    const options = JSON.parse(
+      wrapper.get('[data-testid="web-search-options"]').text(),
+    )
+
+    expect(options).toEqual([
+      { value: 'web_search', label: 'Model\'s built-in search', enabled: true },
+      {
+        value: 'web_search_brave',
+        label: 'Brave Search',
+        providerId: 'brave',
+        enabled: true,
+      },
+      {
+        value: 'web_search_exa',
+        label: 'Exa',
+        providerId: 'exa',
+        enabled: true,
+      },
+    ])
+  })
+
+  it('gates Brave and Exa closed for a gateway model whose catalog reports '
+    + 'no tool-calling support', async () => {
+    keyedProviderIds.value = ['brave', 'exa']
+
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.openrouter = [{
+      id: 'openai/gpt-oss',
+      name: 'GPT OSS',
+      toolCall: false,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-oss',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('false')
+
+    const options = JSON.parse(
+      wrapper.get('[data-testid="web-search-options"]').text(),
+    )
+
+    expect(options[1]).toEqual({
+      value: 'web_search_brave',
+      label: 'Brave Search',
+      providerId: 'brave',
+      enabled: false,
+      disabledReason: noToolCallReason,
+    })
+  })
+
+  it('rejects image generation on Cloudflare even when the catalog reports '
+    + 'an image-output model, because the gateway policy denies the tool', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.cloudflare = [{
+      id: '@cf/black-forest-labs/flux-1',
+      name: 'FLUX.1',
+      supportsImageGeneration: true,
+      toolCall: false,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/black-forest-labs/flux-1',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('allows image generation on Vercel when the catalog confirms an '
+    + 'image-output model', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.vercel = [{
+      id: 'google/gemini-3-flash-image',
+      name: 'Gemini 3 Flash Image',
+      supportsImageGeneration: true,
+      toolCall: false,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'google/gemini-3-flash-image',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('never offers reasoning levels on Cloudflare even when the catalog '
+    + 'reports supportsReasoning', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.cloudflare = [{
+      id: '@cf/meta/llama-4',
+      name: 'Llama 4',
+      supportsReasoning: true,
+      toolCall: false,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/meta/llama-4',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-reasoning-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('resolves the selected-model key owner to the gateway id', async () => {
+    keyedProviderIds.value = []
+
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.vercel = [{
+      id: 'openai/gpt-5',
+      name: 'GPT-5',
+      toolCall: true,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'openai/gpt-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="selected-model-key-owner-label"]').text(),
+    ).toBe('Vercel AI Gateway')
+    expect(
+      wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
+    ).toBe('true')
   })
 })

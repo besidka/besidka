@@ -757,7 +757,7 @@ export function foldReasoningSegment(
 }
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
-  const { userModel } = useUserModel()
+  const { selection, userModel } = useUserModel()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   const input = customRef<string>((track, trigger) => ({
@@ -858,6 +858,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
         return {
           body: {
             model: userModel.value,
+            gateway: getSelectionGatewayId(selection.value),
             tools: tools.value,
             messages: [lastMessage],
             reasoning: reasoning.value,

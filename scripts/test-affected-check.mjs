@@ -556,7 +556,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(app\/composables\/(model|selected-model-info)\.ts|shared\/utils\/model-selection\.ts)$/,
+        /^(app\/composables\/(model|selected-model-info|gateway-catalog|chat-title)\.ts|shared\/utils\/model-selection\.ts)$/,
       tests: [...modelSelectionTests, ...modelsTriggerTests],
     },
     {
