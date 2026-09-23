@@ -74,16 +74,62 @@ describe('ProviderIcon', () => {
     expect(wrapper.get('span').text()).toBe('bl')
   })
 
-  it('resolves a real icon for every provider-kind entry in providerMeta, '
-    + 'so a newly added one cannot silently fall through to the badge',
+  it('resolves a real icon for every provider- and gateway-kind entry in '
+    + 'providerMeta, so a newly added one cannot silently fall through to '
+    + 'the badge',
   async () => {
-    const providerKindIds = Object.values(providerMeta).filter((meta) => {
-      return meta.kind === 'provider'
+    const iconBackedIds = Object.values(providerMeta).filter((meta) => {
+      return meta.kind === 'provider' || meta.kind === 'gateway'
     }).map(meta => meta.id)
 
-    for (const providerId of providerKindIds) {
+    for (const providerId of iconBackedIds) {
       expect(await getIconName(providerId)).toBeTruthy()
     }
+  })
+
+  it('resolves the three gateway vendor icons directly, in the order the '
+    + 'keys page and picker rail render them', async () => {
+    expect(await getIconName('cloudflare')).toBe('simple-icons:cloudflare')
+    expect(await getIconName('openrouter')).toBe('simple-icons:openrouter')
+    expect(await getIconName('vercel')).toBe('simple-icons:vercel')
+  })
+
+  it('resolves every gateway-vendor prefix icon added for the model picker '
+    + 'rail', async () => {
+    const gatewayVendorIcons: Record<string, string> = {
+      bytedance: 'simple-icons:bytedance',
+      deepgram: 'simple-icons:deepgram',
+      huggingface: 'simple-icons:huggingface',
+      ibm: 'simple-icons:ibm',
+      meta: 'simple-icons:meta',
+      microsoft: 'simple-icons:microsoft',
+      mistral: 'simple-icons:mistralai',
+      nvidia: 'simple-icons:nvidia',
+      pipecat: 'simple-icons:pipecat',
+      zhipu: 'thesvg:zhipu',
+    }
+
+    for (const [providerId, iconName] of Object.entries(gatewayVendorIcons)) {
+      expect(await getIconName(providerId)).toBe(iconName)
+    }
+  })
+
+  it('resolves the OpenRouter and Cloudflare vendor-prefix overrides to '
+    + 'their real icon key', async () => {
+    expect(await getIconName('x-ai')).toBe('bxl:grok')
+    expect(await getIconName('~anthropic')).toBe('simple-icons:anthropic')
+    expect(await getIconName('~deepseek')).toBe('simple-icons:deepseek')
+    expect(await getIconName('~google')).toBe('simple-icons:googlegemini')
+    expect(await getIconName('~moonshotai')).toBe('simple-icons:moonshotai')
+    expect(await getIconName('~openai')).toBe('simple-icons:openai')
+    expect(await getIconName('~x-ai')).toBe('bxl:grok')
+    expect(await getIconName('deepseek-ai')).toBe('simple-icons:deepseek')
+    expect(await getIconName('facebook')).toBe('simple-icons:meta')
+    expect(await getIconName('meta-llama')).toBe('simple-icons:meta')
+    expect(await getIconName('mistralai')).toBe('simple-icons:mistralai')
+    expect(await getIconName('ibm-granite')).toBe('simple-icons:ibm')
+    expect(await getIconName('pipecat-ai')).toBe('simple-icons:pipecat')
+    expect(await getIconName('zai-org')).toBe('thesvg:zhipu')
   })
 
   it('resolves a real icon for the brave search provider, and leaves exa '

@@ -128,6 +128,7 @@ const props = defineProps<{
   searchTerm: string
   isFavoritesOnly: boolean
   isFreeOnly: boolean
+  isVisionOnly: boolean
   activeProviderPrefix: string | null
   favoriteModelIds: string[]
   selectedModelId: string | null
@@ -173,7 +174,11 @@ const groupableModels = computed<GatewayModel[]>(() => {
       return false
     }
 
-    return !props.isFreeOnly || isGatewayModelFree(model)
+    if (props.isFreeOnly && !isGatewayModelFree(model)) {
+      return false
+    }
+
+    return !props.isVisionOnly || !!model.modalities?.input.includes('image')
   })
 })
 
@@ -209,6 +214,7 @@ const filteredModels = computed<GatewayModel[]>(() => {
 
 const hasActiveFilters = computed<boolean>(() => {
   return props.isFreeOnly
+    || props.isVisionOnly
     || props.isFavoritesOnly
     || !!props.activeProviderPrefix
     || !!props.searchTerm.trim()
