@@ -92,14 +92,11 @@ const detailId = computed<string>(() => {
 })
 
 /**
- * The row badges deliberately drop the near-universal `supportsTools` wrench
- * (four in five OpenRouter models report it) and keep only the signals that
- * tell models apart. It survives here, where a full capability roster is the
- * point. `undefined` on any advisory flag means "this gateway does not
- * report it", so only an explicit `true` (or a resolved web-search value)
- * earns a badge. The web-search label itself spells out native vs.
- * gateway-billed — see `WEB_SEARCH_TOOLTIP` — doubling as the cost hint, per
- * the product decision recorded in docs/providers/gateways.md.
+ * Row and detail both gate tool calling on the strict `toolCall` flag, never
+ * the advisory `supportsTools`. `undefined` on an advisory flag means "not
+ * reported", so only an explicit `true` (or a resolved web-search value)
+ * earns a badge. The web-search label distinguishes native vs. gateway-billed
+ * via `WEB_SEARCH_TOOLTIP`.
  */
 const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props
@@ -121,11 +118,12 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     })
   }
 
-  if (model.supportsTools) {
+  if (model.toolCall === true) {
     badges.push({
       label: 'Tool calling',
       icon: 'lucide:wrench',
-      class: 'badge-neutral',
+      class: '[--badge-color:var(--color-slate-700)] '
+        + 'dark:[--badge-color:var(--color-slate-300)]',
     })
   }
 
@@ -142,7 +140,7 @@ const capabilities = computed<CapabilityBadge[]>(() => {
     badges.push({
       label: 'Vision',
       icon: 'lucide:eye',
-      class: 'badge-secondary',
+      class: 'badge-accent',
     })
   }
 

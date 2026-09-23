@@ -67,6 +67,7 @@ const providerIconNames: Record<string, string> = {
 const gatewayProviderPrefixIconOverrides: Record<string, string> = {
   ...cloudflareVendorIconOverrides,
   'x-ai': 'xai',
+  'z-ai': 'zhipu',
   '~anthropic': 'anthropic',
   '~deepseek': 'deepseek',
   '~google': 'google',

@@ -66,6 +66,15 @@ describe('ChatInput/ModelsTrigger/GatewayProviderRail', () => {
       expect(rail.classes()).toContain('border-r')
     })
 
+  it('sizes the provider buttons like the direct-provider rail', async () => {
+    const wrapper = await mountRail()
+    const button = wrapper
+      .get('[data-testid="models-picker-gateway-provider-openai"]')
+
+    expect(button.classes()).toContain('[--size:1.8rem]')
+    expect(button.classes()).not.toContain('btn-sm')
+  })
+
   it('scrolls vertically so a long vendor list cannot grow the panel',
     async () => {
       const wrapper = await mountRail()
@@ -181,6 +190,15 @@ describe('ChatInput/ModelsTrigger/GatewayProviderRail', () => {
       ).not.toContain('opacity-60')
     })
 
+    it('shrinks the badge like the direct-provider rail', async () => {
+      const wrapper = await mountRail()
+
+      expect(wrapper
+        .get('[data-testid="models-picker-gateway-provider-openai-count"]')
+        .classes(),
+      ).toContain('scale-[0.8]')
+    })
+
     it('caps a very large catalog at three glyphs', async () => {
       const wrapper = await mountRail({
         providers: [{ prefix: 'openai', count: 412 }],
@@ -211,6 +229,8 @@ describe('ChatInput/ModelsTrigger/GatewayProviderRail', () => {
       expect(favorites.attributes('aria-label'))
         .toBe('Show favorite models only')
       expect(favorites.attributes('aria-pressed')).toBe('false')
+      expect(favorites.classes()).toContain('[--size:1.8rem]')
+      expect(favorites.classes()).not.toContain('btn-sm')
       expect(findButtons(wrapper)[0]?.attributes('data-testid'))
         .toBe('models-picker-rail-favorites')
     })

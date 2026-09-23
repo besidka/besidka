@@ -117,6 +117,7 @@ describe('ProviderIcon', () => {
   it('resolves the OpenRouter and Cloudflare vendor-prefix overrides to '
     + 'their real icon key', async () => {
     expect(await getIconName('x-ai')).toBe('bxl:grok')
+    expect(await getIconName('z-ai')).toBe('thesvg:zhipu')
     expect(await getIconName('~anthropic')).toBe('simple-icons:anthropic')
     expect(await getIconName('~deepseek')).toBe('simple-icons:deepseek')
     expect(await getIconName('~google')).toBe('simple-icons:googlegemini')

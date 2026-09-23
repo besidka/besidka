@@ -120,8 +120,8 @@ describe('deriveGatewayImageGenerationSupport', () => {
 
 describe('WEB_SEARCH_TOOLTIP', () => {
   it('spells out native vs. gateway-billed, doubling as the cost hint', () => {
-    expect(WEB_SEARCH_TOOLTIP.native).toBe('Web search (native)')
+    expect(WEB_SEARCH_TOOLTIP.native).toBe('Web search')
     expect(WEB_SEARCH_TOOLTIP.universal)
-      .toBe('Web search (via gateway, billed per search)')
+      .toBe('Web search (gateway-billed)')
   })
 })

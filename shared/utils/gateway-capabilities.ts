@@ -62,8 +62,8 @@ export function isGatewayReasoningSupported(gatewayId: GatewayId): boolean {
 }
 
 export const WEB_SEARCH_TOOLTIP: Record<WebSearchResolution, string> = {
-  native: 'Web search (native)',
-  universal: 'Web search (via gateway, billed per search)',
+  native: 'Web search',
+  universal: 'Web search (gateway-billed)',
 }
 
 /**

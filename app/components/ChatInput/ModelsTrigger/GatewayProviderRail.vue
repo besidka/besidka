@@ -7,7 +7,7 @@
       <button
         type="button"
         data-testid="models-picker-rail-favorites"
-        class="btn btn-ghost btn-sm btn-circle"
+        class="btn btn-ghost btn-circle [--size:1.8rem]"
         :class="{ 'btn-active text-warning': isFavoritesOnly }"
         title="Favorites"
         aria-label="Show favorite models only"
@@ -30,7 +30,7 @@
       :key="provider.prefix"
       type="button"
       :data-testid="`models-picker-gateway-provider-${provider.prefix}`"
-      class="btn btn-ghost btn-sm btn-circle"
+      class="btn btn-ghost btn-circle [--size:1.8rem]"
       :class="{
         'btn-active text-accent': activeProviderPrefix === provider.prefix
       }"
@@ -47,7 +47,7 @@
         />
         <span
           :data-testid="getCountTestId(provider)"
-          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none"
+          class="badge badge-xs indicator-item indicator-end indicator-bottom px-1 tabular-nums pointer-events-none scale-[0.8]"
         >
           {{ formatRailCount(provider.count) }}
         </span>

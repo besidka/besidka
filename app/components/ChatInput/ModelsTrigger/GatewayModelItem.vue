@@ -45,9 +45,9 @@
         <span
           v-else-if="priceTier"
           data-testid="gateway-model-price-tier"
-          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom max-xs:ml-5"
+          class="badge badge-xs badge-soft shrink-0 font-semibold max-xs:ml-5"
           :class="getPriceTierClass(priceTier)"
-          :data-tip="priceTip"
+          :title="priceTip"
         >
           {{ priceTier }}
           <span
@@ -69,38 +69,57 @@
           <span
             v-if="model.supportsReasoning"
             data-testid="gateway-model-reasoning-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
-            data-tip="Reasoning"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-warning"
+            title="Reasoning"
           >
-            <Icon name="lucide:brain" />
+            <Icon
+              name="lucide:brain"
+              size="12"
+            />
           </span>
           <span
             v-if="model.supportsWebSearch"
             data-testid="gateway-model-web-search-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-info"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
-            :data-tip="webSearchTooltip"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-info"
+            :title="webSearchTooltip"
           >
-            <Icon name="lucide:globe" />
+            <Icon
+              name="lucide:globe"
+              size="12"
+            />
           </span>
           <span
             v-if="model.supportsImageGeneration"
             data-testid="gateway-model-image-generation-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-violet-700 dark:text-violet-200"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
-            data-tip="Image generation"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-violet-700 dark:text-violet-200"
+            title="Image generation"
           >
-            <Icon name="lucide:image-plus" />
+            <Icon
+              name="lucide:image-plus"
+              size="12"
+            />
           </span>
           <span
             v-if="supportsVision"
             data-testid="gateway-model-vision-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-secondary"
-            :class="{ 'tooltip tooltip-soft tooltip-bottom': isDesktop }"
-            data-tip="Vision"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-accent"
+            title="Vision"
           >
-            <Icon name="lucide:eye" />
+            <Icon
+              name="lucide:eye"
+              size="12"
+            />
+          </span>
+          <span
+            v-if="model.toolCall === true"
+            data-testid="gateway-model-tool-call-capability"
+            class="shrink-0 flex items-center p-1 rounded-full bg-base-200 dark:bg-base-300 text-slate-700 dark:text-slate-300"
+            title="Tool calling"
+          >
+            <Icon
+              name="lucide:wrench"
+              size="12"
+            />
           </span>
         </span>
       </button>
@@ -126,14 +145,14 @@
         <button
           type="button"
           data-testid="gateway-model-favorite-toggle"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
           :class="{ 'text-warning': isFavorite }"
           :aria-label="isFavorite
             ? `Remove ${model.name} from favorites`
             : `Add ${model.name} to favorites`
           "
           :aria-pressed="isFavorite"
-          :data-tip="isFavorite
+          :title="isFavorite
             ? 'Remove from favorites'
             : 'Add to favorites'
           "
@@ -175,8 +194,6 @@ const emit = defineEmits<{
   toggleDetail: []
 }>()
 
-const { isDesktop } = useDevice()
-
 const providerPrefix = computed<string>(() => {
   return getGatewayModelProviderPrefix(props.model.id)
 })
@@ -216,12 +233,15 @@ const webSearchTooltip = computed<string | undefined>(() => {
  * advisory and `undefined` means "this gateway does not report it", so only
  * an explicit `true` (or a resolved web-search value) earns a chip — an
  * unreported capability is never rendered as absent, and never as present.
+ * `toolCall`, unlike those, is always defined, so it gates strictly on
+ * `=== true` rather than truthiness.
  */
 const hasCapabilities = computed<boolean>(() => {
   return props.model.supportsReasoning === true
     || !!props.model.supportsWebSearch
     || props.model.supportsImageGeneration === true
     || supportsVision.value
+    || props.model.toolCall === true
 })
 
 const optionId = computed<string>(() => {

@@ -35,11 +35,11 @@ describe('ChatInput/ModelsTrigger/GatewayModelDetail', () => {
       const wrapper = await mountDetail(createModel({
         supportsReasoning: true,
         supportsWebSearch: 'native',
-        supportsTools: true,
+        toolCall: true,
       }))
 
       expect(getCapabilityLabels(wrapper))
-        .toEqual(['Reasoning', 'Web search (native)', 'Tool calling'])
+        .toEqual(['Reasoning', 'Web search', 'Tool calling'])
     })
 
   it('spells out a gateway-billed web search distinctly from a native one',
@@ -49,13 +49,28 @@ describe('ChatInput/ModelsTrigger/GatewayModelDetail', () => {
       }))
 
       expect(getCapabilityLabels(wrapper))
-        .toEqual(['Web search (via gateway, billed per search)'])
+        .toEqual(['Web search (gateway-billed)'])
     })
 
   it('keeps tool calling here even though the row drops it', async () => {
-    const wrapper = await mountDetail(createModel({ supportsTools: true }))
+    const wrapper = await mountDetail(createModel({ toolCall: true }))
+    const badge = wrapper.get(
+      '[data-testid="gateway-model-detail-capabilities"] .badge',
+    )
 
     expect(getCapabilityLabels(wrapper)).toEqual(['Tool calling'])
+    expect(badge.classes())
+      .toContain('[--badge-color:var(--color-slate-700)]')
+  })
+
+  it('never earns the tool-calling badge from the advisory '
+    + 'supportsTools alone', async () => {
+    const wrapper = await mountDetail(createModel({
+      supportsTools: true,
+      toolCall: false,
+    }))
+
+    expect(getCapabilityLabels(wrapper)).not.toContain('Tool calling')
   })
 
   it('lists image generation and vision as separate badges', async () => {
@@ -67,6 +82,18 @@ describe('ChatInput/ModelsTrigger/GatewayModelDetail', () => {
     expect(getCapabilityLabels(wrapper))
       .toEqual(['Image generation', 'Vision'])
   })
+
+  it('colors the vision badge accent, matching the direct-provider list',
+    async () => {
+      const wrapper = await mountDetail(createModel({
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      }))
+      const vision = wrapper
+        .findAll('[data-testid="gateway-model-detail-capabilities"] .badge')
+        .find(badge => badge.text() === 'Vision')
+
+      expect(vision?.classes()).toContain('badge-accent')
+    })
 
   it('never asserts an unreported capability', async () => {
     const wrapper = await mountDetail(createModel({
