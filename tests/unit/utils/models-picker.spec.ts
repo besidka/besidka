@@ -399,13 +399,19 @@ describe('rail count badges', () => {
 })
 
 describe('gatewayCapabilityFilterOptions', () => {
-  it('offers reasoning, web search and tool calling in that order', () => {
+  it('offers reasoning, web search, image generation and tool calling '
+    + 'in that order', () => {
     expect(gatewayCapabilityFilterOptions).toEqual([
-      { value: 'reasoning', label: 'Reasoning only', icon: 'lucide:brain' },
-      { value: 'web-search', label: 'Web search only', icon: 'lucide:globe' },
+      { value: 'reasoning', label: 'Reasoning', icon: 'lucide:brain' },
+      { value: 'web-search', label: 'Web search', icon: 'lucide:globe' },
+      {
+        value: 'image-generation',
+        label: 'Image generation',
+        icon: 'lucide:image-plus',
+      },
       {
         value: 'tool-calling',
-        label: 'Tool calling only',
+        label: 'Tool calling',
         icon: 'lucide:wrench',
       },
     ])
@@ -468,6 +474,20 @@ describe('matchesGatewayCapabilityFilters', () => {
     )).toBe(false)
   })
 
+  it('passes the image generation filter only for an explicit true', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsImageGeneration: true }),
+      ['image-generation'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsImageGeneration: false }),
+      ['image-generation'],
+    )).toBe(false)
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), [
+      'image-generation',
+    ])).toBe(false)
+  })
+
   it('ANDs every active filter together', () => {
     const model = createCapabilityModel({
       supportsReasoning: true,
@@ -481,6 +501,22 @@ describe('matchesGatewayCapabilityFilters', () => {
     expect(matchesGatewayCapabilityFilters(model, [
       'reasoning',
       'web-search',
+    ])).toBe(false)
+  })
+
+  it('ANDs the image generation filter with another filter', () => {
+    const model = createCapabilityModel({
+      supportsImageGeneration: true,
+      supportsReasoning: true,
+    })
+
+    expect(matchesGatewayCapabilityFilters(model, [
+      'image-generation',
+      'reasoning',
+    ])).toBe(true)
+    expect(matchesGatewayCapabilityFilters(model, [
+      'image-generation',
+      'tool-calling',
     ])).toBe(false)
   })
 })

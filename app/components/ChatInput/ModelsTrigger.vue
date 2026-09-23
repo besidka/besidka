@@ -333,6 +333,7 @@
 
 <script setup lang="ts">
 import type { GatewayId } from '#shared/types/gateways.d'
+import type { ModelTool } from '#shared/types/providers.d'
 import type {
   GatewayCapabilityFilter,
   GatewayCapabilityFilterOption,
@@ -345,6 +346,13 @@ import type {
 } from '~/types/models-picker'
 import { isGatewayToolAllowed } from '#shared/utils/gateway-capabilities'
 import { enabledGateways, providerMeta } from '#shared/utils/provider-meta'
+
+const GATEWAY_CAPABILITY_FILTER_TOOLS: Partial<
+  Record<GatewayCapabilityFilter, ModelTool>
+> = {
+  'web-search': 'web_search',
+  'image-generation': 'image_generation',
+}
 
 interface GatewayListHandle {
   moveHighlight: (step: number) => void
@@ -550,9 +558,9 @@ const filterCategoryOptions = computed<ModelCategoryOption[]>(() => {
 })
 
 /**
- * Hides "web-search" for a gateway whose send path can never carry it
- * (Cloudflare) — offering a filter no model could ever match would be a
- * dead control.
+ * Hides a policy-gated option for a gateway whose send path can never carry
+ * that tool (Cloudflare allows neither web search nor image generation) —
+ * offering a filter no model could ever match would be a dead control.
  */
 const filterCapabilityOptions
   = computed<GatewayCapabilityFilterOption[]>(() => {
@@ -563,8 +571,9 @@ const filterCapabilityOptions
     }
 
     return gatewayCapabilityFilterOptions.filter((option) => {
-      return option.value !== 'web-search'
-        || isGatewayToolAllowed(gateway.id, 'web_search')
+      const tool = GATEWAY_CAPABILITY_FILTER_TOOLS[option.value]
+
+      return !tool || isGatewayToolAllowed(gateway.id, tool)
     })
   })
 

@@ -1074,12 +1074,29 @@ describe('ChatInput/ModelsTrigger', () => {
         pricing: { input: '0.0000025', output: '0.00001' },
         toolCall: false,
       }
+      const imageModel = {
+        id: 'openai/gpt-5.4-image',
+        name: 'GPT-5.4 Image',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        supportsImageGeneration: true,
+        toolCall: false,
+      }
+      const imageVisionModel = {
+        id: 'openai/gpt-5.4-image-vision',
+        name: 'GPT-5.4 Image Vision',
+        pricing: { input: '0', output: '0' },
+        supportsImageGeneration: true,
+        modalities: { input: ['text', 'image'], output: ['image'] },
+        toolCall: false,
+      }
       const capabilityCatalog = [
         reasoningModel,
         webSearchModel,
         toolCallModel,
         reasoningVisionModel,
         plainModel,
+        imageModel,
+        imageVisionModel,
       ]
 
       function getRenderedModelNames(
@@ -1159,6 +1176,19 @@ describe('ChatInput/ModelsTrigger', () => {
         expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 Tools'])
       })
 
+      it('narrows to models with a confirmed image-generation signal only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual([
+          'GPT-5.4 Image',
+          'GPT-5.4 Image Vision',
+        ])
+      })
+
       it('excludes a model reporting none of the capability signals', async () => {
         const wrapper = await openCapabilityGateway()
 
@@ -1182,6 +1212,48 @@ describe('ChatInput/ModelsTrigger', () => {
 
         expect(getRenderedModelNames(wrapper))
           .toEqual(['Claude Reasoning Vision'])
+      })
+
+      it('ANDs the image generation filter with the free filter', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4 Image Vision'])
+      })
+
+      it('ANDs the image generation filter with vision only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-vision"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4 Image Vision'])
+      })
+
+      it('resets the image generation filter from the filter menu Clear '
+        + 'action', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-clear"]')
+          .get('button')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toHaveLength(
+          capabilityCatalog.length,
+        )
       })
 
       it('resets capability filters from the filter menu Clear action', async () => {
@@ -1237,7 +1309,8 @@ describe('ChatInput/ModelsTrigger', () => {
         ).toBe('false')
       })
 
-      it('omits the web search filter for Cloudflare but offers it elsewhere', async () => {
+      it('omits web search and image generation for Cloudflare but offers '
+        + 'them elsewhere', async () => {
         mocks.useGatewayCatalog.mockReturnValue({
           models: shallowRef(capabilityCatalog),
           pending: shallowRef(false),
@@ -1255,6 +1328,9 @@ describe('ChatInput/ModelsTrigger', () => {
         expect(wrapper.find(
           '[data-testid="models-picker-filter-web-search"]',
         ).exists()).toBe(false)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-image-generation"]',
+        ).exists()).toBe(false)
         expect(wrapper.find('[data-testid="models-picker-filter-reasoning"]')
           .exists()).toBe(true)
         expect(wrapper.find(
@@ -1268,6 +1344,17 @@ describe('ChatInput/ModelsTrigger', () => {
 
         expect(wrapper.find(
           '[data-testid="models-picker-filter-web-search"]',
+        ).exists()).toBe(true)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-image-generation"]',
+        ).exists()).toBe(true)
+      })
+
+      it('offers the image generation filter for Vercel', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-image-generation"]',
         ).exists()).toBe(true)
       })
     })

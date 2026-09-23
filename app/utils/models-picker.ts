@@ -29,9 +29,14 @@ export const gatewayModelCategoryOptions: ModelCategoryOption[] = [
 ]
 
 export const gatewayCapabilityFilterOptions: GatewayCapabilityFilterOption[] = [
-  { value: 'reasoning', label: 'Reasoning only', icon: 'lucide:brain' },
-  { value: 'web-search', label: 'Web search only', icon: 'lucide:globe' },
-  { value: 'tool-calling', label: 'Tool calling only', icon: 'lucide:wrench' },
+  { value: 'reasoning', label: 'Reasoning', icon: 'lucide:brain' },
+  { value: 'web-search', label: 'Web search', icon: 'lucide:globe' },
+  {
+    value: 'image-generation',
+    label: 'Image generation',
+    icon: 'lucide:image-plus',
+  },
+  { value: 'tool-calling', label: 'Tool calling', icon: 'lucide:wrench' },
 ]
 
 const priceTierClasses: Record<ModelPriceTier, string> = {
@@ -179,6 +184,24 @@ export function formatGatewayPriceDetail(
   return `${pair.input} in / ${pair.output} out per 1M tokens`
 }
 
+const gatewayCapabilityFilterMatchers: Record<
+  GatewayCapabilityFilter,
+  (model: GatewayModel) => boolean
+> = {
+  'reasoning': (model) => {
+    return model.supportsReasoning === true
+  },
+  'web-search': (model) => {
+    return !!model.supportsWebSearch
+  },
+  'image-generation': (model) => {
+    return model.supportsImageGeneration === true
+  },
+  'tool-calling': (model) => {
+    return model.toolCall === true
+  },
+}
+
 /**
  * Fails closed on `undefined` — a catalog that doesn't report a signal is
  * treated as "does not match", never as "unknown, so let it through".
@@ -188,15 +211,7 @@ export function matchesGatewayCapabilityFilters(
   filters: GatewayCapabilityFilter[],
 ): boolean {
   return filters.every((filter) => {
-    if (filter === 'reasoning') {
-      return model.supportsReasoning === true
-    }
-
-    if (filter === 'web-search') {
-      return !!model.supportsWebSearch
-    }
-
-    return model.toolCall === true
+    return gatewayCapabilityFilterMatchers[filter](model)
   })
 }
 

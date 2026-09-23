@@ -15,9 +15,9 @@ const mocks = vi.hoisted(() => ({
 mockNuxtImport('onClickOutside', () => mocks.onClickOutside)
 
 const capabilityOptions: GatewayCapabilityFilterOption[] = [
-  { value: 'reasoning', label: 'Reasoning only', icon: 'lucide:brain' },
-  { value: 'web-search', label: 'Web search only', icon: 'lucide:globe' },
-  { value: 'tool-calling', label: 'Tool calling only', icon: 'lucide:wrench' },
+  { value: 'reasoning', label: 'Reasoning', icon: 'lucide:brain' },
+  { value: 'web-search', label: 'Web search', icon: 'lucide:globe' },
+  { value: 'tool-calling', label: 'Tool calling', icon: 'lucide:wrench' },
 ]
 
 async function mountFilterDropdown(
@@ -259,9 +259,9 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
       })
       const menu = wrapper.get('[data-testid="models-picker-filter-menu"]')
 
-      expect(menu.text()).toContain('Reasoning only')
-      expect(menu.text()).toContain('Web search only')
-      expect(menu.text()).toContain('Tool calling only')
+      expect(menu.text()).toContain('Reasoning')
+      expect(menu.text()).toContain('Web search')
+      expect(menu.text()).toContain('Tool calling')
       expect(
         wrapper.find('[data-testid="models-picker-filter-reasoning"]')
           .exists(),

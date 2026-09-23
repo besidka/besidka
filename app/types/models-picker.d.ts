@@ -37,7 +37,7 @@ export interface GatewayProviderGroup {
 }
 
 export type GatewayCapabilityFilter
-  = 'reasoning' | 'web-search' | 'tool-calling'
+  = 'reasoning' | 'web-search' | 'image-generation' | 'tool-calling'
 
 export interface GatewayCapabilityFilterOption {
   value: GatewayCapabilityFilter
