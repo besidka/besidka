@@ -74,6 +74,10 @@ describe('ChatInput/WebSearchTrigger', () => {
 
     expect(trigger.classes()).toContain('btn-circle')
     expect(trigger.text()).toBe('')
+    expect(trigger.attributes('title')).toBe(
+      'Choose a web search provider',
+    )
+    expect(trigger.find('.iconify').classes()).toContain('!size-4')
   })
 
   it('collapses to an active pill labelled "Search" for native search',
@@ -83,23 +87,32 @@ describe('ChatInput/WebSearchTrigger', () => {
 
       expect(trigger.classes()).not.toContain('btn-circle')
       expect(trigger.text()).toBe('Search')
+      expect(trigger.attributes('title')).toBe(
+        'Web search: Model\'s built-in search',
+      )
     })
 
-  it('shows the Brave provider icon and short label when Brave is selected',
-    async () => {
-      const { wrapper } = await mountTrigger({ selected: 'web_search_brave' })
-      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+  it('keeps the pill labelled "Search" and shows the Brave provider icon '
+    + 'and title when Brave is selected', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'web_search_brave' })
+    const trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
-      expect(trigger.text()).toBe('Brave')
-      expect(trigger.find('.iconify').classes().join(' '))
-        .toContain('simple-icons:brave')
-    })
+    expect(trigger.text()).toBe('Search')
+    expect(trigger.attributes('title')).toBe('Web search: Brave')
 
-  it('shows the short label "Exa" when Exa is selected', async () => {
+    const icon = trigger.find('.iconify')
+
+    expect(icon.classes().join(' ')).toContain('simple-icons:brave')
+    expect(icon.classes()).toContain('!size-4')
+  })
+
+  it('keeps the pill labelled "Search" and shows the Exa title when Exa '
+    + 'is selected', async () => {
     const { wrapper } = await mountTrigger({ selected: 'web_search_exa' })
     const trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
-    expect(trigger.find(':scope > span:last-child').text()).toBe('Exa')
+    expect(trigger.find(':scope > span:last-child').text()).toBe('Search')
+    expect(trigger.attributes('title')).toBe('Web search: Exa')
   })
 
   it('opens the dropdown on hover on desktop', async () => {

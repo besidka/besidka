@@ -354,7 +354,7 @@ describe('chats external search validation', () => {
       },
     } as any)).rejects.toEqual(expect.objectContaining({
       why: 'No Brave Search API key is saved for this account.',
-      fix: 'Add one at /profile/keys → Search providers.',
+      fix: 'Add one at /profile/keys → Search Providers.',
     }))
 
     expect(keysFindFirst).toHaveBeenCalledWith(expect.objectContaining({
@@ -381,7 +381,7 @@ describe('chats external search validation', () => {
       },
     } as any)).rejects.toEqual(expect.objectContaining({
       why: 'No Exa API key is saved for this account.',
-      fix: 'Add one at /profile/keys → Search providers.',
+      fix: 'Add one at /profile/keys → Search Providers.',
     }))
 
     expect(keysFindFirst).toHaveBeenCalledWith(expect.objectContaining({

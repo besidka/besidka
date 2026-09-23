@@ -319,7 +319,7 @@ export default defineEventHandler(async (event) => {
         message: 'A Brave Search API key is required for this tool.',
         status: 400,
         why: 'No Brave Search API key is saved for this account.',
-        fix: 'Add one at /profile/keys → Search providers.',
+        fix: 'Add one at /profile/keys → Search Providers.',
       })
     }
 
@@ -337,7 +337,7 @@ export default defineEventHandler(async (event) => {
         message: 'An Exa API key is required for this tool.',
         status: 400,
         why: 'No Exa API key is saved for this account.',
-        fix: 'Add one at /profile/keys → Search providers.',
+        fix: 'Add one at /profile/keys → Search Providers.',
       })
     }
 

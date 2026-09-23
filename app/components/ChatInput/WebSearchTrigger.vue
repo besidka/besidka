@@ -21,9 +21,9 @@
       <ProviderIcon
         v-if="selectedProviderId"
         :provider-id="selectedProviderId"
-        class="size-4"
+        class="!size-4"
       />
-      <Icon v-else name="lucide:globe" class="size-4 text-current" />
+      <Icon v-else name="lucide:globe" class="!size-4 text-current" />
       <span v-if="isActive">{{ triggerLabel }}</span>
     </summary>
     <ClientOnly>
@@ -70,19 +70,7 @@ const isActive = computed<boolean>(() => {
 })
 
 const triggerLabel = computed<string>(() => {
-  if (props.selected === 'web_search') {
-    return 'Search'
-  }
-
-  if (props.selected === 'web_search_brave') {
-    return 'Brave'
-  }
-
-  if (props.selected === 'web_search_exa') {
-    return 'Exa'
-  }
-
-  return ''
+  return isActive.value ? 'Search' : ''
 })
 
 const selectedProviderId = computed<string | undefined>(() => {
@@ -97,10 +85,18 @@ const selectedProviderId = computed<string | undefined>(() => {
   return undefined
 })
 
+const providerTitles: Record<Exclude<WebSearchSelection, 'off'>, string> = {
+  web_search: 'Model\'s built-in search',
+  web_search_brave: 'Brave',
+  web_search_exa: 'Exa',
+}
+
 const triggerTitle = computed<string>(() => {
-  return isActive.value
-    ? `Web search: ${triggerLabel.value}`
-    : 'Choose a web search provider'
+  if (props.selected === 'off') {
+    return 'Choose a web search provider'
+  }
+
+  return `Web search: ${providerTitles[props.selected]}`
 })
 
 onClickOutside(dropdown, () => {

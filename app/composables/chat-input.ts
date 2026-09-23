@@ -112,7 +112,7 @@ export function useChatInput() {
         enabled: hasKeyForProvider('brave'),
         disabledReason: hasKeyForProvider('brave')
           ? undefined
-          : 'Add a Brave Search key in Search providers.',
+          : 'Add a Brave Search key in Search Providers.',
       },
       {
         value: 'web_search_exa',
@@ -121,7 +121,7 @@ export function useChatInput() {
         enabled: hasKeyForProvider('exa'),
         disabledReason: hasKeyForProvider('exa')
           ? undefined
-          : 'Add an Exa key in Search providers.',
+          : 'Add an Exa key in Search Providers.',
       },
     )
 

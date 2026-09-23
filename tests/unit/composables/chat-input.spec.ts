@@ -342,7 +342,7 @@ describe('useChatInput web search provider options', () => {
         label: 'Exa',
         providerId: 'exa',
         enabled: false,
-        disabledReason: 'Add an Exa key in Search providers.',
+        disabledReason: 'Add an Exa key in Search Providers.',
       },
     ])
   })

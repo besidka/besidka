@@ -22,7 +22,7 @@ const webSearchOptions: WebSearchOption[] = [
     label: 'Exa',
     providerId: 'exa',
     enabled: false,
-    disabledReason: 'Add an Exa key in Search providers.',
+    disabledReason: 'Add an Exa key in Search Providers.',
   },
 ]
 
@@ -65,6 +65,48 @@ describe('ChatInput/ToolbarMore', () => {
     })
 
     expect(wrapper.text()).not.toContain('Web search')
+  })
+
+  it('orders reasoning above web search above attach files, with a '
+    + 'single divider between them', async () => {
+    const wrapper = await mountToolbarMore({
+      isReasoningSupported: true,
+      reasoning: 'off',
+      levels: ['low', 'medium', 'high'],
+    })
+
+    const text = wrapper.text()
+    const reasoningIndex = text.indexOf('Reasoning effort')
+    const webSearchIndex = text.indexOf('Web search')
+    const attachFilesIndex = text.indexOf('Attach files')
+
+    expect(reasoningIndex).toBeGreaterThanOrEqual(0)
+    expect(webSearchIndex).toBeGreaterThan(reasoningIndex)
+    expect(attachFilesIndex).toBeGreaterThan(webSearchIndex)
+    expect(wrapper.findAll('.divider')).toHaveLength(1)
+  })
+
+  it('keeps a single divider and web search above attach files when '
+    + 'reasoning is not supported', async () => {
+    const wrapper = await mountToolbarMore()
+
+    const text = wrapper.text()
+    const webSearchIndex = text.indexOf('Web search')
+    const attachFilesIndex = text.indexOf('Attach files')
+
+    expect(webSearchIndex).toBeGreaterThanOrEqual(0)
+    expect(attachFilesIndex).toBeGreaterThan(webSearchIndex)
+    expect(wrapper.findAll('.divider')).toHaveLength(1)
+  })
+
+  it('renders no divider when neither reasoning nor web search is '
+    + 'present', async () => {
+    const wrapper = await mountToolbarMore({
+      isWebSearchSupported: false,
+      isToolCallingSupported: false,
+    })
+
+    expect(wrapper.findAll('.divider')).toHaveLength(0)
   })
 
   it('does not render the web search section for a deep research model',

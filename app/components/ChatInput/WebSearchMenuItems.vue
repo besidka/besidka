@@ -12,7 +12,7 @@
       }"
       @click="emit('select-provider', 'off')"
     >
-      <Icon name="lucide:circle-slash-2" class="size-4 text-current" />
+      <Icon name="lucide:circle-slash-2" class="!size-4 text-current" />
       <span>Off</span>
     </button>
   </li>
@@ -29,7 +29,7 @@
       :title="nativeOption.disabledReason"
       @click="onSelect(nativeOption)"
     >
-      <Icon name="lucide:globe" class="size-4 text-current" />
+      <Icon name="lucide:globe" class="!size-4 text-current" />
       <span class="grow text-left">{{ nativeOption.label }}</span>
     </button>
   </li>
@@ -56,7 +56,10 @@
         :title="option.disabledReason"
         @click="onSelect(option)"
       >
-        <ProviderIcon :provider-id="option.providerId ?? ''" class="size-4" />
+        <ProviderIcon
+          :provider-id="option.providerId ?? ''"
+          class="!size-4"
+        />
         <span class="grow text-left">{{ option.label }}</span>
       </button>
       <NuxtLink

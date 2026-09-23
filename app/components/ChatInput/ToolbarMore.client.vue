@@ -36,7 +36,15 @@
               </span>
             </div>
           </li>
-          <li v-if="hasReasoningSection">
+          <template v-if="hasWebSearchSection">
+            <ChatInputWebSearchMenuItems
+              :selected="selectedWebSearchProvider ?? 'off'"
+              :options="webSearchOptions ?? []"
+              :is-tool-calling-supported="!!isToolCallingSupported"
+              @select-provider="emit('select-web-search-provider', $event)"
+            />
+          </template>
+          <li v-if="hasReasoningSection || hasWebSearchSection">
             <label class="menu-title text-xs">
               <span class="divider my-0"/>
             </label>
@@ -100,17 +108,6 @@
               >
             </label>
           </li>
-          <template
-            v-if="(isWebSearchSupported || isToolCallingSupported)
-              && !isDeepResearchModel"
-          >
-            <ChatInputWebSearchMenuItems
-              :selected="selectedWebSearchProvider ?? 'off'"
-              :options="webSearchOptions ?? []"
-              :is-tool-calling-supported="!!isToolCallingSupported"
-              @select-provider="emit('select-web-search-provider', $event)"
-            />
-          </template>
         </ul>
       </div>
     </div>
@@ -181,6 +178,13 @@ const hasReasoningSection = computed<boolean>(() => {
   return !!(
     (props.isReasoningSupported && !props.isDeepResearchModel)
     || (props.isDeepResearchModel && props.research)
+  )
+})
+
+const hasWebSearchSection = computed<boolean>(() => {
+  return !!(
+    (props.isWebSearchSupported || props.isToolCallingSupported)
+    && !props.isDeepResearchModel
   )
 })
 

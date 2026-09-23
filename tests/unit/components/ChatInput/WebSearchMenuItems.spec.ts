@@ -27,7 +27,7 @@ function braveOption(enabled = true): WebSearchOption {
     enabled,
     disabledReason: enabled
       ? undefined
-      : 'Add a Brave Search key in Search providers.',
+      : 'Add a Brave Search key in Search Providers.',
   }
 }
 
@@ -39,7 +39,7 @@ function exaOption(enabled = true): WebSearchOption {
     enabled,
     disabledReason: enabled
       ? undefined
-      : 'Add an Exa key in Search providers.',
+      : 'Add an Exa key in Search Providers.',
   }
 }
 
@@ -96,6 +96,21 @@ describe('ChatInput/WebSearchMenuItems', () => {
     ])
   })
 
+  it('renders every option icon at a fixed size', async () => {
+    const { wrapper } = await mountMenuItems({
+      selected: 'off',
+      options: [nativeOption(), braveOption(), exaOption()],
+      isToolCallingSupported: true,
+    })
+
+    const icons = wrapper.findAll('.iconify')
+
+    expect(icons.length).toBeGreaterThan(0)
+    icons.forEach((icon) => {
+      expect(icon.classes()).toContain('!size-4')
+    })
+  })
+
   it('marks the currently selected option active', async () => {
     const { wrapper } = await mountMenuItems({
       selected: 'web_search_brave',
@@ -146,7 +161,7 @@ describe('ChatInput/WebSearchMenuItems', () => {
 
     expect(selectedProviders).toEqual([])
     expect(braveButton?.attributes('title')).toBe(
-      'Add a Brave Search key in Search providers.',
+      'Add a Brave Search key in Search Providers.',
     )
     expect(braveButton?.attributes('disabled')).toBeDefined()
   })

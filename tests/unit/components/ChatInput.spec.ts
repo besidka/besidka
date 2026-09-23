@@ -633,7 +633,7 @@ describe('ChatInput.client', () => {
         enabled,
         disabledReason: enabled
           ? undefined
-          : 'Add a Brave Search key in Search providers.',
+          : 'Add a Brave Search key in Search Providers.',
       }
     }
 
@@ -645,7 +645,7 @@ describe('ChatInput.client', () => {
         enabled,
         disabledReason: enabled
           ? undefined
-          : 'Add an Exa key in Search providers.',
+          : 'Add an Exa key in Search Providers.',
       }
     }
 
@@ -814,8 +814,8 @@ describe('ChatInput.client', () => {
 
       const trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
-      expect(trigger.text()).toContain('Brave')
-      expect(trigger.text()).not.toContain('Search')
+      expect(trigger.text()).toBe('Search')
+      expect(trigger.attributes('title')).toBe('Web search: Brave')
     })
 
     it('returns to a ghost circle globe when Off is selected', async () => {
@@ -881,7 +881,7 @@ describe('ChatInput.client', () => {
 
       let trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
-      expect(trigger.text()).toContain('Brave')
+      expect(trigger.attributes('title')).toBe('Web search: Brave')
 
       webSearchProviderOptionsRef.value = [
         nativeOption(true),
@@ -910,8 +910,9 @@ describe('ChatInput.client', () => {
       const trigger = wrapper.get('[data-testid="web-search-trigger"]')
 
       expect(trigger.text()).toContain('Search')
-      expect(trigger.text()).not.toContain('Brave')
-      expect(trigger.text()).not.toContain('Exa')
+      expect(trigger.attributes('title')).toBe(
+        'Web search: Model\'s built-in search',
+      )
     })
   })
 })
