@@ -2919,7 +2919,19 @@ pnpm vitest run tests/integration/server/assistant-files.spec.ts \
 4. Generate a title on a gateway chat and confirm no second search fee is
    incurred — the title instance must carry no OpenRouter `plugins`.
 
-- [ ] WP 2.7 complete
+- [x] WP 2.7 complete (commit `e46e9b1`) - independently re-verified (diff
+      review of the `index.post.ts` wiring + `assistant-files.ts` +
+      `profile-settings.spec.ts` fix, re-run typecheck and the full named
+      spec set, matched the coder's report exactly). `title.patch.ts` and
+      `buildMessageUsage`'s 4th param were both already done by earlier
+      packages - confirmed, not re-done. The critical gap WP 2.6 flagged
+      (gateway image persistence had a helper but no call site) is now
+      closed: `persistGatewayGeneratedImageParts()` is wired into
+      `persistAssistantMessageFromStream`. Also fixed the pre-existing
+      `profile-settings.spec.ts` failures (7, missing `favoriteGatewayModels`
+      key) and a collateral failure the new call site caused in two
+      gateway-send test files whose `assistant-files` mock predated this
+      function's export.
 
 ## WP 2.8 — Model picker: the gateway rail
 
