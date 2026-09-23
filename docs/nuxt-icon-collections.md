@@ -45,10 +45,23 @@ a picker-shaped component tree), from before this fix landed:
 | OpenRouter mode, 400 rows | 340 ms | 28 ms |
 
 A single `sort()` call on the reactive 220-entry array measured ~124 µs versus
-~2.6 µs for the same sort on a plain array. **Measured impact (real browser):
-pending** — the numbers above isolate the reactivity/sort cost in Node; a
-before/after profile of an actual picker open in a browser tab hasn't landed
-yet.
+~2.6 µs for the same sort on a plain array.
+
+**Measured impact (real browser).** Headless Chromium, production `wrangler
+dev` build, warm-open medians (before = 220 collections, attribution = this
+pin alone, no other changes):
+
+| Mode | CPU | firstFrame before → attribution | longTaskMs before → attribution |
+|---|---|---|---|
+| Provider | 1× | 182 ms → 96 ms (−48%) | 206 ms → 73 ms (−65%) |
+| Provider | 4× | 848 ms → 348 ms (−59%) | 1145 ms → 616 ms (−46%) |
+| OpenRouter | 1× | 525 ms → 257 ms (−51%) | 621 ms → 344 ms (−45%) |
+| OpenRouter | 4× | 2518 ms → 1112 ms (−56%) | 3129 ms → 1810 ms (−42%) |
+
+A CPU trace of a warm provider-mode open confirmed the mechanism directly:
+`useResolvedName`'s sort plus the reactive-proxy `set` trap it triggers went
+from ~9% of sampled time to ~0.4% once the collections list shrank from 220 to
+4.
 
 ## The rule
 
