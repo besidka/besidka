@@ -1,11 +1,10 @@
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { ModelSelection } from '#shared/types/model-selection.d'
-
-const gatewayIds: GatewayId[] = ['vercel', 'cloudflare', 'openrouter']
+import { gatewayIds } from '#shared/utils/gateways'
 
 function isGatewayId(value: unknown): value is GatewayId {
   return typeof value === 'string'
-    && (gatewayIds as string[]).includes(value)
+    && (gatewayIds as readonly string[]).includes(value)
 }
 
 function toGatewaySelection(parsed: unknown): ModelSelection | null {

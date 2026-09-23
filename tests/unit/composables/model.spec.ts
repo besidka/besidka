@@ -6,20 +6,47 @@ import { parseModelSelection } from '../../../shared/utils/model-selection'
 describe('parseModelSelection', () => {
   it('returns the bare model id as-is', () => {
     expect(parseModelSelection('gemini-2.5-flash', 'fallback-model'))
-      .toBe('gemini-2.5-flash')
+      .toEqual({ source: 'provider', modelId: 'gemini-2.5-flash' })
   })
 
   it('falls back to the default model when nothing is stored', () => {
     expect(parseModelSelection(null, 'fallback-model'))
-      .toBe('fallback-model')
+      .toEqual({ source: 'provider', modelId: 'fallback-model' })
     expect(parseModelSelection('', 'fallback-model'))
-      .toBe('fallback-model')
+      .toEqual({ source: 'provider', modelId: 'fallback-model' })
   })
 
-  it('falls back to the default model for a JSON-shaped legacy value '
-    + 'instead of leaking the raw JSON onward as a model id', () => {
+  it('falls back to the raw legacy value for a JSON-shaped string that '
+    + 'is not valid JSON, instead of throwing', () => {
     expect(parseModelSelection('{not json at all', 'fallback-model'))
-      .toBe('fallback-model')
+      .toEqual({ source: 'provider', modelId: '{not json at all' })
+  })
+
+  it('round-trips a gateway JSON selection instead of degrading to the '
+    + 'fallback model id', () => {
+    const raw = JSON.stringify({
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5',
+    })
+
+    expect(parseModelSelection(raw, 'fallback-model')).toEqual({
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5',
+    })
+  })
+
+  it('falls back to the default model for a structurally invalid gateway '
+    + 'selection', () => {
+    const raw = JSON.stringify({
+      source: 'gateway',
+      gatewayId: 'not-a-real-gateway',
+      modelId: 'openai/gpt-5',
+    })
+
+    expect(parseModelSelection(raw, 'fallback-model'))
+      .toEqual({ source: 'provider', modelId: raw })
   })
 })
 
@@ -66,5 +93,23 @@ describe('useUserModel', () => {
     const { userModel } = useUserModel()
 
     expect(userModel.value).toBe(defaultModel)
+  })
+
+  it('round-trips a stored gateway selection through `selection` instead '
+    + 'of degrading to the fallback model id', () => {
+    localStorage.setItem('model', JSON.stringify({
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5',
+    }))
+
+    const { selection, userModel } = useUserModel()
+
+    expect(selection.value).toEqual({
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'openai/gpt-5',
+    })
+    expect(userModel.value).toBe('openai/gpt-5')
   })
 })

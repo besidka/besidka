@@ -1,3 +1,4 @@
+import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -17,7 +18,7 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
-    gateway: z.enum(['vercel', 'cloudflare', 'openrouter']).optional(),
+    gateway: z.enum(gatewayIds).optional(),
   }).safeParse)
 
   if (body.error) {

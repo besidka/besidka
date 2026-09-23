@@ -1,4 +1,6 @@
-export type GatewayId = 'vercel' | 'cloudflare' | 'openrouter'
+import type { gatewayIds } from '#shared/utils/gateways'
+
+export type GatewayId = typeof gatewayIds[number]
 
 export type GatewayFavoriteModels = Partial<Record<GatewayId, string[]>>
 

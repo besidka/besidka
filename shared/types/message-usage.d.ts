@@ -22,10 +22,14 @@ export type MessageUsage = {
   // tokens (see addResearchCostEstimateToUsage in
   // server/utils/ai/message-usage.ts).
   costEstimated?: boolean
-  // Legacy read-only field: a blended total cost in USD, upstream-reported
-  // rather than derived from the static per-model cost map. No current send
-  // path writes it; it is kept so already-persisted messages that carry one
-  // still render their cost instead of showing nothing.
+  // A blended total cost in USD, upstream-reported rather than derived from
+  // the static per-model cost map. Written only by restored gateway sends —
+  // OpenRouter's providerMetadata.openrouter.usage.cost, Vercel's async
+  // getGenerationInfo() total, or a catalog-pricing estimate for Cloudflare,
+  // which reports no cost at all. getPerMessageCost() prefers this over the
+  // inputCost/outputCost split whenever it is set, since a gateway never
+  // reports the split itself and inventing a decomposition would fabricate
+  // numbers.
   totalCost?: number
   // Google Search grounding, Anthropic's web_search server tool, OpenAI's
   // web_search Responses tool, and the BYOK Brave/Exa search tools are all

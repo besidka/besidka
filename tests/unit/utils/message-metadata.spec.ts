@@ -542,7 +542,7 @@ describe('resolveMessageMenuInfo', () => {
   })
 })
 
-describe('resolveMessageMenuInfo legacy blended totalCost', () => {
+describe('resolveMessageMenuInfo blended totalCost', () => {
   const legacyUsage = {
     model: 'openai/gpt-5.4',
     provider: 'legacy-blended',
@@ -579,7 +579,32 @@ describe('resolveMessageMenuInfo legacy blended totalCost', () => {
     expect(info?.chatTotalCost).toBe(0.021)
   })
 
-  it('sums a legacy blended totalCost alongside a direct-provider outputCost/inputCost turn', () => {
+  it('prefers totalCost over an inputCost/outputCost split reported '
+    + 'alongside it on the same gateway usage', () => {
+    const gatewayUsage = {
+      model: 'openai/gpt-5',
+      provider: 'openrouter',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+      totalCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: gatewayUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.05)
+    expect(info?.costToMessage).toBe(0.05)
+    expect(info?.chatTotalCost).toBe(0.05)
+  })
+
+  it('sums a blended totalCost alongside a direct-provider outputCost/inputCost turn', () => {
     const directUsage = {
       model: 'gpt-5.4',
       provider: 'openai',
@@ -671,11 +696,35 @@ describe('resolveMessageMenuInfo provider display', () => {
     expect(info?.providerKind).toBeUndefined()
   })
 
-  it('degrades an assistant message with a legacy gateway provider id to '
-    + 'no provider row, instead of throwing', () => {
+  it('resolves an openrouter-provider message to a real gateway provider '
+    + 'row and still reports its cost', () => {
     const usage = {
       model: 'openai/gpt-5',
       provider: 'openrouter',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('openrouter')
+    expect(info?.providerLabel).toBe('OpenRouter')
+    expect(info?.providerKind).toBe('gateway')
+    expect(info?.cost).toBe(0.05)
+  })
+
+  it('degrades an assistant message with a genuinely unrecognizable '
+    + 'provider id to no provider row, instead of throwing', () => {
+    const usage = {
+      model: 'openai/gpt-5',
+      provider: 'not-a-real-provider',
       inputTokens: 100,
       outputTokens: 100,
       totalTokens: 200,

@@ -1,3 +1,4 @@
+import { gatewayIds } from '#shared/utils/gateways'
 import { createError, useLogger } from 'evlog'
 import type { H3Event } from 'h3'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
@@ -38,7 +39,7 @@ async function enforceGatewayModelsRateLimit(
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
-    gateway: z.enum(['vercel', 'cloudflare', 'openrouter']),
+    gateway: z.enum(gatewayIds),
   }).safeParse)
 
   if (params.error) {

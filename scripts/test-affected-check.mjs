@@ -216,6 +216,14 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/markdown-plain.spec.ts',
   ]
 
+  const gatewaySharedTests = [
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/utils/provider-meta.spec.ts',
+    'tests/unit/utils/gateways.spec.ts',
+    'tests/unit/composables/model.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+  ]
+
   const chatShareTests = [
     'tests/integration/server/chat-share.spec.ts',
     'tests/integration/server/rewrite-share-file-urls.spec.ts',
@@ -528,6 +536,11 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^(app\/composables\/(model|selected-model-info)\.ts|shared\/utils\/model-selection\.ts)$/,
       tests: [...modelSelectionTests, ...modelsTriggerTests],
+    },
+    {
+      pattern:
+        /^(shared\/(types\/gateways\.d\.ts|utils\/(gateways|gateway-(capabilities|model-id|pricing)|model-selection|provider-meta)\.ts))$/,
+      tests: gatewaySharedTests,
     },
     {
       pattern: /^app\/composables\/user-setting\.ts$/,

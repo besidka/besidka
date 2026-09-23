@@ -230,9 +230,10 @@ function getFollowingAssistantUsage(
     : undefined
 }
 
-// Some already-persisted turns carry one blended `totalCost` instead of the
-// `inputCost`/`outputCost` split every current send path produces. That total
-// is shown in full on the assistant row, the one place `usage` is actually
+// A gateway send (OpenRouter, Vercel, Cloudflare) reports one blended
+// `totalCost` instead of the `inputCost`/`outputCost` split a direct-provider
+// send produces, so it is preferred here whenever it is set. That total is
+// shown in full on the assistant row, the one place `usage` is actually
 // persisted; the paired user row contributes nothing so sumMessageCosts()
 // below never double-counts it.
 function getPerMessageCost(

@@ -1,5 +1,6 @@
 import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it } from 'vitest'
+import type { MessageUsage } from '../../../shared/types/message-usage.d'
 import type { SearchUsage } from '../../../server/utils/ai/search-usage'
 import {
   addImageGenerationCostToUsage,
@@ -134,8 +135,7 @@ describe('buildMessageUsage', () => {
     expect(result).not.toHaveProperty('cachedInputTokens')
   })
 
-  it('never sets totalCost, which only ever comes from '
-    + 'already-persisted messages', () => {
+  it('never sets totalCost, which only a gateway send path writes', () => {
     const usage = createUsage({
       inputTokens: 10,
       outputTokens: 20,
@@ -425,5 +425,45 @@ describe('addResearchCostEstimateToUsage', () => {
     )
 
     expect(result).toBeUndefined()
+  })
+})
+
+describe('totalCost passthrough', () => {
+  function buildGatewayUsage(): MessageUsage {
+    return {
+      model: 'openai/gpt-5',
+      provider: 'openrouter',
+      inputTokens: 1000,
+      outputTokens: 500,
+      totalTokens: 1500,
+      totalCost: 0.42,
+    }
+  }
+
+  it('addSearchUsage preserves a blended totalCost a gateway send already '
+    + 'wrote, since it never derives its own decomposition', () => {
+    const usage = buildGatewayUsage()
+    const braveSearch: SearchUsage = {
+      units: 1,
+      billingUnit: 'search',
+      cost: 0.005,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+      provider: 'brave',
+    }
+
+    const result = addSearchUsage(usage, braveSearch)
+
+    expect(result?.totalCost).toBe(0.42)
+    expect(result?.searchCost).toBe(0.005)
+  })
+
+  it('addImageGenerationCostToUsage preserves a blended totalCost '
+    + 'untouched', () => {
+    const usage = buildGatewayUsage()
+
+    const result = addImageGenerationCostToUsage(usage, 0.067)
+
+    expect(result?.totalCost).toBe(0.42)
   })
 })
