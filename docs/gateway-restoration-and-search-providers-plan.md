@@ -2771,7 +2771,31 @@ Then the real sends, once the owner has saved the three keys (WP 2.4):
     if the UI exposes it, and confirm the double-count guard: a blended
     `totalCost` and **no** `searchCost`.
 
-- [ ] WP 2.6 complete
+- [x] WP 2.6 complete (commit `e36fd8b`) - code-complete and independently
+      re-verified (diff review + re-run typecheck/named-specs/full-suite, all
+      matched the coder's report exactly); the 11-step browser verification
+      script above is **deferred to the Epic 2 gate** once WP 2.7/2.9/2.10
+      land, per this plan's "land together" guidance - flagged for dedicated
+      reviewer attention as the highest-risk package in the epic. Two
+      real bugs found and fixed during this package, beyond the plan's
+      original scope: Vercel's async cost path was empirically dead (real
+      `getGenerationInfo()` latency ~12s vs. the original 1.5s retry) and
+      is now read synchronously off `providerMetadata.gateway.cost`
+      (`readVercelGatewayCost`, confirmed against a live divergent case
+      that `cost` and not `inferenceCost`/`marketCost`/`gatewayCost` is
+      the right field); and a gateway send had no server-side
+      `GatewayModel.toolCall` gate for Brave/Exa, meaning a search could
+      run and bill the user's own key on a model that could never use the
+      result — added, mirroring the direct-provider `model.toolCall` gate.
+      Cloudflare gateway sends remain **owner-blocked** for live
+      verification: the provided credential lacks Workers AI permission
+      (has AI-Gateway-only scope), the `besidka` gateway is out of
+      wholesale credits, and `@cf/meta/llama-3.3-70b-instruct` returned
+      "no such model" even when authenticated — none of this is a code
+      defect in the restored `useCloudflareGateway()` builder, which
+      correctly targets Workers AI's own catalog API (a different
+      Cloudflare product from the AI-Gateway reverse proxy R12's spike
+      tested).
 
 ## WP 2.7 — Title route, `buildMessageUsage` 4th param, gateway image persistence
 
