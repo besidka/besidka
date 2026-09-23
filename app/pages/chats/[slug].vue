@@ -113,7 +113,10 @@
               :unwrap="getUnwrap(m.role)"
             />
           </div>
-          <ChatUrlSources :message="m" />
+          <ChatUrlSources
+            v-if="hasVisibleTextPart(m)"
+            :message="m"
+          />
         </ChatMessage>
       </div>
       <ChatMessage
@@ -213,7 +216,10 @@ import {
   isChatTestErrorId,
   isChatTestScenario,
 } from '#shared/utils/chat-test-errors'
-import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
+import {
+  hasVisibleTextPart,
+  resolveMessageMenuInfo,
+} from '#shared/utils/message-metadata'
 import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
 
 definePageMeta({

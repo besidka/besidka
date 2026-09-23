@@ -152,6 +152,29 @@ function resolveDisplayCost(
   return { amount: cost, isEstimated: !!usage?.costEstimated }
 }
 
+/**
+ * `source-url` parts can land before any `text` part exists (e.g. while
+ * reasoning is still showing, or right when a search tool resolves but
+ * before the model has started writing), so Sources gating on parts.length
+ * alone would flash in over an otherwise-empty message. This checks for
+ * actual rendered content instead.
+ */
+export function hasVisibleTextPart(message: { parts?: unknown }): boolean {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+
+  return parts.some((part) => {
+    return (
+      typeof part === 'object'
+      && part !== null
+      && 'type' in part
+      && part.type === 'text'
+      && 'text' in part
+      && typeof part.text === 'string'
+      && part.text.trim().length > 0
+    )
+  })
+}
+
 export function getMessageUsedTools(
   message: { parts?: unknown, tools?: unknown },
 ): Array<ModelTool | 'deep_research'> {

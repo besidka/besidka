@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getMessageMetadata,
   getMessageUsedTools,
+  hasVisibleTextPart,
   hydrateMessageUsage,
   isExternalWebSearchTool,
   isWebSearchTool,
@@ -1096,5 +1097,40 @@ describe('isExternalWebSearchTool', () => {
 
     expect(external.every(isWebSearchTool)).toBe(true)
     expect(external).toEqual(['web_search_brave', 'web_search_exa'])
+  })
+})
+
+describe('hasVisibleTextPart', () => {
+  it('returns false for a message with no parts', () => {
+    expect(hasVisibleTextPart({})).toBe(false)
+    expect(hasVisibleTextPart({ parts: [] })).toBe(false)
+  })
+
+  it('returns false while only a source-url part has arrived', () => {
+    const message = {
+      parts: [
+        { type: 'source-url', sourceId: 'source-1', url: 'https://a.com' },
+      ],
+    }
+
+    expect(hasVisibleTextPart(message)).toBe(false)
+  })
+
+  it('returns false for a text part that is empty or whitespace-only', () => {
+    expect(hasVisibleTextPart({ parts: [{ type: 'text', text: '' }] }))
+      .toBe(false)
+    expect(hasVisibleTextPart({ parts: [{ type: 'text', text: '   ' }] }))
+      .toBe(false)
+  })
+
+  it('returns true once a non-empty text part has arrived', () => {
+    const message = {
+      parts: [
+        { type: 'source-url', sourceId: 'source-1', url: 'https://a.com' },
+        { type: 'text', text: 'Here is the answer.' },
+      ],
+    }
+
+    expect(hasVisibleTextPart(message)).toBe(true)
   })
 })
