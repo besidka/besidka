@@ -28,15 +28,8 @@
       :data-testid="`key-tab-${tab.id}`"
       @click="activeTab = tab.id"
     >
-      <ProviderIcon
-        v-if="tab.providerId"
-        :provider-id="tab.providerId"
-        :label="tab.label"
-        class="!size-4 shrink-0"
-      />
       <Icon
-        v-else
-        name="lucide:key-round"
+        :name="tab.icon"
         size="16"
         class="shrink-0"
       />
@@ -90,29 +83,34 @@
     </ul>
   </div>
   <div
-    v-for="gatewayId in enabledGateways"
-    v-show="activeTab === gatewayId"
-    :id="`key-panel-${gatewayId}`"
-    :key="gatewayId"
+    v-show="activeTab === gatewaysTabId"
+    :id="`key-panel-${gatewaysTabId}`"
     role="tabpanel"
-    :aria-labelledby="`key-tab-${gatewayId}`"
-    :data-testid="`key-panel-${gatewayId}`"
+    :aria-labelledby="`key-tab-${gatewaysTabId}`"
+    :data-testid="`key-panel-${gatewaysTabId}`"
   >
     <p class="mb-6 text-center">
       Gateways proxy to many models using your own gateway account,
       instead of a single provider's key
     </p>
-    <UiBubble>
-      <LazyProfileKeysCloudflareGateway
-        v-if="gatewayId === 'cloudflare'"
-        open
-      />
-      <LazyProfileKeysProviderKeyCard
-        v-else
-        :provider-id="gatewayId"
-        open
-      />
-    </UiBubble>
+    <ul class="grid gap-4">
+      <li
+        v-for="gatewayId in enabledGateways"
+        :key="gatewayId"
+      >
+        <UiBubble>
+          <LazyProfileKeysCloudflareGateway
+            v-if="gatewayId === 'cloudflare'"
+            :group="gatewaysAccordionGroup"
+          />
+          <LazyProfileKeysProviderKeyCard
+            v-else
+            :provider-id="gatewayId"
+            :group="gatewaysAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
   </div>
 </template>
 <script setup lang="ts">
@@ -126,13 +124,15 @@ import {
 interface KeyTab {
   id: string
   label: string
-  providerId?: string
+  icon: string
 }
 
 const providersTabId = 'providers'
 const searchTabId = 'search'
+const gatewaysTabId = 'gateways'
 const providersAccordionGroup = 'profile-provider-keys'
 const searchAccordionGroup = 'profile-search-provider-keys'
+const gatewaysAccordionGroup = 'profile-gateway-keys'
 
 definePageMeta({
   layout: 'profile',
@@ -160,17 +160,9 @@ const enabledProviders = computed<Providers>(() => {
   })
 })
 
-const tabs = computed<KeyTab[]>(() => {
-  return [
-    { id: providersTabId, label: 'Per provider' },
-    { id: searchTabId, label: 'Search providers' },
-    ...enabledGateways.map((gatewayId) => {
-      return {
-        id: gatewayId,
-        label: providerMeta[gatewayId]?.label || gatewayId,
-        providerId: gatewayId,
-      }
-    }),
-  ]
-})
+const tabs: KeyTab[] = [
+  { id: providersTabId, label: 'Direct Providers', icon: 'lucide:key-round' },
+  { id: searchTabId, label: 'Search Providers', icon: 'lucide:globe' },
+  { id: gatewaysTabId, label: 'Gateways', icon: 'lucide:waypoints' },
+]
 </script>

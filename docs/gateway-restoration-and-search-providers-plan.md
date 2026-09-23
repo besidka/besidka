@@ -2394,7 +2394,11 @@ so a real save cannot be confirmed against a live gateway):
 9. Delete each and confirm the badge reverts. Re-save them; the rest of
    Epic 2's live verification depends on them being present.
 
-- [x] WP 2.4 complete (commit `4345791`, landed with WP 2.5)
+- [x] WP 2.4 complete (commit `4345791`, landed with WP 2.5) - later
+      consolidated at the owner's request to three tabs (Direct Providers /
+      Search Providers / Gateways); the three gateways render as collapsed
+      cards in one shared accordion group on the Gateways tab instead of one
+      pre-expanded card per gateway tab
 
 ## WP 2.5 — Gateway model catalog (server + API + client cache)
 

@@ -27,11 +27,12 @@ function stubs() {
     },
     ProfileKeysCloudflareGateway: {
       props: {
+        group: { type: String, default: '' },
         open: { type: Boolean, default: false },
       },
       template:
         '<div data-testid="cloudflare-gateway-card"'
-        + ' :data-open="String(open)" />',
+        + ' :data-group="group" :data-open="String(open)" />',
     },
   }
 }
@@ -119,9 +120,9 @@ describe('profile keys page', () => {
       const searchTab = wrapper.get('[data-testid="key-tab-search"]')
 
       expect(providersTab.classes()).toContain('tab-active')
-      expect(providersTab.text()).toContain('Per provider')
+      expect(providersTab.text()).toContain('Direct Providers')
       expect(searchTab.classes()).not.toContain('tab-active')
-      expect(searchTab.text()).not.toContain('Search providers')
+      expect(searchTab.text()).not.toContain('Search Providers')
     })
 
   it('shows the providers panel and hides the search panel by default',
@@ -156,7 +157,7 @@ describe('profile keys page', () => {
       expect((providersPanel.element as HTMLElement).style.display)
         .toBe('none')
       expect(searchTab.classes()).toContain('tab-active')
-      expect(searchTab.text()).toContain('Search providers')
+      expect(searchTab.text()).toContain('Search Providers')
     })
 
   it('lists Brave then Exa in the search panel, in that order',
@@ -190,67 +191,53 @@ describe('profile keys page', () => {
       })
     })
 
-  it('renders five tabs in the order providers, search, cloudflare, '
-    + 'openrouter, vercel', async () => {
-    const wrapper = await mountPage()
-
-    const tabIds = wrapper.findAll('[class~="tab"]').map((tab: any) => {
-      return tab.attributes('id')
-    })
-
-    expect(tabIds).toEqual([
-      'key-tab-providers',
-      'key-tab-search',
-      'key-tab-cloudflare',
-      'key-tab-openrouter',
-      'key-tab-vercel',
-    ])
-  })
-
-  it('renders the gateway blurb and one pre-expanded card per gateway tab',
+  it('renders three tabs in the order providers, search, gateways',
     async () => {
       const wrapper = await mountPage()
 
-      await wrapper.get('[data-testid="key-tab-cloudflare"]').trigger('click')
+      const tabIds = wrapper.findAll('[class~="tab"]').map((tab: any) => {
+        return tab.attributes('id')
+      })
 
-      const cloudflarePanel = wrapper.get(
-        '[data-testid="key-panel-cloudflare"]',
-      )
-
-      expect(cloudflarePanel.text()).toContain(
-        'Gateways proxy to many models using your own gateway account, '
-        + 'instead of a single provider\'s key',
-      )
-      expect(
-        cloudflarePanel.find('[data-testid="cloudflare-gateway-card"]')
-          .attributes('data-open'),
-      ).toBe('true')
-      expect(
-        cloudflarePanel.find('[data-testid="provider-card"]').exists(),
-      ).toBe(false)
-
-      await wrapper.get('[data-testid="key-tab-openrouter"]').trigger('click')
-
-      const openrouterPanel = wrapper.get(
-        '[data-testid="key-panel-openrouter"]',
-      )
-      const openrouterCard = openrouterPanel.get(
-        '[data-testid="provider-card"]',
-      )
-
-      expect(openrouterCard.attributes('data-provider')).toBe('openrouter')
-      expect(openrouterCard.attributes('data-open')).toBe('true')
-      expect(
-        openrouterPanel.find('[data-testid="cloudflare-gateway-card"]')
-          .exists(),
-      ).toBe(false)
-
-      await wrapper.get('[data-testid="key-tab-vercel"]').trigger('click')
-
-      const vercelPanel = wrapper.get('[data-testid="key-panel-vercel"]')
-      const vercelCard = vercelPanel.get('[data-testid="provider-card"]')
-
-      expect(vercelCard.attributes('data-provider')).toBe('vercel')
-      expect(vercelCard.attributes('data-open')).toBe('true')
+      expect(tabIds).toEqual([
+        'key-tab-providers',
+        'key-tab-search',
+        'key-tab-gateways',
+      ])
     })
+
+  it('renders the gateway blurb and one collapsed card per gateway, '
+    + 'sharing one accordion group', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.get('[data-testid="key-tab-gateways"]').trigger('click')
+
+    const gatewaysPanel = wrapper.get('[data-testid="key-panel-gateways"]')
+
+    expect(gatewaysPanel.text()).toContain(
+      'Gateways proxy to many models using your own gateway account, '
+      + 'instead of a single provider\'s key',
+    )
+
+    const cloudflareCard = gatewaysPanel.get(
+      '[data-testid="cloudflare-gateway-card"]',
+    )
+
+    expect(cloudflareCard.attributes('data-group'))
+      .toBe('profile-gateway-keys')
+    expect(cloudflareCard.attributes('data-open')).toBe('false')
+
+    const providerCards = gatewaysPanel.findAll(
+      '[data-testid="provider-card"]',
+    )
+    const gatewayIds = providerCards.map((card: any) => {
+      return card.attributes('data-provider')
+    })
+
+    expect(gatewayIds).toEqual(['openrouter', 'vercel'])
+    providerCards.forEach((card: any) => {
+      expect(card.attributes('data-group')).toBe('profile-gateway-keys')
+      expect(card.attributes('data-open')).toBe('false')
+    })
+  })
 })
