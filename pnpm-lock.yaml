@@ -125,6 +125,9 @@ importers:
       '@ai-sdk/deepseek':
         specifier: ^3.0.26
         version: 3.0.26(zod@4.4.3)
+      '@ai-sdk/gateway':
+        specifier: 4.0.44
+        version: 4.0.44(zod@4.4.3)
       '@ai-sdk/google':
         specifier: ^4.0.37
         version: 4.0.37(zod@4.4.3)
@@ -191,6 +194,9 @@ importers:
       '@nuxtjs/sitemap':
         specifier: ^8.3.3
         version: 8.3.3(c062a7672930eca77cf02199db48ba77)
+      '@openrouter/ai-sdk-provider':
+        specifier: 3.1.0
+        version: 3.1.0(ai@7.0.56(zod@4.4.3))(zod@4.4.3)
       '@react-email/render':
         specifier: ^2.0.4
         version: 2.0.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -2792,6 +2798,13 @@ packages:
 
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
+
+  '@openrouter/ai-sdk-provider@3.1.0':
+    resolution: {integrity: sha512-BQy1TA9fKrh47s9ivsO6FY5QimN7GUF0i8Qon3pkxQclEgShso0dClpcWn8OIyPLEZZPFaFKgI8TW4S/O0p0Dw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      ai: ^7.0.0
+      zod: ^3.25.76 || ^4.1.8
 
   '@opentelemetry/api@1.9.1':
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
@@ -14061,6 +14074,11 @@ snapshots:
       outvariant: 1.4.3
 
   '@open-draft/until@2.1.0': {}
+
+  '@openrouter/ai-sdk-provider@3.1.0(ai@7.0.56(zod@4.4.3))(zod@4.4.3)':
+    dependencies:
+      ai: 7.0.56(zod@4.4.3)
+      zod: 4.4.3
 
   '@opentelemetry/api@1.9.1': {}
 
