@@ -3651,7 +3651,9 @@ pnpm vitest run  # the landingTests group
    picked up the new/edited entries automatically.
 5. Confirm `#about-the-name` still matches `alternateName`.
 
-- [ ] WP 3.1 complete
+- [ ] WP 3.1 dispatched to an Opus coder (2026-09-23), per the owner's own
+      request that this whole epic was overdue — the plan above was written
+      but never executed while Epic 2/the UX-review batch ran. In progress.
 
 ## WP 3.2 — Legal pages
 
@@ -3770,7 +3772,10 @@ pnpm vitest run   # the landing/legal groups
 5. **Owner review of the controller/processor classification before merge.**
    This step is a human gate, not an agent check.
 
-- [ ] WP 3.2 complete
+- [ ] WP 3.2 dispatched to an Opus coder (2026-09-23), in parallel with
+      WP 3.1 (disjoint files). The gateway controller/processor
+      classification is deliberately left `@TODO owner` in the draft — that
+      cell does not get resolved by an agent, see the Epic 3 gate below.
 
 ## Epic 3 gate
 
