@@ -3412,6 +3412,45 @@ Expect **no output**. Any line printed is a spec that will never run on a PR.
 - [ ] Gateway image generation verified end to end, rendering a
       `/files/<storageKey>` URL rather than an inline `data:` blob
 
+## Epic 2 follow-ups — owner UX review (2026-09-23)
+
+Raised by the owner after the first live look at the restored gateway UI.
+Research → advisor → planner → advisor → five parallel coder packages
+(A gateway list, B direct list, C web-search UI, D Cloudflare errors + docs,
+E picker core) → review → deploy → browser check.
+
+- [x] Keys page: 5 tabs → 3 (Direct Providers / Search Providers / Gateways,
+      gateways as collapsible cards) — commit `3b9a75d`
+- [ ] U1 gateway vision chip white-on-white (`text-secondary` → `text-accent`,
+      missed port of `55509f5`) — A, landed `0c27ac9`, browser check pending
+- [ ] U2 phantom horizontal scroll in the picker list, both modes: invisible
+      daisyUI tooltip `::before` bubbles inflate the scroll width; tooltips →
+      native `title` — A + B, landed `0c27ac9` + `f3771bd`, browser check pending
+- [ ] U3 gateway rail count badge `scale-[0.8]` + rail button size parity — A, landed `0c27ac9`, browser check pending
+- [ ] U4 shorter gateway web-search tooltip ("Web search" / "Web search
+      (gateway-billed)") — A, landed `0c27ac9`, browser check pending
+- [ ] U5 tool-calling wrench in the gateway list (strict `toolCall`), neutral
+      `base-200/300` circle in both lists — A + B, landed `0c27ac9` + `f3771bd`, browser check pending
+- [ ] U6 gateway capability filters: Reasoning / Web search / Tool calling,
+      combinable, fail-closed; web search hidden where it can't discriminate — E, landed `dccc219`, browser check pending
+- [ ] U7 web-search trigger + menu icons 11px → 16px (`!size-4`, same
+      unlayered-icon-CSS bug as `1acd367`) — C, landed `693b2b5`, browser check pending
+- [ ] U8 direct list: "Tool calling" tooltip, 12px glyphs in 20px circles — B, landed `f3771bd`, browser check pending
+- [ ] U9 mobile "more" menu: web search right after reasoning — C, landed `693b2b5`, browser check pending
+- [ ] U10 web-search pill keeps "Search" for Brave/Exa, `title` names the
+      provider — C, landed `693b2b5`, browser check pending
+- [ ] PERF picker open: root cause `@nuxt/icon` sorting a reactive
+      220-entry collection list on every `<Icon>` setup; narrow to 4
+      collections, mount the panel once, `markRaw` catalog — E, landed
+      `dccc219` (+ `a5626f4` doc). Measured (headless Chromium, production
+      build, warm-open medians, before → after): provider first frame
+      182 → 35 ms, long tasks 206 → 0 ms; OpenRouter 525 → 94 ms; 4× CPU
+      848 → 119 ms / 2518 → 349 ms. The icon pin alone accounts for
+      ~half; the trace shows the `useResolvedName` sort gone
+- [ ] CF Cloudflare catalog: token lacks Workers AI Read (owner action
+      relayed); surface why/fix in the picker, upstream 401/403 → actionable
+      403, no stale-cache serve, doc corrections — D + E; server half landed `e171395`; owner fixed the token 2026-09-23 and the preview catalog now returns 27 `@cf/*` models with pricing + `toolCall` (verified live)
+
 ---
 
 # Epic 3 — Content and legal
