@@ -61,12 +61,12 @@
         <span
           v-if="model.priceTier"
           data-testid="model-price-tier"
-          class="badge badge-xs badge-soft shrink-0 font-semibold"
+          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
           :class="[
             getPriceTierClass(model.priceTier),
             { 'max-xs:ml-5': !isKeyMissing },
           ]"
-          :title="priceTip"
+          :data-tip="priceTip"
         >
           {{ model.priceTier }}
           <span
@@ -88,7 +88,8 @@
           <span
             v-if="model.reasoning || model.reasoningAlwaysOn"
             class="capability-chip shrink-0 flex items-center p-1 rounded-full text-warning"
-            :title="model.reasoningAlwaysOn
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            :data-tip="model.reasoningAlwaysOn
               ? 'Always-on reasoning'
               : 'Reasoning'
             "
@@ -101,7 +102,8 @@
           <span
             v-if="model.tools.includes('web_search')"
             class="capability-chip shrink-0 flex items-center p-1 rounded-full text-info"
-            title="Web search"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Web search"
           >
             <Icon
               name="lucide:globe"
@@ -112,7 +114,8 @@
             v-if="hasImageGenerationCapability(model)"
             data-testid="model-image-generation-capability"
             class="capability-chip shrink-0 flex items-center p-1 rounded-full text-violet-700 dark:text-violet-200"
-            title="Image generation"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Image generation"
           >
             <Icon
               name="lucide:image-plus"
@@ -123,7 +126,8 @@
             v-if="hasVisionCapability(model)"
             data-testid="model-vision-capability"
             class="capability-chip shrink-0 flex items-center p-1 rounded-full text-accent"
-            title="Vision"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Vision"
           >
             <Icon
               name="lucide:eye"
@@ -133,7 +137,8 @@
           <span
             v-if="model.research"
             class="capability-chip shrink-0 flex items-center p-1 rounded-full text-success"
-            title="Deep research"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Deep research"
           >
             <Icon
               name="lucide:telescope"
@@ -144,7 +149,8 @@
             v-if="model.toolCall"
             data-testid="model-tool-call-capability"
             class="shrink-0 flex items-center p-1 rounded-full bg-base-200 dark:bg-base-300 text-slate-700 dark:text-slate-300"
-            title="Tool calling"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Tool calling"
           >
             <Icon
               name="lucide:wrench"
@@ -177,14 +183,14 @@
           v-if="!isLegacy"
           type="button"
           data-testid="model-favorite-toggle"
-          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)]"
+          class="btn btn-ghost btn-xs btn-circle shrink-0 max-xs:[--size:calc(var(--size-field)_*_7)] tooltip tooltip-left"
           :class="{ 'text-warning': isFavorite }"
           :aria-label="isFavorite
             ? `Remove ${model.name} from favorites`
             : `Add ${model.name} to favorites`
           "
           :aria-pressed="isFavorite"
-          :title="isFavorite
+          :data-tip="isFavorite
             ? 'Remove from favorites'
             : 'Add to favorites'
           "
@@ -223,6 +229,8 @@ const emit = defineEmits<{
   toggleDetail: []
 }>()
 
+const { isDesktop } = useDevice()
+
 const priceTip = computed<string | undefined>(() => {
   return getModelPriceTip(props.model)
 })
@@ -235,6 +243,10 @@ const keyMissingLabel = computed<string>(() => {
   const owner = props.providerName || 'this provider'
 
   return `Add your ${owner} API key to use this model.`
+})
+
+const hasTooltip = computed<boolean>(() => {
+  return isDesktop && !props.isLegacy
 })
 
 const hasCapabilities = computed<boolean>(() => {

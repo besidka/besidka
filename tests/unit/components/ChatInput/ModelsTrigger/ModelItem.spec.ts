@@ -83,17 +83,17 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(wrapper.get('li').attributes('aria-selected')).toBe('true')
   })
 
-  it('renders the name and price tier with a color-matched title', async () => {
+  it('renders the name and price tier with a color-matched tooltip', async () => {
     const wrapper = await mountModelItem()
     const priceTier = wrapper.get('[data-testid="model-price-tier"]')
 
     expect(wrapper.text()).toContain('GPT-5.4')
     expect(priceTier.text()).toContain('$$')
     expect(priceTier.classes()).toContain('badge-info')
-    expect(priceTier.classes()).not.toContain('tooltip')
-    expect(priceTier.classes()).not.toContain('tooltip-soft')
-    expect(priceTier.classes()).not.toContain('tooltip-bottom')
-    expect(priceTier.attributes('title')).toBe('from $2.50 / from $15.00')
+    expect(priceTier.classes()).toContain('tooltip')
+    expect(priceTier.classes()).toContain('tooltip-soft')
+    expect(priceTier.classes()).toContain('tooltip-bottom')
+    expect(priceTier.attributes('data-tip')).toBe('from $2.50 / from $15.00')
     expect(priceTier.get('.sr-only').text()).toBe('from $2.50 / from $15.00')
   })
 
@@ -159,9 +159,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
       .toBe(false)
-    expect(wrapper.find('[title="Reasoning"]').exists()).toBe(false)
-    expect(wrapper.find('[title="Web search"]').exists()).toBe(false)
-    expect(wrapper.find('[title="Deep research"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tip="Web search"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(false)
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(false)
@@ -227,9 +227,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
       .toBe(true)
-    expect(wrapper.find('[title="Reasoning"]').exists()).toBe(true)
-    expect(wrapper.find('[title="Web search"]').exists()).toBe(true)
-    expect(wrapper.find('[title="Deep research"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tip="Web search"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tip="Deep research"]').exists()).toBe(true)
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(true)
@@ -263,24 +263,8 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     })
   })
 
-  it('never leaves a data-tip attribute behind on a fully capable row', async () => {
-    const model = createModel({
-      tools: ['web_search', 'image_generation'],
-      reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
-      research: {
-        tier: 'quick',
-        assistModel: 'gpt-5.4-nano',
-        costEstimate: '~$1 / task',
-        timeEstimate: '5–15 min',
-      },
-    })
-    const wrapper = await mountModelItem(model)
-
-    expect(wrapper.find('[data-tip]').exists()).toBe(false)
-  })
-
   it('shows the tool-calling icon for a model with toolCall, styled as a '
-    + 'neutral circle with a short title', async () => {
+    + 'neutral circle with a short tooltip', async () => {
     const wrapper = await mountModelItem(createModel({ toolCall: true }))
     const toolCall = wrapper.get('[data-testid="model-tool-call-capability"]')
 
@@ -288,7 +272,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(toolCall.classes()).toContain('dark:bg-base-300')
     expect(toolCall.classes()).toContain('text-slate-700')
     expect(toolCall.classes()).not.toContain('capability-chip')
-    expect(toolCall.attributes('title')).toBe('Tool calling')
+    expect(toolCall.attributes('data-tip')).toBe('Tool calling')
   })
 
   it('hides the tool-calling icon for a model without toolCall', async () => {
@@ -322,7 +306,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     const vision = wrapper.get('[data-testid="model-vision-capability"]')
 
     expect(vision.classes()).toContain('text-accent')
-    expect(vision.attributes('title')).toBe('Vision')
+    expect(vision.attributes('data-tip')).toBe('Vision')
     expect(wrapper.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(false)
@@ -346,9 +330,9 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
       .toBe(true)
-    expect(wrapper.find('[title="Always-on reasoning"]').exists())
+    expect(wrapper.find('[data-tip="Always-on reasoning"]').exists())
       .toBe(true)
-    expect(wrapper.find('[title="Reasoning"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
   })
 
   it('renders the image generation icon for a purpose-built image model', async () => {
@@ -390,9 +374,14 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(favorite.attributes('aria-label'))
       .toBe('Add GPT-5.4 to favorites')
     expect(favorite.attributes('aria-pressed')).toBe('false')
-    expect(favorite.attributes('title')).toBe('Add to favorites')
-    expect(favorite.classes()).not.toContain('tooltip')
-    expect(favorite.classes()).not.toContain('tooltip-left')
+    expect(favorite.attributes('data-tip')).toBe('Add to favorites')
+    expect(favorite.classes()).toContain('tooltip')
+    expect(favorite.classes()).toContain('tooltip-left')
+    expect(favorite.classes()).not.toContain('tooltip-soft')
+    expect(favorite.classes()).not.toContain('tooltip-success')
+    expect(favorite.classes()).not.toContain('tooltip-info')
+    expect(favorite.classes()).not.toContain('tooltip-warning')
+    expect(favorite.classes()).not.toContain('tooltip-error')
 
     await favorite.trigger('click')
 
@@ -406,7 +395,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
     expect(favorite.attributes('aria-label'))
       .toBe('Remove GPT-5.4 from favorites')
     expect(favorite.attributes('aria-pressed')).toBe('true')
-    expect(favorite.attributes('title')).toBe('Remove from favorites')
+    expect(favorite.attributes('data-tip')).toBe('Remove from favorites')
   })
 
   it('omits the detail panel id while the detail panel is closed', async () => {

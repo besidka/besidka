@@ -1,8 +1,14 @@
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GatewayModel } from '#shared/types/gateways.d'
 import GatewayModelItem
   from '../../../../../app/components/ChatInput/ModelsTrigger/GatewayModelItem.vue'
+
+const mocks = vi.hoisted(() => ({
+  useDevice: vi.fn(),
+}))
+
+mockNuxtImport('useDevice', () => mocks.useDevice)
 
 function createModel(overrides: Partial<GatewayModel> = {}): GatewayModel {
   return {
@@ -35,6 +41,14 @@ function mountGatewayModelItem(
 }
 
 describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
+  beforeEach(() => {
+    mocks.useDevice.mockReturnValue({
+      isIos: false,
+      isAndroid: false,
+      isDesktop: true,
+    })
+  })
+
   it('shows a price tier badge instead of a raw per-token price', async () => {
     const wrapper = await mountGatewayModelItem()
     const priceTier = wrapper.get('[data-testid="gateway-model-price-tier"]')
@@ -47,14 +61,14 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
       .toBe('$$$')
   })
 
-  it('keeps the spelled-out price in the badge title only', async () => {
+  it('keeps the spelled-out price in the badge tooltip only', async () => {
     const wrapper = await mountGatewayModelItem()
     const priceTier = wrapper.get('[data-testid="gateway-model-price-tier"]')
 
-    expect(priceTier.classes()).not.toContain('tooltip')
-    expect(priceTier.classes()).not.toContain('tooltip-soft')
-    expect(priceTier.classes()).not.toContain('tooltip-bottom')
-    expect(priceTier.attributes('title'))
+    expect(priceTier.classes()).toContain('tooltip')
+    expect(priceTier.classes()).toContain('tooltip-soft')
+    expect(priceTier.classes()).toContain('tooltip-bottom')
+    expect(priceTier.attributes('data-tip'))
       .toBe('$2.50 in / $10.00 out per 1M tokens')
     expect(priceTier.get('.sr-only').text())
       .toBe('$2.50 in / $10.00 out per 1M tokens')
@@ -124,7 +138,7 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
       .toBe(false)
   })
 
-  it('renders a web-search chip whose title names the resolution',
+  it('renders a web-search chip whose tooltip names the resolution',
     async () => {
       const native = await mountGatewayModelItem(createModel({
         supportsWebSearch: 'native',
@@ -135,11 +149,11 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
 
       expect(
         native.get('[data-testid="gateway-model-web-search-capability"]')
-          .attributes('title'),
+          .attributes('data-tip'),
       ).toBe('Web search')
       expect(
         universal.get('[data-testid="gateway-model-web-search-capability"]')
-          .attributes('title'),
+          .attributes('data-tip'),
       ).toBe('Web search (gateway-billed)')
     })
 
@@ -161,12 +175,12 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
     )
 
     expect(reasoning.classes()).toContain('text-warning')
-    expect(reasoning.attributes('title')).toBe('Reasoning')
+    expect(reasoning.attributes('data-tip')).toBe('Reasoning')
     expect(imageGeneration.classes()).toContain('text-violet-700')
-    expect(imageGeneration.attributes('title')).toBe('Image generation')
+    expect(imageGeneration.attributes('data-tip')).toBe('Image generation')
     expect(vision.classes()).toContain('text-accent')
     expect(vision.classes()).not.toContain('text-secondary')
-    expect(vision.attributes('title')).toBe('Vision')
+    expect(vision.attributes('data-tip')).toBe('Vision')
   })
 
   it('keeps image generation and vision as separate chips for a model that '
@@ -190,13 +204,13 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
       supportsTools: true,
     }))
 
-    expect(wrapper.find('[title="Tool calling"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tip="Tool calling"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="gateway-model-capabilities"]').exists())
       .toBe(false)
   })
 
   it('shows the tool-calling icon for a model with toolCall, styled as a '
-    + 'neutral circle with a short title', async () => {
+    + 'neutral circle with a short tooltip', async () => {
     const wrapper = await mountGatewayModelItem(createModel({
       toolCall: true,
     }))
@@ -208,7 +222,7 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
     expect(toolCall.classes()).toContain('dark:bg-base-300')
     expect(toolCall.classes()).toContain('text-slate-700')
     expect(toolCall.classes()).not.toContain('capability-chip')
-    expect(toolCall.attributes('title')).toBe('Tool calling')
+    expect(toolCall.attributes('data-tip')).toBe('Tool calling')
   })
 
   it('hides the tool-calling icon for a model without toolCall', async () => {
@@ -258,19 +272,6 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
     })
   })
 
-  it('never leaves a data-tip attribute behind on a fully capable row',
-    async () => {
-      const wrapper = await mountGatewayModelItem(createModel({
-        supportsReasoning: true,
-        supportsWebSearch: 'universal',
-        supportsImageGeneration: true,
-        modalities: { input: ['text', 'image'], output: ['text'] },
-        toolCall: true,
-      }))
-
-      expect(wrapper.find('[data-tip]').exists()).toBe(false)
-    })
-
   it('indents the capability chips on mobile only without a price badge',
     async () => {
       const withPrice = await mountGatewayModelItem(createModel({
@@ -306,8 +307,7 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
     expect(wrapper.emitted('toggleDetail')).toHaveLength(1)
   })
 
-  it('labels the favorite button with a native title and drops the '
-    + 'tooltip', async () => {
+  it('labels the favorite button with a tooltip', async () => {
     const wrapper = await mountGatewayModelItem()
     const favorite = wrapper.get(
       '[data-testid="gateway-model-favorite-toggle"]',
@@ -315,9 +315,9 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
 
     expect(favorite.attributes('aria-label'))
       .toBe('Add Claude Opus 5 to favorites')
-    expect(favorite.attributes('title')).toBe('Add to favorites')
-    expect(favorite.classes()).not.toContain('tooltip')
-    expect(favorite.classes()).not.toContain('tooltip-left')
+    expect(favorite.attributes('data-tip')).toBe('Add to favorites')
+    expect(favorite.classes()).toContain('tooltip')
+    expect(favorite.classes()).toContain('tooltip-left')
   })
 
   it('labels the button for removing an existing favorite', async () => {
@@ -330,7 +330,7 @@ describe('ChatInput/ModelsTrigger/GatewayModelItem', () => {
 
     expect(favorite.attributes('aria-label'))
       .toBe('Remove Claude Opus 5 from favorites')
-    expect(favorite.attributes('title')).toBe('Remove from favorites')
+    expect(favorite.attributes('data-tip')).toBe('Remove from favorites')
   })
 
   it('keys the option off the gateway model id', async () => {

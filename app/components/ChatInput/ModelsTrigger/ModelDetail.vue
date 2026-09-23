@@ -11,9 +11,9 @@
       <span
         v-if="model.priceTier"
         data-testid="model-detail-price-tier"
-        class="badge badge-soft shrink-0 font-semibold"
+        class="badge badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
         :class="getPriceTierClass(model.priceTier)"
-        :title="priceTip"
+        :data-tip="priceTip"
       >
         {{ model.priceTier }}
         <span
@@ -97,8 +97,11 @@
         v-for="capability in capabilities"
         :key="capability.label"
         class="badge badge-sm badge-soft"
-        :class="capability.class"
-        :title="capability.tooltip"
+        :class="[
+          capability.class,
+          { 'tooltip tooltip-soft tooltip-bottom': capability.tooltip },
+        ]"
+        :data-tip="capability.tooltip"
       >
         <Icon
           :name="capability.icon"

@@ -196,12 +196,12 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(modelButton.find(
       '[data-testid="model-image-generation-capability"]',
     ).exists()).toBe(true)
-    expect(modelButton.find('[title="Reasoning"]').exists()).toBe(false)
-    expect(modelButton.find('[title="Web search"]').exists()).toBe(false)
+    expect(modelButton.find('[data-tip="Reasoning"]').exists()).toBe(false)
+    expect(modelButton.find('[data-tip="Web search"]').exists()).toBe(false)
     expect(
       modelButton
         .get('[data-testid="model-price-tier"]')
-        .attributes('title'),
+        .attributes('data-tip'),
     ).toBe('$0.039 / image')
   })
 
