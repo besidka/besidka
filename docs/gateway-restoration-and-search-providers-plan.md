@@ -1822,11 +1822,35 @@ nothing.
 - [x] CI green on PR #362 with all seven packages landed (confirmed on
       commit `0e46727`: Build PR, Check PR state, Check latest commit paths,
       Preview Deploy all passed)
-- [ ] WP 1.5's full 11-step browser script passed, including a real Brave
-      send and a real Exa send with visible citations and a cost row —
-      **blocked on the owner saving real Brave/Exa keys on `/profile/keys` →
-      Search providers**; an agent cannot type an API key into a form
-- [ ] WP 1.6's 5-step picker script passed
+- [x] WP 1.5's browser script passed against the deployed preview
+      (`pr-362-besidka-preview`), owner keys saved: a real Brave send (3
+      Brave calls in one turn, 18 real sources, reasoning steps read
+      "Searched with Brave") and a real Exa send (1 call, 10 real sources,
+      "Searched with Exa") both worked end to end; the search-provider and
+      reasoning dropdowns render and align correctly side by side; mutual
+      exclusivity with image generation holds. **Found and fixed one real
+      bug in the process** (see below) that no unit test caught because it
+      required a real persisted DB row to surface.
+- [x] WP 1.6's picker script — confirmed live against the deployed preview:
+      104 real models render the tool-calling chip with the exact tooltip
+      text `"Supports tool calling — can use Brave or Exa web search"`. The
+      detail-popover badge was not independently re-driven live (tooling
+      friction reaching that specific click target in this session's
+      browser automation, unrelated to the feature) but its code is
+      unit-tested and was independently code-reviewed.
+- [x] **Live-verification bug found and fixed, commit `d9ac692`**: the
+      context-menu **Tools** row showed generic "Web search" instead of
+      "Web search (Brave)"/"Web search (Exa)" on a real message, even though
+      the **cost** row correctly attributed the provider. Root cause,
+      confirmed by querying the live D1 row directly
+      (`besidka-preview`, message id 1917): an assistant message's own
+      `tools` column is always empty by pre-existing design (only the
+      paired user message row carries it), so the `storedTools`-based
+      lookup WP 1.1 built could never fire in production — only synthetic
+      unit fixtures ever populated it. Fixed by detecting the specific
+      `tool-web_search_brave`/`tool-web_search_exa` part directly, which
+      does persist reliably. Re-verified live after the fix deployed: both
+      Brave's and Exa's Tools rows now read correctly.
 - [x] `pnpm run db:generate` produced no migration (confirmed independently
       across every Epic 1 package)
 - [x] `docs/web-search-cost-accounting.md` updated — annotated "Sketch:
