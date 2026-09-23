@@ -3184,7 +3184,23 @@ select a gateway model, **reload the page**, and confirm the selection
 persists and the web-search dropdown is initially conservative (no Brave/Exa
 offered until the catalog loads), then re-derives once it does.
 
-- [ ] WP 2.9 complete
+- [x] WP 2.9 complete (commit `efad418`) - independently re-verified
+      (diff review of `chat.ts`/`chat-input.ts` + re-run typecheck and
+      `tests/unit/composables/`, matched the coder's report exactly). Fixed
+      a pre-existing `selected-model-info.spec.ts` failure caused by a stale
+      mock (`useUserModel()` mocked with the old `userModel`-only shape
+      after the composable moved to reading `selection`). Flagged but
+      correctly left unbuilt: `useChat()`'s `prepareSendMessagesRequest`
+      body has no direct unit test in either the pre- or post-removal
+      codebase (mocking its transport/wake-lock/storage dependencies well
+      enough is substantial new harness work out of scope for a hand-merge
+      package) — the `gateway` field's underlying logic
+      (`getSelectionGatewayId`) is covered at the util level instead. A
+      33-failure full-suite run observed mid-package was root-caused to
+      WP 2.7's concurrent uncommitted work-in-progress in the same shared
+      worktree (`index.post.ts`/`assistant-files.ts`), not this package —
+      confirmed via typecheck/lint being clean and this package's own test
+      scope (`tests/unit/composables/`) being 510/510 green in isolation.
 
 ## WP 2.10 — Tests sweep, test registration, and `docs/providers/gateways.md`
 
