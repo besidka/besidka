@@ -3470,13 +3470,44 @@ E picker core) → review → deploy → browser check.
       provider — C, landed `693b2b5`, verified live 2026-09-23
 - [x] Follow-up from review: search focus lands after the reopened
       highlight (`aria-activedescendant` correct) — `d7264b6`
-- [ ] Gateway image-generation errors: a model-access 403 no longer blamed
+- [x] Gateway image-generation errors: a model-access 403 no longer blamed
       on the API key (`provider-model-restricted`); persisted failure text
       kept out of model context; title route falls back instead of failing
-- [ ] Cloudflare keys card: Paste button + leading icon on Account ID and
-      Gateway ID, matching the API Token field
-- [ ] Gateway "Image generation only" filter (policy-hidden on Cloudflare),
-      matching direct mode's Image generation category
+      — `fcb768d`. Root cause: Vercel free tier, fixed by the owner buying
+      credits (2026-09-23) — confirmed live, the same model that 403'd now
+      answers
+- [x] Cloudflare keys card: Paste button + leading icon on Account ID and
+      Gateway ID, matching the API Token field — `6c3691c`
+- [x] Gateway "Image generation" filter (policy-hidden on Cloudflare),
+      matching direct mode's Image generation category; all four gateway
+      filter labels made plain ("Reasoning"/"Web search"/"Image
+      generation"/"Tool calling", no "only") — `45f7f55`
+- [x] Restored styled tooltips (daisyUI `tooltip-soft`, colors itself from
+      the chip's own currentColor) on every capability chip, price badge,
+      and favorite button in both lists, replacing the native `title`
+      attributes from the tooltip→title batch — `19e960b`. Verified against
+      the real compiled CSS that the shortened tooltip text doesn't
+      reintroduce the phantom horizontal-scroll bug the same batch fixed
+- [x] Search source labels always show the domain now, Brave/Exa included,
+      instead of Brave/Exa's real page title winning over it — `ac8821b`
+- [x] Sources block no longer renders until the first line of the answer
+      has streamed in; it used to appear during reasoning, before any text
+      existed — `a55c72a`
+- [ ] Axiom web-search widgets: group by `attributes.ai.webSearchProvider`
+      (brave/exa/native providers) instead of `providerId`; optional
+      native-vs-gateway split via presence of `attributes.chat.gateway`.
+      Data already logged (`index.post.ts:1131-1134`, `:549`) — no code
+      change needed. Blocked on: (a) confirm `webSearchProvider` is
+      populated live for an actual Brave/Exa row (no one has queried the
+      dataset for one yet); (b) confirm the map-field declaration covers
+      new keys added under `attributes` per `docs/axiom-map-fields.md`
+      without a re-run of `scripts/axiom-declare-map-field.mjs`; (c) the
+      widget itself lives in the separate `.axiom-dashboard` repo, not
+      here — corrected APL recorded in `docs/web-search-cost-accounting.md`
+      for the owner to paste in. Known gap: gateway-native search
+      (OpenRouter's `web` plugin) emits no `webSearchUnits` by design (the
+      double-count guard), so it won't appear in this widget even after
+      the fix
 - [x] PERF picker open: root cause `@nuxt/icon` sorting a reactive
       220-entry collection list on every `<Icon>` setup; narrow to 4
       collections, mount the panel once, `markRaw` catalog — E, landed
