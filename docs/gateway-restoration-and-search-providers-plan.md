@@ -3508,6 +3508,34 @@ E picker core) → review → deploy → browser check.
       (OpenRouter's `web` plugin) emits no `webSearchUnits` by design (the
       double-count guard), so it won't appear in this widget even after
       the fix
+- [ ] **Live bug (2026-09-23): a Brave/Exa/Moonshot multi-step search turn
+      that used its full tool budget renders completely blank.** Root
+      cause found by D1 read of three real broken rows (all three ended
+      after exactly 3 `step-start`s, all `output-available`, zero `text`
+      parts): `server/utils/ai/tool-loop.ts`'s `stopWhen: stepCountIs(3)`
+      stops the AI SDK loop the instant 3 steps have run, with no regard
+      to whether the 3rd step was itself another tool call — so the model
+      is never given an untooled turn to answer. Confirmed on both a
+      direct Google send (3 Brave searches) and a Cloudflare-gateway
+      GLM-5.3 send (6 Brave searches, 2 parallel calls per step) — not
+      gateway-specific, the loop code is shared with Moonshot's native
+      search too. The row still persists (reasoning + source-url parts
+      count as "meaningful"), which is why it looks stuck rather than
+      erroring. Fix: force `toolChoice: 'none'` (+ an instructions
+      addendum, since not every upstream honors `'none'`) via
+      `prepareStep` on the final step, and raise the cap from 3 to 4 so
+      the previously-observed 3 search rounds are preserved instead of
+      silently dropping to 2. Anthropic's SDK maps `'none'` to
+      `tools: undefined` while still sending tool_use/tool_result
+      history — unverified whether the API accepts that combination, so
+      the fix should branch to an instructions-only nudge for Anthropic
+      until a live Anthropic+Brave send confirms either way.
+      Follow-up, not part of this fix: the three already-broken rows
+      can't be regenerated cleanly — `hasMeaningfulAssistantParts`
+      treats reasoning+source-url as meaningful, so `findPersistedAssistantReply`
+      would replay the blank reply instead of regenerating (a gap in
+      that predicate, adjacent to but not fixed by `fcb768d`'s
+      failure-text change).
 - [x] PERF picker open: root cause `@nuxt/icon` sorting a reactive
       220-entry collection list on every `<Icon>` setup; narrow to 4
       collections, mount the panel once, `markRaw` catalog — E, landed
