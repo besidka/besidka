@@ -167,7 +167,7 @@ export function useChatInput() {
    * way direct providers do, so any supported gateway model gets the app's
    * full level set — the server-side mapping per gateway/provider is what
    * actually decides how each level is honored (see
-   * `docs/gateways.md`'s "Gateway reasoning" section).
+   * `docs/providers/gateways.md`'s "Gateway reasoning" section).
    */
   const gatewayReasoningCapability = computed<
     ReasoningCapability | null

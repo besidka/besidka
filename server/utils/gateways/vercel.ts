@@ -71,7 +71,7 @@ export async function useVercelGateway(
    * requiring a follow-up step. No `toolChoice` is set, matching the
    * "let the model decide whether to search" policy the Qwen/OpenRouter
    * integrations already use. Defaults to Perplexity per the product
-   * decision recorded in docs/gateways.md — Vercel's own lead option.
+   * decision recorded in docs/providers/gateways.md — Vercel's own lead option.
    */
   function getTools(): FormattedTools {
     if (!requestedTools.includes('web_search')) {
@@ -106,7 +106,7 @@ export async function useVercelGateway(
      * level into each routed provider's native reasoning shape
      * (`reasoningEffort` for OpenAI, `thinking`/adaptive effort for
      * Anthropic, `thinkingLevel`/`thinkingBudget` for Google). See
-     * docs/gateways.md's "Gateway reasoning" section.
+     * docs/providers/gateways.md's "Gateway reasoning" section.
      */
     reasoning: toReasoningEffort(requestedReasoning),
   }

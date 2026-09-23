@@ -229,7 +229,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   multi-step tool loop), `xai.md`, `deepseek.md`, `moonshotai.md`,
   `alibaba.md` for per-provider capability decisions and wiring (Qwen
   DashScope search, Moonshot Formula-API search, direct-provider reasoning
-  controls)
+  controls), and `gateways.md` for the restored gateway half (Vercel AI
+  Gateway, Cloudflare AI Gateway, OpenRouter): the three-id-space naming
+  trap, per-gateway cost capture and the blended-vs-search double-count
+  guard, gateway reasoning/web-search/image-generation mechanisms, and the
+  `GatewayModel.toolCall` Brave/Exa gate
 - `docs/ci-runner-blacksmith-to-github.md` - Why CI runners moved from
   Blacksmith to GitHub-hosted `ubuntu-24.04`: kept as a reasonable
   default, but this was a dead end for the CI-only failure it was meant

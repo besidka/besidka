@@ -319,8 +319,9 @@ const maxGatewayGeneratedImagePartsPerMessage = 4
  * with a failure-text placeholder rather than left to fall through to
  * `normalizeAssistantMessagePartsForPersistence`'s general-file-persistence
  * stub, which only logs and otherwise passes an inline blob through
- * unmodified — see `docs/gateways.md`'s "Gateway image generation" section
- * for the one deliberately-undone piece: unlike direct-provider generation,
+ * unmodified — see `docs/providers/gateways.md`'s "Gateway image
+ * generation" section for the one deliberately-undone piece: unlike
+ * direct-provider generation,
  * this path does not acquire `acquireImageGenerationLease` before running,
  * since the image here has already been generated (and billed on the
  * user's own key) by the time this function sees it — rejecting the save

@@ -17,6 +17,13 @@ Not yet done: pushing this commit, and the § 6 decision points below were
 resolved by the plan's own recommendations (adopted per the product
 owner's "I will decide how to proceed after" — reported, not blocking).
 
+**Superseded by `docs/gateway-restoration-and-search-providers-plan.md`**,
+which restored gateway functionality on this same branch. This document is
+retained rather than deleted because its § 3 (the per-file removal spec) is,
+read backwards, effectively the restoration spec: every file this plan
+describes deleting or stripping is a file the restoration plan re-adds or
+re-fills.
+
 Branch: `feat/add-more-providers`
 Worktree: `/Users/inevix/dev/main/besidka/.herdr/worktrees/feat-add-more-providers`
 

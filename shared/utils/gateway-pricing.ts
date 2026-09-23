@@ -61,12 +61,13 @@ export function isGatewayModelFree(
 
 /**
  * Token-based cost estimate for gateways with no per-request cost API
- * (Cloudflare AI Gateway — see `docs/gateways.md`'s cost-capture section).
- * Multiplies the raw usage token counts by the catalog's per-token
- * `pricing.input`/`pricing.output` strings. Returns `undefined` when either
- * price is missing or unparseable, never a guessed or partial total — the
- * caller is expected to leave `totalCost` unset in that case, the same as
- * today's Cloudflare behavior, rather than display a fabricated number.
+ * (Cloudflare AI Gateway — see `docs/providers/gateways.md`'s "Cost
+ * capture" section). Multiplies the raw usage token counts by the
+ * catalog's per-token `pricing.input`/`pricing.output` strings. Returns
+ * `undefined` when either price is missing or unparseable, never a
+ * guessed or partial total — the caller is expected to leave `totalCost`
+ * unset in that case, the same as today's Cloudflare behavior, rather
+ * than display a fabricated number.
  */
 export function estimateGatewayMessageCost(
   model: Pick<GatewayModel, 'pricing'>,

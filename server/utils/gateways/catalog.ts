@@ -357,7 +357,7 @@ async function fetchCloudflareMarketplaceCatalog(
  * projection the picker's model shape is built around, and Cloudflare's own
  * default format, whose `properties[]` array is the only place pricing,
  * `function_calling` and `reasoning` are exposed. See the Cloudflare
- * two-format join section in `docs/gateways.md`.
+ * two-format join section in `docs/providers/gateways.md`.
  *
  * Only the marketplace fetch is load-bearing — its failure propagates so
  * `getCachedCloudflareGatewayCatalog` can still serve a stale catalog. The
@@ -1007,8 +1007,8 @@ export async function getCachedGatewayCatalog(
 /**
  * Best-effort lookup of one model's own catalog entry, used by the Vercel
  * and Cloudflare chat builders to read `maxOutputTokens`/`pricing` before
- * sending a request (see `docs/gateways.md`'s max-tokens capping section).
- * `fetchCatalog` is expected to be a call to one of the two
+ * sending a request (see `docs/providers/gateways.md`'s max-tokens capping
+ * section). `fetchCatalog` is expected to be a call to one of the two
  * `getCached*GatewayCatalog` functions above, so this is a cache hit in the
  * common case — a user only ever sends to a gateway model they already saw
  * in the picker, which just fetched the same catalog. Any failure (cold

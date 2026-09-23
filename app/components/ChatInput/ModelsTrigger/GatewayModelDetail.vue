@@ -99,7 +99,7 @@ const detailId = computed<string>(() => {
  * report it", so only an explicit `true` (or a resolved web-search value)
  * earns a badge. The web-search label itself spells out native vs.
  * gateway-billed — see `WEB_SEARCH_TOOLTIP` — doubling as the cost hint, per
- * the product decision recorded in docs/gateways.md.
+ * the product decision recorded in docs/providers/gateways.md.
  */
 const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props

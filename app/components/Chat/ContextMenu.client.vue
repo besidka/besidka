@@ -316,7 +316,9 @@ const modelDisplayName = computed<string>(() => {
 })
 
 const providerDisplayLabel = computed<string>(() => {
-  return props.info?.providerLabel ?? ''
+  return props.info?.providerKind === 'provider'
+    ? `${props.info.providerLabel} (direct)`
+    : props.info?.providerLabel ?? ''
 })
 
 const reasoningIconName = computed<string>(() => {

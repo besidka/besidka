@@ -1181,7 +1181,7 @@ describe('Chat/ContextMenu.client', () => {
   })
 
   describe('provider info rendering', () => {
-    it('shows the plain provider name and a key icon', async () => {
+    it('shows "(direct)" and a key icon for a direct provider', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',
         createdAt: '2026-01-15T10:30:00.000Z',
@@ -1203,10 +1203,35 @@ describe('Chat/ContextMenu.client', () => {
       const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
 
       expect(providerRow.text()).toContain('OpenAI')
-      expect(providerRow.text()).not.toContain('(direct)')
+      expect(providerRow.text()).toContain('(direct)')
       expect(providerRow.get('.iconify').classes()).toContain(
         'i-lucide:key-round',
       )
+    })
+
+    it('never shows "(direct)" for a search-provider kind', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+        providerId: 'brave',
+        providerLabel: 'Brave',
+        providerKind: 'search',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
+
+      expect(providerRow.text()).toContain('Brave')
+      expect(providerRow.text()).not.toContain('(direct)')
     })
 
     it('hides the provider row when no provider info is present', async () => {

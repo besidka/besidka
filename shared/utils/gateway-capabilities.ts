@@ -9,9 +9,9 @@ import type { ModelTool } from '#shared/types/providers.d'
  * `modalities: ['image', 'text']` chat-completions request param) and Vercel
  * (its Gemini `*-image` models return image content parts from a plain
  * `generateText`/`streamText` call, no extra request param needed) — see
- * `docs/gateways.md`'s "Gateway image generation" section. Cloudflare stays
- * rejected for both tools: it has no web-search mechanism and no
- * image-output mechanism for the `@cf/` catalog this app surfaces.
+ * `docs/providers/gateways.md`'s "Gateway image generation" section.
+ * Cloudflare stays rejected for both tools: it has no web-search mechanism
+ * and no image-output mechanism for the `@cf/` catalog this app surfaces.
  *
  * Deliberately per-gateway, not per-model: it does not know whether the
  * specific routed model is a confirmed image-generation model (see
@@ -45,11 +45,11 @@ export function isGatewayToolAllowed(
  * Vercel both forward a real reasoning-effort request to the routed model
  * (OpenRouter via a `reasoning: { effort }` chat setting, Vercel via the
  * AI SDK's top-level `reasoning` option translated server-side) — see
- * `docs/gateways.md`'s "Gateway reasoning" section for the full mechanism
- * per gateway. Cloudflare has no such mechanism wired, so its existing
- * `supportsReasoning` catalog badge stays advisory-only, matching the same
- * "badge without a working control" gap this app already accepts for
- * Cloudflare's web search and image generation.
+ * `docs/providers/gateways.md`'s "Gateway reasoning" section for the full
+ * mechanism per gateway. Cloudflare has no such mechanism wired, so its
+ * existing `supportsReasoning` catalog badge stays advisory-only, matching
+ * the same "badge without a working control" gap this app already accepts
+ * for Cloudflare's web search and image generation.
  */
 const GATEWAY_REASONING_POLICY: Record<GatewayId, boolean> = {
   openrouter: true,

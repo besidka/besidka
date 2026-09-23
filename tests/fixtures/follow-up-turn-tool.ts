@@ -12,11 +12,11 @@ interface CreateFixtureFollowUpToolInput {
 
 /**
  * A minimal tool that opts into the multi-step loop, used only by the loop
- * tests. It stands in for Moonshot AI's Formula-API web search — the real,
- * shipped consumer of `withFollowUpTurn()` — so the loop can be proven
- * end-to-end without a live provider round-trip and without pinning the
- * tests to that tool's remote declaration. Never wire this into a provider
- * builder.
+ * tests. It stands in for the real, shipped consumers of
+ * `withFollowUpTurn()` — Moonshot AI's Formula-API web search and Brave/Exa's
+ * BYOK search tools — so the loop can be proven end-to-end without a live
+ * provider round-trip and without pinning the tests to any one of those
+ * tools' remote declarations. Never wire this into a provider builder.
  */
 export function createFixtureFollowUpTool(
   input: CreateFixtureFollowUpToolInput = {},

@@ -118,9 +118,10 @@ const IMAGE_INPUT_REJECTION_MESSAGE = 'This model does not support image'
  * Some gateways/providers reject an image attachment at request time with a
  * raw, unhelpful upstream message instead of a normal 400 the client-side
  * vision gate would have already caught before sending (see
- * `docs/gateways.md` — Cloudflare's catalog exposes no modality data at all,
- * so the client-side gate fails open for it specifically; OpenRouter has
- * also been observed returning this for some routed models). Detected by
+ * `docs/providers/gateways.md` — Cloudflare's catalog exposes no modality
+ * data at all, so the client-side gate fails open for it specifically;
+ * OpenRouter has also been observed returning this for some routed
+ * models). Detected by
  * content rather than status code or provider, since the same wording can
  * come from either gateway.
  */

@@ -69,6 +69,11 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
+    'tests/integration/server/cache-invalidation.spec.ts',
+    'tests/integration/server/file-retention.spec.ts',
+    'tests/integration/server/file-retention-cleanup-plugin.spec.ts',
+    'tests/unit/components/Confirmation.spec.ts',
+    'tests/unit/composables/confirmation.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
@@ -84,6 +89,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/image-generation-cost.spec.ts',
     'tests/unit/utils/ai/image-generation-xai.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/composables/chat-input-url-detection.spec.ts',
+    'tests/unit/composables/chat-image-preview-guard.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
@@ -145,6 +152,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/moonshotai.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
+    'tests/unit/utils/reasoning-levels.spec.ts',
   ]
   const moonshotWebSearchTests = [
     'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
@@ -175,8 +183,13 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/Projects/ActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
+    'tests/unit/composables/history-race.spec.ts',
+    'tests/unit/composables/history-load-more-race.spec.ts',
     'tests/unit/composables/projects.spec.ts',
+    'tests/unit/composables/projects-rename.spec.ts',
+    'tests/unit/composables/projects-rename-sort.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
     'tests/unit/components/History/ChatSections.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
@@ -227,6 +240,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateways.spec.ts',
     'tests/unit/composables/model.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
+    'tests/unit/utils/gateway-capabilities.spec.ts',
+    'tests/unit/utils/gateway-model-id.spec.ts',
+    'tests/unit/utils/gateway-pricing.spec.ts',
   ]
 
   const gatewayChatTests = [
@@ -300,6 +316,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ui/Form/Otp.spec.ts',
     'tests/unit/pages/(auth)/2fa.spec.ts',
     'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/e2e/auth/signin.spec.ts',
     'tests/unit/components/Profile/Security/TwoFactor.spec.ts',
     'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
@@ -1236,6 +1253,26 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/db\/|drizzle.*\.config\.ts$|\.drizzle\/migrations)/,
       tests: ['tests/unit/db/migrations-clean.spec.ts'],
+    },
+    {
+      pattern: /^app\/composables\/social-oauth\.ts$/,
+      tests: ['tests/unit/composables/social-oauth.spec.ts'],
+    },
+    {
+      pattern: /^app\/composables\/validation\.ts$/,
+      tests: ['tests/unit/composables/validation.spec.ts'],
+    },
+    {
+      pattern: /^app\/composables\/wake-lock\.ts$/,
+      tests: ['tests/unit/composables/wake-lock.spec.ts'],
+    },
+    {
+      pattern: /^app\/utils\/user-agent\.ts$/,
+      tests: ['tests/unit/utils/user-agent.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/file-retention-cleanup\.ts$/,
+      tests: filesModuleTests,
     },
   ]
 

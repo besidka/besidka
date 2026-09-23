@@ -28,7 +28,7 @@ export interface GatewayChatResult {
    * The selected model's own catalog `maxOutputTokens`, resolved by the
    * Vercel and Cloudflare builders so the chat route can cap `streamText`'s
    * `maxOutputTokens` and never ask a model for more output than it
-   * supports (see `docs/gateways.md`'s max-tokens capping section).
+   * supports (see `docs/providers/gateways.md`'s max-tokens capping section).
    * Deliberately left `undefined` by the OpenRouter builder always, and by
    * Vercel/Cloudflare whenever the model isn't found in the catalog or has
    * no known `maxOutputTokens` — never a guessed fallback.
