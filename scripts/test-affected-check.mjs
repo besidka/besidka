@@ -1202,6 +1202,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...profileSettingsTests,
         'tests/unit/components/Chat/Reasoning.spec.ts',
+        'tests/unit/components/Chat/UrlSources.spec.ts',
       ],
     },
     {

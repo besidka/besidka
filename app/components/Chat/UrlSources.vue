@@ -39,8 +39,6 @@
 <script setup lang="ts">
 import type { UIMessage, SourceUrlUIPart } from 'ai'
 
-const MAX_TITLE_LENGTH = 30
-
 const props = defineProps<{
   message: UIMessage
 }>()
@@ -86,14 +84,6 @@ async function openLink(source: SourceUrlUIPart) {
 }
 
 function getLabel(source: SourceUrlUIPart): string {
-  if (
-    source.title
-    && source.title.length <= MAX_TITLE_LENGTH
-    && !/^\d+$/.test(source.title)
-  ) {
-    return source.title
-  }
-
   try {
     return new URL(source.url).hostname.replace(/^www\./, '')
   } catch {
