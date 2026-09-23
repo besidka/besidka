@@ -3,6 +3,8 @@ import {
   getMessageMetadata,
   getMessageUsedTools,
   hydrateMessageUsage,
+  isExternalWebSearchTool,
+  isWebSearchTool,
   resolveMessageMenuInfo,
 } from '../../../shared/utils/message-metadata'
 
@@ -1066,5 +1068,33 @@ describe('resolveMessageMenuInfo searchProvider attribution', () => {
     const info = resolveMessageMenuInfo(messages, 'a1')
 
     expect(info?.searchProvider).toBeUndefined()
+  })
+})
+
+describe('isExternalWebSearchTool', () => {
+  it('matches only the two tools this app resolves on the user\'s own key',
+    () => {
+      expect(isExternalWebSearchTool('web_search_brave')).toBe(true)
+      expect(isExternalWebSearchTool('web_search_exa')).toBe(true)
+    })
+
+  it('excludes the native/gateway-bundled web_search, which needs no tool '
+    + 'call and no Brave/Exa key', () => {
+    expect(isExternalWebSearchTool('web_search')).toBe(false)
+    expect(isExternalWebSearchTool('image_generation')).toBe(false)
+    expect(isExternalWebSearchTool(undefined)).toBe(false)
+  })
+
+  it('is a strict subset of isWebSearchTool', () => {
+    const tools = [
+      'web_search',
+      'web_search_brave',
+      'web_search_exa',
+      'image_generation',
+    ]
+    const external = tools.filter(isExternalWebSearchTool)
+
+    expect(external.every(isWebSearchTool)).toBe(true)
+    expect(external).toEqual(['web_search_brave', 'web_search_exa'])
   })
 })

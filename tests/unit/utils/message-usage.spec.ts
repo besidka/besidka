@@ -150,6 +150,92 @@ describe('buildMessageUsage', () => {
 
     expect(result).not.toHaveProperty('totalCost')
   })
+
+  it('sets totalCost from the 4th argument a gateway send path supplies',
+    () => {
+      const usage = createUsage({
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+      })
+
+      const result = buildMessageUsage(
+        usage,
+        'anthropic/claude-opus-5',
+        'openrouter',
+        0.0042,
+      )
+
+      expect(result?.totalCost).toBe(0.0042)
+    })
+
+  it('leaves the computed input/output split untouched when a gateway '
+    + 'totalCost is supplied for a model that also has curated pricing',
+  () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+      0.0042,
+    )
+
+    expect(result?.totalCost).toBe(0.0042)
+    expect(result?.inputCost).toBe(
+      (10 * PRICED_MODEL_INPUT_PER_MILLION) / 1_000_000,
+    )
+    expect(result?.outputCost).toBe(
+      (20 * PRICED_MODEL_OUTPUT_PER_MILLION) / 1_000_000,
+    )
+  })
+
+  it('omitting the 4th argument is byte-identical to passing undefined',
+    () => {
+      const usage = createUsage({
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+      })
+
+      const withoutArgument = buildMessageUsage(
+        usage,
+        PRICED_MODEL_ID,
+        PRICED_PROVIDER_ID,
+      )
+      const withUndefined = buildMessageUsage(
+        usage,
+        PRICED_MODEL_ID,
+        PRICED_PROVIDER_ID,
+        undefined,
+      )
+
+      expect(withUndefined).toEqual(withoutArgument)
+      expect(withUndefined).not.toHaveProperty('totalCost')
+    })
+
+  it('omits totalCost for an unpriced gateway model rather than '
+    + 'fabricating a zero', () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      'anthropic/claude-opus-5',
+      'openrouter',
+    )
+
+    expect(result).not.toHaveProperty('totalCost')
+    expect(result).not.toHaveProperty('inputCost')
+    expect(result).not.toHaveProperty('outputCost')
+  })
 })
 
 describe('addImageGenerationCostToUsage', () => {

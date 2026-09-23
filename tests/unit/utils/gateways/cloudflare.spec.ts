@@ -329,10 +329,11 @@ describe('useCloudflareGateway', () => {
         input: '0.0000002',
         output: '0.0000009',
       })
+      expect(result.toolCall).toBe(false)
     })
 
-  it('leaves maxOutputTokens and pricing undefined when the model is not '
-    + 'in the catalog', async () => {
+  it('leaves maxOutputTokens, pricing and toolCall undefined when the model '
+    + 'is not in the catalog', async () => {
     stubKeyLookup('encrypted-blob')
     stubDecrypt(JSON.stringify({
       accountId: 'account-123',
@@ -345,6 +346,7 @@ describe('useCloudflareGateway', () => {
 
     expect(result.maxOutputTokens).toBeUndefined()
     expect(result.pricing).toBeUndefined()
+    expect(result.toolCall).toBeUndefined()
   })
 
   it('passes the catalog maxOutputTokens through to generateChatTitle',

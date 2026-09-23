@@ -13,7 +13,8 @@ import {
 import type { GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
-const GENERATION_INFO_RETRY_DELAY_MS = 1500
+const GENERATION_INFO_RETRY_DELAY_MS = 2000
+const GENERATION_INFO_MAX_ATTEMPTS = 8
 
 export async function useVercelGateway(
   userId: string,
@@ -91,6 +92,7 @@ export async function useVercelGateway(
     providerOptions: {},
     client,
     maxOutputTokens: catalogModel?.maxOutputTokens,
+    toolCall: catalogModel?.toolCall,
     /**
      * Unlike OpenRouter, Vercel AI Gateway needs no per-provider
      * `providerOptions` mapping here at all. `@ai-sdk/gateway`'s
@@ -110,19 +112,29 @@ export async function useVercelGateway(
   }
 }
 
+/**
+ * A generation record is not queryable the moment its stream ends: measured
+ * against the live API, `getGenerationInfo()` rejected at +0.3s, +2.5s,
+ * +5.0s, +7.4s and +9.7s before succeeding at +12.0s. The original single
+ * 1.5s retry therefore never saw a cost at all. Polling to roughly 15s
+ * covers that with margin while staying well inside the 30s `waitUntil`
+ * budget this runs under.
+ */
 async function fetchGenerationInfoWithRetry(
   client: GatewayProvider,
   generationId: string,
 ) {
-  try {
-    return await client.getGenerationInfo({ id: generationId })
-  } catch {
-    await new Promise((resolve) => {
-      setTimeout(resolve, GENERATION_INFO_RETRY_DELAY_MS)
-    })
-
-    return await client.getGenerationInfo({ id: generationId })
+  for (let attempt = 1; attempt < GENERATION_INFO_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await client.getGenerationInfo({ id: generationId })
+    } catch {
+      await new Promise((resolve) => {
+        setTimeout(resolve, GENERATION_INFO_RETRY_DELAY_MS)
+      })
+    }
   }
+
+  return await client.getGenerationInfo({ id: generationId })
 }
 
 /**
@@ -131,13 +143,22 @@ async function fetchGenerationInfoWithRetry(
  * itself only known once the stream finishes — so this always runs after
  * the assistant message row already exists, as background work (see the
  * `scheduleBackgroundWork` caller in `index.post.ts`), updating the
- * already-persisted `usage` JSON column in place. A single retry after a
- * short delay covers the generation record not being immediately available;
- * any failure past that is logged as non-fatal context, never thrown — a
- * missing cost must never surface as a chat error this long after the
- * response already streamed to the user. `db` is passed in explicitly
- * rather than resolved via `useDb()` here, since this runs as a detached
- * background job outside the request lifecycle.
+ * already-persisted `usage` JSON column in place.
+ *
+ * This is now the FALLBACK path, not the primary one: the same total arrives
+ * synchronously in `providerMetadata.gateway.cost`, which
+ * `readVercelGatewayCost` reads and the send path persists before this ever
+ * runs. So the first thing this does is re-read the row and stop if a
+ * `totalCost` is already there — which also means the poll below costs
+ * nothing on the normal path. It stays wired for a response that omits the
+ * synchronous field, since that field's presence is observed behaviour, not
+ * a documented contract.
+ *
+ * Any failure is logged as non-fatal context, never thrown — a missing cost
+ * must never surface as a chat error this long after the response already
+ * streamed to the user. `db` is passed in explicitly rather than resolved
+ * via `useDb()` here, since this runs as a detached background job outside
+ * the request lifecycle.
  */
 export async function persistVercelGenerationCost(input: {
   db: ReturnType<typeof useDb>
@@ -147,19 +168,19 @@ export async function persistVercelGenerationCost(input: {
   logger: { set: (fields: Record<string, unknown>) => void }
 }): Promise<void> {
   try {
-    const generationInfo = await fetchGenerationInfoWithRetry(
-      input.client,
-      input.generationId,
-    )
-
     const existing = await input.db.query.messages.findFirst({
       where: { publicId: input.publicId },
       columns: { usage: true },
     })
 
-    if (!existing?.usage) {
+    if (!existing?.usage || existing.usage.totalCost !== undefined) {
       return
     }
+
+    const generationInfo = await fetchGenerationInfoWithRetry(
+      input.client,
+      input.generationId,
+    )
 
     await input.db.update(schema.messages)
       .set({

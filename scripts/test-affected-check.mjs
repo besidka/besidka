@@ -164,6 +164,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
     'tests/integration/api/chats-external-search-validation.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
+    'tests/integration/api/chats-gateway.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -226,6 +227,10 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateways.spec.ts',
     'tests/unit/composables/model.spec.ts',
     'tests/unit/utils/message-usage.spec.ts',
+  ]
+
+  const gatewayChatTests = [
+    'tests/integration/api/chats-gateway.spec.ts',
   ]
 
   const gatewayCatalogTests = [
@@ -557,12 +562,16 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(shared\/(types\/gateways\.d\.ts|utils\/(gateways|gateway-(capabilities|model-id|pricing)|model-selection|provider-meta)\.ts))$/,
-      tests: [...gatewaySharedTests, ...gatewayCatalogTests],
+      tests: [
+        ...gatewaySharedTests,
+        ...gatewayCatalogTests,
+        ...gatewayChatTests,
+      ],
     },
     {
       pattern:
         /^(server\/utils\/gateways\/.+\.ts|server\/api\/v1\/gateways\/.+|app\/composables\/gateway-catalog\.ts)$/,
-      tests: gatewayCatalogTests,
+      tests: [...gatewayCatalogTests, ...gatewayChatTests],
     },
     {
       pattern: /^app\/composables\/user-setting\.ts$/,
@@ -709,7 +718,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost|web-search-cost|search-usage)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts|shared\/types\/providers\.d\.ts)$/,
-      tests: messageUsageTests,
+      tests: [
+        ...messageUsageTests,
+        ...chatStreamBranchTests,
+        ...gatewayChatTests,
+      ],
     },
     {
       pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,

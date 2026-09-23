@@ -316,4 +316,91 @@ describe('useOpenRouterGateway', () => {
         expect(instance.settings.reasoning).toEqual({ effort: 'medium' })
       })
   })
+
+  describe('toolCall resolution for the Brave/Exa gate', () => {
+    async function importWithCatalog(model: unknown) {
+      const findGatewayCatalogModel = vi.fn(async () => model)
+
+      vi.doMock('../../../../server/utils/gateways/catalog', () => ({
+        findGatewayCatalogModel,
+        getCachedGatewayCatalog: vi.fn(async () => []),
+      }))
+
+      return {
+        useOpenRouterGateway: await importUseOpenRouterGateway(),
+        findGatewayCatalogModel,
+      }
+    }
+
+    it('resolves toolCall from the catalog when an external search tool is '
+      + 'requested', async () => {
+      stubKeyLookup()
+
+      const {
+        useOpenRouterGateway,
+        findGatewayCatalogModel,
+      } = await importWithCatalog({ id: 'x', toolCall: true })
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        ['web_search_brave'],
+        'off',
+      )
+
+      expect(findGatewayCatalogModel).toHaveBeenCalled()
+      expect(result.toolCall).toBe(true)
+    })
+
+    it('reports a false toolCall so the send path can reject the search',
+      async () => {
+        stubKeyLookup()
+
+        const { useOpenRouterGateway } = await importWithCatalog({
+          id: 'x',
+          toolCall: false,
+        })
+        const result = await useOpenRouterGateway(
+          '1',
+          'anthropic/claude-opus-5',
+          ['web_search_exa'],
+          'off',
+        )
+
+        expect(result.toolCall).toBe(false)
+      })
+
+    it('leaves toolCall undefined on a catalog miss, which the send path '
+      + 'also treats as "do not offer Brave/Exa"', async () => {
+      stubKeyLookup()
+
+      const { useOpenRouterGateway } = await importWithCatalog(undefined)
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        ['web_search_brave'],
+        'off',
+      )
+
+      expect(result.toolCall).toBeUndefined()
+    })
+
+    it('skips the catalog lookup entirely when no external search tool was '
+      + 'requested, keeping the ordinary send path free of it', async () => {
+      stubKeyLookup()
+
+      const {
+        useOpenRouterGateway,
+        findGatewayCatalogModel,
+      } = await importWithCatalog({ id: 'x', toolCall: true })
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-opus-5',
+        ['web_search'],
+        'off',
+      )
+
+      expect(findGatewayCatalogModel).not.toHaveBeenCalled()
+      expect(result.toolCall).toBeUndefined()
+    })
+  })
 })

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamText } from 'ai'
+import {
+  keyProviderIdForGateway,
+  readOpenRouterCost,
+  readVercelGatewayCost,
+  readVercelGenerationId,
+} from '../../../server/utils/gateways/index'
 import { getModelCostMap } from '../../../server/utils/ai/cost-map'
 import {
   getImageGenerationCost,
@@ -342,6 +348,10 @@ describe('chat send pipeline: single-step characterization', () => {
     vi.stubGlobal('useRuntimeConfig', vi.fn(() => ({
       public: {},
     })))
+    vi.stubGlobal('keyProviderIdForGateway', keyProviderIdForGateway)
+    vi.stubGlobal('readOpenRouterCost', readOpenRouterCost)
+    vi.stubGlobal('readVercelGatewayCost', readVercelGatewayCost)
+    vi.stubGlobal('readVercelGenerationId', readVercelGenerationId)
   })
 
   it('(a) plain direct-provider send stays single step and prices tokens '
@@ -675,6 +685,61 @@ describe('chat send pipeline: single-step characterization', () => {
         text: 'Let me search.\n\n**Result:** done.',
       }),
     ]))
+  })
+
+  it('(c) openrouter gateway send stays single step, sends no AI SDK tool '
+    + 'and never resolves a curated provider', async () => {
+    const useChatProviderMock = vi.fn(() => {
+      throw new Error('useChatProvider must not run on the gateway path')
+    })
+
+    vi.stubGlobal('useChatProvider', useChatProviderMock)
+    vi.stubGlobal('useGateway', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+    })))
+
+    const { insertValues } = await runHandler(baseBody({
+      model: 'anthropic/claude-opus-5',
+      gateway: 'openrouter',
+    }))
+    const options = mocks.streamTextOptions[0]
+
+    expect(useChatProviderMock).not.toHaveBeenCalled()
+    expect(streamText).toHaveBeenCalledTimes(1)
+    expectSingleStepStreamTextCall(options)
+    expect(options?.tools).toBeUndefined()
+    expect(options?.toolChoice).toBeUndefined()
+    expect(options?.maxOutputTokens).toBeUndefined()
+    expect(getAssistantInsert(insertValues)?.usage.provider).toBe('openrouter')
+  })
+
+  it('(d) cloudflare gateway send stays single step and carries the '
+    + 'catalog max-output-tokens cap', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => {
+      throw new Error('useChatProvider must not run on the gateway path')
+    }))
+    vi.stubGlobal('useGateway', vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+      generateChatTitle: vi.fn(),
+      maxOutputTokens: 4096,
+    })))
+
+    await runHandler(baseBody({
+      model: '@cf/meta/llama-3.3-70b-instruct',
+      gateway: 'cloudflare',
+    }))
+    const options = mocks.streamTextOptions[0]
+
+    expect(streamText).toHaveBeenCalledTimes(1)
+    expectSingleStepStreamTextCall(options)
+    expect(options?.tools).toBeUndefined()
+    expect(options?.toolChoice).toBeUndefined()
+    expect(options?.maxOutputTokens).toBe(4096)
   })
 
   it('emits exactly one finish-step per send across every path today',

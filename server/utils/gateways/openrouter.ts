@@ -1,7 +1,12 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { isExternalWebSearchTool } from '#shared/utils/message-metadata'
 import { toReasoningEffort } from '~~/server/utils/providers/reasoning'
+import {
+  findGatewayCatalogModel,
+  getCachedGatewayCatalog,
+} from './catalog'
 import type { GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
@@ -37,6 +42,20 @@ export async function useOpenRouterGateway(
     'image_generation',
   )
   const reasoningEffort = toReasoningEffort(requestedReasoning)
+  /**
+   * Resolved only for a Brave/Exa send, the one case whose validation needs
+   * it. Unlike the Vercel and Cloudflare builders — which already look the
+   * catalog up for `maxOutputTokens`/`pricing` and get `toolCall` for free —
+   * OpenRouter's builder deliberately caps nothing and prices nothing, so an
+   * unconditional lookup here would add a cache read (and, on a cold cache, a
+   * catalog fetch) to every OpenRouter send that never needed one.
+   */
+  const catalogModel = requestedTools.some(isExternalWebSearchTool)
+    ? await findGatewayCatalogModel(
+      () => getCachedGatewayCatalog('openrouter'),
+      model,
+    )
+    : undefined
 
   /**
    * `usage.include` turns on OpenRouter's extended usage-accounting response
@@ -113,6 +132,7 @@ export async function useOpenRouterGateway(
     generateChatTitle,
     tools: {},
     providerOptions: {},
+    toolCall: catalogModel?.toolCall,
     reasoning: reasoningEffort,
   }
 }

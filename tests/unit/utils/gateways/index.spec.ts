@@ -45,6 +45,71 @@ describe('readOpenRouterCost', () => {
   })
 })
 
+describe('readVercelGatewayCost', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  /**
+   * The metadata shape here is copied verbatim from a live Vercel AI Gateway
+   * response on a `perplexitySearch()` send — the turn where the figures
+   * diverge. `cost` is the one that matched the async
+   * `getGenerationInfo().totalCost` of `0.00522065`; `inferenceCost` is the
+   * token-only subset and would silently drop the search fee.
+   */
+  it('parses the decimal-string `cost`, the field that matches '
+    + 'getGenerationInfo().totalCost', async () => {
+    const { readVercelGatewayCost } = await importGatewaysIndex()
+
+    expect(readVercelGatewayCost({
+      gateway: {
+        cost: '0.00522065',
+        marketCost: '0.00522065',
+        surchargeCost: '0',
+        gatewayCost: '0.00522065',
+        inferenceCost: '0.00022065',
+        generationId: 'gen_abc',
+      },
+    })).toBe(0.00522065)
+  })
+
+  it('accepts a numeric cost too, in case the field stops being a string',
+    async () => {
+      const { readVercelGatewayCost } = await importGatewaysIndex()
+
+      expect(readVercelGatewayCost({
+        gateway: { cost: 0.25 },
+      })).toBe(0.25)
+    })
+
+  it('returns undefined rather than 0 for a missing or unparseable cost',
+    async () => {
+      const { readVercelGatewayCost } = await importGatewaysIndex()
+
+      expect(readVercelGatewayCost(undefined)).toBeUndefined()
+      expect(readVercelGatewayCost({})).toBeUndefined()
+      expect(readVercelGatewayCost({ gateway: {} })).toBeUndefined()
+      expect(readVercelGatewayCost({
+        gateway: { cost: 'n/a' },
+      })).toBeUndefined()
+      expect(readVercelGatewayCost({
+        gateway: { cost: Number.NaN },
+      })).toBeUndefined()
+      expect(readVercelGatewayCost({
+        gateway: { generationId: 'gen_abc' },
+      })).toBeUndefined()
+      expect(readVercelGatewayCost({
+        openrouter: { usage: { cost: 1 } },
+      })).toBeUndefined()
+    })
+
+  it('reads a genuine zero cost as 0, not as unknown', async () => {
+    const { readVercelGatewayCost } = await importGatewaysIndex()
+
+    expect(readVercelGatewayCost({ gateway: { cost: '0' } })).toBe(0)
+  })
+})
+
 describe('readVercelGenerationId', () => {
   beforeEach(() => {
     vi.resetModules()

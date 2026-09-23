@@ -61,6 +61,21 @@ export function isWebSearchTool(
     || tool === 'web_search_exa'
 }
 
+/**
+ * The subset of web-search tools this app resolves itself, on the user's own
+ * Brave/Exa key, rather than handing to the provider or gateway running the
+ * turn. They are billed separately from tokens, need a tool-calling model,
+ * and are the reason both the direct-provider `Model.toolCall` gate and the
+ * gateway `GatewayModel.toolCall` gate exist. `web_search` is deliberately
+ * excluded: it names whatever native or gateway-bundled mechanism the
+ * selected route provides, which needs no tool call from the model.
+ */
+export function isExternalWebSearchTool(
+  tool: unknown,
+): tool is 'web_search_brave' | 'web_search_exa' {
+  return tool === 'web_search_brave' || tool === 'web_search_exa'
+}
+
 export function getMessageMetadata(
   message: { metadata?: unknown, createdAt?: string | number | Date },
 ): ChatMessageMetadata {

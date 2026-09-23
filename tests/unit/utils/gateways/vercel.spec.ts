@@ -99,6 +99,43 @@ describe('useVercelGateway', () => {
     expect(result.maxOutputTokens).toBeUndefined()
   })
 
+  it('exposes the catalog toolCall flag for the Brave/Exa send gate',
+    async () => {
+      stubKeyLookup()
+      stubVercelCatalog([
+        {
+          id: 'openai/gpt-4o',
+          name: 'GPT-4o',
+          type: 'language',
+          tags: ['tool-use'],
+        },
+        {
+          id: 'openai/no-tools',
+          name: 'No tools',
+          type: 'language',
+          tags: [],
+        },
+      ])
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+
+      expect((await useVercelGateway('1', 'openai/gpt-4o', [], 'off'))
+        .toolCall).toBe(true)
+      expect((await useVercelGateway('1', 'openai/no-tools', [], 'off'))
+        .toolCall).toBe(false)
+    })
+
+  it('leaves toolCall undefined when the model is not in the catalog',
+    async () => {
+      stubKeyLookup()
+      stubVercelCatalog([])
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
+
+      expect(result.toolCall).toBeUndefined()
+    })
+
   it('passes the catalog maxOutputTokens through to generateChatTitle',
     async () => {
       stubKeyLookup()
@@ -275,7 +312,7 @@ describe('persistVercelGenerationCost', () => {
     expect(logger.set).not.toHaveBeenCalled()
   })
 
-  it('retries once when the generation record is not immediately available', async () => {
+  it('retries while the generation record is not yet available', async () => {
     vi.useFakeTimers()
 
     const updateSet = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
@@ -320,9 +357,17 @@ describe('persistVercelGenerationCost', () => {
     vi.useRealTimers()
   })
 
-  it('logs a non-fatal error instead of throwing when both attempts fail', async () => {
+  it('logs a non-fatal error instead of throwing when every attempt fails', async () => {
     const db = {
-      query: { messages: { findFirst: vi.fn() } },
+      query: {
+        messages: {
+          findFirst: vi.fn(async () => ({
+            usage: {
+              model: 'x', provider: 'x', inputTokens: 0, outputTokens: 0, totalTokens: 0,
+            },
+          })),
+        },
+      },
       update: vi.fn(),
     }
 
@@ -346,7 +391,7 @@ describe('persistVercelGenerationCost', () => {
     await vi.runAllTimersAsync()
     await expect(pending).resolves.toBeUndefined()
 
-    expect(db.query.messages.findFirst).not.toHaveBeenCalled()
+    expect(db.update).not.toHaveBeenCalled()
     expect(logger.set).toHaveBeenCalledWith(expect.objectContaining({
       attributes: {
         vercelGenerationCost: {
@@ -356,6 +401,50 @@ describe('persistVercelGenerationCost', () => {
     }))
 
     vi.useRealTimers()
+  })
+
+  /**
+   * The send path now persists Vercel's cost synchronously from
+   * `providerMetadata.gateway.cost`, so this background job is a fallback
+   * for a response that omits that field. It must therefore cost nothing —
+   * not even the generation-info round-trip — on the normal path.
+   */
+  it('skips the generation-info lookup entirely when the row already '
+    + 'carries a totalCost', async () => {
+    const db = {
+      query: {
+        messages: {
+          findFirst: vi.fn(async () => ({
+            usage: {
+              model: 'openai/gpt-4o',
+              provider: 'vercel-gateway',
+              inputTokens: 10,
+              outputTokens: 20,
+              totalTokens: 30,
+              totalCost: 0.00522065,
+            },
+          })),
+        },
+      },
+      update: vi.fn(),
+    }
+
+    const client = { getGenerationInfo: vi.fn() }
+    const logger = createLogger()
+
+    const { persistVercelGenerationCost } = await importVercelGatewayModule()
+
+    await persistVercelGenerationCost({
+      db: db as any,
+      client: client as any,
+      generationId: 'gen_999',
+      publicId: 'assistant-public-4',
+      logger,
+    })
+
+    expect(client.getGenerationInfo).not.toHaveBeenCalled()
+    expect(db.update).not.toHaveBeenCalled()
+    expect(logger.set).not.toHaveBeenCalled()
   })
 
   it('no-ops when the message row has no usage to merge into', async () => {

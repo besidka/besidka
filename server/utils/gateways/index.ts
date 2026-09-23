@@ -1,5 +1,5 @@
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
-import type { LanguageModel, ProviderMetadata } from 'ai'
+import type { LanguageModel } from 'ai'
 import type { GatewayProvider } from '@ai-sdk/gateway'
 import type { GatewayId, GatewayModel } from '#shared/types/gateways.d'
 import type { ModelTool } from '#shared/types/providers.d'
@@ -41,6 +41,21 @@ export interface GatewayChatResult {
    * in `shared/utils/gateway-pricing.ts`).
    */
   pricing?: GatewayModel['pricing']
+  /**
+   * The routed model's catalog `toolCall` flag, the gateway counterpart of
+   * `Model.toolCall`, used by the chat route to reject a Brave/Exa send on a
+   * model that cannot call tools — otherwise the search runs and is billed
+   * on the user's own vendor key while the model never sees the result.
+   *
+   * `undefined` means the builder had no catalog entry to read it from: a
+   * catalog miss, a catalog outage, or — for OpenRouter — a send that never
+   * requested an external search tool and so deliberately skipped the
+   * lookup. The call site treats anything other than `true` as "do not
+   * offer Brave/Exa", matching `GatewayModel.toolCall`'s own documented
+   * meaning, so a catalog problem produces a clean rejection rather than
+   * silent spend.
+   */
+  toolCall?: boolean
   /**
    * Mirrors the direct-provider builders' `reasoning` field
    * (`toReasoningEffort()`'s output): the value the call site assigns to
@@ -118,12 +133,17 @@ function readMetadataRecord(
  * OpenRouter reports its billed cost synchronously in `providerMetadata` at
  * generation end — no extra round-trip needed. Safe to call on any
  * `providerMetadata`, including a direct (non-gateway) provider's, since the
- * `openrouter` key is simply absent there.
+ * `openrouter` key is simply absent there. Accepts `unknown` because the
+ * live stream path reads it off a UI `finish-step` chunk, whose
+ * `providerMetadata` is untyped there — every access below is already
+ * shape-checked, so the wider parameter costs nothing at runtime.
  */
 export function readOpenRouterCost(
-  providerMetadata: ProviderMetadata | undefined,
+  providerMetadata: unknown,
 ): number | undefined {
-  const openrouter = readMetadataRecord(providerMetadata?.openrouter)
+  const openrouter = readMetadataRecord(
+    readMetadataRecord(providerMetadata)?.openrouter,
+  )
   const usage = readMetadataRecord(openrouter?.usage)
   const cost = usage?.cost
 
@@ -131,15 +151,60 @@ export function readOpenRouterCost(
 }
 
 /**
- * Vercel AI Gateway reports only a generation id synchronously; the real
- * cost requires a follow-up `getGenerationInfo()` call (see
- * `persistVercelGenerationCost` in `./vercel.ts`). Safe to call on any
+ * Vercel AI Gateway's own billed total for one step, reported synchronously
+ * as a decimal STRING in `providerMetadata.gateway.cost` — unlike
+ * OpenRouter's numeric `usage.cost`, hence the parse.
+ *
+ * `cost` is the field that matches `getGenerationInfo()`'s `totalCost`,
+ * confirmed against the live API on a turn where the figures diverge: a
+ * `perplexitySearch()` send reported `cost`/`marketCost`/`gatewayCost`
+ * `0.00522065` and `inferenceCost` `0.00022065`, and the async
+ * `getGenerationInfo().totalCost` came back `0.00522065`. So `cost` is the
+ * charge including separately-billed gateway tools, and `inferenceCost` is
+ * the token-only subset — reading the latter would silently under-report
+ * every gateway-bundled search. `marketCost` and `gatewayCost` only agree
+ * with `cost` while `surchargeCost` is zero, so neither is a safe stand-in.
+ *
+ * Returns `undefined` — never `0` — for a missing or unparseable value, so
+ * an unreported cost omits `totalCost` instead of displaying a free
+ * generation. Safe to call on any `providerMetadata` the same way as
+ * `readOpenRouterCost`.
+ */
+export function readVercelGatewayCost(
+  providerMetadata: unknown,
+): number | undefined {
+  const gateway = readMetadataRecord(
+    readMetadataRecord(providerMetadata)?.gateway,
+  )
+  const cost = gateway?.cost
+
+  if (typeof cost === 'number') {
+    return Number.isFinite(cost) ? cost : undefined
+  }
+
+  if (typeof cost !== 'string') {
+    return undefined
+  }
+
+  const parsed = Number(cost)
+
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+/**
+ * Vercel AI Gateway's generation id, the key for the follow-up
+ * `getGenerationInfo()` call (see `persistVercelGenerationCost` in
+ * `./vercel.ts`). That call is now only a fallback — `readVercelGatewayCost`
+ * above reads the same total synchronously — but it stays wired for a
+ * response that omits the synchronous field. Safe to call on any
  * `providerMetadata` the same way as `readOpenRouterCost`.
  */
 export function readVercelGenerationId(
-  providerMetadata: ProviderMetadata | undefined,
+  providerMetadata: unknown,
 ): string | undefined {
-  const gateway = readMetadataRecord(providerMetadata?.gateway)
+  const gateway = readMetadataRecord(
+    readMetadataRecord(providerMetadata)?.gateway,
+  )
   const generationId = gateway?.generationId
 
   return typeof generationId === 'string' ? generationId : undefined
