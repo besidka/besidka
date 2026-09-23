@@ -231,6 +231,7 @@ export function getAffectedTests(changedFiles) {
 
   const gatewayChatTests = [
     'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-gateway-images.spec.ts',
     'tests/integration/api/chats-title.spec.ts',
   ]
 
@@ -1093,6 +1094,10 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-detail.spec.ts',
         'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
       ],
+    },
+    {
+      pattern: /^server\/utils\/files\/(assistant-files|persist-file)\.ts$/,
+      tests: gatewayChatTests,
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
