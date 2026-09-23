@@ -333,7 +333,22 @@ The gate is enforced in two places that must agree:
 - **Client-side**, `chat-input.ts`'s `isToolCallingSupported` reads
   `gatewayModel.value?.toolCall === true`, fail-**closed** before the
   catalog has loaded, so the option never appears offerable ahead of a send
-  the server would then reject.
+  the server would then reject. That closed window is now bounded to one
+  network round-trip: `useChatInput()` also runs a `watch` on the selection
+  that calls `hydrateGatewayCatalog()` (`app/composables/gateway-catalog.ts`)
+  the moment a gateway model is selected — including a selection restored
+  from `usePreferenceStorage()` on a plain page reload — instead of relying
+  on the model picker's `GatewayModelList.vue` to have been opened first.
+  Both paths write into the same `useGatewayCatalogCache()` `useState`, so
+  whichever fetch lands first satisfies the other. The in-flight dedupe (a
+  module-scope map keyed by `GatewayId`) only covers concurrent
+  `hydrateGatewayCatalog()` callers — the two `useChatInput()` call sites —
+  and is not consulted by the picker's own `useGatewayCatalog()`, which runs
+  an independent `useLazyFetch()`; a picker opened during the eager fetch's
+  round-trip still issues its own request, and the result is a harmless
+  duplicate write rather than a conflict. Any failure (rate limit, missing
+  Cloudflare credentials) resolves silently, leaving the toggle hidden
+  rather than surfacing an error toast.
 
 **Brave/Exa are not gated by the same allowlist as `web_search`/
 `image_generation`.** `GATEWAY_TOOL_POLICY`

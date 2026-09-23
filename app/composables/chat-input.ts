@@ -18,6 +18,33 @@ export function useChatInput() {
   const { isImageInputSupported } = useImageInputSupport()
   const { gatewayModel } = useSelectedModelInfo()
 
+  /**
+   * Eagerly warms the gateway catalog cache the moment a gateway model is
+   * selected — including a gateway selection restored from
+   * `usePreferenceStorage()` on a plain page reload, resolved synchronously
+   * before this watcher's first run. Without this, `gatewayModel` below
+   * stays `null` (and every capability computed fails closed) until the
+   * model picker for that specific gateway happens to be opened, which is
+   * exactly the bug this closes: the web-search toggle must reflect the
+   * model's real capability on load, not only after the picker has fetched
+   * its catalog.
+   */
+  watch(
+    () => {
+      const current = selection.value
+
+      return current.source === 'gateway' ? current.gatewayId : null
+    },
+    (gatewayId) => {
+      if (!gatewayId) {
+        return
+      }
+
+      hydrateGatewayCatalog(gatewayId)
+    },
+    { immediate: true },
+  )
+
   const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
 
@@ -42,10 +69,11 @@ export function useChatInput() {
    * instead of a curated `tools` array — any resolved value means the send
    * gate (`isGatewayToolAllowed` in `#shared/utils/gateway-capabilities`)
    * will accept the request. Reads from the already-cached catalog only, so
-   * a persisted gateway selection resolves to `false` until the picker has
-   * fetched that gateway's catalog at least once this session — the same
-   * fail-closed shape the gateway image-input check avoids by failing open,
-   * but web search has no safe "assume yes" default the way vision does.
+   * a persisted gateway selection resolves to `false` for one brief window
+   * on load — until the `hydrateGatewayCatalog()` watcher above resolves —
+   * the same fail-closed shape the gateway image-input check avoids by
+   * failing open, but web search has no safe "assume yes" default the way
+   * vision does.
    */
   const isWebSearchSupported = computed<boolean>(() => {
     if (selection.value.source === 'gateway') {
@@ -58,10 +86,10 @@ export function useChatInput() {
   /**
    * The gateway counterpart of `Model.toolCall`, mirroring the server-side
    * gate in `index.post.ts` (`gatewayToolCall !== true`): a persisted
-   * gateway selection resolves to `false` until the picker has fetched that
-   * gateway's catalog and `GatewayModel.toolCall` is confirmed `true`, so
-   * Brave/Exa never appear as offerable ahead of a send the server would
-   * then reject.
+   * gateway selection resolves to `false` until `GatewayModel.toolCall` is
+   * confirmed `true` from the catalog — eagerly hydrated by the watcher
+   * above rather than only on a picker open — so Brave/Exa never appear as
+   * offerable ahead of a send the server would then reject.
    */
   const isToolCallingSupported = computed<boolean>(() => {
     if (selection.value.source === 'gateway') {

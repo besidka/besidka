@@ -21,9 +21,15 @@ function defaultModelProviderLabel(): string {
 
 const mocks = vi.hoisted(() => ({
   useUserKeys: vi.fn(),
+  fetch: vi.fn(),
 }))
 
 mockNuxtImport('useUserKeys', () => mocks.useUserKeys)
+mockNuxtImport('$fetch', () => mocks.fetch)
+
+function flushPromises() {
+  return Promise.resolve()
+}
 
 const keyedProviderIds = shallowRef<string[]>([])
 
@@ -641,5 +647,171 @@ describe('useChatInput gateway model capability', () => {
     expect(
       wrapper.get('[data-testid="is-selected-model-keyless"]').text(),
     ).toBe('true')
+  })
+})
+
+describe('useChatInput eager gateway catalog hydration', () => {
+  beforeEach(() => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {}
+  })
+
+  it('fetches the gateway catalog as soon as a persisted gateway '
+    + 'selection is restored, without the picker having been opened, and '
+    + 'reveals the search toggle once it resolves', async () => {
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+
+    mocks.fetch.mockResolvedValue({
+      gateway: 'openrouter',
+      models: [{
+        id: 'anthropic/claude-opus-5',
+        name: 'Claude Opus 5',
+        supportsWebSearch: 'native',
+        toolCall: true,
+      } satisfies GatewayModel],
+    })
+
+    const wrapper = await mountSuspended(createHost())
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      '/api/v1/gateways/openrouter/models',
+    )
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-web-search-supported"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('does not reveal the search toggle when the hydrated catalog reports '
+    + 'no capability, matching a direct-provider model with no search '
+    + 'support', async () => {
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/zai-org/glm-5.3-flash',
+    }
+
+    mocks.fetch.mockResolvedValue({
+      gateway: 'cloudflare',
+      models: [{
+        id: '@cf/zai-org/glm-5.3-flash',
+        name: 'GLM 5.3 Flash',
+        toolCall: false,
+      } satisfies GatewayModel],
+    })
+
+    const wrapper = await mountSuspended(createHost())
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-web-search-supported"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('never fetches a gateway catalog for a direct-provider selection', async () => {
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+
+    const wrapper = await mountSuspended(createHost())
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not refetch when the gateway catalog is already cached', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.vercel = [{
+      id: 'openai/gpt-5',
+      name: 'GPT-5',
+      supportsWebSearch: 'native',
+      toolCall: true,
+    } satisfies GatewayModel]
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'openai/gpt-5',
+    }
+
+    const wrapper = await mountSuspended(createHost())
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(
+      wrapper.get('[data-testid="is-web-search-supported"]').text(),
+    ).toBe('true')
+  })
+
+  it('swallows a hydration failure and keeps the search toggle hidden '
+    + 'rather than surfacing an error', async () => {
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/zai-org/glm-5.3-flash',
+    }
+
+    mocks.fetch.mockRejectedValue(new Error('No credentials configured'))
+
+    const wrapper = await mountSuspended(createHost())
+
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-web-search-supported"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="is-tool-calling-supported"]').text(),
+    ).toBe('false')
+  })
+
+  it('dedupes an in-flight hydration across two useChatInput() consumers '
+    + 'selecting the same gateway at once', async () => {
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+
+    mocks.fetch.mockReturnValue(new Promise(() => {}))
+
+    await mountSuspended(createHost())
+    await mountSuspended(createHost())
+
+    await flushPromises()
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
   })
 })
