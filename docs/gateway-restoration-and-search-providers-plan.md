@@ -3387,30 +3387,58 @@ Expect **no output**. Any line printed is a spec that will never run on a PR.
 
 ## Epic 2 gate
 
-- [ ] CI green on PR #362 with all ten packages landed, full suite passing
+- [x] CI green on PR #362 with all ten packages landed, full suite passing
+      (preview build + deploy green on `4e5ed07`; 291 files / 3397 tests)
 - [x] `pnpm run db:generate` emitted exactly one `ALTER TABLE … ADD
       favorite_gateway_models text` with no `DROP TABLE` (WP 2.2,
       `.drizzle/migrations/20260923065554_flimsy_gladiator`), and a second
       run at the end of WP 2.10 emitted nothing ("No schema changes, nothing
       to migrate")
-- [ ] WP 2.4's 7-step keys-page script passed
-- [ ] WP 2.8's 11-step picker script passed, including a real OpenRouter and
-      Vercel catalog load and a persisted gateway favourite
-- [ ] WP 2.6's regression checks passed: direct-provider sends and Epic 1's
-      Brave/Exa sends are unchanged
+- [x] WP 2.4's keys-page script passed, on the later 3-tab layout: the owner
+      saved real OpenRouter / Vercel / Cloudflare credentials through the
+      cards, all three show "Key saved" and open as collapsible cards
+      (live, 2026-09-23)
+- [x] WP 2.8's picker script passed live: OpenRouter (455 models) and
+      Vercel catalogs load, vendor rail + count badges, filters, and a
+      starred gateway model survived a reload (2026-09-23)
+- [x] WP 2.6's regression checks passed live: a direct send (GPT-5.4 nano,
+      "(direct)" label + cost) and a direct Brave send ("Web search
+      (Brave)" Tools row, separate ~$0.015 search line). Exa was not
+      re-sent this pass
 - [ ] The Vercel and OpenRouter live catalog shapes were diffed against the
       restored normalisers (WP 2.5)
-- [ ] WP 2.5's live catalog checks passed for **all three** gateways,
+- [x] WP 2.5's live catalog checks passed for **all three** gateways —
+      Cloudflare returns 27 `@cf/*` models with pricing and `toolCall`
+      after the owner granted Workers AI Read (the two-format join works
+      live); OpenRouter and Vercel load with pricing —
       including Cloudflare's four previously-unverified items and a non-zero
       `gatewayCatalogEnrichment.matched`/`priced`
-- [ ] WP 2.6's live sends passed for all three gateways, including
-      OpenRouter's summed per-step cost, Vercel's async cost appearing after
-      reload, and Cloudflare's estimated cost
+- [x] WP 2.6's live sends passed for all three gateways (2026-09-23):
+      OpenRouter with its `web` plugin shows one blended cost and no
+      separate search line (double-count guard); OpenRouter + Brave keeps
+      Brave's own search line; Vercel's cost is present immediately (read
+      synchronously now, not after a reload) and survives a reload;
+      Cloudflare `@cf/openai/gpt-oss-120b` replies with "Cost
+      (estimated)". Multi-step per-step summing is still unexercised live
+      (no gateway tool sets `withFollowUpTurn()`)
 - [ ] **R12 answered and recorded:** whether a BYOK gateway strips
       provider-native web search, established by a real call rather than
       inferred
 - [ ] Gateway image generation verified end to end, rendering a
-      `/files/<storageKey>` URL rather than an inline `data:` blob
+      `/files/<storageKey>` URL rather than an inline `data:` blob —
+      **FAILING live (2026-09-23)**: both Vercel and OpenRouter image
+      models return "The image provider rejected the saved API key"
+      (503) while text sends on the same keys work. Diagnosed:
+      - Vercel: the owner's account is on the free tier, which returns 403
+        `RestrictedModelsError` for Gemini image models — owner-blocked on
+        paid credits
+      - defect A: every upstream 403 was reported as a bad API key → new
+        `provider-model-restricted` code (fix in progress)
+      - defect B: persisted image-failure text was fed back to the model,
+        so the OpenRouter send (which succeeded) echoed the Vercel error →
+        failure text excluded from model context (fix in progress)
+      - OpenRouter image output confirmed by a direct API call with the
+        app's request shape (one PNG); UI re-test pending the fixes
 
 ## Epic 2 follow-ups — owner UX review (2026-09-23)
 
@@ -3421,25 +3449,35 @@ E picker core) → review → deploy → browser check.
 
 - [x] Keys page: 5 tabs → 3 (Direct Providers / Search Providers / Gateways,
       gateways as collapsible cards) — commit `3b9a75d`
-- [ ] U1 gateway vision chip white-on-white (`text-secondary` → `text-accent`,
-      missed port of `55509f5`) — A, landed `0c27ac9`, browser check pending
-- [ ] U2 phantom horizontal scroll in the picker list, both modes: invisible
+- [x] U1 gateway vision chip white-on-white (`text-secondary` → `text-accent`,
+      missed port of `55509f5`) — A, landed `0c27ac9`, verified live 2026-09-23
+- [x] U2 phantom horizontal scroll in the picker list, both modes: invisible
       daisyUI tooltip `::before` bubbles inflate the scroll width; tooltips →
-      native `title` — A + B, landed `0c27ac9` + `f3771bd`, browser check pending
-- [ ] U3 gateway rail count badge `scale-[0.8]` + rail button size parity — A, landed `0c27ac9`, browser check pending
-- [ ] U4 shorter gateway web-search tooltip ("Web search" / "Web search
-      (gateway-billed)") — A, landed `0c27ac9`, browser check pending
-- [ ] U5 tool-calling wrench in the gateway list (strict `toolCall`), neutral
-      `base-200/300` circle in both lists — A + B, landed `0c27ac9` + `f3771bd`, browser check pending
-- [ ] U6 gateway capability filters: Reasoning / Web search / Tool calling,
-      combinable, fail-closed; web search hidden where it can't discriminate — E, landed `dccc219`, browser check pending
-- [ ] U7 web-search trigger + menu icons 11px → 16px (`!size-4`, same
-      unlayered-icon-CSS bug as `1acd367`) — C, landed `693b2b5`, browser check pending
-- [ ] U8 direct list: "Tool calling" tooltip, 12px glyphs in 20px circles — B, landed `f3771bd`, browser check pending
-- [ ] U9 mobile "more" menu: web search right after reasoning — C, landed `693b2b5`, browser check pending
-- [ ] U10 web-search pill keeps "Search" for Brave/Exa, `title` names the
-      provider — C, landed `693b2b5`, browser check pending
-- [ ] PERF picker open: root cause `@nuxt/icon` sorting a reactive
+      native `title` — A + B, landed `0c27ac9` + `f3771bd`, verified live 2026-09-23
+- [x] U3 gateway rail count badge `scale-[0.8]` + rail button size parity — A, landed `0c27ac9`, verified live 2026-09-23
+- [x] U4 shorter gateway web-search tooltip ("Web search" / "Web search
+      (gateway-billed)") — A, landed `0c27ac9`, verified live 2026-09-23
+- [x] U5 tool-calling wrench in the gateway list (strict `toolCall`), neutral
+      `base-200/300` circle in both lists — A + B, landed `0c27ac9` + `f3771bd`, verified live 2026-09-23
+- [x] U6 gateway capability filters: Reasoning / Web search / Tool calling,
+      combinable, fail-closed; web search hidden where it can't discriminate — E, landed `dccc219`, verified live 2026-09-23
+- [x] U7 web-search trigger + menu icons 11px → 16px (`!size-4`, same
+      unlayered-icon-CSS bug as `1acd367`) — C, landed `693b2b5`, verified live 2026-09-23
+- [x] U8 direct list: "Tool calling" tooltip, 12px glyphs in 20px circles — B, landed `f3771bd`, verified live 2026-09-23
+- [x] U9 mobile "more" menu: web search right after reasoning — C, landed `693b2b5`; order verified
+      in the live DOM (the automation tab could not resize to 390px)
+- [x] U10 web-search pill keeps "Search" for Brave/Exa, `title` names the
+      provider — C, landed `693b2b5`, verified live 2026-09-23
+- [x] Follow-up from review: search focus lands after the reopened
+      highlight (`aria-activedescendant` correct) — `d7264b6`
+- [ ] Gateway image-generation errors: a model-access 403 no longer blamed
+      on the API key (`provider-model-restricted`); persisted failure text
+      kept out of model context; title route falls back instead of failing
+- [ ] Cloudflare keys card: Paste button + leading icon on Account ID and
+      Gateway ID, matching the API Token field
+- [ ] Gateway "Image generation only" filter (policy-hidden on Cloudflare),
+      matching direct mode's Image generation category
+- [x] PERF picker open: root cause `@nuxt/icon` sorting a reactive
       220-entry collection list on every `<Icon>` setup; narrow to 4
       collections, mount the panel once, `markRaw` catalog — E, landed
       `dccc219` (+ `a5626f4` doc). Measured (headless Chromium, production
@@ -3447,7 +3485,7 @@ E picker core) → review → deploy → browser check.
       182 → 35 ms, long tasks 206 → 0 ms; OpenRouter 525 → 94 ms; 4× CPU
       848 → 119 ms / 2518 → 349 ms. The icon pin alone accounts for
       ~half; the trace shows the `useResolvedName` sort gone
-- [ ] CF Cloudflare catalog: token lacks Workers AI Read (owner action
+- [x] CF Cloudflare catalog: token lacks Workers AI Read (owner action
       relayed); surface why/fix in the picker, upstream 401/403 → actionable
       403, no stale-cache serve, doc corrections — D + E; server half landed `e171395`; owner fixed the token 2026-09-23 and the preview catalog now returns 27 `@cf/*` models with pricing + `toolCall` (verified live)
 
