@@ -3789,11 +3789,15 @@ pnpm vitest run   # the landing/legal groups
   - [ ] The 5-step manual browser verification script above, including
         clicking every new vendor privacy-policy link, has **not** been run
         yet.
-  - **The gateway controller/processor classification remains
-    `@TODO owner` in the privacy policy's recipients table, unresolved.**
-    Per the note above, this is a legal-review item for the owner, not an
-    executor or agent decision, and it was deliberately left open — see the
-    Epic 3 gate below.
+  - **The gateway controller/processor classification is resolved.** On
+    2026-09-23 the owner determined the classification directly rather than
+    leaving it open: gateways are **independent controllers**, using the same
+    contract-vs-no-contract test already applied to AI providers and search
+    providers elsewhere in this policy — Besidka has no data-processing
+    agreement with Vercel, Cloudflare AI Gateway or OpenRouter, and the user
+    routes through their own account with each. The privacy policy's
+    `@TODO owner` markers have been replaced accordingly; no `@TODO owner`
+    remains in `content/legal/`. See the Epic 3 gate below.
 
 - [x] Review of WP 3.1 found a real, pre-existing gap in
       `scripts/test-affected-check.mjs`: `content/index.md` had zero mapping
@@ -3809,14 +3813,18 @@ pnpm vitest run   # the landing/legal groups
 work packages — `pnpm run typecheck`, `pnpm run lint`, and a full
 `pnpm vitest run` (292 test files, 3432 tests) are all green on commits
 `d7cc50a`, `9186a26` and `be61714`. That is not the same as this gate being
-satisfied: CI-on-PR, both manual browser scripts, and the owner's
-controller/processor sign-off are still outstanding. Checkboxes below stay
-unchecked until each is actually done.
+satisfied: CI-on-PR and both manual browser scripts are still outstanding.
+The owner's controller/processor sign-off is no longer outstanding — the
+owner determined the classification directly on 2026-09-23 (see WP 3.2
+above) and it has been landed in `content/legal/privacy-policy.md`.
+Checkboxes below stay unchecked until each remaining item is actually done.
 
 - [ ] CI green on PR #362
 - [ ] WP 3.1's 5-step landing script passed
 - [ ] WP 3.2's 5-step legal script passed, including every link clicked
-- [ ] **Owner sign-off on the gateway controller/processor classification**
+- [x] **Owner sign-off on the gateway controller/processor classification**
+      — resolved 2026-09-23: independent controller, same test as AI
+      providers and search providers.
 - [ ] All three `updatedAt` dates bumped
 
 ---

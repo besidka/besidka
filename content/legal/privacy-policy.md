@@ -123,7 +123,19 @@ When you do, I send your prompt, the message history of that chat and any attach
 
 Your relationship with the gateway is directly with it, under the terms of your own gateway account. What it keeps, for how long, whether it logs your requests, and which model vendors it passes them on to and on what terms, is governed by its terms and by the settings of your gateway account, not by mine.
 
-@TODO owner — controller or processor? The role a gateway has for your data under the GDPR (independent controller, like the AI providers above, or processor) has not been decided yet.
+Those gateways are **independent controllers**, not my processors. I have no contract with them about your data. Your relationship is directly with them, under the terms of your own Vercel, Cloudflare or OpenRouter account.
+
+### If you route through Vercel AI Gateway
+
+Vercel's Data Processing Addendum describes Vercel as a processor for its own customers, but does not name AI Gateway specifically. Vercel's product documentation, not its legal terms, states AI Gateway uses zero data retention by default and does not use your prompts for training — but that commitment lives outside the contract, not inside it.
+
+### If you route through Cloudflare AI Gateway
+
+This is a different role from Cloudflare's hosting of Besidka described earlier in this policy. **AI Gateway logs your prompts and responses to your own Cloudflare dashboard by default** — you can turn this off yourself in your Cloudflare AI Gateway settings. Cloudflare states it does not use your content to train its models.
+
+### If you route through OpenRouter
+
+OpenRouter does not retain your prompts by default (zero data retention), but if you turn on prompt logging in your own OpenRouter account, you grant OpenRouter a broad licence to that content — a setting you control, not me.
 
 ## The search provider you choose
 
@@ -148,9 +160,9 @@ Exa states that its query fields are not intended for the submission of personal
 | Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
 | Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
 | Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
-| Vercel (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | @TODO owner — controller or processor? Your own terms with them apply. [Vercel Privacy Notice](https://vercel.com/legal/privacy-notice) |
-| Cloudflare (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, sent with your own Cloudflare account credentials. The models offered through it are Workers AI models that Cloudflare itself hosts and runs. This is a separate role from Cloudflare's hosting of Besidka above. | Depends on your gateway account | @TODO owner — controller or processor? Your own terms with them apply. [Cloudflare Privacy Policy](https://www.cloudflare.com/privacypolicy/) |
-| OpenRouter | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | @TODO owner — controller or processor? Your own terms with them apply. [OpenRouter Privacy Policy](https://openrouter.ai/privacy) |
+| Vercel (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | Independent controller. Your own terms with them apply. Vercel's DPA describes it as a processor for its own customers, but does not name AI Gateway; the zero-data-retention and no-training commitments are in Vercel's product documentation, not its contract. [Vercel Privacy Notice](https://vercel.com/legal/privacy-notice) |
+| Cloudflare (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, sent with your own Cloudflare account credentials. The models offered through it are Workers AI models that Cloudflare itself hosts and runs. This is a separate role from Cloudflare's hosting of Besidka above. | Depends on your gateway account | Independent controller — a different role from Cloudflare's hosting of Besidka above. Your own terms with them apply. AI Gateway logs your prompts and responses to your own Cloudflare dashboard by default until you turn that off. Cloudflare states it does not train on your content. [Cloudflare Privacy Policy](https://www.cloudflare.com/privacypolicy/) |
+| OpenRouter | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | Independent controller. Your own terms with them apply. OpenRouter retains nothing by default, but opting into prompt logging in your own OpenRouter account grants OpenRouter a broad licence to that content. [OpenRouter Privacy Policy](https://openrouter.ai/privacy) |
 | Brave Search | Only if you turn Brave search on for a message: the search query your model writes from your prompt, sent with your own Brave API key | US | Independent controller. Your own terms with them apply. [Brave Search API privacy notice](https://api-dashboard.search.brave.com/documentation/resources/privacy-notice) |
 | Exa | Only if you turn Exa search on for a message: the search query your model writes from your prompt, sent with your own Exa API key | US | Independent controller. Your own terms with them apply. [Exa Privacy Policy](https://exa.ai/privacy-policy) |
 | Google FCM, Apple APNs, Mozilla autopush | The push endpoint your browser issued, plus the encrypted notification | Depends on your browser vendor | Necessary to deliver a push notification you asked for. |
@@ -169,7 +181,7 @@ Cloudflare and Axiom process data in the United States as well as in the EU. Clo
 
 Where your prompts go depends on the provider you chose and the account you hold with them.
 
-If you route a chat through an AI gateway, where your prompts go depends on the gateway, the account you hold with it and the model vendor you selected behind it. @TODO owner — which transfer safeguard applies to a gateway depends on whether it is a controller or a processor, and that has not been decided yet.
+If you route a chat through an AI gateway, where your prompts go depends on the gateway, the account you hold with it and the model vendor you selected behind it. The transfer safeguard is whatever your own agreement with that gateway provides — Vercel and OpenRouter are US companies; Cloudflare's Customer DPA sets out its own mechanisms.
 
 If you turn on Brave Search or Exa for a message, the search query goes to that provider, a company based in the United States, under the account you hold with them.
 
@@ -310,7 +322,7 @@ Four honest limits:
 
 1. **Backups.** As described under [Backups](#backups), Cloudflare D1 keeps point-in-time backups for up to 30 days. Deleted data can persist there for that window before rolling off. Those backups exist only for disaster recovery.
 2. **Your AI provider.** I **cannot** erase anything from Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI or Qwen. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — Anthropic automatically deletes API data within 30 days, OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings. For xAI, DeepSeek, Moonshot AI and Qwen, use their own controls and privacy requests.
-3. **Your AI gateway.** If you routed a chat through Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter, I **cannot** erase anything the gateway kept, such as its own logs of your requests, or anything the model vendor behind it received. That happened under **your** gateway account. Use the gateway's own controls and privacy requests.
+3. **Your AI gateway.** If you routed a chat through Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter, I **cannot** erase anything the gateway kept, such as its own logs of your requests, or anything the model vendor behind it received. That happened under **your** gateway account, and they are independent controllers. Use the gateway's own controls and privacy requests.
 4. **Your search provider.** I **cannot** erase a search query from Brave's or Exa's own records. The query was sent under **your** Brave or Exa account, with your key, and they are independent controllers. Brave states that it keeps a record of API queries for up to 90 days; for anything else, use their own controls and privacy requests.
 
 ### Complaining
