@@ -13,6 +13,7 @@
     >
       <UiFormFieldset>
         <UiFormInput
+          ref="accountIdInput"
           v-model="accountId"
           autocomplete="off"
           label="Account ID"
@@ -20,8 +21,30 @@
           placeholder="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
           :rules="[Validation.required()]"
           :disabled="pending"
-        />
+        >
+          <template #labelBefore>
+            <Icon
+              name="lucide:id-card"
+              size="16"
+            />
+          </template>
+          <template #labelAfter>
+            <UiButton
+              mode="default"
+              text="Paste"
+              icon-name="lucide:clipboard-paste"
+              :icon-size="16"
+              icon-only
+              circle
+              ghost
+              size="xs"
+              tooltip-position="left"
+              @click="pasteAccountId"
+            />
+          </template>
+        </UiFormInput>
         <UiFormInput
+          ref="gatewayIdInput"
           v-model="gatewayId"
           autocomplete="off"
           label="Gateway ID"
@@ -29,7 +52,28 @@
           placeholder="default"
           :disabled="pending"
           note="Optional — leave blank to use your account's default gateway"
-        />
+        >
+          <template #labelBefore>
+            <Icon
+              name="lucide:waypoints"
+              size="16"
+            />
+          </template>
+          <template #labelAfter>
+            <UiButton
+              mode="default"
+              text="Paste"
+              icon-name="lucide:clipboard-paste"
+              :icon-size="16"
+              icon-only
+              circle
+              ghost
+              size="xs"
+              tooltip-position="left"
+              @click="pasteGatewayId"
+            />
+          </template>
+        </UiFormInput>
         <UiFormInput
           ref="apiKeyInput"
           v-model="apiKey"
@@ -124,6 +168,8 @@ interface CloudflareGatewayKeyResponse {
   hasKey: boolean
 }
 
+type FormInputInstance = InstanceType<typeof UiFormInput>
+
 withDefaults(defineProps<{
   group?: string
   open?: boolean
@@ -151,7 +197,9 @@ if (error.value) {
 }
 
 const form = ref<InstanceType<typeof UiForm> | null>()
-const apiKeyInput = ref<InstanceType<typeof UiFormInput> | null>()
+const accountIdInput = ref<FormInputInstance | null>()
+const gatewayIdInput = ref<FormInputInstance | null>()
+const apiKeyInput = ref<FormInputInstance | null>()
 
 const { Validation } = useValidation()
 const { paste } = useClipboardWithPaste()
@@ -189,10 +237,25 @@ const placeholder = computed<string>(() => {
   return 'xxxx...'
 })
 
-async function pasteApiKey() {
-  apiKey.value = await paste()
+async function pasteInto(
+  target: Ref<string>,
+  input: Ref<FormInputInstance | null | undefined>,
+) {
+  target.value = await paste()
   await nextTick()
-  apiKeyInput.value?.dispatchChange()
+  input.value?.dispatchChange()
+}
+
+function pasteAccountId() {
+  return pasteInto(accountId, accountIdInput)
+}
+
+function pasteGatewayId() {
+  return pasteInto(gatewayId, gatewayIdInput)
+}
+
+function pasteApiKey() {
+  return pasteInto(apiKey, apiKeyInput)
 }
 
 async function updateCredentials() {

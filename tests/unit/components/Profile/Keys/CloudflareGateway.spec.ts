@@ -6,10 +6,14 @@ import CloudflareGateway from '../../../../../app/components/Profile/Keys/Cloudf
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   confirm: vi.fn(async () => ({ label: 'Confirm', index: 0 })),
+  paste: vi.fn(async () => ''),
 }))
 
 mockNuxtImport('$fetch', () => mocks.fetch)
 mockNuxtImport('useConfirm', () => mocks.confirm)
+mockNuxtImport('useClipboardWithPaste', () => {
+  return () => ({ paste: mocks.paste })
+})
 
 async function flushPromises() {
   for (let tick = 0; tick < 6; tick += 1) {
@@ -38,6 +42,10 @@ function apiKeyInput(wrapper: any) {
   return wrapper.find('[data-testid="api-key-field"] input')
 }
 
+function fieldPasteButton(wrapper: any, testId: string) {
+  return wrapper.find(`[data-testid="${testId}"] button[aria-label="Paste"]`)
+}
+
 function deleteButton(wrapper: any) {
   return wrapper.findAll('button').find((button: any) => {
     return button.text().includes('Delete')
@@ -50,6 +58,8 @@ describe('Profile/Keys/CloudflareGateway', () => {
     mocks.fetch.mockReset()
     mocks.confirm.mockReset()
     mocks.confirm.mockResolvedValue({ label: 'Confirm', index: 0 })
+    mocks.paste.mockReset()
+    mocks.paste.mockResolvedValue('')
     mocks.fetch.mockImplementation((url: string) => {
       if (url === '/api/v1/profiles/keys/cloudflare-gateway') {
         return Promise.resolve(credentialResponse())
@@ -249,4 +259,54 @@ describe('Profile/Keys/CloudflareGateway', () => {
 
     expect(deleteCalls).toHaveLength(0)
   })
+
+  it('shows a Paste button on all three fields', async () => {
+    const wrapper = await mountSuspended(CloudflareGateway)
+
+    await flushPromises()
+
+    expect(fieldPasteButton(wrapper, 'account-id-field').exists()).toBe(true)
+    expect(fieldPasteButton(wrapper, 'gateway-id-field').exists()).toBe(true)
+    expect(fieldPasteButton(wrapper, 'api-key-field').exists()).toBe(true)
+  })
+
+  it('pastes into Account ID and leaves Gateway ID and API Token untouched',
+    async () => {
+      mocks.paste.mockResolvedValue('account-from-clipboard')
+
+      const wrapper = await mountSuspended(CloudflareGateway)
+
+      await flushPromises()
+      await gatewayIdInput(wrapper).setValue('existing-gateway')
+      await apiKeyInput(wrapper).setValue('existing-token')
+      await fieldPasteButton(wrapper, 'account-id-field').trigger('click')
+      await flushPromises()
+
+      expect((accountIdInput(wrapper).element as HTMLInputElement).value)
+        .toBe('account-from-clipboard')
+      expect((gatewayIdInput(wrapper).element as HTMLInputElement).value)
+        .toBe('existing-gateway')
+      expect((apiKeyInput(wrapper).element as HTMLInputElement).value)
+        .toBe('existing-token')
+    })
+
+  it('pastes into Gateway ID and leaves Account ID and API Token untouched',
+    async () => {
+      mocks.paste.mockResolvedValue('gateway-from-clipboard')
+
+      const wrapper = await mountSuspended(CloudflareGateway)
+
+      await flushPromises()
+      await accountIdInput(wrapper).setValue('existing-account')
+      await apiKeyInput(wrapper).setValue('existing-token')
+      await fieldPasteButton(wrapper, 'gateway-id-field').trigger('click')
+      await flushPromises()
+
+      expect((gatewayIdInput(wrapper).element as HTMLInputElement).value)
+        .toBe('gateway-from-clipboard')
+      expect((accountIdInput(wrapper).element as HTMLInputElement).value)
+        .toBe('existing-account')
+      expect((apiKeyInput(wrapper).element as HTMLInputElement).value)
+        .toBe('existing-token')
+    })
 })
