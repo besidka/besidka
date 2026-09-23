@@ -83,6 +83,7 @@ import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   getGeneratedImageFileIds,
   isKnownImageGenerationModel,
+  persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
@@ -1800,8 +1801,19 @@ async function persistAssistantMessageFromStream(input: {
     }
 
     const responseParts = responseMessage.parts as UIMessage['parts']
+    const gatewayImageResult = input.gatewayId
+      ? await persistGatewayGeneratedImageParts({
+        parts: responseParts,
+        userId: input.userId,
+        chatId: input.chatId,
+        gatewayId: input.providerId,
+        modelId: input.modelId,
+        logger: input.logger,
+      })
+      : undefined
+    const partsAfterGatewayImages = gatewayImageResult?.parts ?? responseParts
     const normalizationInput = {
-      parts: responseParts,
+      parts: partsAfterGatewayImages,
       providerId: input.providerId,
       chatId: input.chatId,
       userId: input.userId,
@@ -1817,18 +1829,21 @@ async function persistAssistantMessageFromStream(input: {
       return false
     }
 
-    const generatedFileIds = getGeneratedImageFileIds(
-      responseParts,
-      input.providerId,
-      normalizedParts,
-    )
+    const generatedFileIds = [
+      ...getGeneratedImageFileIds(
+        partsAfterGatewayImages,
+        input.providerId,
+        normalizedParts,
+      ),
+      ...(gatewayImageResult?.fileIds ?? []),
+    ]
     const usedImageGeneration = responseParts.some((part) => {
       return part.type === 'tool-generate_image'
         && (
           part.state === 'output-available'
           || part.state === 'output-error'
         )
-    })
+    }) || (gatewayImageResult?.fileIds.length ?? 0) > 0
 
     let usage: MessageUsage | undefined
     let vercelGenerationId: string | undefined

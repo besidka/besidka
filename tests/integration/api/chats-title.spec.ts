@@ -323,6 +323,240 @@ describe('chat title API', () => {
   })
 })
 
+describe('chat title API gateway routing', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    mocks.generateChatTitle.mockResolvedValue('Generated title')
+
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('createError', (input: {
+      statusCode?: number
+      statusMessage?: string
+      data?: unknown
+    }) => {
+      const exception = new Error(input.statusMessage || 'Error')
+
+      Object.assign(exception, input)
+
+      return exception
+    })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
+    vi.stubGlobal('getValidatedRouterParams', async (
+      event: { params: unknown },
+      parser: (params: unknown) => unknown,
+    ) => {
+      return parser(event.params)
+    })
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: '1' },
+    }))
+    vi.stubGlobal('useChatProvider', () => {
+      throw new Error('useChatProvider must not be called on the gateway path')
+    })
+    useRuntimeConfig().researchMockEnabled = false
+  })
+
+  function createTitleDb(title = 'Generated title') {
+    const set = vi.fn(() => ({
+      where: vi.fn(() => ({
+        returning: vi.fn(() => ({
+          get: vi.fn(() => ({ title })),
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            title: null,
+            projectId: 'project-1',
+            messages: [
+              { parts: [{ text: 'Create a roadmap for Q2' }] },
+            ],
+          })),
+        },
+      },
+      update: vi.fn(() => ({ set })),
+    }
+
+    return { db, set }
+  }
+
+  it('generates a title through a gateway builder without touching the curated catalog', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      generateChatTitle: mocks.generateChatTitle,
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getTitleHandler()
+    const { db, set } = createTitleDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        model: 'anthropic/claude-opus-5',
+        gateway: 'openrouter',
+      },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response).toBe('Generated title')
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'openrouter',
+      '1',
+      'anthropic/claude-opus-5',
+      [],
+      'off',
+    )
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+      'Create a roadmap for Q2',
+    )
+    expect(set).toHaveBeenCalledWith({ title: 'Generated title' })
+  })
+
+  it('generates a title through the cloudflare gateway builder', async () => {
+    const useGatewayMock = vi.fn(async () => ({
+      generateChatTitle: mocks.generateChatTitle,
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getTitleHandler()
+    const { db, set } = createTitleDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        model: '@cf/meta/llama-3.3-70b-instruct',
+        gateway: 'cloudflare',
+      },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response).toBe('Generated title')
+    expect(useGatewayMock).toHaveBeenCalledWith(
+      'cloudflare',
+      '1',
+      '@cf/meta/llama-3.3-70b-instruct',
+      [],
+      'off',
+    )
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+      'Create a roadmap for Q2',
+    )
+    expect(set).toHaveBeenCalledWith({ title: 'Generated title' })
+  })
+})
+
+describe('chat title API openrouter plugin isolation', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+    vi.clearAllMocks()
+
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('createError', (input: {
+      statusCode?: number
+      statusMessage?: string
+      data?: unknown
+    }) => {
+      const exception = new Error(input.statusMessage || 'Error')
+
+      Object.assign(exception, input)
+
+      return exception
+    })
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
+    vi.stubGlobal('getValidatedRouterParams', async (
+      event: { params: unknown },
+      parser: (params: unknown) => unknown,
+    ) => {
+      return parser(event.params)
+    })
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: '1' },
+    }))
+    vi.stubGlobal('useChatProvider', () => {
+      throw new Error('useChatProvider must not be called on the gateway path')
+    })
+    useRuntimeConfig().researchMockEnabled = false
+  })
+
+  it('never carries the OpenRouter web plugin onto a generated title, so '
+    + 'titles never trigger a second billable search', async () => {
+    const set = vi.fn(() => ({
+      where: vi.fn(() => ({
+        returning: vi.fn(() => ({
+          get: vi.fn(() => ({ title: 'Generated title' })),
+        })),
+      })),
+    }))
+    const db = {
+      query: {
+        chats: {
+          findFirst: vi.fn(async () => ({
+            id: 'chat-1',
+            title: null,
+            projectId: 'project-1',
+            messages: [
+              { parts: [{ text: 'Create a roadmap for Q2' }] },
+            ],
+          })),
+        },
+        keys: {
+          findFirst: vi.fn(async () => ({ apiKey: 'encrypted-key' })),
+        },
+      },
+      update: vi.fn(() => ({ set })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useDecryptText', vi.fn(async () => 'decrypted-key'))
+
+    const useChatTitleMock = vi.fn(async () => 'Generated title')
+
+    vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+    const { useGateway } = await import('../../../server/utils/gateways/index')
+
+    vi.stubGlobal('useGateway', useGateway)
+
+    const handler = await getTitleHandler()
+
+    const response = await handler({
+      body: {
+        model: 'openai/gpt-5.4',
+        gateway: 'openrouter',
+      },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response).toBe('Generated title')
+    expect(useChatTitleMock).toHaveBeenCalledTimes(1)
+
+    const titleInstance = useChatTitleMock.mock.calls[0]?.[0] as unknown as {
+      settings: { plugins?: unknown[] }
+    }
+
+    expect(titleInstance.settings.plugins).toBeUndefined()
+  })
+})
+
 describe('buildMockChatTitle', () => {
   it('strips the mock: prefix and collapses whitespace', async () => {
     const buildMockChatTitle = await getBuildMockChatTitle()

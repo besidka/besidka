@@ -135,6 +135,50 @@ describe('reconstructGeneratedImageParts', () => {
     })
   })
 
+  it('never reconstructs a gateway-origin file (openrouter), leaving the '
+    + 'plain file part untouched so it keeps rendering through the generic '
+    + 'file-part path', async () => {
+    const file = createFileRow({
+      originProvider: 'openrouter',
+      originModel: 'openai/gpt-5-image',
+    })
+
+    mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
+      new Map([[file.storageKey, file]]),
+    )
+
+    const messages = [buildMessage(`/files/${file.storageKey}`)]
+    const result = await reconstructGeneratedImageParts(messages, 1)
+
+    expect(result[0]?.parts[0]).toEqual({
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'sunset.png',
+      url: `/files/${file.storageKey}`,
+    })
+  })
+
+  it('never reconstructs a vercel-gateway origin file either', async () => {
+    const file = createFileRow({
+      originProvider: 'vercel-gateway',
+      originModel: 'google/gemini-3.1-flash-image-preview',
+    })
+
+    mocks.getOwnedGeneratedImageFilesByStorageKeys.mockResolvedValue(
+      new Map([[file.storageKey, file]]),
+    )
+
+    const messages = [buildMessage(`/files/${file.storageKey}`)]
+    const result = await reconstructGeneratedImageParts(messages, 1)
+
+    expect(result[0]?.parts[0]).toEqual({
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'sunset.png',
+      url: `/files/${file.storageKey}`,
+    })
+  })
+
   it('leaves a file untouched when origin metadata is entirely absent',
     async () => {
       const file = createFileRow({

@@ -183,6 +183,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -229,6 +230,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -263,6 +265,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -297,6 +300,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -331,6 +335,7 @@ describe('profile settings API', () => {
       notificationPromptState: false,
       sidebarPinned: false,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -365,6 +370,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: true,
       favoriteModels: [],
+      favoriteGatewayModels: {},
     })
   })
 
@@ -399,6 +405,7 @@ describe('profile settings API', () => {
       notificationPromptState: null,
       sidebarPinned: false,
       favoriteModels: ['gpt-5.4', 'gemini-2.5-flash'],
+      favoriteGatewayModels: {},
     })
   })
 

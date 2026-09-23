@@ -84,11 +84,12 @@ function collectFileStorageKeys<
  * client's `getGenerateImageOutput()` (`app/utils/generated-images.ts`)
  * renders only for a provider `getImageGenerationProviders()` recognizes —
  * the direct providers with a real `generate_image` tool, derived from the
- * curated catalog. A file with any other `originProvider` has no tool
- * behind it at all; letting it through this allowlist would rewrite an
- * already-correctly-rendering plain `file` part into a `tool-generate_image`
- * part the client rejects and renders as nothing, making the image silently
- * vanish on reload.
+ * curated catalog. A gateway-origin file (`originProvider: 'openrouter'`/
+ * `'vercel-gateway'`, written by `persistGatewayGeneratedImageParts` in
+ * `assistant-files.ts`) has no tool behind it at all; letting it through
+ * this allowlist would rewrite an already-correctly-rendering plain `file`
+ * part into a `tool-generate_image` part the client rejects and renders as
+ * nothing, making the image silently vanish on reload.
  */
 function hasOriginMetadata(
   file: OwnedGeneratedImageFile,

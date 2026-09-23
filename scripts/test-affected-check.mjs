@@ -231,6 +231,7 @@ export function getAffectedTests(changedFiles) {
 
   const gatewayChatTests = [
     'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-title.spec.ts',
   ]
 
   const gatewayCatalogTests = [
