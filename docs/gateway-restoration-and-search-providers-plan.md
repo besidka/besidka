@@ -2797,6 +2797,17 @@ Then the real sends, once the owner has saved the three keys (WP 2.4):
       Cloudflare product from the AI-Gateway reverse proxy R12's spike
       tested).
 
+      **Dedicated review outcome:** 0 critical, 2 warnings, 1 suggestion;
+      every named mechanism (double-count guard, toolCall gate placement,
+      Vercel sync cost) independently re-verified as correct. One warning
+      was a real bug — `readVercelGatewayCost` returned `0` instead of
+      `undefined` for an empty-string cost (`Number('') === 0` passes
+      `Number.isFinite`) — fixed in commit `e4c7b34`. The other (no
+      end-to-end test yet exercises the gateway image-persistence call site
+      WP 2.7 just made live) is being closed by the same coder who wrote
+      `chats-gateway.spec.ts`. The suggestion (commit-message wording) was
+      not acted on — low value relative to a follow-up commit.
+
 ## WP 2.7 — Title route, `buildMessageUsage` 4th param, gateway image persistence
 
 **Tier: Sonnet.** Three small, well-specified surgical re-adds. Must land
