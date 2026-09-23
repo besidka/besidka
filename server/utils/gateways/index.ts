@@ -182,7 +182,7 @@ export function readVercelGatewayCost(
     return Number.isFinite(cost) ? cost : undefined
   }
 
-  if (typeof cost !== 'string') {
+  if (typeof cost !== 'string' || cost.trim() === '') {
     return undefined
   }
 

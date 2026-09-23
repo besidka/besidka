@@ -93,6 +93,12 @@ describe('readVercelGatewayCost', () => {
         gateway: { cost: 'n/a' },
       })).toBeUndefined()
       expect(readVercelGatewayCost({
+        gateway: { cost: '' },
+      })).toBeUndefined()
+      expect(readVercelGatewayCost({
+        gateway: { cost: '   ' },
+      })).toBeUndefined()
+      expect(readVercelGatewayCost({
         gateway: { cost: Number.NaN },
       })).toBeUndefined()
       expect(readVercelGatewayCost({
