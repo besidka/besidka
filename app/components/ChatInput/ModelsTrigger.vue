@@ -754,9 +754,11 @@ function getModeFromSelection(): PickerMode {
 }
 
 /**
- * `focusSearch()` runs fire-and-forget. The gateway branch awaits a tick
- * before `resetHighlight()`: on the first open the list hasn't mounted yet,
- * so its template ref isn't populated until Vue finishes patching the DOM.
+ * The gateway branch awaits a tick before `resetHighlight()`: on the first
+ * open the list hasn't mounted yet, so its template ref isn't populated
+ * until Vue finishes patching the DOM. `focusSearch()` runs fire-and-forget
+ * only after the highlight is set, so focus lands once
+ * `aria-activedescendant` already names the reopened selection.
  */
 async function toggle() {
   if (isOpen.value) {
@@ -769,16 +771,15 @@ async function toggle() {
   pickerMode.value = getModeFromSelection()
   hasOpened.value = true
   isOpen.value = true
-  focusSearch()
 
   if (activeGateway.value) {
     await nextTick()
     gatewayList.value?.resetHighlight()
-
-    return
+  } else {
+    setHighlight(getInitialHighlight())
   }
 
-  setHighlight(getInitialHighlight())
+  focusSearch()
 }
 
 async function focusSearch() {

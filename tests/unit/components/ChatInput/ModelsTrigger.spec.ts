@@ -381,7 +381,7 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(mocks.toggleFavoriteModel).toHaveBeenCalledWith('image-model')
   })
 
-  describe('mount-once panel (E3 perf)', () => {
+  describe('panel stays mounted across close and reopen', () => {
     function mountAttachedPicker() {
       return mountSuspended(ModelsTrigger, {
         attachTo: document.body,
@@ -562,6 +562,71 @@ describe('ChatInput/ModelsTrigger', () => {
             .attributes('aria-activedescendant'),
         ).toBe('gateway-model-option-anthropic/claude-opus-5')
       })
+    })
+
+    it('gives the search input focus only after the gateway highlight'
+      + ' is restored, so aria-activedescendant is already correct', async () => {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef([
+          {
+            id: 'anthropic/claude-opus-5',
+            name: 'Claude Opus 5',
+            pricing: { input: '0.0000025', output: '0.00001' },
+            toolCall: false,
+          },
+          {
+            id: 'openai/gpt-5.4',
+            name: 'GPT-5.4',
+            pricing: { input: '0.0000025', output: '0.00001' },
+            toolCall: false,
+          },
+        ]),
+        pending: shallowRef(false),
+        error: shallowRef(null),
+        refresh: mocks.refreshGatewayCatalog,
+      })
+      mocks.useUserModel.mockReturnValue({
+        selection: shallowRef({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId: 'anthropic/claude-opus-5',
+        }),
+        userModel: shallowRef('anthropic/claude-opus-5'),
+      })
+
+      const wrapper = await mountAttachedPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      await trigger.trigger('click')
+      await wrapper.get('[data-testid="models-picker-search"]')
+        .trigger('keydown', { key: 'ArrowDown' })
+
+      await trigger.trigger('click')
+
+      const input = wrapper.get<HTMLInputElement>(
+        '[data-testid="models-picker-search"]',
+      ).element
+      const originalFocus = input.focus.bind(input)
+      const activeDescendantsAtFocus: Array<string | null> = []
+
+      vi.spyOn(input, 'focus').mockImplementation(() => {
+        activeDescendantsAtFocus.push(
+          input.getAttribute('aria-activedescendant'),
+        )
+        originalFocus()
+      })
+
+      await trigger.trigger('click')
+
+      await vi.waitFor(() => {
+        expect(document.activeElement).toBe(input)
+      })
+
+      expect(activeDescendantsAtFocus).toEqual([
+        'gateway-model-option-anthropic/claude-opus-5',
+      ])
+
+      wrapper.unmount()
     })
   })
 
