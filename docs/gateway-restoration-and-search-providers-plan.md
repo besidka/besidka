@@ -2045,7 +2045,7 @@ git diff --stat 24df3b5^ -- <each restored path>   # expect EMPTY
 
 No browser verification.
 
-- [ ] WP 2.1 complete
+- [x] WP 2.1 complete (commit `d031d32`)
 
 ## WP 2.2 — The `favorite_gateway_models` migration
 
@@ -2136,7 +2136,7 @@ No browser verification, but after the preview deploy lands, confirm
 `/profile` loads and a favourite can be starred — the restored
 `user_settings` read path is the first thing a stale column would break.
 
-- [ ] WP 2.2 complete
+- [x] WP 2.2 complete (commit `d6e2b47`)
 
 ## WP 2.3 — Shared layer hand-merge + single source of truth for gateway ids
 
@@ -2266,7 +2266,7 @@ assistant messages predate the gateway removal and confirm the context menu
 renders without throwing. This is removal-plan risk R4 in mirror image — the
 Provider row that silently disappeared for those messages now reappears.
 
-- [ ] WP 2.3 complete
+- [x] WP 2.3 complete (commit `4a119e0`)
 
 ## WP 2.4 — Gateway credential routes + keys page gateway tabs
 
@@ -2394,7 +2394,7 @@ so a real save cannot be confirmed against a live gateway):
 9. Delete each and confirm the badge reverts. Re-save them; the rest of
    Epic 2's live verification depends on them being present.
 
-- [ ] WP 2.4 complete
+- [x] WP 2.4 complete (commit `4345791`, landed with WP 2.5)
 
 ## WP 2.5 — Gateway model catalog (server + API + client cache)
 
@@ -2552,7 +2552,7 @@ Finally, run one real catalog fetch through the app and read the logged
 failed** — that is the single most informative number in this package, and it
 is now observable.
 
-- [ ] WP 2.5 complete
+- [x] WP 2.5 complete (commit `4345791`, landed with WP 2.4) - Cloudflare live catalog verification blocked, owner's API token fails Cloudflare's own token-verify endpoint
 
 ## WP 2.6 — `server/api/v1/chats/[slug]/index.post.ts` rebuild
 
@@ -3055,7 +3055,7 @@ catalogs are public:
     model label updates to the gateway model's name, and that the web-search
     dropdown from Epic 1 re-derives its options correctly for it.
 
-- [ ] WP 2.8 complete
+- [x] WP 2.8 complete (commit `afcc94c`) - flagged for dedicated reviewer attention per the plan's own risk call-out
 
 ## WP 2.9 — Client composables hand-merge
 
