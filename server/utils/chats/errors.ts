@@ -11,6 +11,7 @@ const chatErrorCodes: ChatErrorCode[] = [
   'provider-quota-exceeded',
   'provider-unavailable',
   'provider-auth',
+  'provider-model-restricted',
   'generation-busy',
   'storage-quota',
   'provider-safety',
@@ -139,7 +140,11 @@ function getPreferredChatMessage(input: {
   errorMessage: string | undefined
   status: number
 }): string | undefined {
-  if (!input.errorMessage || input.code === 'provider-auth') {
+  if (
+    !input.errorMessage
+    || input.code === 'provider-auth'
+    || input.code === 'provider-model-restricted'
+  ) {
     return undefined
   }
 
@@ -256,6 +261,15 @@ function getResearchAdapterErrorText(error: unknown): string {
   return error instanceof ResearchAdapterError ? error.message : ''
 }
 
+/**
+ * Matches only Vercel AI Gateway's free-tier "RestrictedModelsError" wording
+ * (see `docs/providers/gateways.md`). This is deliberately narrow — it is
+ * not a general classifier for every 403, which must keep mapping to
+ * `provider-auth`.
+ */
+const MODEL_ACCESS_RESTRICTED_PATTERN
+  = /do not have access to this model|upgrade to paid credits/i
+
 function resolveChatErrorCode(
   errorMessage: string | undefined,
   status: number | undefined,
@@ -275,6 +289,13 @@ function resolveChatErrorCode(
     || normalizedMessage.includes('too many requests')
   ) {
     return 'provider-rate-limit'
+  }
+
+  if (
+    status === 403
+    && MODEL_ACCESS_RESTRICTED_PATTERN.test(normalizedMessage)
+  ) {
+    return 'provider-model-restricted'
   }
 
   if (status === 401 || status === 403) {
@@ -310,6 +331,8 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
       return 'The provider failed to process this request.'
     case 'provider-auth':
       return 'The provider rejected the API credentials.'
+    case 'provider-model-restricted':
+      return 'Your gateway account can\'t use this model.'
     case 'message-persist-failed':
       return 'The message could not be saved.'
     case 'chat-request-invalid':
@@ -346,6 +369,10 @@ function getDefaultChatWhy(
       return 'The upstream model provider returned an internal error.'
     case 'provider-auth':
       return 'The saved API key is missing, invalid, or does not allow this model.'
+    case 'provider-model-restricted':
+      return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
+        ? errorMessage
+        : undefined
     case 'message-persist-failed':
       return 'The response could not be stored in the database.'
     case 'chat-request-invalid':
@@ -384,6 +411,9 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
       return 'Retry the message. If it keeps failing, try another model or provider.'
     case 'provider-auth':
       return 'Update the provider API key in settings and try again.'
+    case 'provider-model-restricted':
+      return 'Add paid credits to your gateway account, or choose a'
+        + ' different model.'
     case 'message-persist-failed':
       return 'Retry the message. If it keeps failing, contact support with the request ID.'
     case 'research-tier-required':

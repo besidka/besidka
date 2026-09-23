@@ -111,6 +111,19 @@ const imageGenerationErrors = {
       'Update the provider key in settings, then try again.',
     ].join(' '),
   },
+  providerModelRestricted: {
+    code: 'provider-model-restricted',
+    message: 'Your gateway account can\'t use this model.',
+    why: 'The saved gateway account is not entitled to this image model.',
+    fix: 'Add paid credits to your gateway account, or choose a different'
+      + ' model.',
+    status: 403,
+    persistenceText: [
+      'Your gateway account can\'t use this model.',
+      'Add paid credits to your gateway account, or choose a different',
+      'model.',
+    ].join(' '),
+  },
   providerUnavailable: {
     code: 'provider-unavailable',
     message: 'The image provider is temporarily unavailable.',
@@ -140,6 +153,24 @@ const persistedErrorsByCode = new Map<string, string>(
     return [definition.code, definition.persistenceText]
   }),
 )
+const persistedFailureTexts = new Set<string>(persistedErrorsByCode.values())
+const failureReferenceSuffixPattern = / \(ref: [A-Za-z0-9_.:-]{1,128}\)$/
+
+/**
+ * A previously persisted image-generation failure notice must never be fed
+ * back to the model as if it were real assistant content on a later turn
+ * (it would otherwise get echoed verbatim, `(ref: ...)` and all). Matching
+ * is done on the persisted text itself, with an optional trailing
+ * `(ref: <id>)` stripped, so this also covers failure text that was already
+ * written to the database before this check existed.
+ */
+export function isPersistedImageGenerationFailureText(
+  text: string,
+): boolean {
+  const textWithoutReference = text.replace(failureReferenceSuffixPattern, '')
+
+  return persistedFailureTexts.has(textWithoutReference)
+}
 
 export function getSafeImageGenerationError(
   exception: unknown,
@@ -188,6 +219,8 @@ export function getSafeImageGenerationError(
     definition = imageGenerationErrors.providerQuotaExceeded
   } else if (chatError.code === 'provider-auth') {
     definition = imageGenerationErrors.providerAuth
+  } else if (chatError.code === 'provider-model-restricted') {
+    definition = imageGenerationErrors.providerModelRestricted
   } else if (chatError.code === 'provider-unavailable') {
     definition = imageGenerationErrors.providerUnavailable
   } else {

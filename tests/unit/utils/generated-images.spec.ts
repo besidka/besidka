@@ -211,6 +211,14 @@ describe('generated image utils', () => {
         'Update the provider key in settings, then try again.',
       ].join(' '),
     },
+    {
+      code: 'provider-model-restricted',
+      expected: [
+        'Your gateway account can\'t use this model.',
+        'Add paid credits to your gateway account, or choose a different',
+        'model.',
+      ].join(' '),
+    },
   ])('maps $code to fixed actionable text', ({ code, expected }) => {
     const errorText = JSON.stringify({
       code,

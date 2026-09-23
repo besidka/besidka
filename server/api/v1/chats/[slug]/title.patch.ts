@@ -1,7 +1,10 @@
 import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
 import { eq } from 'drizzle-orm'
+import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { normalizeChatError } from '~~/server/utils/chats/errors'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export default defineEventHandler(async (event) => {
   const params = await getValidatedRouterParams(event, z.object({
@@ -86,105 +89,120 @@ export default defineEventHandler(async (event) => {
 
   const runtimeConfig = useRuntimeConfig()
 
-  if (
-    runtimeConfig.researchMockEnabled
-    && initialMessages?.trim().toLowerCase().startsWith('mock:')
-  ) {
-    title = buildMockChatTitle(initialMessages)
-  } else if (gatewayId) {
-    const { generateChatTitle } = await useGateway(
-      gatewayId,
-      session.user.id,
-      body.data.model,
-      [],
-      'off',
-    )
+  try {
+    if (
+      runtimeConfig.researchMockEnabled
+      && initialMessages?.trim().toLowerCase().startsWith('mock:')
+    ) {
+      title = buildMockChatTitle(initialMessages)
+    } else if (gatewayId) {
+      const { generateChatTitle } = await useGateway(
+        gatewayId,
+        session.user.id,
+        body.data.model,
+        [],
+        'off',
+      )
 
-    title = await generateChatTitle(initialMessages)
-  } else {
-    const { provider, model } = useChatProvider(body.data.model)
-    const research = getModelResearch(model)
-    const titleModelId = research ? research.assistModel : model.id
+      title = await generateChatTitle(initialMessages)
+    } else {
+      const { provider, model } = useChatProvider(body.data.model)
+      const research = getModelResearch(model)
+      const titleModelId = research ? research.assistModel : model.id
 
-    switch (provider.id) {
-      case 'openai': {
-        const { generateChatTitle } = await useOpenAI(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+      switch (provider.id) {
+        case 'openai': {
+          const { generateChatTitle } = await useOpenAI(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
-      }
-      case 'google': {
-        const { generateChatTitle } = await useGoogle(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+          title = await generateChatTitle(initialMessages)
+          break
+        }
+        case 'google': {
+          const { generateChatTitle } = await useGoogle(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
-      }
-      case 'anthropic': {
-        const { generateChatTitle } = await useAnthropic(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+          title = await generateChatTitle(initialMessages)
+          break
+        }
+        case 'anthropic': {
+          const { generateChatTitle } = await useAnthropic(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
-      }
-      case 'xai': {
-        const { generateChatTitle } = await useXai(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+          title = await generateChatTitle(initialMessages)
+          break
+        }
+        case 'xai': {
+          const { generateChatTitle } = await useXai(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
-      }
-      case 'deepseek': {
-        const { generateChatTitle } = await useDeepSeek(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+          title = await generateChatTitle(initialMessages)
+          break
+        }
+        case 'deepseek': {
+          const { generateChatTitle } = await useDeepSeek(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
-      }
-      case 'moonshotai': {
-        const { generateChatTitle } = await useMoonshotAi(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+          title = await generateChatTitle(initialMessages)
+          break
+        }
+        case 'moonshotai': {
+          const { generateChatTitle } = await useMoonshotAi(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
-      }
-      case 'qwen': {
-        const { generateChatTitle } = await useQwen(
-          session.user.id,
-          titleModelId,
-          [],
-          'off',
-        )
+          title = await generateChatTitle(initialMessages)
+          break
+        }
+        case 'qwen': {
+          const { generateChatTitle } = await useQwen(
+            session.user.id,
+            titleModelId,
+            [],
+            'off',
+          )
 
-        title = await generateChatTitle(initialMessages)
-        break
+          title = await generateChatTitle(initialMessages)
+          break
+        }
       }
     }
+  } catch (exception) {
+    const chatError = normalizeChatError({ error: exception })
+
+    useLogger(event).set({
+      attributes: {
+        titleGeneration: {
+          error: exceptionMessage(exception),
+          status: chatError.status,
+        },
+      },
+    })
+
+    title = buildMockChatTitle(initialMessages)
   }
 
   const { title: savedTitle } = await db.update(schema.chats)

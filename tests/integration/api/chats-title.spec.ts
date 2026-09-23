@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   generateChatTitle: vi.fn(async () => 'Generated title'),
+  loggerSet: vi.fn(),
+}))
+
+vi.mock('evlog', () => ({
+  useLogger: () => ({
+    set: mocks.loggerSet,
+  }),
 }))
 
 async function getTitleHandler() {
@@ -421,6 +428,46 @@ describe('chat title API gateway routing', () => {
       'Create a roadmap for Q2',
     )
     expect(set).toHaveBeenCalledWith({ title: 'Generated title' })
+  })
+
+  it('falls back to a truncated title and logs the failure when title '
+    + 'generation throws, e.g. a Vercel free-tier restricted model',
+  async () => {
+    const restrictedError = Object.assign(new Error(
+      'Free tier users do not have access to this model. Upgrade to '
+      + 'paid credits for unrestricted access.',
+    ), { statusCode: 403 })
+    const useGatewayMock = vi.fn(async () => ({
+      generateChatTitle: vi.fn(async () => {
+        throw restrictedError
+      }),
+    }))
+
+    vi.stubGlobal('useGateway', useGatewayMock)
+
+    const handler = await getTitleHandler()
+    const { db, set } = createTitleDb('Create a roadmap for Q2')
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      body: {
+        model: 'google/gemini-3.1-flash-image',
+        gateway: 'vercel',
+      },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    expect(response).toBe('Create a roadmap for Q2')
+    expect(set).toHaveBeenCalledWith({ title: 'Create a roadmap for Q2' })
+    expect(mocks.loggerSet).toHaveBeenCalledWith({
+      attributes: {
+        titleGeneration: {
+          error: expect.stringContaining('Free tier'),
+          status: 403,
+        },
+      },
+    })
   })
 
   it('generates a title through the cloudflare gateway builder', async () => {

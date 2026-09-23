@@ -87,6 +87,9 @@ import {
   sanitizeMessagesForModelContext,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
+import {
+  isPersistedImageGenerationFailureText,
+} from '~~/server/utils/ai/image-generation-errors'
 import { resolveToolLoopOptions } from '~~/server/utils/ai/tool-loop'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -2046,6 +2049,22 @@ async function persistAssistantMessageFromStream(input: {
   }
 }
 
+/**
+ * A persisted image-generation failure notice makes
+ * `hasMeaningfulAssistantParts` return true (it is a non-empty text part),
+ * but it is not a real answer the user asked to replay by clicking
+ * Regenerate — it is the same predicate `sanitizeMessageParts` uses to keep
+ * this text out of model context.
+ */
+function isFailureOnlyAssistantReply(parts: UIMessage['parts']): boolean {
+  const partsWithoutFailureText = parts.filter((part) => {
+    return part.type !== 'text'
+      || !isPersistedImageGenerationFailureText(part.text)
+  })
+
+  return !hasMeaningfulAssistantParts(partsWithoutFailureText)
+}
+
 function findPersistedAssistantReply(
   messages: Array<{
     id: string
@@ -2074,6 +2093,7 @@ function findPersistedAssistantReply(
     if (
       message.role === 'assistant'
       && hasMeaningfulAssistantParts(message.parts)
+      && !isFailureOnlyAssistantReply(message.parts)
     ) {
       return message
     }

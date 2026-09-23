@@ -85,6 +85,14 @@ const imageGenerationFailureTextByCode = new Map<ChatErrorCode, string>([
     ].join(' '),
   ],
   [
+    'provider-model-restricted',
+    [
+      'Your gateway account can\'t use this model.',
+      'Add paid credits to your gateway account, or choose a different',
+      'model.',
+    ].join(' '),
+  ],
+  [
     'provider-unavailable',
     [
       'The image provider is temporarily unavailable.',

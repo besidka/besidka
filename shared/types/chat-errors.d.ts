@@ -6,6 +6,7 @@ export type ChatErrorCode
     | 'provider-quota-exceeded'
     | 'provider-unavailable'
     | 'provider-auth'
+    | 'provider-model-restricted'
     | 'generation-busy'
     | 'storage-quota'
     | 'provider-safety'

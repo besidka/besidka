@@ -278,6 +278,118 @@ describe('assistant files scaffolding', () => {
     ])
   })
 
+  it('strips a persisted image-generation failure notice with a ref '
+    + 'suffix from an assistant message before it reaches the model', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'assistant-image-failure',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: [
+              'The image provider rejected the saved API key.',
+              'Update the provider key in settings, then try again.',
+              '(ref: cf-ray-abc123)',
+            ].join(' '),
+          },
+        ],
+      } as any,
+    ]
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+    expect(sanitizedMessages).toHaveLength(0)
+  })
+
+  it('keeps an assistant message with ordinary text untouched', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'assistant-normal-text',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: 'Here is the summary you asked for.',
+          },
+        ],
+      } as any,
+    ]
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+    expect(sanitizedMessages).toHaveLength(1)
+    expect(sanitizedMessages[0]?.parts).toEqual([
+      {
+        type: 'text',
+        text: 'Here is the summary you asked for.',
+      },
+    ])
+  })
+
+  it('drops an assistant message made only of failure text entirely '
+    + 'from model context', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'assistant-only-failure',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: [
+              'The image provider is temporarily unavailable.',
+              'Try again later or use a different provider.',
+            ].join(' '),
+          },
+        ],
+      } as any,
+      {
+        id: 'user-follow-up',
+        role: 'user',
+        parts: [
+          {
+            type: 'text',
+            text: 'Try again please.',
+          },
+        ],
+      } as any,
+    ]
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+    expect(sanitizedMessages).toHaveLength(1)
+    expect(sanitizedMessages[0]?.id).toBe('user-follow-up')
+  })
+
+  it('does not strip the same failure text from a user message', () => {
+    const failureText = [
+      'The image provider rejected the saved API key.',
+      'Update the provider key in settings, then try again.',
+    ].join(' ')
+    const messages: UIMessage[] = [
+      {
+        id: 'user-quoting-failure',
+        role: 'user',
+        parts: [
+          {
+            type: 'text',
+            text: failureText,
+          },
+        ],
+      } as any,
+    ]
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+    expect(sanitizedMessages).toHaveLength(1)
+    expect(sanitizedMessages[0]?.parts).toEqual([
+      {
+        type: 'text',
+        text: failureText,
+      },
+    ])
+  })
+
   it('replaces old user file parts with placeholders', () => {
     const messages: UIMessage[] = [
       {
@@ -733,6 +845,14 @@ describe('assistant files scaffolding', () => {
       expected: [
         'The image provider rejected the saved API key.',
         'Update the provider key in settings, then try again.',
+      ].join(' '),
+    },
+    {
+      code: 'provider-model-restricted',
+      expected: [
+        'Your gateway account can\'t use this model.',
+        'Add paid credits to your gateway account, or choose a different',
+        'model.',
       ].join(' '),
     },
     {

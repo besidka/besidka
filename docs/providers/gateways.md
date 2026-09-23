@@ -568,6 +568,17 @@ verification across all three gateways.
   requiring `compatibility: 'strict'`/`usage: { include: true }`, verified
   by a 4-way matrix test against the live API on
   `@openrouter/ai-sdk-provider@3.1.0`.
+- **OpenRouter image generation**, verified by a direct API call with the
+  app's exact request shape against `google/gemini-2.5-flash-image`: one PNG
+  returned, with real usage/cost recorded. Not yet verified through the
+  app's UI end to end.
+- **OpenRouter's web plugin**, confirmed live: it runs and its cost is
+  blended into the response the same way as other usage, not itemized
+  separately (see "The double-count guard"). Citation behavior is
+  model-dependent, not a mapping gap — on one send the model ignored the
+  injected search results and OpenRouter returned no citations; on another,
+  the raw stream carried 10 `url_citation` annotations, all correctly mapped
+  to `source` parts.
 - **Cloudflare's marketplace + default-format two-format join**, confirmed
   2026-09-23 against a real account with a correctly-scoped token: the
   marketplace fetch returned 27 `@cf/*` models, the enrichment fetch
@@ -580,6 +591,12 @@ verification across all three gateways.
 
 **Still genuinely open, not settled by this restoration:**
 
+- **Vercel image generation is unverified.** The owner's Vercel account is
+  on the free tier, which returns HTTP 403 `RestrictedModelsError` ("Free
+  tier users do not have access to this model. Upgrade to paid credits…")
+  for Gemini image models such as `google/gemini-3.1-flash-image`. This is
+  an account-tier restriction, not a code defect — see "Owner action items"
+  below.
 - **R12 — "does a BYOK gateway strip provider-native web search?" remains
   OPEN.** Nothing in this restoration's testing inspected a gateway
   response for `groundingMetadata`/`server_tool_use`/`web_search_call` on a
@@ -590,12 +607,11 @@ verification across all three gateways.
   (`ai/v1/chat/completions`) has not been. The chat builder is built
   against Cloudflare's own published API shapes and exercised by unit
   tests, but never sent against a live account.
-- **OpenRouter's and Vercel's reasoning and image-generation request
-  shapes**, live. Both are verified against the installed packages' type
-  definitions and compiled source, and against each provider's current
-  public docs for the wire-level request shape, but neither a
-  reasoning-toggled send nor an image-generation send was ever made against
-  a real account in this environment.
+- **OpenRouter's and Vercel's reasoning request shapes**, live. Both are
+  verified against the installed packages' type definitions and compiled
+  source, and against each provider's current public docs for the
+  wire-level request shape, but a reasoning-toggled send was never made
+  against a real account in this environment.
 - **Whether an xAI model routed through Vercel degrades gracefully when a
   reasoning level is requested** — Vercel's docs say an unsupported provider
   "ignores the option and emits an `unsupported` warning" rather than
@@ -631,3 +647,15 @@ Nothing is required to deploy. Specifically:
   `CLAUDE.md`'s D1 safety section.
 - The live-verification gaps above are strong recommendations, not hard
   deploy blockers.
+- **Vercel's free-tier restriction (confirmed for Gemini image models) is an
+  account issue, not a code issue.** Tier depends on whether the team has
+  ever purchased AI Gateway credits, not the remaining balance — the
+  monthly free credit still counts as free tier even when nearly full
+  (https://vercel.com/docs/ai-gateway/pricing). The free tier includes only
+  a subset of models (https://vercel.com/docs/ai-gateway/faq), and BYOK
+  does not bypass this — it also requires the paid tier
+  (https://vercel.com/docs/ai-gateway/authentication-and-byok/byok).
+  `/v1/models` exposes no free-tier/restricted flag across any of its 386
+  models, so the picker can't hide these ahead of a send; the app now
+  surfaces the 403 as "Your gateway account can't use this model." instead
+  of blaming the saved key.

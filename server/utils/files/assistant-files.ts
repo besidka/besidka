@@ -10,6 +10,7 @@ import {
 import { validateGeneratedImage } from '~~/server/utils/ai/image-generation'
 import {
   getPersistedImageGenerationFailureText,
+  isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { persistFile } from '~~/server/utils/files/persist-file'
@@ -78,6 +79,12 @@ function findLatestUserMessage(messages: UIMessage[]): UIMessage | null {
   return null
 }
 
+/**
+ * A persisted image-generation failure notice is dropped from an assistant
+ * message here so it never re-enters the model's context on a later turn
+ * (see `isPersistedImageGenerationFailureText`) — the user still sees it in
+ * the chat, since only the model-facing copy of the message is sanitized.
+ */
 function sanitizeMessageParts(
   message: UIMessage,
   isLatestUserMessage: boolean,
@@ -86,6 +93,13 @@ function sanitizeMessageParts(
 
   for (const part of message.parts) {
     if (part.type === 'text') {
+      if (
+        message.role === 'assistant'
+        && isPersistedImageGenerationFailureText(part.text)
+      ) {
+        continue
+      }
+
       sanitizedParts.push({
         type: 'text',
         text: part.text,

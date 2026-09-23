@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mapResearchProviderError } from '../../../../server/utils/chats/errors'
+import {
+  mapResearchProviderError,
+  normalizeChatError,
+} from '../../../../server/utils/chats/errors'
 import { ResearchAdapterError } from '../../../../server/utils/research/adapter-error'
 
 describe('mapResearchProviderError', () => {
@@ -105,6 +108,46 @@ describe('mapResearchProviderError', () => {
       'The provider rejected the API credentials.',
     )
     expect(result.message).not.toContain('sk-')
+  })
+})
+
+describe('normalizeChatError provider-model-restricted classification', () => {
+  it('classifies a 403 carrying the Vercel free-tier wording as '
+    + 'provider-model-restricted, not provider-auth', () => {
+    const result = normalizeChatError({
+      error: {
+        statusCode: 403,
+        message: 'Free tier users do not have access to this model. '
+          + 'Upgrade to paid credits at https://vercel.com/d?to=%2F for '
+          + 'unrestricted access.',
+      },
+    })
+
+    expect(result.code).toBe('provider-model-restricted')
+    expect(result.status).toBe(403)
+    expect(result.why).toContain('Free tier')
+  })
+
+  it('keeps a plain 403 Forbidden as provider-auth', () => {
+    const result = normalizeChatError({
+      error: {
+        statusCode: 403,
+        message: 'Forbidden',
+      },
+    })
+
+    expect(result.code).toBe('provider-auth')
+  })
+
+  it('keeps a 401 as provider-auth', () => {
+    const result = normalizeChatError({
+      error: {
+        statusCode: 401,
+        message: 'Invalid API key',
+      },
+    })
+
+    expect(result.code).toBe('provider-auth')
   })
 })
 
