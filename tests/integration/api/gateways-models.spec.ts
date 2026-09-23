@@ -243,6 +243,31 @@ describe('gateway models API', () => {
       )
     })
 
+  it('maps a rejected Cloudflare token to a 403', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ errors: [{ code: 10000 }] }),
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    vi.doMock('~~/server/utils/gateways/cloudflare', () => ({
+      getCloudflareGatewayCredentials: vi.fn(async () => ({
+        accountId: 'account-1',
+        apiKey: 'gateway-only-token',
+      })),
+    }))
+
+    const handler = await getHandler()
+
+    await expect(handler({
+      params: { gateway: 'cloudflare' },
+    } as never)).rejects.toMatchObject({
+      status: 403,
+      why: expect.stringContaining('10000'),
+    })
+  })
+
   it('caches the cloudflare catalog per account, isolated from other accounts',
     async () => {
       const fetchMock = mockCloudflareMarketplaceSequence([

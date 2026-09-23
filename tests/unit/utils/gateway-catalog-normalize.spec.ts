@@ -714,18 +714,71 @@ describe('fetchCloudflareGatewayCatalog', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
 
-  it('throws a clean error when the upstream fetch fails', async () => {
-    mockFetchOnce({}, false, 401)
+  it('maps a 401 token rejection to a 403 with a Workers AI Read fix',
+    async () => {
+      mockFetchOnce({}, false, 401)
 
-    const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
 
-    await expect(fetchCloudflareGatewayCatalog({
-      accountId: 'account-1',
-      apiKey: 'bad-token',
-    })).rejects.toThrow(
-      'Failed to fetch Cloudflare AI Gateway model catalog',
-    )
-  })
+      await expect(fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'bad-token',
+      })).rejects.toMatchObject({
+        status: 403,
+        fix: expect.stringContaining('Workers AI > Read'),
+      })
+    })
+
+  it('includes Cloudflare\'s own error code in why on a 403 rejection',
+    async () => {
+      mockFetchOnce({ errors: [{ code: 10000 }] }, false, 403)
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+      await expect(fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'bad-token',
+      })).rejects.toMatchObject({
+        status: 403,
+        why: expect.stringMatching(/HTTP 403.*10000/),
+      })
+    })
+
+  it('keeps the generic 502 outage error for a non-401/403 failure',
+    async () => {
+      mockFetchOnce({}, false, 500)
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+      await expect(fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'bad-token',
+      })).rejects.toMatchObject({
+        status: 502,
+        fix: 'Check your Cloudflare account ID and API token, then retry',
+      })
+    })
+
+  it('drops the error code from why when the error body cannot be parsed',
+    async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: () => {
+          throw new Error('invalid json')
+        },
+      }))
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+
+      await expect(fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'bad-token',
+      })).rejects.toMatchObject({
+        status: 403,
+        why: 'Cloudflare returned HTTP 403',
+      })
+    })
 })
 
 describe('fetchCloudflareGatewayCatalog default-format enrichment', () => {
@@ -1307,6 +1360,46 @@ describe('getCachedCloudflareGatewayCatalog', () => {
             gateway: 'cloudflare',
             servedStale: true,
           },
+        }),
+      )
+    })
+
+  it('never serves a stale catalog when the fresh fetch is a 401/403 token rejection',
+    async () => {
+      const cache = createFakeCache()
+      const staleModels = [{ id: 'model-a-stale', name: 'Model A (stale)' }]
+      const apiKeyHash = await sha256Hex('token-1')
+
+      await cache.setItem(
+        `gateway-catalog:v3:cloudflare:account-1:${apiKeyHash}`,
+        {
+          models: staleModels,
+          cachedAt: Date.now() - (60 * 60 * 1000),
+        },
+      )
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: async () => ({ errors: [{ code: 10000 }] }),
+      })
+      const loggerSet = vi.fn()
+
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubGlobal('useStorage', () => cache)
+
+      const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+      await expect(getCachedCloudflareGatewayCatalog(
+        { accountId: 'account-1', apiKey: 'token-1' },
+        { logger: { set: loggerSet } },
+      )).rejects.toMatchObject({ status: 403 })
+
+      expect(loggerSet).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayCatalogFetch: expect.objectContaining({
+            servedStale: true,
+          }),
         }),
       )
     })

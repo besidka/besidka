@@ -79,6 +79,12 @@
               only updating the Account ID or Gateway ID —
               {{ meta.label }} never sends a saved token back to the browser.
             </span>
+            <span class="mt-1 block">
+              The Gateway ID also decides billing: a gateway funded with
+              Cloudflare credits pays for Workers AI models from those
+              credits; left blank, the default gateway bills them as regular
+              Workers AI usage.
+            </span>
           </template>
         </UiFormInput>
         <div class="max-md:grid md:flex md:place-content-end gap-2">

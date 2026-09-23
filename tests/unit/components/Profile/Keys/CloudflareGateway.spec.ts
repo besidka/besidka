@@ -82,6 +82,18 @@ describe('Profile/Keys/CloudflareGateway', () => {
         .toBe('xxxx...')
     })
 
+  it('renders a note explaining how the Gateway ID affects billing',
+    async () => {
+      const wrapper = await mountSuspended(CloudflareGateway)
+
+      await flushPromises()
+
+      const text = wrapper.text()
+
+      expect(text).toContain('Gateway ID')
+      expect(text).toContain('credits')
+    })
+
   it('pre-fills accountId and gatewayId but never the API token',
     async () => {
       mocks.fetch.mockImplementation((url: string) => {

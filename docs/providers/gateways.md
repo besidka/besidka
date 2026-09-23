@@ -501,21 +501,55 @@ intended design, not a bug. A token scoped for AI Gateway management does
 **not** automatically carry Workers AI inference permission — they are
 separate grants on the same Cloudflare account.
 
-**Owner action items, unresolved as of this restoration** — these are
-blockers on the account, not the code:
+**Owner action items:**
 
-1. The credential available during this restoration had only AI-Gateway-list
-   scope (200 on `/ai-gateway/gateways`), not Workers AI permission (401 on
-   the actual inference endpoint). A production credential needs
-   `Account > Workers AI > Read` + `Run`.
-2. The available gateway was out of wholesale credits (402).
-3. `@cf/meta/llama-3.3-70b-instruct` returned "no such model" even when
-   authenticated via the reverse-proxy path — an unresolved model-id
-   compatibility question between Cloudflare's two catalog formats.
+1. **Closed (2026-09-23).** The token was updated with **`Account > Workers
+   AI > Read`** — the only permission needed; there is no separate "Run"
+   permission for Workers AI, and Read covers both the catalog fetch and
+   inference. (An earlier version of this doc said "Read + Run"; that was
+   wrong.) Verified live with the updated token: `tokens/verify` 200, the
+   marketplace fetch 200 with 27 `@cf/*` models, the enrichment fetch 200
+   with 65 entries. A 401/403 from a Read-less token (Cloudflare error code
+   10000) maps to its own HTTP 403 with a `why` naming the error code and a
+   `fix` pointing at the missing permission, instead of the generic "could
+   not load" 502 it used to collapse into — see
+   `createCloudflareCatalogError` in `server/utils/gateways/catalog.ts`.
+2. **Closed.** The available gateway was out of wholesale credits (402);
+   credits have since landed — a proxy call through the `besidka` gateway
+   returned 200 (~$7.5e-7 billed).
+3. **Closed.** `@cf/meta/llama-3.3-70b-instruct` returning "no such model"
+   was never a catalog bug: that model id doesn't exist. Only
+   `@cf/meta/llama-3.3-70b-instruct-fp8-fast` does — the old id was
+   hand-typed, not sourced from a real catalog response.
 
-As a consequence, Cloudflare gateway sends could not be live-verified during
-this restoration's browser-testing pass. This is owner-blocked, not
-code-blocked — see "Live-verification status" below.
+**Billing rule.** The Gateway ID on this app's Cloudflare key also decides
+who pays: a gateway funded with credits (`besidka`, for this account) pays
+for Workers AI models from those credits. Left blank, requests go through
+the account's `default` gateway and bill as regular postpaid Workers AI
+usage instead.
+
+**Considered, not built: AI Gateway proxy mode / `compat/models`.** The AI
+Gateway reverse-proxy product also exposes its own gateway-scoped listing
+and inference path
+(`gateway.ai.cloudflare.com/v1/<account>/<slug>/compat/models` and
+`.../chat/completions`), authenticated with an AI Gateway token rather than
+a Workers AI token — sidestepping the permission in item 1. Not built: it's
+a different auth shape than `useCloudflareGateway()` targets, and
+`compat/models` is comparatively thin, publishing only an id and a price
+with none of the context-length/tool-calling/reasoning fields the
+marketplace+default-format join above extracts. Trading one straightforward
+permission grant for a thinner catalog format wasn't judged worth it.
+
+**Known gap: the chat send path's own 401/403 mapping.** The error mapping
+in item 1 covers only the catalog fetch (`ai/models/search`). The chat send
+path (`ai/v1/chat/completions`, driven by `useCloudflareGateway()`'s
+builder) hits the same permission wall and returns the same Cloudflare
+401/403 for a Read-less token, but its response isn't run through the same
+mapping — a rejected send still falls back to whatever `normalizeChatError`
+in `index.post.ts` does with an unrecognized upstream error, which is where
+a structured `why`/`fix` from a gateway builder gets flattened to a generic
+message today. Not closed; the catalog path was fixed first since it's the
+fetch the model picker depends on to list a model to send to.
 
 ## Live-verification status
 
@@ -534,6 +568,15 @@ verification across all three gateways.
   requiring `compatibility: 'strict'`/`usage: { include: true }`, verified
   by a 4-way matrix test against the live API on
   `@openrouter/ai-sdk-provider@3.1.0`.
+- **Cloudflare's marketplace + default-format two-format join**, confirmed
+  2026-09-23 against a real account with a correctly-scoped token: the
+  marketplace fetch returned 27 `@cf/*` models, the enrichment fetch
+  returned 65 entries, and this app's own
+  `GET /api/v1/gateways/cloudflare/models` returned all 27 with `pricing`
+  populated (e.g. `@cf/openai/gpt-oss-120b` input `3.5e-7` / output
+  `7.5e-7`) and a strict `toolCall` (`true` for `gpt-oss-120b`/
+  `kimi-k2.7-code`/`glm-5.3`, `false` for `llama-3.2-3b-instruct`/
+  `llama-guard-3-8b`).
 
 **Still genuinely open, not settled by this restoration:**
 
@@ -542,12 +585,11 @@ verification across all three gateways.
   response for `groundingMetadata`/`server_tool_use`/`web_search_call` on a
   real native-search-through-gateway send. This is the highest-value open
   question flagged by the restoration plan, and it is still unanswered.
-- **Cloudflare's full live send path** — blocked on the account-level
-  issues in "Cloudflare's two-product distinction" above, not on the code.
-  The catalog normalizer, the two-format join, and the chat builder are all
-  built against Cloudflare's own published API shapes and exercised by unit
-  tests, but never against a live account with working credentials and
-  credits.
+- **Cloudflare's live chat send path.** The catalog is now verified (see
+  above), but a real chat send through Cloudflare
+  (`ai/v1/chat/completions`) has not been. The chat builder is built
+  against Cloudflare's own published API shapes and exercised by unit
+  tests, but never sent against a live account.
 - **OpenRouter's and Vercel's reasoning and image-generation request
   shapes**, live. Both are verified against the installed packages' type
   definitions and compiled source, and against each provider's current

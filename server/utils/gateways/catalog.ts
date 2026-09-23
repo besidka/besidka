@@ -279,6 +279,59 @@ interface CloudflareGatewayModelsResponse {
   data: CloudflareGatewayRawModel[]
 }
 
+async function readCloudflareErrorCodes(
+  response: Response,
+): Promise<number[]> {
+  try {
+    const payload = await response.json() as {
+      errors?: Array<{ code?: unknown }>
+    }
+
+    return (payload.errors ?? [])
+      .map(cloudflareError => cloudflareError.code)
+      .filter((code): code is number => typeof code === 'number')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Cloudflare's Workers AI REST API returns 401/403 (Cloudflare error code
+ * 10000) for a token scoped for AI Gateway management only, without Workers
+ * AI permission — a permissions problem on the user's own account, not an
+ * outage, so it gets its own status/fix instead of collapsing into the
+ * generic 502 below (which would be indistinguishable from a real outage).
+ *
+ * The mapped status is always 403, never 401: the client treats a 401
+ * response as session death (see `app/app.vue`), and this is a per-key
+ * permissions error, not an authentication failure.
+ */
+async function createCloudflareCatalogError(
+  response: Response,
+): Promise<ReturnType<typeof createError>> {
+  if (response.status !== 401 && response.status !== 403) {
+    return createError({
+      message: 'Failed to fetch Cloudflare AI Gateway model catalog',
+      status: 502,
+      why: `Cloudflare returned HTTP ${response.status}`,
+      fix: 'Check your Cloudflare account ID and API token, then retry',
+    })
+  }
+
+  const codes = await readCloudflareErrorCodes(response)
+  const codesSuffix = codes.length
+    ? ` (error code ${codes.join(', ')})`
+    : ''
+
+  return createError({
+    message: 'Failed to fetch Cloudflare AI Gateway model catalog',
+    status: 403,
+    why: `Cloudflare returned HTTP ${response.status}${codesSuffix}`,
+    fix: 'API token needs Account > Workers AI > Read. Edit the token in '
+      + 'the Cloudflare dashboard, then retry.',
+  })
+}
+
 /**
  * Cloudflare's `format=openrouter` model search response is documented as
  * returning models "in marketplace format per OpenRouter specification" —
@@ -338,12 +391,7 @@ async function fetchCloudflareMarketplaceCatalog(
   })
 
   if (!response.ok) {
-    throw createError({
-      message: 'Failed to fetch Cloudflare AI Gateway model catalog',
-      status: 502,
-      why: `Cloudflare returned HTTP ${response.status}`,
-      fix: 'Check your Cloudflare account ID and API token, then retry',
-    })
+    throw await createCloudflareCatalogError(response)
   }
 
   const payload = await response.json() as CloudflareGatewayModelsResponse
@@ -360,7 +408,9 @@ async function fetchCloudflareMarketplaceCatalog(
  * two-format join section in `docs/providers/gateways.md`.
  *
  * Only the marketplace fetch is load-bearing — its failure propagates so
- * `getCachedCloudflareGatewayCatalog` can still serve a stale catalog. The
+ * `getCachedCloudflareGatewayCatalog` can still serve a stale catalog,
+ * except when the failure is a 401/403 token rejection (see
+ * `isCloudflareTokenRejection` there), which always propagates instead. The
  * enrichment fetch is best-effort and degrades to an unenriched catalog.
  */
 export async function fetchCloudflareGatewayCatalog(
@@ -836,11 +886,27 @@ async function sha256Hex(value: string): Promise<string> {
 }
 
 /**
+ * A 401/403 means the caller's own token lost (or never had) Workers AI
+ * permission — a stale cached catalog must never mask that from the picker,
+ * since the token could keep failing indefinitely while the cache keeps
+ * looking healthy. Every other failure (a transient outage, a 5xx) still
+ * falls back to a stale catalog below.
+ */
+function isCloudflareTokenRejection(exception: unknown): boolean {
+  const status = (exception as { status?: unknown } | null)?.status
+
+  return status === 401 || status === 403
+}
+
+/**
  * Cloudflare's catalog needs the caller's own account id + token, so it
  * cannot share `getCachedGatewayCatalog`'s global, zero-arg cache further
  * down in this file — each account gets its own cache entry. Mirrors the
  * same freshness/stale-fallback/non-fatal-cache-write-failure behaviour as
- * the public gateways.
+ * the public gateways, with one deliberate exception: a fresh fetch that
+ * fails with a 401/403 (the token lost, or never had, Workers AI
+ * permission) always propagates instead of falling back to a stale cache
+ * entry — see `isCloudflareTokenRejection`.
  *
  * The cache key includes a hash of the caller's own `apiKey`
  * (`gateway-catalog:${GATEWAY_CATALOG_SCHEMA_VERSION}:cloudflare:` +
@@ -882,7 +948,7 @@ export async function getCachedCloudflareGatewayCatalog(
   try {
     models = await fetchCloudflareGatewayCatalog(credentials, options)
   } catch (exception) {
-    if (!cached) {
+    if (!cached || isCloudflareTokenRejection(exception)) {
       throw exception
     }
 
