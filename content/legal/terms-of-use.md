@@ -1,8 +1,8 @@
 ---
 title: "Terms of Use"
 description: "The rules for using the hosted Besidka service — what you can expect from me, what I expect from you, how to report content, and where you stand legally."
-updatedAt: 2026-07-26
-summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key and pay that provider directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
+updatedAt: 2026-09-23
+summary: "Besidka is a free AI chat app run by one person in Poland. You bring your own AI provider API key, or your own AI gateway account, and optionally your own Brave or Exa search key, and you pay each of those companies directly — you never pay me. You must be at least 18. You are talking to an AI system, so its answers can be wrong or invented and are never professional advice. You keep your content; I only use it to run the service for you. Share links make a chat readable by anyone who has the link, so only publish content you have the right to publish. Anyone can report illegal content to me by email and a person will look at it. I limit my liability only as far as the law allows, and never for intentional harm, gross negligence, or death or personal injury."
 ---
 
 ## Who I am
@@ -29,13 +29,19 @@ By creating an account or using the service you accept these terms. If you do no
 
 Besidka is a chat interface to third-party AI models. I provide the interface, the storage for your chats and files, and the plumbing that talks to the model.
 
-**I do not provide the AI model.** You supply your own API key from an AI provider (currently Anthropic, OpenAI or Google AI Studio), and your prompts are sent to that provider using your key.
+**I do not provide the AI model.** You supply your own API key from an AI provider (currently Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen), and your prompts are sent to that provider using your key.
+
+Instead, you may route a chat through your own account with an AI gateway (currently Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter). Your prompts are then sent to that gateway using your gateway credentials, and the gateway passes them on to the model you selected.
+
+**I do not provide web search either.** You may add your own API key from a search provider (currently Brave Search or Exa) and turn it on for a message. The search query your model writes from your prompt is then sent to that search provider using your key.
+
+Each AI provider, AI gateway and search provider is a separate company, with its own terms and its own bill.
 
 ## There is no payment
 
 The hosted service is **free**. There is no subscription, no paid tier, no advertising, no donations and no payment processor. You never pay me anything and I never ask for card details.
 
-You pay your **AI provider** directly for the model usage under your own account with them. Their pricing, invoices and limits are between you and them. I do not resell, mark up or take a share of it, and I am not a party to that contract.
+You pay your **AI provider** directly for the model usage under your own account with them. If you route a chat through an **AI gateway**, you pay that gateway directly under your own account with it. If you use a **search provider**, you pay that search provider directly under your own account with it, and that is a separate bill from your model usage. Their pricing, invoices and limits are between you and them. I do not resell, mark up or take a share of any of it, and I am not a party to those contracts.
 
 Because you never pay me for anything, there is nothing to refund and no right of withdrawal from a purchase arises.
 
@@ -59,10 +65,14 @@ You can delete your account at any time from your settings. That deletes your ac
 
 ## You need your own API key
 
-- You must have the right to use the API key you enter, and you must comply with your provider's own terms and usage policies. Breaking them is between you and them, but it can also mean Besidka stops working for you.
+This section applies to every key you enter: an AI provider key, an AI gateway key or credential, and a search provider key.
+
+- You must have the right to use the API key you enter, and you must comply with the terms and usage policies of whoever issued it — your AI provider, AI gateway or search provider. Breaking them is between you and them, but it can also mean Besidka stops working for you.
 - Your key is stored encrypted (see the [Privacy Policy](/privacy-policy)), but you should still treat entering a key anywhere as a decision with risk. Use a key scoped and limited to what you need, and rotate it if you have any doubt.
 - You are responsible for the usage costs your key incurs, including costs from long conversations, large attachments and deep research runs.
-- I cannot see, refund or cap your provider spending. Set spending limits in your provider account if you want a ceiling.
+- **A search provider key is a separate cost.** Every search your model runs with your Brave or Exa key is billed to your Brave or Exa account, separately from what your AI provider or AI gateway charges for the model usage. One message can run more than one search.
+- **An AI gateway bills you itself.** If you route a chat through a gateway, the model usage is charged through your gateway account, under the gateway's own pricing and terms.
+- I cannot see, refund or cap your spending with any of them. Set spending limits in your provider, gateway and search provider accounts if you want a ceiling.
 
 ## You are interacting with an AI system
 
@@ -89,7 +99,7 @@ Do not use Besidka to:
 
 **Do not submit special category personal data.** That means data revealing health, political opinions, religious or philosophical beliefs, trade union membership, genetic or biometric data, sex life or sexual orientation, or data about criminal offences and convictions.
 
-The reason is practical as well as legal: whatever you type is forwarded to a third-party AI provider under your own key, and on a free Google Gemini key that provider may keep it and let human reviewers read it. I cannot undo that.
+The reason is practical as well as legal: whatever you type is forwarded to a third-party AI provider under your own key, or through the AI gateway you chose, and a search query your model writes from it may go to the search provider you turned on. On a free Google Gemini key that provider may keep it and let human reviewers read it, and Exa states it uses the search queries it receives to train its models. I cannot undo that.
 
 I build no features that infer, classify, score or profile anybody from the content of chats, and I do not read your chats.
 
@@ -104,12 +114,12 @@ You keep all rights in what you write and upload. I claim no ownership of it.
 To run the service, I need a **narrow, limited permission** from you. You grant me a non-exclusive, royalty-free licence, limited strictly to operating the service for you, to:
 
 1. store your content and serve it back to you;
-2. transmit your content to the AI provider you chose, using your key, so it can answer; and
+2. transmit your content to the AI provider you chose, or through the AI gateway you chose, using your key, so it can answer, and transmit the search queries your model writes from it to the search provider you turned on, using your key; and
 3. render your content on a share page **that you yourself created**, for as long as that share is active.
 
 That is the whole licence. It is not perpetual, not transferable and not for any other purpose. It ends for any given content when you delete that content or your account. I do not use your content to train models, to advertise, or to build any other product.
 
-The AI provider's rights over what you send it come from **your** agreement with that provider, not from this licence.
+The rights of an AI provider, an AI gateway or a search provider over what you send it come from **your** agreement with that company, not from this licence.
 
 ## Share links
 
@@ -179,7 +189,7 @@ Moderation is therefore **reactive**. I act on reports, on notices from authorit
 ## Availability and changes to the service
 
 - **There is no uptime guarantee.** This is a free service run by one person. It may be slow, unavailable, or interrupted for maintenance, and features may change or be removed.
-- The service depends on third parties (Cloudflare and your AI provider). If they have an outage or change their terms, Besidka is affected.
+- The service depends on third parties (Cloudflare, your AI provider, and any AI gateway or search provider you use). If they have an outage or change their terms, Besidka is affected.
 - **I may discontinue the free hosted service.** If I do, I will give you notice in the app and a reasonable period to get your data out before it is deleted, and I will tell you where to find the source code so you can host it yourself.
 
 ## Changes to these terms
@@ -222,7 +232,7 @@ Subject to the above, and to the extent the law allows, I am not liable for:
 
 - loss or corruption of data, beyond restoring from my routine backups;
 - decisions you take, or content you publish, based on AI output;
-- what your AI provider does with your prompts, or what it charges your account;
+- what your AI provider or AI gateway does with your prompts, what your search provider does with your search queries, or what any of them charges your account;
 - unavailability of the service or of a third party it depends on; or
 - consequences of a share link you created, once the content has been public.
 

@@ -1,8 +1,8 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-08-03
-summary: "Besidka stores your account, chats, files, settings and your encrypted AI provider API key on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied — that provider is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
+updatedAt: 2026-09-23
+summary: "Besidka stores your account, chats, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway whose account you chose to route it through, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. Each of them is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
 ## What this policy covers
@@ -27,7 +27,7 @@ Besidka does not process personal data on the scale that requires a data protect
 
 ## How Besidka works, in one paragraph
 
-Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI or Google AI Studio), and you pay that provider directly for the usage. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
+Besidka is a free AI chat app. You bring your own API key from an AI provider (Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen), and you pay that provider directly for the usage. Instead of a provider key, you can route a chat through your own account with an AI gateway (Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter), and you pay that gateway directly. You can also add your own Brave Search or Exa API key to use as a web search tool, and you pay that search provider directly. **There is no payment relationship between you and me at all** — no subscription, no ads, no donations, no payment processor, and therefore no billing or card data anywhere in this policy. What I store is what is needed to run the chat app for you.
 
 ## What I store
 
@@ -48,9 +48,11 @@ Everything below lives in a Cloudflare D1 database, except files, which live in 
 - Your settings, such as your preferred model and file retention period
 - Deep research jobs, including the request and the resulting report
 
-### Your AI provider API keys
+### Your API keys
 
 Your provider API keys are stored **encrypted**. That column uses AES-256-GCM with a key derived using PBKDF2-SHA512 (5000 iterations), with a random salt and a random initialisation vector for every stored value.
+
+The same applies to the keys you add for an AI gateway or a search provider. A Cloudflare AI Gateway credential is stored as one encrypted value that holds your Cloudflare account ID, and the gateway name if you set one, together with the token, so those identifiers are encrypted at rest as well.
 
 This is the only field encrypted in this way. Please do not read it as a claim that the whole database is encrypted at the application level.
 
@@ -69,8 +71,10 @@ I record structured logs of requests and errors so I can keep the service workin
 | --- | --- |
 | Create your account, sign you in, keep you signed in | Contract — GDPR Art. 6(1)(b) |
 | Store your chats, messages, projects, files and settings | Contract — Art. 6(1)(b) |
-| Store your AI provider API key, encrypted | Contract — Art. 6(1)(b) |
+| Store your AI provider, AI gateway and search provider API keys, encrypted | Contract — Art. 6(1)(b) |
 | Send your prompt, message history and attachments to the AI provider you chose | Contract — Art. 6(1)(b) |
+| Send your prompt, message history and attachments through the AI gateway you chose to route a chat through | Contract — Art. 6(1)(b) |
+| Send the search query your model writes from your prompt to Brave Search or Exa, when you turn that search on for a message | Contract — Art. 6(1)(b) |
 | Send the email verification and password reset emails | Contract — Art. 6(1)(b) |
 | Send you push notifications | Your consent — Art. 6(1)(a) |
 | Publish a chat behind a share link | Your consent — Art. 6(1)(a) |
@@ -89,7 +93,7 @@ This is the most important section of this policy, so please read it.
 
 When you send a message, I send your prompt, the message history of that chat and any attachments to the AI provider whose API key you supplied. I send it **with your own API key**, on your instruction.
 
-Those providers are **independent controllers**, not my processors. I have no contract with them about your data. Your relationship is directly with them, under the terms of your own Anthropic, OpenAI or Google account. What they do with your content, how long they keep it and how you delete it is governed by their terms, not mine.
+Those providers are **independent controllers**, not my processors. I have no contract with them about your data. Your relationship is directly with them, under the terms of your own Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI or Qwen account. What they do with your content, how long they keep it and how you delete it is governed by their terms, not mine.
 
 ### If you use a free Google Gemini key
 
@@ -109,7 +113,33 @@ Anthropic states that it does not train its models on content submitted through 
 
 I do not train, fine-tune or evaluate any model on your chats, files or any other data you give me. There is no opt-out to offer, because it never happens.
 
-Whether the **provider** trains on your content is a matter between you and that provider, decided by your own account and contract with them.
+Whether the **provider** trains on your content is a matter between you and that provider, decided by your own account and contract with them. The same is true of an AI gateway you route a chat through and of a search provider you use.
+
+## The AI gateway you route through
+
+Instead of sending a chat straight to an AI provider, you can choose to route it through your own account with an AI gateway: **Vercel AI Gateway**, **Cloudflare AI Gateway** or **OpenRouter**. This only happens when you add a key for that gateway and pick a model through it. I never route a chat through a gateway on my own initiative, and I never send a key you added for a provider directly through a gateway.
+
+When you do, I send your prompt, the message history of that chat and any attachments to the gateway, **with your own gateway credentials**, on your instruction. Through Vercel AI Gateway or OpenRouter, the gateway passes them on, **in transit**, to the company behind the model you selected, so two companies receive your content, not one: the gateway and the model vendor behind it. Through Cloudflare AI Gateway, the models on offer are Workers AI models that Cloudflare itself hosts and runs, so Cloudflare both routes your request and generates the answer.
+
+Your relationship with the gateway is directly with it, under the terms of your own gateway account. What it keeps, for how long, whether it logs your requests, and which model vendors it passes them on to and on what terms, is governed by its terms and by the settings of your gateway account, not by mine.
+
+@TODO owner — controller or processor? The role a gateway has for your data under the GDPR (independent controller, like the AI providers above, or processor) has not been decided yet.
+
+## The search provider you choose
+
+You can add your own **Brave Search** or **Exa** API key and turn it on as the web search tool for a message. Only then does the model you are chatting with write a search query from your prompt and the chat so far, and I send that query to the search provider **with your own API key**, on your instruction. The results come back to the model so it can use them in its answer.
+
+The query is written by the model from what you typed, so it can contain anything your prompt contained, including personal data. Please treat it the same way as your prompt.
+
+Those search providers are **independent controllers**, not my processors. I have no contract with them about your data. Your relationship is directly with them, under the terms of your own Brave or Exa account. What they do with your queries, how long they keep them and how you delete them is governed by their terms, not mine.
+
+### If you use a Brave Search key
+
+Brave states that a record of the search queries submitted through a Brave Search API account is retained for a **maximum of 90 days**, for billing that account and for troubleshooting.
+
+### If you use an Exa key
+
+Exa states that its query fields are not intended for the submission of personal information, and that the queries it receives are **used to improve its products and technology, including by training and fine-tuning its models**. If you use an Exa key, treat every search query your model sends as content Exa may keep and train on.
 
 ## Who else receives your data
 
@@ -117,7 +147,12 @@ Whether the **provider** trains on your content is a matter between you and that
 | --- | --- | --- | --- |
 | Cloudflare | Everything the service stores and serves — Workers, D1 database, KV cache, R2 files, Images, Email Sending and Routing — plus Turnstile bot-protection signals on sign-in, sign-up and password reset forms | EU and US | Processor for me. Certified under the EU–US Data Privacy Framework. |
 | Axiom | Operational and error logs | US | Processor for me. Standard Contractual Clauses. |
-| Anthropic, OpenAI or Google AI Studio | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
+| Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen | Your prompts, message history and attachments, sent with your own API key | Depends on your provider account | Independent controller. Your own terms with them apply. |
+| Vercel (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | @TODO owner — controller or processor? Your own terms with them apply. [Vercel Privacy Notice](https://vercel.com/legal/privacy-notice) |
+| Cloudflare (AI Gateway) | Only if you route a chat through it: your prompts, message history and attachments, sent with your own Cloudflare account credentials. The models offered through it are Workers AI models that Cloudflare itself hosts and runs. This is a separate role from Cloudflare's hosting of Besidka above. | Depends on your gateway account | @TODO owner — controller or processor? Your own terms with them apply. [Cloudflare Privacy Policy](https://www.cloudflare.com/privacypolicy/) |
+| OpenRouter | Only if you route a chat through it: your prompts, message history and attachments, in transit to the model vendor you selected, sent with your own gateway key | Depends on your gateway account | @TODO owner — controller or processor? Your own terms with them apply. [OpenRouter Privacy Policy](https://openrouter.ai/privacy) |
+| Brave Search | Only if you turn Brave search on for a message: the search query your model writes from your prompt, sent with your own Brave API key | US | Independent controller. Your own terms with them apply. [Brave Search API privacy notice](https://api-dashboard.search.brave.com/documentation/resources/privacy-notice) |
+| Exa | Only if you turn Exa search on for a message: the search query your model writes from your prompt, sent with your own Exa API key | US | Independent controller. Your own terms with them apply. [Exa Privacy Policy](https://exa.ai/privacy-policy) |
 | Google FCM, Apple APNs, Mozilla autopush | The push endpoint your browser issued, plus the encrypted notification | Depends on your browser vendor | Necessary to deliver a push notification you asked for. |
 | Google or GitHub | Only if you use them to sign in. I request the scopes `email profile openid` from Google and `read:user user:email` from GitHub. | US | Independent controllers for your account with them. |
 | Search engines | A shared chat, and only if you turned on the separate indexing option for that share | Worldwide | Your consent. |
@@ -134,6 +169,10 @@ Cloudflare and Axiom process data in the United States as well as in the EU. Clo
 
 Where your prompts go depends on the provider you chose and the account you hold with them.
 
+If you route a chat through an AI gateway, where your prompts go depends on the gateway, the account you hold with it and the model vendor you selected behind it. @TODO owner — which transfer safeguard applies to a gateway depends on whether it is a controller or a processor, and that has not been decided yet.
+
+If you turn on Brave Search or Exa for a message, the search query goes to that provider, a company based in the United States, under the account you hold with them.
+
 ## Operational logging
 
 My logs are deliberately narrow. Specifically:
@@ -141,6 +180,7 @@ My logs are deliberately narrow. Specifically:
 - **No raw IP address is ever written to my logs.** I keep only coarse metadata that Cloudflare attaches to the request: the data centre, country, region, continent, network operator (ASN) and timezone.
 - Email addresses in authentication flows are **masked** before they are logged.
 - **The content of your messages, your prompts and the model's answers are not logged.**
+- Search queries sent to Brave Search or Exa are not logged either, only how many results came back.
 - Push endpoints and push keys are never logged.
 
 ## How long I keep things
@@ -214,7 +254,7 @@ The full list, with names and durations, is in the [Cookie Policy](/cookie-polic
 
 - All traffic is served over HTTPS.
 - Session cookies are `HttpOnly` and, over HTTPS, carry the `__Secure-` prefix.
-- Your provider API keys are encrypted as described above.
+- Your AI provider, AI gateway and search provider API keys are encrypted as described above.
 - Access to production data is limited to the controller.
 
 No service is perfectly secure. If you find a security problem, please write to **:privacy-email-link{}** and give me a chance to fix it before disclosing it.
@@ -229,7 +269,7 @@ I also build no features that infer, classify, score or profile you from the con
 
 Please do not put special category data into Besidka — health data, political opinions, religious or philosophical beliefs, trade union membership, genetic or biometric data, sex life or sexual orientation, or data about criminal convictions. This is also a rule in the [Terms of Use](/terms-of-use).
 
-I do not ask for it, I have no lawful basis to process it, and content you type is forwarded to a third-party AI provider whose handling of it I do not control.
+I do not ask for it, I have no lawful basis to process it, and content you type is forwarded to a third-party AI provider, and possibly to an AI gateway or a search provider, whose handling of it I do not control.
 
 ## Age limit
 
@@ -262,14 +302,16 @@ There is **no self-service export button yet**. Until there is, email **:privacy
 
 ### Deleting your account
 
-You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, stored provider API keys, share records, push subscriptions and your stored files.
+You can delete your account from your settings. I email you a confirmation link, and opening it removes your account and all data associated with it, including your chats, projects, settings, stored provider, gateway and search API keys, share records, push subscriptions and your stored files.
 
 Open that link in the same browser you are signed in to. The link is tied to your signed-in session, so opening it on a different device will not work.
 
-Two honest limits:
+Four honest limits:
 
 1. **Backups.** As described under [Backups](#backups), Cloudflare D1 keeps point-in-time backups for up to 30 days. Deleted data can persist there for that window before rolling off. Those backups exist only for disaster recovery.
-2. **Your AI provider.** I **cannot** erase anything from Anthropic, OpenAI or Google. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — Anthropic automatically deletes API data within 30 days, OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings.
+2. **Your AI provider.** I **cannot** erase anything from Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI or Qwen. That processing happened under **your** provider account, with your key, and they are independent controllers. To delete data there, use their own controls and privacy requests — Anthropic automatically deletes API data within 30 days, OpenAI at [privacy.openai.com](https://privacy.openai.com/) and Google through your Google account's privacy settings. For xAI, DeepSeek, Moonshot AI and Qwen, use their own controls and privacy requests.
+3. **Your AI gateway.** If you routed a chat through Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter, I **cannot** erase anything the gateway kept, such as its own logs of your requests, or anything the model vendor behind it received. That happened under **your** gateway account. Use the gateway's own controls and privacy requests.
+4. **Your search provider.** I **cannot** erase a search query from Brave's or Exa's own records. The query was sent under **your** Brave or Exa account, with your key, and they are independent controllers. Brave states that it keeps a record of API queries for up to 90 days; for anything else, use their own controls and privacy requests.
 
 ### Complaining
 
