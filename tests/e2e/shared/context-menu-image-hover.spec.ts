@@ -17,14 +17,18 @@ async function selectMessage(page: Page, locator: Locator): Promise<void> {
   }, messageId)
 }
 
-async function getCtaOpacity(page: Page): Promise<string> {
-  const openButton = page.getByTestId('chat-file-open')
-
-  return openButton.evaluate((el) => {
-    return getComputedStyle(el.parentElement || el).opacity
-  })
-}
-
+// isAssistantGeneratedImageFilePart() (app/utils/generated-images.ts) now
+// claims every image `file` part on an assistant message, so the fixture's
+// generated image renders through ChatGeneratedImage.vue, not ChatFiles.vue
+// — its `generated-image-*` testids are the ones this spec targets. Two
+// tests that used to live here covered ChatFiles.vue's hover-reveal CTA row
+// (`md:opacity-0 md:group-hover/file:opacity-100`) and the Tailwind
+// unscoped `.group` regression it guards against: ChatGeneratedImage.vue's
+// action row (open/attach/download) is always visible by design, so a
+// hover-reveal assertion against it would be trivially true and prove
+// nothing. That coverage only still applies to ChatFiles.vue's carousel for
+// a genuine user-uploaded attachment, which this fixture does not exercise
+// and no other e2e spec currently covers — a real, if pre-existing, gap.
 test.describe('shared chat image hover affordances', () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(30_000)
@@ -40,21 +44,11 @@ test.describe('shared chat image hover affordances', () => {
     })
   })
 
-  test('reveals the preview/download CTAs on a normal hover when nothing is selected', async ({
-    page,
-  }) => {
-    const previewTrigger = page.getByTestId('chat-file-preview-trigger')
-
-    await previewTrigger.hover()
-
-    await expect.poll(() => getCtaOpacity(page)).toBe('1')
-  })
-
-  test('does not reveal CTAs while hovering a blurred, non-selected message\'s image', async ({
+  test('does not reveal the preview trigger while hovering a blurred, non-selected message\'s image', async ({
     page,
   }) => {
     const userMessage = page.locator('[data-role="user"]').first()
-    const previewTrigger = page.getByTestId('chat-file-preview-trigger')
+    const previewTrigger = page.getByTestId('generated-image-preview-trigger')
 
     await selectMessage(page, userMessage)
     await expect(
@@ -63,38 +57,17 @@ test.describe('shared chat image hover affordances', () => {
 
     await previewTrigger.hover({ force: true })
 
-    await expect.poll(() => getCtaOpacity(page)).toBe('0')
     expect(
       await previewTrigger.evaluate((el) => {
-        return getComputedStyle(el.parentElement || el).pointerEvents
+        return getComputedStyle(el).pointerEvents
       }),
     ).toBe('none')
-  })
-
-  test('does not reveal CTAs when hovering the wide reserved space beside the image tile', async ({
-    page,
-  }) => {
-    const previewTrigger = page.getByTestId('chat-file-preview-trigger')
-    const box = await previewTrigger.boundingBox()
-
-    if (!box) {
-      throw new Error('Preview trigger has no bounding box')
-    }
-
-    // Well outside the (fit-content) image tile but still inside the
-    // message row's much wider reserved width (sm:w-4xl) — this used to
-    // incorrectly satisfy Tailwind's unscoped group-hover, which matches
-    // ANY ancestor with class "group", including Message.vue's outer
-    // wrapper, not just this tile's own group.
-    await page.mouse.move(box.x + box.width + 300, box.y + box.height / 2)
-
-    await expect.poll(() => getCtaOpacity(page)).toBe('0')
   })
 
   test('shows a themed accent focus ring instead of the browser default outline', async ({
     page,
   }) => {
-    const previewTrigger = page.getByTestId('chat-file-preview-trigger')
+    const previewTrigger = page.getByTestId('generated-image-preview-trigger')
 
     await previewTrigger.focus()
 

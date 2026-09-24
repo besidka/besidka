@@ -148,16 +148,25 @@ test.describe('shared chat context menu layout', () => {
   // A real generated-image message only ever reaches the shared page as a
   // bare `file` part (server/utils/files/assistant-files.ts converts the
   // tool-generate_image part to `file` at persistence, and the shared
-  // endpoint's filterPublicParts() strips tool parts) so it renders through
-  // ChatFiles.vue's 192px thumbnail, not ChatGeneratedImage.vue's 320px
-  // card. That narrow, image-only bubble is exactly what makes
-  // shouldFitMessageBubble() shrink `.js-chat-bubble` to fit-content, which
-  // can land it below the menu's own 256px (w-64) width — the scenario the
-  // menu's unclamped `right` fallback did not defend against.
+  // endpoint's filterPublicParts() strips tool parts). Since
+  // isAssistantGeneratedImageFilePart() now claims any such part (see
+  // app/utils/generated-images.ts), a *visible* generated image renders
+  // through ChatGeneratedImage.vue's fixed w-80 (320px) card, which can
+  // never be narrower than the menu. The one remaining narrow, image-only
+  // bubble is a `showFiles: false` share's hidden-file placeholder — it
+  // short-circuits to ChatFiles.vue's 192px tile before
+  // isAssistantGeneratedImageFilePart() ever runs (see
+  // buildTestHiddenFilePart() in server/utils/chats/test/image-fixture.ts)
+  // — so that is what this test selects to keep covering
+  // shouldFitMessageBubble() shrinking `.js-chat-bubble` to fit-content
+  // below the menu's own 256px (w-64) width, the scenario the menu's
+  // unclamped `right` fallback did not defend against.
   test('does not push the menu off-screen for a narrower-than-menu bubble', async ({
     page,
   }) => {
-    const imageMessage = page.locator('[data-role="assistant"]').last()
+    const imageMessage = page.locator(
+      '[data-message-id="shared-test-hidden-file-assistant"]',
+    )
 
     await expect(imageMessage).toBeVisible()
 

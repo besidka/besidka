@@ -1,5 +1,6 @@
 import type { TextUIPart } from 'ai'
 import {
+  buildTestHiddenFilePart,
   buildTestSharedImageFileParts,
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
@@ -36,6 +37,15 @@ export default defineEventHandler(() => {
           { type: 'text', text: TEST_IMAGE_PROMPT },
         ] as TextUIPart[],
         reasoning: 'off' as const,
+      },
+      {
+        id: 'shared-test-hidden-file-assistant',
+        role: 'assistant' as const,
+        parts: buildTestHiddenFilePart(),
+        reasoning: 'off' as const,
+        createdAt: new Date().toISOString(),
+        usage: TEST_IMAGE_USAGE,
+        tools: ['image_generation'] as const,
       },
       {
         id: 'shared-test-image-assistant',
