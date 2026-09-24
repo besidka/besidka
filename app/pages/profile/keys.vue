@@ -64,10 +64,7 @@
     :aria-labelledby="`key-tab-${searchTabId}`"
     :data-testid="`key-panel-${searchTabId}`"
   >
-    <p class="mb-6 text-center">
-      Search providers give any tool-calling model web search using your own
-      search key, instead of the model provider's built-in search.
-    </p>
+    <ProfileKeysSearchProvidersInfo />
     <ul class="grid gap-4">
       <li
         v-for="providerId in enabledSearchProviders"
@@ -89,10 +86,7 @@
     :aria-labelledby="`key-tab-${gatewaysTabId}`"
     :data-testid="`key-panel-${gatewaysTabId}`"
   >
-    <p class="mb-6 text-center">
-      Gateways proxy to many models using your own gateway account,
-      instead of a single provider's key
-    </p>
+    <ProfileKeysGatewaysInfo />
     <ul class="grid gap-4">
       <li
         v-for="gatewayId in enabledGateways"

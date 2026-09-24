@@ -385,6 +385,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Profile/Keys/Card.spec.ts',
     'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
     'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
+    'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
+    'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
     'tests/unit/pages/profile/keys.spec.ts',
     'tests/unit/components/ProviderIcon.spec.ts',
     'tests/unit/utils/provider-meta.spec.ts',

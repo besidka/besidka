@@ -160,6 +160,19 @@ describe('profile keys page', () => {
       expect(searchTab.text()).toContain('Search Providers')
     })
 
+  it('shows the search providers info block in the search panel',
+    async () => {
+      const wrapper = await mountPage()
+
+      await wrapper.get('[data-testid="key-tab-search"]').trigger('click')
+
+      const searchPanel = wrapper.get('[data-testid="key-panel-search"]')
+
+      expect(
+        searchPanel.find('[data-testid="search-providers-info"]').exists(),
+      ).toBe(true)
+    })
+
   it('lists Brave then Exa in the search panel, in that order',
     async () => {
       const wrapper = await mountPage()
@@ -214,10 +227,9 @@ describe('profile keys page', () => {
 
     const gatewaysPanel = wrapper.get('[data-testid="key-panel-gateways"]')
 
-    expect(gatewaysPanel.text()).toContain(
-      'Gateways proxy to many models using your own gateway account, '
-      + 'instead of a single provider\'s key',
-    )
+    expect(
+      gatewaysPanel.find('[data-testid="gateways-info"]').exists(),
+    ).toBe(true)
 
     const cloudflareCard = gatewaysPanel.get(
       '[data-testid="cloudflare-gateway-card"]',
