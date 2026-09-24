@@ -20,7 +20,7 @@
     </div>
 
     <div
-      v-else-if="readyFile"
+      v-else-if="cardDisplay"
       class="rounded-box border border-base-300 bg-base-200"
       data-testid="generated-image-ready"
     >
@@ -30,7 +30,7 @@
         :class="{ 'pointer-events-none': isImagePreviewSuppressed }"
         :style="{ aspectRatio: imageAspectRatio }"
         :disabled="hasImageLoadError"
-        :aria-label="`Preview ${readyFile.name}`"
+        :aria-label="`Preview ${cardDisplay.name}`"
         data-testid="generated-image-preview-trigger"
         @click="openImagePreview"
       >
@@ -41,7 +41,7 @@
         <img
           v-show="!hasImageLoadError"
           :src="imageUrl"
-          :alt="readyFile.name"
+          :alt="cardDisplay.name"
           class="generated-image relative size-full object-contain"
           :class="{
             'generated-image--loaded': isImageLoaded,
@@ -62,11 +62,11 @@
       </button>
       <div class="flex items-center gap-3 p-3">
         <div class="min-w-0 grow">
-          <p class="truncate text-sm font-medium" :title="readyFile.name">
-            {{ readyFile.name }}
+          <p class="truncate text-sm font-medium" :title="cardDisplay.name">
+            {{ cardDisplay.name }}
           </p>
           <p class="text-xs text-base-content/60">
-            {{ providerLabel }} · {{ formatFileSize(readyFile.size) }}
+            {{ metaLabel }}
           </p>
         </div>
         <span
@@ -88,12 +88,12 @@
             tooltip-position="top"
             icon-name="lucide:maximize-2"
             :icon-size="12"
-            :title="`Preview ${readyFile.name}`"
+            :title="`Preview ${cardDisplay.name}`"
             data-testid="generated-image-open"
             @click="openImagePreview"
           />
           <UiButton
-            v-if="isImageInputSupported"
+            v-if="isImageInputSupported && readyToolFile"
             icon-only
             circle
             ghost
@@ -103,7 +103,7 @@
             tooltip-position="top"
             icon-name="lucide:paperclip"
             :icon-size="12"
-            :title="`Attach ${readyFile.name} for next prompt`"
+            :title="`Attach ${cardDisplay.name} for next prompt`"
             data-testid="generated-image-attach"
             @click="attachForNextPrompt"
           />
@@ -113,8 +113,9 @@
           >
             <a
               :href="downloadUrl"
+              :download="cardDisplay.isInlineData ? cardDisplay.name : null"
               class="btn btn-xs btn-circle btn-accent hitslop"
-              :aria-label="`Download ${readyFile.name}`"
+              :aria-label="`Download ${cardDisplay.name}`"
               data-testid="generated-image-download"
             >
               <Icon name="lucide:download" size="12" />
@@ -127,8 +128,8 @@
         v-model:open="isImagePreviewOpen"
         :src="imageUrl"
         :download-url="downloadUrl"
-        :alt="readyFile.name"
-        :filename="readyFile.name"
+        :alt="cardDisplay.name"
+        :filename="cardDisplay.name"
       />
     </div>
 
@@ -156,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import type {
   GeneratedImageFile,
 } from '#shared/types/image-generation.d'
@@ -164,6 +165,8 @@ import {
   getGenerateImageOutput,
   getGenerateImageToolPart,
   getImageGenerationFailureText,
+  isAssistantGeneratedImageFilePart,
+  resolveAssistantGeneratedImageDisplay,
 } from '~/utils/generated-images'
 
 const { messageRole, part } = defineProps<{
@@ -207,9 +210,86 @@ const output = computed(() => {
   return getGenerateImageOutput(part)
 })
 
+// Only a direct-provider tool-generate_image part supports "attach for next
+// prompt" — it carries the real DB file id, byte size and MIME type the
+// `chat:attach-file` hook's contract requires. A gateway `file` part has
+// none of those (see `assistantFilePart` below), so its card never offers
+// the attach shortcut rather than fabricating fake metadata for it.
+const readyToolFile = computed<GeneratedImageFile | null>(() => {
+  if (output.value?.status !== 'ready' || !output.value.file) {
+    return null
+  }
+
+  return output.value.file
+})
+
+// A gateway-generated image (OpenRouter/Vercel) has no tool wrapper — see
+// `isAssistantGeneratedImageFilePart`'s own doc comment for why any image
+// `file` part on an assistant message is model output by construction.
+const assistantFilePart = computed<FileUIPart | null>(() => {
+  return isAssistantGeneratedImageFilePart({ role: messageRole }, part)
+    ? part as FileUIPart
+    : null
+})
+
+const assistantFileDisplay = computed(() => {
+  const filePart = assistantFilePart.value
+
+  return filePart ? resolveAssistantGeneratedImageDisplay(filePart) : null
+})
+
+// `null` here (a file part whose URL is neither a well-formed `data:` image
+// nor a URL `getSafeFileLinks` accepts) is a genuine failure, not a missing
+// state to fall through to the progress skeleton — unlike a tool part, a
+// gateway `file` part never streams through an intermediate pending state.
+const isAssistantFileFailure = computed<boolean>(() => {
+  return assistantFilePart.value !== null
+    && assistantFileDisplay.value === null
+})
+
+interface GeneratedImageCardDisplay {
+  name: string
+  size: number | null
+  imageUrl: string
+  downloadUrl: string
+  isInlineData: boolean
+}
+
+const cardDisplay = computed<GeneratedImageCardDisplay | null>(() => {
+  const toolFile = readyToolFile.value
+
+  if (toolFile) {
+    return {
+      name: toolFile.name,
+      size: toolFile.size,
+      imageUrl: getFileUrl(toolFile.storageKey),
+      downloadUrl: getFileDownloadUrl(toolFile.storageKey),
+      isInlineData: false,
+    }
+  }
+
+  const fileDisplay = assistantFileDisplay.value
+
+  if (!fileDisplay) {
+    return null
+  }
+
+  return {
+    name: fileDisplay.name,
+    size: null,
+    imageUrl: fileDisplay.imageUrl,
+    downloadUrl: fileDisplay.downloadUrl,
+    isInlineData: fileDisplay.imageUrl.startsWith('data:'),
+  }
+})
+
 const isRenderable = computed<boolean>(() => {
   if (messageRole !== 'assistant') {
     return false
+  }
+
+  if (assistantFilePart.value) {
+    return true
   }
 
   if (toolPart.value?.state === 'output-error') {
@@ -226,31 +306,19 @@ const isRenderable = computed<boolean>(() => {
   return output.value !== null
 })
 
-const readyFile = computed<GeneratedImageFile | null>(() => {
-  if (output.value?.status !== 'ready' || !output.value.file) {
-    return null
-  }
-
-  return output.value.file
-})
-
 const imageUrl = computed<string>(() => {
-  if (!readyFile.value) {
-    return ''
-  }
-
-  return getFileUrl(readyFile.value.storageKey)
+  return cardDisplay.value?.imageUrl ?? ''
 })
 
 const downloadUrl = computed<string>(() => {
-  if (!readyFile.value) {
-    return ''
-  }
-
-  return getFileDownloadUrl(readyFile.value.storageKey)
+  return cardDisplay.value?.downloadUrl ?? ''
 })
 
 const isFailure = computed<boolean>(() => {
+  if (assistantFilePart.value) {
+    return isAssistantFileFailure.value
+  }
+
   return toolPart.value?.state === 'output-error'
 })
 
@@ -286,6 +354,16 @@ const providerLabel = computed<string>(() => {
   return 'AI'
 })
 
+const metaLabel = computed<string>(() => {
+  const size = cardDisplay.value?.size
+
+  if (size === null || size === undefined) {
+    return providerLabel.value
+  }
+
+  return `${providerLabel.value} · ${formatFileSize(size)}`
+})
+
 function onImageError() {
   isImageLoaded.value = false
   hasImageLoadError.value = true
@@ -299,16 +377,16 @@ function openImagePreview() {
 }
 
 function attachForNextPrompt() {
-  if (!readyFile.value) {
+  if (!readyToolFile.value) {
     return
   }
 
   useNuxtApp().callHook('chat:attach-file', {
-    id: readyFile.value.id,
-    storageKey: readyFile.value.storageKey,
-    name: readyFile.value.name,
-    size: readyFile.value.size,
-    type: readyFile.value.type,
+    id: readyToolFile.value.id,
+    storageKey: readyToolFile.value.storageKey,
+    name: readyToolFile.value.name,
+    size: readyToolFile.value.size,
+    type: readyToolFile.value.type,
   })
 }
 

@@ -3,6 +3,7 @@ import {
   deriveGatewayImageGenerationSupport,
   isGatewayReasoningSupported,
   isGatewayToolAllowed,
+  isOpenRouterMetaRouterModelId,
   resolveGatewayWebSearchSupport,
   WEB_SEARCH_TOOLTIP,
 } from '#shared/utils/gateway-capabilities'
@@ -115,6 +116,26 @@ describe('deriveGatewayImageGenerationSupport', () => {
   it('returns false when the output modalities are reported but exclude '
     + 'image', () => {
     expect(deriveGatewayImageGenerationSupport(['text'])).toBe(false)
+  })
+})
+
+describe('isOpenRouterMetaRouterModelId', () => {
+  it('identifies every id under the openrouter/ vendor prefix as a '
+    + 'meta-router model', () => {
+    expect(isOpenRouterMetaRouterModelId('openrouter/auto')).toBe(true)
+    expect(isOpenRouterMetaRouterModelId('openrouter/auto-beta')).toBe(true)
+    expect(isOpenRouterMetaRouterModelId('openrouter/free')).toBe(true)
+    expect(isOpenRouterMetaRouterModelId('openrouter/fusion')).toBe(true)
+    expect(isOpenRouterMetaRouterModelId('openrouter/pareto-code'))
+      .toBe(true)
+    expect(isOpenRouterMetaRouterModelId('openrouter/bodybuilder'))
+      .toBe(true)
+  })
+
+  it('does not flag a regular vendor/model id, even one routed through '
+    + 'a meta-router at request time', () => {
+    expect(isOpenRouterMetaRouterModelId('z-ai/glm-5.2')).toBe(false)
+    expect(isOpenRouterMetaRouterModelId('openai/gpt-5-image')).toBe(false)
   })
 })
 

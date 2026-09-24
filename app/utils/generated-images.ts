@@ -1,13 +1,18 @@
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import type { ChatErrorCode } from '#shared/types/chat-errors.d'
 import type {
   GeneratedImageFile,
   ImageGenerationToolOutput,
 } from '#shared/types/image-generation.d'
-import { isHiddenFilePart } from '#shared/utils/files'
+import {
+  getPreferredFileExtension,
+  isHiddenFilePart,
+} from '#shared/utils/files'
 import {
   getFileDownloadUrl,
   getFileUrl,
+  getSafeFileLinks,
+  isImageFile,
 } from '~/utils/files'
 
 const MAX_GENERATED_IMAGE_BYTES = 10 * 1024 * 1024
@@ -297,6 +302,87 @@ export function shouldRenderGenerateImageToolPart(
 
     return candidateUrl === storageUrl
   })
+}
+
+/**
+ * A gateway-generated image (OpenRouter/Vercel) has no tool wrapper — it
+ * arrives as a plain AI SDK `file` UI part, either a live `data:` URL (tee'd
+ * straight from the stream, before persistence rewrites it) or a persisted
+ * `/files/...` URL once the chat reloads (see
+ * `docs/providers/gateways.md`'s "Gateway image generation" section). An
+ * assistant message can never legitimately carry a user-uploaded attachment
+ * — attachments only ever exist on user messages — so any image `file` part
+ * on an assistant message is model output by construction, independent of
+ * whether persistence has already marked it with the `generated=1` query
+ * param `isGeneratedFilePart` checks for (a live `data:` part predates that
+ * marker entirely). `isHiddenFilePart` is excluded so a `showFiles: false`
+ * shared-chat redaction still falls through to `ChatFiles`' existing hidden
+ * placeholder instead of being claimed here.
+ */
+export function isAssistantGeneratedImageFilePart(
+  message: Pick<UIMessage, 'role'>,
+  part: unknown,
+): boolean {
+  if (message.role !== 'assistant' || !part || typeof part !== 'object') {
+    return false
+  }
+
+  const candidate = part as Partial<FileUIPart>
+
+  if (
+    candidate.type !== 'file'
+    || typeof candidate.mediaType !== 'string'
+    || typeof candidate.url !== 'string'
+    || isHiddenFilePart(candidate as { type: string, mediaType?: string })
+  ) {
+    return false
+  }
+
+  return isImageFile(candidate.mediaType)
+}
+
+export interface AssistantGeneratedImageDisplay {
+  imageUrl: string
+  downloadUrl: string
+  name: string
+}
+
+// Mirrors the accepted persisted image types (see `acceptedImageTypes`
+// above) plus the base64 alphabet, so a raw live `data:` URL is only ever
+// used as an `<img>`/download source when it can't be anything other than
+// an inline image payload.
+const safeGeneratedImageDataUrlPattern
+  = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=?=?$/
+
+/**
+ * Resolves a gateway `file` part into safe display links, or `null` when the
+ * URL is neither a well-formed inline image `data:` URL nor a URL
+ * `getSafeFileLinks` can turn into a same-origin `/files/...` link (a
+ * persisted image, including a shared-chat's tokenized copy). `null` tells
+ * the caller to render the same failure card a tool-based generation failure
+ * shows, instead of leaving a broken image or an "Unavailable" tile.
+ */
+export function resolveAssistantGeneratedImageDisplay(
+  filePart: FileUIPart,
+): AssistantGeneratedImageDisplay | null {
+  const name = filePart.filename?.trim()
+    || `generated-image.${getPreferredFileExtension(filePart.mediaType)}`
+
+  if (safeGeneratedImageDataUrlPattern.test(filePart.url)) {
+    return { imageUrl: filePart.url, downloadUrl: filePart.url, name }
+  }
+
+  const safeLinks = getSafeFileLinks(filePart.url)
+
+  if (!safeLinks) {
+    return null
+  }
+
+  return {
+    imageUrl: safeLinks.openUrl,
+    downloadUrl: safeLinks.downloadUrl,
+    name,
+  }
 }
 
 export function shouldFitMessageBubble(

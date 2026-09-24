@@ -69,6 +69,20 @@
             :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
             :is-turn-thinking-held="isTurnThinkingHeld"
           />
+          <ChatGeneratedImage
+            v-if="isLastAssistantMessage(messageIndex)
+              && shouldRenderPendingImageGenerationInline
+            "
+            message-role="assistant"
+            :part="pendingGenerateImagePart"
+          />
+          <ChatGeneratedImage
+            v-else-if="isLastAssistantMessage(messageIndex)
+              && shouldRenderGatewayImageGenerationFailure
+            "
+            message-role="assistant"
+            :part="gatewayImageGenerationFailurePart"
+          />
           <div
             v-for="(part, index) in m.parts"
             :key="`message-${m.id}-part-${index}`"
@@ -79,7 +93,9 @@
             }"
           >
             <ChatGeneratedImage
-              v-if="shouldRenderGenerateImageToolPart(m, part)"
+              v-if="shouldRenderGenerateImageToolPart(m, part)
+                || isAssistantGeneratedImageFilePart(m, part)
+              "
               :message-role="m.role"
               :part="part"
             />
@@ -220,7 +236,10 @@ import {
   hasVisibleTextPart,
   resolveMessageMenuInfo,
 } from '#shared/utils/message-metadata'
-import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
+import {
+  isAssistantGeneratedImageFilePart,
+  shouldRenderGenerateImageToolPart,
+} from '~/utils/generated-images'
 
 definePageMeta({
   layout: 'chat',
@@ -361,13 +380,17 @@ const {
 } = useChat(toValue(chat.value))
 
 const { isImageGenerationRequired } = useChatInput()
+const { selection: userModelSelection } = useUserModel()
 
 const isImageGenerationTurnPending = shallowRef<boolean>(false)
+const isGatewaySendTurnPending = shallowRef<boolean>(false)
 
 function captureImageGenerationTurnPending(): void {
   isImageGenerationTurnPending.value = tools.value.includes(
     'image_generation',
   ) || isImageGenerationRequired.value
+  isGatewaySendTurnPending.value
+    = userModelSelection.value.source === 'gateway'
 }
 
 function onChatSubmit(): void {
@@ -382,14 +405,20 @@ function onChatRegenerate(): void {
 
 watch(() => route.params.slug, () => {
   isImageGenerationTurnPending.value = false
+  isGatewaySendTurnPending.value = false
 })
 
 const {
   hasImageGenerationProgress,
   shouldRenderPendingImageGeneration,
+  shouldRenderPendingImageGenerationInline,
+  shouldRenderGatewayImageGenerationFailure,
+  isImageGenerationSkeletonVisible,
   shouldFitMessageContent,
 } = useChatImageUi(() => chatSdk.messages, {
   isImageGenerationTurnPending: () => isImageGenerationTurnPending.value,
+  isGatewaySendTurnPending: () => isGatewaySendTurnPending.value,
+  isTurnStopped: () => isStopped.value,
   isTurnActive: () => ['submitted', 'streaming'].includes(chatSdk.status),
 })
 
@@ -624,7 +653,15 @@ if (import.meta.client) {
   // meant to correct for a model that streams reasoning before the tool
   // call. adjustSpacerAfterResponse() still corrects that rarer case once
   // the turn finishes.
-  watch(shouldRenderPendingImageGeneration, async (isPending) => {
+  //
+  // Watches the combined signal (standalone bubble OR merged into the real
+  // message) rather than `shouldRenderPendingImageGeneration` alone, so a
+  // gateway send's skeleton — which may start life inline in the real
+  // message instead of as the standalone bubble — still gets the same early
+  // reservation. The synthetic-to-inline merge itself never produces a
+  // second rising edge: the combined value is already `true` through that
+  // transition.
+  watch(isImageGenerationSkeletonVisible, async (isPending) => {
     if (!isPending) {
       return
     }

@@ -119,3 +119,26 @@ export function deriveGatewayImageGenerationSupport(
 
   return outputModalities.includes('image')
 }
+
+const OPENROUTER_META_ROUTER_VENDOR_PREFIX = 'openrouter/'
+
+/**
+ * OpenRouter's own meta-router models — `openrouter/auto`,
+ * `openrouter/auto-beta`, `openrouter/free`, `openrouter/fusion`,
+ * `openrouter/pareto-code`, `openrouter/bodybuilder`, and any future id
+ * under the same `openrouter/` vendor prefix — route a request to whichever
+ * underlying model OpenRouter picks at request time, not to a single fixed
+ * model. Their live catalog entries advertise `output_modalities: ['text',
+ * 'image']` because *some* model the router could pick supports image
+ * output, but routing is not pinned to that model: a live request through
+ * `openrouter/auto` was observed landing on `z-ai/glm-5.2`, which returned
+ * "No endpoints available" for the `modalities: ['image', 'text']` request
+ * parameter `image_generation` sends. Treating the catalog's advertised
+ * modality as a per-model guarantee for these ids would let the picker offer
+ * image generation on a model that cannot reliably deliver it, so this
+ * forces `supportsImageGeneration` to `false` for the whole vendor prefix
+ * regardless of what the raw catalog reports.
+ */
+export function isOpenRouterMetaRouterModelId(modelId: string): boolean {
+  return modelId.startsWith(OPENROUTER_META_ROUTER_VENDOR_PREFIX)
+}

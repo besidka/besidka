@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import type { GatewayModel } from '#shared/types/gateways.d'
 import {
   deriveGatewayImageGenerationSupport,
+  isOpenRouterMetaRouterModelId,
   resolveGatewayWebSearchSupport,
 } from '#shared/utils/gateway-capabilities'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -18,11 +19,14 @@ const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
  * don't carry (e.g. round 4 added `supportsImageGeneration` and changed
  * `supportsWebSearch` from a boolean to a resolution string; this
  * restoration's own round added the required `toolCall` field, which older
- * cached entries never wrote at all) — a KV entry written under the old
+ * cached entries never wrote at all; this round forces
+ * `supportsImageGeneration` to `false` for OpenRouter meta-router ids like
+ * `openrouter/auto`, which a `v3` cache entry may have written as `true` —
+ * see `isOpenRouterMetaRouterModelId`) — a KV entry written under the old
  * schema would otherwise keep serving stale-shaped data for up to
  * `GATEWAY_CATALOG_CACHE_TTL_MS` after deploy.
  */
-const GATEWAY_CATALOG_SCHEMA_VERSION = 'v3'
+const GATEWAY_CATALOG_SCHEMA_VERSION = 'v4'
 /**
  * Cloudflare's catalog is a per-account resource (it requires the caller's
  * own account id + token), not a shared public one like Vercel's or
@@ -197,9 +201,11 @@ export async function fetchOpenRouterCatalog(): Promise<GatewayModel[]> {
  * of a confirmed image-generation one resolves to at least `'universal'`.
  */
 function normalizeOpenRouterModel(model: OpenRouterRawModel): GatewayModel {
-  const supportsImageGeneration = deriveGatewayImageGenerationSupport(
-    model.architecture?.output_modalities,
-  )
+  const supportsImageGeneration = isOpenRouterMetaRouterModelId(model.id)
+    ? false
+    : deriveGatewayImageGenerationSupport(
+      model.architecture?.output_modalities,
+    )
 
   return {
     id: model.id,

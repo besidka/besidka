@@ -407,6 +407,30 @@ describe('fetchOpenRouterCatalog', () => {
     expect(models[0]?.supportsWebSearch).toBeUndefined()
   })
 
+  it('forces supportsImageGeneration false for an OpenRouter meta-router '
+    + 'id even when the catalog advertises image output modalities, since '
+    + 'routing can land on a model that cannot deliver it', async () => {
+    mockFetchOnce({
+      data: [
+        {
+          id: 'openrouter/auto',
+          name: 'Auto Router',
+          context_length: 128000,
+          architecture: {
+            input_modalities: ['text'],
+            output_modalities: ['image', 'text'],
+          },
+        },
+      ],
+    })
+
+    const { fetchOpenRouterCatalog } = await getFetchers()
+    const models = await fetchOpenRouterCatalog()
+
+    expect(models[0]?.supportsImageGeneration).toBe(false)
+    expect(models[0]?.supportsWebSearch).toBe('universal')
+  })
+
   it('reads toolCall as true from tool_choice alone, without tools',
     async () => {
       mockFetchOnce({
@@ -1353,7 +1377,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
       const apiKeyHash = await sha256Hex('token-1')
 
       await cache.setItem(
-        `gateway-catalog:v3:cloudflare:account-1:${apiKeyHash}`,
+        `gateway-catalog:v4:cloudflare:account-1:${apiKeyHash}`,
         {
           models: staleModels,
           cachedAt: Date.now() - (60 * 60 * 1000),
@@ -1396,7 +1420,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
     const apiKeyHash = await sha256Hex('token-1')
 
     await cache.setItem(
-      `gateway-catalog:v3:cloudflare:account-1:${apiKeyHash}`,
+      `gateway-catalog:v4:cloudflare:account-1:${apiKeyHash}`,
       {
         models: staleModels,
         cachedAt: Date.now() - (60 * 60 * 1000),
@@ -1436,7 +1460,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
       const apiKeyHash = await sha256Hex('token-1')
 
       await cache.setItem(
-        `gateway-catalog:v3:cloudflare:account-1:${apiKeyHash}`,
+        `gateway-catalog:v4:cloudflare:account-1:${apiKeyHash}`,
         {
           models: staleModels,
           cachedAt: Date.now() - (60 * 60 * 1000),

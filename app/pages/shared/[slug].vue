@@ -184,7 +184,9 @@
             :key="`message-${m.id}-part-${index}`"
           >
             <ChatGeneratedImage
-              v-if="shouldRenderGenerateImageToolPart(m, part)"
+              v-if="shouldRenderGenerateImageToolPart(m, part)
+                || isAssistantGeneratedImageFilePart(m, part)
+              "
               :message-role="m.role"
               :part="part"
             />
@@ -247,6 +249,7 @@ import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { resolveShareDescription } from '#shared/utils/og-description'
 import {
+  isAssistantGeneratedImageFilePart,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'

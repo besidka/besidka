@@ -4,7 +4,9 @@ import { HIDDEN_FILE_MEDIA_TYPE } from '../../../shared/utils/files'
 import {
   getGenerateImageOutput,
   getImageGenerationFailureText,
+  isAssistantGeneratedImageFilePart,
   isVisibleGenerateImageToolPart,
+  resolveAssistantGeneratedImageDisplay,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '../../../app/utils/generated-images'
@@ -377,5 +379,111 @@ describe('generated image utils', () => {
     } as unknown as UIMessage
 
     expect(shouldFitMessageBubble(message)).toBe(false)
+  })
+})
+
+describe('isAssistantGeneratedImageFilePart', () => {
+  it('treats any image file part on an assistant message as generated '
+    + 'output, marked or not', () => {
+    const assistant = { role: 'assistant' } as UIMessage
+
+    expect(isAssistantGeneratedImageFilePart(assistant, {
+      type: 'file',
+      mediaType: 'image/png',
+      url: 'data:image/png;base64,AAAA',
+    })).toBe(true)
+    expect(isAssistantGeneratedImageFilePart(assistant, {
+      type: 'file',
+      mediaType: 'image/webp',
+      url: '/files/generated.webp?generated=1',
+    })).toBe(true)
+    expect(isAssistantGeneratedImageFilePart(assistant, {
+      type: 'file',
+      mediaType: 'image/webp',
+      url: '/files/generated.webp',
+    })).toBe(true)
+  })
+
+  it('never claims a user attachment or a non-image assistant file', () => {
+    const user = { role: 'user' } as UIMessage
+    const assistant = { role: 'assistant' } as UIMessage
+
+    expect(isAssistantGeneratedImageFilePart(user, {
+      type: 'file',
+      mediaType: 'image/png',
+      url: '/files/upload.png',
+    })).toBe(false)
+    expect(isAssistantGeneratedImageFilePart(assistant, {
+      type: 'file',
+      mediaType: 'application/pdf',
+      url: '/files/report.pdf',
+    })).toBe(false)
+    expect(isAssistantGeneratedImageFilePart(assistant, {
+      type: 'file',
+      mediaType: HIDDEN_FILE_MEDIA_TYPE,
+      url: '',
+    })).toBe(false)
+    expect(isAssistantGeneratedImageFilePart(assistant, {
+      type: 'text',
+      text: 'hello',
+    })).toBe(false)
+  })
+})
+
+describe('resolveAssistantGeneratedImageDisplay', () => {
+  it('uses a well-formed data: URL directly for both display and '
+    + 'download', () => {
+    const display = resolveAssistantGeneratedImageDisplay({
+      type: 'file',
+      mediaType: 'image/webp',
+      filename: undefined,
+      url: 'data:image/webp;base64,AAAA',
+    } as never)
+
+    expect(display).toEqual({
+      imageUrl: 'data:image/webp;base64,AAAA',
+      downloadUrl: 'data:image/webp;base64,AAAA',
+      name: 'generated-image.webp',
+    })
+  })
+
+  it('rejects a data: URL whose media type is not an accepted image type',
+    () => {
+      const display = resolveAssistantGeneratedImageDisplay({
+        type: 'file',
+        mediaType: 'image/svg+xml',
+        filename: undefined,
+        url: 'data:image/svg+xml;base64,AAAA',
+      } as never)
+
+      expect(display).toBeNull()
+    })
+
+  it('resolves a persisted /files/ URL through getSafeFileLinks, keeping '
+    + 'the filename and query', () => {
+    const display = resolveAssistantGeneratedImageDisplay({
+      type: 'file',
+      mediaType: 'image/webp',
+      filename: 'sunset.webp',
+      url: '/files/sunset.webp?generated=1',
+    } as never)
+
+    expect(display).toEqual({
+      imageUrl: '/files/sunset.webp?generated=1',
+      downloadUrl: '/files/sunset.webp?generated=1&download=1',
+      name: 'sunset.webp',
+    })
+  })
+
+  it('returns null for a URL getSafeFileLinks cannot turn into a safe '
+    + 'link', () => {
+    const display = resolveAssistantGeneratedImageDisplay({
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'forged.png',
+      url: 'javascript:alert(1)',
+    } as never)
+
+    expect(display).toBeNull()
   })
 })

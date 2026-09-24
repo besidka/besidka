@@ -495,6 +495,112 @@ describe('Chat/GeneratedImage', () => {
     expect(wrapper.find('a').exists()).toBe(false)
   })
 
+  it('renders a live gateway data: URL image directly, with no fetch and '
+    + 'no "Unavailable" tile', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: undefined,
+          url: 'data:image/png;base64,AAAA',
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const image = wrapper.get('.generated-image')
+
+    expect(wrapper.find('[data-testid="generated-image-error"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="chat-file-unavailable"]').exists())
+      .toBe(false)
+    expect(image.attributes('src')).toBe('data:image/png;base64,AAAA')
+    expect(wrapper.get('a').attributes('download')).toBe(
+      'generated-image.png',
+    )
+  })
+
+  it('renders a persisted gateway file part through getSafeFileLinks, '
+    + 'preserving the shared-chat token query', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'gateway.webp',
+          url: '/files/gateway.webp?token=abc.def.ghi&generated=1',
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const image = wrapper.get('.generated-image')
+
+    expect(image.attributes('src')).toBe(
+      '/files/gateway.webp?token=abc.def.ghi&generated=1',
+    )
+    expect(wrapper.get('[data-testid="generated-image-download"]')
+      .attributes('href')).toBe(
+      '/files/gateway.webp?token=abc.def.ghi&generated=1&download=1',
+    )
+    expect(wrapper.find('[data-testid="generated-image-attach"]').exists())
+      .toBe(false)
+  })
+
+  it('shows the same failure card as a tool-based failure for an unsafe '
+    + 'gateway file URL, instead of a broken tile', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'forged.png',
+          url: 'javascript:alert(1)',
+        } as any,
+      },
+    })
+
+    const alert = wrapper.get('[data-testid="generated-image-error"]')
+
+    expect(alert.text()).toContain(
+      'The image provider could not generate this image.',
+    )
+    expect(wrapper.find('a').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
+  })
+
+  it('does not treat a user-message image file part as generated output',
+    async () => {
+      const wrapper = await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'user',
+          part: {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'attachment.png',
+            url: '/files/attachment.png',
+          } as any,
+        },
+      })
+
+      expect(wrapper.find('[data-testid="generated-image"]').exists())
+        .toBe(false)
+    })
+
   it('does not render links or a ready card for malformed output', async () => {
     const wrapper = await mountSuspended(GeneratedImage, {
       props: {
