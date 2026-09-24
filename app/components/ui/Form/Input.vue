@@ -30,12 +30,6 @@
         :user-invalid="isInvalid"
         v-on="listeners"
       >
-      <span
-        v-if="$slots.labelAfter"
-        class="label"
-      >
-        <slot name="labelAfter" />
-      </span>
       <UiFormFieldBadge
         :validated="validated"
         :required="required"
@@ -43,6 +37,12 @@
         :success="success"
         :size="size"
       />
+      <span
+        v-if="$slots.labelAfter"
+        class="label"
+      >
+        <slot name="labelAfter" />
+      </span>
     </label>
     <LazyUiFormFieldHint
       v-if="allowError"
