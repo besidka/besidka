@@ -470,8 +470,11 @@ describe('gateway-generated image persistence, end to end', () => {
     expect(getOriginLinkUpdates(updateSet)).toHaveLength(0)
   })
 
-  it('never runs gateway image persistence on a direct-provider send, whose '
-    + 'images already arrive as persisted file parts', async () => {
+  it('never runs gateway image persistence on a direct-provider send — an '
+    + 'inline data: file part reaching this point is not a real '
+    + 'direct-provider shape (those only ever arrive via the generate_image '
+    + 'tool), so the universal undelivered-inline-data guard catches and '
+    + 'replaces it rather than persisting the raw blob', async () => {
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
       model: {
@@ -499,7 +502,11 @@ describe('gateway-generated image persistence, end to end', () => {
     const assistantInsert = getAssistantInsert(insertValues)
 
     expect(mocks.persistFile).not.toHaveBeenCalled()
-    expect(getFileParts(assistantInsert?.parts)[0]?.url)
-      .toMatch(/^data:image\/webp/)
+    expect(getFileParts(assistantInsert?.parts)).toEqual([])
+    expect(assistantInsert?.parts).toContainEqual({
+      type: 'text',
+      text: 'An image was generated but could not be saved.',
+    })
+    expect(JSON.stringify(assistantInsert?.parts)).not.toContain('data:')
   })
 })

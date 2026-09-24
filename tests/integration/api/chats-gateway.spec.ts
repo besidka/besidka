@@ -151,6 +151,8 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
       fileIds: [],
     }),
   ),
+  isPersistedOversizedResponseFailureText: vi.fn(() => false),
+  stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({

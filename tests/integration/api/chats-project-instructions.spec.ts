@@ -145,6 +145,8 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
     return input.parts
   }),
+  isPersistedOversizedResponseFailureText: vi.fn(() => false),
+  stripUndeliveredInlineDataParts: vi.fn(parts => parts),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
