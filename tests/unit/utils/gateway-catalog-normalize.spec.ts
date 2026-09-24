@@ -297,6 +297,26 @@ describe('fetchVercelGatewayCatalog', () => {
       'Failed to fetch Vercel AI Gateway model catalog',
     )
   })
+
+  it('bounds the request with an abort signal, so a hung upstream '
+    + 'propagates as a network-style timeout instead of hanging forever',
+  async () => {
+    const fetchMock = vi.fn().mockRejectedValue(
+      new DOMException('The operation timed out.', 'TimeoutError'),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { fetchVercelGatewayCatalog } = await getFetchers()
+
+    await expect(fetchVercelGatewayCatalog()).rejects.toThrow(
+      'The operation timed out.',
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
 })
 
 describe('fetchOpenRouterCatalog', () => {
@@ -689,7 +709,9 @@ describe('fetchCloudflareGatewayCatalog', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.cloudflare.com/client/v4/accounts/account-1/ai/models/search?format=openrouter',
-        { headers: { Authorization: 'Bearer cf-token' } },
+        expect.objectContaining({
+          headers: { Authorization: 'Bearer cf-token' },
+        }),
       )
     })
 
@@ -709,7 +731,9 @@ describe('fetchCloudflareGatewayCatalog', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.cloudflare.com/client/v4/accounts/account-1/ai/models/search?per_page=1000',
-        { headers: { Authorization: 'Bearer cf-token' } },
+        expect.objectContaining({
+          headers: { Authorization: 'Bearer cf-token' },
+        }),
       )
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
@@ -1363,6 +1387,47 @@ describe('getCachedCloudflareGatewayCatalog', () => {
         }),
       )
     })
+
+  it('serves a stale per-account cache entry when the fresh fetch times '
+    + 'out, treating it like a network error rather than a token rejection',
+  async () => {
+    const cache = createFakeCache()
+    const staleModels = [{ id: 'model-a-stale', name: 'Model A (stale)' }]
+    const apiKeyHash = await sha256Hex('token-1')
+
+    await cache.setItem(
+      `gateway-catalog:v3:cloudflare:account-1:${apiKeyHash}`,
+      {
+        models: staleModels,
+        cachedAt: Date.now() - (60 * 60 * 1000),
+      },
+    )
+
+    const fetchMock = vi.fn().mockRejectedValue(
+      new DOMException('The operation timed out.', 'TimeoutError'),
+    )
+    const loggerSet = vi.fn()
+
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('useStorage', () => cache)
+
+    const { getCachedCloudflareGatewayCatalog } = await getFetchers()
+
+    const models = await getCachedCloudflareGatewayCatalog(
+      { accountId: 'account-1', apiKey: 'token-1' },
+      { logger: { set: loggerSet } },
+    )
+
+    expect(models).toEqual(staleModels)
+    expect(loggerSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayCatalogFetch: {
+          gateway: 'cloudflare',
+          servedStale: true,
+        },
+      }),
+    )
+  })
 
   it('never serves a stale catalog when the fresh fetch is a 401/403 token rejection',
     async () => {

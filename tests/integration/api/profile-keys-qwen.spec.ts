@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enforceKeysRateLimit } from '../../../server/utils/keys-rate-limit'
 
 vi.mock('evlog', () => ({
   createError: (input: {
@@ -14,6 +15,22 @@ vi.mock('evlog', () => ({
     return exception
   },
 }))
+
+function createFakeKv() {
+  const store = new Map<string, string>()
+
+  return {
+    async get(key: string) {
+      return store.get(key) ?? null
+    },
+    async put(key: string, value: string) {
+      store.set(key, value)
+    },
+    async delete(key: string) {
+      store.delete(key)
+    },
+  }
+}
 
 function createDbMock() {
   let storedApiKey: string | null = null
@@ -90,8 +107,13 @@ describe('qwen key API', () => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
 
+    const fakeKv = createFakeKv()
+
     vi.stubGlobal('defineEventHandler', (handler: any) => handler)
     vi.stubGlobal('setResponseStatus', vi.fn())
+    vi.stubGlobal('enforceKeysRateLimit', enforceKeysRateLimit)
+    vi.stubGlobal('useKV', () => fakeKv)
+    vi.stubGlobal('setResponseHeader', vi.fn())
     vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
       return `encrypted:${plain}`
     }))
@@ -222,4 +244,21 @@ describe('qwen key API', () => {
         }),
       )
     })
+
+  it('returns 429 once the rate limit is exceeded on GET', async () => {
+    const dbMock = createDbMock()
+
+    vi.stubGlobal('useDb', () => dbMock.db)
+
+    const getHandler = await getGetHandler()
+
+    for (let call = 0; call < 10; call++) {
+      await getHandler({} as any)
+    }
+
+    await expect(getHandler({} as any)).rejects.toMatchObject({
+      message: 'Too many requests',
+      status: 429,
+    })
+  })
 })

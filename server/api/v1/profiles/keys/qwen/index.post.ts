@@ -1,6 +1,9 @@
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 
+const RATE_LIMIT_RULE = { window: 60, max: 10 }
+const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:qwen:post'
+
 export default defineEventHandler(async (event) => {
   const body = await readValidatedBody(event, z.object({
     apiKey: z.string().nonempty(),
@@ -19,6 +22,13 @@ export default defineEventHandler(async (event) => {
   if (!session) {
     return useUnauthorizedError()
   }
+
+  await enforceKeysRateLimit(
+    event,
+    session.user.id,
+    RATE_LIMIT_KEY_PREFIX,
+    RATE_LIMIT_RULE,
+  )
 
   const db = useDb()
 

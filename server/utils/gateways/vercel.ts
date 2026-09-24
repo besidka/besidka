@@ -1,5 +1,6 @@
 import { createGateway, type GatewayProvider } from '@ai-sdk/gateway'
 import { eq } from 'drizzle-orm'
+import { createError } from 'evlog'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
@@ -35,8 +36,10 @@ export async function useVercelGateway(
 
   if (!data?.apiKey) {
     throw createError({
-      statusCode: 401,
-      statusMessage: 'Vercel AI Gateway API key not found. Please set it up in the settings.',
+      message: 'Vercel AI Gateway API key not found',
+      status: 401,
+      why: 'No Vercel AI Gateway API key is set up for this account.',
+      fix: 'Add your Vercel AI Gateway key in Profile → Keys.',
     })
   }
 

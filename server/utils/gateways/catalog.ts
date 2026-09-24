@@ -10,6 +10,7 @@ const VERCEL_GATEWAY_MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models'
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
 const CLOUDFLARE_ACCOUNTS_URL = 'https://api.cloudflare.com/client/v4/accounts'
 const CLOUDFLARE_MODEL_SEARCH_PAGE_SIZE = 1000
+const GATEWAY_CATALOG_FETCH_TIMEOUT_MS = 15_000
 const TOKENS_PER_MILLION = 1_000_000
 const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
 /**
@@ -96,7 +97,9 @@ interface OpenRouterModelsResponse {
  * converting between the two conventions.
  */
 export async function fetchVercelGatewayCatalog(): Promise<GatewayModel[]> {
-  const response = await fetch(VERCEL_GATEWAY_MODELS_URL)
+  const response = await fetch(VERCEL_GATEWAY_MODELS_URL, {
+    signal: AbortSignal.timeout(GATEWAY_CATALOG_FETCH_TIMEOUT_MS),
+  })
 
   if (!response.ok) {
     throw createError({
@@ -167,7 +170,9 @@ function normalizeVercelGatewayModel(
 }
 
 export async function fetchOpenRouterCatalog(): Promise<GatewayModel[]> {
-  const response = await fetch(OPENROUTER_MODELS_URL)
+  const response = await fetch(OPENROUTER_MODELS_URL, {
+    signal: AbortSignal.timeout(GATEWAY_CATALOG_FETCH_TIMEOUT_MS),
+  })
 
   if (!response.ok) {
     throw createError({
@@ -388,6 +393,7 @@ async function fetchCloudflareMarketplaceCatalog(
     headers: {
       Authorization: `Bearer ${credentials.apiKey}`,
     },
+    signal: AbortSignal.timeout(GATEWAY_CATALOG_FETCH_TIMEOUT_MS),
   })
 
   if (!response.ok) {
@@ -604,6 +610,7 @@ async function fetchCloudflareModelProperties(
       headers: {
         Authorization: `Bearer ${credentials.apiKey}`,
       },
+      signal: AbortSignal.timeout(GATEWAY_CATALOG_FETCH_TIMEOUT_MS),
     })
 
     if (!response.ok) {

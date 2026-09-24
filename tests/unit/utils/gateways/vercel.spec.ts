@@ -1,5 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('evlog', () => ({
+  createError: (input: {
+    message: string
+    status?: number
+    why?: string
+    fix?: string
+  }) => {
+    const exception = new Error(input.message)
+
+    Object.assign(exception, input)
+
+    return exception
+  },
+}))
+
 function stubKeyLookup(apiKey: string | null = 'encrypted-key') {
   vi.stubGlobal('useDb', () => ({
     query: {
@@ -30,16 +45,6 @@ describe('useVercelGateway', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    vi.stubGlobal('createError', (input: {
-      statusCode?: number
-      statusMessage?: string
-    }) => {
-      const exception = new Error(input.statusMessage || 'Error')
-
-      Object.assign(exception, input)
-
-      return exception
-    })
   })
 
   it('throws a 401-style error when no key is stored', async () => {
@@ -49,8 +54,8 @@ describe('useVercelGateway', () => {
 
     await expect(useVercelGateway('1', 'openai/gpt-4o', [], 'off'))
       .rejects.toMatchObject({
-        statusCode: 401,
-        statusMessage: 'Vercel AI Gateway API key not found. Please set it up in the settings.',
+        message: 'Vercel AI Gateway API key not found',
+        status: 401,
       })
   })
 

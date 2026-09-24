@@ -239,7 +239,9 @@ describe('gateway models API', () => {
       })
       expect(fetchMock).toHaveBeenCalledWith(
         'https://api.cloudflare.com/client/v4/accounts/account-1/ai/models/search?format=openrouter',
-        { headers: { Authorization: 'Bearer cf-token' } },
+        expect.objectContaining({
+          headers: { Authorization: 'Bearer cf-token' },
+        }),
       )
     })
 

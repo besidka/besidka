@@ -1,4 +1,5 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+import { createError } from 'evlog'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isExternalWebSearchTool } from '#shared/utils/message-metadata'
@@ -28,8 +29,10 @@ export async function useOpenRouterGateway(
 
   if (!data?.apiKey) {
     throw createError({
-      statusCode: 401,
-      statusMessage: 'OpenRouter API key not found. Please set it up in the settings.',
+      message: 'OpenRouter API key not found',
+      status: 401,
+      why: 'No OpenRouter API key is set up for this account.',
+      fix: 'Add your OpenRouter key in Profile → Keys.',
     })
   }
 

@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { createError } from 'evlog'
 import {
   findGatewayCatalogModel,
   getCachedCloudflareGatewayCatalog,
@@ -113,8 +114,11 @@ export async function useCloudflareGateway(
 
   if (!credentials) {
     throw createError({
-      statusCode: 401,
-      statusMessage: 'Cloudflare AI Gateway credentials not found. Please set them up in the settings.',
+      message: 'Cloudflare AI Gateway credentials not found',
+      status: 401,
+      why: 'No Cloudflare AI Gateway credentials are set up for this '
+        + 'account.',
+      fix: 'Add your Cloudflare AI Gateway credentials in Profile → Keys.',
     })
   }
 

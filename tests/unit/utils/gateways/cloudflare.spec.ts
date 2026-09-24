@@ -1,5 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('evlog', () => ({
+  createError: (input: {
+    message: string
+    status?: number
+    why?: string
+    fix?: string
+  }) => {
+    const exception = new Error(input.message)
+
+    Object.assign(exception, input)
+
+    return exception
+  },
+}))
+
 function stubKeyLookup(rawApiKeyColumn: string | null) {
   vi.stubGlobal('useDb', () => ({
     query: {
@@ -166,16 +181,6 @@ describe('useCloudflareGateway', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    vi.stubGlobal('createError', (input: {
-      statusCode?: number
-      statusMessage?: string
-    }) => {
-      const exception = new Error(input.statusMessage || 'Error')
-
-      Object.assign(exception, input)
-
-      return exception
-    })
   })
 
   it('throws a 401-style error when no credentials are stored', async () => {
@@ -186,8 +191,8 @@ describe('useCloudflareGateway', () => {
 
     await expect(useCloudflareGateway('1', 'llama-3.3-70b'))
       .rejects.toMatchObject({
-        statusCode: 401,
-        statusMessage: 'Cloudflare AI Gateway credentials not found. Please set them up in the settings.',
+        message: 'Cloudflare AI Gateway credentials not found',
+        status: 401,
       })
   })
 
