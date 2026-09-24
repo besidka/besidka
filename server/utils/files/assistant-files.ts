@@ -360,18 +360,29 @@ const maxGatewayGeneratedImagePartsPerMessage = 4
  * returns and would silently drop anything else, making the image disappear
  * on reload.
  *
- * A `reasoning-file` part is treated identically to a `file` part below.
  * `@ai-sdk/google`'s installed `dist/index.js` (the `inlineData` branch)
- * emits this distinct chunk type — instead of `file` — whenever Gemini
- * marks the content part `thought: true`. Requesting a `*-image` model
- * (e.g. `google/gemini-3.1-flash-image`) through the Vercel gateway with
- * reasoning enabled can produce one of these instead of, or alongside, a
- * plain `file` part, carrying the exact same inline `data:` URL. Before
- * this was handled, that guard below only matched `part.type === 'file'`,
- * so the raw base64 blob (1.5-3 MB is typical) reached the `messages`
- * insert untouched, exceeding D1's documented 2,000,000-byte max
+ * emits a distinct `reasoning-file` chunk type — instead of `file` —
+ * whenever Gemini marks the content part `thought: true`. Requesting a
+ * `*-image` model (e.g. `google/gemini-3.1-flash-image`) through the Vercel
+ * gateway with reasoning enabled can produce one or more of these
+ * intermediate THOUGHT images alongside the real delivered `file` image in
+ * the same turn, carrying the exact same inline `data:` URL shape. A
+ * `reasoning-file` image is never persisted, never rewritten to a `/files/`
+ * URL, and never counted toward `maxGatewayGeneratedImagePartsPerMessage`
+ * whenever the response also carries at least one genuine `file` image —
+ * the client has no way to tell a draft apart from the answer, and a FIFO
+ * cap must never spend its slots on drafts instead of the delivered image.
+ * When Gemini surfaces no `file` image at all for the turn, the last
+ * `reasoning-file` image is promoted to the delivered answer instead
+ * (persisted as a `file`, exactly like the direct-provider path below),
+ * since that is sometimes the only image the model ever marks non-thought.
+ * See `getDroppedThoughtImagePartIndexes` for the exact selection rule.
+ * Before this was handled, every `reasoning-file` image part reached the
+ * same persistence path as `file` unconditionally, so the raw base64 blob
+ * (1.5-3 MB is typical) could exceed D1's documented 2,000,000-byte max
  * string/row/BLOB size (https://developers.cloudflare.com/d1/platform/limits/)
- * and throwing `message-persist-failed` with no diagnosable cause.
+ * and throw `message-persist-failed` with no diagnosable cause, or silently
+ * let a thought image win the FIFO cap over the real answer.
  *
  * `stripUndeliveredInlineDataParts()` further below is the last-line
  * defensive net for this same class of bug: it runs immediately before the
@@ -380,6 +391,58 @@ const maxGatewayGeneratedImagePartsPerMessage = 4
  * this function already uses — so a future gateway/provider chunk shape
  * neither function recognizes yet can never repeat the same D1 failure.
  */
+function isInlineDataImagePart(
+  part: UIMessage['parts'][number],
+): part is Extract<
+  UIMessage['parts'][number],
+  { type: 'file' | 'reasoning-file' }
+> {
+  return (part.type === 'file' || part.type === 'reasoning-file')
+    && part.url.startsWith('data:')
+    && part.mediaType.startsWith('image/')
+}
+
+/**
+ * A `reasoning-file` image is dropped whenever the same response also
+ * carries a genuine `file` image, whatever the order the model emitted
+ * them in. When no `file` image exists at all, the last `reasoning-file`
+ * image is kept (promoted to the delivered answer by the caller) and every
+ * earlier one is dropped. The returned indexes are never persisted, never
+ * counted toward `maxGatewayGeneratedImagePartsPerMessage`, and never left
+ * inline in the final result.
+ */
+function getDroppedThoughtImagePartIndexes(
+  parts: UIMessage['parts'],
+): Set<number> {
+  const droppedIndexes = new Set<number>()
+  const hasDeliveredFileImagePart = parts.some((part) => {
+    return part.type === 'file' && isInlineDataImagePart(part)
+  })
+
+  let lastReasoningFileImagePartIndex = -1
+
+  parts.forEach((part, index) => {
+    if (part.type === 'reasoning-file' && isInlineDataImagePart(part)) {
+      lastReasoningFileImagePartIndex = index
+    }
+  })
+
+  parts.forEach((part, index) => {
+    if (part.type !== 'reasoning-file' || !isInlineDataImagePart(part)) {
+      return
+    }
+
+    if (
+      hasDeliveredFileImagePart
+      || index !== lastReasoningFileImagePartIndex
+    ) {
+      droppedIndexes.add(index)
+    }
+  })
+
+  return droppedIndexes
+}
+
 export async function persistGatewayGeneratedImageParts(
   input: PersistGatewayImageOutputInput,
 ): Promise<PersistGatewayImageOutputResult> {
@@ -387,8 +450,16 @@ export async function persistGatewayGeneratedImageParts(
   const persistedParts: UIMessage['parts'] = []
   let hasGeneratedImagePart = false
   let processedImagePartCount = 0
+  const droppedThoughtImagePartIndexes = getDroppedThoughtImagePartIndexes(
+    input.parts,
+  )
 
-  for (const part of input.parts) {
+  for (const [index, part] of input.parts.entries()) {
+    if (droppedThoughtImagePartIndexes.has(index)) {
+      hasGeneratedImagePart = true
+      continue
+    }
+
     if (
       (part.type !== 'file' && part.type !== 'reasoning-file')
       || !part.url.startsWith('data:')
@@ -548,12 +619,33 @@ export function stripUndeliveredInlineDataParts(
       action: 'oversized-assistant-parts-replaced',
       estimatedBytes,
     },
+    attributes: {
+      assistantPersist: {
+        oversizedBreakdown: buildOversizedPartTypeBreakdown(sanitizedParts),
+      },
+    },
   })
 
   return [{
     type: 'text',
     text: getPersistedOversizedResponseFailureText(),
   }]
+}
+
+function buildOversizedPartTypeBreakdown(
+  parts: UIMessage['parts'],
+): Record<string, number> {
+  const breakdown: Record<string, number> = {}
+
+  for (const part of parts) {
+    const partBytes = new TextEncoder().encode(
+      JSON.stringify(part),
+    ).byteLength
+
+    breakdown[part.type] = (breakdown[part.type] ?? 0) + partBytes
+  }
+
+  return breakdown
 }
 
 function hasInlineDataUrl(part: UIMessage['parts'][number]): boolean {

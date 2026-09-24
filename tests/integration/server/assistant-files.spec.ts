@@ -1243,6 +1243,125 @@ describe('persistGatewayGeneratedImageParts', () => {
     expect(JSON.stringify(result.parts)).not.toContain('data:')
   })
 
+  it('drops every reasoning-file thought image and keeps the real file '
+    + 'image as the answer, without spending the per-message cap on '
+    + 'thoughts, whatever order they arrive in', async () => {
+    mocks.persistFile.mockResolvedValue({
+      id: 'file-final',
+      storageKey: 'generated-final.webp',
+      name: 'generated-image-final.webp',
+      size: 26,
+      type: 'image/webp',
+      source: 'assistant',
+      expiresAt: null,
+    })
+
+    const thoughtImageUrl = buildImageDataUrl(createWebPBytes(), 'image/webp')
+    const finalImageUrl = buildImageDataUrl(createWebPBytes(), 'image/webp')
+    const parts: UIMessage['parts'] = [
+      { type: 'reasoning-file', mediaType: 'image/webp', url: thoughtImageUrl },
+      { type: 'reasoning-file', mediaType: 'image/webp', url: thoughtImageUrl },
+      { type: 'file', mediaType: 'image/webp', url: finalImageUrl },
+      { type: 'reasoning-file', mediaType: 'image/webp', url: thoughtImageUrl },
+      { type: 'reasoning-file', mediaType: 'image/webp', url: thoughtImageUrl },
+    ] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-thoughts-1',
+      gatewayId: 'vercel-gateway',
+      modelId: 'google/gemini-3.1-flash-image-preview',
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.persistFile).toHaveBeenCalledTimes(1)
+    expect(result.fileIds).toEqual(['file-final'])
+    expect(result.parts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'generated-image-final.webp',
+        url: '/files/generated-final.webp?generated=1',
+      },
+    ])
+    expect(JSON.stringify(result.parts)).not.toContain('data:')
+  })
+
+  it('does not let thought images exhaust the per-message cap before the '
+    + 'real image is processed', async () => {
+    mocks.persistFile.mockImplementation(async (input: any) => ({
+      id: `file-${input.originModel}`,
+      storageKey: `${input.originModel}.webp`,
+      name: input.fileName,
+      size: 26,
+      type: 'image/webp',
+      source: 'assistant',
+      expiresAt: null,
+    }))
+
+    const imageUrl = buildImageDataUrl(createWebPBytes(), 'image/webp')
+    const thoughtParts: UIMessage['parts'] = Array.from(
+      { length: 4 },
+      () => ({ type: 'reasoning-file', mediaType: 'image/webp', url: imageUrl }),
+    ) as any
+    const parts: UIMessage['parts'] = [
+      ...thoughtParts,
+      { type: 'file', mediaType: 'image/webp', url: imageUrl },
+    ] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-thoughts-2',
+      gatewayId: 'vercel-gateway',
+      modelId: 'google/gemini-3.1-flash-image-preview',
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.persistFile).toHaveBeenCalledTimes(1)
+    expect(result.parts).toHaveLength(1)
+    expect(result.parts[0]?.type).toBe('file')
+    expect(result.fileIds).toHaveLength(1)
+  })
+
+  it('promotes the last of several reasoning-file thought images to the '
+    + 'delivered answer when no real file image was ever surfaced', async () => {
+    mocks.persistFile.mockImplementation(async (input: any) => ({
+      id: `file-${input.originModel}`,
+      storageKey: `${input.originModel}.webp`,
+      name: input.fileName,
+      size: 26,
+      type: 'image/webp',
+      source: 'assistant',
+      expiresAt: null,
+    }))
+
+    const firstThoughtUrl = buildImageDataUrl(createWebPBytes(), 'image/webp')
+    const lastThoughtUrl = buildImageDataUrl(createWebPBytes(), 'image/webp')
+    const parts: UIMessage['parts'] = [
+      { type: 'reasoning-file', mediaType: 'image/webp', url: firstThoughtUrl },
+      { type: 'reasoning-file', mediaType: 'image/webp', url: lastThoughtUrl },
+    ] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-thoughts-3',
+      gatewayId: 'vercel-gateway',
+      modelId: 'google/gemini-3.1-flash-image-preview',
+      logger: { set: vi.fn() },
+    })
+
+    expect(mocks.persistFile).toHaveBeenCalledTimes(1)
+    expect(mocks.persistFile).toHaveBeenCalledWith(expect.objectContaining({
+      fileData: expect.anything(),
+    }))
+    expect(result.parts).toHaveLength(1)
+    expect(result.parts[0]?.type).toBe('file')
+    expect(JSON.stringify(result.parts)).not.toContain('data:')
+  })
+
   it('leaves parts untouched when the response has no gateway image parts',
     async () => {
       const parts: UIMessage['parts'] = [
@@ -1556,6 +1675,11 @@ describe('stripUndeliveredInlineDataParts', () => {
         action: 'oversized-assistant-parts-replaced',
         estimatedBytes: expect.any(Number),
       },
+      attributes: {
+        assistantPersist: {
+          oversizedBreakdown: { text: expect.any(Number) },
+        },
+      },
     })
   })
 
@@ -1591,6 +1715,11 @@ describe('stripUndeliveredInlineDataParts', () => {
       assistantFiles: expect.objectContaining({
         action: 'oversized-assistant-parts-replaced',
       }),
+      attributes: {
+        assistantPersist: {
+          oversizedBreakdown: { text: expect.any(Number) },
+        },
+      },
     }))
   })
 })

@@ -84,7 +84,7 @@
             :part="gatewayImageGenerationFailurePart"
           />
           <div
-            v-for="(part, index) in m.parts"
+            v-for="(part, index) in getDisplayMessageParts(m)"
             :key="`message-${m.id}-part-${index}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
@@ -242,6 +242,7 @@ import {
   isPersistedFailureTextPart,
 } from '~/utils/chat-failure-notice'
 import {
+  getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'

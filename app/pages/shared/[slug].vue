@@ -180,7 +180,7 @@
             :is-turn-thinking-held="false"
           />
           <div
-            v-for="(part, index) in m.parts"
+            v-for="(part, index) in getDisplayMessageParts(m)"
             :key="`message-${m.id}-part-${index}`"
           >
             <ChatGeneratedImage
@@ -254,6 +254,7 @@ import {
   isPersistedFailureTextPart,
 } from '~/utils/chat-failure-notice'
 import {
+  getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,

@@ -341,6 +341,66 @@ export function isAssistantGeneratedImageFilePart(
   return isImageFile(candidate.mediaType)
 }
 
+/**
+ * Mirrors the server-side selection rule in
+ * `persistGatewayGeneratedImageParts` (`server/utils/files/assistant-files.ts`)
+ * so a live-streamed Gemini turn renders the same image the reload will show
+ * once persisted. Gemini can narrate image generation through one or more
+ * intermediate THOUGHT images (`reasoning-file` UI parts, identical shape to
+ * `file` but never matched by `isAssistantGeneratedImageFilePart`) before
+ * the real answer arrives as a plain `file` part. While no `file` image has
+ * streamed in yet, the last `reasoning-file` image is promoted to a `file`
+ * part so it displays as a tentative answer; once a real `file` image
+ * arrives, the promotion stops and only that image renders — matching the
+ * settled, persisted state exactly. Non-assistant messages and messages
+ * with no reasoning-file image are returned unchanged.
+ */
+export function getDisplayMessageParts(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): UIMessage['parts'] {
+  if (message.role !== 'assistant') {
+    return message.parts
+  }
+
+  const hasDeliveredFileImagePart = message.parts.some((part) => {
+    return part.type === 'file' && isImageFile(part.mediaType)
+  })
+
+  if (hasDeliveredFileImagePart) {
+    return message.parts
+  }
+
+  let lastReasoningFileImagePartIndex = -1
+
+  message.parts.forEach((part, index) => {
+    if (part.type === 'reasoning-file' && isImageFile(part.mediaType)) {
+      lastReasoningFileImagePartIndex = index
+    }
+  })
+
+  if (lastReasoningFileImagePartIndex === -1) {
+    return message.parts
+  }
+
+  return message.parts.map((part, index) => {
+    if (
+      index !== lastReasoningFileImagePartIndex
+      || part.type !== 'reasoning-file'
+    ) {
+      return part
+    }
+
+    const promotedFilePart: FileUIPart = {
+      type: 'file',
+      mediaType: part.mediaType,
+      url: part.url,
+      providerMetadata: part.providerMetadata,
+    }
+
+    return promotedFilePart
+  })
+}
+
 export interface AssistantGeneratedImageDisplay {
   imageUrl: string
   downloadUrl: string
