@@ -182,6 +182,13 @@
           <div
             v-for="(part, index) in getDisplayMessageParts(m)"
             :key="`message-${m.id}-part-${index}`"
+            :class="{
+              'mt-4': isTextPartAfterGeneratedImage(
+                m,
+                getDisplayMessageParts(m),
+                index,
+              ),
+            }"
           >
             <ChatGeneratedImage
               v-if="shouldRenderGenerateImageToolPart(m, part)
@@ -256,6 +263,7 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
+  isTextPartAfterGeneratedImage,
   shouldFitMessageBubble,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'

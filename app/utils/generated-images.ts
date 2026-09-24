@@ -401,6 +401,40 @@ export function getDisplayMessageParts(
   })
 }
 
+/**
+ * True when `part` renders as a `ChatGeneratedImage` card — either a
+ * direct-provider tool call or a gateway/reasoning-file image — matching the
+ * same `v-if` used to select `ChatGeneratedImage` in the message parts loop.
+ */
+export function isGeneratedImagePart(
+  message: UIMessage,
+  part: unknown,
+): boolean {
+  return (
+    shouldRenderGenerateImageToolPart(message, part)
+    || isAssistantGeneratedImageFilePart(message, part)
+  )
+}
+
+/**
+ * True when `parts[index]` is a text part immediately preceded by a
+ * generated-image card, so callers can add spacing between the two without
+ * affecting a leading image or text that precedes an image.
+ */
+export function isTextPartAfterGeneratedImage(
+  message: UIMessage,
+  parts: UIMessage['parts'],
+  index: number,
+): boolean {
+  const part = parts[index]
+
+  if (!part || part.type !== 'text' || index === 0) {
+    return false
+  }
+
+  return isGeneratedImagePart(message, parts[index - 1])
+}
+
 export interface AssistantGeneratedImageDisplay {
   imageUrl: string
   downloadUrl: string

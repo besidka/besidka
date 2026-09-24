@@ -5,6 +5,7 @@ import {
   getGenerateImageOutput,
   getImageGenerationFailureText,
   isAssistantGeneratedImageFilePart,
+  isTextPartAfterGeneratedImage,
   isVisibleGenerateImageToolPart,
   resolveAssistantGeneratedImageDisplay,
   shouldFitMessageBubble,
@@ -485,5 +486,66 @@ describe('resolveAssistantGeneratedImageDisplay', () => {
     } as never)
 
     expect(display).toBeNull()
+  })
+})
+
+describe('isTextPartAfterGeneratedImage', () => {
+  it('is true for a text part right after a ready generate_image tool part',
+    () => {
+      const parts = [createReadyPart(), { type: 'text', text: 'Done.' }]
+      const message = { role: 'assistant', parts } as unknown as UIMessage
+
+      expect(isTextPartAfterGeneratedImage(message, message.parts, 1))
+        .toBe(true)
+    })
+
+  it('is true for a text part right after a gateway image file part', () => {
+    const parts = [
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        url: '/files/generated.webp',
+      },
+      { type: 'text', text: 'Here you go.' },
+    ]
+    const message = { role: 'assistant', parts } as unknown as UIMessage
+
+    expect(isTextPartAfterGeneratedImage(message, message.parts, 1))
+      .toBe(true)
+  })
+
+  it('is false when the generated image is the last part', () => {
+    const parts = [createReadyPart()]
+    const message = { role: 'assistant', parts } as unknown as UIMessage
+
+    expect(isTextPartAfterGeneratedImage(message, message.parts, 0))
+      .toBe(false)
+  })
+
+  it('is false when text precedes the generated image', () => {
+    const parts = [{ type: 'text', text: 'Generating...' }, createReadyPart()]
+    const message = { role: 'assistant', parts } as unknown as UIMessage
+
+    expect(isTextPartAfterGeneratedImage(message, message.parts, 0))
+      .toBe(false)
+  })
+
+  it('is false for a text part following another text part', () => {
+    const parts = [
+      { type: 'text', text: 'First.' },
+      { type: 'text', text: 'Second.' },
+    ]
+    const message = { role: 'assistant', parts } as unknown as UIMessage
+
+    expect(isTextPartAfterGeneratedImage(message, message.parts, 1))
+      .toBe(false)
+  })
+
+  it('is false for the generated image part itself, even at index 0', () => {
+    const parts = [createReadyPart(), { type: 'text', text: 'Done.' }]
+    const message = { role: 'assistant', parts } as unknown as UIMessage
+
+    expect(isTextPartAfterGeneratedImage(message, message.parts, 0))
+      .toBe(false)
   })
 })

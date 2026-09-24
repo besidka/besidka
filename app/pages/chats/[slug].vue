@@ -90,6 +90,11 @@
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
+              'mt-4': isTextPartAfterGeneratedImage(
+                m,
+                getDisplayMessageParts(m),
+                index,
+              ),
             }"
           >
             <ChatGeneratedImage
@@ -244,6 +249,7 @@ import {
 import {
   getDisplayMessageParts,
   isAssistantGeneratedImageFilePart,
+  isTextPartAfterGeneratedImage,
   shouldRenderGenerateImageToolPart,
 } from '~/utils/generated-images'
 

@@ -972,6 +972,29 @@ describe('Chat/ContextMenu.client', () => {
       )
     })
 
+    it('truncates the date/time row with a full-value tooltip', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const dateTimeRow = wrapper.get(
+        '[data-testid="message-menu-datetime"]',
+      )
+
+      expect(dateTimeRow.classes()).toContain('truncate')
+      expect(dateTimeRow.attributes('title')).toBe(dateTimeRow.text())
+    })
+
     it('falls back to the raw id for an unknown model', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',
@@ -1233,6 +1256,35 @@ describe('Chat/ContextMenu.client', () => {
       expect(providerRow.text()).toContain('Brave')
       expect(providerRow.text()).not.toContain('(direct)')
     })
+
+    it('truncates a long provider label to a single line with a tooltip',
+      async () => {
+        const info: MessageMenuInfo = {
+          role: 'assistant',
+          createdAt: '2026-01-15T10:30:00.000Z',
+          model: 'gpt-5.4',
+          providerId: 'cloudflare',
+          providerLabel: 'Cloudflare AI Gateway',
+          providerKind: 'gateway',
+        }
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+            info,
+          },
+          attachTo: document.body,
+        })
+
+        const providerRow = wrapper.get(
+          '[data-testid="message-menu-provider"]',
+        )
+        const valueSpan = providerRow.get('span.truncate')
+
+        expect(valueSpan.classes()).toContain('min-w-0')
+        expect(valueSpan.attributes('title')).toBe('Cloudflare AI Gateway')
+      })
 
     it('hides the provider row when no provider info is present', async () => {
       const info: MessageMenuInfo = {
@@ -1510,6 +1562,34 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(label.text()).toBe('Web search')
     })
+
+    it('carries the full cost/count string as a tooltip on the value',
+      async () => {
+        const info: MessageMenuInfo = {
+          role: 'assistant',
+          createdAt: '2026-01-15T10:30:00.000Z',
+          searchCost: 0.015,
+          searchUnits: 3,
+          searchBillingUnit: 'search',
+          searchProvider: 'brave',
+        }
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+            info,
+          },
+          attachTo: document.body,
+        })
+
+        const row = wrapper.get(
+          '[data-testid="message-menu-search-grounding"]',
+        )
+        const valueSpan = row.get('span.truncate')
+
+        expect(valueSpan.attributes('title')).toBe(valueSpan.text())
+      })
   })
 
   describe('deep research tool label', () => {
@@ -1600,6 +1680,39 @@ describe('Chat/ContextMenu.client', () => {
 
       expect(toolsRow.text()).toContain('Web search (Exa)')
     })
+
+    it('renders the tools value as a single-line truncated tooltip',
+      async () => {
+        const info: MessageMenuInfo = {
+          role: 'assistant',
+          createdAt: '2026-01-15T10:30:00.000Z',
+          usedTools: ['web_search_brave', 'image_generation'],
+        }
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+            info,
+          },
+          attachTo: document.body,
+        })
+
+        const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+        const valueWrapper = toolsRow.findAll('span').find((span) => {
+          return span.attributes('title')?.includes('Web search (Brave)')
+        })
+
+        expect(valueWrapper).toBeDefined()
+        expect(valueWrapper?.classes()).not.toContain('flex-wrap')
+        expect(valueWrapper?.attributes('title')).toBe(
+          'Web search (Brave), Image generation',
+        )
+
+        const textSpan = valueWrapper?.get('span.truncate')
+
+        expect(textSpan?.classes()).toContain('min-w-0')
+      })
   })
 
   describe('copy actions', () => {
