@@ -914,42 +914,36 @@ describe('ChatInput.client', () => {
         .toBe('off')
     })
 
-    it('turns off image generation once a search provider is chosen',
-      async () => {
-        useWebSearchSelection()
+    it('hides the web search trigger once image generation is enabled, '
+      + 'so a search provider can no longer be chosen alongside it',
+    async () => {
+      useWebSearchSelection()
 
-        const wrapper = await mountChatInput()
+      const wrapper = await mountChatInput()
 
-        await wrapper.get('[title="Create an image"]').trigger('click')
+      await wrapper.get('[title="Create an image"]').trigger('click')
 
-        clickWebSearchOption(wrapper, 'Brave Search')
-        await nextTick()
+      expect(
+        wrapper.find('[data-testid="web-search-trigger"]').exists(),
+      ).toBe(false)
+    })
 
-        expect(
-          wrapper.find('[title="Image creation is required for this model"]')
-            .exists(),
-        ).toBe(false)
-        expect(
-          wrapper.find('[title="Disable image creation"]').exists(),
-        ).toBe(false)
-      })
+    it('clears the search selection and hides the trigger once image '
+      + 'generation is enabled', async () => {
+      useWebSearchSelection()
 
-    it('clears the search selection once image generation is enabled',
-      async () => {
-        useWebSearchSelection()
+      const wrapper = await mountChatInput()
 
-        const wrapper = await mountChatInput()
+      clickWebSearchOption(wrapper, 'Brave Search')
+      await nextTick()
 
-        clickWebSearchOption(wrapper, 'Brave Search')
-        await nextTick()
+      await wrapper.get('[title="Create an image"]').trigger('click')
+      await nextTick()
 
-        await wrapper.get('[title="Create an image"]').trigger('click')
-        await nextTick()
-
-        const trigger = wrapper.get('[data-testid="web-search-trigger"]')
-
-        expect(trigger.classes()).toContain('btn-circle')
-      })
+      expect(
+        wrapper.find('[data-testid="web-search-trigger"]').exists(),
+      ).toBe(false)
+    })
 
     it('prunes an external selection once the model loses tool calling '
       + 'or its key', async () => {
@@ -1020,6 +1014,160 @@ describe('ChatInput.client', () => {
       expect(trigger.attributes('title')).toBe(
         'Web search: Model\'s built-in search',
       )
+    })
+  })
+
+  describe('image generation hides reasoning and web search', () => {
+    function useMutualExclusionSelection(overrides: {
+      isImageGenerationRequired?: boolean
+      reasoningCapability?: unknown
+      reasoningMenuLevels?: string[]
+    } = {}) {
+      const isImageGenerationRequired = shallowRef(
+        overrides.isImageGenerationRequired ?? false,
+      )
+      const reasoningCapability = shallowRef(
+        overrides.reasoningCapability ?? {
+          mode: 'levels',
+          levels: ['low', 'medium', 'high'],
+        },
+      )
+      const reasoningMenuLevels = shallowRef(
+        overrides.reasoningMenuLevels ?? ['low', 'medium', 'high'],
+      )
+
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(true),
+        isToolCallingSupported: shallowRef(true),
+        webSearchProviderOptions: shallowRef([
+          {
+            value: 'web_search',
+            label: 'Model\'s built-in search',
+            enabled: true,
+          },
+        ]),
+        isImageGenerationSupported: shallowRef(true),
+        isImageGenerationRequired,
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(true),
+        reasoningCapability,
+        reasoningMode: shallowRef('levels'),
+        reasoningMenuLevels,
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
+      })
+
+      return { isImageGenerationRequired, reasoningCapability }
+    }
+
+    it('hides both the reasoning and web search triggers once image '
+      + 'generation is toggled on, and shows them again once it is '
+      + 'toggled off', async () => {
+      useMutualExclusionSelection()
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
+        .toBe(true)
+
+      await wrapper.get('[title="Create an image"]').trigger('click')
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
+        .toBe(false)
+
+      await wrapper.get('[title="Disable image creation"]').trigger('click')
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
+        .toBe(true)
+    })
+
+    it('hides both triggers for an image-only model where image '
+      + 'generation is required', async () => {
+      useMutualExclusionSelection({ isImageGenerationRequired: true })
+
+      const wrapper = await mountChatInput({ tools: ['image_generation'] })
+      await nextTick()
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
+        .toBe(false)
+    })
+
+    it('sets the live reasoning level off when image generation is '
+      + 'enabled, without writing a new saved default', async () => {
+      useMutualExclusionSelection()
+      usePreferenceStorage().setItem('settings_reasoning_level', 'medium')
+
+      const wrapper = await mountChatInput({ reasoning: 'medium' })
+      await nextTick()
+
+      await wrapper.get('[title="Create an image"]').trigger('click')
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+      expect(usePreferenceStorage().getItem('settings_reasoning_level'))
+        .toBe('medium')
+    })
+
+    it('restores the saved reasoning level once image generation is '
+      + 'disabled again, still without touching the saved default',
+    async () => {
+      useMutualExclusionSelection()
+      usePreferenceStorage().setItem('settings_reasoning_level', 'medium')
+
+      const wrapper = await mountChatInput({ reasoning: 'medium' })
+      await nextTick()
+
+      await wrapper.get('[title="Create an image"]').trigger('click')
+      await nextTick()
+      await wrapper.get('[title="Disable image creation"]').trigger('click')
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.map((args) => {
+        return args[0]
+      })).toEqual(['off', 'medium'])
+      expect(usePreferenceStorage().getItem('settings_reasoning_level'))
+        .toBe('medium')
+    })
+
+    it('clamps the restored reasoning level to off when the saved '
+      + 'default is no longer supported by the model', async () => {
+      const { reasoningCapability } = useMutualExclusionSelection()
+
+      usePreferenceStorage().setItem('settings_reasoning_level', 'medium')
+
+      const wrapper = await mountChatInput({ reasoning: 'medium' })
+      await nextTick()
+
+      await wrapper.get('[title="Create an image"]').trigger('click')
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+
+      reasoningCapability.value = { mode: 'levels', levels: ['low'] }
+      await nextTick()
+
+      await wrapper.get('[title="Disable image creation"]').trigger('click')
+      await nextTick()
+
+      const reasoningEmissions = wrapper.emitted('update:reasoning')?.map(
+        (args) => {
+          return args[0]
+        },
+      ) ?? []
+
+      expect(reasoningEmissions).not.toContain('medium')
     })
   })
 

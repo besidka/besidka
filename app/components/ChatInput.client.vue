@@ -152,8 +152,7 @@
                   @click="toggleImageGeneration"
                 />
                 <LazyChatInputWebSearchTrigger
-                  v-if="(isWebSearchSupported || isToolCallingSupported)
-                    && !isDeepResearchModel"
+                  v-if="isWebSearchTriggerVisible"
                   :selected="selectedWebSearchProvider"
                   :options="webSearchProviderOptions"
                   :is-tool-calling-supported="isToolCallingSupported"
@@ -161,7 +160,7 @@
                   @select-provider="selectWebSearchProvider"
                 />
                 <LazyChatInputReasoningTrigger
-                  v-if="isReasoningSupported && !isDeepResearchModel"
+                  v-if="isReasoningTriggerVisible"
                   :reasoning="reasoning"
                   :align="toolbarDropdownAlign"
                   :levels="reasoningMenuLevels"
@@ -632,6 +631,25 @@ const isImageGenerationEnabled = computed<boolean>(() => {
 })
 
 /**
+ * Mirrors direct providers: while image generation is active (toggled by
+ * the user or forced by `isImageGenerationRequired` for image-only models),
+ * neither the reasoning nor the web-search trigger can produce a request
+ * the provider would accept alongside `image_generation`, so both are
+ * hidden rather than shown disabled.
+ */
+const isReasoningTriggerVisible = computed<boolean>(() => {
+  return isReasoningSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+})
+
+const isWebSearchTriggerVisible = computed<boolean>(() => {
+  return (isWebSearchSupported.value || isToolCallingSupported.value)
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+})
+
+/**
  * The single alignment source both the web-search and reasoning dropdowns
  * read, replacing the old boolean that only the web-search toggle used to
  * set. It generalises the same "does a wider control sit before me"
@@ -719,6 +737,88 @@ function selectReasoningLevel(level: ReasoningLevel) {
   reasoning.value = level
   prefStorage.setItem('settings_reasoning_level', level)
 }
+
+/**
+ * Restores the live reasoning level after image generation turns off,
+ * without touching `settings_reasoning_level` — only an explicit pick
+ * through `selectReasoningLevel()` persists a new default. Validated
+ * against the current model's capability here rather than left to the
+ * separate capability watcher above, since that watcher only reacts to its
+ * own tracked sources and would not re-run just because `reasoning.value`
+ * changed.
+ */
+function restoreLiveReasoningLevel() {
+  const savedLevel = normalizeReasoningLevel(
+    prefStorage.getItem('settings_reasoning_level'),
+  )
+
+  reasoning.value = isReasoningLevelSupported(
+    savedLevel,
+    reasoningCapability.value,
+  )
+    ? savedLevel
+    : 'off'
+}
+
+/**
+ * Mirrors `restoreLiveReasoningLevel()` for web search: safe to restore
+ * without a persisted-default write because it re-validates the saved
+ * option against the model's current `webSearchProviderOptions` itself,
+ * rather than relying on the unrelated tools-filtering watcher to catch an
+ * unsupported restore later.
+ */
+function restoreLiveWebSearchSelection() {
+  if (tools.value.some(isWebSearchTool)) {
+    return
+  }
+
+  const savedOption = prefStorage.getItem('settings_web_search_tool')
+
+  if (!isWebSearchTool(savedOption)) {
+    return
+  }
+
+  const option = webSearchProviderOptions.value.find((candidate) => {
+    return candidate.value === savedOption
+  })
+
+  if (!option?.enabled) {
+    return
+  }
+
+  tools.value = [...tools.value, savedOption]
+}
+
+/**
+ * The single place that reacts to `image_generation` entering or leaving
+ * `tools` — whichever of `toggleImageGeneration()`, the required-model
+ * branch above, or `selectWebSearchProvider()` caused it. Forcing reasoning
+ * off is unconditional on every enabled state (also covers mounting into an
+ * already-image-generation chat), while restoring only fires on an actual
+ * enabled-to-disabled transition, so it never clobbers a reasoning level
+ * the user picked while image generation was already off.
+ */
+watch(
+  isImageGenerationEnabled,
+  (enabled, wasEnabled) => {
+    if (enabled) {
+      reasoning.value = 'off'
+
+      return
+    }
+
+    if (wasEnabled !== true) {
+      return
+    }
+
+    restoreLiveReasoningLevel()
+    restoreLiveWebSearchSelection()
+  },
+  {
+    immediate: true,
+    flush: 'post',
+  },
+)
 
 function toggleImageGeneration() {
   if (isImageGenerationRequired.value) {

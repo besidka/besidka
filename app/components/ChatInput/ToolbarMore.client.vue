@@ -17,7 +17,9 @@
       <div class="bg-base-100 rounded-box w-full shadow-sm">
         <ul class="menu menu-xs w-full">
           <template
-            v-if="isReasoningSupported && !isDeepResearchModel"
+            v-if="isReasoningSupported
+              && !isDeepResearchModel
+              && !isImageGenerationEnabled"
           >
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
@@ -176,7 +178,9 @@ const isAnyFeatureActive = computed<boolean>(() => {
 
 const hasReasoningSection = computed<boolean>(() => {
   return !!(
-    (props.isReasoningSupported && !props.isDeepResearchModel)
+    (props.isReasoningSupported
+      && !props.isDeepResearchModel
+      && !props.isImageGenerationEnabled)
     || (props.isDeepResearchModel && props.research)
   )
 })
@@ -185,6 +189,7 @@ const hasWebSearchSection = computed<boolean>(() => {
   return !!(
     (props.isWebSearchSupported || props.isToolCallingSupported)
     && !props.isDeepResearchModel
+    && !props.isImageGenerationEnabled
   )
 })
 
