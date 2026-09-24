@@ -378,19 +378,26 @@ multimodal-output mechanism, single-step by construction (no tool, no
   request body verbatim — the same escape hatch a typed SDK needs for any
   raw body field it doesn't model. A returned image arrives as
   `choice.message.images[]`, which the installed provider maps to ordinary
-  AI SDK `file` content parts — the same generic UI file-part rendering path
-  this app already uses for attachments and direct-provider generated
-  images, so no client rendering changes were needed for this path.
+  AI SDK `file` content parts. Images render through `Chat/GeneratedImage.vue`
+  in parts order (reasoning → image → text) from both live `data:` URLs and
+  persisted `/files/` URLs, with the loading card inside the real message for
+  gateway sends (not `Chat/Files.vue`).
 - **Vercel** takes no request parameter at all — the model id itself
   (`google/gemini-*-image`) is the only configuration. Images surface in
   `result.files`, and at the streaming-chunk level as the same `file`-type
-  chunks the OpenRouter path produces.
+  chunks the OpenRouter path produces, with identical rendering behavior.
+- **OpenRouter meta-router ids** (`openrouter/auto`, `openrouter/auto-beta`)
+  advertise `output_modalities: ["text","image"]` but route to arbitrary
+  models (live: auto picked `z-ai/glm-5.2` → "No endpoints available").
+  Image generation is disabled for these ids. Catalog cache schema bumped
+  to v4 to distinguish capable from non-capable models.
 
 `buildChatInstructions()` in `index.post.ts` branches on whether the send is
 a gateway send: direct providers still get the "call `generate_image`
 exactly once" wording, which would actively mislead a gateway send (there's
 no tool to call), so gateway sends get prose describing native image output
-instead.
+instead. Image mode hides web search and reasoning toggles on the UI, since
+the combination caused a first live Vercel persistence failure.
 
 **Persistence is the real work**, because gateway image output has no tool
 wrapper. It arrives as a plain `file` UI part carrying an inline
@@ -554,6 +561,22 @@ a different auth shape than `useCloudflareGateway()` targets, and
 with none of the context-length/tool-calling/reasoning fields the
 marketplace+default-format join above extracts. Trading one straightforward
 permission grant for a thinner catalog format wasn't judged worth it.
+
+**Third-party model routing (verified 2026-09-24).** This app's
+`ai/v1/chat/completions` endpoint accepts third-party model ids (e.g.
+`openai/gpt-5-mini`). A live call with such an id routed the request to
+OpenAI and received OpenAI's own 400 about `max_tokens`, confirming the
+routing is real. The catalog API `GET .../ai/models/search` still enumerates
+only Workers AI models (`@cf/*`): 65 entries on live query across all task
+types, while marketplace `?format=openrouter` lists 27 and
+`result_info.total_count` claims 311; the `source` filter is numeric (tested
+`source=1` only, which returns results); pagination beyond page 1 is empty.
+So third-party models are routable through the chat send path but not
+enumerable through the catalog. Exposing them in the picker would require a
+curated id list plus Unified Billing cost handling — a follow-up, not built.
+The old `gateway.ai.cloudflare.com/.../compat` path is documented by
+Cloudflare as deprecated for single-model calls. The picker displays
+"Workers AI models only" and remains correct.
 
 **Known gap: the chat send path's own 401/403 mapping.** The error mapping
 in item 1 covers only the catalog fetch (`ai/models/search`). The chat send

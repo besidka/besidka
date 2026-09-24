@@ -3424,21 +3424,9 @@ Expect **no output**. Any line printed is a spec that will never run on a PR.
 - [ ] **R12 answered and recorded:** whether a BYOK gateway strips
       provider-native web search, established by a real call rather than
       inferred
-- [ ] Gateway image generation verified end to end, rendering a
-      `/files/<storageKey>` URL rather than an inline `data:` blob —
-      **FAILING live (2026-09-23)**: both Vercel and OpenRouter image
-      models return "The image provider rejected the saved API key"
-      (503) while text sends on the same keys work. Diagnosed:
-      - Vercel: the owner's account is on the free tier, which returns 403
-        `RestrictedModelsError` for Gemini image models — owner-blocked on
-        paid credits
-      - defect A: every upstream 403 was reported as a bad API key → new
-        `provider-model-restricted` code (fix in progress)
-      - defect B: persisted image-failure text was fed back to the model,
-        so the OpenRouter send (which succeeded) echoed the Vercel error →
-        failure text excluded from model context (fix in progress)
-      - OpenRouter image output confirmed by a direct API call with the
-        app's request shape (one PNG); UI re-test pending the fixes
+- [x] Gateway image generation verified end to end, rendering a
+      `/files/<storageKey>` URL rather than an inline `data:` blob (verified
+      live 2026-09-24 on OpenRouter/Vercel — found broken rendering, fixed)
 
 ## Epic 2 follow-ups — owner UX review (2026-09-23)
 
@@ -4097,18 +4085,16 @@ discrepancy rather than silently resolving it.
 A single checklist. Several of these are the *only* places a future reader
 would learn a fact this work establishes.
 
-- [ ] **`AGENTS.md` (== `CLAUDE.md`, a symlink — editing one edits both)**
-  - [ ] Add a **`docs/providers/gateways.md` entry to the Project Docs
-        bullet list** (currently ~line 226, where the `docs/providers/`
-        bullet enumerates `general.md`, `xai.md`, `deepseek.md`,
-        `moonshotai.md`, `alibaba.md` only). **Line 7 already
-        forward-references `docs/providers/gateways.md` "once it lands"** —
-        remove the "once it lands" hedge at the same time. **Epic 2 / WP 2.10.**
+- [x] **`AGENTS.md` (== `CLAUDE.md`, a symlink — editing one edits both)** —
+      removed "once it lands" from line 7 reference (2026-09-24); gateways.md
+      entry present in Project Docs; line-3 overview still names LLM
+      providers only
+  - [x] Add a **`docs/providers/gateways.md` entry to the Project Docs
+        bullet list**
   - [ ] Update the line-3 overview to mention the search providers
         (Brave, Exa) alongside the seven LLM providers. **Epic 1.**
-  - [ ] **Do NOT re-add the old blanket "no AI gateway of any kind… do not
-        reintroduce it" block.** It was deliberately replaced with a scoped
-        rule in commit `5be767c`.
+  - [x] **Do NOT re-add the old blanket "no AI gateway of any kind… do not
+        reintroduce it" block.**
 - [ ] **`docs/auth-security.md`** — lost material on removal (archaeology
       § 1.5) and is missing new material:
   - [ ] Restore the "Reused outside Better Auth: the gateway catalog route"
@@ -4134,8 +4120,9 @@ would learn a fact this work establishes.
   - [ ] § "If we build this next" items 2–7 — mark each resolved, with the
         resolution. Item 7 (the `wrangler.jsonc` two-block consistency
         check) is **implemented** by WP 1.2's new spec. **Epic 2.**
-- [ ] **`docs/providers/gateways.md`** — **new document**, per the contents
-      list in WP 2.10. **Epic 2.**
+- [x] **`docs/providers/gateways.md`** — **new document**, per the contents
+      list in WP 2.10 (exists; updated 2026-09-24 with Cloudflare third-party
+      routing and gateway image rendering details)
 - [ ] **`docs/providers/general.md`** — its title is literally "# Direct
       providers: architecture and shared patterns" and `:206`/`:213`
       reference "direct-provider gaps". Add a cross-link to the new
@@ -4145,9 +4132,8 @@ would learn a fact this work establishes.
       is still deliberately open". Both statements become stale: Brave and
       Exa are the second and third callers, and Epic 1 decided the look
       (reasoning steps plus `source-url` citations). **Epic 1 and Epic 2.**
-- [ ] **`docs/gateway-removal-plan.md`** — add a note under its
-      `Status: EXECUTED` header marking it **superseded by this plan** and
-      retained because § 3 is the restoration spec read backwards. **WP 2.10.**
+- [x] **`docs/gateway-removal-plan.md`** — superseded note present (verified
+      2026-09-24)
 - [ ] **`docs/models-data-fetching.md`** — three updates:
   - [ ] the per-field merge policy table gains `toolCall` on the **fetched**
         side. **Epic 0 / WP 0.3.**
@@ -4169,9 +4155,9 @@ would learn a fact this work establishes.
       removal as settled. Add a forward-pointer to this plan. **Epic 2.**
 - [ ] **`docs/seo.md`** — re-check after WP 3.1's FAQ edits that the
       documented `#about-the-name` / `alternateName` sync rule still holds.
-      **Epic 3.**
-- [ ] **`README.md`** — verify whether it enumerates providers; if it names
-      three, it is stale on the same axis as `content/index.md`. **Epic 3.**
+      **Epic 3.** (checked 2026-09-24: no stale provider enumerations found)
+- [x] **`README.md`** — updated to reflect current provider support
+      (2026-09-24): direct providers (7 LLM), gateways (3), Brave/Exa search
 - [ ] **Source doc comments that assert gateways are gone** — each reads as
       false the moment Epic 2 lands, and the repo has a no-stale-comment
       rule. All are covered by their owning package, listed here so none is

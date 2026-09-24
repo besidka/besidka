@@ -4,8 +4,8 @@ Besidka is an open-source AI chat application that runs on Cloudflare Workers. U
 
 **Direct providers are the default routing path.** Gateways (Vercel AI
 Gateway, Cloudflare AI Gateway, OpenRouter) are an optional, user-selected
-routing layer restored on top of that default — see `docs/providers/gateways.md`
-once it lands. Never route a direct-provider key through a gateway, and never
+routing layer restored on top of that default — see `docs/providers/gateways.md`.
+Never route a direct-provider key through a gateway, and never
 default a send to a gateway when a direct-provider key exists for the same
 model. The vendored AI SDK skill's suggestion to route everything through
 Vercel AI Gateway by default (`.agents/skills/ai-sdk/SKILL.md`) does not apply
