@@ -658,14 +658,6 @@ if (import.meta.client) {
   // meant to correct for a model that streams reasoning before the tool
   // call. adjustSpacerAfterResponse() still corrects that rarer case once
   // the turn finishes.
-  //
-  // Watches the combined signal (standalone bubble OR merged into the real
-  // message) rather than `shouldRenderPendingImageGeneration` alone, so a
-  // gateway send's skeleton — which may start life inline in the real
-  // message instead of as the standalone bubble — still gets the same early
-  // reservation. The synthetic-to-inline merge itself never produces a
-  // second rising edge: the combined value is already `true` through that
-  // transition.
   watch(isImageGenerationSkeletonVisible, async (isPending) => {
     if (!isPending) {
       return

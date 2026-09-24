@@ -1008,12 +1008,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const toolLoopOptions = resolveToolLoopOptions(parsedTools.tools)
-  // Every follow-up-turn tool (Brave, Exa, Moonshot's Formula-API web
-  // search) can legitimately end a turn with zero visible text even at the
-  // step cap — see tool-loop.ts's doc comment on why Anthropic isn't force-
-  // stopped. Tracked by name here (not by re-deriving it from the persisted
-  // parts) because Moonshot's tool name is fetched from its API and cached,
-  // never a literal string this file can match against.
   const followUpToolNames = new Set(
     Object.entries(parsedTools.tools ?? {})
       .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
@@ -1350,16 +1344,6 @@ export default defineEventHandler(async (event) => {
         })
         const wasPersisted = persistResult.persisted
 
-        // A turn that ran a follow-up-turn tool but never produced visible
-        // text is persisted (see persistAssistantMessageFromStream) so it
-        // never silently vanishes, but the client already received the raw,
-        // text-less stream above — this chunk is what actually surfaces the
-        // failure. Writing an `error` chunk after the stream would otherwise
-        // finish cleanly reuses the exact mechanism `onError` above already
-        // uses for thrown errors: the AI SDK client throws on this chunk
-        // type regardless of position in the stream, which flips the chat
-        // status to `error` and lights up the existing Regenerate affordance
-        // with no client-side changes needed.
         if (persistResult.emptyAnswerFailure) {
           const emptyAnswerError = normalizeChatError({
             error: new Error('assistant-empty-answer'),
@@ -1801,11 +1785,6 @@ function buildPersistedAssistantReplayChunks(input: {
 
 interface PersistAssistantMessageResult {
   persisted: boolean
-  // True when the turn ran a follow-up-turn tool (Brave, Exa, Moonshot web
-  // search) but the model never produced any visible text — the row IS
-  // persisted (with a synthetic failure notice, see
-  // getPersistedEmptyAnswerFailureText), so this is never true alongside
-  // `persisted: false`.
   emptyAnswerFailure: boolean
 }
 
@@ -1906,13 +1885,6 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
-    // Anthropic isn't force-stopped on the loop's final step (see
-    // tool-loop.ts), and even a force-stopped provider can still choose to
-    // answer with nothing, so a follow-up-turn tool call finishing with no
-    // visible text is a real, reachable outcome — not just a hypothetical.
-    // Detected from the RAW response parts (not `normalizedParts`, which
-    // image-generation normalization can reshape) so it only fires for the
-    // tools this turn actually had available.
     const ranFollowUpToolWithoutAnswer = input.followUpToolNames.size > 0
       && !hasVisibleTextPart({ parts: normalizedParts })
       && responseParts.some((part) => {

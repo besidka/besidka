@@ -13,6 +13,7 @@ import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
 import {
+  getGatewayGeneratedImageFailureText,
   getPersistedOversizedResponseFailureText,
   isPersistedEmptyAnswerFailureText,
   isPersistedOversizedResponseFailureText,
@@ -283,8 +284,7 @@ export interface PersistGatewayImageOutputResult {
   fileIds: string[]
 }
 
-const gatewayGeneratedImageFailureText
-  = 'An image was generated but could not be saved.'
+const gatewayGeneratedImageFailureText = getGatewayGeneratedImageFailureText()
 const gatewayNonImageFileFailureText
   = 'The model returned a file this app does not yet support saving.'
 /**

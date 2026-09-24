@@ -347,10 +347,6 @@ export interface AssistantGeneratedImageDisplay {
   name: string
 }
 
-// Mirrors the accepted persisted image types (see `acceptedImageTypes`
-// above) plus the base64 alphabet, so a raw live `data:` URL is only ever
-// used as an `<img>`/download source when it can't be anything other than
-// an inline image payload.
 const safeGeneratedImageDataUrlPattern
   = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=?=?$/
 

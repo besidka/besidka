@@ -263,8 +263,6 @@ describe('useChatImageUi', () => {
       isGatewaySendTurnPending: () => true,
     })
 
-    // No real assistant message yet — the standalone bubble is still the
-    // only place to show the skeleton.
     expect(shouldRenderPendingImageGeneration.value).toBe(true)
     expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
     expect(isImageGenerationSkeletonVisible.value).toBe(true)

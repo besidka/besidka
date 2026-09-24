@@ -247,13 +247,6 @@ export function shouldSurfaceEmptyAssistantResponse(
   return !hasMeaningfulAssistantParts(lastMessage)
 }
 
-// Mirrors hasMeaningfulAssistantParts() in
-// server/utils/chats/persist-user-message.ts (not importable here — that
-// module also pulls in drizzle-orm). A `step-start` part is present on every
-// persisted assistant message and must not count as meaningful, unlike the
-// looser hasMeaningfulAssistantParts() below this function, which treats any
-// non-text/reasoning part as meaningful and would otherwise never let a
-// failure-only reply resolve to "failure-only".
 function hasMeaningfulPersistedAssistantParts(
   parts: UIMessage['parts'],
 ): boolean {
@@ -274,16 +267,6 @@ function hasMeaningfulPersistedAssistantParts(
   })
 }
 
-// Mirrors isFailureOnlyAssistantReply() in
-// server/api/v1/chats/[slug]/index.post.ts. The empty-answer and
-// oversized-response notices are checked unconditionally, ahead of any
-// tool/source-url parts persisted alongside them (a `source-url` part alone
-// already satisfies hasMeaningfulPersistedAssistantParts), otherwise
-// Regenerate would never surface for a reload of a "didn't answer" or
-// "too large to save" notice paired with tool output. An image-generation
-// failure notice is filtered out first and the remaining parts are
-// rechecked, since that notice can legitimately sit alongside a real,
-// successfully generated image in the same message.
 export function isFailureOnlyAssistantMessage(
   message: UIMessage | undefined,
 ): boolean {
@@ -828,13 +811,6 @@ export function foldReasoningSegment(
   return accumulatedMs + (now - segmentStartedAt)
 }
 
-// The server only ever writes an assistant message's `tools` column from
-// its own image-generation decision (usedImageGeneration ? ['image_generation']
-// : []) -- the tools the user actually selected (web_search_brave,
-// web_search_exa, native web_search, etc.) are persisted on the user
-// message row instead (see persist-user-message.ts). Seeding a reload from
-// the chat's last message therefore silently drops the search selection
-// whenever that last message is an assistant reply.
 export function findLastUserMessageTools(messages: Message[]): Tools {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const candidate = messages[index]
@@ -933,11 +909,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       prepareSendMessagesRequest({ messages }) {
         const lastMessage = messages[messages.length - 1]
 
-        // A gateway selection whose catalog fetch hasn't settled yet cannot
-        // confirm the current tools/reasoning against the model's real
-        // capability (see `isModelCapabilityResolved` in `chat-input.ts`) —
-        // send neither rather than risk a request the underlying provider
-        // rejects for a model it turns out cannot honor them.
         const canSendCapabilityGatedFields = isModelCapabilityResolved.value
 
         return {

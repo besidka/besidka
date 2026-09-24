@@ -88,6 +88,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
     'tests/unit/utils/ai/image-generation-xai.spec.ts',
+    'tests/unit/utils/ai/image-generation-errors.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
     'tests/unit/composables/chat-input-url-detection.spec.ts',
     'tests/unit/composables/chat-image-preview-guard.spec.ts',
@@ -1176,6 +1177,9 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/chat-failure-text.spec.ts',
         'tests/unit/utils/chat-failure-notice.spec.ts',
+        'tests/unit/utils/ai/image-generation-errors.spec.ts',
+        'tests/unit/utils/search/text.spec.ts',
+        'tests/unit/composables/chat.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/server/assistant-files.spec.ts',
       ],

@@ -94,6 +94,19 @@ describe('extractMessageSearchText', () => {
     expect(extractMessageSearchText(parts)).toBe('Kept')
   })
 
+  it('excludes a persisted gateway generated-image-save failure notice',
+    () => {
+      const parts = [
+        {
+          type: 'text',
+          text: 'An image was generated but could not be saved.',
+        },
+        { type: 'text', text: 'Kept' },
+      ]
+
+      expect(extractMessageSearchText(parts)).toBe('Kept')
+    })
+
   it('keeps normal text that merely mentions image generation failing', () => {
     const parts = [
       {

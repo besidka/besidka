@@ -19,13 +19,6 @@ const pendingToolPart: GenerateImageToolPart = {
 export const pendingGenerateImagePart
   = pendingToolPart as unknown as UIMessage['parts'][number]
 
-// A gateway send has no tool call to report a structured error code through
-// — if the turn ends with neither an image nor any other visible content,
-// this generic failure card replaces silence with the same error state a
-// direct-provider generation failure shows (see GeneratedImage.vue's
-// `isFailure` branch). `errorText` is deliberately omitted so
-// `getImageGenerationFailureText` falls back to its generic copy, since
-// there is no structured `ChatErrorPayload` to read a code from here.
 const gatewayFailureToolPart: GenerateImageToolPart = {
   type: 'tool-generate_image',
   state: 'output-error',
@@ -103,13 +96,6 @@ export function useChatImageUi(
     })
   })
 
-  // A gateway send (OpenRouter/Vercel) streams reasoning straight into the
-  // real assistant message from the first chunk — there is no tool call to
-  // wait for. Once that real message exists, the pending skeleton belongs
-  // inside it (see `shouldRenderPendingImageGenerationInline`) rather than
-  // in a second, separately-positioned bubble below it. Direct-provider
-  // sends never merge: their pending skeleton always stays the standalone
-  // bubble until a real tool-generate_image part replaces it.
   const lastMessageIsAssistant = computed<boolean>(() => {
     return getMessages().at(-1)?.role === 'assistant'
   })
@@ -137,15 +123,6 @@ export function useChatImageUi(
       || shouldRenderPendingImageGenerationInline.value
   })
 
-  // The turn ended (not active, not user-stopped) after requesting image
-  // generation on a gateway send, and the real assistant message shows
-  // nothing that would explain it — no image, no text, no visible tool
-  // part, and no chat-level error banner already covering it. This only
-  // catches the stream-time case: a page reload after such a silent turn
-  // has no persisted marker to reconstruct this card from, since
-  // `getImageGenerationStreamFailure` (server/utils/files/assistant-files.ts)
-  // only persists a failure notice when the stream itself errored, not when
-  // it completed cleanly without producing an image.
   const shouldRenderGatewayImageGenerationFailure = computed<boolean>(() => {
     if (
       !isImageGenerationTurnPending()

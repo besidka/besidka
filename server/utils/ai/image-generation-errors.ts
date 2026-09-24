@@ -2,6 +2,10 @@ import type { ChatErrorCode } from '#shared/types/chat-errors.d'
 import type {
   ImageGenerationProvider,
 } from '#shared/types/image-generation.d'
+import {
+  IMAGE_GENERATION_FAILURE_TEXT,
+  isPersistedImageFailureText,
+} from '#shared/utils/chat-failure-text'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 
 interface ImageGenerationErrorDefinition {
@@ -28,11 +32,7 @@ const imageGenerationErrors = {
     fix: 'Only one image generates at a time per account, with a short '
       + 'cooldown between images.',
     status: 429,
-    persistenceText: [
-      'Please wait a few seconds before generating another image.',
-      'Only one image generates at a time per account, with a short',
-      'cooldown between images.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.generationBusy,
   },
   storageQuota: {
     code: 'storage-quota',
@@ -40,10 +40,7 @@ const imageGenerationErrors = {
     why: 'Image generation requires at least 10 MB of available file storage.',
     fix: 'Delete files in the file manager, then try again.',
     status: 400,
-    persistenceText: [
-      'Not enough storage space to generate an image.',
-      'Delete files in the file manager, then try again.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.storageQuota,
   },
   providerSafety: {
     code: 'provider-safety',
@@ -51,10 +48,7 @@ const imageGenerationErrors = {
     why: 'The request did not pass the provider safety checks.',
     fix: 'Revise the prompt and try again.',
     status: 400,
-    persistenceText: [
-      'The provider could not generate this image because the request did',
-      'not pass its safety checks. Revise the prompt and try again.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.providerSafety,
   },
   invalidProviderOutput: {
     code: 'invalid-provider-output',
@@ -62,10 +56,7 @@ const imageGenerationErrors = {
     why: 'The provider returned an invalid or unsupported image.',
     fix: 'Try the request again or use a different provider.',
     status: 502,
-    persistenceText: [
-      'The generated image could not be saved.',
-      'Try the request again or use a different provider.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.invalidProviderOutput,
   },
   imageSaveFailed: {
     code: 'image-save-failed',
@@ -73,10 +64,7 @@ const imageGenerationErrors = {
     why: 'Besidka could not save the generated file.',
     fix: 'Try again. If it keeps failing, contact support.',
     status: 500,
-    persistenceText: [
-      'The generated image could not be saved.',
-      'Try again. If it keeps failing, contact support.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.imageSaveFailed,
   },
   providerRateLimit: {
     code: 'provider-rate-limit',
@@ -84,10 +72,7 @@ const imageGenerationErrors = {
     why: 'The image provider is throttling requests right now.',
     fix: 'Wait a moment, then try again.',
     status: 429,
-    persistenceText: [
-      'Image generation is temporarily rate limited.',
-      'Wait a moment, then try again.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.providerRateLimit,
   },
   providerQuotaExceeded: {
     code: 'provider-quota-exceeded',
@@ -95,10 +80,7 @@ const imageGenerationErrors = {
     why: 'The saved provider key has no available image generation quota.',
     fix: 'Check provider billing or use another saved provider key.',
     status: 429,
-    persistenceText: [
-      'The image provider quota has been exceeded.',
-      'Check provider billing or use another saved provider key.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.providerQuotaExceeded,
   },
   providerAuth: {
     code: 'provider-auth',
@@ -106,10 +88,7 @@ const imageGenerationErrors = {
     why: 'The key is invalid or does not allow this image model.',
     fix: 'Update the provider key in settings, then try again.',
     status: 401,
-    persistenceText: [
-      'The image provider rejected the saved API key.',
-      'Update the provider key in settings, then try again.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.providerAuth,
   },
   providerModelRestricted: {
     code: 'provider-model-restricted',
@@ -118,11 +97,7 @@ const imageGenerationErrors = {
     fix: 'Add paid credits to your gateway account, or choose a different'
       + ' model.',
     status: 403,
-    persistenceText: [
-      'Your gateway account can\'t use this model.',
-      'Add paid credits to your gateway account, or choose a different',
-      'model.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.providerModelRestricted,
   },
   providerUnavailable: {
     code: 'provider-unavailable',
@@ -130,10 +105,7 @@ const imageGenerationErrors = {
     why: 'The provider could not complete the image request.',
     fix: 'Try again later or use a different provider.',
     status: 503,
-    persistenceText: [
-      'The image provider is temporarily unavailable.',
-      'Try again later or use a different provider.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.providerUnavailable,
   },
   generic: {
     code: 'unknown',
@@ -141,10 +113,7 @@ const imageGenerationErrors = {
     why: 'The provider rejected the image request or returned no image.',
     fix: 'Revise the prompt or try a different provider.',
     status: 502,
-    persistenceText: [
-      'Image generation failed.',
-      'Revise the prompt or try a different provider.',
-    ].join(' '),
+    persistenceText: IMAGE_GENERATION_FAILURE_TEXT.generic,
   },
 } as const satisfies Record<string, ImageGenerationErrorDefinition>
 
@@ -153,23 +122,22 @@ const persistedErrorsByCode = new Map<string, string>(
     return [definition.code, definition.persistenceText]
   }),
 )
-const persistedFailureTexts = new Set<string>(persistedErrorsByCode.values())
-const failureReferenceSuffixPattern = / \(ref: [A-Za-z0-9_.:-]{1,128}\)$/
 
 /**
  * A previously persisted image-generation failure notice must never be fed
  * back to the model as if it were real assistant content on a later turn
- * (it would otherwise get echoed verbatim, `(ref: ...)` and all). Matching
- * is done on the persisted text itself, with an optional trailing
- * `(ref: <id>)` stripped, so this also covers failure text that was already
- * written to the database before this check existed.
+ * (it would otherwise get echoed verbatim, `(ref: ...)` and all). Delegates
+ * to the shared `isPersistedImageFailureText`, the single set also used by
+ * `parsePersistedChatFailureNotice`, so a message sanitized for model
+ * context (this function's callers) and one rendered as an error card
+ * always agree on what counts as a failure notice — including the
+ * gateway-image-save failure text, which is not one of this module's own
+ * per-code `persistenceText` values.
  */
 export function isPersistedImageGenerationFailureText(
   text: string,
 ): boolean {
-  const textWithoutReference = text.replace(failureReferenceSuffixPattern, '')
-
-  return persistedFailureTexts.has(textWithoutReference)
+  return isPersistedImageFailureText(text)
 }
 
 export function getSafeImageGenerationError(

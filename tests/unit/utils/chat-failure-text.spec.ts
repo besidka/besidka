@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getGatewayGeneratedImageFailureText,
   getPersistedEmptyAnswerFailureText,
   getPersistedOversizedResponseFailureText,
+  IMAGE_GENERATION_FAILURE_TEXT,
   isPersistedEmptyAnswerFailureText,
+  isPersistedImageFailureText,
   parsePersistedChatFailureNotice,
 } from '../../../shared/utils/chat-failure-text'
 
@@ -63,5 +66,37 @@ describe('parsePersistedChatFailureNotice', () => {
   it('returns null for real assistant content', () => {
     expect(parsePersistedChatFailureNotice('Here is the answer.'))
       .toBeNull()
+  })
+
+  it('recognizes the gateway generated-image-save failure text', () => {
+    const text = getGatewayGeneratedImageFailureText()
+
+    expect(parsePersistedChatFailureNotice(text)).toEqual({
+      message: text,
+      requestId: undefined,
+    })
+  })
+})
+
+describe('isPersistedImageFailureText', () => {
+  it('recognizes every image-generation persistence text', () => {
+    for (const text of Object.values(IMAGE_GENERATION_FAILURE_TEXT)) {
+      expect(isPersistedImageFailureText(text)).toBe(true)
+    }
+  })
+
+  it('recognizes the gateway generated-image-save failure text', () => {
+    expect(isPersistedImageFailureText(getGatewayGeneratedImageFailureText()))
+      .toBe(true)
+  })
+
+  it('recognizes a ref-suffixed image-generation text', () => {
+    expect(isPersistedImageFailureText(
+      `${IMAGE_GENERATION_FAILURE_TEXT.generic} (ref: abc123)`,
+    )).toBe(true)
+  })
+
+  it('does not match unrelated assistant text', () => {
+    expect(isPersistedImageFailureText('Here is the answer.')).toBe(false)
   })
 })

@@ -442,6 +442,28 @@ describe('chat error helpers', () => {
     ])).toBe(true)
   })
 
+  it('marks a persisted gateway generated-image-save failure notice as '
+    + 'retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Draw a cat' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          {
+            type: 'text',
+            text: 'An image was generated but could not be saved.',
+          },
+        ],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
   it('does not mark an image failure retryable when a real image succeeded', () => {
     expect(isFailureOnlyAssistantMessage({
       id: 'assistant-1',

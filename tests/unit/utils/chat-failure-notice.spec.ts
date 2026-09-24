@@ -1,6 +1,7 @@
 import type { TextUIPart, UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 import {
+  getGatewayGeneratedImageFailureText,
   getPersistedEmptyAnswerFailureText,
 } from '../../../shared/utils/chat-failure-text'
 import {
@@ -66,6 +67,17 @@ describe('getPersistedFailureErrorPayload', () => {
 
     expect(getPersistedFailureErrorPayload({ role: 'assistant' }, part))
       .toBeNull()
+  })
+
+  it('parses the gateway generated-image-save failure notice', () => {
+    const part = createTextPart(getGatewayGeneratedImageFailureText())
+
+    expect(getPersistedFailureErrorPayload({ role: 'assistant' }, part))
+      .toEqual({
+        code: 'unknown',
+        message: getGatewayGeneratedImageFailureText(),
+        requestId: undefined,
+      })
   })
 
   it('returns null for a non-text part', () => {

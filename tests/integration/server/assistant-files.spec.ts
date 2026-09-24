@@ -391,6 +391,26 @@ describe('assistant files scaffolding', () => {
     ])
   })
 
+  it('strips a persisted gateway generated-image-save failure notice from '
+    + 'an assistant message before it reaches the model', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'assistant-gateway-image-failure',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'text',
+            text: 'An image was generated but could not be saved.',
+          },
+        ],
+      } as any,
+    ]
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+    expect(sanitizedMessages).toHaveLength(0)
+  })
+
   it('replaces old user file parts with placeholders', () => {
     const messages: UIMessage[] = [
       {

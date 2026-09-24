@@ -178,11 +178,6 @@ const parts = computed<DisplayFile[]>(() => {
       }]
     }
 
-    // An assistant-generated image (direct-provider tool card or gateway
-    // native file part, live `data:` or persisted `/files/...`) renders
-    // inline in the message's parts flow via ChatGeneratedImage instead of
-    // this attachments carousel — see
-    // `isAssistantGeneratedImageFilePart`'s own doc comment.
     if (isAssistantGeneratedImageFilePart(props.message, part)) {
       return []
     }

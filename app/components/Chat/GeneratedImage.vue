@@ -210,11 +210,6 @@ const output = computed(() => {
   return getGenerateImageOutput(part)
 })
 
-// Only a direct-provider tool-generate_image part supports "attach for next
-// prompt" — it carries the real DB file id, byte size and MIME type the
-// `chat:attach-file` hook's contract requires. A gateway `file` part has
-// none of those (see `assistantFilePart` below), so its card never offers
-// the attach shortcut rather than fabricating fake metadata for it.
 const readyToolFile = computed<GeneratedImageFile | null>(() => {
   if (output.value?.status !== 'ready' || !output.value.file) {
     return null
@@ -223,9 +218,6 @@ const readyToolFile = computed<GeneratedImageFile | null>(() => {
   return output.value.file
 })
 
-// A gateway-generated image (OpenRouter/Vercel) has no tool wrapper — see
-// `isAssistantGeneratedImageFilePart`'s own doc comment for why any image
-// `file` part on an assistant message is model output by construction.
 const assistantFilePart = computed<FileUIPart | null>(() => {
   return isAssistantGeneratedImageFilePart({ role: messageRole }, part)
     ? part as FileUIPart
@@ -238,10 +230,6 @@ const assistantFileDisplay = computed(() => {
   return filePart ? resolveAssistantGeneratedImageDisplay(filePart) : null
 })
 
-// `null` here (a file part whose URL is neither a well-formed `data:` image
-// nor a URL `getSafeFileLinks` accepts) is a genuine failure, not a missing
-// state to fall through to the progress skeleton — unlike a tool part, a
-// gateway `file` part never streams through an intermediate pending state.
 const isAssistantFileFailure = computed<boolean>(() => {
   return assistantFilePart.value !== null
     && assistantFileDisplay.value === null
