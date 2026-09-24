@@ -17,6 +17,7 @@ export function useChatInput() {
   const { hasKeyForProvider } = useUserKeys()
   const { isImageInputSupported } = useImageInputSupport()
   const { gatewayModel } = useSelectedModelInfo()
+  const gatewayCatalogCache = useGatewayCatalogCache()
 
   /**
    * Eagerly warms the gateway catalog cache the moment a gateway model is
@@ -44,6 +45,32 @@ export function useChatInput() {
     },
     { immediate: true },
   )
+
+  /**
+   * True once the current selection's capability state is knowable — always
+   * for a direct provider (resolved synchronously from the curated catalog),
+   * and for a gateway selection only once `useGatewayCatalogCache()` holds an
+   * entry for that `gatewayId`: the catalog was fetched, whether by this
+   * composable's `hydrateGatewayCatalog()` watcher above or by the picker's
+   * own `useGatewayCatalog()`. `false` while that fetch is still in flight,
+   * or forever after a failed fetch that was never retried — either way, the
+   * capability computeds below (`reasoningCapability`, `isWebSearchSupported`,
+   * ...) are failing closed rather than reporting a real answer, so callers
+   * must not treat their current value as ground truth yet. `ChatInput.
+   * client.vue`'s reasoning/tools reset watchers key off this to avoid
+   * wiping real user state (a persisted reasoning level, a chat's carried-
+   * over search tool) during that window instead of only once the model's
+   * real capability is known.
+   */
+  const isModelCapabilityResolved = computed<boolean>(() => {
+    const current = selection.value
+
+    if (current.source === 'provider') {
+      return true
+    }
+
+    return !!gatewayCatalogCache.value[current.gatewayId]
+  })
 
   const selectedModel = computed(() => {
     const currentModel = toValue(userModel)
@@ -279,6 +306,24 @@ export function useChatInput() {
     return !hasKeyForProvider(ownerId)
   })
 
+  /**
+   * A gateway selection whose catalog has loaded (`isModelCapabilityResolved`)
+   * but no longer lists the persisted `modelId` — removed upstream, or a
+   * stale `localStorage` value. Unlike a curated-provider selection (see
+   * `useUserModel()`'s own fallback to `defaultModel`), a gateway catalog
+   * miss is never silently substituted: the user picked that exact model, so
+   * `ChatInput.client.vue` surfaces this and blocks send instead.
+   */
+  const isSelectedModelUnavailable = computed<boolean>(() => {
+    const current = selection.value
+
+    if (current.source !== 'gateway') {
+      return false
+    }
+
+    return isModelCapabilityResolved.value && !gatewayModel.value
+  })
+
   return {
     isWebSearchSupported,
     isToolCallingSupported,
@@ -294,5 +339,7 @@ export function useChatInput() {
     isDeepResearchModel,
     isSelectedModelKeyless,
     selectedModelKeyOwnerLabel,
+    isModelCapabilityResolved,
+    isSelectedModelUnavailable,
   }
 }

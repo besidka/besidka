@@ -48,12 +48,13 @@ const uiButtonStub = defineComponent({
 
 enableAutoUnmount(afterEach)
 
-function mountChatInput() {
+function mountChatInput(extraProps: Record<string, unknown> = {}) {
   return mountSuspended(ChatInput, {
     props: {
       messagesLength: 0,
       stop: vi.fn(),
       regenerate: vi.fn(),
+      ...extraProps,
     },
     attachTo: document.body,
     global: {
@@ -123,6 +124,8 @@ describe('ChatInput.client', () => {
       researchConfig: shallowRef(null),
       isSelectedModelKeyless: shallowRef(false),
       selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+      isModelCapabilityResolved: shallowRef(true),
+      isSelectedModelUnavailable: shallowRef(false),
     })
 
     mocks.useChatFiles.mockReturnValue({
@@ -260,6 +263,8 @@ describe('ChatInput.client', () => {
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(true),
         selectedModelKeyOwnerLabel: shallowRef('Anthropic'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
       })
     }
 
@@ -439,6 +444,8 @@ describe('ChatInput.client', () => {
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
       })
 
       return isImageInputSupported
@@ -525,6 +532,8 @@ describe('ChatInput.client', () => {
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
       })
     }
 
@@ -547,6 +556,8 @@ describe('ChatInput.client', () => {
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
       })
     }
 
@@ -566,6 +577,8 @@ describe('ChatInput.client', () => {
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
       })
     }
 
@@ -682,6 +695,8 @@ describe('ChatInput.client', () => {
         researchConfig: shallowRef(null),
         isSelectedModelKeyless: shallowRef(false),
         selectedModelKeyOwnerLabel: shallowRef('OpenAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
       })
 
       return { webSearchProviderOptionsRef, isToolCallingSupportedRef }
@@ -914,5 +929,211 @@ describe('ChatInput.client', () => {
         'Web search: Model\'s built-in search',
       )
     })
+  })
+
+  describe('gateway capability resolution gating', () => {
+    function useGatewayCapabilitySelection(overrides: {
+      isReasoningSupported?: boolean
+      reasoningCapability?: unknown
+      isModelCapabilityResolved?: boolean
+      webSearchProviderOptions?: unknown[]
+      isImageGenerationSupported?: boolean
+      isImageGenerationRequired?: boolean
+    } = {}) {
+      const isReasoningSupported = shallowRef(
+        overrides.isReasoningSupported ?? false,
+      )
+      const reasoningCapability = shallowRef(
+        overrides.reasoningCapability ?? null,
+      )
+      const isModelCapabilityResolved = shallowRef(
+        overrides.isModelCapabilityResolved ?? false,
+      )
+      const webSearchProviderOptions = shallowRef(
+        overrides.webSearchProviderOptions ?? [],
+      )
+      const isImageGenerationSupported = shallowRef(
+        overrides.isImageGenerationSupported ?? false,
+      )
+      const isImageGenerationRequired = shallowRef(
+        overrides.isImageGenerationRequired ?? false,
+      )
+
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions,
+        isImageGenerationSupported,
+        isImageGenerationRequired,
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported,
+        reasoningCapability,
+        reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
+        isModelCapabilityResolved,
+        isSelectedModelUnavailable: shallowRef(false),
+      })
+
+      return {
+        isReasoningSupported,
+        reasoningCapability,
+        isModelCapabilityResolved,
+        webSearchProviderOptions,
+        isImageGenerationSupported,
+        isImageGenerationRequired,
+      }
+    }
+
+    it('keeps a persisted reasoning level untouched while the gateway '
+      + 'catalog fetch is pending', async () => {
+      useGatewayCapabilitySelection({ isModelCapabilityResolved: false })
+
+      const wrapper = await mountChatInput({ reasoning: 'high' })
+
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+    })
+
+    it('keeps the reasoning level once the catalog resolves and confirms '
+      + 'the model supports reasoning', async () => {
+      const state = useGatewayCapabilitySelection({
+        isModelCapabilityResolved: false,
+      })
+
+      const wrapper = await mountChatInput({ reasoning: 'high' })
+
+      await nextTick()
+
+      state.isReasoningSupported.value = true
+      state.reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }
+      state.isModelCapabilityResolved.value = true
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+    })
+
+    it('resets the reasoning level to off once the catalog resolves and '
+      + 'the model does not support reasoning', async () => {
+      const state = useGatewayCapabilitySelection({
+        isModelCapabilityResolved: false,
+      })
+
+      const wrapper = await mountChatInput({ reasoning: 'high' })
+
+      await nextTick()
+
+      state.isModelCapabilityResolved.value = true
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+    })
+
+    it('keeps a carried-over web search tool while the gateway catalog '
+      + 'fetch is pending', async () => {
+      useGatewayCapabilitySelection({ isModelCapabilityResolved: false })
+
+      const wrapper = await mountChatInput({ tools: ['web_search'] })
+
+      await nextTick()
+
+      expect(wrapper.emitted('update:tools')).toBeUndefined()
+    })
+
+    it('strips the web search tool once the catalog resolves without '
+      + 'search support', async () => {
+      const state = useGatewayCapabilitySelection({
+        isModelCapabilityResolved: false,
+      })
+
+      const wrapper = await mountChatInput({ tools: ['web_search'] })
+
+      await nextTick()
+
+      state.isModelCapabilityResolved.value = true
+      await nextTick()
+
+      expect(wrapper.emitted('update:tools')?.at(-1)).toEqual([[]])
+    })
+
+    it('leaves reasoning and tools untouched when the catalog fetch '
+      + 'fails and capability never resolves', async () => {
+      useGatewayCapabilitySelection({ isModelCapabilityResolved: false })
+
+      const wrapper = await mountChatInput({
+        reasoning: 'high',
+        tools: ['web_search'],
+      })
+
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')).toBeUndefined()
+      expect(wrapper.emitted('update:tools')).toBeUndefined()
+    })
+  })
+
+  describe('unavailable gateway model guidance', () => {
+    function useUnavailableGatewaySelection() {
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
+        isImageGenerationSupported: shallowRef(false),
+        isImageGenerationRequired: shallowRef(false),
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(false),
+        reasoningCapability: shallowRef(null),
+        reasoningMode: shallowRef('none'),
+        reasoningMenuLevels: shallowRef([]),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('OpenRouter'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(true),
+      })
+    }
+
+    it('names the gateway and blocks send without deadening the button',
+      async () => {
+        useUnavailableGatewaySelection()
+
+        const wrapper = await mountChatInput()
+
+        await wrapper.get('textarea').setValue('hello')
+
+        const sendButton = wrapper.get('[data-testid="send-message"]')
+
+        expect(sendButton.attributes('title')).toBe(
+          'This model is no longer available on OpenRouter. '
+          + 'Pick another model.',
+        )
+        expect(sendButton.attributes('disabled')).toBeUndefined()
+      })
+
+    it('warns instead of sending when the send button is pressed',
+      async () => {
+        useUnavailableGatewaySelection()
+
+        const wrapper = await mountChatInput()
+
+        await wrapper.get('textarea').setValue('hello')
+        await wrapper.get('[data-testid="send-message"]').trigger('click')
+
+        expect(mocks.useWarningMessage).toHaveBeenCalledWith(
+          'This model is no longer available on OpenRouter. '
+          + 'Pick another model.',
+          'Open the model picker and choose another model to continue.',
+        )
+        expect(wrapper.emitted('submit')).toBeUndefined()
+      })
   })
 })

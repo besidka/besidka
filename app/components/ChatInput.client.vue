@@ -315,6 +315,8 @@ const {
   researchConfig,
   isSelectedModelKeyless,
   selectedModelKeyOwnerLabel,
+  isModelCapabilityResolved,
+  isSelectedModelUnavailable,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
@@ -344,7 +346,16 @@ const missingKeyWarning = computed<string>(() => {
   return `Add your ${selectedModelKeyOwnerLabel.value} API key to send this message`
 })
 
+const unavailableModelWarning = computed<string>(() => {
+  return `This model is no longer available on `
+    + `${selectedModelKeyOwnerLabel.value}. Pick another model.`
+})
+
 const regenerateButtonTitle = computed<string>(() => {
+  if (isSelectedModelUnavailable.value) {
+    return unavailableModelWarning.value
+  }
+
   if (isSelectedModelKeyless.value) {
     return missingKeyWarning.value
   }
@@ -364,7 +375,22 @@ function warnAboutMissingKey() {
   )
 }
 
+/**
+ * Mirrors `warnAboutMissingKey()` above: kept clickable rather than disabled,
+ * and the user leaves this state deliberately by picking another model.
+ */
+function warnAboutUnavailableModel() {
+  useWarningMessage(
+    unavailableModelWarning.value,
+    'Open the model picker and choose another model to continue.',
+  )
+}
+
 function onRegenerate() {
+  if (isSelectedModelUnavailable.value) {
+    return warnAboutUnavailableModel()
+  }
+
   if (isSelectedModelKeyless.value) {
     return warnAboutMissingKey()
   }
@@ -373,6 +399,10 @@ function onRegenerate() {
 }
 
 const sendButtonTitle = computed<string>(() => {
+  if (isSelectedModelUnavailable.value) {
+    return unavailableModelWarning.value
+  }
+
   if (isSelectedModelKeyless.value) {
     return missingKeyWarning.value
   }
@@ -486,8 +516,12 @@ watch(isImageInputSupported, (supported) => {
 }, { flush: 'post' })
 
 watch(
-  [isReasoningSupported, reasoningCapability],
-  ([supported, capability]) => {
+  [isReasoningSupported, reasoningCapability, isModelCapabilityResolved],
+  ([supported, capability, isResolved]) => {
+    if (!isResolved) {
+      return
+    }
+
     if (!supported || !capability) {
       reasoning.value = 'off'
 
@@ -509,16 +543,22 @@ watch(
     webSearchProviderOptions,
     isImageGenerationSupported,
     isImageGenerationRequired,
+    isModelCapabilityResolved,
   ],
   ([
     searchOptions,
     imageGenerationSupported,
     imageGenerationRequired,
+    isResolved,
   ], [
     ,
     ,
     wasImageGenerationRequired,
-  ] = [undefined, undefined, undefined]) => {
+  ] = [undefined, undefined, undefined, undefined]) => {
+    if (!isResolved) {
+      return
+    }
+
     if (imageGenerationRequired) {
       tools.value = ['image_generation']
 
@@ -756,6 +796,10 @@ function handleEnter(event: KeyboardEvent) {
 function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
+  }
+
+  if (isSelectedModelUnavailable.value) {
+    return warnAboutUnavailableModel()
   }
 
   if (isSelectedModelKeyless.value) {

@@ -758,6 +758,7 @@ export function foldReasoningSegment(
 
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { selection, userModel } = useUserModel()
+  const { isModelCapabilityResolved } = useChatInput()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
   const input = customRef<string>((track, trigger) => ({
@@ -855,13 +856,22 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       prepareSendMessagesRequest({ messages }) {
         const lastMessage = messages[messages.length - 1]
 
+        // A gateway selection whose catalog fetch hasn't settled yet cannot
+        // confirm the current tools/reasoning against the model's real
+        // capability (see `isModelCapabilityResolved` in `chat-input.ts`) —
+        // send neither rather than risk a request the underlying provider
+        // rejects for a model it turns out cannot honor them.
+        const canSendCapabilityGatedFields = isModelCapabilityResolved.value
+
         return {
           body: {
             model: userModel.value,
             gateway: getSelectionGatewayId(selection.value),
-            tools: tools.value,
+            tools: canSendCapabilityGatedFields ? tools.value : [],
             messages: [lastMessage],
-            reasoning: reasoning.value,
+            reasoning: canSendCapabilityGatedFields
+              ? reasoning.value
+              : 'off',
           },
         }
       },

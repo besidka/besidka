@@ -78,6 +78,12 @@ function createHost() {
         h('span', { 'data-testid': 'research-assist-model' }, [
           chatInput.researchConfig.value?.assistModel ?? '',
         ]),
+        h('span', { 'data-testid': 'is-model-capability-resolved' }, [
+          String(chatInput.isModelCapabilityResolved.value),
+        ]),
+        h('span', { 'data-testid': 'is-selected-model-unavailable' }, [
+          String(chatInput.isSelectedModelUnavailable.value),
+        ]),
       ])
     },
   })
@@ -813,5 +819,119 @@ describe('useChatInput eager gateway catalog hydration', () => {
     await flushPromises()
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useChatInput model capability resolution', () => {
+  beforeEach(() => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value = {}
+  })
+
+  it('always reports a provider selection as resolved', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { userModel } = useUserModel()
+
+    userModel.value = 'gpt-5.4'
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-model-capability-resolved"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="is-selected-model-unavailable"]').text(),
+    ).toBe('false')
+  })
+
+  it('reports a gateway selection as unresolved before the catalog has '
+    + 'been fetched', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-model-capability-resolved"]').text(),
+    ).toBe('false')
+    expect(
+      wrapper.get('[data-testid="is-selected-model-unavailable"]').text(),
+    ).toBe('false')
+  })
+
+  it('reports a gateway selection as resolved once the catalog is cached '
+    + 'for that gateway, even when the models list is empty', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.openrouter = []
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'anthropic/claude-opus-5',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-model-capability-resolved"]').text(),
+    ).toBe('true')
+  })
+
+  it('flags the selected gateway model as unavailable once the catalog '
+    + 'is loaded but no longer lists it', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.openrouter = [{
+      id: 'anthropic/claude-opus-5',
+      name: 'Claude Opus 5',
+      toolCall: true,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'a-model-removed-upstream',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-model-capability-resolved"]').text(),
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="is-selected-model-unavailable"]').text(),
+    ).toBe('true')
+  })
+
+  it('does not flag the selected gateway model as unavailable while its '
+    + 'catalog fetch is still pending', async () => {
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'openrouter',
+      modelId: 'a-model-removed-upstream',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-selected-model-unavailable"]').text(),
+    ).toBe('false')
   })
 })
