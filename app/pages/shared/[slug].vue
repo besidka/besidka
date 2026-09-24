@@ -194,14 +194,15 @@
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
             >
-              <div class="alert alert-error alert-soft flex flex-col items-start gap-0 mt-2">
-                <p
-                  v-for="(line, lineIndex) in buildChatErrorLines(part.error)"
-                  :key="`chat-error-${m.id}-part-${index}-line-${lineIndex}`"
-                >
-                  {{ line }}
-                </p>
-              </div>
+              <ChatErrorCard :error="part.error" />
+            </div>
+            <div
+              v-else-if="isPersistedFailureTextPart(m, part)"
+              class="chat-markdown"
+            >
+              <ChatErrorCard
+                :error="getPersistedFailureErrorPayload(m, part)"
+              />
             </div>
             <MDCCached
               v-else-if="part.type === 'text'"
@@ -248,6 +249,10 @@ import type { ModelTool } from '#shared/types/providers.d'
 import { setResponseHeader } from 'h3'
 import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
 import { resolveShareDescription } from '#shared/utils/og-description'
+import {
+  getPersistedFailureErrorPayload,
+  isPersistedFailureTextPart,
+} from '~/utils/chat-failure-notice'
 import {
   isAssistantGeneratedImageFilePart,
   shouldFitMessageBubble,
@@ -375,9 +380,13 @@ const isSharedChatMessageSelected = useState<boolean>(
   () => false,
 )
 
-function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
+function isTextUIPart(
+  message: Pick<UIMessage, 'role'>,
+  part: UIMessage['parts'][number],
+): part is TextUIPart {
   return part.type === 'text'
     && !isChatErrorTextPart(part)
+    && !isPersistedFailureTextPart(message, part)
     && part.text.trim().length > 0
 }
 
@@ -386,7 +395,13 @@ const selectedMessageCopyText = computed<string | null>(() => {
     return message.id === selectedMessageId.value
   })
 
-  const textParts = selectedMessage?.parts.filter(isTextUIPart) ?? []
+  if (!selectedMessage) {
+    return null
+  }
+
+  const textParts = selectedMessage.parts.filter((part) => {
+    return isTextUIPart(selectedMessage, part)
+  })
 
   if (textParts.length === 0) {
     return null

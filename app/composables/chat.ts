@@ -23,6 +23,11 @@ import {
   isVisibleGenerateImageToolPart,
 } from '~/utils/generated-images'
 import { hydrateMessageUsage } from '#shared/utils/message-metadata'
+import {
+  isPersistedEmptyAnswerFailureText,
+  isPersistedOversizedResponseFailureText,
+  parsePersistedChatFailureNotice,
+} from '#shared/utils/chat-failure-text'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -242,13 +247,80 @@ export function shouldSurfaceEmptyAssistantResponse(
   return !hasMeaningfulAssistantParts(lastMessage)
 }
 
+// Mirrors hasMeaningfulAssistantParts() in
+// server/utils/chats/persist-user-message.ts (not importable here — that
+// module also pulls in drizzle-orm). A `step-start` part is present on every
+// persisted assistant message and must not count as meaningful, unlike the
+// looser hasMeaningfulAssistantParts() below this function, which treats any
+// non-text/reasoning part as meaningful and would otherwise never let a
+// failure-only reply resolve to "failure-only".
+function hasMeaningfulPersistedAssistantParts(
+  parts: UIMessage['parts'],
+): boolean {
+  return parts.some((part) => {
+    if (part.type === 'text' || part.type === 'reasoning') {
+      return Boolean(part.text?.trim().length)
+    }
+
+    return part.type === 'file'
+      || part.type === 'source-url'
+      || (
+        part.type === 'tool-generate_image'
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+      )
+  })
+}
+
+// Mirrors isFailureOnlyAssistantReply() in
+// server/api/v1/chats/[slug]/index.post.ts. The empty-answer and
+// oversized-response notices are checked unconditionally, ahead of any
+// tool/source-url parts persisted alongside them (a `source-url` part alone
+// already satisfies hasMeaningfulPersistedAssistantParts), otherwise
+// Regenerate would never surface for a reload of a "didn't answer" or
+// "too large to save" notice paired with tool output. An image-generation
+// failure notice is filtered out first and the remaining parts are
+// rechecked, since that notice can legitimately sit alongside a real,
+// successfully generated image in the same message.
+export function isFailureOnlyAssistantMessage(
+  message: UIMessage | undefined,
+): boolean {
+  if (!message || message.role !== 'assistant' || !message.parts?.length) {
+    return false
+  }
+
+  const hasUnconditionalFailureText = message.parts.some((part) => {
+    return part.type === 'text'
+      && (
+        isPersistedEmptyAnswerFailureText(part.text)
+        || isPersistedOversizedResponseFailureText(part.text)
+      )
+  })
+
+  if (hasUnconditionalFailureText) {
+    return true
+  }
+
+  const partsWithoutFailureText = message.parts.filter((part) => {
+    return part.type !== 'text'
+      || !parsePersistedChatFailureNotice(part.text)
+  })
+
+  return !hasMeaningfulPersistedAssistantParts(partsWithoutFailureText)
+}
+
 export function hasRetryableAssistantFailure(messages: UIMessage[]): boolean {
   const lastMessage = messages.at(-1)
   const previousMessage = messages.at(-2)
 
-  return lastMessage?.role === 'assistant'
-    && previousMessage?.role === 'user'
-    && !hasMeaningfulAssistantParts(lastMessage)
+  if (lastMessage?.role !== 'assistant' || previousMessage?.role !== 'user') {
+    return false
+  }
+
+  return !hasMeaningfulAssistantParts(lastMessage)
+    || isFailureOnlyAssistantMessage(lastMessage)
 }
 
 // Issue #275: iOS suspends the page on screen-lock or app-switch with no

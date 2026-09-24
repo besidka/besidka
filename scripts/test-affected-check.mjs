@@ -117,6 +117,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
   ]
   const userKeysTests = [
@@ -551,6 +552,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\/utils\/generated-images\.ts$/,
       tests: ['tests/unit/utils/generated-images.spec.ts'],
+    },
+    {
+      pattern: /^app\/utils\/chat-failure-notice\.ts$/,
+      tests: ['tests/unit/utils/chat-failure-notice.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/Chat\/ErrorCard\.vue$/,
+      tests: ['tests/unit/components/Chat/ErrorCard.spec.ts'],
     },
     {
       pattern:
@@ -1166,6 +1175,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^shared\/utils\/chat-failure-text\.ts$/,
       tests: [
         'tests/unit/utils/chat-failure-text.spec.ts',
+        'tests/unit/utils/chat-failure-notice.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/server/assistant-files.spec.ts',
       ],

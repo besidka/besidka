@@ -47,6 +47,13 @@
       </button>
     </div>
     <template v-else-if="filteredModels.length">
+      <p
+        v-if="gatewayId === 'cloudflare'"
+        data-testid="gateway-cloudflare-catalog-note"
+        class="px-2 pb-1 text-xs opacity-60 break-words"
+      >
+        Cloudflare AI Gateway lists Workers AI models only.
+      </p>
       <div
         :id="listboxId"
         role="listbox"

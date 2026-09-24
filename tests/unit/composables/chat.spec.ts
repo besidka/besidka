@@ -14,6 +14,7 @@ import {
   hasRetryableAssistantFailure,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
+  isFailureOnlyAssistantMessage,
   isReasoningActiveForTurn,
   normalizeChatClientError,
   REASONING_SEGMENT_GRACE_WINDOW_MS,
@@ -387,6 +388,99 @@ describe('chat error helpers', () => {
         id: 'assistant-1',
         role: 'assistant',
         parts: [],
+      } as UIMessage,
+    ])).toBe(false)
+  })
+
+  it('marks a persisted empty-answer notice as retryable after reload', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          { type: 'tool-web_search', state: 'output-available' },
+          {
+            type: 'source-url',
+            sourceId: 'source-1',
+            url: 'https://example.com',
+          },
+          {
+            type: 'text',
+            text: 'The model finished searching but didn\'t write an'
+              + ' answer. Try again or pick another model.',
+          },
+        ],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('marks a persisted image-generation failure notice as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Draw a cat' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          {
+            type: 'text',
+            text: 'Image generation failed. Revise the prompt or try a'
+              + ' different provider. (ref: abc123)',
+          },
+        ],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('does not mark an image failure retryable when a real image succeeded', () => {
+    expect(isFailureOnlyAssistantMessage({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: { status: 'ready' },
+        },
+        {
+          type: 'text',
+          text: 'Image generation failed. Revise the prompt or try a'
+            + ' different provider.',
+        },
+      ],
+    } as unknown as UIMessage)).toBe(false)
+  })
+
+  it('does not mark a normal reply with sources as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          {
+            type: 'source-url',
+            sourceId: 'source-1',
+            url: 'https://example.com',
+          },
+          { type: 'text', text: 'Here is a real answer.' },
+        ],
       } as UIMessage,
     ])).toBe(false)
   })
