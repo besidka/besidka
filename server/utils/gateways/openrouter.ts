@@ -44,7 +44,20 @@ export async function useOpenRouterGateway(
   const isImageGenerationRequested = requestedTools.includes(
     'image_generation',
   )
-  const reasoningEffort = toReasoningEffort(requestedReasoning)
+  /**
+   * Never sent alongside image generation. Live incident: Gemini via Vercel
+   * AI Gateway with `reasoning: high` narrated its image generation through
+   * `reasoning-file` content parts, an inline `data:` blob the persistence
+   * pipeline didn't yet recognize, which overflowed D1's row size limit and
+   * threw `message-persist-failed` (see `assistant-files.ts`'s
+   * `stripUndeliveredInlineDataParts`, the general fix for that class of
+   * bug). The client already hides the reasoning toggle in image mode, so
+   * this only guards a stale client or a direct API caller from reaching the
+   * same untested reasoning-plus-image combination through OpenRouter too.
+   */
+  const reasoningEffort = isImageGenerationRequested
+    ? undefined
+    : toReasoningEffort(requestedReasoning)
   /**
    * Resolved only for a Brave/Exa send, the one case whose validation needs
    * it. Unlike the Vercel and Cloudflare builders — which already look the

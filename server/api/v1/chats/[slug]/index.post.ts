@@ -31,6 +31,7 @@ import {
 import {
   getPersistedEmptyAnswerFailureText,
   isPersistedEmptyAnswerFailureText,
+  isPersistedOversizedResponseFailureText,
 } from '#shared/utils/chat-failure-text'
 import { gatewayIds } from '#shared/utils/gateways'
 import {
@@ -91,6 +92,7 @@ import {
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
+  stripUndeliveredInlineDataParts,
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import {
@@ -1922,12 +1924,16 @@ async function persistAssistantMessageFromStream(input: {
             || part.state === 'output-error'
           )
       })
-    const finalParts: UIMessage['parts'] = ranFollowUpToolWithoutAnswer
+    const partsBeforeSizeGuard: UIMessage['parts'] = ranFollowUpToolWithoutAnswer
       ? [...normalizedParts, {
         type: 'text',
         text: getPersistedEmptyAnswerFailureText(),
       }]
       : normalizedParts
+    const finalParts = stripUndeliveredInlineDataParts(
+      partsBeforeSizeGuard,
+      input.logger,
+    )
 
     if (!hasMeaningfulAssistantParts(finalParts)) {
       return { persisted: false, emptyAnswerFailure: false }
@@ -2136,6 +2142,11 @@ async function persistAssistantMessageFromStream(input: {
       providerStatus: chatError.status,
       providerRequestId: chatError.providerRequestId,
       errorMessage: chatError.why,
+      attributes: {
+        assistantPersist: {
+          error: exceptionMessage(exception),
+        },
+      },
     })
     emitChatErrorLog({
       chatError,
@@ -2169,12 +2180,15 @@ async function persistAssistantMessageFromStream(input: {
  * case this mirrors.
  */
 function isFailureOnlyAssistantReply(parts: UIMessage['parts']): boolean {
-  const hasEmptyAnswerFailure = parts.some((part) => {
+  const hasWholeMessageFailure = parts.some((part) => {
     return part.type === 'text'
-      && isPersistedEmptyAnswerFailureText(part.text)
+      && (
+        isPersistedEmptyAnswerFailureText(part.text)
+        || isPersistedOversizedResponseFailureText(part.text)
+      )
   })
 
-  if (hasEmptyAnswerFailure) {
+  if (hasWholeMessageFailure) {
     return true
   }
 

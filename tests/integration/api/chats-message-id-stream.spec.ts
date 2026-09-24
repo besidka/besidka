@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getActiveShareForChat: vi.fn(),
   syncChatShareFiles: vi.fn(),
   persistedResponseParts: null as Array<Record<string, any>> | null,
+  loggerSet: vi.fn(),
+  stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -107,7 +109,7 @@ vi.mock('ai', async (importOriginal) => {
 
 vi.mock('evlog', () => ({
   useLogger: () => ({
-    set: vi.fn(),
+    set: mocks.loggerSet,
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
@@ -147,6 +149,8 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
 
     return input.parts
   }),
+  isPersistedOversizedResponseFailureText: vi.fn(() => false),
+  stripUndeliveredInlineDataParts: mocks.stripUndeliveredInlineDataParts,
 }))
 
 vi.mock('~~/server/utils/chats/share', () => ({
@@ -277,6 +281,9 @@ describe('chat stream message ids', () => {
     mocks.getActiveShareForChat.mockResolvedValue(null)
     mocks.syncChatShareFiles.mockResolvedValue(undefined)
     mocks.persistedResponseParts = null
+    mocks.stripUndeliveredInlineDataParts.mockImplementation(
+      (parts: unknown) => parts,
+    )
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('createError', (input: {
@@ -864,6 +871,58 @@ describe('chat stream message ids', () => {
     }))
   })
 
+  it('runs the response through the undelivered-inline-data guard before '
+    + 'the D1 insert, so a raw data: URL part never reaches the database',
+  async () => {
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    mocks.persistedResponseParts = [{
+      type: 'reasoning-file',
+      mediaType: 'image/png',
+      url: 'data:image/png;base64,aGVsbG8=',
+    }]
+    mocks.stripUndeliveredInlineDataParts.mockImplementation(() => [{
+      type: 'text',
+      text: 'An image was generated but could not be saved.',
+    }])
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    expect(mocks.stripUndeliveredInlineDataParts).toHaveBeenCalledWith(
+      [{
+        type: 'reasoning-file',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,aGVsbG8=',
+      }],
+      expect.anything(),
+    )
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      parts: [{
+        type: 'text',
+        text: 'An image was generated but could not be saved.',
+      }],
+    }))
+
+    const persistedParts = insertValues.mock.calls
+      .find(([payload]) => payload.role === 'assistant')?.[0].parts
+
+    expect(JSON.stringify(persistedParts)).not.toContain('data:')
+  })
+
   it('does not insert or delete when stream setup fails', async () => {
     const handler = await getHandler()
     const { db, insertValues } = createDb()
@@ -1030,6 +1089,40 @@ describe('chat stream message ids', () => {
         providerId: 'openai',
         providerRequestId: 'req_persist_123',
       })
+  })
+
+  it('logs the real driver exception message when assistant persistence '
+    + 'fails, not just the safe mapped message', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+
+    mocks.persistAssistantError = new Error(
+      'D1_ERROR: Value too large to fit column (row size 2312404 bytes)',
+    )
+
+    vi.stubGlobal('useDb', () => db)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await expect(response.ready).rejects.toBeDefined()
+
+    expect(mocks.loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'persist-assistant-message',
+      attributes: {
+        assistantPersist: {
+          error: 'D1_ERROR: Value too large to fit column '
+            + '(row size 2312404 bytes)',
+        },
+      },
+    }))
   })
 
   it.each([

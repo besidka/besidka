@@ -51,6 +51,9 @@ export async function useVercelGateway(
     model,
     logger,
   )
+  const isImageGenerationRequested = requestedTools.includes(
+    'image_generation',
+  )
 
   function getInstance() {
     return client(model)
@@ -110,8 +113,20 @@ export async function useVercelGateway(
      * (`reasoningEffort` for OpenAI, `thinking`/adaptive effort for
      * Anthropic, `thinkingLevel`/`thinkingBudget` for Google). See
      * docs/providers/gateways.md's "Gateway reasoning" section.
+     *
+     * Never sent alongside image generation. Live incident: Gemini via
+     * Vercel AI Gateway with `reasoning: high` narrated its image generation
+     * through `reasoning-file` content parts, an inline `data:` blob the
+     * persistence pipeline didn't yet recognize, which overflowed D1's row
+     * size limit and threw `message-persist-failed` (see
+     * `assistant-files.ts`'s `stripUndeliveredInlineDataParts`, the general
+     * fix for that class of bug). The client already hides the reasoning
+     * toggle in image mode, so this only guards a stale client or a direct
+     * API caller from reaching the same untested combination.
      */
-    reasoning: toReasoningEffort(requestedReasoning),
+    reasoning: isImageGenerationRequested
+      ? undefined
+      : toReasoningEffort(requestedReasoning),
   }
 }
 

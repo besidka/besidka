@@ -12,7 +12,11 @@ import {
   getPersistedImageGenerationFailureText,
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
-import { isPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
+import {
+  getPersistedOversizedResponseFailureText,
+  isPersistedEmptyAnswerFailureText,
+  isPersistedOversizedResponseFailureText,
+} from '#shared/utils/chat-failure-text'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { persistFile } from '~~/server/utils/files/persist-file'
 
@@ -100,6 +104,7 @@ function sanitizeMessageParts(
         && (
           isPersistedImageGenerationFailureText(part.text)
           || isPersistedEmptyAnswerFailureText(part.text)
+          || isPersistedOversizedResponseFailureText(part.text)
         )
       ) {
         continue
@@ -354,6 +359,26 @@ const maxGatewayGeneratedImagePartsPerMessage = 4
  * only recognizes the direct providers `getImageGenerationProviders()`
  * returns and would silently drop anything else, making the image disappear
  * on reload.
+ *
+ * A `reasoning-file` part is treated identically to a `file` part below.
+ * `@ai-sdk/google`'s installed `dist/index.js` (the `inlineData` branch)
+ * emits this distinct chunk type — instead of `file` — whenever Gemini
+ * marks the content part `thought: true`. Requesting a `*-image` model
+ * (e.g. `google/gemini-3.1-flash-image`) through the Vercel gateway with
+ * reasoning enabled can produce one of these instead of, or alongside, a
+ * plain `file` part, carrying the exact same inline `data:` URL. Before
+ * this was handled, that guard below only matched `part.type === 'file'`,
+ * so the raw base64 blob (1.5-3 MB is typical) reached the `messages`
+ * insert untouched, exceeding D1's documented 2,000,000-byte max
+ * string/row/BLOB size (https://developers.cloudflare.com/d1/platform/limits/)
+ * and throwing `message-persist-failed` with no diagnosable cause.
+ *
+ * `stripUndeliveredInlineDataParts()` further below is the last-line
+ * defensive net for this same class of bug: it runs immediately before the
+ * `messages` insert in `index.post.ts` and replaces any part still carrying
+ * an inline `data:` URL, whatever its `type`, with the same failure text
+ * this function already uses — so a future gateway/provider chunk shape
+ * neither function recognizes yet can never repeat the same D1 failure.
  */
 export async function persistGatewayGeneratedImageParts(
   input: PersistGatewayImageOutputInput,
@@ -364,7 +389,10 @@ export async function persistGatewayGeneratedImageParts(
   let processedImagePartCount = 0
 
   for (const part of input.parts) {
-    if (part.type !== 'file' || !part.url.startsWith('data:')) {
+    if (
+      (part.type !== 'file' && part.type !== 'reasoning-file')
+      || !part.url.startsWith('data:')
+    ) {
       persistedParts.push(part)
       continue
     }
@@ -452,6 +480,92 @@ export async function persistGatewayGeneratedImageParts(
     parts: hasGeneratedImagePart ? persistedParts : input.parts,
     fileIds,
   }
+}
+
+const maxPersistedAssistantPartsBytes = 1_500_000
+
+/**
+ * The last-line defensive net against a `messages` insert exceeding D1's
+ * documented 2,000,000-byte max string/row size
+ * (https://developers.cloudflare.com/d1/platform/limits/). It runs
+ * immediately before the insert in `index.post.ts`, after
+ * `persistGatewayGeneratedImageParts` and
+ * `normalizeAssistantMessagePartsForPersistence` have already had a chance
+ * to rewrite every known inline-`data:` part into a small `/files/...`
+ * reference or a short failure notice. Any part still carrying an inline
+ * `data:` URL at this point — from a chunk shape neither of those functions
+ * recognizes yet — is replaced with the same failure text
+ * `persistGatewayGeneratedImageParts` already uses, rather than risking a
+ * repeat of the `message-persist-failed` incident that motivated this guard.
+ * The byte estimate below is UTF-8 encoded length, not `.length` (character
+ * count) — this app has non-Latin-script users, where a JS string's
+ * `.length` under-counts real byte size. If what's left is still over
+ * budget after that replacement — large reasoning text or tool output can
+ * in principle add up too, not just inline images — the whole response is
+ * replaced with a short, fixed failure notice rather than attempting an
+ * insert that would throw.
+ */
+export function stripUndeliveredInlineDataParts(
+  parts: UIMessage['parts'],
+  logger: LoggerLike,
+): UIMessage['parts'] {
+  let replacedPartCount = 0
+
+  const sanitizedParts = parts.map((part): UIMessage['parts'][number] => {
+    if (!hasInlineDataUrl(part)) {
+      return part
+    }
+
+    replacedPartCount += 1
+
+    return {
+      type: 'text',
+      text: hasImageMediaType(part)
+        ? gatewayGeneratedImageFailureText
+        : gatewayNonImageFileFailureText,
+    }
+  })
+
+  if (replacedPartCount > 0) {
+    logger.set({
+      assistantFiles: {
+        action: 'undelivered-inline-data-part-replaced',
+        count: replacedPartCount,
+      },
+    })
+  }
+
+  const estimatedBytes = new TextEncoder().encode(
+    JSON.stringify(sanitizedParts),
+  ).byteLength
+
+  if (estimatedBytes <= maxPersistedAssistantPartsBytes) {
+    return sanitizedParts
+  }
+
+  logger.set({
+    assistantFiles: {
+      action: 'oversized-assistant-parts-replaced',
+      estimatedBytes,
+    },
+  })
+
+  return [{
+    type: 'text',
+    text: getPersistedOversizedResponseFailureText(),
+  }]
+}
+
+function hasInlineDataUrl(part: UIMessage['parts'][number]): boolean {
+  return 'url' in part
+    && typeof part.url === 'string'
+    && part.url.startsWith('data:')
+}
+
+function hasImageMediaType(part: UIMessage['parts'][number]): boolean {
+  return 'mediaType' in part
+    && typeof part.mediaType === 'string'
+    && part.mediaType.startsWith('image/')
 }
 
 function decodeBase64DataUrl(url: string): Uint8Array | null {

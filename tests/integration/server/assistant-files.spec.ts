@@ -6,6 +6,7 @@ import {
   normalizeAssistantMessagePartsForPersistence,
   persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
+  stripUndeliveredInlineDataParts,
 } from '../../../server/utils/files/assistant-files'
 
 const mocks = vi.hoisted(() => ({
@@ -1179,6 +1180,49 @@ describe('persistGatewayGeneratedImageParts', () => {
     }))
   })
 
+  it('uploads a reasoning-file part carrying an inline data: image URL '
+    + 'the same way as a plain file part — Gemini via the Vercel gateway '
+    + 'narrates image generation this way when reasoning is enabled',
+  async () => {
+    mocks.persistFile.mockResolvedValue({
+      id: 'file-43',
+      storageKey: 'generated-43.webp',
+      name: 'generated-image-2.webp',
+      size: 26,
+      type: 'image/webp',
+      source: 'assistant',
+      expiresAt: null,
+    })
+
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'reasoning-file',
+        mediaType: 'image/webp',
+        url: buildImageDataUrl(createWebPBytes(), 'image/webp'),
+      },
+    ] as any
+
+    const result = await persistGatewayGeneratedImageParts({
+      parts,
+      userId: 7,
+      chatId: 'chat-gateway-reasoning-1',
+      gatewayId: 'vercel-gateway',
+      modelId: 'google/gemini-3.1-flash-image-preview',
+      logger: { set: vi.fn() },
+    })
+
+    expect(result.fileIds).toEqual(['file-43'])
+    expect(result.parts).toEqual([
+      {
+        type: 'file',
+        mediaType: 'image/webp',
+        filename: 'generated-image-2.webp',
+        url: '/files/generated-43.webp?generated=1',
+      },
+    ])
+    expect(JSON.stringify(result.parts)).not.toContain('data:')
+  })
+
   it('leaves parts untouched when the response has no gateway image parts',
     async () => {
       const parts: UIMessage['parts'] = [
@@ -1378,5 +1422,155 @@ describe('persistGatewayGeneratedImageParts', () => {
     }])
     expect(result.fileIds).toEqual([])
     expect(mocks.persistFile).not.toHaveBeenCalled()
+  })
+})
+
+describe('stripUndeliveredInlineDataParts', () => {
+  it('replaces a reasoning-file part carrying an inline data: image URL '
+    + 'with the same image-persist failure text used elsewhere, keeping '
+    + 'the rest of the message intact, and logs the replacement', () => {
+    const loggerSet = vi.fn()
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'Here is your image.' },
+      {
+        type: 'reasoning-file',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,aGVsbG8=',
+      },
+      {
+        type: 'file',
+        mediaType: 'image/png',
+        filename: 'result.png',
+        url: '/files/result.png?generated=1',
+      },
+    ] as any
+
+    const strippedParts = stripUndeliveredInlineDataParts(
+      parts,
+      { set: loggerSet },
+    )
+
+    expect(strippedParts).toEqual([
+      { type: 'text', text: 'Here is your image.' },
+      {
+        type: 'text',
+        text: 'An image was generated but could not be saved.',
+      },
+      {
+        type: 'file',
+        mediaType: 'image/png',
+        filename: 'result.png',
+        url: '/files/result.png?generated=1',
+      },
+    ])
+    expect(loggerSet).toHaveBeenCalledWith({
+      assistantFiles: {
+        action: 'undelivered-inline-data-part-replaced',
+        count: 1,
+      },
+    })
+  })
+
+  it('replaces a non-image inline data: URL part with the generic '
+    + 'unsupported-file text', () => {
+    const loggerSet = vi.fn()
+    const parts: UIMessage['parts'] = [{
+      type: 'reasoning-file',
+      mediaType: 'audio/mpeg',
+      url: 'data:audio/mpeg;base64,aGVsbG8=',
+    }] as any
+
+    const strippedParts = stripUndeliveredInlineDataParts(
+      parts,
+      { set: loggerSet },
+    )
+
+    expect(strippedParts).toEqual([{
+      type: 'text',
+      text: 'The model returned a file this app does not yet support saving.',
+    }])
+  })
+
+  it('leaves parts untouched and logs nothing when nothing carries an '
+    + 'inline data: URL and the message is well within the size bound', () => {
+    const loggerSet = vi.fn()
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'Ordinary answer.' },
+      {
+        type: 'file',
+        mediaType: 'image/png',
+        filename: 'result.png',
+        url: '/files/result.png?generated=1',
+      },
+    ] as any
+
+    const strippedParts = stripUndeliveredInlineDataParts(
+      parts,
+      { set: loggerSet },
+    )
+
+    expect(strippedParts).toEqual(parts)
+    expect(loggerSet).not.toHaveBeenCalled()
+  })
+
+  it('replaces the whole message with the fixed oversized-response notice '
+    + 'when the remaining parts still exceed the size bound after replacing '
+    + 'inline data: parts', () => {
+    const loggerSet = vi.fn()
+    const parts: UIMessage['parts'] = [
+      { type: 'text', text: 'A'.repeat(1_600_000) },
+    ] as any
+
+    const strippedParts = stripUndeliveredInlineDataParts(
+      parts,
+      { set: loggerSet },
+    )
+
+    expect(strippedParts).toEqual([{
+      type: 'text',
+      text: 'The response was too large to save. Try again or pick '
+        + 'another model.',
+    }])
+    expect(loggerSet).toHaveBeenCalledWith({
+      assistantFiles: {
+        action: 'oversized-assistant-parts-replaced',
+        estimatedBytes: expect.any(Number),
+      },
+    })
+  })
+
+  it('logs both an inline-data replacement and an oversized replacement '
+    + 'when a single response hits both guards', () => {
+    const loggerSet = vi.fn()
+    const parts: UIMessage['parts'] = [
+      {
+        type: 'reasoning-file',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,aGVsbG8=',
+      },
+      { type: 'text', text: 'A'.repeat(1_600_000) },
+    ] as any
+
+    const strippedParts = stripUndeliveredInlineDataParts(
+      parts,
+      { set: loggerSet },
+    )
+
+    expect(strippedParts).toEqual([{
+      type: 'text',
+      text: 'The response was too large to save. Try again or pick '
+        + 'another model.',
+    }])
+    expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      assistantFiles: expect.objectContaining({
+        action: 'undelivered-inline-data-part-replaced',
+        count: 1,
+      }),
+    }))
+    expect(loggerSet).toHaveBeenCalledWith(expect.objectContaining({
+      assistantFiles: expect.objectContaining({
+        action: 'oversized-assistant-parts-replaced',
+      }),
+    }))
   })
 })

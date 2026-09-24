@@ -258,6 +258,23 @@ describe('useVercelGateway', () => {
 
       expect(result.reasoning).toBeUndefined()
     })
+
+    it('never returns a reasoning effort when image generation is '
+      + 'requested, even at a supported reasoning level — the combination '
+      + 'that made Gemini narrate its image generation through '
+      + 'reasoning-file parts and overflow D1\'s row size limit', async () => {
+      stubKeyLookup()
+
+      const { useVercelGateway } = await importVercelGatewayModule()
+      const result = await useVercelGateway(
+        '1',
+        'google/gemini-3.1-flash-image-preview',
+        ['image_generation'],
+        'high',
+      )
+
+      expect(result.reasoning).toBeUndefined()
+    })
   })
 })
 

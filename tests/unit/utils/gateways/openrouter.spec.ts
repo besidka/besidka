@@ -300,7 +300,7 @@ describe('useOpenRouterGateway', () => {
       expect(titleInstance.settings.extraBody).toBeUndefined()
     })
 
-    it('can combine with web search and reasoning on the same send',
+    it('combines with web search on the same send, but never reasoning',
       async () => {
         stubKeyLookup()
 
@@ -318,8 +318,27 @@ describe('useOpenRouterGateway', () => {
           modalities: ['image', 'text'],
         })
         expect(instance.settings.plugins).toEqual([{ id: 'web' }])
-        expect(instance.settings.reasoning).toEqual({ effort: 'medium' })
+        expect(instance.settings.reasoning).toBeUndefined()
+        expect(result.reasoning).toBeUndefined()
       })
+
+    it('never sends a reasoning setting when image generation is '
+      + 'requested, even at a supported reasoning level', async () => {
+      stubKeyLookup()
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'openai/gpt-5-image',
+        ['image_generation'],
+        'high',
+      )
+
+      const instance = readInstanceSettings(result.instance)
+
+      expect(instance.settings.reasoning).toBeUndefined()
+      expect(result.reasoning).toBeUndefined()
+    })
   })
 
   describe('toolCall resolution for the Brave/Exa gate', () => {
