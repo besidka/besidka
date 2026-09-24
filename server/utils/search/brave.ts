@@ -8,6 +8,11 @@ import { createError } from 'evlog'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import {
+  buildSearchProviderNetworkError,
+  buildSearchProviderStatusError,
+  isUserAbortError,
+} from '~~/server/utils/search/search-error'
 
 const BRAVE_SEARCH_API_URL = 'https://api.search.brave.com/res/v1/web/search'
 const BRAVE_SEARCH_REQUEST_TIMEOUT_MS = 10_000
@@ -77,22 +82,32 @@ async function executeBraveSearch(
     ? AbortSignal.any([abortSignal, timeoutSignal])
     : timeoutSignal
 
-  const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-      'X-Subscription-Token': apiKey,
-    },
-    signal,
-  })
+  let response: Response
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': apiKey,
+      },
+      signal,
+    })
+  } catch (exception) {
+    if (isUserAbortError(exception)) {
+      throw exception
+    }
+
+    throw createError(buildSearchProviderNetworkError({
+      providerLabel: 'Brave Search',
+      exception,
+    }))
+  }
 
   if (!response.ok) {
-    throw createError({
-      message: 'Brave Search is temporarily unavailable.',
-      status: 502,
-      why: `Brave's search endpoint responded with `
-        + `HTTP ${response.status}.`,
-      fix: 'Try again shortly, or send the message without web search.',
-    })
+    throw createError(buildSearchProviderStatusError({
+      providerLabel: 'Brave Search',
+      status: response.status,
+    }))
   }
 
   const body = await response.json() as BraveSearchResponse

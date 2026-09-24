@@ -26,6 +26,7 @@ const chatErrorCodes: ChatErrorCode[] = [
   'research-cancelled',
   'research-start-failed',
   'clarification-failed',
+  'assistant-empty-answer',
   'unknown',
 ]
 
@@ -46,10 +47,15 @@ export function normalizeChatError(
   const structuredError = getStructuredChatError(input.error)
 
   if (structuredError) {
+    const structuredMessage = input.message || structuredError.message
+
     return {
       code: input.code || structuredError.code,
-      message: input.message || structuredError.message,
-      why: input.why || structuredError.why,
+      message: structuredMessage,
+      why: dedupeChatErrorWhy(
+        structuredMessage,
+        input.why || structuredError.why,
+      ),
       fix: input.fix || structuredError.fix,
       status: input.status ?? structuredError.status ?? 500,
       requestId: structuredError.requestId
@@ -70,23 +76,42 @@ export function normalizeChatError(
     errorMessage,
     providerStatus,
   )
+  const message = input.message
+    || getPreferredChatMessage({
+      code,
+      errorMessage,
+      status,
+    })
+    || getDefaultChatMessage(code)
 
   return {
     code,
-    message: input.message
-      || getPreferredChatMessage({
-        code,
-        errorMessage,
-        status,
-      })
-      || getDefaultChatMessage(code),
-    why: input.why || getDefaultChatWhy(code, errorMessage),
-    fix: input.fix || getDefaultChatFix(code),
+    message,
+    why: dedupeChatErrorWhy(
+      message,
+      input.why || getDefaultChatWhy(code, errorMessage),
+    ),
+    fix: input.fix || getDefaultChatFix(code, errorMessage),
     status,
     requestId,
     providerId: input.providerId,
     providerRequestId,
   }
+}
+
+/**
+ * A raw upstream message with no dedicated classification (an `unknown`
+ * code, or a structured error whose `why` was never set independently) ends
+ * up assigned to both `message` and `why` — see the "no endpoints available"
+ * OpenRouter case that surfaced this: the toast showed the identical
+ * sentence twice. `why` exists to add detail beyond the headline message, so
+ * an identical `why` carries no information and is dropped.
+ */
+function dedupeChatErrorWhy(
+  message: string,
+  why: string | undefined,
+): string | undefined {
+  return why && why !== message ? why : undefined
 }
 
 // eslint-disable-next-line no-control-regex
@@ -110,7 +135,7 @@ function looksLikeHeaderValueLeak(message: string): boolean {
 }
 
 const IMAGE_INPUT_UNSUPPORTED_PATTERN = /image input|does not support image/i
-const NO_ENDPOINTS_FOUND_PATTERN = /no endpoints found/i
+const NO_ENDPOINTS_AVAILABLE_PATTERN = /no endpoints (found|available)/i
 const IMAGE_TERM_PATTERN = /image/i
 const IMAGE_INPUT_REJECTION_MESSAGE = 'This model does not support image'
   + ' input. Remove the attached image or switch to a vision-capable model.'
@@ -131,8 +156,19 @@ function looksLikeImageInputRejection(message: string): boolean {
     return true
   }
 
-  return NO_ENDPOINTS_FOUND_PATTERN.test(message)
+  return NO_ENDPOINTS_AVAILABLE_PATTERN.test(message)
     && IMAGE_TERM_PATTERN.test(message)
+}
+
+/**
+ * A gateway reporting no routable upstream for the selected model (observed
+ * from OpenRouter's auto-router: "No endpoints available for any resolved
+ * ... models: <model>") is a deterministic routing failure, not a transient
+ * one — retrying the identical request hits the identical routing decision.
+ * "Retry the message" is actively wrong advice here.
+ */
+function looksLikeNoAvailableEndpointsError(message: string): boolean {
+  return NO_ENDPOINTS_AVAILABLE_PATTERN.test(message)
 }
 
 function getPreferredChatMessage(input: {
@@ -277,7 +313,8 @@ function resolveChatErrorCode(
   const normalizedMessage = errorMessage?.toLowerCase() || ''
 
   if (
-    normalizedMessage.includes('quota')
+    status === 402
+    || normalizedMessage.includes('quota')
     || normalizedMessage.includes('insufficient_quota')
   ) {
     return 'provider-quota-exceeded'
@@ -351,6 +388,8 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
       return 'Could not start the research job.'
     case 'clarification-failed':
       return 'Could not prepare research questions.'
+    case 'assistant-empty-answer':
+      return 'The model finished searching but didn\'t write an answer.'
     default:
       return 'The chat request failed.'
   }
@@ -392,6 +431,9 @@ function getDefaultChatWhy(
       return errorMessage
     case 'clarification-failed':
       return errorMessage
+    case 'assistant-empty-answer':
+      return 'The model completed its tool calls without producing a'
+        + ' final response.'
     case 'unknown':
       return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
         ? errorMessage
@@ -401,7 +443,10 @@ function getDefaultChatWhy(
   }
 }
 
-function getDefaultChatFix(code: ChatErrorCode): string | undefined {
+function getDefaultChatFix(
+  code: ChatErrorCode,
+  errorMessage: string | undefined,
+): string | undefined {
   switch (code) {
     case 'provider-rate-limit':
       return 'Wait a moment and retry the message.'
@@ -430,8 +475,12 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
       return 'Retry the request, or try a different research level.'
     case 'clarification-failed':
       return 'Retry the request.'
+    case 'assistant-empty-answer':
+      return 'Try again or pick another model.'
     default:
-      return 'Retry the message.'
+      return errorMessage && looksLikeNoAvailableEndpointsError(errorMessage)
+        ? 'Try a different model or provider.'
+        : 'Retry the message.'
   }
 }
 

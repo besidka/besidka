@@ -5,6 +5,13 @@ import { createError } from 'evlog'
 import { jsonSchema, tool } from 'ai'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  buildSearchProviderNetworkError,
+  buildSearchProviderStatusError,
+  isUserAbortError,
+} from '~~/server/utils/search/search-error'
+
+const MOONSHOT_WEB_SEARCH_PROVIDER_LABEL = 'Moonshot AI'
 
 const MOONSHOT_API_BASE_URL = 'https://api.moonshot.ai/v1'
 const MOONSHOT_WEB_SEARCH_FORMULA_URI = 'moonshot/web-search:latest'
@@ -46,27 +53,37 @@ interface MoonshotWebSearchInput {
 async function fetchMoonshotWebSearchDeclaration(
   apiKey: string,
 ): Promise<MoonshotFormulaFunctionDeclaration> {
-  const response = await fetch(
-    `${MOONSHOT_API_BASE_URL}/formulas/`
-    + `${MOONSHOT_WEB_SEARCH_FORMULA_URI}/tools`,
-    {
-      headers: {
-        authorization: `Bearer ${apiKey}`,
+  let response: Response
+
+  try {
+    response = await fetch(
+      `${MOONSHOT_API_BASE_URL}/formulas/`
+      + `${MOONSHOT_WEB_SEARCH_FORMULA_URI}/tools`,
+      {
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+        },
+        signal: AbortSignal.timeout(
+          MOONSHOT_WEB_SEARCH_DECLARATION_FETCH_TIMEOUT_MS,
+        ),
       },
-      signal: AbortSignal.timeout(
-        MOONSHOT_WEB_SEARCH_DECLARATION_FETCH_TIMEOUT_MS,
-      ),
-    },
-  )
+    )
+  } catch (exception) {
+    if (isUserAbortError(exception)) {
+      throw exception
+    }
+
+    throw createError(buildSearchProviderNetworkError({
+      providerLabel: MOONSHOT_WEB_SEARCH_PROVIDER_LABEL,
+      exception,
+    }))
+  }
 
   if (!response.ok) {
-    throw createError({
-      message: 'Web search is temporarily unavailable for Moonshot AI.',
-      status: 502,
-      why: `Moonshot's formula tool declaration endpoint responded with `
-        + `HTTP ${response.status}.`,
-      fix: 'Try again shortly, or send the message without web search.',
-    })
+    throw createError(buildSearchProviderStatusError({
+      providerLabel: MOONSHOT_WEB_SEARCH_PROVIDER_LABEL,
+      status: response.status,
+    }))
   }
 
   const body = await response.json() as MoonshotFormulaToolsResponse
@@ -172,31 +189,41 @@ async function executeMoonshotWebSearchFiber(
   input: unknown,
   abortSignal: AbortSignal | undefined,
 ): Promise<string> {
-  const response = await fetch(
-    `${MOONSHOT_API_BASE_URL}/formulas/`
-    + `${MOONSHOT_WEB_SEARCH_FORMULA_URI}/fibers`,
-    {
-      method: 'POST',
-      headers: {
-        'authorization': `Bearer ${apiKey}`,
-        'content-type': 'application/json',
+  let response: Response
+
+  try {
+    response = await fetch(
+      `${MOONSHOT_API_BASE_URL}/formulas/`
+      + `${MOONSHOT_WEB_SEARCH_FORMULA_URI}/fibers`,
+      {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: functionName,
+          arguments: JSON.stringify(input),
+        }),
+        signal: abortSignal,
       },
-      body: JSON.stringify({
-        name: functionName,
-        arguments: JSON.stringify(input),
-      }),
-      signal: abortSignal,
-    },
-  )
+    )
+  } catch (exception) {
+    if (isUserAbortError(exception)) {
+      throw exception
+    }
+
+    throw createError(buildSearchProviderNetworkError({
+      providerLabel: MOONSHOT_WEB_SEARCH_PROVIDER_LABEL,
+      exception,
+    }))
+  }
 
   if (!response.ok) {
-    throw createError({
-      message: 'Moonshot web search failed.',
-      status: 502,
-      why: `Moonshot's fiber execution endpoint responded with `
-        + `HTTP ${response.status}.`,
-      fix: 'Try the request again.',
-    })
+    throw createError(buildSearchProviderStatusError({
+      providerLabel: MOONSHOT_WEB_SEARCH_PROVIDER_LABEL,
+      status: response.status,
+    }))
   }
 
   const fiber = await response.json() as MoonshotFiberResponse

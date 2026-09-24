@@ -24,9 +24,14 @@ import type {
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import {
+  hasVisibleTextPart,
   isExternalWebSearchTool,
   isWebSearchTool,
 } from '#shared/utils/message-metadata'
+import {
+  getPersistedEmptyAnswerFailureText,
+  isPersistedEmptyAnswerFailureText,
+} from '#shared/utils/chat-failure-text'
 import { gatewayIds } from '#shared/utils/gateways'
 import {
   isGatewayReasoningSupported,
@@ -47,6 +52,7 @@ import {
   convertToModelMessages,
   readUIMessageStream,
   toUIMessageStream,
+  isToolUIPart,
 } from 'ai'
 import * as schema from '~~/server/db/schema'
 import {
@@ -90,7 +96,10 @@ import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
-import { resolveToolLoopOptions } from '~~/server/utils/ai/tool-loop'
+import {
+  resolveToolLoopOptions,
+  toolRequiresFollowUpTurn,
+} from '~~/server/utils/ai/tool-loop'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
@@ -997,6 +1006,17 @@ export default defineEventHandler(async (event) => {
   }
 
   const toolLoopOptions = resolveToolLoopOptions(parsedTools.tools)
+  // Every follow-up-turn tool (Brave, Exa, Moonshot's Formula-API web
+  // search) can legitimately end a turn with zero visible text even at the
+  // step cap — see tool-loop.ts's doc comment on why Anthropic isn't force-
+  // stopped. Tracked by name here (not by re-deriving it from the persisted
+  // parts) because Moonshot's tool name is fetched from its API and cached,
+  // never a literal string this file can match against.
+  const followUpToolNames = new Set(
+    Object.entries(parsedTools.tools ?? {})
+      .filter(([, candidateTool]) => toolRequiresFollowUpTurn(candidateTool))
+      .map(([toolName]) => toolName),
+  )
 
   const stream = createUIMessageStream({
     onError(error) {
@@ -1303,7 +1323,7 @@ export default defineEventHandler(async (event) => {
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
 
-        const wasPersisted = await persistAssistantMessageFromStream({
+        const persistResult = await persistAssistantMessageFromStream({
           stream: persistenceStream,
           result,
           db,
@@ -1324,7 +1344,49 @@ export default defineEventHandler(async (event) => {
           gatewayPricing,
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
+          followUpToolNames,
         })
+        const wasPersisted = persistResult.persisted
+
+        // A turn that ran a follow-up-turn tool but never produced visible
+        // text is persisted (see persistAssistantMessageFromStream) so it
+        // never silently vanishes, but the client already received the raw,
+        // text-less stream above — this chunk is what actually surfaces the
+        // failure. Writing an `error` chunk after the stream would otherwise
+        // finish cleanly reuses the exact mechanism `onError` above already
+        // uses for thrown errors: the AI SDK client throws on this chunk
+        // type regardless of position in the stream, which flips the chat
+        // status to `error` and lights up the existing Regenerate affordance
+        // with no client-side changes needed.
+        if (persistResult.emptyAnswerFailure) {
+          const emptyAnswerError = normalizeChatError({
+            error: new Error('assistant-empty-answer'),
+            event,
+            providerId: errorProviderId,
+            code: 'assistant-empty-answer',
+          })
+
+          logger.set({
+            message: emptyAnswerError.message,
+            stage: 'assistant-empty-answer',
+            errorCode: emptyAnswerError.code,
+          })
+          emitChatErrorLog({
+            chatError: emptyAnswerError,
+            event,
+            stage: 'assistant-empty-answer',
+            userId,
+            chatId: chat.id,
+            projectId: chat.projectId,
+            modelId,
+            reasoning: reasoningLevel,
+            tools: requestedTools,
+          })
+          writer.write({
+            type: 'error',
+            errorText: JSON.stringify(emptyAnswerError),
+          })
+        }
 
         // There is no reliable signal here for "is the client still
         // connected/looking at this" — iOS suspension makes any such check
@@ -1338,7 +1400,11 @@ export default defineEventHandler(async (event) => {
         // way it already does for shipping the wide event below — sending a
         // push is one signed HTTPS POST, well inside the 30s waitUntil
         // budget.
-        if (wasPersisted && cfCtx?.waitUntil) {
+        if (
+          wasPersisted
+          && !persistResult.emptyAnswerFailure
+          && cfCtx?.waitUntil
+        ) {
           const runtimeConfig = useRuntimeConfig()
 
           let targetOrigin: string | undefined
@@ -1731,6 +1797,16 @@ function buildPersistedAssistantReplayChunks(input: {
   return chunks
 }
 
+interface PersistAssistantMessageResult {
+  persisted: boolean
+  // True when the turn ran a follow-up-turn tool (Brave, Exa, Moonshot web
+  // search) but the model never produced any visible text — the row IS
+  // persisted (with a synthetic failure notice, see
+  // getPersistedEmptyAnswerFailureText), so this is never true alongside
+  // `persisted: false`.
+  emptyAnswerFailure: boolean
+}
+
 async function persistAssistantMessageFromStream(input: {
   stream: ReadableStream<any>
   result: ReturnType<typeof streamText>
@@ -1754,7 +1830,8 @@ async function persistAssistantMessageFromStream(input: {
   scheduleBackgroundWork?: (promise: Promise<unknown>) => void
   gatewayId?: GatewayId
   gatewayPricing?: GatewayModel['pricing']
-}): Promise<boolean> {
+  followUpToolNames: Set<string>
+}): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
     let streamErrorText: string | undefined
@@ -1800,7 +1877,7 @@ async function persistAssistantMessageFromStream(input: {
         },
       })
 
-      return false
+      return { persisted: false, emptyAnswerFailure: false }
     }
 
     const responseParts = responseMessage.parts as UIMessage['parts']
@@ -1827,9 +1904,33 @@ async function persistAssistantMessageFromStream(input: {
     const normalizedParts = await normalizeAssistantParts(
       normalizationInput,
     )
+    // Anthropic isn't force-stopped on the loop's final step (see
+    // tool-loop.ts), and even a force-stopped provider can still choose to
+    // answer with nothing, so a follow-up-turn tool call finishing with no
+    // visible text is a real, reachable outcome — not just a hypothetical.
+    // Detected from the RAW response parts (not `normalizedParts`, which
+    // image-generation normalization can reshape) so it only fires for the
+    // tools this turn actually had available.
+    const ranFollowUpToolWithoutAnswer = input.followUpToolNames.size > 0
+      && !hasVisibleTextPart({ parts: normalizedParts })
+      && responseParts.some((part) => {
+        return isToolUIPart(part)
+          && part.type.startsWith('tool-')
+          && input.followUpToolNames.has(part.type.slice('tool-'.length))
+          && (
+            part.state === 'output-available'
+            || part.state === 'output-error'
+          )
+      })
+    const finalParts: UIMessage['parts'] = ranFollowUpToolWithoutAnswer
+      ? [...normalizedParts, {
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }]
+      : normalizedParts
 
-    if (!hasMeaningfulAssistantParts(normalizedParts)) {
-      return false
+    if (!hasMeaningfulAssistantParts(finalParts)) {
+      return { persisted: false, emptyAnswerFailure: false }
     }
 
     const generatedFileIds = [
@@ -1907,7 +2008,7 @@ async function persistAssistantMessageFromStream(input: {
       values: {
         chatId: input.chatId,
         role: 'assistant',
-        parts: normalizedParts,
+        parts: finalParts,
         tools: usedImageGeneration ? ['image_generation'] : [],
         reasoning: input.reasoning,
         usage: usage ?? null,
@@ -1936,7 +2037,7 @@ async function persistAssistantMessageFromStream(input: {
         userId: input.userId,
         messages: [{
           id: assistantMessage.id,
-          parts: normalizedParts,
+          parts: finalParts,
         }],
         logger: input.logger,
         stage: 'assistant-message',
@@ -2015,7 +2116,10 @@ async function persistAssistantMessageFromStream(input: {
       }
     }
 
-    return true
+    return {
+      persisted: true,
+      emptyAnswerFailure: ranFollowUpToolWithoutAnswer,
+    }
   } catch (exception) {
     const chatError = normalizeChatError({
       error: exception,
@@ -2050,13 +2154,30 @@ async function persistAssistantMessageFromStream(input: {
 }
 
 /**
- * A persisted image-generation failure notice makes
+ * A persisted image-generation or empty-answer failure notice makes
  * `hasMeaningfulAssistantParts` return true (it is a non-empty text part),
  * but it is not a real answer the user asked to replay by clicking
- * Regenerate — it is the same predicate `sanitizeMessageParts` uses to keep
- * this text out of model context.
+ * Regenerate — these are the same predicates `sanitizeMessageParts` uses to
+ * keep this text out of model context.
+ *
+ * The empty-answer marker is checked unconditionally, ahead of the
+ * tool/source-url parts it is persisted alongside: those parts alone
+ * already satisfy `hasMeaningfulAssistantParts` (a `source-url` part
+ * always does), so filtering only the text and rechecking would still
+ * report this reply as meaningful and trap Regenerate into replaying the
+ * same "didn't answer" notice forever, exactly like the image-generation
+ * case this mirrors.
  */
 function isFailureOnlyAssistantReply(parts: UIMessage['parts']): boolean {
+  const hasEmptyAnswerFailure = parts.some((part) => {
+    return part.type === 'text'
+      && isPersistedEmptyAnswerFailureText(part.text)
+  })
+
+  if (hasEmptyAnswerFailure) {
+    return true
+  }
+
   const partsWithoutFailureText = parts.filter((part) => {
     return part.type !== 'text'
       || !isPersistedImageGenerationFailureText(part.text)

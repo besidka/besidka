@@ -806,13 +806,20 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|types\.d\.ts).*\.ts$/,
+      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
       tests: messageSearchTests,
     },
     {
       pattern:
-        /^(server\/utils\/search\/(brave|exa|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
+        /^(server\/utils\/search\/(brave|exa|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
       tests: externalSearchTests,
+    },
+    {
+      pattern: /^server\/utils\/search\/search-error\.ts$/,
+      tests: [
+        ...externalSearchTests,
+        'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+      ],
     },
     {
       pattern: /^wrangler\.jsonc$/,
@@ -929,6 +936,7 @@ export function getAffectedTests(changedFiles) {
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
         'tests/unit/utils/research/errors.spec.ts',
+        'tests/unit/utils/chats/errors.spec.ts',
       ],
     },
     {
@@ -1151,6 +1159,15 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...chatStreamBranchTests,
         'tests/integration/api/chats-title.spec.ts',
+        'tests/unit/utils/chats/errors.spec.ts',
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/chat-failure-text\.ts$/,
+      tests: [
+        'tests/unit/utils/chat-failure-text.spec.ts',
+        'tests/integration/api/chats-tool-loop.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
       ],
     },
     {

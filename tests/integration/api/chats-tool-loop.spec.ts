@@ -6,6 +6,7 @@ import {
   createFixtureFollowUpTool,
   FIXTURE_FOLLOW_UP_TOOL_NAME,
 } from '../../fixtures/follow-up-turn-tool'
+import { getPersistedEmptyAnswerFailureText } from '../../../shared/utils/chat-failure-text'
 
 const LOOP_MODEL_ID = 'kimi-k2.6'
 const LOOP_PROVIDER_ID = 'moonshotai'
@@ -176,6 +177,19 @@ function createTextChunks(text: string) {
   ]
 }
 
+function createNoAnswerFinishChunks() {
+  return [
+    {
+      type: 'finish' as const,
+      finishReason: {
+        unified: 'stop' as const,
+        raw: undefined,
+      },
+      usage: createUsage(),
+    },
+  ]
+}
+
 function createScriptedModel(steps: Array<Array<Record<string, unknown>>>) {
   let callCount = 0
   const doStream = vi.fn(async () => {
@@ -202,7 +216,7 @@ async function getHandler() {
   return module.default
 }
 
-function createDb() {
+function createDb(existingMessages: unknown[] = []) {
   const insertValues = vi.fn()
   const insertGet = vi.fn(async () => ({
     id: 'message-db-id',
@@ -230,7 +244,7 @@ function createDb() {
             id: 'chat-1',
             projectId: null,
             project: null,
-            messages: [],
+            messages: existingMessages,
           })),
         },
         keys: {
@@ -267,6 +281,7 @@ async function runLoopSend(input: {
   shouldThrow?: boolean
   withoutMarker?: boolean
   bodyOverrides?: Record<string, unknown>
+  existingMessages?: unknown[]
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
   const markedTool = createFixtureFollowUpTool({
@@ -293,7 +308,7 @@ async function runLoopSend(input: {
   })))
 
   const handler = await getHandler()
-  const created = createDb()
+  const created = createDb(input.existingMessages ?? [])
 
   vi.stubGlobal('useDb', () => created.db)
 
@@ -312,6 +327,7 @@ async function runLoopSend(input: {
     doStream,
     assistantInsert,
     insertValues: created.insertValues,
+    writer: result.writer,
   }
 }
 
@@ -595,5 +611,119 @@ describe('multi-step tool loop', () => {
         text: 'The lookup failed, here is what I know.',
       }),
     ]))
+  })
+
+  describe('a follow-up-turn tool that finishes with no answer', () => {
+    it('persists the turn with a visible failure notice instead of '
+      + 'silently dropping it', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+        ],
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(assistantInsert).toBeDefined()
+      expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
+          state: 'output-available',
+        }),
+        expect.objectContaining({
+          type: 'text',
+          text: getPersistedEmptyAnswerFailureText(),
+        }),
+      ]))
+    })
+
+    it('surfaces a live error chunk so the client never silently hangs',
+      async () => {
+        const { writer } = await runLoopSend({
+          steps: [
+            createToolCallChunks('call-1'),
+            createNoAnswerFinishChunks(),
+          ],
+        })
+
+        const errorCall = writer.write.mock.calls.find(([chunk]: [{
+          type?: string
+        }]) => {
+          return chunk?.type === 'error'
+        })
+
+        expect(errorCall).toBeDefined()
+
+        const parsedError = JSON.parse(errorCall?.[0]?.errorText)
+
+        expect(parsedError.code).toBe('assistant-empty-answer')
+      })
+
+    it('does not send the "response is ready" push notification for a '
+      + 'failed turn', async () => {
+      const { doStream } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+        ],
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(globalThis.sendPushNotificationToUser).not.toHaveBeenCalled()
+    })
+
+    it('does not trap Regenerate: a resend of the same user message runs '
+      + 'a fresh generation instead of replaying the stale failure',
+    async () => {
+      const failureText = getPersistedEmptyAnswerFailureText()
+      const existingMessages = [
+        {
+          id: 'user-db-id',
+          publicId: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'What shipped recently?' }],
+          tools: [],
+          reasoning: 'off',
+        },
+        {
+          id: 'assistant-db-id',
+          publicId: 'assistant-public-1',
+          role: 'assistant',
+          parts: [
+            {
+              type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: { query: 'besidka release notes' },
+              output: {
+                results: [{
+                  title: 'Result',
+                  url: 'https://example.com',
+                }],
+              },
+            },
+            { type: 'text', text: failureText },
+          ],
+          tools: [],
+          reasoning: 'off',
+        },
+      ]
+
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-2'),
+          createTextChunks('Here is what shipped.'),
+        ],
+        existingMessages,
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'text',
+          text: 'Here is what shipped.',
+        }),
+      ]))
+    })
   })
 })

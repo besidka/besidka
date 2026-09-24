@@ -21,6 +21,7 @@ export type ChatErrorCode
     | 'research-cancelled'
     | 'research-start-failed'
     | 'clarification-failed'
+    | 'assistant-empty-answer'
     | 'unknown'
 
 export interface ChatErrorPayload {

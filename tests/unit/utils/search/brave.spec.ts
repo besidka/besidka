@@ -231,7 +231,7 @@ describe('web_search_brave tool execute()', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal)
   })
 
-  it('throws a structured error when Brave responds with a non-2xx status',
+  it('throws a transient error when Brave responds with a 5xx status',
     async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
         jsonResponse({}, { ok: false, status: 500 }),
@@ -246,7 +246,115 @@ describe('web_search_brave tool execute()', () => {
         createExecutionOptions(),
       )).rejects.toMatchObject({
         message: 'Brave Search is temporarily unavailable.',
-        status: 502,
+        status: 500,
       })
     })
+
+  it('tells the caller to update the key on a 401', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status: 401 }),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Brave Search rejected the saved API key.',
+      status: 401,
+      fix: 'Update the key in Profile > Keys, then try again.',
+    })
+  })
+
+  it('tells the caller to update the key on a 403', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status: 403 }),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Brave Search rejected the saved API key.',
+      status: 403,
+    })
+  })
+
+  it('reports quota/rate limiting distinctly on a 429', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status: 429 }),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Brave Search is rate limited or out of quota.',
+      status: 429,
+    })
+  })
+
+  it('reports quota/rate limiting distinctly on a 402', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status: 402 }),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Brave Search is rate limited or out of quota.',
+      status: 402,
+    })
+  })
+
+  it('turns an AbortSignal.timeout() rejection into a readable transient '
+    + 'error instead of an unhandled rejection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(
+      new DOMException('The operation timed out.', 'TimeoutError'),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Brave Search is temporarily unavailable.',
+      status: 504,
+      why: 'Brave Search\'s search request timed out.',
+    })
+  })
+
+  it('rethrows a genuine caller abort untouched', async () => {
+    const abortException = new DOMException('The user aborted.', 'AbortError')
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortException))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toBe(abortException)
+  })
 })

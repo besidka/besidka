@@ -182,7 +182,7 @@ describe('getMoonshotWebSearchTools declaration caching', () => {
       attributes: {
         moonshotWebSearchDeclarationFetch: {
           servedStale: true,
-          error: 'network down',
+          error: 'Moonshot AI is temporarily unavailable.',
         },
       },
     })
@@ -219,22 +219,45 @@ describe('getMoonshotWebSearchTools declaration caching', () => {
     })
   })
 
-  it('throws when the fetch fails and there is no cache to fall back to',
-    async () => {
-      const cache = createFakeCache()
-      const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
+  it('wraps a fetch failure with no cache to fall back to instead of '
+    + 'throwing an unhandled rejection', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network down'))
 
-      vi.stubGlobal('useStorage', () => cache)
-      vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
 
-      const { getMoonshotWebSearchTools } = await importModule()
+    const { getMoonshotWebSearchTools } = await importModule()
 
-      await expect(getMoonshotWebSearchTools('moonshot-key'))
-        .rejects.toThrow('network down')
-    })
+    await expect(getMoonshotWebSearchTools('moonshot-key'))
+      .rejects.toMatchObject({
+        message: 'Moonshot AI is temporarily unavailable.',
+        status: 504,
+      })
+  })
 
-  it('throws a structured error when the declaration endpoint responds '
-    + 'with a non-2xx status', async () => {
+  it('turns an AbortSignal.timeout() rejection into a readable transient '
+    + 'error', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn().mockRejectedValue(
+      new DOMException('The operation timed out.', 'TimeoutError'),
+    )
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+
+    await expect(getMoonshotWebSearchTools('moonshot-key'))
+      .rejects.toMatchObject({
+        message: 'Moonshot AI is temporarily unavailable.',
+        status: 504,
+        why: 'Moonshot AI\'s search request timed out.',
+      })
+  })
+
+  it('throws a transient error when the declaration endpoint responds '
+    + 'with a 5xx status', async () => {
     const cache = createFakeCache()
     const fetchMock = vi.fn()
       .mockResolvedValue(jsonResponse({}, { ok: false, status: 500 }))
@@ -246,8 +269,44 @@ describe('getMoonshotWebSearchTools declaration caching', () => {
 
     await expect(getMoonshotWebSearchTools('moonshot-key'))
       .rejects.toMatchObject({
-        message: 'Web search is temporarily unavailable for Moonshot AI.',
-        status: 502,
+        message: 'Moonshot AI is temporarily unavailable.',
+        status: 500,
+      })
+  })
+
+  it('tells the caller to update the key when the declaration endpoint '
+    + 'responds with a 401', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse({}, { ok: false, status: 401 }))
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+
+    await expect(getMoonshotWebSearchTools('moonshot-key'))
+      .rejects.toMatchObject({
+        message: 'Moonshot AI rejected the saved API key.',
+        status: 401,
+      })
+  })
+
+  it('reports quota/rate limiting distinctly when the declaration '
+    + 'endpoint responds with a 429', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn()
+      .mockResolvedValue(jsonResponse({}, { ok: false, status: 429 }))
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+
+    await expect(getMoonshotWebSearchTools('moonshot-key'))
+      .rejects.toMatchObject({
+        message: 'Moonshot AI is rate limited or out of quota.',
+        status: 429,
       })
   })
 
@@ -449,12 +508,85 @@ describe('web_search tool execute()', () => {
     expect(output).toBe('plain, unprotected formula result')
   })
 
-  it('throws when the fiber endpoint responds with a non-2xx status',
+  it('throws a transient error when the fiber endpoint responds with a '
+    + '5xx status', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(TOOLS_ENDPOINT_RESPONSE))
+      .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 500 }))
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+    const result = await getMoonshotWebSearchTools('moonshot-key')
+    const searchTool = result.tools?.web_search
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Moonshot AI is temporarily unavailable.',
+      status: 500,
+    })
+  })
+
+  it('tells the caller to update the key when the fiber endpoint responds '
+    + 'with a 401', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(TOOLS_ENDPOINT_RESPONSE))
+      .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 401 }))
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+    const result = await getMoonshotWebSearchTools('moonshot-key')
+    const searchTool = result.tools?.web_search
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Moonshot AI rejected the saved API key.',
+      status: 401,
+    })
+  })
+
+  it('reports quota/rate limiting distinctly when the fiber endpoint '
+    + 'responds with a 429', async () => {
+    const cache = createFakeCache()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(TOOLS_ENDPOINT_RESPONSE))
+      .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 429 }))
+
+    vi.stubGlobal('useStorage', () => cache)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getMoonshotWebSearchTools } = await importModule()
+    const result = await getMoonshotWebSearchTools('moonshot-key')
+    const searchTool = result.tools?.web_search
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Moonshot AI is rate limited or out of quota.',
+      status: 429,
+    })
+  })
+
+  it('rethrows a genuine caller abort untouched from the fiber endpoint',
     async () => {
       const cache = createFakeCache()
+      const abortException = new DOMException(
+        'The user aborted.',
+        'AbortError',
+      )
       const fetchMock = vi.fn()
         .mockResolvedValueOnce(jsonResponse(TOOLS_ENDPOINT_RESPONSE))
-        .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 500 }))
+        .mockRejectedValueOnce(abortException)
 
       vi.stubGlobal('useStorage', () => cache)
       vi.stubGlobal('fetch', fetchMock)
@@ -466,10 +598,7 @@ describe('web_search tool execute()', () => {
       await expect(searchTool.execute(
         { query: 'x' },
         createExecutionOptions(),
-      )).rejects.toMatchObject({
-        message: 'Moonshot web search failed.',
-        status: 502,
-      })
+      )).rejects.toBe(abortException)
     })
 
   it('throws when the fiber finishes with a non-succeeded status',

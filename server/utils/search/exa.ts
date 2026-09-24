@@ -8,6 +8,11 @@ import { createError } from 'evlog'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import {
+  buildSearchProviderNetworkError,
+  buildSearchProviderStatusError,
+  isUserAbortError,
+} from '~~/server/utils/search/search-error'
 
 const EXA_SEARCH_API_URL = 'https://api.exa.ai/search'
 const EXA_SEARCH_REQUEST_TIMEOUT_MS = 15_000
@@ -81,30 +86,41 @@ async function executeExaSearch(
     ? AbortSignal.any([abortSignal, timeoutSignal])
     : timeoutSignal
 
-  const response = await fetch(EXA_SEARCH_API_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      query,
-      type: 'auto',
-      numResults: EXA_SEARCH_NUM_RESULTS,
-      contents: {
-        highlights: true,
+  let response: Response
+
+  try {
+    response = await fetch(EXA_SEARCH_API_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
       },
-    }),
-    signal,
-  })
+      body: JSON.stringify({
+        query,
+        type: 'auto',
+        numResults: EXA_SEARCH_NUM_RESULTS,
+        contents: {
+          highlights: true,
+        },
+      }),
+      signal,
+    })
+  } catch (exception) {
+    if (isUserAbortError(exception)) {
+      throw exception
+    }
+
+    throw createError(buildSearchProviderNetworkError({
+      providerLabel: 'Exa',
+      exception,
+    }))
+  }
 
   if (!response.ok) {
-    throw createError({
-      message: 'Exa search is temporarily unavailable.',
-      status: 502,
-      why: `Exa's search endpoint responded with HTTP ${response.status}.`,
-      fix: 'Try again shortly, or send the message without web search.',
-    })
+    throw createError(buildSearchProviderStatusError({
+      providerLabel: 'Exa',
+      status: response.status,
+    }))
   }
 
   const body = await response.json() as ExaSearchResponse

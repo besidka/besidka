@@ -260,7 +260,7 @@ describe('web_search_exa tool execute()', () => {
     expect(init.signal?.aborted).toBe(true)
   })
 
-  it('throws a structured error when Exa responds with a non-2xx status',
+  it('throws a transient error when Exa responds with a 5xx status',
     async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
         jsonResponse({}, { ok: false, status: 500 }),
@@ -274,8 +274,80 @@ describe('web_search_exa tool execute()', () => {
         { query: 'x' },
         createExecutionOptions(),
       )).rejects.toMatchObject({
-        message: 'Exa search is temporarily unavailable.',
-        status: 502,
+        message: 'Exa is temporarily unavailable.',
+        status: 500,
       })
     })
+
+  it('tells the caller to update the key on a 401/403', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status: 401 }),
+    ))
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Exa rejected the saved API key.',
+      status: 401,
+      fix: 'Update the key in Profile > Keys, then try again.',
+    })
+  })
+
+  it('reports quota/rate limiting distinctly on a 429/402', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status: 429 }),
+    ))
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Exa is rate limited or out of quota.',
+      status: 429,
+    })
+  })
+
+  it('turns an AbortSignal.timeout() rejection into a readable transient '
+    + 'error instead of an unhandled rejection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(
+      new DOMException('The operation timed out.', 'TimeoutError'),
+    ))
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Exa is temporarily unavailable.',
+      status: 504,
+      why: 'Exa\'s search request timed out.',
+    })
+  })
+
+  it('rethrows a genuine caller abort untouched', async () => {
+    const abortException = new DOMException('The user aborted.', 'AbortError')
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortException))
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toBe(abortException)
+  })
 })
