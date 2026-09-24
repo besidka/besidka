@@ -7,7 +7,7 @@ import type {
 } from 'ai'
 import type { Ref, ComputedRef } from 'vue'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
-import type { Chat, Tools } from '#shared/types/chats.d'
+import type { Chat, Message, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
@@ -756,6 +756,25 @@ export function foldReasoningSegment(
   return accumulatedMs + (now - segmentStartedAt)
 }
 
+// The server only ever writes an assistant message's `tools` column from
+// its own image-generation decision (usedImageGeneration ? ['image_generation']
+// : []) -- the tools the user actually selected (web_search_brave,
+// web_search_exa, native web_search, etc.) are persisted on the user
+// message row instead (see persist-user-message.ts). Seeding a reload from
+// the chat's last message therefore silently drops the search selection
+// whenever that last message is an assistant reply.
+export function findLastUserMessageTools(messages: Message[]): Tools {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index]
+
+    if (candidate?.role === 'user') {
+      return candidate.tools || []
+    }
+  }
+
+  return []
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { selection, userModel } = useUserModel()
   const { isModelCapabilityResolved } = useChatInput()
@@ -779,23 +798,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   chat = toValue(chat)
 
-  const tools = shallowRef<Tools>(
-    chat.messages[chat.messages.length - 1]?.tools || [],
-  )
-  const savedReasoningLevel = customRef<ReasoningLevel>((track, trigger) => ({
-    get() {
-      track()
-
-      return (prefStorage.getItem('settings_reasoning_level') as ReasoningLevel)
-        ?? 'off'
-    },
-    set(value) {
-      prefStorage.setItem('settings_reasoning_level', value)
-      trigger()
-    },
-  }))
+  const tools = shallowRef<Tools>(findLastUserMessageTools(chat.messages))
   const reasoning = shallowRef<ReasoningLevel>(
-    normalizeReasoningLevel(savedReasoningLevel.value),
+    normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
   )
   const pendingClarification = shallowRef<
     ResearchClarificationResponse | null
@@ -1524,13 +1529,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
     return 'off'
   }
-
-  watch(reasoning, (level) => {
-    savedReasoningLevel.value = level
-  }, {
-    immediate: true,
-    flush: 'post',
-  })
 
   return {
     chatSdk,

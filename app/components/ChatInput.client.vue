@@ -162,9 +162,10 @@
                 />
                 <LazyChatInputReasoningTrigger
                   v-if="isReasoningSupported && !isDeepResearchModel"
-                  v-model:reasoning="reasoning"
+                  :reasoning="reasoning"
                   :align="toolbarDropdownAlign"
                   :levels="reasoningMenuLevels"
+                  @update:reasoning="selectReasoningLevel"
                 />
                 <LazyChatInputDeepResearchTrigger
                   v-if="isDeepResearchModel"
@@ -197,7 +198,7 @@
                 @clear-project-context="emit('clear-project-context')"
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
-                @select-reasoning-level="reasoning = $event"
+                @select-reasoning-level="selectReasoningLevel"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -321,6 +322,7 @@ const {
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
+const prefStorage = usePreferenceStorage()
 
 const message = defineModel<string>('message', {
   default: '',
@@ -693,6 +695,8 @@ function selectWebSearchProvider(option: WebSearchSelection) {
     return
   }
 
+  prefStorage.setItem('settings_web_search_tool', option)
+
   const withoutSearch = tools.value.filter((tool) => {
     return !isWebSearchTool(tool)
   })
@@ -709,6 +713,11 @@ function selectWebSearchProvider(option: WebSearchSelection) {
     }),
     option,
   ]
+}
+
+function selectReasoningLevel(level: ReasoningLevel) {
+  reasoning.value = level
+  prefStorage.setItem('settings_reasoning_level', level)
 }
 
 function toggleImageGeneration() {

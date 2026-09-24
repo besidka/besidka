@@ -2,6 +2,7 @@ import { defineComponent, nextTick, reactive } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../app/composables/messages'
+import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
 import {
   installMockNuxtState,
@@ -153,6 +154,11 @@ describe('chats new page', () => {
     })
     vi.stubGlobal('normalizeReasoningLevel', (value: string) => value)
     vi.stubGlobal('getFileUrl', vi.fn())
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.removeItem('settings_web_search_tool')
+    prefStorage.removeItem('settings_reasoning_level')
   })
 
   afterEach(async () => {
@@ -167,6 +173,11 @@ describe('chats new page', () => {
     replace.mockReset()
     resetMockNuxtState()
     vi.unstubAllGlobals()
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.removeItem('settings_web_search_tool')
+    prefStorage.removeItem('settings_reasoning_level')
   })
 
   it('ignores stale project lookups after the user selects another project', async () => {
@@ -462,6 +473,73 @@ describe('chats new page', () => {
 
     expect(navigateToMock).toHaveBeenCalledWith('/chats/created-chat')
     expect(storage.getItem('chat_input_backup')).toBeNull()
+  })
+
+  it('restores a saved web-search tool as the new-chat default', async () => {
+    const storage = createStorageShim()
+
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+    fetchMock.mockImplementation(() => {
+      return Promise.resolve({ slug: 'created-chat' })
+    })
+
+    usePreferenceStorage().setItem(
+      'settings_web_search_tool',
+      'web_search_brave',
+    )
+
+    const { chatInputStub, stubs } = createSendStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'hello there')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const sentBody = fetchMock.mock.calls[0]?.[1]?.body as {
+      tools: string[]
+    }
+
+    expect(sentBody.tools).toEqual(['web_search_brave'])
+  })
+
+  it('does not restore an unrecognised saved web-search value', async () => {
+    const storage = createStorageShim()
+
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+    fetchMock.mockImplementation(() => {
+      return Promise.resolve({ slug: 'created-chat' })
+    })
+
+    usePreferenceStorage().setItem('settings_web_search_tool', 'off')
+
+    const { chatInputStub, stubs } = createSendStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'hello there')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const sentBody = fetchMock.mock.calls[0]?.[1]?.body as {
+      tools: string[]
+    }
+
+    expect(sentBody.tools).toEqual([])
   })
 
   it('restores a backed-up draft on mount', async () => {

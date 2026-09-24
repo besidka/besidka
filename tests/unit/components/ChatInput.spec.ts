@@ -5,6 +5,7 @@ import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatInput from '../../../app/components/ChatInput.client.vue'
 import { useFilesModalHandoff } from '../../../app/composables/files-modal-handoff'
+import { usePreferenceStorage } from '../../../app/composables/preference-storage'
 
 const mocks = vi.hoisted(() => ({
   useChatInput: vi.fn(),
@@ -150,6 +151,11 @@ describe('ChatInput.client', () => {
     mocks.useWarningMessage.mockReset()
 
     useFilesModalHandoff().clearPendingOpen()
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.removeItem('settings_web_search_tool')
+    prefStorage.removeItem('settings_reasoning_level')
   })
 
   afterEach(() => {
@@ -516,6 +522,25 @@ describe('ChatInput.client', () => {
       ).map(button => button.textContent?.trim() ?? '')
     }
 
+    function clickReasoningLevel(
+      wrapper: Awaited<ReturnType<typeof mountChatInput>>,
+      label: string,
+    ) {
+      const trigger = wrapper.get('[data-testid="reasoning-trigger"]')
+      const dropdown = trigger.element.closest('details')
+      const button = Array.from(
+        dropdown?.querySelectorAll('.menu li > button') ?? [],
+      ).find((candidate) => {
+        return candidate.textContent?.trim() === label
+      })
+
+      if (!button) {
+        throw new Error(`No reasoning level button labelled "${label}"`)
+      }
+
+      button.dispatchEvent(new Event('click', { bubbles: true }))
+    }
+
     function useToggleModeSelection() {
       mocks.useChatInput.mockReturnValue({
         isWebSearchSupported: shallowRef(false),
@@ -612,6 +637,19 @@ describe('ChatInput.client', () => {
       const levelButtonTexts = reasoningLevelButtonTexts(wrapper)
 
       expect(levelButtonTexts).toEqual(['off', 'low', 'medium', 'high'])
+    })
+
+    it('persists an explicitly chosen reasoning level as the saved '
+      + 'default', async () => {
+      useLevelsModeSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickReasoningLevel(wrapper, 'high')
+      await nextTick()
+
+      expect(usePreferenceStorage().getItem('settings_reasoning_level'))
+        .toBe('high')
     })
 
     it('never renders the reasoning trigger for a deep research model',
@@ -848,6 +886,34 @@ describe('ChatInput.client', () => {
       expect(trigger.classes()).toContain('btn-circle')
     })
 
+    it('persists an explicitly chosen search provider as the new-chat '
+      + 'default', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Brave Search')
+      await nextTick()
+
+      expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+        .toBe('web_search_brave')
+    })
+
+    it('persists "off" as the new-chat default when the user explicitly '
+      + 'clears the selection', async () => {
+      useWebSearchSelection()
+
+      const wrapper = await mountChatInput()
+
+      clickWebSearchOption(wrapper, 'Exa')
+      await nextTick()
+      clickWebSearchOption(wrapper, 'Off')
+      await nextTick()
+
+      expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+        .toBe('off')
+    })
+
     it('turns off image generation once a search provider is chosen',
       async () => {
         useWebSearchSelection()
@@ -910,6 +976,32 @@ describe('ChatInput.client', () => {
 
       expect(trigger.classes()).toContain('btn-circle')
       expect(trigger.text()).toBe('')
+    })
+
+    it('does not overwrite the saved new-chat default when a search '
+      + 'provider is auto-pruned by a capability change', async () => {
+      const { webSearchProviderOptionsRef } = useWebSearchSelection()
+
+      usePreferenceStorage().setItem(
+        'settings_web_search_tool',
+        'web_search_brave',
+      )
+
+      const wrapper = await mountChatInput({ tools: ['web_search_brave'] })
+
+      await nextTick()
+
+      webSearchProviderOptionsRef.value = [
+        nativeOption(true),
+        braveOption(false),
+        exaOption(true),
+      ]
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:tools')?.at(-1)).toEqual([[]])
+      expect(usePreferenceStorage().getItem('settings_web_search_tool'))
+        .toBe('web_search_brave')
     })
 
     it('auto-enables only native search when a URL is pasted, never an '
@@ -1034,6 +1126,26 @@ describe('ChatInput.client', () => {
       await nextTick()
 
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+    })
+
+    it('does not overwrite the saved reasoning default when the level '
+      + 'is auto-reset by a capability change', async () => {
+      usePreferenceStorage().setItem('settings_reasoning_level', 'high')
+
+      const state = useGatewayCapabilitySelection({
+        isModelCapabilityResolved: false,
+      })
+
+      const wrapper = await mountChatInput({ reasoning: 'high' })
+
+      await nextTick()
+
+      state.isModelCapabilityResolved.value = true
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+      expect(usePreferenceStorage().getItem('settings_reasoning_level'))
+        .toBe('high')
     })
 
     it('keeps a carried-over web search tool while the gateway catalog '

@@ -1,11 +1,13 @@
 import type { UIMessage } from 'ai'
 import { computed, nextTick, shallowRef, triggerRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Message } from '../../../shared/types/chats.d'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
   createReasoningSegmentTracker,
+  findLastUserMessageTools,
   foldReasoningSegment,
   getRenderableChatMessages,
   hasVisibleAssistantContent,
@@ -1419,5 +1421,63 @@ describe('createReasoningSegmentTracker', () => {
     expect(tracker.accumulatedMs.value).toBe(0)
     expect(tracker.segmentStartedAt.value).toBe(0)
     expect(tracker.isTurnThinkingHeld.value).toBe(false)
+  })
+})
+
+describe('findLastUserMessageTools', () => {
+  function userMessage(tools: Message['tools']): Message {
+    return { role: 'user', tools } as unknown as Message
+  }
+
+  function assistantMessage(tools: Message['tools']): Message {
+    return { role: 'assistant', tools } as unknown as Message
+  }
+
+  it('returns an empty array for a chat with no messages', () => {
+    expect(findLastUserMessageTools([])).toEqual([])
+  })
+
+  it('reads the tools from the last user message, ignoring a trailing '
+    + 'assistant reply', () => {
+    const messages = [
+      userMessage(['web_search_brave']),
+      assistantMessage([]),
+    ]
+
+    expect(findLastUserMessageTools(messages)).toEqual(['web_search_brave'])
+  })
+
+  it('does not fall back to an assistant message\'s image_generation '
+    + 'tools when the last user message selected none', () => {
+    const messages = [
+      userMessage([]),
+      assistantMessage(['image_generation']),
+    ]
+
+    expect(findLastUserMessageTools(messages)).toEqual([])
+  })
+
+  it('picks the most recent user message, not the first one', () => {
+    const messages = [
+      userMessage(['web_search_exa']),
+      assistantMessage([]),
+      userMessage(['web_search_brave']),
+      assistantMessage(['image_generation']),
+    ]
+
+    expect(findLastUserMessageTools(messages)).toEqual(['web_search_brave'])
+  })
+
+  it('returns an empty array when no user message exists', () => {
+    const messages = [assistantMessage(['image_generation'])]
+
+    expect(findLastUserMessageTools(messages)).toEqual([])
+  })
+
+  it('falls back to an empty array when the user message has no '
+    + 'persisted tools', () => {
+    const messages = [userMessage(null as unknown as Message['tools'])]
+
+    expect(findLastUserMessageTools(messages)).toEqual([])
   })
 })
