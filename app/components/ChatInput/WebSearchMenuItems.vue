@@ -44,7 +44,24 @@
   </li>
   <template v-else>
     <li v-for="option in externalOptions" :key="option.value">
+      <NuxtLink
+        v-if="option.addKeyHref"
+        :to="option.addKeyHref"
+        class="flex items-center gap-2"
+      >
+        <ProviderIcon
+          :provider-id="option.providerId ?? ''"
+          class="!size-4"
+        />
+        <span class="grow text-left">{{ option.label }}</span>
+        <Icon
+          name="lucide:arrow-right"
+          size="14"
+          class="shrink-0 opacity-50"
+        />
+      </NuxtLink>
       <button
+        v-else
         type="button"
         class="flex items-center gap-2"
         :class="{
@@ -62,13 +79,6 @@
         />
         <span class="grow text-left">{{ option.label }}</span>
       </button>
-      <NuxtLink
-        v-if="!option.enabled"
-        to="/profile/keys"
-        class="block px-2 pb-1 text-2xs text-warning link"
-      >
-        Add a key
-      </NuxtLink>
     </li>
   </template>
 </template>

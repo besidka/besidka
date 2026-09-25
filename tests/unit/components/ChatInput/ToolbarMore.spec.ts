@@ -19,10 +19,10 @@ const webSearchOptions: WebSearchOption[] = [
   },
   {
     value: 'web_search_exa',
-    label: 'Exa',
+    label: 'Add Exa key',
     providerId: 'exa',
     enabled: false,
-    disabledReason: 'Add an Exa key in Search Providers.',
+    addKeyHref: '/profile/keys?tab=search',
   },
 ]
 
@@ -134,17 +134,26 @@ describe('ChatInput/ToolbarMore', () => {
       ])
     })
 
-  it('does not emit for a disabled web search option', async () => {
+  it('renders a single add-key link for a provider without a key, '
+    + 'instead of a disabled option', async () => {
     const wrapper = await mountToolbarMore()
 
-    const buttons = wrapper.findAll('li > button')
-    const exaButton = buttons.find((button) => {
+    const exaLink = wrapper.find('a[to="/profile/keys?tab=search"]')
+
+    expect(exaLink.exists()).toBe(true)
+    expect(exaLink.text()).toContain('Add Exa key')
+    expect(exaLink.classes()).not.toContain('link')
+    expect(exaLink.classes()).not.toContain('text-warning')
+
+    await exaLink.trigger('click')
+
+    expect(wrapper.emitted('select-web-search-provider')).toBeUndefined()
+
+    const exaButtons = wrapper.findAll('li > button').filter((button) => {
       return button.text().includes('Exa')
     })
 
-    await exaButton?.trigger('click')
-
-    expect(wrapper.emitted('select-web-search-provider')).toBeUndefined()
+    expect(exaButtons).toHaveLength(0)
   })
 
   it('lights the overflow badge when a web search provider is active',

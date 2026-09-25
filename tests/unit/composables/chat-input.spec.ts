@@ -351,10 +351,10 @@ describe('useChatInput web search provider options', () => {
       },
       {
         value: 'web_search_exa',
-        label: 'Exa',
+        label: 'Add Exa key',
         providerId: 'exa',
         enabled: false,
-        disabledReason: 'Add an Exa key in Search Providers.',
+        addKeyHref: '/profile/keys?tab=search',
       },
     ])
   })

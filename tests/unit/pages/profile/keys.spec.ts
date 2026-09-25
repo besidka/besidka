@@ -1,4 +1,5 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import KeysPage from '../../../../app/pages/profile/keys.vue'
 
@@ -11,6 +12,14 @@ mockNuxtImport('useRuntimeConfig', () => {
     app: { baseURL: '/' },
     public: { providers: mocks.providers },
   })
+})
+
+const mockRoute = reactive<{ query: Record<string, unknown> }>({
+  query: {},
+})
+
+mockNuxtImport('useRoute', () => {
+  return () => mockRoute
 })
 
 function stubs() {
@@ -45,6 +54,7 @@ describe('profile keys page', () => {
   beforeEach(() => {
     vi.stubGlobal('definePageMeta', vi.fn())
     vi.stubGlobal('useSeoMeta', vi.fn())
+    mockRoute.query = {}
     mocks.providers = [
       { id: 'anthropic', models: [] },
       { id: 'google', models: [] },
@@ -252,4 +262,34 @@ describe('profile keys page', () => {
       expect(card.attributes('data-open')).toBe('false')
     })
   })
+
+  it('opens the search tab when the tab query param is "search"',
+    async () => {
+      mockRoute.query = { tab: 'search' }
+
+      const wrapper = await mountPage()
+
+      const searchTab = wrapper.get('[data-testid="key-tab-search"]')
+      const providersPanel = wrapper.get(
+        '[data-testid="key-panel-providers"]',
+      )
+      const searchPanel = wrapper.get('[data-testid="key-panel-search"]')
+
+      expect(searchTab.classes()).toContain('tab-active')
+      expect((searchPanel.element as HTMLElement).style.display)
+        .not.toBe('none')
+      expect((providersPanel.element as HTMLElement).style.display)
+        .toBe('none')
+    })
+
+  it('falls back to the providers tab for an unknown tab query param',
+    async () => {
+      mockRoute.query = { tab: 'not-a-tab' }
+
+      const wrapper = await mountPage()
+
+      const providersTab = wrapper.get('[data-testid="key-tab-providers"]')
+
+      expect(providersTab.classes()).toContain('tab-active')
+    })
 })

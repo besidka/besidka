@@ -141,8 +141,21 @@ useSeoMeta({
 })
 
 const config = useRuntimeConfig().public
+const route = useRoute()
 
-const activeTab = shallowRef<string>(providersTabId)
+const tabIds = [providersTabId, searchTabId, gatewaysTabId]
+
+function resolveInitialTab(): string {
+  const tabParam = route.query.tab
+
+  if (typeof tabParam === 'string' && tabIds.includes(tabParam)) {
+    return tabParam
+  }
+
+  return providersTabId
+}
+
+const activeTab = shallowRef<string>(resolveInitialTab())
 
 const providers = computed<Providers>(() => {
   return config?.providers as Providers ?? []

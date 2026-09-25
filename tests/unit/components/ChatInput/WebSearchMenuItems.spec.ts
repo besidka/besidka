@@ -19,27 +19,41 @@ function nativeOption(enabled = true): WebSearchOption {
   }
 }
 
-function braveOption(enabled = true): WebSearchOption {
+function braveOption(hasKey = true): WebSearchOption {
+  if (hasKey) {
+    return {
+      value: 'web_search_brave',
+      label: 'Brave Search',
+      providerId: 'brave',
+      enabled: true,
+    }
+  }
+
   return {
     value: 'web_search_brave',
-    label: 'Brave Search',
+    label: 'Add Brave Search key',
     providerId: 'brave',
-    enabled,
-    disabledReason: enabled
-      ? undefined
-      : 'Add a Brave Search key in Search Providers.',
+    enabled: false,
+    addKeyHref: '/profile/keys?tab=search',
   }
 }
 
-function exaOption(enabled = true): WebSearchOption {
+function exaOption(hasKey = true): WebSearchOption {
+  if (hasKey) {
+    return {
+      value: 'web_search_exa',
+      label: 'Exa',
+      providerId: 'exa',
+      enabled: true,
+    }
+  }
+
   return {
     value: 'web_search_exa',
-    label: 'Exa',
+    label: 'Add Exa key',
     providerId: 'exa',
-    enabled,
-    disabledReason: enabled
-      ? undefined
-      : 'Add an Exa key in Search Providers.',
+    enabled: false,
+    addKeyHref: '/profile/keys?tab=search',
   }
 }
 
@@ -144,39 +158,44 @@ describe('ChatInput/WebSearchMenuItems', () => {
     expect(selectedProviders).toEqual(['web_search_exa'])
   })
 
-  it('does not emit when a disabled option is clicked, and shows the '
-    + 'disabled reason as a title', async () => {
+  it('renders a single add-key link instead of a disabled option when a '
+    + 'provider has no key', async () => {
     const { wrapper, selectedProviders } = await mountMenuItems({
       selected: 'off',
       options: [nativeOption(), braveOption(false), exaOption()],
       isToolCallingSupported: true,
     })
 
-    const buttons = optionButtons(wrapper)
-    const braveButton = buttons.find((button) => {
-      return optionLabel(button) === 'Brave Search'
-    })
+    const braveLink = wrapper.find('a[to="/profile/keys?tab=search"]')
 
-    await braveButton?.trigger('click')
+    expect(braveLink.exists()).toBe(true)
+    expect(braveLink.text()).toContain('Add Brave Search key')
+    expect(braveLink.classes()).not.toContain('link')
+    expect(braveLink.classes()).not.toContain('text-warning')
+
+    await braveLink.trigger('click')
 
     expect(selectedProviders).toEqual([])
-    expect(braveButton?.attributes('title')).toBe(
-      'Add a Brave Search key in Search Providers.',
-    )
-    expect(braveButton?.attributes('disabled')).toBeDefined()
+
+    const braveButtons = optionButtons(wrapper).filter((button) => {
+      return button.text().includes('Brave')
+    })
+
+    expect(braveButtons).toHaveLength(0)
   })
 
-  it('links to /profile/keys under a disabled external option', async () => {
+  it('shows the normal provider icon on the add-key link, not a faded '
+    + 'one', async () => {
     const { wrapper } = await mountMenuItems({
       selected: 'off',
       options: [nativeOption(), braveOption(false), exaOption()],
       isToolCallingSupported: true,
     })
 
-    const link = wrapper.find('a[to="/profile/keys"]')
+    const braveLink = wrapper.find('a[to="/profile/keys?tab=search"]')
 
-    expect(link.exists()).toBe(true)
-    expect(link.text()).toBe('Add a key')
+    expect(braveLink.classes()).not.toContain('opacity-50')
+    expect(braveLink.find('.iconify').classes()).not.toContain('opacity-50')
   })
 
   it('collapses Brave and Exa into a single explanatory line when the '

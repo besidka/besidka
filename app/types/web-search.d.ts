@@ -10,4 +10,5 @@ export interface WebSearchOption {
   providerId?: string
   enabled: boolean
   disabledReason?: string
+  addKeyHref?: string
 }

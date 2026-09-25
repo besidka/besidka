@@ -41,6 +41,8 @@ const options: WebSearchOption[] = [
 async function mountTrigger(props: {
   selected: WebSearchSelection
   align?: 'start' | 'end'
+  options?: WebSearchOption[]
+  isToolCallingSupported?: boolean
 }): Promise<{ wrapper: VueWrapper, selectedProviders: WebSearchSelection[] }> {
   const selectedProviders: WebSearchSelection[] = []
 
@@ -48,8 +50,8 @@ async function mountTrigger(props: {
     setup() {
       return () => h(WebSearchTrigger, {
         selected: props.selected,
-        options,
-        isToolCallingSupported: true,
+        options: props.options ?? options,
+        isToolCallingSupported: props.isToolCallingSupported ?? true,
         align: props.align,
         onSelectProvider: (value: WebSearchSelection) => {
           selectedProviders.push(value)
@@ -167,6 +169,41 @@ describe('ChatInput/WebSearchTrigger', () => {
     await braveButton?.trigger('click')
 
     expect(selectedProviders).toEqual(['web_search_brave'])
+  })
+
+  it('renders a single add-key link in the dropdown for a provider '
+    + 'without a key, with no disabled twin or underline', async () => {
+    const { wrapper, selectedProviders } = await mountTrigger({
+      selected: 'off',
+      options: [
+        options[0]!,
+        options[1]!,
+        {
+          value: 'web_search_exa',
+          label: 'Add Exa key',
+          providerId: 'exa',
+          enabled: false,
+          addKeyHref: '/profile/keys?tab=search',
+        },
+      ],
+    })
+
+    const exaLink = wrapper.find('a[to="/profile/keys?tab=search"]')
+
+    expect(exaLink.exists()).toBe(true)
+    expect(exaLink.text()).toContain('Add Exa key')
+    expect(exaLink.classes()).not.toContain('link')
+    expect(exaLink.classes()).not.toContain('text-warning')
+
+    await exaLink.trigger('click')
+
+    expect(selectedProviders).toEqual([])
+
+    const exaButtons = wrapper.findAll('li > button').filter((button) => {
+      return button.text().includes('Exa')
+    })
+
+    expect(exaButtons).toHaveLength(0)
   })
 
   it('aligns the dropdown to the end when align is "end"', async () => {

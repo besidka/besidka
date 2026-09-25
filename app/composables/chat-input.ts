@@ -12,6 +12,8 @@ import type { WebSearchOption } from '~/types/web-search'
 const noToolCallReason = 'This model does not support tool calling, so it '
   + 'cannot use an external search provider.'
 
+const searchProvidersKeysHref = '/profile/keys?tab=search'
+
 export function useChatInput() {
   const { selection, userModel } = useUserModel()
   const { hasKeyForProvider } = useUserKeys()
@@ -159,24 +161,23 @@ export function useChatInput() {
       return options
     }
 
+    const hasBraveKey = hasKeyForProvider('brave')
+    const hasExaKey = hasKeyForProvider('exa')
+
     options.push(
       {
         value: 'web_search_brave',
-        label: 'Brave Search',
+        label: hasBraveKey ? 'Brave Search' : 'Add Brave Search key',
         providerId: 'brave',
-        enabled: hasKeyForProvider('brave'),
-        disabledReason: hasKeyForProvider('brave')
-          ? undefined
-          : 'Add a Brave Search key in Search Providers.',
+        enabled: hasBraveKey,
+        addKeyHref: hasBraveKey ? undefined : searchProvidersKeysHref,
       },
       {
         value: 'web_search_exa',
-        label: 'Exa',
+        label: hasExaKey ? 'Exa' : 'Add Exa key',
         providerId: 'exa',
-        enabled: hasKeyForProvider('exa'),
-        disabledReason: hasKeyForProvider('exa')
-          ? undefined
-          : 'Add an Exa key in Search Providers.',
+        enabled: hasExaKey,
+        addKeyHref: hasExaKey ? undefined : searchProvidersKeysHref,
       },
     )
 
