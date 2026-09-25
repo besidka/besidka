@@ -43,11 +43,18 @@
     </span>
   </li>
   <template v-else>
-    <li v-for="option in externalOptions" :key="option.value">
+    <li
+      v-for="option in externalOptions"
+      :key="option.value"
+      :class="{
+        'mt-1 pt-1 border-t border-base-content/10':
+          option.value === firstKeylessOptionValue,
+      }"
+    >
       <NuxtLink
         v-if="option.addKeyHref"
         :to="option.addKeyHref"
-        class="flex items-center gap-2"
+        class="flex w-full items-center gap-2 text-warning"
       >
         <ProviderIcon
           :provider-id="option.providerId ?? ''"
@@ -106,10 +113,27 @@ const nativeOption = computed<WebSearchOption | undefined>(() => {
 })
 
 const externalOptions = computed<WebSearchOption[]>(() => {
-  return props.options.filter((option) => {
+  const options = props.options.filter((option) => {
     return option.value !== 'web_search'
   })
+
+  const keyedOptions = options.filter((option) => {
+    return !option.addKeyHref
+  })
+  const keylessOptions = options.filter((option) => {
+    return !!option.addKeyHref
+  })
+
+  return [...keyedOptions, ...keylessOptions]
 })
+
+const firstKeylessOptionValue = computed<WebSearchSelection | undefined>(
+  () => {
+    return externalOptions.value.find((option) => {
+      return !!option.addKeyHref
+    })?.value
+  },
+)
 
 function onSelect(option: WebSearchOption) {
   if (!option.enabled) {

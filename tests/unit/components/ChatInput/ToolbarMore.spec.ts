@@ -166,7 +166,7 @@ describe('ChatInput/ToolbarMore', () => {
     expect(exaLink.exists()).toBe(true)
     expect(exaLink.text()).toContain('Add Exa key')
     expect(exaLink.classes()).not.toContain('link')
-    expect(exaLink.classes()).not.toContain('text-warning')
+    expect(exaLink.classes()).toContain('text-warning')
 
     await exaLink.trigger('click')
 

@@ -92,6 +92,22 @@ function optionLabel(button: ReturnType<typeof optionButtons>[number]) {
   return button.find(':scope > span:last-child').text()
 }
 
+function externalRowTexts(wrapper: VueWrapper): string[] {
+  return wrapper.findAll('li > button, li > a')
+    .map((row) => {
+      const label = row.find('span.grow')
+
+      return label.exists() ? label.text() : ''
+    })
+    .filter(text => text.includes('Brave') || text.includes('Exa'))
+}
+
+function rowLi(wrapper: VueWrapper, text: string) {
+  return wrapper.findAll('li').find((li) => {
+    return li.text().includes(text)
+  })
+}
+
 describe('ChatInput/WebSearchMenuItems', () => {
   it('renders Off, native search, Brave and Exa in that order', async () => {
     const { wrapper } = await mountMenuItems({
@@ -171,7 +187,7 @@ describe('ChatInput/WebSearchMenuItems', () => {
     expect(braveLink.exists()).toBe(true)
     expect(braveLink.text()).toContain('Add Brave Search key')
     expect(braveLink.classes()).not.toContain('link')
-    expect(braveLink.classes()).not.toContain('text-warning')
+    expect(braveLink.classes()).toContain('text-warning')
 
     await braveLink.trigger('click')
 
@@ -215,6 +231,76 @@ describe('ChatInput/WebSearchMenuItems', () => {
 
     expect(labels).not.toContain('Brave Search')
     expect(labels).not.toContain('Exa')
+  })
+
+  it('orders keyless providers after keyed ones with a divider before '
+    + 'the first keyless row', async () => {
+    const { wrapper } = await mountMenuItems({
+      selected: 'off',
+      options: [nativeOption(), braveOption(false), exaOption(false)],
+      isToolCallingSupported: true,
+    })
+
+    expect(externalRowTexts(wrapper)).toEqual([
+      'Add Brave Search key',
+      'Add Exa key',
+    ])
+
+    expect(rowLi(wrapper, 'Add Brave Search key')?.classes())
+      .toContain('border-t')
+    expect(rowLi(wrapper, 'Add Exa key')?.classes())
+      .not.toContain('border-t')
+  })
+
+  it('moves a keyed Exa above a keyless Brave, with the divider on the '
+    + 'now-first keyless row', async () => {
+    const { wrapper } = await mountMenuItems({
+      selected: 'off',
+      options: [nativeOption(), braveOption(false), exaOption(true)],
+      isToolCallingSupported: true,
+    })
+
+    expect(externalRowTexts(wrapper)).toEqual([
+      'Exa',
+      'Add Brave Search key',
+    ])
+
+    expect(rowLi(wrapper, 'Exa')?.classes()).not.toContain('border-t')
+    expect(rowLi(wrapper, 'Add Brave Search key')?.classes())
+      .toContain('border-t')
+  })
+
+  it('renders no divider when both external providers have a key',
+    async () => {
+      const { wrapper } = await mountMenuItems({
+        selected: 'off',
+        options: [nativeOption(), braveOption(true), exaOption(true)],
+        isToolCallingSupported: true,
+      })
+
+      expect(externalRowTexts(wrapper)).toEqual(['Brave Search', 'Exa'])
+      expect(rowLi(wrapper, 'Brave Search')?.classes())
+        .not.toContain('border-t')
+      expect(rowLi(wrapper, 'Exa')?.classes()).not.toContain('border-t')
+    })
+
+  it('renders the keyless row\'s icon and arrow with no color override, '
+    + 'so both inherit the warning color from the link', async () => {
+    const { wrapper } = await mountMenuItems({
+      selected: 'off',
+      options: [nativeOption(), braveOption(false), exaOption()],
+      isToolCallingSupported: true,
+    })
+
+    const braveLink = wrapper.find('a[to="/profile/keys?tab=search"]')
+    const icons = braveLink.findAll('.iconify')
+
+    expect(braveLink.classes()).toContain('text-warning')
+    icons.forEach((icon) => {
+      icon.classes().forEach((className) => {
+        expect(className.startsWith('text-')).toBe(false)
+      })
+    })
   })
 
   it('emits "off" when the Off item is clicked', async () => {
