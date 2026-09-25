@@ -14,6 +14,18 @@ export type UserKeyStatus = 'saved' | 'missing' | 'unknown'
  * restarting it, and `getCachedData` makes a later mount (a chat-to-chat
  * navigation) reuse the already-fetched rows instead of refetching at all.
  *
+ * `server: false` is deliberate, not an SSR optimisation left off by
+ * accident: every consumer of this summary (`ModelsTrigger.vue`'s picker,
+ * `ChatInput.client.vue`'s `useChatInput()`) already renders behind
+ * `<ClientOnly>` or lives in a `.client.vue`, so an SSR-side fetch is never
+ * reflected in the shipped HTML — it only ever fed the client's cache. Doing
+ * that fetch on the server also makes `nuxtApp.payload.data['user-keys']`
+ * "sticky" for the whole SPA session (`getCachedData` below returns it
+ * unconditionally), which permanently pins the summary to whatever the
+ * server saw on the very first request, bypassing any later, real,
+ * client-observable fetch. Keeping the fetch client-only means the value
+ * `getCachedData` caches was always produced by an actual browser request.
+ *
  * Every lookup fails OPEN — an id the summary does not mention, a request still
  * in flight, and a request that failed all report "has a key". Gating is UI
  * guidance layered on top of the server's 401, so the worst case of failing
@@ -33,6 +45,7 @@ export function useUserKeys() {
     refresh,
   } = useLazyFetch<UserKeysResponse>('/api/v1/profiles/keys', {
     key: 'user-keys',
+    server: false,
     dedupe: 'defer',
     getCachedData(key, nuxtApp, context) {
       if (
