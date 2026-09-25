@@ -71,14 +71,18 @@ describe('wrangler.jsonc search-cost rates', () => {
     const rates = extractSearchCostRates(previewVars)
 
     expect(rates).toMatchObject({
-      NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD: expect.any(String),
-      NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD:
+      NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD:
         expect.any(String),
-      NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD:
+      NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD:
         expect.any(String),
-      NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD: expect.any(String),
-      NUXT_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD: expect.any(String),
-      NUXT_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD: expect.any(String),
+      NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD:
+        expect.any(String),
+      NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD:
+        expect.any(String),
+      NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD:
+        expect.any(String),
+      NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD:
+        expect.any(String),
     })
   })
 })

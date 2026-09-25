@@ -1,33 +1,22 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
-import { describe, expect, it } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SearchProvidersInfo
   from '../../../../../app/components/Profile/Keys/SearchProvidersInfo.vue'
 
-const WRANGLER_CONFIG_PATH = resolve(
-  import.meta.dirname,
-  '../../../../../wrangler.jsonc',
-)
+const mocks = vi.hoisted(() => ({
+  searchRates: {} as Record<string, string>,
+}))
 
-function stripFullLineComments(jsonc: string): string {
-  return jsonc
-    .split('\n')
-    .filter(line => !line.trim().startsWith('//'))
-    .join('\n')
-}
+mockNuxtImport('useRuntimeConfig', () => {
+  return () => ({
+    app: { baseURL: '/' },
+    public: { ...mocks.searchRates },
+  })
+})
 
-function readWranglerRate(envVarName: string) {
-  const raw = readFileSync(WRANGLER_CONFIG_PATH, 'utf-8')
-  const config = JSON.parse(stripFullLineComments(raw))
-  const rate = config.vars[envVarName]
-
-  if (typeof rate !== 'string') {
-    throw new Error(`${envVarName} not found in wrangler.jsonc`)
-  }
-
-  return rate
-}
+beforeEach(() => {
+  mocks.searchRates = {}
+})
 
 describe('Profile/Keys/SearchProvidersInfo', () => {
   it('renders as an info alert with an info icon', async () => {
@@ -60,43 +49,50 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       expect(wrapper.findAll('ul').length).toBe(0)
     })
 
-  it('shows pricing that matches the rates configured in wrangler.jsonc',
-    async () => {
-      const wrapper = await mountSuspended(SearchProvidersInfo)
+  it('renders each rate read from runtime config in its own row', async () => {
+    mocks.searchRates = {
+      braveSearchCostPerThousandRequestsUsd: '5',
+      exaSearchCostPerThousandRequestsUsd: '7',
+      googleSearchCostPerThousandQueriesUsd: '14',
+      googleSearchCostPerThousandGroundedPromptsUsd: '35',
+      anthropicWebSearchCostPerThousandSearchesUsd: '10',
+      openaiWebSearchCostPerThousandCallsUsd: '10',
+    }
 
-      const text = wrapper.text()
-      const braveRate = readWranglerRate(
-        'NUXT_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD',
-      )
-      const exaRate = readWranglerRate(
-        'NUXT_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD',
-      )
-      const anthropicRate = readWranglerRate(
-        'NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD',
-      )
-      const openaiRate = readWranglerRate(
-        'NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD',
-      )
-      const googleQueryRate = readWranglerRate(
-        'NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD',
-      )
-      const googleGroundedRate = readWranglerRate(
-        'NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD',
-      )
+    const wrapper = await mountSuspended(SearchProvidersInfo)
 
-      expect(text).toContain('Brave Search')
-      expect(text).toContain(`$${braveRate}`)
-      expect(text).toContain('Exa')
-      expect(text).toContain(`$${exaRate}`)
-      expect(text).toContain('Anthropic built-in')
-      expect(text).toContain(`$${anthropicRate}`)
-      expect(text).toContain('OpenAI built-in')
-      expect(text).toContain(`$${openaiRate}`)
-      expect(text).toContain('Gemini 3.x built-in')
-      expect(text).toContain(`$${googleQueryRate}`)
-      expect(text).toContain('Gemini 2.5 built-in')
-      expect(text).toContain(`$${googleGroundedRate}`)
-    })
+    const rows = wrapper.findAll('tbody tr')
+    const names = rows.map(row => row.findAll('td')[0]?.text())
+    const prices = rows.map(row => row.findAll('td')[1]?.text())
+
+    expect(names).toEqual([
+      'Brave Search',
+      'Exa',
+      'Gemini 3.x built-in',
+      'Gemini 2.5 built-in',
+      'Anthropic built-in',
+      'OpenAI built-in',
+    ])
+    expect(prices).toEqual(['$5', '$7', '$14', '$35', '$10', '$10'])
+  })
+
+  it('shows a dash when a rate is unset or invalid', async () => {
+    mocks.searchRates = {
+      braveSearchCostPerThousandRequestsUsd: '',
+      exaSearchCostPerThousandRequestsUsd: '0',
+      googleSearchCostPerThousandQueriesUsd: '',
+      googleSearchCostPerThousandGroundedPromptsUsd: '',
+      anthropicWebSearchCostPerThousandSearchesUsd: 'not-a-number',
+      openaiWebSearchCostPerThousandCallsUsd: '-5',
+    }
+
+    const wrapper = await mountSuspended(SearchProvidersInfo)
+
+    const rows = wrapper.findAll('tbody tr')
+    const prices = rows.map(row => row.findAll('td')[1]?.text())
+
+    expect(prices).toEqual(['—', '—', '—', '—', '—', '—'])
+  })
 
   it('shows the verified free-tier allowance for each search provider',
     async () => {
@@ -106,20 +102,22 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
 
       expect(text).toContain('$5 credit / month (card required)')
       expect(text).toContain('$10 credit / month (no card)')
-      expect(text).toContain('5,000 / month (billing required)')
       expect(text).toContain(
-        '1,500 / day with billing (Flash: 500 / day without)',
+        'First 5,000 queries / month free on paid billing',
+      )
+      expect(text).toContain(
+        '1,500 prompts / day free on paid billing (Flash: 500 / day on '
+        + 'the free tier)',
       )
     })
 
-  it('discloses that prices are published list prices that may change',
-    async () => {
-      const wrapper = await mountSuspended(SearchProvidersInfo)
+  it('discloses that cost estimates use list prices before any free '
+    + 'allowance', async () => {
+    const wrapper = await mountSuspended(SearchProvidersInfo)
 
-      const text = wrapper.text()
-
-      expect(text).toContain(
-        'List prices as of September 2026 and may change.',
-      )
-    })
+    expect(wrapper.text()).toContain(
+      'List prices as of September 2026 and may change. Besidka\'s '
+      + 'cost estimates use list prices before any free allowance.',
+    )
+  })
 })

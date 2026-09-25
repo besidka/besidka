@@ -35,7 +35,7 @@
               :key="row.name"
             >
               <td>{{ row.name }}</td>
-              <td>${{ row.ratePerThousandUsd }}</td>
+              <td>{{ row.price }}</td>
               <td>{{ row.freeAllowance }}</td>
             </tr>
           </tbody>
@@ -45,14 +45,15 @@
               :key="row.name"
             >
               <td>{{ row.name }}</td>
-              <td>${{ row.ratePerThousandUsd }}</td>
-              <td>{{ row.freeAllowance }}</td>
+              <td>{{ row.price }}</td>
+              <td class="whitespace-normal">{{ row.freeAllowance }}</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p class="text-xs opacity-75">
-        List prices as of September 2026 and may change.
+        List prices as of September 2026 and may change. Besidka's cost
+        estimates use list prices before any free allowance.
       </p>
     </div>
   </div>
@@ -61,26 +62,43 @@
 <script setup lang="ts">
 interface SearchPricingRow {
   name: string
-  ratePerThousandUsd: number
+  price: string
   freeAllowance: string
 }
 
-const braveRatePerThousandUsd = 5
-const exaRatePerThousandUsd = 7
-const anthropicRatePerThousandUsd = 10
-const openaiRatePerThousandUsd = 10
-const googleGemini3RatePerThousandUsd = 14
-const googleGeminiOlderRatePerThousandUsd = 35
+function formatRatePerThousandUsd(
+  value: string | number | undefined,
+): string {
+  const parsed = Number(value)
+
+  return Number.isFinite(parsed) && parsed > 0 ? `$${parsed}` : '—'
+}
+
+const {
+  braveSearchCostPerThousandRequestsUsd,
+  exaSearchCostPerThousandRequestsUsd,
+  anthropicWebSearchCostPerThousandSearchesUsd,
+  openaiWebSearchCostPerThousandCallsUsd,
+  googleSearchCostPerThousandQueriesUsd,
+  googleSearchCostPerThousandGroundedPromptsUsd,
+} = useRuntimeConfig().public
+
+const geminiFreeAllowanceCopy = {
+  gemini3: 'First 5,000 queries / month free on paid billing (shared '
+    + 'across Gemini 3.x; one prompt can run several queries)',
+  geminiOlder: '1,500 prompts / day free on paid billing (Flash: 500 / '
+    + 'day on the free tier)',
+}
 
 const byokPricingRows: SearchPricingRow[] = [
   {
     name: 'Brave Search',
-    ratePerThousandUsd: braveRatePerThousandUsd,
+    price: formatRatePerThousandUsd(braveSearchCostPerThousandRequestsUsd),
     freeAllowance: '$5 credit / month (card required)',
   },
   {
     name: 'Exa',
-    ratePerThousandUsd: exaRatePerThousandUsd,
+    price: formatRatePerThousandUsd(exaSearchCostPerThousandRequestsUsd),
     freeAllowance: '$10 credit / month (no card)',
   },
 ]
@@ -88,22 +106,26 @@ const byokPricingRows: SearchPricingRow[] = [
 const builtInPricingRows: SearchPricingRow[] = [
   {
     name: 'Gemini 3.x built-in',
-    ratePerThousandUsd: googleGemini3RatePerThousandUsd,
-    freeAllowance: '5,000 / month (billing required)',
+    price: formatRatePerThousandUsd(googleSearchCostPerThousandQueriesUsd),
+    freeAllowance: geminiFreeAllowanceCopy.gemini3,
   },
   {
     name: 'Gemini 2.5 built-in',
-    ratePerThousandUsd: googleGeminiOlderRatePerThousandUsd,
-    freeAllowance: '1,500 / day with billing (Flash: 500 / day without)',
+    price: formatRatePerThousandUsd(
+      googleSearchCostPerThousandGroundedPromptsUsd,
+    ),
+    freeAllowance: geminiFreeAllowanceCopy.geminiOlder,
   },
   {
     name: 'Anthropic built-in',
-    ratePerThousandUsd: anthropicRatePerThousandUsd,
+    price: formatRatePerThousandUsd(
+      anthropicWebSearchCostPerThousandSearchesUsd,
+    ),
     freeAllowance: '—',
   },
   {
     name: 'OpenAI built-in',
-    ratePerThousandUsd: openaiRatePerThousandUsd,
+    price: formatRatePerThousandUsd(openaiWebSearchCostPerThousandCallsUsd),
     freeAllowance: '—',
   },
 ]

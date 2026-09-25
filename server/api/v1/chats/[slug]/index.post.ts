@@ -639,7 +639,7 @@ export default defineEventHandler(async (event) => {
   let gatewayMaxOutputTokens: number | undefined
   let gatewayPricing: GatewayModel['pricing'] | undefined
   let gatewayToolCall: boolean | undefined
-  const searchRates = resolveSearchRates(useRuntimeConfig(event))
+  const searchRates = resolveSearchRates(useRuntimeConfig(event).public)
 
   try {
     if (gatewayId) {

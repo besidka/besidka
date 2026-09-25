@@ -122,7 +122,7 @@ tool-result parts carry the same local tool name.
 'grounded-prompt' | 'search'`:
 
 - **Google, Gemini 3.x** → `'query'`, $14/1,000 deduplicated queries,
-  invoice-verified.
+  rate invoice-verified (paid-one SKU); free allowance not modelled.
 - **Google, Gemini ≤2.5** → `'grounded-prompt'`, $35/1,000 grounded
   requests, documentation-only. The generation split is a string match on
   `/^gemini-(\d+)/` against the model id — the AI SDK exposes no generation
@@ -171,22 +171,36 @@ from a rejected first attempt that hardcoded an unsourced `$0.014` and
 applied it uniformly to every Google model regardless of generation.
 
 The real values live in `wrangler.jsonc`, in two places kept in sync by
-hand: the top-level (preview) `vars` block and `env.production.vars`. Four
-keys today:
+hand: the top-level (preview) `vars` block and `env.production.vars`. Six
+keys today, all under the `NUXT_PUBLIC_` prefix:
 
 ```
-NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=14
-NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=35
-NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=10
-NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=10
+NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=14
+NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=35
+NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=10
+NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=10
+NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=5
+NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=7
 ```
 
 Public provider list pricing is a deliberate exception to "config values are
 secrets, keep them out of git": it isn't a credential, it's published on a
 web page, and having it in git with a dated source comment is strictly
 better for review than having it invisible in a Cloudflare dashboard. Only
-the Gemini 3.x rate is invoice-verified; the other three are
-documentation-only, and the comment above each block says so.
+the Gemini 3.x rate is invoice-verified (paid-one SKU; its free allowance
+is not modelled); the other five are documentation-only, and the comment
+above each block says so.
+
+These six keys live in `runtimeConfig.public` (not private
+`runtimeConfig`) — they are the single source of truth for search pricing.
+`server/api/v1/chats/[slug]/index.post.ts` reads them via
+`resolveSearchRates(useRuntimeConfig(event).public)` for cost accounting,
+and `app/components/Profile/Keys/SearchProvidersInfo.vue` reads the same
+`useRuntimeConfig().public` values to render the pricing table shown to
+users — no hardcoded display constants in the component, and no
+wrangler-parsing assertions in its test (`wrangler-search-rates.spec.ts`
+still parses `wrangler.jsonc` directly, to guarantee the preview and
+production `vars` blocks agree).
 
 Every cost function mirrors `buildMessageUsage()`'s existing contract: an
 unknown cost is `undefined`, never `0`.
@@ -458,21 +472,45 @@ The consequence for any future native-vs-external routing design: **each
 search-enabled turn carries a cost floor of one unit, not zero** — the
 toggle is the spend decision, not the model.
 
-### Free quota is not knowable from documentation
+### The free quota exists; PR #385 verified the rate, not its absence
 
-Google publishes a free grounding quota. The invoice that triggered PR #385
-shows it did not apply, apparently because the project has a paid billing
-account attached. That was discovered empirically, from a real bill, and
-nothing on the pricing page said so.
+An independent investigation (2026-09-25) corrected the earlier claim
+here — that the free grounding quota "did not apply" because the
+billing account was paid. Google's Gemini API pricing documents a free
+allowance that exists only on the paid tier: 5,000 search queries/month
+for Gemini 3.x (shared across the 3.x family), and 1,500 grounded
+prompts/day for Gemini 2.5 on the paid tier (Flash/Flash-Lite also get
+500/day on the free tier). Archived pricing pages from Dec 2025 through
+Sep 2026 show it was never removed — only the counting-unit wording
+changed, from "prompts" to "search requests/queries".
 
-Generalising: **a provider's documented rate can't be trusted until it's
-been reconciled against one real invoice for this app's actual usage
-pattern.** That doesn't scale cleanly — it needs a paid account per
-provider, real traffic, and a billing-export read, per provider, per rate
-change. The practical policy already in the repo is to mark in the config
-comment which rates are invoice-verified and which are documentation-only
-(only Gemini 3.x is verified; the other four rates shipped in this
-extension are not). Extend that comment discipline to every new rate.
+The Gemini API SKU catalog (service `AEFD-7695-64FA`) has a free/paid
+pair per family: `Generate content search query gemini 3 free`
+(`7166-DCCD-7D46`, $0) vs. `... gemini 3 paid one` (`E662-8171-51CB`,
+flat $14/1,000); for 2.5, `FAF4-1886-D9DB` (free) vs. `1590-B4E9-A799`
+(paid one, $35). The PR #385 invoice line was the **paid-one** SKU — it
+verified the $14 rate, not the absence of a free pool. 521 charged
+queries is compatible with an exhausted allowance: Gemini 3.x models
+fan out several queries per prompt, and the pool may be shared with
+other projects on the same billing account. Google staff have also
+confirmed an April 2026 grounding billing misconfiguration that
+over-billed searches (since refunded) — another reason one invoice
+can't stand in for documented pricing.
+
+Only the billing export settles a given month: group Gemini API usage
+by SKU; any free-SKU rows before the first paid-one row mean the pool
+wasn't yet exhausted that month.
+
+**Policy is unchanged** by this correction: cost estimates are list
+price × units, computed before any free allowance, because the app has
+no way to see a user's remaining pool. Unit counts are always recorded
+regardless, so a human can reconcile against their own invoice.
+
+**Known gap:** query dedup (`getGoogleSearchGrounding`) spans all steps
+of a multi-step turn, while Google counts unique queries per
+`generateContent` call — i.e. per step. A query repeated in a later
+step is billed by Google but counted once here. Not fixed in this
+pass — follow-up.
 
 ### Pricing drift
 

@@ -70,7 +70,7 @@ function normalizeExaResults(
  * `contents.highlights` is mandatory, not optional — a bare Exa query
  * returns no body text at all, only title/url/date/author. The exact shape
  * is a module constant rather than model-configurable because
- * `NUXT_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD`'s fallback rate (see
+ * `NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD`'s fallback rate (see
  * `external-search-cost.ts`) is derived from this exact request shape; a
  * different `numResults` or content mode would silently invalidate it. Auth
  * is `x-api-key`, not `Bearer`.

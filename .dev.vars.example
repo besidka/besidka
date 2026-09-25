@@ -68,14 +68,14 @@ NUXT_AXIOM_CONSENT_TOKEN=
 # billed separately from tokens). See the PR description and
 # https://ai.google.dev/gemini-api/docs/google-search for the real rates —
 # do not put real dollar values in this file.
-NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=
-NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=
+NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=
+NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=
 
 # Anthropic / OpenAI web search cost (both bill the web_search tool per call,
 # separately from tokens). Real public rates are committed in wrangler.jsonc;
 # set these locally only if you want cost lines in local dev.
-NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=
-NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=
+NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=
+NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=
 
 # Brave Search API (owner dev/testing key) — https://api-dashboard.search.brave.com/
 NUXT_BRAVE_SEARCH_API_KEY=
