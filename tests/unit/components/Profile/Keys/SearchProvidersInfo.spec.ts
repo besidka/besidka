@@ -46,9 +46,18 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
 
       const text = wrapper.text()
 
-      expect(text).toContain('no built-in web search')
-      expect(text).toContain('any tool-calling model can search the web')
+      expect(text).toContain('without built-in web search')
+      expect(text).toContain('Brave or Exa key')
       expect(text).toContain('One search provider runs per message')
+    })
+
+  it('shows a pricing subheading followed by a table, not two lists',
+    async () => {
+      const wrapper = await mountSuspended(SearchProvidersInfo)
+
+      expect(wrapper.text()).toContain('Pricing per 1,000 searches')
+      expect(wrapper.find('.overflow-x-auto table').exists()).toBe(true)
+      expect(wrapper.findAll('ul').length).toBe(0)
     })
 
   it('shows pricing that matches the rates configured in wrangler.jsonc',
@@ -75,21 +84,42 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
         'NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD',
       )
 
-      expect(text).toContain(`Brave ≈ $${braveRate} / 1,000`)
-      expect(text).toContain(`Exa ≈ $${exaRate} / 1,000`)
-      expect(text).toContain(`Anthropic ≈ $${anthropicRate} / 1,000`)
-      expect(text).toContain(`OpenAI ≈ $${openaiRate} / 1,000`)
-      expect(text).toContain(`Google ≈ $${googleQueryRate} / 1,000`)
-      expect(text).toContain(`$${googleGroundedRate} / 1,000`)
+      expect(text).toContain('Brave Search')
+      expect(text).toContain(`$${braveRate}`)
+      expect(text).toContain('Exa')
+      expect(text).toContain(`$${exaRate}`)
+      expect(text).toContain('Anthropic built-in')
+      expect(text).toContain(`$${anthropicRate}`)
+      expect(text).toContain('OpenAI built-in')
+      expect(text).toContain(`$${openaiRate}`)
+      expect(text).toContain('Gemini 3.x built-in')
+      expect(text).toContain(`$${googleQueryRate}`)
+      expect(text).toContain('Gemini 2.5 built-in')
+      expect(text).toContain(`$${googleGroundedRate}`)
     })
 
-  it('discloses that prices are published list prices billed by the '
-    + 'search provider', async () => {
-    const wrapper = await mountSuspended(SearchProvidersInfo)
+  it('shows the verified free-tier allowance for each search provider',
+    async () => {
+      const wrapper = await mountSuspended(SearchProvidersInfo)
 
-    const text = wrapper.text()
+      const text = wrapper.text()
 
-    expect(text).toContain('Published list prices, may change')
-    expect(text).toContain('you pay the search provider directly')
-  })
+      expect(text).toContain('$5 credit / month (card required)')
+      expect(text).toContain('$10 credit / month (no card)')
+      expect(text).toContain('5,000 / month (billing required)')
+      expect(text).toContain(
+        '1,500 / day with billing (Flash: 500 / day without)',
+      )
+    })
+
+  it('discloses that prices are published list prices that may change',
+    async () => {
+      const wrapper = await mountSuspended(SearchProvidersInfo)
+
+      const text = wrapper.text()
+
+      expect(text).toContain(
+        'List prices as of September 2026 and may change.',
+      )
+    })
 })
