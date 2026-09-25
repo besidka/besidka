@@ -51,13 +51,40 @@ describe('useUserKeys', () => {
     useUserKeys()
 
     const requestedKeys = mocks.useLazyFetch.mock.calls.map((call) => {
-      return call.slice(0, 2)
+      return [call[0], call[1]?.key]
     })
 
     expect(requestedKeys).toEqual([
-      ['/api/v1/profiles/keys', { key: 'user-keys' }],
-      ['/api/v1/profiles/keys', { key: 'user-keys' }],
+      ['/api/v1/profiles/keys', 'user-keys'],
+      ['/api/v1/profiles/keys', 'user-keys'],
     ])
+  })
+
+  it('caches the summary across navigation instead of refetching', () => {
+    useSummary([])
+
+    useUserKeys()
+
+    const options = mocks.useLazyFetch.mock.calls[0]?.[1]
+
+    expect(typeof options.getCachedData).toBe('function')
+    expect(options.getCachedData('user-keys', {
+      static: { data: {} },
+      payload: { data: { 'user-keys': { keys: [] } } },
+    }, { cause: 'initial' })).toEqual({ keys: [] })
+  })
+
+  it('does not serve a cached summary for a manual refresh', () => {
+    useSummary([])
+
+    useUserKeys()
+
+    const options = mocks.useLazyFetch.mock.calls[0]?.[1]
+
+    expect(options.getCachedData('user-keys', {
+      static: { data: {} },
+      payload: { data: { 'user-keys': { keys: [] } } },
+    }, { cause: 'refresh:manual' })).toBeUndefined()
   })
 
   it('reports presence per provider from the summary', () => {
@@ -190,6 +217,42 @@ describe('useUserKeys', () => {
     await refresh()
 
     expect(hasKey('google')).toBe(false)
+  })
+
+  it('keeps the last known keys when a background refresh fails', () => {
+    const state = useSummary([{ provider: 'google', hasKey: false }])
+
+    const {
+      hasKey,
+      hasKeyForProvider,
+      hasAnyKey,
+      keyStatusForProvider,
+      pending,
+    } = useUserKeys()
+
+    expect(hasKey('google')).toBe(false)
+
+    state.data.value = null
+    state.error.value = new Error('offline')
+
+    expect(hasKey('google')).toBe(false)
+    expect(hasKeyForProvider('google')).toBe(false)
+    expect(hasAnyKey.value).toBe(false)
+    expect(keyStatusForProvider('google')).toBe('missing')
+    expect(pending.value).toBe(false)
+  })
+
+  it('does not report pending while a background refresh is in flight '
+    + 'once keys are already known', () => {
+    const state = useSummary([{ provider: 'google', hasKey: true }])
+
+    const { pending, hasKey } = useUserKeys()
+
+    state.data.value = null
+    state.pending.value = true
+
+    expect(pending.value).toBe(false)
+    expect(hasKey('google')).toBe(true)
   })
 
   it('reports a saved and a missing key status per provider and gateway', () => {

@@ -1,6 +1,6 @@
 import * as schema from '~~/server/db/schema'
 
-const RATE_LIMIT_RULE = { window: 60, max: 30 }
+const RATE_LIMIT_RULE = { window: 60, max: 300 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:summary:get'
 
 export default defineEventHandler(async (event) => {

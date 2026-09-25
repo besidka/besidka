@@ -196,7 +196,7 @@ describe('keys summary API', () => {
 
     const handler = await getHandler()
 
-    for (let call = 0; call < 30; call++) {
+    for (let call = 0; call < 300; call++) {
       await handler({} as any)
     }
 
