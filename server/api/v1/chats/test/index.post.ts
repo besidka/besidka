@@ -336,6 +336,11 @@ export default defineEventHandler(async (event) => {
       .enum(['true', 'false'])
       .default('false')
       .transform(value => value === 'true'),
+    initialDelay: z
+      .string()
+      .regex(/^\d+$/)
+      .default(String(INITIAL_DELAY))
+      .transform(Number),
   }).safeParse)
 
   if (query.error) {
@@ -376,7 +381,7 @@ export default defineEventHandler(async (event) => {
     execute({ writer }) {
       const readable = new ReadableStream<UIMessageChunk>({
         async start(controller) {
-          await delay(INITIAL_DELAY)
+          await delay(query.data.initialDelay)
           let previousType: string = ''
 
           for (const { chunk, delay: explicitDelay } of timedChunks) {

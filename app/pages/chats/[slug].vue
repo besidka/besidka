@@ -413,6 +413,15 @@ function captureImageGenerationTurnPending(): void {
     = userModelSelection.value.source === 'gateway'
 }
 
+// The first turn of a chat created straight from /chats/new never goes
+// through onChatSubmit — useChat()'s mount-time auto-regenerate resumes it
+// directly (chat.ts's shouldRecoverGeneration check) — so the flags above
+// must also be captured up front for that resumed turn, otherwise the
+// pending image card never renders and the generic loader shows instead.
+if (shouldRecoverGeneration(chat.value.messages)) {
+  captureImageGenerationTurnPending()
+}
+
 function onChatSubmit(): void {
   captureImageGenerationTurnPending()
   submit()

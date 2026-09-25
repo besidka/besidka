@@ -254,3 +254,110 @@ async ({ page, context }) => {
     reasoning: 'off',
   })
 })
+
+test('first turn sent from /chats/new shows the pending image card '
+  + 'instead of the generic loader while the gateway send resumes after '
+  + 'the new-chat navigation', async ({ page, context }) => {
+  const chatSlug = 'e2e-first-turn-gateway-image'
+  const firstChunkDelayMs = 2_000
+
+  await context.addCookies([
+    {
+      name: 'cookies_consent',
+      value: JSON.stringify({
+        v: 1,
+        granted: ['necessary', 'preferences'],
+        id: 'e2e-consent',
+        date: new Date().toISOString(),
+      }),
+      domain: 'localhost',
+      path: '/',
+    },
+  ])
+
+  await page.addInitScript(
+    ({ modelId }) => {
+      window.localStorage.setItem(
+        'model',
+        JSON.stringify({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId,
+        }),
+      )
+    },
+    { modelId: GATEWAY_TEST_MODEL_ID },
+  )
+
+  await page.route('**/api/v1/chats/new', async (route) => {
+    await route.fulfill({ json: { slug: chatSlug } })
+  })
+
+  await page.route(`**/api/v1/chats/${chatSlug}/title`, async (route) => {
+    await route.fulfill({ json: { title: 'A scottish fold cat' } })
+  })
+
+  await page.route(`**/api/v1/chats/${chatSlug}`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        json: {
+          id: 1,
+          slug: chatSlug,
+          title: '',
+          projectId: null,
+          branchedFromShareSlug: null,
+          activeResearchJob: null,
+          messages: [
+            {
+              id: 'e2e-first-turn-user-message',
+              publicId: 'e2e-first-turn-user-message',
+              role: 'user',
+              parts: [
+                {
+                  type: 'text',
+                  text: 'A scottish fold cat by a fireplace',
+                },
+              ],
+              tools: ['image_generation'],
+              reasoning: 'off',
+              createdAt: new Date().toISOString(),
+              usage: null,
+            },
+          ],
+        },
+      })
+
+      return
+    }
+
+    const requestUrl = new URL(route.request().url())
+    const testEndpointUrl = `${requestUrl.origin}/api/v1/chats/test`
+      + `?scenario=gateway-image&initialDelay=${firstChunkDelayMs}`
+    const response = await route.fetch({ url: testEndpointUrl })
+
+    await route.fulfill({ response })
+  })
+
+  await page.goto('/chats/new')
+  await waitForHydration(page)
+
+  await page.locator('textarea').fill('A scottish fold cat by a fireplace')
+  await page.getByRole('button', { name: 'Send Message' }).click()
+  await page.waitForURL(`**/chats/${chatSlug}`)
+
+  await expect(
+    page.locator('[data-testid="generated-image-progress"]'),
+  ).toBeVisible({ timeout: firstChunkDelayMs - 500 })
+
+  await expect(
+    page.locator('[data-testid="chat-loader"]'),
+  ).toHaveClass(/opacity-0/)
+
+  await expect(
+    page.locator('[data-role="assistant"] .js-message-text'),
+  ).toContainText('scottish fold', { timeout: 10_000 })
+
+  await expect(
+    page.locator('[data-testid="generated-image-ready"]'),
+  ).toBeVisible({ timeout: 15_000 })
+})
