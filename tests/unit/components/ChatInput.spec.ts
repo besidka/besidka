@@ -1338,6 +1338,68 @@ describe('ChatInput.client', () => {
       expect(wrapper.emitted('update:reasoning')).toBeUndefined()
       expect(wrapper.emitted('update:tools')).toBeUndefined()
     })
+
+    it('forces image_generation once a gateway image-only model '
+      + 'resolves, overriding a saved Brave default seeded before '
+      + 'resolution', async () => {
+      const state = useGatewayCapabilitySelection({
+        isModelCapabilityResolved: false,
+        webSearchProviderOptions: [
+          {
+            value: 'web_search_brave',
+            label: 'Brave Search',
+            providerId: 'brave',
+            enabled: true,
+          },
+        ],
+      })
+
+      const wrapper = await mountChatInput({
+        tools: ['web_search_brave'],
+        reasoning: 'low',
+      })
+
+      await nextTick()
+
+      state.isImageGenerationSupported.value = true
+      state.isImageGenerationRequired.value = true
+      state.isModelCapabilityResolved.value = true
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:tools')?.at(-1)).toEqual([
+        ['image_generation'],
+      ])
+    })
+
+    it('forces image_generation when the catalog is already '
+      + 'resolved at mount time (pre-warmed cache)', async () => {
+      useGatewayCapabilitySelection({
+        isModelCapabilityResolved: true,
+        isImageGenerationSupported: true,
+        isImageGenerationRequired: true,
+        webSearchProviderOptions: [
+          {
+            value: 'web_search_brave',
+            label: 'Brave Search',
+            providerId: 'brave',
+            enabled: true,
+          },
+        ],
+      })
+
+      const wrapper = await mountChatInput({
+        tools: ['web_search_brave'],
+        reasoning: 'low',
+      })
+
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:tools')?.at(-1)).toEqual([
+        ['image_generation'],
+      ])
+    })
   })
 
   describe('unavailable gateway model guidance', () => {

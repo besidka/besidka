@@ -152,3 +152,105 @@ test('gateway image turn shows the pending card before the first chunk, '
     page.locator('[data-testid="generated-image-progress"]'),
   ).toHaveCount(0)
 })
+
+test('locks image generation on /chats/new for a gateway image-only model '
+  + 'restored from a saved default, overriding a saved Brave + low '
+  + 'reasoning default and hiding the search/reasoning triggers, even '
+  + 'when the model also reports tool-calling and reasoning support',
+async ({ page, context }) => {
+  await page.route(
+    '**/api/v1/gateways/vercel/models**',
+    async (route) => {
+      await new Promise(resolve => setTimeout(resolve, 1_000))
+
+      await route.fulfill({
+        json: {
+          gateway: 'vercel',
+          models: [
+            {
+              id: GATEWAY_TEST_MODEL_ID,
+              name: GATEWAY_TEST_MODEL_NAME,
+              modalities: { input: ['text'], output: ['text', 'image'] },
+              supportsImageGeneration: true,
+              supportsWebSearch: 'native',
+              supportsReasoning: true,
+              toolCall: true,
+            },
+          ],
+        },
+      })
+    },
+  )
+
+  await context.addCookies([
+    {
+      name: 'cookies_consent',
+      value: JSON.stringify({
+        v: 1,
+        granted: ['necessary', 'preferences'],
+        id: 'e2e-consent',
+        date: new Date().toISOString(),
+      }),
+      domain: 'localhost',
+      path: '/',
+    },
+  ])
+
+  await page.addInitScript(
+    ({ modelId }) => {
+      window.localStorage.setItem(
+        'model',
+        JSON.stringify({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId,
+        }),
+      )
+      window.localStorage.setItem(
+        'settings_web_search_tool',
+        'web_search_brave',
+      )
+      window.localStorage.setItem('settings_reasoning_level', 'low')
+    },
+    { modelId: GATEWAY_TEST_MODEL_ID },
+  )
+
+  await page.goto('/chats/new')
+  await waitForHydration(page)
+
+  const createImageButton = page.getByRole('button', {
+    name: 'Image creation is required for this model',
+  })
+
+  await expect(createImageButton).toBeVisible({ timeout: 15_000 })
+  await expect(createImageButton).toHaveClass(/btn-active/)
+
+  await expect(
+    page.locator('[data-testid="web-search-trigger"]'),
+  ).toHaveCount(0)
+  await expect(
+    page.locator('[data-testid="reasoning-trigger"]'),
+  ).toHaveCount(0)
+
+  let capturedBody: Record<string, unknown> | null = null
+
+  await page.route('**/api/v1/chats/new', async (route) => {
+    capturedBody = route.request().postDataJSON()
+
+    await route.fulfill({
+      json: { slug: 'e2e-gateway-image-required' },
+    })
+  })
+
+  await page.locator('textarea').fill('draw me a cat')
+  await page.getByRole('button', { name: 'Send Message' }).click()
+
+  await expect
+    .poll(() => capturedBody)
+    .not.toBeNull()
+
+  expect(capturedBody).toMatchObject({
+    tools: ['image_generation'],
+    reasoning: 'off',
+  })
+})
