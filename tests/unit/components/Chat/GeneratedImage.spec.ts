@@ -527,6 +527,100 @@ describe('Chat/GeneratedImage', () => {
     )
   })
 
+  it('falls back to a square card, then derives the real aspect ratio '
+    + 'from the loaded image, for a gateway file part with no known ratio',
+  async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: undefined,
+          url: 'data:image/png;base64,AAAA',
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const preview = wrapper.get(
+      '[data-testid="generated-image-preview-trigger"]',
+    )
+
+    expect(preview.attributes('style')).toContain('aspect-ratio: 1 / 1')
+
+    const image = wrapper.get('img')
+
+    Object.defineProperty(image.element, 'naturalWidth', {
+      value: 1600,
+      configurable: true,
+    })
+    Object.defineProperty(image.element, 'naturalHeight', {
+      value: 900,
+      configurable: true,
+    })
+    await image.trigger('load')
+
+    expect(preview.attributes('style')).toContain('aspect-ratio: 1600 / 900')
+  })
+
+  it('keeps the curated tool aspect ratio even after the image loads',
+    async () => {
+      const wrapper = await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'assistant',
+          part: {
+            type: 'tool-generate_image',
+            state: 'output-available',
+            input: { aspectRatio: '2:3' },
+            output: {
+              status: 'ready',
+              provider: 'google',
+              model: 'gemini-3.1-flash-image',
+              file: {
+                id: 'file-1',
+                storageKey: 'generated.webp',
+                name: 'generated.webp',
+                size: 1024,
+                type: 'image/webp',
+                source: 'assistant',
+                url: '/files/generated.webp',
+                downloadUrl: '/files/generated.webp?download=1',
+              },
+            },
+          } as any,
+        },
+        global: {
+          stubs: {
+            LazyChatImagePreview: LazyImagePreview,
+            teleport: true,
+          },
+        },
+      })
+
+      const preview = wrapper.get(
+        '[data-testid="generated-image-preview-trigger"]',
+      )
+      const image = wrapper.get('img')
+
+      Object.defineProperty(image.element, 'naturalWidth', {
+        value: 1600,
+        configurable: true,
+      })
+      Object.defineProperty(image.element, 'naturalHeight', {
+        value: 900,
+        configurable: true,
+      })
+      await image.trigger('load')
+
+      expect(preview.attributes('style')).toContain('aspect-ratio: 2 / 3')
+    })
+
   it('renders a persisted gateway file part through getSafeFileLinks, '
     + 'preserving the shared-chat token query', async () => {
     const wrapper = await mountSuspended(GeneratedImage, {

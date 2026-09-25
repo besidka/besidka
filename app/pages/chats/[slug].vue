@@ -35,7 +35,12 @@
         ref="messagesDomRefs"
         :data-role="m.role"
         :data-message-id="m.id"
-        :data-hide-content="shouldDisplayMessage(m.id) ? undefined : true"
+        :data-hide-content="shouldDisplayMessage(m.id)
+          || (isLastAssistantMessage(messageIndex)
+            && shouldRenderPendingImageGenerationInline)
+          ? undefined
+          : true
+        "
         class="
           relative
           [&[data-hide-content=true]]:hidden
@@ -51,7 +56,10 @@
           :is-selected="selectedMessageId === m.id"
           :any-selected="selectedMessageId !== null"
           :class="{
-            'chat-message--fit-content': shouldFitMessageContent(m),
+            'chat-message--fit-content': shouldFitMessageContent(m)
+              || (isLastAssistantMessage(messageIndex)
+                && shouldRenderPendingImageGenerationInline
+                && !shouldDisplayMessage(m.id)),
           }"
           @select="onMessageSelect"
         >
@@ -68,20 +76,6 @@
             :reasoning-accumulated-ms="currentTurnReasoningAccumulatedMs"
             :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
             :is-turn-thinking-held="isTurnThinkingHeld"
-          />
-          <ChatGeneratedImage
-            v-if="isLastAssistantMessage(messageIndex)
-              && shouldRenderPendingImageGenerationInline
-            "
-            message-role="assistant"
-            :part="pendingGenerateImagePart"
-          />
-          <ChatGeneratedImage
-            v-else-if="isLastAssistantMessage(messageIndex)
-              && shouldRenderGatewayImageGenerationFailure
-            "
-            message-role="assistant"
-            :part="gatewayImageGenerationFailurePart"
           />
           <div
             v-for="(part, index) in getDisplayMessageParts(m)"
@@ -135,6 +129,20 @@
               :unwrap="getUnwrap(m.role)"
             />
           </div>
+          <ChatGeneratedImage
+            v-if="isLastAssistantMessage(messageIndex)
+              && shouldRenderPendingImageGenerationInline
+            "
+            message-role="assistant"
+            :part="pendingGenerateImagePart"
+          />
+          <ChatGeneratedImage
+            v-else-if="isLastAssistantMessage(messageIndex)
+              && shouldRenderGatewayImageGenerationFailure
+            "
+            message-role="assistant"
+            :part="gatewayImageGenerationFailurePart"
+          />
           <ChatUrlSources
             v-if="hasVisibleTextPart(m)"
             :message="m"

@@ -356,8 +356,9 @@ describe('useChatImageUi', () => {
     expect(shouldRenderGatewayImageGenerationFailure.value).toBe(true)
   })
 
-  it('does not show the failure card when the turn produced text instead '
-    + 'of an image', () => {
+  it('shows the failure card when a gateway turn ends with text but no '
+    + 'image, since the pending card promised one at the end of the '
+    + 'message', () => {
     const messages = shallowRef<UIMessage[]>([
       createMessage('user-1', 'user', [{
         type: 'text',
@@ -378,7 +379,52 @@ describe('useChatImageUi', () => {
       },
     )
 
-    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(false)
+    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(true)
+  })
+
+  it('does not dismiss the pending skeleton on streamed text for a '
+    + 'gateway send, only on a file part', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'text',
+        text: 'Here is your cat, generated as requested.',
+      }]),
+    ])
+    const {
+      shouldRenderPendingImageGenerationInline,
+      isImageGenerationSkeletonVisible,
+    } = useChatImageUi(() => messages.value, {
+      isImageGenerationTurnPending: () => true,
+      isTurnActive: () => true,
+      isGatewaySendTurnPending: () => true,
+    })
+
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(true)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [
+        {
+          type: 'text',
+          text: 'Here is your cat, generated as requested.',
+        },
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: 'data:image/webp;base64,AAAA',
+        },
+      ]),
+    ]
+
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
+    expect(isImageGenerationSkeletonVisible.value).toBe(false)
   })
 
   it('does not show the failure card when the user stopped the turn', () => {

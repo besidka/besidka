@@ -598,6 +598,61 @@ describe('useChatInput gateway model capability', () => {
     ).toBe('true')
   })
 
+  it('requires image generation for a Vercel image-output model, mirroring '
+    + 'a curated direct-provider imageGeneration model', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.vercel = [{
+      id: 'google/gemini-3.1-flash-image',
+      name: 'Nano Banana 2',
+      supportsImageGeneration: true,
+      toolCall: false,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: 'google/gemini-3.1-flash-image',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-required"]').text(),
+    ).toBe('true')
+  })
+
+  it('does not require image generation on Cloudflare even when the '
+    + 'catalog reports an image-output model, because the gateway policy '
+    + 'denies the tool', async () => {
+    const gatewayCatalogCache = useGatewayCatalogCache()
+
+    gatewayCatalogCache.value.cloudflare = [{
+      id: '@cf/black-forest-labs/flux-1',
+      name: 'FLUX.1',
+      supportsImageGeneration: true,
+      toolCall: false,
+    } satisfies GatewayModel]
+
+    const wrapper = await mountSuspended(createHost())
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'cloudflare',
+      modelId: '@cf/black-forest-labs/flux-1',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.get('[data-testid="is-image-generation-required"]').text(),
+    ).toBe('false')
+  })
+
   it('never offers reasoning levels on Cloudflare even when the catalog '
     + 'reports supportsReasoning', async () => {
     const gatewayCatalogCache = useGatewayCatalogCache()

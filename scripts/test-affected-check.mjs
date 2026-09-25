@@ -180,6 +180,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-test-endpoint.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
     'tests/e2e/chat/context-menu-image-desktop.spec.ts',
+    'tests/e2e/chat/gateway-image-generation.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
@@ -527,7 +528,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/components\/Chat\/GeneratedImage\.vue$/,
-      tests: ['tests/unit/components/Chat/GeneratedImage.spec.ts'],
+      tests: [
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/Chat\/ImagePreview\.client\.vue$/,
@@ -908,7 +912,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
-      tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
+      tests: [
+        'tests/e2e/chat/scroll-spacer.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/composables\/chat-image-ui\.ts$/,
+      tests: [
+        'tests/unit/composables/chat-image-ui.spec.ts',
+        'tests/e2e/chat/scroll-spacer.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/ChatInput\/Files\/.*\.vue$/,

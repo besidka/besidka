@@ -208,7 +208,25 @@ export function useChatInput() {
     )
   })
 
+  /**
+   * A dedicated image-generation gateway model has no curated
+   * `Model.imageGeneration` entry to read (the curated catalog only covers
+   * direct providers, and a gateway model id like
+   * `google/gemini-3.1-flash-image` never matches a bare curated id like
+   * `gemini-3.1-flash-image`), so this mirrors the direct-provider
+   * required/forced decision with `isImageGenerationSupported` instead: a
+   * live fetch of both Vercel's and OpenRouter's full catalogs confirmed
+   * every model reporting an `image` output modality is tagged
+   * `image-generation`-only (Flux, Recraft, GPT Image, the Gemini
+   * `*-image` line, …) — no general chat model leaks through — so
+   * "this gateway model can produce images" and "this gateway model is a
+   * dedicated image generator" are the same fact on both catalogs today.
+   */
   const isImageGenerationRequired = computed<boolean>(() => {
+    if (selection.value.source === 'gateway') {
+      return isImageGenerationSupported.value
+    }
+
     return isImageGenerationModel(selectedModel.value)
   })
 

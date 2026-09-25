@@ -47,7 +47,7 @@
             'generated-image--loaded': isImageLoaded,
           }"
           loading="lazy"
-          @load="isImageLoaded = true"
+          @load="onImageLoad"
           @error="onImageError"
         >
         <span
@@ -186,6 +186,16 @@ const supportedAspectRatios: Record<string, string> = {
   '3:2': '3 / 2',
 }
 
+// A gateway `file` part carries no `generate_image` tool input, so it has
+// no curated `aspectRatio` to read the way a direct-provider card does —
+// only the loaded image itself knows its real dimensions. Filled in by the
+// preview `<img>`'s own `load` event, this keeps the card's fixed `1 / 1`
+// fallback (matching the direct-provider default, and avoiding a layout
+// jump before the image has loaded) until the true ratio is known, then
+// swaps the container over to it so a landscape/portrait image is never
+// letterboxed inside a square frame.
+const naturalImageAspectRatio = shallowRef<string | null>(null)
+
 const toolPart = computed(() => {
   return getGenerateImageToolPart(part)
 })
@@ -193,17 +203,15 @@ const toolPart = computed(() => {
 const imageAspectRatio = computed<string>(() => {
   const inputValue = toolPart.value?.input
 
-  if (!inputValue || typeof inputValue !== 'object') {
-    return '1 / 1'
+  if (inputValue && typeof inputValue === 'object') {
+    const aspectRatio = (inputValue as { aspectRatio?: unknown }).aspectRatio
+
+    if (typeof aspectRatio === 'string') {
+      return supportedAspectRatios[aspectRatio] || '1 / 1'
+    }
   }
 
-  const aspectRatio = (inputValue as { aspectRatio?: unknown }).aspectRatio
-
-  if (typeof aspectRatio !== 'string') {
-    return '1 / 1'
-  }
-
-  return supportedAspectRatios[aspectRatio] || '1 / 1'
+  return naturalImageAspectRatio.value || '1 / 1'
 })
 
 const output = computed(() => {
@@ -352,6 +360,21 @@ const metaLabel = computed<string>(() => {
   return `${providerLabel.value} · ${formatFileSize(size)}`
 })
 
+function onImageLoad(event: Event) {
+  isImageLoaded.value = true
+
+  if (toolPart.value) {
+    return
+  }
+
+  const image = event.target as HTMLImageElement
+
+  if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+    naturalImageAspectRatio.value
+      = `${image.naturalWidth} / ${image.naturalHeight}`
+  }
+}
+
 function onImageError() {
   isImageLoaded.value = false
   hasImageLoadError.value = true
@@ -382,6 +405,7 @@ watch(imageUrl, () => {
   isImageLoaded.value = false
   hasImageLoadError.value = false
   isImagePreviewOpen.value = false
+  naturalImageAspectRatio.value = null
 }, { flush: 'post' })
 </script>
 
