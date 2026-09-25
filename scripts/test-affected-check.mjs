@@ -538,8 +538,12 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
     },
     {
-      pattern: /^app\/components\/Pwa\/Refresher\.client\.vue$/,
-      tests: ['tests/unit/components/Pwa/Refresher.spec.ts'],
+      pattern:
+        /^(app\/components\/Pwa\/Refresher\.client\.vue|app\/composables\/pwa-auto-refresh\.ts)$/,
+      tests: [
+        'tests/unit/components/Pwa/Refresher.spec.ts',
+        'tests/unit/composables/pwa-auto-refresh.spec.ts',
+      ],
     },
     {
       pattern: modelsTriggerPattern,

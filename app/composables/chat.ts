@@ -828,6 +828,12 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
   const { isModelCapabilityResolved } = useChatInput()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
+  // App-wide signal for whether any chat turn is actively streaming, read by
+  // the PWA Refresher to avoid auto-applying a service-worker update (and
+  // reloading the page) mid-response. Scoped to 'submitted'/'streaming'
+  // rather than isLoading's broader definition, since those are the only
+  // statuses where a reload would actually cut off in-flight generation.
+  const isChatStreaming = useState<boolean>('chat-streaming', () => false)
   const input = customRef<string>((track, trigger) => ({
     get() {
       track()
@@ -1070,6 +1076,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
+  watch(sdkStatus, (status) => {
+    isChatStreaming.value = status === 'submitted' || status === 'streaming'
+  }, { immediate: true })
+
   const renderableMessages = computed<UIMessage[]>(() => {
     return getRenderableChatMessages(sdkMessages.value)
   })
@@ -1298,6 +1308,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     reasoningSegmentTracker.reset()
     disposeChatResearch()
     wakeLock.release()
+    isChatStreaming.value = false
   })
 
   useSetChatTitle(chat.title)

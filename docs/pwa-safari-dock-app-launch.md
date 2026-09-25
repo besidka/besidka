@@ -301,6 +301,58 @@ safe to drop preemptively.
 5. Repeat steps 1–4 across a real deploy boundary: the banner should appear
    at most once per actual deploy, and always clear in exactly one click.
 
+### 2026-09-25: dismiss-forever and stuck-on-old-JS follow-up
+
+`periodicSyncForUpdates` (5 min) means `$pwa.needRefresh` reliably flips true
+on an open tab well before the user notices, but the banner was the only
+path to actually applying that update, and dismissing it (a click anywhere
+in the alert body, per the `@click` on `UiAlert` in the original version of
+this component) hid it **permanently** for that session — the open tab then
+ran stale JS until the user thought to ⌘Q the whole app. Three changes to
+`app/components/Pwa/Refresher.client.vue` (plus a small pure-logic
+composable, `app/composables/pwa-auto-refresh.ts`) address this without
+touching `registerType: 'prompt'` or the SW lifecycle from Bug 3 above:
+
+1. **Explicit dismiss only.** The alert's `@click` now goes through
+   `handleDismiss` instead of setting `isVisible` directly, and still only
+   fires from `UiAlert`'s own built-in icon-only "Hide" (✕) button — the
+   same close affordance `NotificationPrompt.client.vue` uses. There is no
+   separate whole-body dismiss handler to remove; the fix is what
+   `handleDismiss` does next.
+2. **Deferred, not permanent, dismissal.** `handleDismiss` hides the banner
+   for `PWA_REFRESHER_DISMISS_INTERVAL_MS` (30 minutes), persisted to
+   `sessionStorage` (`pwa:refresher-dismissed-until`, read/written through
+   try/catch since storage can be unavailable) so a reload of the same tab
+   during that window keeps it hidden, then re-shows automatically via a
+   `setTimeout` if `$pwa.needRefresh` is still true. The user is never stuck
+   past 30 minutes without being asked again.
+3. **Auto-apply while genuinely idle.** On mount and on every
+   `visibilitychange`, `checkAutoApply()` applies the update itself — the
+   same `updateServiceWorker(true)` → `controllerchange` → reload path (and
+   4s fallback) the Refresh button uses — when ALL of: the tab is
+   `document.visibilityState === 'hidden'`, no chat turn is streaming, and
+   the chat composer has no unsent draft text. The streaming signal is a
+   new app-wide `useState<boolean>('chat-streaming')` set by
+   `useChat()` (`app/composables/chat.ts`) around its SDK `status` changes,
+   since the existing streaming state was local to whichever chat page
+   happened to be mounted; the draft signal reuses the `chat_input` key
+   already written to `usePreferenceStorage()` by both `useChat()` and
+   `app/pages/chats/new.vue`, which works from any route since it's a
+   storage read, not a live component reference. A `sessionStorage` guard
+   (`pwa:auto-refresh-applied-until`, 5-minute cooldown) bounds this to at
+   most one auto-apply attempt per pending update, so if `needRefresh` ever
+   fails to clear after a reload (e.g. the Studio SW-conflict case
+   documented in `app.vue`) a hidden tab can't reload itself in a loop.
+
+**`autoUpdate` is still rejected, deliberately.** All three changes above
+exist specifically so the update is applied automatically only when nothing
+is at risk — switching `registerType` to `'autoUpdate'` would instead let
+`vite-plugin-pwa` reload on its own schedule regardless of tab visibility or
+chat state, which would kill an in-flight response mid-stream or discard
+unsent input the moment a new deploy lands. The manual-banner
+architecture from Bug 3 stays; only the idle-detection layer on top of it is
+new.
+
 ## Deliberately not done: caching through the service worker
 
 Investigated and rejected. Re-litigate with new evidence, not by assuming it
