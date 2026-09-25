@@ -1,14 +1,28 @@
 import { describe, expect, it } from 'vitest'
+import type { GatewayModel } from '#shared/types/gateways.d'
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
 import {
+  countSelectableModels,
+  formatGatewayPriceDetail,
+  formatModelCount,
   formatModelTokenLimit,
+  formatRailCount,
   formatReleaseDate,
+  gatewayCapabilityFilterOptions,
+  gatewayModelCategoryOptions,
+  getGatewayProviderGroups,
   getModelCategory,
   getModelPriceTip,
   getPriceTierClass,
   hasImageGenerationCapability,
+  matchesGatewayCapabilityFilters,
   modelCategoryOptions,
+  sortGatewayModelsByProvider,
 } from '../../../app/utils/models-picker'
+
+function createGatewayModel(id: string, name: string): GatewayModel {
+  return { id, name }
+}
 
 function createModel(overrides: Partial<Model> = {}): Model {
   return {
@@ -28,6 +42,7 @@ function createModel(overrides: Partial<Model> = {}): Model {
       output: ['text'],
     },
     tools: ['web_search'],
+    toolCall: true,
     ...overrides,
   }
 }
@@ -236,5 +251,272 @@ describe('modelCategoryOptions', () => {
     for (const category of categories) {
       expect(optionValues).toContain(category)
     }
+  })
+})
+
+describe('gateway pricing', () => {
+  it('absorbs the float error the scale-up introduces', () => {
+    expect(Number('0.0000029') * 1_000_000).toBe(2.9000000000000004)
+    expect(formatGatewayPriceDetail({ input: '0.0000029', output: '0.0000029' }))
+      .toBe('$2.90 in / $2.90 out per 1M tokens')
+  })
+
+  it('keeps sub-dollar prices readable', () => {
+    expect(
+      formatGatewayPriceDetail({ input: '0.00000005', output: '0.0000002' }),
+    ).toBe('$0.050 in / $0.200 out per 1M tokens')
+  })
+
+  it('labels a zero-cost model as free', () => {
+    expect(formatGatewayPriceDetail({ input: '0', output: '0' })).toBe('Free')
+  })
+
+  it('spells out the unit in the detail form', () => {
+    expect(formatGatewayPriceDetail({ input: '0.0000025', output: '0.00001' }))
+      .toBe('$2.50 in / $10.00 out per 1M tokens')
+  })
+
+  it('returns nothing when pricing is missing or unparseable', () => {
+    expect(formatGatewayPriceDetail(undefined)).toBeUndefined()
+    expect(formatGatewayPriceDetail({ input: 'n/a', output: '0.001' }))
+      .toBeUndefined()
+  })
+})
+
+describe('gateway provider grouping', () => {
+  const catalog = [
+    createGatewayModel('openai/gpt-5.4', 'GPT-5.4'),
+    createGatewayModel('anthropic/claude-opus-5', 'Claude Opus 5'),
+    createGatewayModel('openai/gpt-5.4-mini', 'GPT-5.4 mini'),
+    createGatewayModel('zzz-labs/only-model', 'Only model'),
+    createGatewayModel('anthropic/claude-haiku-4.5', 'Claude Haiku 4.5'),
+    createGatewayModel('aaa-labs/only-model', 'Only model'),
+  ]
+
+  it('counts models per underlying provider, most stocked first', () => {
+    expect(getGatewayProviderGroups(catalog)).toEqual([
+      { prefix: 'anthropic', count: 2 },
+      { prefix: 'openai', count: 2 },
+      { prefix: 'aaa-labs', count: 1 },
+      { prefix: 'zzz-labs', count: 1 },
+    ])
+  })
+
+  it('treats an id without a separator as its own provider', () => {
+    const groups = getGatewayProviderGroups([
+      createGatewayModel('@cf/meta/llama-4', 'Llama 4'),
+      createGatewayModel('bare-model-id', 'Bare'),
+    ])
+
+    expect(groups).toEqual([
+      { prefix: 'bare-model-id', count: 1 },
+      { prefix: 'meta', count: 1 },
+    ])
+  })
+
+  it('groups a Cloudflare-style catalog by real vendor, not the shared '
+    + '@cf namespace segment', () => {
+    const groups = getGatewayProviderGroups([
+      createGatewayModel('@cf/meta/llama-4', 'Llama 4'),
+      createGatewayModel('@cf/meta/llama-3.1-8b', 'Llama 3.1 8B'),
+      createGatewayModel('@cf/google/gemma-3-12b-it', 'Gemma 3 12B'),
+      createGatewayModel('@cf/mistralai/mistral-small-3.1', 'Mistral Small'),
+    ])
+
+    expect(groups).toEqual([
+      { prefix: 'meta', count: 2 },
+      { prefix: 'google', count: 1 },
+      { prefix: 'mistralai', count: 1 },
+    ])
+  })
+
+  it('clusters models by provider, then by name inside a cluster', () => {
+    expect(sortGatewayModelsByProvider(catalog).map((model) => {
+      return model.id
+    })).toEqual([
+      'anthropic/claude-haiku-4.5',
+      'anthropic/claude-opus-5',
+      'openai/gpt-5.4',
+      'openai/gpt-5.4-mini',
+      'aaa-labs/only-model',
+      'zzz-labs/only-model',
+    ])
+  })
+
+  it('leaves the source catalog untouched', () => {
+    const source = [...catalog]
+
+    sortGatewayModelsByProvider(source)
+
+    expect(source.map((model) => {
+      return model.id
+    })).toEqual(catalog.map((model) => {
+      return model.id
+    }))
+  })
+
+  it('offers only the free category in gateway mode', () => {
+    expect(gatewayModelCategoryOptions.map((option) => {
+      return option.value
+    })).toEqual(['free'])
+    expect(gatewayModelCategoryOptions[0]?.icon).toBe('lucide:banknote-x')
+  })
+})
+
+describe('rail count badges', () => {
+  function createRailModel(id: string, status?: Model['status']): Model {
+    return { id, name: id, status } as Model
+  }
+
+  it('counts the models the picker will actually list', () => {
+    expect(countSelectableModels([
+      createRailModel('one'),
+      createRailModel('two', 'beta'),
+      createRailModel('three', 'deprecated'),
+    ])).toBe(2)
+  })
+
+  it('counts nothing for an empty catalog', () => {
+    expect(countSelectableModels([])).toBe(0)
+  })
+
+  it('prints a small count as-is', () => {
+    expect(formatRailCount(0)).toBe('0')
+    expect(formatRailCount(7)).toBe('7')
+    expect(formatRailCount(99)).toBe('99')
+  })
+
+  it('caps anything past two digits so the badge stays narrow', () => {
+    expect(formatRailCount(100)).toBe('99+')
+    expect(formatRailCount(412)).toBe('99+')
+  })
+
+  it('spells the count out with a matching unit', () => {
+    expect(formatModelCount(1)).toBe('1 model')
+    expect(formatModelCount(0)).toBe('0 models')
+    expect(formatModelCount(95)).toBe('95 models')
+  })
+})
+
+describe('gatewayCapabilityFilterOptions', () => {
+  it('offers reasoning, web search, image generation and tool calling '
+    + 'in that order', () => {
+    expect(gatewayCapabilityFilterOptions).toEqual([
+      { value: 'reasoning', label: 'Reasoning', icon: 'lucide:brain' },
+      { value: 'web-search', label: 'Web search', icon: 'lucide:globe' },
+      {
+        value: 'image-generation',
+        label: 'Image generation',
+        icon: 'lucide:image-plus',
+      },
+      {
+        value: 'tool-calling',
+        label: 'Tool calling',
+        icon: 'lucide:wrench',
+      },
+    ])
+  })
+})
+
+describe('matchesGatewayCapabilityFilters', () => {
+  function createCapabilityModel(
+    overrides: Partial<GatewayModel> = {},
+  ): GatewayModel {
+    return {
+      id: 'anthropic/claude-opus-5',
+      name: 'Claude Opus 5',
+      toolCall: false,
+      ...overrides,
+    }
+  }
+
+  it('matches everything when no filter is active', () => {
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), []))
+      .toBe(true)
+  })
+
+  it('passes the reasoning filter only for an explicit true', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsReasoning: true }),
+      ['reasoning'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsReasoning: false }),
+      ['reasoning'],
+    )).toBe(false)
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), [
+      'reasoning',
+    ])).toBe(false)
+  })
+
+  it('passes the web search filter for either resolution, not undefined', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsWebSearch: 'native' }),
+      ['web-search'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsWebSearch: 'universal' }),
+      ['web-search'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), [
+      'web-search',
+    ])).toBe(false)
+  })
+
+  it('passes the tool calling filter only for a strict true', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ toolCall: true }),
+      ['tool-calling'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ toolCall: false }),
+      ['tool-calling'],
+    )).toBe(false)
+  })
+
+  it('passes the image generation filter only for an explicit true', () => {
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsImageGeneration: true }),
+      ['image-generation'],
+    )).toBe(true)
+    expect(matchesGatewayCapabilityFilters(
+      createCapabilityModel({ supportsImageGeneration: false }),
+      ['image-generation'],
+    )).toBe(false)
+    expect(matchesGatewayCapabilityFilters(createCapabilityModel(), [
+      'image-generation',
+    ])).toBe(false)
+  })
+
+  it('ANDs every active filter together', () => {
+    const model = createCapabilityModel({
+      supportsReasoning: true,
+      toolCall: true,
+    })
+
+    expect(matchesGatewayCapabilityFilters(model, [
+      'reasoning',
+      'tool-calling',
+    ])).toBe(true)
+    expect(matchesGatewayCapabilityFilters(model, [
+      'reasoning',
+      'web-search',
+    ])).toBe(false)
+  })
+
+  it('ANDs the image generation filter with another filter', () => {
+    const model = createCapabilityModel({
+      supportsImageGeneration: true,
+      supportsReasoning: true,
+    })
+
+    expect(matchesGatewayCapabilityFilters(model, [
+      'image-generation',
+      'reasoning',
+    ])).toBe(true)
+    expect(matchesGatewayCapabilityFilters(model, [
+      'image-generation',
+      'tool-calling',
+    ])).toBe(false)
   })
 })

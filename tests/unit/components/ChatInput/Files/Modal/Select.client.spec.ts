@@ -103,4 +103,54 @@ describe('ChatInput/Files/Modal/Select', () => {
     expect(source.value).toBe('assistant')
     expect((generatedTab.element as HTMLInputElement).checked).toBe(true)
   })
+
+  it('hides the generated-by-AI tab when image input is unsupported', async () => {
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+        isImageInputSupported: false,
+      },
+      shallow: true,
+    })
+
+    expect(
+      wrapper.find('[data-testid="files-source-assistant"]').exists(),
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="files-source-all"]').exists(),
+    ).toBe(true)
+    expect(
+      wrapper.find('[data-testid="files-source-upload"]').exists(),
+    ).toBe(true)
+  })
+
+  it('falls back to all when handed an assistant initialSource without image support', async () => {
+    await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+        initialSource: 'assistant',
+        isImageInputSupported: false,
+      },
+      shallow: true,
+    })
+
+    expect(source.value).toBe('all')
+  })
+
+  it('falls back to all when image support drops while on the assistant tab', async () => {
+    const wrapper = await mountSuspended(Select, {
+      props: {
+        attachedIds: new Set<string>(),
+        initialSource: 'assistant',
+        isImageInputSupported: true,
+      },
+      shallow: true,
+    })
+
+    expect(source.value).toBe('assistant')
+
+    await wrapper.setProps({ isImageInputSupported: false })
+
+    expect(source.value).toBe('all')
+  })
 })

@@ -122,7 +122,7 @@ tool-result parts carry the same local tool name.
 'grounded-prompt' | 'search'`:
 
 - **Google, Gemini 3.x** → `'query'`, $14/1,000 deduplicated queries,
-  invoice-verified.
+  rate invoice-verified (paid-one SKU); free allowance not modelled.
 - **Google, Gemini ≤2.5** → `'grounded-prompt'`, $35/1,000 grounded
   requests, documentation-only. The generation split is a string match on
   `/^gemini-(\d+)/` against the model id — the AI SDK exposes no generation
@@ -171,22 +171,36 @@ from a rejected first attempt that hardcoded an unsourced `$0.014` and
 applied it uniformly to every Google model regardless of generation.
 
 The real values live in `wrangler.jsonc`, in two places kept in sync by
-hand: the top-level (preview) `vars` block and `env.production.vars`. Four
-keys today:
+hand: the top-level (preview) `vars` block and `env.production.vars`. Six
+keys today, all under the `NUXT_PUBLIC_` prefix:
 
 ```
-NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=14
-NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=35
-NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=10
-NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=10
+NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=14
+NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=35
+NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=10
+NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=10
+NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=5
+NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=7
 ```
 
 Public provider list pricing is a deliberate exception to "config values are
 secrets, keep them out of git": it isn't a credential, it's published on a
 web page, and having it in git with a dated source comment is strictly
 better for review than having it invisible in a Cloudflare dashboard. Only
-the Gemini 3.x rate is invoice-verified; the other three are
-documentation-only, and the comment above each block says so.
+the Gemini 3.x rate is invoice-verified (paid-one SKU; its free allowance
+is not modelled); the other five are documentation-only, and the comment
+above each block says so.
+
+These six keys live in `runtimeConfig.public` (not private
+`runtimeConfig`) — they are the single source of truth for search pricing.
+`server/api/v1/chats/[slug]/index.post.ts` reads them via
+`resolveSearchRates(useRuntimeConfig(event).public)` for cost accounting,
+and `app/components/Profile/Keys/SearchProvidersInfo.vue` reads the same
+`useRuntimeConfig().public` values to render the pricing table shown to
+users — no hardcoded display constants in the component, and no
+wrangler-parsing assertions in its test (`wrangler-search-rates.spec.ts`
+still parses `wrangler.jsonc` directly, to guarantee the preview and
+production `vars` blocks agree).
 
 Every cost function mirrors `buildMessageUsage()`'s existing contract: an
 unknown cost is `undefined`, never `0`.
@@ -220,9 +234,9 @@ which isn't guaranteed.
   `webSearchBillingUnit` for all three providers, plus the four
   Google-specific keys (`googleSearchQueries`, `googleSearchGroundedSteps`,
   `googleSearchBillingUnit`, `googleSearchCost`) kept byte-identical to
-  PR #385 for dashboard continuity. No `webSearchProvider` key was added —
-  the same wide event already carries a flat `providerId`/`modelId`, so
-  filtering the generic keys by provider needs no new field.
+  PR #385 for dashboard continuity. **Superseded:** a `webSearchProvider`
+  key was added later, once Brave/Exa made "which provider ran the search"
+  different from `providerId` — see "Dashboard queries" below.
 
 The `attributes` nesting isn't stylistic. Per `docs/axiom-map-fields.md`,
 `besidka-prod` is at Axiom's 256-field-per-dataset cap, and any new flat
@@ -291,6 +305,128 @@ chat models do too, with a handful of exceptions (`gpt-5-nano`,
 providers' search spend is accounted for** — before it, only Google's third
 of the picker was.
 
+## Dashboard queries
+
+### The problem
+
+The owner's existing Axiom widgets group by `providerId` — the model's own
+direct provider (google/anthropic/openai/xai). That conflates the model's
+provider with which search tool actually ran: a Brave or Exa search fired
+on a Google model still gets bucketed under `google`, so an external BYOK
+search never shows up as its own series. The field that actually
+distinguishes them, `attributes.ai.webSearchProvider` (set at
+`server/api/v1/chats/[slug]/index.post.ts:1134`, typed as `SearchProvider`
+in `shared/types/message-usage.d.ts:8-9` — `'google' | 'anthropic' |
+'openai' | 'xai' | 'brave' | 'exa'`), already carries this distinction. The
+widgets just don't group by it yet.
+
+### The fix
+
+Both widgets change their `by` clause from `provider = ['providerId']` to
+`searchProvider = tostring(attributes['ai']['webSearchProvider'])`.
+
+**Web search queries per provider:**
+
+```
+['besidka-prod']
+| where operation == 'ai-stream'
+| where isnotnull(attributes['ai']['webSearchUnits'])
+| summarize searchUnits = sum(toint(attributes['ai']['webSearchUnits']))
+  by bin(_time, 30d),
+     searchProvider = tostring(attributes['ai']['webSearchProvider'])
+```
+
+**Web search cost per provider:**
+
+```
+['besidka-prod']
+| where operation == 'ai-stream'
+| where isnotnull(attributes['ai']['webSearchCost'])
+| summarize searchCostUsd = sum(todouble(attributes['ai']['webSearchCost']))
+  by bin(_time, 30d),
+     searchProvider = tostring(attributes['ai']['webSearchProvider'])
+```
+
+The cost widget sums with `todouble`, not `toint` — `webSearchCost` is a
+dollar figure and routinely well under 1.
+
+**Optional: native vs. gateway split.** Not required — the owner called
+this "nice to have," not needed. Add an `extend` before the `summarize`
+and a second `by` dimension:
+
+```
+| extend route = iff(isnotnull(attributes['chat']['gateway']),
+    strcat('via ', tostring(attributes['chat']['gateway'])), 'native')
+| summarize searchUnits = sum(toint(attributes['ai']['webSearchUnits']))
+  by bin(_time, 30d),
+     searchProvider = tostring(attributes['ai']['webSearchProvider']),
+     route
+```
+
+`attributes.chat.gateway` (`server/api/v1/chats/[slug]/index.post.ts:549-559`)
+is set to `'vercel' | 'openrouter' | 'cloudflare'` only when the send is
+gateway-routed; it's absent entirely for a direct-provider send, which is
+exactly what `isnotnull` is testing for.
+
+### Caveats
+
+- **Unverified live.** Nobody has confirmed `webSearchProvider` is actually
+  populated for a real Brave or Exa row in `besidka-prod` (or the preview
+  dataset) yet. Run a one-off, read-only check before trusting either
+  widget:
+  ```
+  ['besidka-prod']
+  | where attributes['ai']['webSearchProvider'] in ('brave', 'exa')
+  | take 5
+  ```
+  The field was added on `feat/add-more-providers`
+  (`da88f71 feat(chat): wire Brave/Exa tools into the send path, cost,
+  telemetry`), which is not yet on `main`. Until that branch deploys,
+  `besidka-prod` has zero rows carrying this field, so the check above
+  returning nothing is expected pre-deploy, not evidence of a bug.
+- **No map-field re-declaration needed.** Per `docs/axiom-map-fields.md`,
+  the declaration lives on `attributes` itself, at any depth: "anything
+  nested under it, at any depth, is exempt from the field-count check, no
+  matter how many different sub-keys different call sites add over time."
+  `webSearchProvider` is a new key under the already-declared `attributes`
+  map, not a new top-level field, so `scripts/axiom-declare-map-field.mjs`
+  does not need to run again for it.
+- **Rows predating this field.** A message persisted before
+  `webSearchProvider` existed has no value for it —
+  `tostring(attributes['ai']['webSearchProvider'])` on a missing key
+  resolves to an empty string, so historical rows appear as an unlabeled
+  `""` series rather than disappearing. If continuity with old data
+  matters more than a clean split, replace the bare `tostring(...)` with
+  `coalesce(tostring(attributes['ai']['webSearchProvider']),
+  tostring(['providerId']))` in both widgets.
+- **This lives in Axiom, not this repo.** The dashboard is a separate,
+  ungitted Axiom project (its own widget-editor UI) — this section is the
+  reference the owner pastes the APL from, not something this codebase
+  deploys.
+- **Gateway-native search stays invisible here, by design.** OpenRouter's
+  `web` plugin and Vercel's bundled search tools (`perplexitySearch()` and
+  similar) never populate `webSearchUnits`/`webSearchProvider` at all:
+  `resolveUnbundledSearchUsage`
+  (`server/api/v1/chats/[slug]/index.post.ts:1552-1571`) returns
+  `undefined` whenever a gateway is in play without a BYOK external-search
+  provider, because that search's cost already lives inside the gateway's
+  blended `totalCost` — see "Double counting, once an external backend
+  exists" below. That's correct for cost (nothing is double-billed), but
+  it means a `webSearchUnits`-based widget will never show
+  OpenRouter- or Vercel-native search volume, even after this fix.
+- **`xai` is a defined `SearchProvider` value that never populates today.**
+  xAI wires a native `web_search` tool
+  (`server/utils/providers/xai.ts:87-103`), but `resolveSearchUsage`'s
+  fallback branch only tags `provider` for `anthropic`/`openai`
+  (`server/utils/ai/search-usage.ts:139-142`), and `getWebSearchUsage`
+  itself gates on those same two providers
+  (`server/utils/ai/web-search-cost.ts:49`) — so an xAI search-enabled
+  turn returns `undefined` from `resolveSearchUsage` before
+  `webSearchProvider` is ever set. An `xai` series appearing in either
+  widget would mean that gate changed, not that xAI search is being
+  counted today. Pre-existing gap in the counting code, unrelated to this
+  query fix.
+
 ## Gray zones
 
 ### Billing-unit heterogeneity, and whether bespoke logic scales
@@ -336,21 +472,45 @@ The consequence for any future native-vs-external routing design: **each
 search-enabled turn carries a cost floor of one unit, not zero** — the
 toggle is the spend decision, not the model.
 
-### Free quota is not knowable from documentation
+### The free quota exists; PR #385 verified the rate, not its absence
 
-Google publishes a free grounding quota. The invoice that triggered PR #385
-shows it did not apply, apparently because the project has a paid billing
-account attached. That was discovered empirically, from a real bill, and
-nothing on the pricing page said so.
+An independent investigation (2026-09-25) corrected the earlier claim
+here — that the free grounding quota "did not apply" because the
+billing account was paid. Google's Gemini API pricing documents a free
+allowance that exists only on the paid tier: 5,000 search queries/month
+for Gemini 3.x (shared across the 3.x family), and 1,500 grounded
+prompts/day for Gemini 2.5 on the paid tier (Flash/Flash-Lite also get
+500/day on the free tier). Archived pricing pages from Dec 2025 through
+Sep 2026 show it was never removed — only the counting-unit wording
+changed, from "prompts" to "search requests/queries".
 
-Generalising: **a provider's documented rate can't be trusted until it's
-been reconciled against one real invoice for this app's actual usage
-pattern.** That doesn't scale cleanly — it needs a paid account per
-provider, real traffic, and a billing-export read, per provider, per rate
-change. The practical policy already in the repo is to mark in the config
-comment which rates are invoice-verified and which are documentation-only
-(only Gemini 3.x is verified; the other four rates shipped in this
-extension are not). Extend that comment discipline to every new rate.
+The Gemini API SKU catalog (service `AEFD-7695-64FA`) has a free/paid
+pair per family: `Generate content search query gemini 3 free`
+(`7166-DCCD-7D46`, $0) vs. `... gemini 3 paid one` (`E662-8171-51CB`,
+flat $14/1,000); for 2.5, `FAF4-1886-D9DB` (free) vs. `1590-B4E9-A799`
+(paid one, $35). The PR #385 invoice line was the **paid-one** SKU — it
+verified the $14 rate, not the absence of a free pool. 521 charged
+queries is compatible with an exhausted allowance: Gemini 3.x models
+fan out several queries per prompt, and the pool may be shared with
+other projects on the same billing account. Google staff have also
+confirmed an April 2026 grounding billing misconfiguration that
+over-billed searches (since refunded) — another reason one invoice
+can't stand in for documented pricing.
+
+Only the billing export settles a given month: group Gemini API usage
+by SKU; any free-SKU rows before the first paid-one row mean the pool
+wasn't yet exhausted that month.
+
+**Policy is unchanged** by this correction: cost estimates are list
+price × units, computed before any free allowance, because the app has
+no way to see a user's remaining pool. Unit counts are always recorded
+regardless, so a human can reconcile against their own invoice.
+
+**Known gap:** query dedup (`getGoogleSearchGrounding`) spans all steps
+of a multi-step turn, while Google counts unique queries per
+`generateContent` call — i.e. per step. A query repeated in a later
+step is billed by Google but counted once here. Not fixed in this
+pass — follow-up.
 
 ### Pricing drift
 
@@ -446,6 +606,26 @@ relevant, asserting the response still carries `groundingMetadata` /
 `server_tool_use` / `web_search_call` — docs-reading isn't verification
 here.
 
+**Partially resolved since the above was written, for an unrelated reason:**
+a real empirical spike run ahead of the gateway-restoration work (not this
+Brave/Exa effort) made exactly that live call — see
+`docs/gateway-restoration-and-search-providers-plan.md` § R12 for the full
+evidence trail. **Vercel AI Gateway: confirmed PASS.**
+`openai.tools.webSearch({})` and `google.tools.googleSearch({})` routed
+through `gateway(...)` both genuinely invoked the search tool (real
+`tool-call`/`tool-result` steps, real source URLs, live results) and were
+billed a separate `billableWebSearchCalls`/`cost` line distinct from
+inference cost — proof the tool executed, not an inference from
+architecture. **Cloudflare AI Gateway: still inconclusive, blocked on the
+owner's account state, not a demonstrated stripping bug.** The request
+reached the correct gateway endpoint with `tools:[{type:'web_search'}]`
+intact, but every gateway on the tested account rejected it before a 200
+(no funded wholesale credits, or no BYOK OpenAI key configured on the
+gateway) — an owner action item, not an engineering finding. Treat
+Cloudflare as unresolved until an owner funds credits or adds a key and the
+saved `test2-cloudflare-gateway-openai-search.mjs` script is re-run to a
+real 200.
+
 Separately, and more interesting than the passthrough question: Vercel AI
 Gateway ships its **own** model-agnostic search tools usable with any model
 regardless of native support — Perplexity $5/1,000, Exa $7/1,000, Tako
@@ -469,7 +649,14 @@ adopts a Gateway for other reasons first.
 
 ## Sketch: external search backends
 
-**This is a shape, not a plan. Nothing below is decided or scheduled.**
+**Implemented.** Epic 0 and Epic 1 of
+`docs/gateway-restoration-and-search-providers-plan.md` built Brave and Exa
+web search substantially as sketched below: BYOK function tools, Brave
+first, tool keys distinct from `web_search_preview`
+(`web_search_brave`/`web_search_exa`), a separate key-storage surface rather
+than a widened `keys` enum, and capability-first routing. What follows is
+kept for its reasoning trail, not as a live proposal — see the plan doc for
+what actually shipped.
 
 ### Candidates
 
@@ -573,6 +760,11 @@ This document doesn't propose building anything. Specifically out of scope:
   landed have no `searchUnits` and can't gain one.
 
 ## If we build this next
+
+**Superseded — this happened.** The ordered list below records the
+decisions actually made during Epic 0/1 of
+`docs/gateway-restoration-and-search-providers-plan.md`, not a
+forward-looking plan; see that document for the execution detail.
 
 Ordered decisions, each blocking the next, before any code:
 

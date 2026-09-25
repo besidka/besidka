@@ -4,6 +4,7 @@ import type { VueWrapper } from '@vue/test-utils'
 import type { Model } from '#shared/types/providers.d'
 import ModelDetail
   from '../../../../../app/components/ChatInput/ModelsTrigger/ModelDetail.vue'
+import { providers } from '../../../../../providers'
 
 function createModel(overrides: Partial<Model> = {}): Model {
   return {
@@ -24,19 +25,28 @@ function createModel(overrides: Partial<Model> = {}): Model {
       output: ['text'],
     },
     tools: [],
+    toolCall: true,
     ...overrides,
   }
 }
 
 function mountDetail(
   model: Model = createModel(),
-  props: Partial<{ providerName: string }> = {},
+  props: Partial<{ providerName: string, isKeyMissing: boolean }> = {},
 ) {
   return mountSuspended(ModelDetail, {
     props: {
       model,
       providerName: 'OpenAI',
       ...props,
+    },
+    global: {
+      stubs: {
+        NuxtLink: {
+          props: ['to'],
+          template: '<a :href="to"><slot /></a>',
+        },
+      },
     },
   })
 }
@@ -186,12 +196,130 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       'Reasoning',
       'Web search',
       'Image generation',
+      'Vision',
       'Deep research',
+      'Tool calling',
     ])
   })
 
+  it('renders an always-on reasoning badge for a model with '
+    + 'reasoningAlwaysOn but no reasoning capability', async () => {
+    const model = createModel({ reasoningAlwaysOn: true })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
+
+    expect(badges).toEqual(['Always-on reasoning', 'Vision', 'Tool calling'])
+  })
+
+  it('lists vision as a separate badge from image generation', async () => {
+    const model = createModel({
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
+
+    expect(badges).toEqual(['Vision', 'Tool calling'])
+  })
+
+  it('renders a Tool calling badge with the wrench icon', async () => {
+    const model = createModel({
+      modalities: { input: ['text'], output: ['text'] },
+      toolCall: true,
+    })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+    const toolCall = badges.find((badge) => {
+      return badge.text() === 'Tool calling'
+    })
+
+    expect(toolCall).toBeDefined()
+    expect(toolCall?.findComponent({ name: 'NuxtIcon' }).props('name'))
+      .toBe('lucide:wrench')
+    expect(toolCall?.classes())
+      .toContain('[--badge-color:var(--color-slate-700)]')
+  })
+
+  it('omits the Tool calling badge for a model without toolCall', async () => {
+    const model = createModel({
+      modalities: { input: ['text'], output: ['text'] },
+      toolCall: false,
+    })
+    const wrapper = await mountDetail(model)
+
+    expect(
+      wrapper.find('[data-testid="model-detail-capabilities"]').exists(),
+    ).toBe(false)
+  })
+
+  it('gives only the Vision badge a tooltip explaining the capability', async () => {
+    const model = createModel({
+      tools: ['web_search'],
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    })
+    const wrapper = await mountDetail(model)
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+    const vision = badges.find((badge) => {
+      return badge.text() === 'Vision'
+    })
+    const webSearch = badges.find((badge) => {
+      return badge.text() === 'Web search'
+    })
+
+    expect(vision?.classes()).toContain('tooltip')
+    expect(vision?.classes()).toContain('tooltip-soft')
+    expect(vision?.classes()).toContain('tooltip-bottom')
+    expect(vision?.classes()).toContain('badge-accent')
+    expect(vision?.classes()).not.toContain('badge-secondary')
+    expect(vision?.attributes('data-tip')).toBe('Can see images')
+
+    expect(webSearch?.classes()).not.toContain('tooltip')
+    expect(webSearch?.attributes('data-tip')).toBeUndefined()
+  })
+
+  it('renders the Vision badge for the real gpt-4.1 catalog model, tied '
+    + 'to the same Input row', async () => {
+    const openai = providers.find((provider) => {
+      return provider.id === 'openai'
+    })
+    const model = openai?.models.find((candidate) => {
+      return candidate.id === 'gpt-4.1'
+    })
+
+    expect(model).toBeDefined()
+
+    const wrapper = await mountDetail(model as Model, {
+      providerName: 'OpenAI',
+    })
+    const badges = wrapper
+      .get('[data-testid="model-detail-capabilities"]')
+      .findAll('.badge-soft')
+      .map((badge) => {
+        return badge.text()
+      })
+
+    expect(badges).toContain('Vision')
+    expect(readSpecs(wrapper).Input).toContain('image')
+  })
+
   it('renders no capability badges for a plain model', async () => {
-    const wrapper = await mountDetail()
+    const wrapper = await mountDetail(createModel({
+      modalities: { input: ['text'], output: ['text'] },
+      toolCall: false,
+    }))
 
     expect(wrapper.find('[data-testid="model-detail-capabilities"]').exists())
       .toBe(false)
@@ -311,5 +439,27 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
       .trigger('click')
 
     expect(wrapper.emitted('close')).toEqual([[]])
+  })
+
+  describe('missing provider key', () => {
+    it('names the provider and links to the keys page', async () => {
+      const wrapper = await mountDetail(createModel(), {
+        isKeyMissing: true,
+        providerName: 'Moonshot AI',
+      })
+      const notice = wrapper.get('[data-testid="model-detail-key-notice"]')
+
+      expect(notice.text()).toContain('Moonshot AI models need your own API key')
+      expect(
+        notice.get('[data-testid="model-detail-key-link"]').attributes('href'),
+      ).toBe('/profile/keys')
+    })
+
+    it('shows no notice when the key is present', async () => {
+      const wrapper = await mountDetail()
+
+      expect(wrapper.find('[data-testid="model-detail-key-notice"]').exists())
+        .toBe(false)
+    })
   })
 })

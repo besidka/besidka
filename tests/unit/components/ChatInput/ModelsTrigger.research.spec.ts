@@ -79,6 +79,21 @@ describe('ChatInput/ModelsTrigger', () => {
     expect(findModelButton(wrapper, 'o4-mini Deep Research')).toBeTruthy()
   })
 
+  it('narrows the list to vision-capable models through the filter dropdown', async () => {
+    const wrapper = await openPicker()
+
+    expect(findModelButton(wrapper, 'GPT-5.4')).toBeTruthy()
+    expect(findModelButton(wrapper, 'Qwen3 Max')).toBeTruthy()
+
+    await wrapper.get('[data-testid="models-picker-filter-trigger"]')
+      .trigger('click')
+    await wrapper.get('[data-testid="models-picker-filter-vision"]')
+      .trigger('click')
+
+    expect(findModelButton(wrapper, 'GPT-5.4')).toBeTruthy()
+    expect(findModelButton(wrapper, 'Qwen3 Max')).toBeUndefined()
+  })
+
   it('narrows the list to a single provider through the rail', async () => {
     const wrapper = await openPicker()
 

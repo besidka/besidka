@@ -1,10 +1,12 @@
 import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type { SupportedProviderId } from '#shared/types/providers.d'
 
 export const chatTestScenarios = [
   'short',
   'long',
   'reasoning',
   'image',
+  'gateway-image',
 ] as const
 
 export type ChatTestScenario = (typeof chatTestScenarios)[number]
@@ -34,7 +36,7 @@ export interface ChatTestErrorConfig {
   message: string
   why?: string
   fix?: string
-  providerId?: 'openai' | 'google' | 'anthropic'
+  providerId?: SupportedProviderId
   providerRequestId?: string
 }
 

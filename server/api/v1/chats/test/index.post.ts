@@ -34,6 +34,11 @@ const IMAGE_GENERATING_TO_SAVING_DELAY: number = 1500
 const IMAGE_SAVING_TO_READY_DELAY: number = 800
 const IMAGE_TEST_STORAGE_KEY: string = 'test-generated-image.webp'
 
+const GATEWAY_IMAGE_TEXT_TO_FILE_DELAY: number = 1500
+const GATEWAY_IMAGE_TEST_DATA_URL: string
+  = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
+    + 'AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+
 const SHORT_TEXT: string
   = 'This is a short response from the AI. '
     + 'It contains just a couple of sentences '
@@ -204,6 +209,23 @@ function buildImageGenerationChunks(
   return chunks
 }
 
+function buildGatewayImageGenerationChunks(): TimedChunk[] {
+  return [
+    ...buildTextChunks(
+      'Here is a scottish fold cat sitting by a fireplace.',
+      'test-gateway-image-text-0',
+    ),
+    {
+      chunk: {
+        type: 'file',
+        url: GATEWAY_IMAGE_TEST_DATA_URL,
+        mediaType: 'image/png',
+      },
+      delay: GATEWAY_IMAGE_TEXT_TO_FILE_DELAY,
+    },
+  ]
+}
+
 function getChunksForScenario(
   scenario: Scenario,
   effort: ReasoningLevel,
@@ -262,6 +284,8 @@ function getChunksForScenario(
       return buildImageGenerationChunks({
         withReasoningFirst: imageReasoningFirst,
       })
+    case 'gateway-image':
+      return buildGatewayImageGenerationChunks()
     default:
       return buildTextChunks(SHORT_TEXT, 'test-text-0')
   }
@@ -312,6 +336,11 @@ export default defineEventHandler(async (event) => {
       .enum(['true', 'false'])
       .default('false')
       .transform(value => value === 'true'),
+    initialDelay: z
+      .string()
+      .regex(/^\d+$/)
+      .default(String(INITIAL_DELAY))
+      .transform(Number),
   }).safeParse)
 
   if (query.error) {
@@ -352,7 +381,7 @@ export default defineEventHandler(async (event) => {
     execute({ writer }) {
       const readable = new ReadableStream<UIMessageChunk>({
         async start(controller) {
-          await delay(INITIAL_DELAY)
+          await delay(query.data.initialDelay)
           let previousType: string = ''
 
           for (const { chunk, delay: explicitDelay } of timedChunks) {

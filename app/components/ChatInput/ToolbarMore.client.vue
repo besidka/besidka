@@ -16,31 +16,7 @@
     <div class="dropdown-content z-50 w-56 pb-2">
       <div class="bg-base-100 rounded-box w-full shadow-sm">
         <ul class="menu menu-xs w-full">
-          <template
-            v-if="isReasoningSupported
-              && reasoningMode === 'toggle'
-              && !isDeepResearchModel
-            "
-          >
-            <li>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <SvgoThinkMedium class="size-4 text-current" />
-                <span class="grow">Reasoning</span>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-xs toggle-accent"
-                  :checked="isReasoningActive"
-                  @change="emit('toggle-reasoning')"
-                >
-              </label>
-            </li>
-          </template>
-          <template
-            v-if="isReasoningSupported
-              && reasoningMode === 'levels'
-              && !isDeepResearchModel
-            "
-          >
+          <template v-if="hasReasoningSection && !isDeepResearchModel">
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
               :levels="levels ?? []"
@@ -58,7 +34,15 @@
               </span>
             </div>
           </li>
-          <li v-if="hasReasoningSection">
+          <template v-if="hasWebSearchSection">
+            <ChatInputWebSearchMenuItems
+              :selected="selectedWebSearchProvider ?? 'off'"
+              :options="webSearchOptions ?? []"
+              :is-tool-calling-supported="!!isToolCallingSupported"
+              @select-provider="emit('select-web-search-provider', $event)"
+            />
+          </template>
+          <li v-if="hasReasoningSection || hasWebSearchSection">
             <label class="menu-title text-xs">
               <span class="divider my-0"/>
             </label>
@@ -122,18 +106,6 @@
               >
             </label>
           </li>
-          <li v-if="isWebSearchSupported && !isDeepResearchModel">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <Icon name="lucide:globe" size="16" />
-              <span class="grow">Web search</span>
-              <input
-                type="checkbox"
-                class="toggle toggle-xs toggle-accent"
-                :checked="isWebSearchEnabled"
-                @change="emit('toggle-web-search')"
-              >
-            </label>
-          </li>
         </ul>
       </div>
     </div>
@@ -146,16 +118,22 @@ import type {
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 import type { ModelResearchConfig } from '#shared/types/research.d'
+import type {
+  WebSearchOption,
+  WebSearchSelection,
+} from '~/types/web-search'
 
 const props = defineProps<{
   isWebSearchSupported?: boolean
   isWebSearchEnabled?: boolean
+  isToolCallingSupported?: boolean
+  webSearchOptions?: WebSearchOption[]
+  selectedWebSearchProvider?: WebSearchSelection
   isImageGenerationSupported?: boolean
   isImageGenerationEnabled?: boolean
   isImageGenerationRequired?: boolean
   isReasoningSupported?: boolean
   isReasoningActive?: boolean
-  reasoningMode?: 'none' | 'toggle' | 'levels'
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
   isDeepResearchModel?: boolean
@@ -169,14 +147,13 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'toggle-web-search': []
+  'select-web-search-provider': [value: WebSearchSelection]
   'toggle-image-generation': []
   'open-project-picker': []
   'clear-project-context': []
   'open-files-select': []
   'open-files-upload': []
   'select-reasoning-level': [level: ReasoningLevel]
-  'toggle-reasoning': []
 }>()
 
 const { isIos, isAndroid } = useDevice()
@@ -199,10 +176,18 @@ const hasReasoningSection = computed<boolean>(() => {
   return !!(
     (props.isReasoningSupported
       && !props.isDeepResearchModel
-      && (props.reasoningMode === 'toggle'
-        || props.reasoningMode === 'levels')
-    )
+      && !props.isImageGenerationEnabled
+      && !props.isImageGenerationRequired)
     || (props.isDeepResearchModel && props.research)
+  )
+})
+
+const hasWebSearchSection = computed<boolean>(() => {
+  return !!(
+    (props.isWebSearchSupported || props.isToolCallingSupported)
+    && !props.isDeepResearchModel
+    && !props.isImageGenerationEnabled
+    && !props.isImageGenerationRequired
   )
 })
 

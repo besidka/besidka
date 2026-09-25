@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import {
   computed,
@@ -25,6 +25,12 @@ const LazyImagePreview = defineAsyncComponent(() => {
   return Promise.resolve(ImagePreview)
 })
 
+const mocks = vi.hoisted(() => ({
+  useImageInputSupport: vi.fn(),
+}))
+
+mockNuxtImport('useImageInputSupport', () => mocks.useImageInputSupport)
+
 describe('Chat/GeneratedImage', () => {
   beforeEach(() => {
     vi.spyOn(HTMLDialogElement.prototype, 'showModal')
@@ -37,6 +43,9 @@ describe('Chat/GeneratedImage', () => {
         this.dispatchEvent(new Event('close'))
       })
     useState<number>('image-preview-guard-count', () => 0).value = 0
+    mocks.useImageInputSupport.mockReturnValue({
+      isImageInputSupported: shallowRef(true),
+    })
   })
 
   afterEach(() => {
@@ -334,6 +343,43 @@ describe('Chat/GeneratedImage', () => {
     })
   })
 
+  it('hides the attach shortcut when image input is unsupported', async () => {
+    mocks.useImageInputSupport.mockReturnValue({
+      isImageInputSupported: shallowRef(false),
+    })
+
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: {
+            status: 'ready',
+            provider: 'openai',
+            model: 'gpt-image-2',
+            file: {
+              id: 'file-1',
+              storageKey: 'generated.webp',
+              name: 'sunset.webp',
+              size: 2048,
+              type: 'image/webp',
+              source: 'assistant',
+              url: '/files/generated.webp',
+              downloadUrl: '/files/generated.webp?download=1',
+            },
+          },
+        } as any,
+      },
+    })
+
+    expect(wrapper.find('[data-testid="generated-image-attach"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="generated-image-open"]').exists())
+      .toBe(true)
+    expect(wrapper.find('a').exists()).toBe(true)
+  })
+
   it('renders fixed actionable text for a structured failure', async () => {
     const wrapper = await mountSuspended(GeneratedImage, {
       props: {
@@ -448,6 +494,206 @@ describe('Chat/GeneratedImage', () => {
       .toBe(false)
     expect(wrapper.find('a').exists()).toBe(false)
   })
+
+  it('renders a live gateway data: URL image directly, with no fetch and '
+    + 'no "Unavailable" tile', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: undefined,
+          url: 'data:image/png;base64,AAAA',
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const image = wrapper.get('.generated-image')
+
+    expect(wrapper.find('[data-testid="generated-image-error"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-testid="chat-file-unavailable"]').exists())
+      .toBe(false)
+    expect(image.attributes('src')).toBe('data:image/png;base64,AAAA')
+    expect(wrapper.get('a').attributes('download')).toBe(
+      'generated-image.png',
+    )
+  })
+
+  it('falls back to a square card, then derives the real aspect ratio '
+    + 'from the loaded image, for a gateway file part with no known ratio',
+  async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: undefined,
+          url: 'data:image/png;base64,AAAA',
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const preview = wrapper.get(
+      '[data-testid="generated-image-preview-trigger"]',
+    )
+
+    expect(preview.attributes('style')).toContain('aspect-ratio: 1 / 1')
+
+    const image = wrapper.get('img')
+
+    Object.defineProperty(image.element, 'naturalWidth', {
+      value: 1600,
+      configurable: true,
+    })
+    Object.defineProperty(image.element, 'naturalHeight', {
+      value: 900,
+      configurable: true,
+    })
+    await image.trigger('load')
+
+    expect(preview.attributes('style')).toContain('aspect-ratio: 1600 / 900')
+  })
+
+  it('keeps the curated tool aspect ratio even after the image loads',
+    async () => {
+      const wrapper = await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'assistant',
+          part: {
+            type: 'tool-generate_image',
+            state: 'output-available',
+            input: { aspectRatio: '2:3' },
+            output: {
+              status: 'ready',
+              provider: 'google',
+              model: 'gemini-3.1-flash-image',
+              file: {
+                id: 'file-1',
+                storageKey: 'generated.webp',
+                name: 'generated.webp',
+                size: 1024,
+                type: 'image/webp',
+                source: 'assistant',
+                url: '/files/generated.webp',
+                downloadUrl: '/files/generated.webp?download=1',
+              },
+            },
+          } as any,
+        },
+        global: {
+          stubs: {
+            LazyChatImagePreview: LazyImagePreview,
+            teleport: true,
+          },
+        },
+      })
+
+      const preview = wrapper.get(
+        '[data-testid="generated-image-preview-trigger"]',
+      )
+      const image = wrapper.get('img')
+
+      Object.defineProperty(image.element, 'naturalWidth', {
+        value: 1600,
+        configurable: true,
+      })
+      Object.defineProperty(image.element, 'naturalHeight', {
+        value: 900,
+        configurable: true,
+      })
+      await image.trigger('load')
+
+      expect(preview.attributes('style')).toContain('aspect-ratio: 2 / 3')
+    })
+
+  it('renders a persisted gateway file part through getSafeFileLinks, '
+    + 'preserving the shared-chat token query', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'gateway.webp',
+          url: '/files/gateway.webp?token=abc.def.ghi&generated=1',
+        } as any,
+      },
+      global: {
+        stubs: {
+          LazyChatImagePreview: LazyImagePreview,
+          teleport: true,
+        },
+      },
+    })
+
+    const image = wrapper.get('.generated-image')
+
+    expect(image.attributes('src')).toBe(
+      '/files/gateway.webp?token=abc.def.ghi&generated=1',
+    )
+    expect(wrapper.get('[data-testid="generated-image-download"]')
+      .attributes('href')).toBe(
+      '/files/gateway.webp?token=abc.def.ghi&generated=1&download=1',
+    )
+    expect(wrapper.find('[data-testid="generated-image-attach"]').exists())
+      .toBe(false)
+  })
+
+  it('shows the same failure card as a tool-based failure for an unsafe '
+    + 'gateway file URL, instead of a broken tile', async () => {
+    const wrapper = await mountSuspended(GeneratedImage, {
+      props: {
+        messageRole: 'assistant',
+        part: {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'forged.png',
+          url: 'javascript:alert(1)',
+        } as any,
+      },
+    })
+
+    const alert = wrapper.get('[data-testid="generated-image-error"]')
+
+    expect(alert.text()).toContain(
+      'The image provider could not generate this image.',
+    )
+    expect(wrapper.find('a').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
+  })
+
+  it('does not treat a user-message image file part as generated output',
+    async () => {
+      const wrapper = await mountSuspended(GeneratedImage, {
+        props: {
+          messageRole: 'user',
+          part: {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'attachment.png',
+            url: '/files/attachment.png',
+          } as any,
+        },
+      })
+
+      expect(wrapper.find('[data-testid="generated-image"]').exists())
+        .toBe(false)
+    })
 
   it('does not render links or a ready card for malformed output', async () => {
     const wrapper = await mountSuspended(GeneratedImage, {

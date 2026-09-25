@@ -35,7 +35,12 @@
         ref="messagesDomRefs"
         :data-role="m.role"
         :data-message-id="m.id"
-        :data-hide-content="shouldDisplayMessage(m.id) ? undefined : true"
+        :data-hide-content="shouldDisplayMessage(m.id)
+          || (isLastAssistantMessage(messageIndex)
+            && shouldRenderPendingImageGenerationInline)
+          ? undefined
+          : true
+        "
         class="
           relative
           [&[data-hide-content=true]]:hidden
@@ -51,7 +56,10 @@
           :is-selected="selectedMessageId === m.id"
           :any-selected="selectedMessageId !== null"
           :class="{
-            'chat-message--fit-content': shouldFitMessageContent(m),
+            'chat-message--fit-content': shouldFitMessageContent(m)
+              || (isLastAssistantMessage(messageIndex)
+                && shouldRenderPendingImageGenerationInline
+                && !shouldDisplayMessage(m.id)),
           }"
           @select="onMessageSelect"
         >
@@ -65,18 +73,28 @@
             :reasoning-level="getMessageReasoning(m, messageIndex)"
             :status="chatSdk.status"
             :turn-started-at="currentTurnStartedAt"
+            :reasoning-accumulated-ms="currentTurnReasoningAccumulatedMs"
+            :reasoning-segment-started-at="currentReasoningSegmentStartedAt"
+            :is-turn-thinking-held="isTurnThinkingHeld"
           />
           <div
-            v-for="(part, index) in m.parts"
+            v-for="(part, index) in getDisplayMessageParts(m)"
             :key="`message-${m.id}-part-${index}`"
             :class="{
               'opacity-0': chatSdk.status === 'streaming'
                 && isLastUserMessage(messageIndex)
                 && waitingForDimensions,
+              'mt-4': isTextPartAfterGeneratedImage(
+                m,
+                getDisplayMessageParts(m),
+                index,
+              ),
             }"
           >
             <ChatGeneratedImage
-              v-if="shouldRenderGenerateImageToolPart(m, part)"
+              v-if="shouldRenderGenerateImageToolPart(m, part)
+                || isAssistantGeneratedImageFilePart(m, part)
+              "
               :message-role="m.role"
               :part="part"
             />
@@ -84,14 +102,15 @@
               v-else-if="isChatErrorTextPart(part)"
               class="chat-markdown"
             >
-              <div class="alert alert-error alert-soft flex flex-col items-start gap-0 mt-2">
-                <p
-                  v-for="(line, lineIndex) in buildChatErrorLines(part.error)"
-                  :key="`chat-error-${m.id}-part-${index}-line-${lineIndex}`"
-                >
-                  {{ line }}
-                </p>
-              </div>
+              <ChatErrorCard :error="part.error" />
+            </div>
+            <div
+              v-else-if="isPersistedFailureTextPart(m, part)"
+              class="chat-markdown"
+            >
+              <ChatErrorCard
+                :error="getPersistedFailureErrorPayload(m, part)"
+              />
             </div>
             <MDCCached
               v-else-if="part.type === 'text'"
@@ -110,7 +129,24 @@
               :unwrap="getUnwrap(m.role)"
             />
           </div>
-          <ChatUrlSources :message="m" />
+          <ChatGeneratedImage
+            v-if="isLastAssistantMessage(messageIndex)
+              && shouldRenderPendingImageGenerationInline
+            "
+            message-role="assistant"
+            :part="pendingGenerateImagePart"
+          />
+          <ChatGeneratedImage
+            v-else-if="isLastAssistantMessage(messageIndex)
+              && shouldRenderGatewayImageGenerationFailure
+            "
+            message-role="assistant"
+            :part="gatewayImageGenerationFailurePart"
+          />
+          <ChatUrlSources
+            v-if="hasVisibleTextPart(m)"
+            :message="m"
+          />
         </ChatMessage>
       </div>
       <ChatMessage
@@ -210,8 +246,20 @@ import {
   isChatTestErrorId,
   isChatTestScenario,
 } from '#shared/utils/chat-test-errors'
-import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
-import { shouldRenderGenerateImageToolPart } from '~/utils/generated-images'
+import {
+  hasVisibleTextPart,
+  resolveMessageMenuInfo,
+} from '#shared/utils/message-metadata'
+import {
+  getPersistedFailureErrorPayload,
+  isPersistedFailureTextPart,
+} from '~/utils/chat-failure-notice'
+import {
+  getDisplayMessageParts,
+  isAssistantGeneratedImageFilePart,
+  isTextPartAfterGeneratedImage,
+  shouldRenderGenerateImageToolPart,
+} from '~/utils/generated-images'
 
 definePageMeta({
   layout: 'chat',
@@ -334,6 +382,9 @@ const {
   shouldDisplayMessage,
   files,
   currentTurnStartedAt,
+  currentTurnReasoningAccumulatedMs,
+  currentReasoningSegmentStartedAt,
+  isTurnThinkingHeld,
   pendingClarification,
   pendingResearchTopic,
   isClarifying,
@@ -349,13 +400,26 @@ const {
 } = useChat(toValue(chat.value))
 
 const { isImageGenerationRequired } = useChatInput()
+const { selection: userModelSelection } = useUserModel()
 
 const isImageGenerationTurnPending = shallowRef<boolean>(false)
+const isGatewaySendTurnPending = shallowRef<boolean>(false)
 
 function captureImageGenerationTurnPending(): void {
   isImageGenerationTurnPending.value = tools.value.includes(
     'image_generation',
   ) || isImageGenerationRequired.value
+  isGatewaySendTurnPending.value
+    = userModelSelection.value.source === 'gateway'
+}
+
+// The first turn of a chat created straight from /chats/new never goes
+// through onChatSubmit — useChat()'s mount-time auto-regenerate resumes it
+// directly (chat.ts's shouldRecoverGeneration check) — so the flags above
+// must also be captured up front for that resumed turn, otherwise the
+// pending image card never renders and the generic loader shows instead.
+if (shouldRecoverGeneration(chat.value.messages)) {
+  captureImageGenerationTurnPending()
 }
 
 function onChatSubmit(): void {
@@ -370,14 +434,20 @@ function onChatRegenerate(): void {
 
 watch(() => route.params.slug, () => {
   isImageGenerationTurnPending.value = false
+  isGatewaySendTurnPending.value = false
 })
 
 const {
   hasImageGenerationProgress,
   shouldRenderPendingImageGeneration,
+  shouldRenderPendingImageGenerationInline,
+  shouldRenderGatewayImageGenerationFailure,
+  isImageGenerationSkeletonVisible,
   shouldFitMessageContent,
 } = useChatImageUi(() => chatSdk.messages, {
   isImageGenerationTurnPending: () => isImageGenerationTurnPending.value,
+  isGatewaySendTurnPending: () => isGatewaySendTurnPending.value,
+  isTurnStopped: () => isStopped.value,
   isTurnActive: () => ['submitted', 'streaming'].includes(chatSdk.status),
 })
 
@@ -612,7 +682,7 @@ if (import.meta.client) {
   // meant to correct for a model that streams reasoning before the tool
   // call. adjustSpacerAfterResponse() still corrects that rarer case once
   // the turn finishes.
-  watch(shouldRenderPendingImageGeneration, async (isPending) => {
+  watch(isImageGenerationSkeletonVisible, async (isPending) => {
     if (!isPending) {
       return
     }
@@ -681,10 +751,14 @@ const selectedMessageId = shallowRef<string | null>(null)
 const selectedAnchorEl = shallowRef<HTMLElement | null>(null)
 const selectedPointer = shallowRef<{ x: number, y: number } | null>(null)
 
-function isTextUIPart(part: UIMessage['parts'][number]): part is TextUIPart {
+function isTextUIPart(
+  message: Pick<UIMessage, 'role'>,
+  part: UIMessage['parts'][number],
+): part is TextUIPart {
   return part.type === 'text'
     && part.text.trim().length > 0
     && !isChatErrorTextPart(part)
+    && !isPersistedFailureTextPart(message, part)
 }
 
 const selectedMessageCopyText = computed<string | null>(() => {
@@ -692,7 +766,13 @@ const selectedMessageCopyText = computed<string | null>(() => {
     return message.id === selectedMessageId.value
   })
 
-  const textParts = selectedMessage?.parts.filter(isTextUIPart) ?? []
+  if (!selectedMessage) {
+    return null
+  }
+
+  const textParts = selectedMessage.parts.filter((part) => {
+    return isTextUIPart(selectedMessage, part)
+  })
 
   if (textParts.length === 0) {
     return null

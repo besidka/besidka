@@ -55,6 +55,71 @@ describe('extractMessageSearchText', () => {
     expect(result).toHaveLength(MAX_INDEXED_BODY_LENGTH)
   })
 
+  it('excludes a persisted empty-answer failure notice', () => {
+    const parts = [
+      {
+        type: 'text',
+        text: 'The model finished searching but didn\'t write an answer.'
+          + ' Try again or pick another model.',
+      },
+      { type: 'text', text: 'Kept' },
+    ]
+
+    expect(extractMessageSearchText(parts)).toBe('Kept')
+  })
+
+  it('excludes a persisted image-generation failure notice', () => {
+    const parts = [
+      {
+        type: 'text',
+        text: 'Image generation failed. Revise the prompt or try a'
+          + ' different provider. (ref: abc123)',
+      },
+      { type: 'text', text: 'Kept' },
+    ]
+
+    expect(extractMessageSearchText(parts)).toBe('Kept')
+  })
+
+  it('excludes a persisted oversized-response failure notice', () => {
+    const parts = [
+      {
+        type: 'text',
+        text: 'The response was too large to save. Try again or pick'
+          + ' another model.',
+      },
+      { type: 'text', text: 'Kept' },
+    ]
+
+    expect(extractMessageSearchText(parts)).toBe('Kept')
+  })
+
+  it('excludes a persisted gateway generated-image-save failure notice',
+    () => {
+      const parts = [
+        {
+          type: 'text',
+          text: 'An image was generated but could not be saved.',
+        },
+        { type: 'text', text: 'Kept' },
+      ]
+
+      expect(extractMessageSearchText(parts)).toBe('Kept')
+    })
+
+  it('keeps normal text that merely mentions image generation failing', () => {
+    const parts = [
+      {
+        type: 'text',
+        text: 'My last image generation failed, can you explain why?',
+      },
+    ]
+
+    expect(extractMessageSearchText(parts)).toBe(
+      'My last image generation failed, can you explain why?',
+    )
+  })
+
   it('strips private-use-area snippet sentinel characters', () => {
     const parts = [{
       type: 'text',

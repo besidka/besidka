@@ -5,27 +5,43 @@ import { mergeProvider } from './merge'
 import anthropic from './anthropic'
 import google from './google'
 import openai from './openai'
+import xai from './xai'
+import deepseek from './deepseek'
+import moonshotai from './moonshotai'
+import qwen from './qwen'
 
 const curatedProviders = [
   anthropic,
   google,
   openai,
+  xai,
+  deepseek,
+  moonshotai,
+  qwen,
 ]
 
 export const providers: Providers = curatedProviders.map((provider) => {
   return mergeProvider(provider, snapshot as ModelSnapshot)
 })
 
-const defaultFirstFoundModel = providers[0]?.models[0]?.id
-let defaultMarkedModel: string = ''
+export function resolveDefaultMarkedModel(
+  providersToScan: Providers,
+): string | undefined {
+  let defaultMarkedModel: string | undefined
 
-for (const provider of providers) {
-  for (const model of provider.models) {
-    if (model.default) {
-      defaultMarkedModel = model.id
-      break
+  outer: for (const provider of providersToScan) {
+    for (const model of provider.models) {
+      if (model.default) {
+        defaultMarkedModel = model.id
+        break outer
+      }
     }
   }
+
+  return defaultMarkedModel
 }
 
-export const defaultModel = defaultMarkedModel ?? defaultFirstFoundModel
+const defaultFirstFoundModel = providers[0]?.models[0]?.id
+
+export const defaultModel = resolveDefaultMarkedModel(providers)
+  ?? defaultFirstFoundModel

@@ -6,6 +6,7 @@ import { providers } from '../../../providers'
 import {
   getControllerModelId,
   getImageGenerationModelId,
+  getImageGenerationProviders,
   getRequiredModelTools,
   isImageGenerationModel,
 } from '../../../shared/utils/model'
@@ -95,6 +96,24 @@ describe('image generation models', () => {
     expect(getRequiredModelTools(null)).toEqual([])
     expect(getImageGenerationModelId(null, 'gpt-image-2'))
       .toBe('gpt-image-2')
+  })
+
+  it('derives the image-generation provider allowlist from the catalog, '
+    + 'so every curated image-generation model\'s provider is recognized',
+  () => {
+    const imageGenerationProviders = getImageGenerationProviders()
+
+    for (const provider of providers) {
+      const hasImageGenerationModel = provider.models.some((model) => {
+        return isImageGenerationModel(model)
+      })
+
+      if (!hasImageGenerationModel) {
+        continue
+      }
+
+      expect(imageGenerationProviders).toContain(provider.id)
+    }
   })
 
   it('points every controllerModel reference at a real catalog entry', () => {

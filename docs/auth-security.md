@@ -178,6 +178,94 @@ that wildcard for this reason — reordering the object breaks the
 per-endpoint overrides silently, falling back to the wildcard's looser
 limit.
 
+## Reused outside Better Auth: the gateway catalog route
+
+`GET /api/v1/gateways/[gateway]/models` isn't a Better Auth endpoint and
+isn't in the table above, but it reuses the same `createAuthRateLimitStorage()`
+KV-backed limiter with its own key prefix (`gateway-catalog:rate-limit`) and
+a dedicated per-user rule, verified against the route's current
+`GATEWAY_MODELS_RATE_LIMIT` constant:
+
+| Path | Window | Max |
+| --- | --- | --- |
+| `GET /api/v1/gateways/[gateway]/models` | 60s | 20 |
+
+Unlike the table above, this rule is keyed by the authenticated
+`session.user.id`, not by IP. It exists because the route triggers an
+upstream fetch to Vercel AI Gateway, OpenRouter, or Cloudflare on every
+cache miss (the catalog is cached in KV — one hour for Vercel/OpenRouter,
+15 minutes for Cloudflare — with no request coalescing; see
+`server/utils/gateways/catalog.ts`), so an unbounded client could drive
+repeated concurrent upstream fetches. This is a cost/availability concern
+for those upstreams rather than an auth-sensitive action.
+
+## Reused outside Better Auth: the key-management routes
+
+The `GET /api/v1/profiles/keys` summary endpoint, the gateway credential
+routes added alongside gateway support (`GET/POST/DELETE
+/api/v1/profiles/keys/{vercel-gateway,openrouter,cloudflare-gateway}`), and
+the Brave/Exa search-key routes all reuse the same KV-backed
+`createAuthRateLimitStorage()` factory via a small shared wrapper
+(`server/utils/keys-rate-limit.ts`) rather than pasting the gateway catalog
+route's inline enforcement function into each one. `enforceKeysRateLimit()`
+takes a `keyPrefix` argument so every route/provider/method combination gets
+an independent bucket keyed by `session.user.id`; sharing one bucket across
+methods or providers would let one flow's traffic silently erode another's
+budget. Every rule below is keyed by `session.user.id`, same as the gateway
+catalog rule above:
+
+| Path | Window | Max |
+| --- | --- | --- |
+| `GET /api/v1/profiles/keys` | 60s | 30 |
+| `GET /api/v1/profiles/keys/vercel-gateway` | 60s | 30 |
+| `POST /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
+| `GET /api/v1/profiles/keys/openrouter` | 60s | 30 |
+| `POST /api/v1/profiles/keys/openrouter` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/openrouter` | 60s | 10 |
+| `GET /api/v1/profiles/keys/cloudflare-gateway` | 60s | 30 |
+| `POST /api/v1/profiles/keys/cloudflare-gateway` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/cloudflare-gateway` | 60s | 10 |
+| `GET /api/v1/profiles/keys/brave` | 60s | 10 |
+| `POST /api/v1/profiles/keys/brave` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/brave` | 60s | 10 |
+| `GET /api/v1/profiles/keys/exa` | 60s | 10 |
+| `POST /api/v1/profiles/keys/exa` | 60s | 10 |
+| `DELETE /api/v1/profiles/keys/exa` | 60s | 10 |
+
+The summary route and every gateway `GET` are read-mostly, user-initiated,
+and low-frequency — a single DB lookup with no secret decryption cost
+beyond one `crypto-shield` call — so they get a generous 30-per-60s row,
+looser than the gateway catalog route's 20-per-60s because there's no
+upstream fetch on this hot path. Every gateway `POST`/`DELETE` gets a
+tighter 10-per-60s row because those verbs mutate state, even though a
+legitimate user is very unlikely to hit it: each gateway's key panel on the
+keys page (`app/components/Profile/Keys/ProviderKeyCard.vue` for
+Vercel/OpenRouter, `app/components/Profile/Keys/CloudflareGateway.vue` for
+Cloudflare, since its credentials are a compound
+`{accountId, apiKey, gatewayId}` blob rather than a single secret) triggers
+one `POST` followed by one `GET` refresh per save, and issues one `GET`
+when its tab is selected — every one of those lands in its own bucket,
+because each route/method/provider combination is given a
+distinct `keyPrefix` (e.g. `keys-rate-limit:vercel-gateway:post` vs.
+`keys-rate-limit:vercel-gateway:get`). Sharing one bucket across methods or
+providers would let a normal save-then-refresh flow, or switching between
+gateway tabs, silently erode the mutation budget meant for abuse
+containment.
+
+The Brave and Exa key routes (`server/api/v1/profiles/keys/brave/index.
+{get,post,delete}.ts` and their `exa` counterparts) follow the identical
+pattern: each calls `enforceKeysRateLimit()` with its own `keyPrefix`,
+giving all six routes an independent 10-per-60s bucket per verb — tighter
+than the summary route's 30-per-60s for the same reason as the gateway
+routes above, since these verbs also write and decrypt a secret rather than
+just reading a boolean.
+
+The seven pre-existing single-provider key routes
+(`openai`/`anthropic`/`google`/`xai`/`deepseek`/`moonshotai`/`qwen`) remain
+unrated-limited; extending them the same way is a follow-up, not part
+of this change.
+
 ## KV rate-limit storage: the TTL fix and the `consume` caveat
 
 The previous `customStorage` implemented only `get`/`set`, with `set`

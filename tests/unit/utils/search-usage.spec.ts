@@ -27,10 +27,20 @@ const rates = resolveSearchRates({
   googleSearchCostPerThousandGroundedPromptsUsd: '35',
   anthropicWebSearchCostPerThousandSearchesUsd: '10',
   openaiWebSearchCostPerThousandCallsUsd: '10',
+  braveSearchCostPerThousandRequestsUsd: '5',
+  exaSearchCostPerThousandRequestsUsd: '17',
 })
 
+function externalToolResultStep(toolName: string, output: unknown = {}) {
+  return {
+    content: [
+      { type: 'tool-result', toolName, output },
+    ],
+  }
+}
+
 describe('resolveSearchRates', () => {
-  it('maps all four config keys into google and web rate groups', () => {
+  it('maps all six config keys into google, web and external rate groups', () => {
     expect(rates).toEqual({
       google: {
         perQueryUsd: 0.014,
@@ -39,6 +49,10 @@ describe('resolveSearchRates', () => {
       web: {
         anthropicPerSearchUsd: 0.01,
         openaiPerCallUsd: 0.01,
+      },
+      external: {
+        bravePerSearchUsd: 0.005,
+        exaPerSearchUsd: 0.017,
       },
     })
   })
@@ -59,6 +73,7 @@ describe('resolveSearchUsage', () => {
       cost: 2 * 0.014,
       googleQueries: 2,
       googleGroundedSteps: 1,
+      provider: 'google',
     })
   })
 
@@ -92,6 +107,7 @@ describe('resolveSearchUsage', () => {
       cost: 0.03,
       googleQueries: undefined,
       googleGroundedSteps: undefined,
+      provider: 'anthropic',
     })
   })
 
@@ -176,5 +192,78 @@ describe('resolveSearchUsage', () => {
 
     expect(result?.units).toBe(1)
     expect(result?.cost).toBeUndefined()
+  })
+
+  it('dispatches to the external branch first, ignoring providerId '
+    + 'entirely, when externalSearchProvider is set', () => {
+    const result = resolveSearchUsage({
+      providerId: 'openai',
+      modelId: 'gpt-5.4',
+      steps: [externalToolResultStep('web_search_brave')],
+      rates,
+      externalSearchProvider: 'brave',
+    })
+
+    expect(result).toEqual({
+      units: 1,
+      billingUnit: 'search',
+      cost: 0.005,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+      provider: 'brave',
+    })
+  })
+
+  it('prefers Exa\'s reported costDollars over the configured rate', () => {
+    const result = resolveSearchUsage({
+      providerId: 'anthropic',
+      modelId: 'claude-opus-4-6',
+      steps: [
+        externalToolResultStep('web_search_exa', { costDollars: 0.02 }),
+      ],
+      rates,
+      externalSearchProvider: 'exa',
+    })
+
+    expect(result).toEqual({
+      units: 1,
+      billingUnit: 'search',
+      cost: 0.02,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+      provider: 'exa',
+    })
+  })
+
+  it('returns undefined when externalSearchProvider is set but the tool '
+    + 'was never called', () => {
+    const result = resolveSearchUsage({
+      providerId: 'openai',
+      modelId: 'gpt-5.4',
+      steps: [],
+      rates,
+      externalSearchProvider: 'brave',
+    })
+
+    expect(result).toBeUndefined()
+  })
+
+  it('leaves existing provider-branch behaviour byte-identical when '
+    + 'externalSearchProvider is absent', () => {
+    const result = resolveSearchUsage({
+      providerId: 'google',
+      modelId: 'gemini-3.8-flash',
+      steps: [googleStep(['a', 'b'])],
+      rates,
+    })
+
+    expect(result).toEqual({
+      units: 2,
+      billingUnit: 'query',
+      cost: 2 * 0.014,
+      googleQueries: 2,
+      googleGroundedSteps: 1,
+      provider: 'google',
+    })
   })
 })

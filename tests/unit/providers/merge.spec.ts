@@ -82,6 +82,21 @@ describe('mergeModelMetadata', () => {
     expect(model.price.tokens).toBe(1_000_000)
   })
 
+  it('keeps the reasoningAlwaysOn flag when curated', () => {
+    const model = mergeModelMetadata(
+      { ...chatModel, reasoning: undefined, reasoningAlwaysOn: true },
+      snapshotEntry,
+    )
+
+    expect(model.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('omits the reasoningAlwaysOn key entirely when not curated', () => {
+    const model = mergeModelMetadata(chatModel, snapshotEntry)
+
+    expect('reasoningAlwaysOn' in model).toBe(false)
+  })
+
   it('keeps curated name, description and price for research models', () => {
     const model = mergeModelMetadata(
       {
@@ -200,6 +215,7 @@ describe('mergeModelMetadata', () => {
           input: ['text'],
           output: ['text'],
         },
+        toolCall: false,
       },
       undefined,
     )
@@ -225,6 +241,7 @@ describe('mergeModelMetadata', () => {
           input: ['text'],
           output: ['text'],
         },
+        toolCall: false,
       },
       undefined,
     )
@@ -243,6 +260,7 @@ describe('mergeModelMetadata', () => {
           input: ['text'],
           output: ['text'],
         },
+        toolCall: false,
       },
       undefined,
     )
@@ -275,6 +293,7 @@ describe('mergeModelMetadata', () => {
           input: ['text'],
           output: ['text'],
         },
+        toolCall: false,
       },
       undefined,
     )
@@ -312,6 +331,47 @@ describe('mergeModelMetadata', () => {
   it('throws when a model has neither a snapshot entry nor full curation', () => {
     expect(() => mergeModelMetadata(chatModel, undefined))
       .toThrowError(/test-chat-model/)
+  })
+
+  it('takes toolCall from the snapshot over a curated value', () => {
+    const model = mergeModelMetadata(
+      { ...chatModel, toolCall: false },
+      { ...snapshotEntry, toolCall: true },
+    )
+
+    expect(model.toolCall).toBe(true)
+  })
+
+  it('falls back to the curated toolCall when the snapshot omits it', () => {
+    const model = mergeModelMetadata(
+      { ...chatModel, toolCall: true },
+      snapshotEntry,
+    )
+
+    expect(model.toolCall).toBe(true)
+  })
+
+  it('defaults toolCall to false when neither side sets it', () => {
+    const model = mergeModelMetadata(chatModel, snapshotEntry)
+
+    expect(model.toolCall).toBe(false)
+  })
+
+  it('throws when an exempt curated model omits toolCall', () => {
+    expect(() => mergeModelMetadata(
+      {
+        ...chatModel,
+        name: 'Curated Only',
+        description: 'Not tracked by models.dev',
+        contextLength: 200_000,
+        maxOutputTokens: 100_000,
+        modalities: {
+          input: ['text'],
+          output: ['text'],
+        },
+      },
+      undefined,
+    )).toThrowError(/test-chat-model/)
   })
 })
 
@@ -486,7 +546,7 @@ describe('merged catalog', () => {
         }
 
         expect(model.releaseDate).toBe(entry.releaseDate)
-        expect(model.releaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(model.releaseDate).toMatch(/^\d{4}-\d{2}(-\d{2})?$/)
       }
     }
   })

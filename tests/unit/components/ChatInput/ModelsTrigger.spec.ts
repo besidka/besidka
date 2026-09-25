@@ -1,4 +1,5 @@
-import { shallowRef } from 'vue'
+import type { ModelSelection } from '#shared/types/model-selection.d'
+import { computed, shallowRef } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelsTrigger from '../../../../app/components/ChatInput/ModelsTrigger.vue'
@@ -11,7 +12,11 @@ const mocks = vi.hoisted(() => ({
   useDevice: vi.fn(),
   useUserModel: vi.fn(),
   useUserSetting: vi.fn(),
+  useGatewayCatalog: vi.fn(),
   toggleFavoriteModel: vi.fn(),
+  toggleFavoriteGatewayModel: vi.fn(),
+  getFavoriteGatewayModels: vi.fn(),
+  refreshGatewayCatalog: vi.fn(),
 }))
 
 mockNuxtImport('getModel', () => mocks.getModel)
@@ -21,6 +26,29 @@ mockNuxtImport('onClickOutside', () => mocks.onClickOutside)
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useUserModel', () => mocks.useUserModel)
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
+mockNuxtImport('useGatewayCatalog', () => mocks.useGatewayCatalog)
+
+/**
+ * Mirrors the real composable's writable-computed bridge so assertions can
+ * keep reading `userModel` as a plain string while the component writes
+ * through the richer `selection`.
+ */
+function createSelectionMock(modelId: string) {
+  const selection = shallowRef<ModelSelection>({
+    source: 'provider',
+    modelId,
+  })
+  const userModel = computed<string>({
+    get() {
+      return selection.value.modelId
+    },
+    set(value) {
+      selection.value = { source: 'provider', modelId: value }
+    },
+  })
+
+  return { selection, userModel }
+}
 
 const imageModel = {
   id: 'image-model',
@@ -40,6 +68,7 @@ const imageModel = {
     output: ['image'],
   },
   tools: ['image_generation'],
+  toolCall: false,
   reasoning: false,
 }
 
@@ -104,12 +133,20 @@ describe('ChatInput/ModelsTrigger', () => {
       isAndroid: false,
       isDesktop: true,
     })
-    mocks.useUserModel.mockReturnValue({
-      userModel: shallowRef<string>('image-model'),
-    })
+    mocks.useUserModel.mockReturnValue(createSelectionMock('image-model'))
+    mocks.getFavoriteGatewayModels.mockReturnValue([])
     mocks.useUserSetting.mockReturnValue({
       favoriteModels: shallowRef<string[]>([]),
+      favoriteGatewayModels: shallowRef({}),
+      getFavoriteGatewayModels: mocks.getFavoriteGatewayModels,
       toggleFavoriteModel: mocks.toggleFavoriteModel,
+      toggleFavoriteGatewayModel: mocks.toggleFavoriteGatewayModel,
+    })
+    mocks.useGatewayCatalog.mockReturnValue({
+      models: shallowRef([]),
+      pending: shallowRef(false),
+      error: shallowRef(null),
+      refresh: mocks.refreshGatewayCatalog,
     })
   })
 
@@ -169,9 +206,10 @@ describe('ChatInput/ModelsTrigger', () => {
   })
 
   it('selects a model and closes the picker', async () => {
-    const userModel = shallowRef<string>('other-model')
+    const selectionMock = createSelectionMock('other-model')
+    const { userModel } = selectionMock
 
-    mocks.useUserModel.mockReturnValue({ userModel })
+    mocks.useUserModel.mockReturnValue(selectionMock)
 
     const wrapper = await mountPicker()
 
@@ -181,8 +219,10 @@ describe('ChatInput/ModelsTrigger', () => {
 
     expect(userModel.value).toBe('image-model')
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="models-picker-panel"]').exists())
-        .toBe(false)
+      const panel = wrapper.find('[data-testid="models-picker-panel"]')
+
+      expect(panel.exists()).toBe(true)
+      expect(panel.attributes('style')).toContain('display: none')
     })
   })
 
@@ -229,8 +269,8 @@ describe('ChatInput/ModelsTrigger', () => {
 
     expect(toggle.text()).toContain('1 legacy model')
     expect(toggle.attributes('aria-expanded')).toBe('false')
-    expect(wrapper.get('[data-testid="models-picker-legacy-list"]')
-      .attributes('style')).toBe('display: none;')
+    expect(wrapper.find('[data-testid="models-picker-legacy-list"]').exists())
+      .toBe(false)
   })
 
   it('reveals the non-selectable legacy rows once expanded', async () => {
@@ -246,8 +286,8 @@ describe('ChatInput/ModelsTrigger', () => {
     const row = wrapper.get('#model-option-legacy-model')
 
     expect(toggle.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('[data-testid="models-picker-legacy-list"]')
-      .attributes('style')).toBeUndefined()
+    expect(wrapper.find('[data-testid="models-picker-legacy-list"]').exists())
+      .toBe(true)
     expect(row.attributes('aria-disabled')).toBe('true')
     expect(row.find('button[aria-label="Choose Legacy model"]').exists())
       .toBe(false)
@@ -281,9 +321,7 @@ describe('ChatInput/ModelsTrigger', () => {
 
   it('never aims the keyboard highlight at a deprecated selection', async () => {
     useLegacyCatalog()
-    mocks.useUserModel.mockReturnValue({
-      userModel: shallowRef<string>('legacy-model'),
-    })
+    mocks.useUserModel.mockReturnValue(createSelectionMock('legacy-model'))
 
     const wrapper = await mountPicker()
 
@@ -341,5 +379,1020 @@ describe('ChatInput/ModelsTrigger', () => {
     await wrapper.get('[data-testid="model-favorite-toggle"]').trigger('click')
 
     expect(mocks.toggleFavoriteModel).toHaveBeenCalledWith('image-model')
+  })
+
+  describe('panel stays mounted across close and reopen', () => {
+    function mountAttachedPicker() {
+      return mountSuspended(ModelsTrigger, {
+        attachTo: document.body,
+        props: {
+          isWebSearchEnabled: false,
+          isImageGenerationEnabled: true,
+          isReasoningEnabled: false,
+        },
+        global: {
+          stubs: {
+            ClientOnly: {
+              template: '<slot />',
+            },
+          },
+        },
+      })
+    }
+
+    it('keeps the same panel element mounted across close and reopen', async () => {
+      const wrapper = await mountPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      await trigger.trigger('click')
+
+      const firstOpenPanel = wrapper.get(
+        '[data-testid="models-picker-panel"]',
+      ).element
+
+      await trigger.trigger('click')
+      await vi.waitFor(() => {
+        expect(
+          wrapper.get('[data-testid="models-picker-panel"]')
+            .attributes('style'),
+        ).toContain('display: none')
+      })
+
+      await trigger.trigger('click')
+
+      expect(wrapper.get('[data-testid="models-picker-panel"]').element)
+        .toBe(firstOpenPanel)
+    })
+
+    it('resets search, category, vision and capability filters on reopen', async () => {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef([{
+          id: 'openai/gpt-5.4',
+          name: 'GPT-5.4',
+          pricing: { input: '0.0000025', output: '0.00001' },
+          toolCall: true,
+        }]),
+        pending: shallowRef(false),
+        error: shallowRef(null),
+        refresh: mocks.refreshGatewayCatalog,
+      })
+
+      const wrapper = await mountPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      await trigger.trigger('click')
+      await wrapper.get('[data-testid="models-picker-search"]')
+        .setValue('nothing here')
+      await wrapper.get('[data-testid="models-picker-filter-chat"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="models-picker-filter-vision"]')
+        .trigger('click')
+
+      await trigger.trigger('click')
+      await trigger.trigger('click')
+
+      expect(
+        wrapper.get<HTMLInputElement>(
+          '[data-testid="models-picker-search"]',
+        ).element.value,
+      ).toBe('')
+      expect(
+        wrapper.get('[data-testid="models-picker-filter-chat"]')
+          .get('button')
+          .attributes('aria-pressed'),
+      ).toBe('false')
+      expect(
+        wrapper.get('[data-testid="models-picker-filter-vision"]')
+          .get('button')
+          .attributes('aria-pressed'),
+      ).toBe('false')
+
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="models-picker-filter-tool-calling"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="models-picker-gateway-exit"]')
+        .trigger('click')
+
+      await trigger.trigger('click')
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+
+      expect(
+        wrapper.get('[data-testid="models-picker-filter-tool-calling"]')
+          .get('button')
+          .attributes('aria-pressed'),
+      ).toBe('false')
+    })
+
+    it('focuses the search input on every desktop open, not only the first', async () => {
+      const wrapper = await mountAttachedPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      await trigger.trigger('click')
+      await vi.waitFor(() => {
+        expect(document.activeElement).toBe(
+          wrapper.get('[data-testid="models-picker-search"]').element,
+        )
+      })
+
+      await trigger.trigger('click')
+      trigger.element.focus()
+      await trigger.trigger('click')
+
+      await vi.waitFor(() => {
+        expect(document.activeElement).toBe(
+          wrapper.get('[data-testid="models-picker-search"]').element,
+        )
+      })
+
+      wrapper.unmount()
+    })
+
+    it('restores the gateway highlight to the selected option on reopen', async () => {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef([
+          {
+            id: 'anthropic/claude-opus-5',
+            name: 'Claude Opus 5',
+            pricing: { input: '0.0000025', output: '0.00001' },
+            toolCall: false,
+          },
+          {
+            id: 'openai/gpt-5.4',
+            name: 'GPT-5.4',
+            pricing: { input: '0.0000025', output: '0.00001' },
+            toolCall: false,
+          },
+        ]),
+        pending: shallowRef(false),
+        error: shallowRef(null),
+        refresh: mocks.refreshGatewayCatalog,
+      })
+      mocks.useUserModel.mockReturnValue({
+        selection: shallowRef({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId: 'anthropic/claude-opus-5',
+        }),
+        userModel: shallowRef('anthropic/claude-opus-5'),
+      })
+
+      const wrapper = await mountPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      await trigger.trigger('click')
+
+      const search = wrapper.get('[data-testid="models-picker-search"]')
+
+      expect(search.attributes('aria-activedescendant'))
+        .toBe('gateway-model-option-anthropic/claude-opus-5')
+
+      await search.trigger('keydown', { key: 'ArrowDown' })
+
+      expect(search.attributes('aria-activedescendant'))
+        .toBe('gateway-model-option-openai/gpt-5.4')
+
+      await trigger.trigger('click')
+      await trigger.trigger('click')
+
+      await vi.waitFor(() => {
+        expect(
+          wrapper.get('[data-testid="models-picker-search"]')
+            .attributes('aria-activedescendant'),
+        ).toBe('gateway-model-option-anthropic/claude-opus-5')
+      })
+    })
+
+    it('gives the search input focus only after the gateway highlight'
+      + ' is restored, so aria-activedescendant is already correct', async () => {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef([
+          {
+            id: 'anthropic/claude-opus-5',
+            name: 'Claude Opus 5',
+            pricing: { input: '0.0000025', output: '0.00001' },
+            toolCall: false,
+          },
+          {
+            id: 'openai/gpt-5.4',
+            name: 'GPT-5.4',
+            pricing: { input: '0.0000025', output: '0.00001' },
+            toolCall: false,
+          },
+        ]),
+        pending: shallowRef(false),
+        error: shallowRef(null),
+        refresh: mocks.refreshGatewayCatalog,
+      })
+      mocks.useUserModel.mockReturnValue({
+        selection: shallowRef({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId: 'anthropic/claude-opus-5',
+        }),
+        userModel: shallowRef('anthropic/claude-opus-5'),
+      })
+
+      const wrapper = await mountAttachedPicker()
+      const trigger = wrapper.get('[data-testid="current-model-trigger"]')
+
+      await trigger.trigger('click')
+      await wrapper.get('[data-testid="models-picker-search"]')
+        .trigger('keydown', { key: 'ArrowDown' })
+
+      await trigger.trigger('click')
+
+      const input = wrapper.get<HTMLInputElement>(
+        '[data-testid="models-picker-search"]',
+      ).element
+      const originalFocus = input.focus.bind(input)
+      const activeDescendantsAtFocus: Array<string | null> = []
+
+      vi.spyOn(input, 'focus').mockImplementation(() => {
+        activeDescendantsAtFocus.push(
+          input.getAttribute('aria-activedescendant'),
+        )
+        originalFocus()
+      })
+
+      await trigger.trigger('click')
+
+      await vi.waitFor(() => {
+        expect(document.activeElement).toBe(input)
+      })
+
+      expect(activeDescendantsAtFocus).toEqual([
+        'gateway-model-option-anthropic/claude-opus-5',
+      ])
+
+      wrapper.unmount()
+    })
+  })
+
+  describe('gateway mode', () => {
+    const gatewayModel = {
+      id: 'anthropic/claude-opus-5',
+      name: 'Claude Opus 5',
+      contextLength: 200_000,
+      pricing: { input: '0.0000025', output: '0.00001' },
+      supportsTools: true,
+    }
+
+    function useGatewayModels() {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef([gatewayModel]),
+        pending: shallowRef(false),
+        error: shallowRef(null),
+        refresh: mocks.refreshGatewayCatalog,
+      })
+    }
+
+    async function openGateway() {
+      useGatewayModels()
+
+      const wrapper = await mountPicker()
+
+      await wrapper.get('[data-testid="current-model-trigger"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+
+      return wrapper
+    }
+
+    it('renders a rail button per enabled gateway', async () => {
+      const wrapper = await mountPicker()
+
+      await wrapper.get('[data-testid="current-model-trigger"]')
+        .trigger('click')
+
+      expect(wrapper.find('[data-testid="models-picker-gateway-vercel"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="models-picker-gateway-openrouter"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="models-picker-gateway-cloudflare"]')
+        .exists()).toBe(true)
+    })
+
+    it('replaces provider browsing with an unmistakable gateway mode', async () => {
+      const wrapper = await openGateway()
+
+      expect(wrapper.get('[data-testid="models-picker-gateway-banner"]').text())
+        .toContain('Vercel AI Gateway')
+      expect(wrapper.find('[data-testid="models-picker-rail"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="models-picker-filter-free"]')
+        .exists()).toBe(true)
+      expect(wrapper.find('[data-testid="models-picker-filter-chat"]')
+        .exists()).toBe(false)
+      expect(wrapper.find('button[aria-label="Choose Image model"]').exists())
+        .toBe(false)
+      expect(wrapper.get('button[aria-label="Choose Claude Opus 5"]').exists())
+        .toBe(true)
+    })
+
+    it('never renders the provider-mode legacy section', async () => {
+      useLegacyCatalog()
+
+      const wrapper = await openGateway()
+
+      expect(wrapper.find('[data-testid="models-picker-legacy"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="models-picker-legacy-toggle"]')
+        .exists()).toBe(false)
+    })
+
+    it('returns to provider mode from the banner exit', async () => {
+      const wrapper = await openGateway()
+
+      await wrapper.get('[data-testid="models-picker-gateway-exit"]')
+        .trigger('click')
+
+      expect(wrapper.find('[data-testid="models-picker-gateway-banner"]')
+        .exists()).toBe(false)
+      expect(wrapper.get('button[aria-label="Choose Image model"]').exists())
+        .toBe(true)
+    })
+
+    it('writes a gateway selection instead of a bare model id', async () => {
+      const selectionMock = createSelectionMock('image-model')
+
+      mocks.useUserModel.mockReturnValue(selectionMock)
+
+      const wrapper = await openGateway()
+
+      await wrapper.get('button[aria-label="Choose Claude Opus 5"]')
+        .trigger('click')
+
+      expect(selectionMock.selection.value).toEqual({
+        source: 'gateway',
+        gatewayId: 'vercel',
+        modelId: 'anthropic/claude-opus-5',
+      })
+    })
+
+    it('routes favorites to the active gateway, not the curated list', async () => {
+      const wrapper = await openGateway()
+
+      await wrapper.get('[data-testid="gateway-model-favorite-toggle"]')
+        .trigger('click')
+
+      expect(mocks.toggleFavoriteGatewayModel).toHaveBeenCalledWith(
+        'vercel',
+        'anthropic/claude-opus-5',
+      )
+      expect(mocks.toggleFavoriteModel).not.toHaveBeenCalled()
+    })
+
+    it('offers a retry when the catalog fetch fails', async () => {
+      mocks.useGatewayCatalog.mockReturnValue({
+        models: shallowRef([]),
+        pending: shallowRef(false),
+        error: shallowRef(new Error('upstream down')),
+        refresh: mocks.refreshGatewayCatalog,
+      })
+
+      const wrapper = await mountPicker()
+
+      await wrapper.get('[data-testid="current-model-trigger"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+        .trigger('click')
+      await wrapper.get('[data-testid="gateway-models-retry"]').trigger('click')
+
+      expect(mocks.refreshGatewayCatalog).toHaveBeenCalled()
+    })
+
+    it('keeps arrow-key navigation working over the gateway catalog', async () => {
+      const wrapper = await openGateway()
+      const search = wrapper.get('[data-testid="models-picker-search"]')
+
+      await search.trigger('keydown', { key: 'ArrowDown' })
+
+      expect(search.attributes('aria-activedescendant'))
+        .toBe('gateway-model-option-anthropic/claude-opus-5')
+    })
+
+    it('reopens in the mode matching the current selection', async () => {
+      useGatewayModels()
+      mocks.useUserModel.mockReturnValue({
+        selection: shallowRef<ModelSelection>({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId: 'anthropic/claude-opus-5',
+        }),
+        userModel: shallowRef('anthropic/claude-opus-5'),
+      })
+
+      const wrapper = await mountPicker()
+
+      await wrapper.get('[data-testid="current-model-trigger"]')
+        .trigger('click')
+
+      expect(wrapper.get('[data-testid="models-picker-gateway-banner"]').text())
+        .toContain('Vercel AI Gateway')
+    })
+
+    it('rounds the banner and the gateway rail into the panel corners', async () => {
+      const wrapper = await openGateway()
+
+      expect(wrapper.get('[data-testid="models-picker-gateway-banner"]')
+        .classes()).toContain('rounded-t-2xl')
+      expect(wrapper.get('[data-testid="models-picker-gateway-rail"]')
+        .classes()).toContain('rounded-b-2xl')
+    })
+
+    describe('provider rail', () => {
+      const catalog = [
+        {
+          id: 'anthropic/claude-opus-5',
+          name: 'Claude Opus 5',
+          pricing: { input: '0.0000025', output: '0.00001' },
+        },
+        {
+          id: 'openai/gpt-5.4',
+          name: 'GPT-5.4',
+          pricing: { input: '0.0000012', output: '0.00001' },
+        },
+        {
+          id: 'openai/gpt-5.4-mini',
+          name: 'GPT-5.4 mini',
+          pricing: { input: '0', output: '0' },
+        },
+      ]
+
+      async function openMultiProviderGateway(
+        models: typeof catalog = catalog,
+      ) {
+        mocks.useGatewayCatalog.mockReturnValue({
+          models: shallowRef(models),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: mocks.refreshGatewayCatalog,
+        })
+
+        const wrapper = await mountPicker()
+
+        await wrapper.get('[data-testid="current-model-trigger"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+          .trigger('click')
+
+        return wrapper
+      }
+
+      function getRenderedModelNames(
+        wrapper: Awaited<ReturnType<typeof mountPicker>>,
+      ) {
+        return wrapper
+          .findAll('li[id^="gateway-model-option-"]')
+          .map((option) => {
+            return option.get('.truncate').text()
+          })
+      }
+
+      it('offers a button per underlying provider, most stocked first', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const buttons = wrapper
+          .findAll('[data-testid="models-picker-gateway-provider-rail"] button')
+          .map((button) => {
+            return button.attributes('data-testid')
+          })
+
+        expect(buttons).toEqual([
+          'models-picker-gateway-provider-openai',
+          'models-picker-gateway-provider-anthropic',
+        ])
+      })
+
+      it('separates vendors on the left, never stacking two rails', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(true)
+        expect(wrapper.find('[data-testid="models-picker-rail"]').exists())
+          .toBe(false)
+      })
+
+      it('badges each provider with how many models it carries', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        expect(wrapper.get(
+          '[data-testid="models-picker-gateway-provider-openai-count"]',
+        ).text()).toBe('2')
+        expect(wrapper.get(
+          '[data-testid="models-picker-gateway-provider-anthropic-count"]',
+        ).text()).toBe('1')
+      })
+
+      it('holds the count still while a search narrows the list', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-search"]')
+          .setValue('opus')
+        await wrapper.get('[data-testid="models-picker-search"]').setValue('')
+
+        expect(wrapper.get(
+          '[data-testid="models-picker-gateway-provider-openai-count"]',
+        ).text()).toBe('2')
+      })
+
+      it('hands the favorites filter to the gateway rail', async () => {
+        mocks.getFavoriteGatewayModels.mockReturnValue(['openai/gpt-5.4'])
+
+        const wrapper = await openMultiProviderGateway()
+        const rail = wrapper.get(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        )
+
+        expect(rail.find('[data-testid="models-picker-rail-favorites"]')
+          .exists()).toBe(true)
+        expect(wrapper.find('[data-testid="models-picker-rail"]').exists())
+          .toBe(false)
+      })
+
+      it('keeps the rail for a lone vendor once a favorite exists', async () => {
+        mocks.getFavoriteGatewayModels.mockReturnValue(['openai/gpt-5.4'])
+
+        const wrapper = await openMultiProviderGateway([catalog[1]!])
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(true)
+      })
+
+      it('clusters the list by provider in the same order', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4', 'GPT-5.4 mini', 'Claude Opus 5'])
+      })
+
+      it('narrows the list to the picked provider and back', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const chip = wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+
+        await chip.trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+
+        await chip.trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toHaveLength(3)
+      })
+
+      it('hides the rail for a single-provider catalog', async () => {
+        const wrapper = await openMultiProviderGateway([catalog[0]!])
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(false)
+      })
+
+      it('hides the rail while a search is narrowing the list', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-search"]')
+          .setValue('gpt')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(false)
+      })
+
+      it('suspends the provider filter for the duration of a search', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await search.setValue('gpt')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4', 'GPT-5.4 mini'])
+      })
+
+      it('restores the provider filter a fruitless search cleared', async () => {
+        const wrapper = await openMultiProviderGateway()
+        const search = wrapper.get('[data-testid="models-picker-search"]')
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await search.setValue('gpt')
+        await search.setValue('')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+        expect(wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .attributes('aria-pressed'),
+        ).toBe('true')
+      })
+
+      it('keeps only free models under the free filter', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 mini'])
+        expect(wrapper.get('[data-testid="gateway-model-free"]').text())
+          .toContain('Free')
+      })
+
+      it('drops a provider button the free filter emptied out', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(false)
+      })
+
+      it('releases a provider filter the free filter left unreachable', async () => {
+        const wrapper = await openMultiProviderGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-gateway-provider-anthropic"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 mini'])
+      })
+
+      it('clears every gateway filter from the empty state', async () => {
+        const wrapper = await openMultiProviderGateway([catalog[0]!])
+
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="gateway-models-clear-filters"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['Claude Opus 5'])
+      })
+    })
+
+    describe('capability filters', () => {
+      const reasoningModel = {
+        id: 'openai/gpt-5.4-reasoning',
+        name: 'GPT-5.4 Reasoning',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        supportsReasoning: true,
+        toolCall: false,
+      }
+      const webSearchModel = {
+        id: 'openai/gpt-5.4-search',
+        name: 'GPT-5.4 Search',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        supportsWebSearch: 'native',
+        toolCall: false,
+      }
+      const toolCallModel = {
+        id: 'openai/gpt-5.4-tools',
+        name: 'GPT-5.4 Tools',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        toolCall: true,
+      }
+      const reasoningVisionModel = {
+        id: 'anthropic/claude-reasoning-vision',
+        name: 'Claude Reasoning Vision',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        supportsReasoning: true,
+        modalities: { input: ['text', 'image'], output: ['text'] },
+        toolCall: false,
+      }
+      const plainModel = {
+        id: 'anthropic/claude-plain',
+        name: 'Claude Plain',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        toolCall: false,
+      }
+      const imageModel = {
+        id: 'openai/gpt-5.4-image',
+        name: 'GPT-5.4 Image',
+        pricing: { input: '0.0000025', output: '0.00001' },
+        supportsImageGeneration: true,
+        toolCall: false,
+      }
+      const imageVisionModel = {
+        id: 'openai/gpt-5.4-image-vision',
+        name: 'GPT-5.4 Image Vision',
+        pricing: { input: '0', output: '0' },
+        supportsImageGeneration: true,
+        modalities: { input: ['text', 'image'], output: ['image'] },
+        toolCall: false,
+      }
+      const capabilityCatalog = [
+        reasoningModel,
+        webSearchModel,
+        toolCallModel,
+        reasoningVisionModel,
+        plainModel,
+        imageModel,
+        imageVisionModel,
+      ]
+
+      function getRenderedModelNames(
+        wrapper: Awaited<ReturnType<typeof mountPicker>>,
+      ) {
+        return wrapper
+          .findAll('li[id^="gateway-model-option-"]')
+          .map((option) => {
+            return option.get('.truncate').text()
+          })
+      }
+
+      async function openCapabilityGateway(
+        models: typeof capabilityCatalog = capabilityCatalog,
+      ) {
+        mocks.useGatewayCatalog.mockReturnValue({
+          models: shallowRef(models),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: mocks.refreshGatewayCatalog,
+        })
+
+        const wrapper = await mountPicker()
+
+        await wrapper.get('[data-testid="current-model-trigger"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+          .trigger('click')
+
+        return wrapper
+      }
+
+      it('offers no capability filters in provider mode', async () => {
+        const wrapper = await mountPicker()
+
+        await wrapper.get('[data-testid="current-model-trigger"]')
+          .trigger('click')
+
+        expect(wrapper.find('[data-testid="models-picker-filter-reasoning"]')
+          .exists()).toBe(false)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-web-search"]',
+        ).exists()).toBe(false)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-tool-calling"]',
+        ).exists()).toBe(false)
+      })
+
+      it('narrows to models with a positive reasoning signal only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual([
+          'Claude Reasoning Vision',
+          'GPT-5.4 Reasoning',
+        ])
+      })
+
+      it('narrows to models with a web search resolution only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-web-search"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 Search'])
+      })
+
+      it('narrows to models with a strict tool-calling gate only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-tool-calling"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 Tools'])
+      })
+
+      it('narrows to models with a confirmed image-generation signal only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual([
+          'GPT-5.4 Image',
+          'GPT-5.4 Image Vision',
+        ])
+      })
+
+      it('excludes a model reporting none of the capability signals', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+          .trigger('click')
+        await wrapper
+          .get('[data-testid="models-picker-filter-tool-calling"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper))
+          .not.toContain('Claude Plain')
+      })
+
+      it('ANDs a capability filter with vision only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-vision"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['Claude Reasoning Vision'])
+      })
+
+      it('ANDs the image generation filter with the free filter', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-free"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4 Image Vision'])
+      })
+
+      it('ANDs the image generation filter with vision only', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-vision"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper))
+          .toEqual(['GPT-5.4 Image Vision'])
+      })
+
+      it('resets the image generation filter from the filter menu Clear '
+        + 'action', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper
+          .get('[data-testid="models-picker-filter-image-generation"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-clear"]')
+          .get('button')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toHaveLength(
+          capabilityCatalog.length,
+        )
+      })
+
+      it('resets capability filters from the filter menu Clear action', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-filter-clear"]')
+          .get('button')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toHaveLength(
+          capabilityCatalog.length,
+        )
+      })
+
+      it('resets capability filters from the empty-state Clear filters button', async () => {
+        const wrapper = await openCapabilityGateway([toolCallModel])
+
+        await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="gateway-models-clear-filters"]')
+          .trigger('click')
+
+        expect(getRenderedModelNames(wrapper)).toEqual(['GPT-5.4 Tools'])
+      })
+
+      it('drops a vendor rail button a capability filter emptied out', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-web-search"]')
+          .trigger('click')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-gateway-provider-rail"]',
+        ).exists()).toBe(false)
+      })
+
+      it('resets capability filters when switching to another gateway', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-vercel"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-openrouter"]')
+          .trigger('click')
+
+        expect(
+          wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+            .get('button')
+            .attributes('aria-pressed'),
+        ).toBe('false')
+      })
+
+      it('omits web search and image generation for Cloudflare but offers '
+        + 'them elsewhere', async () => {
+        mocks.useGatewayCatalog.mockReturnValue({
+          models: shallowRef(capabilityCatalog),
+          pending: shallowRef(false),
+          error: shallowRef(null),
+          refresh: mocks.refreshGatewayCatalog,
+        })
+
+        const wrapper = await mountPicker()
+
+        await wrapper.get('[data-testid="current-model-trigger"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-cloudflare"]')
+          .trigger('click')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-web-search"]',
+        ).exists()).toBe(false)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-image-generation"]',
+        ).exists()).toBe(false)
+        expect(wrapper.find('[data-testid="models-picker-filter-reasoning"]')
+          .exists()).toBe(true)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-tool-calling"]',
+        ).exists()).toBe(true)
+
+        await wrapper.get('[data-testid="models-picker-gateway-cloudflare"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-openrouter"]')
+          .trigger('click')
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-web-search"]',
+        ).exists()).toBe(true)
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-image-generation"]',
+        ).exists()).toBe(true)
+      })
+
+      it('offers the image generation filter for Vercel', async () => {
+        const wrapper = await openCapabilityGateway()
+
+        expect(wrapper.find(
+          '[data-testid="models-picker-filter-image-generation"]',
+        ).exists()).toBe(true)
+      })
+    })
+
+    describe('error state', () => {
+      it('surfaces the structured why and fix from the server error', async () => {
+        const error = Object.assign(new Error('Failed to fetch'), {
+          data: {
+            message: 'Failed to fetch Cloudflare AI Gateway model catalog',
+            data: {
+              why: 'Cloudflare returned HTTP 403 (error code 10000)',
+              fix: 'API token needs Account > Workers AI > Read. Edit the '
+                + 'token in the Cloudflare dashboard, then retry.',
+            },
+          },
+        })
+
+        mocks.useGatewayCatalog.mockReturnValue({
+          models: shallowRef([]),
+          pending: shallowRef(false),
+          error: shallowRef(error),
+          refresh: mocks.refreshGatewayCatalog,
+        })
+
+        const wrapper = await mountPicker()
+
+        await wrapper.get('[data-testid="current-model-trigger"]')
+          .trigger('click')
+        await wrapper.get('[data-testid="models-picker-gateway-cloudflare"]')
+          .trigger('click')
+
+        expect(
+          wrapper.get('[data-testid="gateway-models-error-why"]').text(),
+        ).toBe('Cloudflare returned HTTP 403 (error code 10000)')
+        expect(
+          wrapper.get('[data-testid="gateway-models-error-fix"]').text(),
+        ).toContain('Workers AI > Read')
+      })
+    })
   })
 })

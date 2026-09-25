@@ -5,7 +5,7 @@
   >
     <ul
       ref="menu"
-      class="absolute z-[9999] menu menu-xs bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none overflow-y-auto overscroll-contain transition-[opacity,visibility] duration-200"
+      class="absolute z-[9999] menu menu-xs flex-nowrap bg-base-100 rounded-xl shadow-lg border border-base-200 w-64 p-1 select-none overflow-x-hidden overflow-y-auto overscroll-contain transition-[opacity,visibility] duration-200"
       :class="{
         invisible: !menuStyle || isTextSelecting,
         'opacity-0': isTextSelecting,
@@ -18,19 +18,20 @@
         <li>
           <div
             data-testid="message-menu-info"
-            class="menu-title flex flex-col gap-1 !p-2 cursor-default"
+            class="menu-title w-full min-w-0 flex flex-col gap-1 !p-2 cursor-default"
           >
             <div
               v-if="dateTimeInfo.date"
               data-testid="message-menu-datetime"
-              class="text-right text-xs font-normal text-base-content/50"
+              class="truncate text-right text-xs font-normal text-base-content/50"
+              :title="`${dateTimeInfo.date} · ${dateTimeInfo.time}`"
             >
               {{ dateTimeInfo.date }} · {{ dateTimeInfo.time }}
             </div>
             <div
               v-if="info.model"
               data-testid="message-menu-model"
-              class="flex items-center justify-between gap-3 text-xs"
+              class="flex min-w-0 items-center justify-between gap-3 text-xs"
             >
               <span class="shrink-0 font-normal text-base-content/50">Model</span>
               <span
@@ -41,9 +42,34 @@
               </span>
             </div>
             <div
+              v-if="info.providerLabel"
+              data-testid="message-menu-provider"
+              class="flex min-w-0 items-center justify-between gap-3 text-xs"
+            >
+              <span class="shrink-0 font-normal text-base-content/50">Provider</span>
+              <span class="flex min-w-0 items-center justify-end gap-1.5 font-normal text-base-content">
+                <Icon
+                  v-if="info.providerKind === 'provider'"
+                  name="lucide:key-round"
+                  size="14"
+                  class="shrink-0"
+                />
+                <ProviderIcon
+                  v-else-if="info.providerId"
+                  :provider-id="info.providerId"
+                  :label="info.providerLabel"
+                  class="size-3.5 shrink-0"
+                />
+                <span
+                  class="min-w-0 truncate"
+                  :title="providerDisplayLabel"
+                >{{ providerDisplayLabel }}</span>
+              </span>
+            </div>
+            <div
               v-if="info.reasoning && info.reasoning !== 'off'"
               data-testid="message-menu-reasoning"
-              class="flex items-center justify-between gap-3 text-xs"
+              class="flex min-w-0 items-center justify-between gap-3 text-xs"
             >
               <span class="shrink-0 font-normal text-base-content/50">Reasoning</span>
               <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
@@ -60,18 +86,21 @@
             <div
               v-if="toolsLabel"
               data-testid="message-menu-tools"
-              class="flex items-center justify-between gap-3 text-xs"
+              class="flex min-w-0 items-center justify-between gap-3 text-xs"
             >
               <span class="shrink-0 font-normal text-base-content/50">Tools</span>
-              <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5 font-normal text-base-content">
+              <span
+                class="flex min-w-0 items-center justify-end gap-1.5 font-normal text-base-content"
+                :title="toolsLabel"
+              >
                 <Icon :name="toolsIconName" size="14" class="shrink-0" />
-                {{ toolsLabel }}
+                <span class="min-w-0 truncate">{{ toolsLabel }}</span>
               </span>
             </div>
             <div
               v-if="info.tokens !== undefined"
               data-testid="message-menu-tokens"
-              class="flex items-center justify-between gap-3 text-xs"
+              class="flex min-w-0 items-center justify-between gap-3 text-xs"
             >
               <span class="shrink-0 font-normal text-base-content/50">
                 {{ tokensLabel }}
@@ -82,7 +111,7 @@
             </div>
             <div
               v-if="hasCostInfo"
-              class="flex flex-col gap-1"
+              class="min-w-0 flex flex-col gap-1"
             >
               <span class="text-xs font-normal text-base-content/50">
                 {{ hasEstimatedCost ? 'Cost (estimated)' : 'Cost' }}
@@ -90,7 +119,7 @@
               <div
                 v-if="info.cost !== undefined"
                 data-testid="message-menu-cost-current"
-                class="flex items-center justify-between gap-3 pl-2 text-xs"
+                class="flex min-w-0 items-center justify-between gap-3 pl-2 text-xs"
               >
                 <span class="shrink-0 font-normal text-base-content/50">
                   Current message
@@ -102,19 +131,22 @@
               <div
                 v-if="searchGroundingLabel"
                 data-testid="message-menu-search-grounding"
-                class="flex items-center justify-between gap-3 pl-2 text-xs"
+                class="flex min-w-0 items-center justify-between gap-3 pl-2 text-xs"
               >
                 <span class="shrink-0 font-normal text-base-content/50">
-                  Web search
+                  {{ searchRowLabel }}
                 </span>
-                <span class="min-w-0 truncate font-normal text-base-content">
+                <span
+                  class="min-w-0 truncate font-normal text-base-content"
+                  :title="searchGroundingLabel"
+                >
                   {{ searchGroundingLabel }}
                 </span>
               </div>
               <div
                 v-if="info.costToMessage !== undefined"
                 data-testid="message-menu-cost-to-message"
-                class="flex items-center justify-between gap-3 pl-2 text-xs"
+                class="flex min-w-0 items-center justify-between gap-3 pl-2 text-xs"
               >
                 <span class="shrink-0 font-normal text-base-content/50">
                   Up to this message
@@ -131,7 +163,7 @@
               <div
                 v-if="info.chatTotalCost !== undefined"
                 data-testid="message-menu-cost-chat-total"
-                class="flex items-center justify-between gap-3 pl-2 text-xs"
+                class="flex min-w-0 items-center justify-between gap-3 pl-2 text-xs"
               >
                 <span class="shrink-0 font-normal text-base-content/50">
                   Chat total
@@ -229,9 +261,12 @@ import {
   formatSearchGroundingUnits,
   formatTokenCount,
 } from '#shared/utils/message-format'
+import { providerMeta } from '#shared/utils/provider-meta'
 
 const TOOL_LABELS: Record<ModelTool | 'deep_research', string> = {
   web_search: 'Web search',
+  web_search_brave: 'Web search (Brave)',
+  web_search_exa: 'Web search (Exa)',
   image_generation: 'Image generation',
   deep_research: 'Deep research',
 }
@@ -290,6 +325,12 @@ const modelDisplayName = computed<string>(() => {
   return model ? getModelName(props.info.model) : props.info.model
 })
 
+const providerDisplayLabel = computed<string>(() => {
+  return props.info?.providerKind === 'provider'
+    ? `${props.info.providerLabel} (direct)`
+    : props.info?.providerLabel ?? ''
+})
+
 const reasoningIconName = computed<string>(() => {
   const level = props.info?.reasoning ?? 'off'
 
@@ -341,6 +382,18 @@ const hasEstimatedCost = computed<boolean>(() => {
     || !!props.info?.chatTotalCostIsEstimated
     || props.info?.searchCost !== undefined
   )
+})
+
+const searchRowLabel = computed<string>(() => {
+  const provider = props.info?.searchProvider
+
+  if (!provider) {
+    return 'Web search'
+  }
+
+  const meta = providerMeta[provider]
+
+  return `Web search (${meta?.shortLabel ?? meta?.label ?? provider})`
 })
 
 const searchGroundingLabel = computed<string>(() => {

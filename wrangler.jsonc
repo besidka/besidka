@@ -44,11 +44,14 @@
 		"NUXT_MESSAGE_SEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
 		"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
 		// Grounding with Google Search pricing, per ai.google.dev/gemini-api/docs/google-search
-		// and .../pricing (as of 2026-09-21). Public, provider-published rates —
-		// not a secret. Gemini 3.x rate invoice-verified (see PR #385); the
-		// Gemini <=2.5 rate is documentation-only.
-		"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
-		"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
+		// and .../pricing (as of 2026-09-21; free-quota narrative corrected
+		// 2026-09-25, see docs/web-search-cost-accounting.md). Public,
+		// provider-published rates — not a secret. Gemini 3.x rate is
+		// invoice-verified (paid-one SKU E662-8171-51CB, PR #385); its free
+		// allowance (5,000 queries/month) is NOT modelled — cost is always
+		// list price x units. Gemini <=2.5 rate is documentation-only.
+		"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
+		"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
 		// Anthropic web_search and OpenAI web_search are billed per search
 		// call, separately from tokens. Public, provider-published rates —
 		// not secrets. Anthropic: flat $10 / 1,000 searches, identical
@@ -58,8 +61,26 @@
 		// non-reasoning split (developers.openai.com/api/docs/pricing).
 		// Both as of 2026-09-22 and documentation-only — NOT
 		// invoice-verified the way the Gemini 3.x rate was.
-		"NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
-		"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10"
+		"NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
+		"NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
+		// Brave Search (Web & LLM Context plan) and Exa are BYOK external
+		// search backends, not native provider tools — see
+		// docs/gateway-restoration-and-search-providers-plan.md Epic 1.
+		// Public, provider-published rates. Brave: $5 / 1,000 requests,
+		// documentation-only (as of 2026-09-22), api-dashboard.search.brave.com
+		// pricing, NOT invoice-verified. Exa: $7 / 1,000 base search requests
+		// (exa.ai/pricing) — this fallback rate is used only when Exa's own
+		// response omits `costDollars`, which the live path always prefers.
+		// Exa's pricing page separately lists a $1/1,000-per-extracted-page
+		// highlights charge that would put this app's fixed 10-result,
+		// highlights-on request shape at $17/1,000 — but two real smoke-test
+		// calls against that exact shape on 2026-09-22 both reported
+		// `costDollars.total: 0.007` ($7/1,000, base fee only, no separate
+		// highlights line). Set to the empirically-observed $7, not the
+		// theoretical $17 the pricing page alone would suggest — re-verify
+		// with more samples before raising it back.
+		"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+		"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
 	},
 	"d1_databases": [
 		{
@@ -184,11 +205,15 @@
 				"NUXT_AXIOM_CONSENT_DATASET": "besidka-consent-prod",
 				"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAEFMAZiwbUuiy0qi",
 				// Grounding with Google Search pricing, per ai.google.dev/gemini-api/docs/google-search
-				// and .../pricing (as of 2026-09-21). Public, provider-published rates —
-				// not a secret. Gemini 3.x rate invoice-verified (see PR #385); the
-				// Gemini <=2.5 rate is documentation-only.
-				"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
-				"NUXT_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
+				// and .../pricing (as of 2026-09-21; free-quota narrative
+				// corrected 2026-09-25, see docs/web-search-cost-accounting.md).
+				// Public, provider-published rates — not a secret. Gemini 3.x
+				// rate is invoice-verified (paid-one SKU E662-8171-51CB, PR
+				// #385); its free allowance (5,000 queries/month) is NOT
+				// modelled — cost is always list price x units. Gemini <=2.5
+				// rate is documentation-only.
+				"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
+				"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
 				// Anthropic web_search and OpenAI web_search are billed per search
 				// call, separately from tokens. Public, provider-published rates —
 				// not secrets. Anthropic: flat $10 / 1,000 searches, identical
@@ -198,8 +223,26 @@
 				// non-reasoning split (developers.openai.com/api/docs/pricing).
 				// Both as of 2026-09-22 and documentation-only — NOT
 				// invoice-verified the way the Gemini 3.x rate was.
-				"NUXT_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
-				"NUXT_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10"
+				"NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
+				"NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
+				// Brave Search (Web & LLM Context plan) and Exa are BYOK external
+				// search backends, not native provider tools — see
+				// docs/gateway-restoration-and-search-providers-plan.md Epic 1.
+				// Public, provider-published rates. Brave: $5 / 1,000 requests,
+				// documentation-only (as of 2026-09-22), api-dashboard.search.brave.com
+				// pricing, NOT invoice-verified. Exa: $7 / 1,000 base search requests
+				// (exa.ai/pricing) — this fallback rate is used only when Exa's own
+				// response omits `costDollars`, which the live path always prefers.
+				// Exa's pricing page separately lists a $1/1,000-per-extracted-page
+				// highlights charge that would put this app's fixed 10-result,
+				// highlights-on request shape at $17/1,000 — but two real smoke-test
+				// calls against that exact shape on 2026-09-22 both reported
+				// `costDollars.total: 0.007` ($7/1,000, base fee only, no separate
+				// highlights line). Set to the empirically-observed $7, not the
+				// theoretical $17 the pricing page alone would suggest — re-verify
+				// with more samples before raising it back.
+				"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+				"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
 			},
 			"d1_databases": [
 				{

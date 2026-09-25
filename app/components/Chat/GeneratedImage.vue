@@ -20,7 +20,7 @@
     </div>
 
     <div
-      v-else-if="readyFile"
+      v-else-if="cardDisplay"
       class="rounded-box border border-base-300 bg-base-200"
       data-testid="generated-image-ready"
     >
@@ -30,7 +30,7 @@
         :class="{ 'pointer-events-none': isImagePreviewSuppressed }"
         :style="{ aspectRatio: imageAspectRatio }"
         :disabled="hasImageLoadError"
-        :aria-label="`Preview ${readyFile.name}`"
+        :aria-label="`Preview ${cardDisplay.name}`"
         data-testid="generated-image-preview-trigger"
         @click="openImagePreview"
       >
@@ -41,13 +41,13 @@
         <img
           v-show="!hasImageLoadError"
           :src="imageUrl"
-          :alt="readyFile.name"
+          :alt="cardDisplay.name"
           class="generated-image relative size-full object-contain"
           :class="{
             'generated-image--loaded': isImageLoaded,
           }"
           loading="lazy"
-          @load="isImageLoaded = true"
+          @load="onImageLoad"
           @error="onImageError"
         >
         <span
@@ -62,11 +62,11 @@
       </button>
       <div class="flex items-center gap-3 p-3">
         <div class="min-w-0 grow">
-          <p class="truncate text-sm font-medium" :title="readyFile.name">
-            {{ readyFile.name }}
+          <p class="truncate text-sm font-medium" :title="cardDisplay.name">
+            {{ cardDisplay.name }}
           </p>
           <p class="text-xs text-base-content/60">
-            {{ providerLabel }} · {{ formatFileSize(readyFile.size) }}
+            {{ metaLabel }}
           </p>
         </div>
         <span
@@ -88,11 +88,12 @@
             tooltip-position="top"
             icon-name="lucide:maximize-2"
             :icon-size="12"
-            :title="`Preview ${readyFile.name}`"
+            :title="`Preview ${cardDisplay.name}`"
             data-testid="generated-image-open"
             @click="openImagePreview"
           />
           <UiButton
+            v-if="isImageInputSupported && readyToolFile"
             icon-only
             circle
             ghost
@@ -102,7 +103,7 @@
             tooltip-position="top"
             icon-name="lucide:paperclip"
             :icon-size="12"
-            :title="`Attach ${readyFile.name} for next prompt`"
+            :title="`Attach ${cardDisplay.name} for next prompt`"
             data-testid="generated-image-attach"
             @click="attachForNextPrompt"
           />
@@ -112,8 +113,9 @@
           >
             <a
               :href="downloadUrl"
+              :download="cardDisplay.isInlineData ? cardDisplay.name : null"
               class="btn btn-xs btn-circle btn-accent hitslop"
-              :aria-label="`Download ${readyFile.name}`"
+              :aria-label="`Download ${cardDisplay.name}`"
               data-testid="generated-image-download"
             >
               <Icon name="lucide:download" size="12" />
@@ -126,8 +128,8 @@
         v-model:open="isImagePreviewOpen"
         :src="imageUrl"
         :download-url="downloadUrl"
-        :alt="readyFile.name"
-        :filename="readyFile.name"
+        :alt="cardDisplay.name"
+        :filename="cardDisplay.name"
       />
     </div>
 
@@ -155,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import type {
   GeneratedImageFile,
 } from '#shared/types/image-generation.d'
@@ -163,6 +165,8 @@ import {
   getGenerateImageOutput,
   getGenerateImageToolPart,
   getImageGenerationFailureText,
+  isAssistantGeneratedImageFilePart,
+  resolveAssistantGeneratedImageDisplay,
 } from '~/utils/generated-images'
 
 const { messageRole, part } = defineProps<{
@@ -171,6 +175,7 @@ const { messageRole, part } = defineProps<{
 }>()
 
 const { isSuppressed: isImagePreviewSuppressed } = useImagePreviewGuard()
+const { isImageInputSupported } = useImageInputSupport()
 
 const isImageLoaded = shallowRef<boolean>(false)
 const hasImageLoadError = shallowRef<boolean>(false)
@@ -181,6 +186,16 @@ const supportedAspectRatios: Record<string, string> = {
   '3:2': '3 / 2',
 }
 
+// A gateway `file` part carries no `generate_image` tool input, so it has
+// no curated `aspectRatio` to read the way a direct-provider card does —
+// only the loaded image itself knows its real dimensions. Filled in by the
+// preview `<img>`'s own `load` event, this keeps the card's fixed `1 / 1`
+// fallback (matching the direct-provider default, and avoiding a layout
+// jump before the image has loaded) until the true ratio is known, then
+// swaps the container over to it so a landscape/portrait image is never
+// letterboxed inside a square frame.
+const naturalImageAspectRatio = shallowRef<string | null>(null)
+
 const toolPart = computed(() => {
   return getGenerateImageToolPart(part)
 })
@@ -188,26 +203,89 @@ const toolPart = computed(() => {
 const imageAspectRatio = computed<string>(() => {
   const inputValue = toolPart.value?.input
 
-  if (!inputValue || typeof inputValue !== 'object') {
-    return '1 / 1'
+  if (inputValue && typeof inputValue === 'object') {
+    const aspectRatio = (inputValue as { aspectRatio?: unknown }).aspectRatio
+
+    if (typeof aspectRatio === 'string') {
+      return supportedAspectRatios[aspectRatio] || '1 / 1'
+    }
   }
 
-  const aspectRatio = (inputValue as { aspectRatio?: unknown }).aspectRatio
-
-  if (typeof aspectRatio !== 'string') {
-    return '1 / 1'
-  }
-
-  return supportedAspectRatios[aspectRatio] || '1 / 1'
+  return naturalImageAspectRatio.value || '1 / 1'
 })
 
 const output = computed(() => {
   return getGenerateImageOutput(part)
 })
 
+const readyToolFile = computed<GeneratedImageFile | null>(() => {
+  if (output.value?.status !== 'ready' || !output.value.file) {
+    return null
+  }
+
+  return output.value.file
+})
+
+const assistantFilePart = computed<FileUIPart | null>(() => {
+  return isAssistantGeneratedImageFilePart({ role: messageRole }, part)
+    ? part as FileUIPart
+    : null
+})
+
+const assistantFileDisplay = computed(() => {
+  const filePart = assistantFilePart.value
+
+  return filePart ? resolveAssistantGeneratedImageDisplay(filePart) : null
+})
+
+const isAssistantFileFailure = computed<boolean>(() => {
+  return assistantFilePart.value !== null
+    && assistantFileDisplay.value === null
+})
+
+interface GeneratedImageCardDisplay {
+  name: string
+  size: number | null
+  imageUrl: string
+  downloadUrl: string
+  isInlineData: boolean
+}
+
+const cardDisplay = computed<GeneratedImageCardDisplay | null>(() => {
+  const toolFile = readyToolFile.value
+
+  if (toolFile) {
+    return {
+      name: toolFile.name,
+      size: toolFile.size,
+      imageUrl: getFileUrl(toolFile.storageKey),
+      downloadUrl: getFileDownloadUrl(toolFile.storageKey),
+      isInlineData: false,
+    }
+  }
+
+  const fileDisplay = assistantFileDisplay.value
+
+  if (!fileDisplay) {
+    return null
+  }
+
+  return {
+    name: fileDisplay.name,
+    size: null,
+    imageUrl: fileDisplay.imageUrl,
+    downloadUrl: fileDisplay.downloadUrl,
+    isInlineData: fileDisplay.imageUrl.startsWith('data:'),
+  }
+})
+
 const isRenderable = computed<boolean>(() => {
   if (messageRole !== 'assistant') {
     return false
+  }
+
+  if (assistantFilePart.value) {
+    return true
   }
 
   if (toolPart.value?.state === 'output-error') {
@@ -224,31 +302,19 @@ const isRenderable = computed<boolean>(() => {
   return output.value !== null
 })
 
-const readyFile = computed<GeneratedImageFile | null>(() => {
-  if (output.value?.status !== 'ready' || !output.value.file) {
-    return null
-  }
-
-  return output.value.file
-})
-
 const imageUrl = computed<string>(() => {
-  if (!readyFile.value) {
-    return ''
-  }
-
-  return getFileUrl(readyFile.value.storageKey)
+  return cardDisplay.value?.imageUrl ?? ''
 })
 
 const downloadUrl = computed<string>(() => {
-  if (!readyFile.value) {
-    return ''
-  }
-
-  return getFileDownloadUrl(readyFile.value.storageKey)
+  return cardDisplay.value?.downloadUrl ?? ''
 })
 
 const isFailure = computed<boolean>(() => {
+  if (assistantFilePart.value) {
+    return isAssistantFileFailure.value
+  }
+
   return toolPart.value?.state === 'output-error'
 })
 
@@ -284,6 +350,31 @@ const providerLabel = computed<string>(() => {
   return 'AI'
 })
 
+const metaLabel = computed<string>(() => {
+  const size = cardDisplay.value?.size
+
+  if (size === null || size === undefined) {
+    return providerLabel.value
+  }
+
+  return `${providerLabel.value} · ${formatFileSize(size)}`
+})
+
+function onImageLoad(event: Event) {
+  isImageLoaded.value = true
+
+  if (toolPart.value) {
+    return
+  }
+
+  const image = event.target as HTMLImageElement
+
+  if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+    naturalImageAspectRatio.value
+      = `${image.naturalWidth} / ${image.naturalHeight}`
+  }
+}
+
 function onImageError() {
   isImageLoaded.value = false
   hasImageLoadError.value = true
@@ -297,16 +388,16 @@ function openImagePreview() {
 }
 
 function attachForNextPrompt() {
-  if (!readyFile.value) {
+  if (!readyToolFile.value) {
     return
   }
 
   useNuxtApp().callHook('chat:attach-file', {
-    id: readyFile.value.id,
-    storageKey: readyFile.value.storageKey,
-    name: readyFile.value.name,
-    size: readyFile.value.size,
-    type: readyFile.value.type,
+    id: readyToolFile.value.id,
+    storageKey: readyToolFile.value.storageKey,
+    name: readyToolFile.value.name,
+    size: readyToolFile.value.size,
+    type: readyToolFile.value.type,
   })
 }
 
@@ -314,6 +405,7 @@ watch(imageUrl, () => {
   isImageLoaded.value = false
   hasImageLoadError.value = false
   isImagePreviewOpen.value = false
+  naturalImageAspectRatio.value = null
 }, { flush: 'post' })
 </script>
 

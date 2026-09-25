@@ -972,6 +972,29 @@ describe('Chat/ContextMenu.client', () => {
       )
     })
 
+    it('truncates the date/time row with a full-value tooltip', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const dateTimeRow = wrapper.get(
+        '[data-testid="message-menu-datetime"]',
+      )
+
+      expect(dateTimeRow.classes()).toContain('truncate')
+      expect(dateTimeRow.attributes('title')).toBe(dateTimeRow.text())
+    })
+
     it('falls back to the raw id for an unknown model', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',
@@ -1180,6 +1203,111 @@ describe('Chat/ContextMenu.client', () => {
     })
   })
 
+  describe('provider info rendering', () => {
+    it('shows "(direct)" and a key icon for a direct provider', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+        providerId: 'openai',
+        providerLabel: 'OpenAI',
+        providerKind: 'provider',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
+
+      expect(providerRow.text()).toContain('OpenAI')
+      expect(providerRow.text()).toContain('(direct)')
+      expect(providerRow.get('.iconify').classes()).toContain(
+        'i-lucide:key-round',
+      )
+    })
+
+    it('never shows "(direct)" for a search-provider kind', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+        providerId: 'brave',
+        providerLabel: 'Brave',
+        providerKind: 'search',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const providerRow = wrapper.get('[data-testid="message-menu-provider"]')
+
+      expect(providerRow.text()).toContain('Brave')
+      expect(providerRow.text()).not.toContain('(direct)')
+    })
+
+    it('truncates a long provider label to a single line with a tooltip',
+      async () => {
+        const info: MessageMenuInfo = {
+          role: 'assistant',
+          createdAt: '2026-01-15T10:30:00.000Z',
+          model: 'gpt-5.4',
+          providerId: 'cloudflare',
+          providerLabel: 'Cloudflare AI Gateway',
+          providerKind: 'gateway',
+        }
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+            info,
+          },
+          attachTo: document.body,
+        })
+
+        const providerRow = wrapper.get(
+          '[data-testid="message-menu-provider"]',
+        )
+        const valueSpan = providerRow.get('span.truncate')
+
+        expect(valueSpan.classes()).toContain('min-w-0')
+        expect(valueSpan.attributes('title')).toBe('Cloudflare AI Gateway')
+      })
+
+    it('hides the provider row when no provider info is present', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-5.4',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-provider"]').exists(),
+      ).toBe(false)
+    })
+  })
+
   describe('Web search row', () => {
     it('renders the cost and query count together', async () => {
       const info: MessageMenuInfo = {
@@ -1329,6 +1457,139 @@ describe('Chat/ContextMenu.client', () => {
       expect(row.text()).not.toContain('$')
       expect(row.text()).toContain('1 search')
     })
+
+    it('labels the row "Web search (Brave)" when searchProvider is brave', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.02,
+        searchUnits: 2,
+        searchBillingUnit: 'search',
+        searchProvider: 'brave',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search (Brave)')
+    })
+
+    it('labels the row "Web search (Exa)" when searchProvider is exa', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.017,
+        searchUnits: 1,
+        searchBillingUnit: 'search',
+        searchProvider: 'exa',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search (Exa)')
+    })
+
+    it('labels the row "Web search (Google)" when searchProvider is google', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.01,
+        searchUnits: 1,
+        searchBillingUnit: 'grounded-prompt',
+        searchProvider: 'google',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+
+      expect(row.text()).toContain('Web search (Google)')
+      expect(row.text()).not.toContain('Web search (Google AI Studio)')
+    })
+
+    it('renders the unadorned "Web search" label when searchProvider is absent', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        searchCost: 0.036,
+        searchUnits: 3,
+        searchBillingUnit: 'query',
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.get(
+        '[data-testid="message-menu-search-grounding"]',
+      )
+      const label = row.find('span.shrink-0')
+
+      expect(label.text()).toBe('Web search')
+    })
+
+    it('carries the full cost/count string as a tooltip on the value',
+      async () => {
+        const info: MessageMenuInfo = {
+          role: 'assistant',
+          createdAt: '2026-01-15T10:30:00.000Z',
+          searchCost: 0.015,
+          searchUnits: 3,
+          searchBillingUnit: 'search',
+          searchProvider: 'brave',
+        }
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+            info,
+          },
+          attachTo: document.body,
+        })
+
+        const row = wrapper.get(
+          '[data-testid="message-menu-search-grounding"]',
+        )
+        const valueSpan = row.get('span.truncate')
+
+        expect(valueSpan.attributes('title')).toBe(valueSpan.text())
+      })
   })
 
   describe('deep research tool label', () => {
@@ -1377,6 +1638,81 @@ describe('Chat/ContextMenu.client', () => {
       expect(toolsRow.text()).toContain('Web search')
       expect(toolsRow.get('.iconify').classes()).toContain('i-lucide:globe')
     })
+
+    it('shows the Brave-attributed label for web_search_brave', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['web_search_brave'],
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+
+      expect(toolsRow.text()).toContain('Web search (Brave)')
+    })
+
+    it('shows the Exa-attributed label for web_search_exa', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        usedTools: ['web_search_exa'],
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+
+      expect(toolsRow.text()).toContain('Web search (Exa)')
+    })
+
+    it('renders the tools value as a single-line truncated tooltip',
+      async () => {
+        const info: MessageMenuInfo = {
+          role: 'assistant',
+          createdAt: '2026-01-15T10:30:00.000Z',
+          usedTools: ['web_search_brave', 'image_generation'],
+        }
+
+        const wrapper = await mountSuspended(ContextMenu, {
+          props: {
+            messageId: 'm1',
+            anchorEl,
+            info,
+          },
+          attachTo: document.body,
+        })
+
+        const toolsRow = wrapper.get('[data-testid="message-menu-tools"]')
+        const valueWrapper = toolsRow.findAll('span').find((span) => {
+          return span.attributes('title')?.includes('Web search (Brave)')
+        })
+
+        expect(valueWrapper).toBeDefined()
+        expect(valueWrapper?.classes()).not.toContain('flex-wrap')
+        expect(valueWrapper?.attributes('title')).toBe(
+          'Web search (Brave), Image generation',
+        )
+
+        const textSpan = valueWrapper?.get('span.truncate')
+
+        expect(textSpan?.classes()).toContain('min-w-0')
+      })
   })
 
   describe('copy actions', () => {
@@ -1742,6 +2078,24 @@ describe('Chat/ContextMenu.client', () => {
       expect(guardCount().value).toBe(0)
 
       anchorElB.remove()
+    })
+  })
+
+  describe('overflow containment', () => {
+    it('opts out of the daisyUI menu column wrap so tall content scrolls vertically', async () => {
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+        },
+        attachTo: document.body,
+      })
+
+      const classes = wrapper.find('ul').classes()
+
+      expect(classes).toContain('flex-nowrap')
+      expect(classes).toContain('overflow-y-auto')
+      expect(classes).toContain('overflow-x-hidden')
     })
   })
 })

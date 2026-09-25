@@ -41,7 +41,7 @@
                 Upload new files
               </button>
             </li>
-            <li>
+            <li v-if="isImageInputSupported">
               <button
                 data-testid="files-open-generated"
                 type="button"
@@ -85,9 +85,12 @@
 import type { FileMetadata } from '#shared/types/files.d'
 import type { FileSourceFilter } from '~/types/file-manager'
 
-defineProps<{
+withDefaults(defineProps<{
   files: FileMetadata[]
-}>()
+  isImageInputSupported?: boolean
+}>(), {
+  isImageInputSupported: true,
+})
 
 const emit = defineEmits<{
   detachAll: []

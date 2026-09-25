@@ -1,0 +1,224 @@
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
+import type { VueWrapper } from '@vue/test-utils'
+import type {
+  WebSearchOption,
+  WebSearchSelection,
+} from '../../../../app/types/web-search'
+import WebSearchTrigger from '../../../../app/components/ChatInput/WebSearchTrigger.vue'
+
+const mocks = vi.hoisted(() => ({
+  useDevice: vi.fn(),
+}))
+
+mockNuxtImport('useDevice', () => mocks.useDevice)
+
+function useDesktopDevice() {
+  mocks.useDevice.mockReturnValue({
+    isIos: false,
+    isAndroid: false,
+    isDesktop: true,
+  })
+}
+
+const options: WebSearchOption[] = [
+  { value: 'web_search', label: 'Model\'s built-in search', enabled: true },
+  {
+    value: 'web_search_brave',
+    label: 'Brave Search',
+    providerId: 'brave',
+    enabled: true,
+  },
+  {
+    value: 'web_search_exa',
+    label: 'Exa',
+    providerId: 'exa',
+    enabled: true,
+  },
+]
+
+async function mountTrigger(props: {
+  selected: WebSearchSelection
+  align?: 'start' | 'end'
+  options?: WebSearchOption[]
+  isToolCallingSupported?: boolean
+}): Promise<{ wrapper: VueWrapper, selectedProviders: WebSearchSelection[] }> {
+  const selectedProviders: WebSearchSelection[] = []
+
+  const host = defineComponent({
+    setup() {
+      return () => h(WebSearchTrigger, {
+        selected: props.selected,
+        options: props.options ?? options,
+        isToolCallingSupported: props.isToolCallingSupported ?? true,
+        align: props.align,
+        onSelectProvider: (value: WebSearchSelection) => {
+          selectedProviders.push(value)
+        },
+      })
+    },
+  })
+
+  const wrapper = await mountSuspended(host, { attachTo: document.body })
+
+  return { wrapper, selectedProviders }
+}
+
+describe('ChatInput/WebSearchTrigger', () => {
+  beforeEach(() => {
+    useDesktopDevice()
+  })
+
+  it('renders a ghost circle globe when nothing is selected', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'off' })
+    const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+    expect(trigger.classes()).toContain('btn-circle')
+    expect(trigger.text()).toBe('')
+    expect(trigger.attributes('title')).toBe(
+      'Choose a web search provider',
+    )
+    expect(trigger.find('.iconify').classes()).toContain('!size-4')
+  })
+
+  it('collapses to an active pill labelled "Search" for native search',
+    async () => {
+      const { wrapper } = await mountTrigger({ selected: 'web_search' })
+      const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+      expect(trigger.classes()).not.toContain('btn-circle')
+      expect(trigger.text()).toBe('Search')
+      expect(trigger.attributes('title')).toBe(
+        'Web search: Model\'s built-in search',
+      )
+    })
+
+  it('keeps the pill labelled "Search" and shows the Brave provider icon '
+    + 'and title when Brave is selected', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'web_search_brave' })
+    const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+    expect(trigger.text()).toBe('Search')
+    expect(trigger.attributes('title')).toBe('Web search: Brave')
+
+    const icon = trigger.find('.iconify')
+
+    expect(icon.classes().join(' ')).toContain('simple-icons:brave')
+    expect(icon.classes()).toContain('!size-4')
+  })
+
+  it('keeps the pill labelled "Search" and shows the Exa title when Exa '
+    + 'is selected', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'web_search_exa' })
+    const trigger = wrapper.get('[data-testid="web-search-trigger"]')
+
+    expect(trigger.find(':scope > span:last-child').text()).toBe('Search')
+    expect(trigger.attributes('title')).toBe('Web search: Exa')
+  })
+
+  it('opens the dropdown on hover on desktop', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'off' })
+    const details = wrapper.get('details').element as HTMLDetailsElement
+
+    expect(details.open).toBe(false)
+
+    await wrapper.get('details').trigger('mouseenter')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(details.open).toBe(true)
+  })
+
+  it('does not open on hover on iOS', async () => {
+    mocks.useDevice.mockReturnValue({
+      isIos: true,
+      isAndroid: false,
+      isDesktop: false,
+    })
+
+    const { wrapper } = await mountTrigger({ selected: 'off' })
+    const details = wrapper.get('details').element as HTMLDetailsElement
+
+    await wrapper.get('details').trigger('mouseenter')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(details.open).toBe(false)
+  })
+
+  it('force-closes on an outside click', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'off' })
+    const details = wrapper.get('details').element as HTMLDetailsElement
+
+    details.open = true
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(details.open).toBe(false)
+  })
+
+  it('forwards a selected option from the embedded menu items', async () => {
+    const { wrapper, selectedProviders } = await mountTrigger({
+      selected: 'off',
+    })
+
+    const buttons = wrapper.findAll('li > button')
+    const braveButton = buttons.find((button) => {
+      return button.text().includes('Brave Search')
+    })
+
+    await braveButton?.trigger('click')
+
+    expect(selectedProviders).toEqual(['web_search_brave'])
+  })
+
+  it('renders a single add-key link in the dropdown for a provider '
+    + 'without a key, with no disabled twin or underline', async () => {
+    const { wrapper, selectedProviders } = await mountTrigger({
+      selected: 'off',
+      options: [
+        options[0]!,
+        options[1]!,
+        {
+          value: 'web_search_exa',
+          label: 'Add Exa key',
+          providerId: 'exa',
+          enabled: false,
+          addKeyHref: '/profile/keys?tab=search',
+        },
+      ],
+    })
+
+    const exaLink = wrapper.find('a[to="/profile/keys?tab=search"]')
+
+    expect(exaLink.exists()).toBe(true)
+    expect(exaLink.text()).toContain('Add Exa key')
+    expect(exaLink.classes()).not.toContain('link')
+    expect(exaLink.classes()).toContain('text-warning')
+
+    await exaLink.trigger('click')
+
+    expect(selectedProviders).toEqual([])
+
+    const exaButtons = wrapper.findAll('li > button').filter((button) => {
+      return button.text().includes('Exa')
+    })
+
+    expect(exaButtons).toHaveLength(0)
+  })
+
+  it('aligns the dropdown to the end when align is "end"', async () => {
+    const { wrapper } = await mountTrigger({ selected: 'off', align: 'end' })
+    const details = wrapper.get('details')
+
+    expect(details.classes()).toContain('dropdown-end')
+  })
+
+  it('aligns the dropdown to the start by default on narrow viewports',
+    async () => {
+      const { wrapper } = await mountTrigger({ selected: 'off' })
+      const details = wrapper.get('details')
+
+      expect(details.classes()).not.toContain('dropdown-end')
+      expect(details.classes()).toContain('max-xs:dropdown-start')
+    })
+})

@@ -2,14 +2,19 @@ import type {
   ChatMessageMetadata,
   MessageUsage,
   SearchBillingUnit,
+  SearchProvider,
 } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { ProviderMeta } from '#shared/utils/provider-meta'
 
 export type MessageMenuInfo = {
   role: 'user' | 'assistant'
   createdAt?: string | number | Date
   model?: string
+  providerId?: string
+  providerLabel?: string
+  providerKind?: ProviderMeta['kind']
   usedTools?: Array<ModelTool | 'deep_research'>
   reasoning?: ReasoningLevel
   tokens?: number
@@ -23,6 +28,7 @@ export type MessageMenuInfo = {
   searchCost?: number
   searchUnits?: number
   searchBillingUnit?: SearchBillingUnit
+  searchProvider?: SearchProvider
 }
 
 type DisplayCost = {
@@ -42,8 +48,33 @@ type MenuMessage = {
 
 const persistedModelTools: ModelTool[] = [
   'web_search',
+  'web_search_brave',
+  'web_search_exa',
   'image_generation',
 ]
+
+export function isWebSearchTool(
+  tool: unknown,
+): tool is 'web_search' | 'web_search_brave' | 'web_search_exa' {
+  return tool === 'web_search'
+    || tool === 'web_search_brave'
+    || tool === 'web_search_exa'
+}
+
+/**
+ * The subset of web-search tools this app resolves itself, on the user's own
+ * Brave/Exa key, rather than handing to the provider or gateway running the
+ * turn. They are billed separately from tokens, need a tool-calling model,
+ * and are the reason both the direct-provider `Model.toolCall` gate and the
+ * gateway `GatewayModel.toolCall` gate exist. `web_search` is deliberately
+ * excluded: it names whatever native or gateway-bundled mechanism the
+ * selected route provides, which needs no tool call from the model.
+ */
+export function isExternalWebSearchTool(
+  tool: unknown,
+): tool is 'web_search_brave' | 'web_search_exa' {
+  return tool === 'web_search_brave' || tool === 'web_search_exa'
+}
 
 export function getMessageMetadata(
   message: { metadata?: unknown, createdAt?: string | number | Date },
@@ -121,6 +152,29 @@ function resolveDisplayCost(
   return { amount: cost, isEstimated: !!usage?.costEstimated }
 }
 
+/**
+ * `source-url` parts can land before any `text` part exists (e.g. while
+ * reasoning is still showing, or right when a search tool resolves but
+ * before the model has started writing), so Sources gating on parts.length
+ * alone would flash in over an otherwise-empty message. This checks for
+ * actual rendered content instead.
+ */
+export function hasVisibleTextPart(message: { parts?: unknown }): boolean {
+  const parts = Array.isArray(message.parts) ? message.parts : []
+
+  return parts.some((part) => {
+    return (
+      typeof part === 'object'
+      && part !== null
+      && 'type' in part
+      && part.type === 'text'
+      && 'text' in part
+      && typeof part.text === 'string'
+      && part.text.trim().length > 0
+    )
+  })
+}
+
 export function getMessageUsedTools(
   message: { parts?: unknown, tools?: unknown },
 ): Array<ModelTool | 'deep_research'> {
@@ -162,9 +216,39 @@ export function getMessageUsedTools(
     )
   })
 
+  // `message.tools` is only ever populated on the persisted *user* message
+  // row, never on the assistant row this function is normally called with
+  // (see persist-user-message.ts) — so `storedTools` is always `[]` in
+  // practice here, and the two checks below can never rely on it alone.
+  // Brave/Exa's own tool-call part type is a reliable, always-persisted
+  // stand-in: unlike native search, it names the exact provider, so we
+  // don't need to fall back to the generic `hasWebSearchPart` inference for
+  // them the way plain `web_search` does.
+  const usedExternalSearchTool = parts.find((part): part is {
+    type: 'tool-web_search_brave' | 'tool-web_search_exa'
+  } => {
+    return (
+      typeof part === 'object'
+      && part !== null
+      && 'type' in part
+      && (part.type === 'tool-web_search_brave'
+        || part.type === 'tool-web_search_exa')
+    )
+  })?.type
+
   return persistedModelTools.filter((tool) => {
+    if (tool === 'web_search_brave' || tool === 'web_search_exa') {
+      return storedTools.includes(tool)
+        || usedExternalSearchTool === `tool-${tool}`
+    }
+
     return storedTools.includes(tool)
-      || (tool === 'web_search' && hasWebSearchPart)
+      || (
+        tool === 'web_search'
+        && hasWebSearchPart
+        && !usedExternalSearchTool
+        && !storedTools.some(isWebSearchTool)
+      )
       || (tool === 'image_generation' && hasImageGenerationPart)
   })
 }
@@ -184,6 +268,12 @@ function getFollowingAssistantUsage(
     : undefined
 }
 
+// A gateway send (OpenRouter, Vercel, Cloudflare) reports one blended
+// `totalCost` instead of the `inputCost`/`outputCost` split a direct-provider
+// send produces, so it is preferred here whenever it is set. That total is
+// shown in full on the assistant row, the one place `usage` is actually
+// persisted; the paired user row contributes nothing so sumMessageCosts()
+// below never double-counts it.
 function getPerMessageCost(
   messages: MenuMessage[],
   messageIndex: number,
@@ -197,6 +287,10 @@ function getPerMessageCost(
   if (message.role === 'assistant') {
     const usage = getMessageMetadata(message).usage
 
+    if (usage?.totalCost !== undefined) {
+      return resolveDisplayCost(usage, usage.totalCost)
+    }
+
     return resolveDisplayCost(usage, usage?.outputCost)
   }
 
@@ -206,7 +300,37 @@ function getPerMessageCost(
 
   const usage = getFollowingAssistantUsage(messages, messageIndex)
 
+  if (usage?.totalCost !== undefined) {
+    return undefined
+  }
+
   return resolveDisplayCost(usage, usage?.inputCost)
+}
+
+type ProviderDisplay = {
+  providerId: string
+  providerLabel: string
+  providerKind: ProviderMeta['kind']
+}
+
+function resolveProviderDisplay(
+  usage: MessageUsage | undefined,
+): ProviderDisplay | undefined {
+  if (!usage?.provider) {
+    return undefined
+  }
+
+  const meta = resolveProviderMetaByKeyProviderId(usage.provider)
+
+  if (!meta) {
+    return undefined
+  }
+
+  return {
+    providerId: meta.id,
+    providerLabel: meta.label,
+    providerKind: meta.kind,
+  }
 }
 
 // searchCost (Google Search grounding, Anthropic web_search, or OpenAI
@@ -291,11 +415,15 @@ export function resolveMessageMenuInfo(
 
   if (message.role === 'assistant') {
     const usage = metadata.usage
+    const providerDisplay = resolveProviderDisplay(usage)
 
     return {
       role: 'assistant',
       createdAt: metadata.createdAt,
       model: usage?.model,
+      providerId: providerDisplay?.providerId,
+      providerLabel: providerDisplay?.providerLabel,
+      providerKind: providerDisplay?.providerKind,
       usedTools: getMessageUsedTools(message),
       reasoning: message.reasoning,
       tokens: resolveDisplayTokens(usage, usage?.outputTokens),
@@ -309,6 +437,7 @@ export function resolveMessageMenuInfo(
       searchCost: usage?.searchCost,
       searchUnits: usage?.searchUnits,
       searchBillingUnit: usage?.searchBillingUnit,
+      searchProvider: usage?.searchProvider,
     }
   }
 

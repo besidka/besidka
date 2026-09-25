@@ -1,5 +1,8 @@
+import type { GatewayId } from '#shared/types/gateways.d'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+
+const favoriteGatewayModelIds = z.array(z.string().max(100)).max(50)
 
 export default defineEventHandler(async (event) => {
   const session = await useUserSession()
@@ -15,6 +18,11 @@ export default defineEventHandler(async (event) => {
     notificationPromptState: z.boolean().nullable().optional(),
     sidebarPinned: z.boolean().optional(),
     favoriteModels: z.array(z.string().max(100)).max(50).optional(),
+    favoriteGatewayModels: z.object({
+      vercel: favoriteGatewayModelIds.optional(),
+      cloudflare: favoriteGatewayModelIds.optional(),
+      openrouter: favoriteGatewayModelIds.optional(),
+    }).optional(),
   }).safeParse)
 
   if (body.error) {
@@ -43,6 +51,7 @@ export default defineEventHandler(async (event) => {
     notificationPromptState?: boolean | null
     sidebarPinned?: boolean
     favoriteModels?: string[]
+    favoriteGatewayModels?: Partial<Record<GatewayId, string[]>>
   } = {}
 
   if (body.data.reasoningExpanded !== undefined) {
@@ -68,6 +77,22 @@ export default defineEventHandler(async (event) => {
 
   if (body.data.favoriteModels !== undefined) {
     fieldUpdates.favoriteModels = [...new Set(body.data.favoriteModels)]
+  }
+
+  if (body.data.favoriteGatewayModels !== undefined) {
+    const deduped: Partial<Record<GatewayId, string[]>> = {}
+
+    for (const [gatewayId, modelIds] of Object.entries(
+      body.data.favoriteGatewayModels,
+    )) {
+      if (!modelIds) {
+        continue
+      }
+
+      deduped[gatewayId as GatewayId] = [...new Set(modelIds)]
+    }
+
+    fieldUpdates.favoriteGatewayModels = deduped
   }
 
   if (Object.keys(fieldUpdates).length === 0) {

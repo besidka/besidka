@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   getMessageMetadata,
   getMessageUsedTools,
+  hasVisibleTextPart,
   hydrateMessageUsage,
+  isExternalWebSearchTool,
+  isWebSearchTool,
   resolveMessageMenuInfo,
 } from '../../../shared/utils/message-metadata'
 
@@ -188,6 +191,71 @@ describe('getMessageUsedTools', () => {
 
     expect(result).toEqual(['deep_research'])
   })
+
+  it('reads persisted web_search_brave when parts is missing', () => {
+    expect(getMessageUsedTools({ tools: ['web_search_brave'] }))
+      .toEqual(['web_search_brave'])
+  })
+
+  it('reads persisted web_search_exa when parts is missing', () => {
+    expect(getMessageUsedTools({ tools: ['web_search_exa'] }))
+      .toEqual(['web_search_exa'])
+  })
+
+  it('does not double-label a Brave turn as web_search when its source-url parts are present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'source-url' },
+      ],
+      tools: ['web_search_brave'],
+    })
+
+    expect(result).toEqual(['web_search_brave'])
+  })
+
+  it('does not double-label an Exa turn as web_search when its source-url parts are present', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'source-url' },
+      ],
+      tools: ['web_search_exa'],
+    })
+
+    expect(result).toEqual(['web_search_exa'])
+  })
+
+  // Real persisted assistant rows never carry `tools` themselves — only the
+  // paired user message does (see persist-user-message.ts) — so `tools` is
+  // always `[]` here in production. This is the shape a real DB row has,
+  // confirmed live: id 1917 on besidka-preview persisted
+  // tools: "[]" alongside a tool-web_search_brave part.
+  it('attributes a Brave turn correctly even though the assistant row has no stored tools', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'tool-web_search_brave', toolCallId: 'call-1' },
+        { type: 'source-url' },
+      ],
+      tools: [],
+    })
+
+    expect(result).toEqual(['web_search_brave'])
+  })
+
+  it('attributes an Exa turn correctly even though the assistant row has no stored tools', () => {
+    const result = getMessageUsedTools({
+      parts: [
+        { type: 'text', text: 'hello' },
+        { type: 'tool-web_search_exa', toolCallId: 'call-1' },
+        { type: 'source-url' },
+      ],
+      tools: [],
+    })
+
+    expect(result).toEqual(['web_search_exa'])
+  })
 })
 
 describe('resolveMessageMenuInfo', () => {
@@ -224,6 +292,9 @@ describe('resolveMessageMenuInfo', () => {
       role: 'assistant',
       createdAt: 'when',
       model: 'gpt-5.4',
+      providerId: 'openai',
+      providerLabel: 'OpenAI',
+      providerKind: 'provider',
       usedTools: ['web_search'],
       tokens: 1180,
       reasoningTokens: 320,
@@ -335,6 +406,9 @@ describe('resolveMessageMenuInfo', () => {
       role: 'assistant',
       createdAt: 'when',
       model: 'o4-mini-deep-research',
+      providerId: 'openai',
+      providerLabel: 'OpenAI',
+      providerKind: 'provider',
       usedTools: ['deep_research'],
       tokens: 35610,
       reasoningTokens: undefined,
@@ -394,6 +468,9 @@ describe('resolveMessageMenuInfo', () => {
       role: 'assistant',
       createdAt: 'when',
       model: 'deep-research-preview-04-2026',
+      providerId: 'google',
+      providerLabel: 'Google AI Studio',
+      providerKind: 'provider',
       usedTools: ['deep_research'],
       tokens: 1130546,
       reasoningTokens: undefined,
@@ -465,6 +542,209 @@ describe('resolveMessageMenuInfo', () => {
     }]
 
     expect(resolveMessageMenuInfo(messages, 'a1')?.tokens).toBe(0)
+  })
+})
+
+describe('resolveMessageMenuInfo blended totalCost', () => {
+  const legacyUsage = {
+    model: 'openai/gpt-5.4',
+    provider: 'legacy-blended',
+    inputTokens: 5240,
+    outputTokens: 1180,
+    totalTokens: 6420,
+    totalCost: 0.021,
+  }
+
+  it('displays the blended totalCost on the assistant row', () => {
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: legacyUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.021)
+    expect(info?.costToMessage).toBe(0.021)
+    expect(info?.chatTotalCost).toBe(0.021)
+  })
+
+  it('does not attribute a separate cost to the paired user message', () => {
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'sent' } },
+      { id: 'a1', role: 'assistant', metadata: { usage: legacyUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'u1')
+
+    expect(info?.cost).toBeUndefined()
+    expect(info?.costToMessage).toBeUndefined()
+    expect(info?.chatTotalCost).toBe(0.021)
+  })
+
+  it('prefers totalCost over an inputCost/outputCost split reported '
+    + 'alongside it on the same gateway usage', () => {
+    const gatewayUsage = {
+      model: 'openai/gpt-5',
+      provider: 'openrouter',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+      totalCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: gatewayUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.05)
+    expect(info?.costToMessage).toBe(0.05)
+    expect(info?.chatTotalCost).toBe(0.05)
+  })
+
+  it('sums a blended totalCost alongside a direct-provider outputCost/inputCost turn', () => {
+    const directUsage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+    }
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'turn-1-user' } },
+      { id: 'a1', role: 'assistant', metadata: { usage: directUsage } },
+      { id: 'u2', role: 'user', metadata: { createdAt: 'turn-2-user' } },
+      { id: 'a2', role: 'assistant', metadata: { usage: legacyUsage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'a2')
+
+    expect(info?.chatTotalCost).toBeCloseTo(0.01 + 0.02 + 0.021)
+  })
+
+  it('leaves inputCost/outputCost-only usage unaffected by the totalCost branch', () => {
+    const directUsage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: directUsage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.cost).toBe(0.0177)
+    expect(info?.costToMessage).toBe(0.0177)
+    expect(info?.chatTotalCost).toBe(0.0177)
+  })
+})
+
+describe('resolveMessageMenuInfo provider display', () => {
+  it('resolves a direct-provider message as a provider kind', () => {
+    const usage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('openai')
+    expect(info?.providerLabel).toBe('OpenAI')
+    expect(info?.providerKind).toBe('provider')
+  })
+
+  it('does not attribute a provider to a user message', () => {
+    const usage = {
+      model: 'gpt-5.4',
+      provider: 'openai',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      inputCost: 0.01,
+      outputCost: 0.02,
+    }
+    const messages = [
+      { id: 'u1', role: 'user', metadata: { createdAt: 'sent' } },
+      { id: 'a1', role: 'assistant', metadata: { usage } },
+    ]
+
+    const info = resolveMessageMenuInfo(messages, 'u1')
+
+    expect(info?.providerId).toBeUndefined()
+    expect(info?.providerLabel).toBeUndefined()
+    expect(info?.providerKind).toBeUndefined()
+  })
+
+  it('resolves an openrouter-provider message to a real gateway provider '
+    + 'row and still reports its cost', () => {
+    const usage = {
+      model: 'openai/gpt-5',
+      provider: 'openrouter',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBe('openrouter')
+    expect(info?.providerLabel).toBe('OpenRouter')
+    expect(info?.providerKind).toBe('gateway')
+    expect(info?.cost).toBe(0.05)
+  })
+
+  it('degrades an assistant message with a genuinely unrecognizable '
+    + 'provider id to no provider row, instead of throwing', () => {
+    const usage = {
+      model: 'openai/gpt-5',
+      provider: 'not-a-real-provider',
+      inputTokens: 100,
+      outputTokens: 100,
+      totalTokens: 200,
+      totalCost: 0.05,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage, createdAt: 'when' },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.providerId).toBeUndefined()
+    expect(info?.providerLabel).toBeUndefined()
+    expect(info?.providerKind).toBeUndefined()
+    expect(info?.cost).toBe(0.05)
   })
 })
 
@@ -738,5 +1018,119 @@ describe('resolveMessageMenuInfo Anthropic/OpenAI web search', () => {
     expect(info?.costToMessageIsEstimated).toBe(true)
     expect(info?.chatTotalCost).toBeCloseTo(0.05)
     expect(info?.chatTotalCostIsEstimated).toBe(true)
+  })
+})
+
+describe('resolveMessageMenuInfo searchProvider attribution', () => {
+  it('flows searchProvider from MessageUsage to MessageMenuInfo', () => {
+    const braveUsage = {
+      model: 'claude-opus-4-6',
+      provider: 'anthropic',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+      searchUnits: 2,
+      searchBillingUnit: 'search' as const,
+      searchCost: 0.02,
+      searchProvider: 'brave' as const,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: braveUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchProvider).toBe('brave')
+  })
+
+  it('leaves searchProvider undefined when the usage carries none', () => {
+    const legacyGroundedUsage = {
+      model: 'gemini-3-pro-preview',
+      provider: 'google',
+      inputTokens: 5240,
+      outputTokens: 1180,
+      totalTokens: 6420,
+      inputCost: 0.0131,
+      outputCost: 0.0177,
+      searchUnits: 3,
+      searchBillingUnit: 'query' as const,
+      searchCost: 0.036,
+    }
+    const messages = [{
+      id: 'a1',
+      role: 'assistant',
+      metadata: { usage: legacyGroundedUsage },
+    }]
+
+    const info = resolveMessageMenuInfo(messages, 'a1')
+
+    expect(info?.searchProvider).toBeUndefined()
+  })
+})
+
+describe('isExternalWebSearchTool', () => {
+  it('matches only the two tools this app resolves on the user\'s own key',
+    () => {
+      expect(isExternalWebSearchTool('web_search_brave')).toBe(true)
+      expect(isExternalWebSearchTool('web_search_exa')).toBe(true)
+    })
+
+  it('excludes the native/gateway-bundled web_search, which needs no tool '
+    + 'call and no Brave/Exa key', () => {
+    expect(isExternalWebSearchTool('web_search')).toBe(false)
+    expect(isExternalWebSearchTool('image_generation')).toBe(false)
+    expect(isExternalWebSearchTool(undefined)).toBe(false)
+  })
+
+  it('is a strict subset of isWebSearchTool', () => {
+    const tools = [
+      'web_search',
+      'web_search_brave',
+      'web_search_exa',
+      'image_generation',
+    ]
+    const external = tools.filter(isExternalWebSearchTool)
+
+    expect(external.every(isWebSearchTool)).toBe(true)
+    expect(external).toEqual(['web_search_brave', 'web_search_exa'])
+  })
+})
+
+describe('hasVisibleTextPart', () => {
+  it('returns false for a message with no parts', () => {
+    expect(hasVisibleTextPart({})).toBe(false)
+    expect(hasVisibleTextPart({ parts: [] })).toBe(false)
+  })
+
+  it('returns false while only a source-url part has arrived', () => {
+    const message = {
+      parts: [
+        { type: 'source-url', sourceId: 'source-1', url: 'https://a.com' },
+      ],
+    }
+
+    expect(hasVisibleTextPart(message)).toBe(false)
+  })
+
+  it('returns false for a text part that is empty or whitespace-only', () => {
+    expect(hasVisibleTextPart({ parts: [{ type: 'text', text: '' }] }))
+      .toBe(false)
+    expect(hasVisibleTextPart({ parts: [{ type: 'text', text: '   ' }] }))
+      .toBe(false)
+  })
+
+  it('returns true once a non-empty text part has arrived', () => {
+    const message = {
+      parts: [
+        { type: 'source-url', sourceId: 'source-1', url: 'https://a.com' },
+        { type: 'text', text: 'Here is the answer.' },
+      ],
+    }
+
+    expect(hasVisibleTextPart(message)).toBe(true)
   })
 })

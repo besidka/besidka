@@ -1,9 +1,21 @@
 import { z } from 'zod'
+import { isWebSearchTool } from '#shared/utils/message-metadata'
 
 export const chatToolSchema = z.enum([
   'web_search',
+  'web_search_brave',
+  'web_search_exa',
   'image_generation',
 ])
+
+export const chatToolsSchema = z.array(chatToolSchema)
+  .refine(tools => tools.filter(isWebSearchTool).length <= 1, {
+    message: 'Only one web search provider may be selected per message.',
+  })
+  .refine(tools => !(tools.some(isWebSearchTool)
+    && tools.includes('image_generation')), {
+    message: 'Web search and image generation cannot be combined.',
+  })
 
 export const userMessagePartSchema = z.union([
   z.object({

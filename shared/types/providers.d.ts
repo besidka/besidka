@@ -1,7 +1,20 @@
 import type { ReasoningCapability } from './reasoning.d'
 import type { ModelResearchConfig } from './research.d'
 
-export type ModelTool = 'web_search' | 'image_generation'
+export type SupportedProviderId
+  = 'openai'
+    | 'google'
+    | 'anthropic'
+    | 'xai'
+    | 'deepseek'
+    | 'moonshotai'
+    | 'qwen'
+
+export type ModelTool
+  = 'web_search'
+    | 'web_search_brave'
+    | 'web_search_exa'
+    | 'image_generation'
 
 export interface ModelImageGenerationCapability {
   controllerModel: string
@@ -32,8 +45,10 @@ export interface Model {
     output: string[]
   }
   tools: ModelTool[]
+  toolCall: boolean
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  reasoningAlwaysOn?: true
   research?: ModelResearchConfig
 }
 

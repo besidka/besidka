@@ -3,12 +3,23 @@ import type { ImageGenerationReady } from '#shared/types/image-generation.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import {
   extractLocalFileStorageKey,
+  getPreferredFileExtension,
   isSafeFileStorageKey,
   markUrlAsGeneratedFile,
 } from '#shared/utils/files'
+import { validateGeneratedImage } from '~~/server/utils/ai/image-generation'
 import {
   getPersistedImageGenerationFailureText,
+  isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
+import {
+  getGatewayGeneratedImageFailureText,
+  getPersistedOversizedResponseFailureText,
+  isPersistedEmptyAnswerFailureText,
+  isPersistedOversizedResponseFailureText,
+} from '#shared/utils/chat-failure-text'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { persistFile } from '~~/server/utils/files/persist-file'
 
 export interface NormalizeAssistantMessagePartsInput {
   parts: UIMessage['parts']
@@ -16,6 +27,8 @@ export interface NormalizeAssistantMessagePartsInput {
   chatId: string
   userId: number
   logger: LoggerLike
+  requestedTools?: string[]
+  streamErrorText?: string
 }
 
 const omittedFilePrefix = 'Previously attached file omitted from model context'
@@ -72,6 +85,13 @@ function findLatestUserMessage(messages: UIMessage[]): UIMessage | null {
   return null
 }
 
+/**
+ * A persisted image-generation or empty-answer failure notice is dropped
+ * from an assistant message here so it never re-enters the model's context
+ * on a later turn (see `isPersistedImageGenerationFailureText` and
+ * `isPersistedEmptyAnswerFailureText`) — the user still sees it in the
+ * chat, since only the model-facing copy of the message is sanitized.
+ */
 function sanitizeMessageParts(
   message: UIMessage,
   isLatestUserMessage: boolean,
@@ -80,6 +100,17 @@ function sanitizeMessageParts(
 
   for (const part of message.parts) {
     if (part.type === 'text') {
+      if (
+        message.role === 'assistant'
+        && (
+          isPersistedImageGenerationFailureText(part.text)
+          || isPersistedEmptyAnswerFailureText(part.text)
+          || isPersistedOversizedResponseFailureText(part.text)
+        )
+      ) {
+        continue
+      }
+
       sanitizedParts.push({
         type: 'text',
         text: part.text,
@@ -132,6 +163,44 @@ function getGeneratedFileText(part: UIMessage['parts'][number]): string {
   return `${generatedFilePrefix}: ${filename} (${part.mediaType}).`
 }
 
+/**
+ * A provider/model-level failure (for example an invalid API key
+ * discovered when the underlying language model call is actually made)
+ * never reaches the generate_image tool, so it produces no
+ * tool-generate_image part for normalizeGeneratedImageToolParts to convert
+ * to visible text, and the persisted assistant message would otherwise end
+ * up with an empty parts array and no indication anything went wrong.
+ */
+function getImageGenerationStreamFailure(
+  normalizedParts: UIMessage['parts'],
+  input: NormalizeAssistantMessagePartsInput,
+): UIMessage['parts'] | null {
+  if (
+    normalizedParts.length > 0
+    || !input.streamErrorText
+    || !input.requestedTools?.includes('image_generation')
+  ) {
+    return null
+  }
+
+  input.logger.set({
+    imageGeneration: {
+      status: 'failed',
+    },
+    attributes: {
+      imageGeneration: {
+        provider: input.providerId,
+        errorCode: 'image-generation-stream-error',
+      },
+    },
+  })
+
+  return [{
+    type: 'text',
+    text: getPersistedImageGenerationFailureText(input.streamErrorText),
+  }]
+}
+
 function getOmittedFileText(part: UIMessage['parts'][number]): string {
   if (part.type !== 'file') {
     return omittedFilePrefix
@@ -162,6 +231,15 @@ export async function normalizeAssistantMessagePartsForPersistence(
   input: NormalizeAssistantMessagePartsInput,
 ): Promise<UIMessage['parts']> {
   const normalizedParts = await normalizeGeneratedImageToolParts(input)
+  const imageGenerationStreamFailureParts = getImageGenerationStreamFailure(
+    normalizedParts,
+    input,
+  )
+
+  if (imageGenerationStreamFailureParts) {
+    return imageGenerationStreamFailureParts
+  }
+
   const assistantFileParts = normalizedParts.filter((part) => {
     return part.type === 'file' && !part.url.startsWith('/files/')
   })
@@ -190,6 +268,435 @@ export async function normalizeAssistantMessagePartsForPersistence(
   })
 
   return normalizedParts
+}
+
+export interface PersistGatewayImageOutputInput {
+  parts: UIMessage['parts']
+  userId: number
+  chatId: string
+  gatewayId: string
+  modelId: string
+  logger: LoggerLike
+}
+
+export interface PersistGatewayImageOutputResult {
+  parts: UIMessage['parts']
+  fileIds: string[]
+}
+
+const gatewayGeneratedImageFailureText = getGatewayGeneratedImageFailureText()
+const gatewayNonImageFileFailureText
+  = 'The model returned a file this app does not yet support saving.'
+/**
+ * Base64 expands raw bytes by ~4/3 — this bounds the encoded string length
+ * itself so an oversized inline image is rejected before `atob()` ever
+ * decodes it into memory, not after. Decoding first and checking
+ * `maxGeneratedImageBytes` only in `validateGeneratedImage()` would let an
+ * arbitrarily large payload from a gateway-routed model fully materialize
+ * in Worker memory before being rejected.
+ */
+const maxGeneratedImageBase64Length = Math.ceil(
+  maxGeneratedImageBytes / 3,
+) * 4
+/**
+ * A model producing more than a handful of images in one turn is already
+ * anomalous (direct-provider generation only ever allows one per tool call,
+ * enforced by a forced `toolChoice`) — this bounds the total decode/R2-write
+ * work a single assistant response can trigger, independent of the
+ * per-image size bound above.
+ */
+const maxGatewayGeneratedImagePartsPerMessage = 4
+
+/**
+ * Gateway image output (OpenRouter's `modalities` request param, Vercel's
+ * Gemini `*-image` models) has no tool wrapper the way direct-provider image
+ * generation does — it arrives as a plain `file` UI part carrying a raw
+ * `data:` URL, straight from the AI SDK's own file-chunk-to-UI-part mapping.
+ * Left alone, that inline base64 blob would land verbatim in the persisted
+ * `messages.parts` JSON column — unbounded row growth, no R2 offload, no
+ * `files` table record, no storage-quota accounting.
+ *
+ * This runs unconditionally for every gateway send's assistant response
+ * (never gated on `requestedTools` including `image_generation`): an
+ * inline-image `file` part can only ever originate from the model's own
+ * output on an assistant message, so there is no legitimate case where one
+ * should be left unpersisted. It runs BEFORE
+ * `normalizeAssistantMessagePartsForPersistence`, which is deliberately left
+ * untouched — by the time that function's `assistantFileParts` filter looks
+ * for parts whose URL isn't already `/files/`-prefixed, this step has
+ * already rewritten every gateway-generated image part, so the
+ * `enableAssistantFilePersistence` stub (for the unrelated, still-unbuilt
+ * general assistant-file-persistence feature) never even sees them.
+ *
+ * `originProvider` is set to the same `telemetryProviderId` the call site
+ * already threads through everything else (`'openrouter'`/`'vercel-gateway'`
+ * — `keyProviderIdForGateway(gatewayId)`, not the bare `GatewayId`), so the
+ * existing `originMessageId`-linking `UPDATE ... WHERE originProvider = ...`
+ * in `index.post.ts` matches these rows the same way it already matches
+ * direct-provider generated files.
+ *
+ * Bounded by `maxGeneratedImageBase64Length` (per-image size, checked before
+ * decode) and `maxGatewayGeneratedImagePartsPerMessage` (image count per
+ * response) so a hostile or misbehaving upstream model can't force
+ * unbounded decode/R2-write work from a single request. A non-image `data:`
+ * URL file part (e.g. audio, if a gateway model ever emits one) is replaced
+ * with a failure-text placeholder rather than left to fall through to
+ * `normalizeAssistantMessagePartsForPersistence`'s general-file-persistence
+ * stub, which only logs and otherwise passes an inline blob through
+ * unmodified — see `docs/providers/gateways.md`'s "Gateway image
+ * generation" section for the one deliberately-undone piece: unlike
+ * direct-provider generation,
+ * this path does not acquire `acquireImageGenerationLease` before running,
+ * since the image here has already been generated (and billed on the
+ * user's own key) by the time this function sees it — rejecting the save
+ * would discard something the user already paid for. Left as an explicit,
+ * disclosed gap rather than silently deciding that trade-off.
+ *
+ * See `reconstructGeneratedImageParts` in
+ * `reconstruct-generated-image-parts.ts` for the read-path half of this: a
+ * persisted gateway-origin file must never be reconstructed into a
+ * `tool-generate_image` part, since the client's `getGenerateImageOutput()`
+ * only recognizes the direct providers `getImageGenerationProviders()`
+ * returns and would silently drop anything else, making the image disappear
+ * on reload.
+ *
+ * `@ai-sdk/google`'s installed `dist/index.js` (the `inlineData` branch)
+ * emits a distinct `reasoning-file` chunk type — instead of `file` —
+ * whenever Gemini marks the content part `thought: true`. Requesting a
+ * `*-image` model (e.g. `google/gemini-3.1-flash-image`) through the Vercel
+ * gateway with reasoning enabled can produce one or more of these
+ * intermediate THOUGHT images alongside the real delivered `file` image in
+ * the same turn, carrying the exact same inline `data:` URL shape. A
+ * `reasoning-file` image is never persisted, never rewritten to a `/files/`
+ * URL, and never counted toward `maxGatewayGeneratedImagePartsPerMessage`
+ * whenever the response also carries at least one genuine `file` image —
+ * the client has no way to tell a draft apart from the answer, and a FIFO
+ * cap must never spend its slots on drafts instead of the delivered image.
+ * When Gemini surfaces no `file` image at all for the turn, the last
+ * `reasoning-file` image is promoted to the delivered answer instead
+ * (persisted as a `file`, exactly like the direct-provider path below),
+ * since that is sometimes the only image the model ever marks non-thought.
+ * See `getDroppedThoughtImagePartIndexes` for the exact selection rule.
+ * Before this was handled, every `reasoning-file` image part reached the
+ * same persistence path as `file` unconditionally, so the raw base64 blob
+ * (1.5-3 MB is typical) could exceed D1's documented 2,000,000-byte max
+ * string/row/BLOB size (https://developers.cloudflare.com/d1/platform/limits/)
+ * and throw `message-persist-failed` with no diagnosable cause, or silently
+ * let a thought image win the FIFO cap over the real answer.
+ *
+ * `stripUndeliveredInlineDataParts()` further below is the last-line
+ * defensive net for this same class of bug: it runs immediately before the
+ * `messages` insert in `index.post.ts` and replaces any part still carrying
+ * an inline `data:` URL, whatever its `type`, with the same failure text
+ * this function already uses — so a future gateway/provider chunk shape
+ * neither function recognizes yet can never repeat the same D1 failure.
+ */
+function isInlineDataImagePart(
+  part: UIMessage['parts'][number],
+): part is Extract<
+  UIMessage['parts'][number],
+  { type: 'file' | 'reasoning-file' }
+> {
+  return (part.type === 'file' || part.type === 'reasoning-file')
+    && part.url.startsWith('data:')
+    && part.mediaType.startsWith('image/')
+}
+
+/**
+ * A `reasoning-file` image is dropped whenever the same response also
+ * carries a genuine `file` image, whatever the order the model emitted
+ * them in. When no `file` image exists at all, the last `reasoning-file`
+ * image is kept (promoted to the delivered answer by the caller) and every
+ * earlier one is dropped. The returned indexes are never persisted, never
+ * counted toward `maxGatewayGeneratedImagePartsPerMessage`, and never left
+ * inline in the final result.
+ */
+function getDroppedThoughtImagePartIndexes(
+  parts: UIMessage['parts'],
+): Set<number> {
+  const droppedIndexes = new Set<number>()
+  const hasDeliveredFileImagePart = parts.some((part) => {
+    return part.type === 'file' && isInlineDataImagePart(part)
+  })
+
+  let lastReasoningFileImagePartIndex = -1
+
+  parts.forEach((part, index) => {
+    if (part.type === 'reasoning-file' && isInlineDataImagePart(part)) {
+      lastReasoningFileImagePartIndex = index
+    }
+  })
+
+  parts.forEach((part, index) => {
+    if (part.type !== 'reasoning-file' || !isInlineDataImagePart(part)) {
+      return
+    }
+
+    if (
+      hasDeliveredFileImagePart
+      || index !== lastReasoningFileImagePartIndex
+    ) {
+      droppedIndexes.add(index)
+    }
+  })
+
+  return droppedIndexes
+}
+
+export async function persistGatewayGeneratedImageParts(
+  input: PersistGatewayImageOutputInput,
+): Promise<PersistGatewayImageOutputResult> {
+  const fileIds: string[] = []
+  const persistedParts: UIMessage['parts'] = []
+  let hasGeneratedImagePart = false
+  let processedImagePartCount = 0
+  const droppedThoughtImagePartIndexes = getDroppedThoughtImagePartIndexes(
+    input.parts,
+  )
+
+  for (const [index, part] of input.parts.entries()) {
+    if (droppedThoughtImagePartIndexes.has(index)) {
+      hasGeneratedImagePart = true
+      continue
+    }
+
+    if (
+      (part.type !== 'file' && part.type !== 'reasoning-file')
+      || !part.url.startsWith('data:')
+    ) {
+      persistedParts.push(part)
+      continue
+    }
+
+    if (!part.mediaType.startsWith('image/')) {
+      hasGeneratedImagePart = true
+      persistedParts.push({
+        type: 'text',
+        text: gatewayNonImageFileFailureText,
+      })
+      continue
+    }
+
+    hasGeneratedImagePart = true
+
+    if (processedImagePartCount >= maxGatewayGeneratedImagePartsPerMessage) {
+      persistedParts.push({
+        type: 'text',
+        text: gatewayGeneratedImageFailureText,
+      })
+      continue
+    }
+
+    processedImagePartCount += 1
+
+    const decodedImage = decodeBase64DataUrl(part.url)
+
+    if (!decodedImage) {
+      persistedParts.push({
+        type: 'text',
+        text: gatewayGeneratedImageFailureText,
+      })
+      continue
+    }
+
+    try {
+      const validatedImage = validateGeneratedImage(
+        decodedImage,
+        part.mediaType,
+      )
+      const persistedFile = await persistFile({
+        userId: input.userId,
+        fileName: buildGatewayGeneratedImageFileName(
+          validatedImage.mediaType,
+        ),
+        mediaType: validatedImage.mediaType,
+        fileData: validatedImage.data,
+        source: 'assistant',
+        originProvider: input.gatewayId,
+        originModel: input.modelId,
+        logger: input.logger,
+      })
+
+      fileIds.push(persistedFile.id)
+
+      persistedParts.push({
+        type: 'file',
+        mediaType: persistedFile.type,
+        filename: persistedFile.name,
+        url: markUrlAsGeneratedFile(`/files/${persistedFile.storageKey}`),
+      })
+    } catch (exception) {
+      input.logger.set({
+        assistantFiles: {
+          action: 'gateway-image-persist-failed',
+          chatId: input.chatId,
+          userId: input.userId,
+        },
+        attributes: {
+          assistantFiles: {
+            providerId: input.gatewayId,
+            error: exceptionMessage(exception),
+          },
+        },
+      })
+
+      persistedParts.push({
+        type: 'text',
+        text: gatewayGeneratedImageFailureText,
+      })
+    }
+  }
+
+  return {
+    parts: hasGeneratedImagePart ? persistedParts : input.parts,
+    fileIds,
+  }
+}
+
+const maxPersistedAssistantPartsBytes = 1_500_000
+
+/**
+ * The last-line defensive net against a `messages` insert exceeding D1's
+ * documented 2,000,000-byte max string/row size
+ * (https://developers.cloudflare.com/d1/platform/limits/). It runs
+ * immediately before the insert in `index.post.ts`, after
+ * `persistGatewayGeneratedImageParts` and
+ * `normalizeAssistantMessagePartsForPersistence` have already had a chance
+ * to rewrite every known inline-`data:` part into a small `/files/...`
+ * reference or a short failure notice. Any part still carrying an inline
+ * `data:` URL at this point — from a chunk shape neither of those functions
+ * recognizes yet — is replaced with the same failure text
+ * `persistGatewayGeneratedImageParts` already uses, rather than risking a
+ * repeat of the `message-persist-failed` incident that motivated this guard.
+ * The byte estimate below is UTF-8 encoded length, not `.length` (character
+ * count) — this app has non-Latin-script users, where a JS string's
+ * `.length` under-counts real byte size. If what's left is still over
+ * budget after that replacement — large reasoning text or tool output can
+ * in principle add up too, not just inline images — the whole response is
+ * replaced with a short, fixed failure notice rather than attempting an
+ * insert that would throw.
+ */
+export function stripUndeliveredInlineDataParts(
+  parts: UIMessage['parts'],
+  logger: LoggerLike,
+): UIMessage['parts'] {
+  let replacedPartCount = 0
+
+  const sanitizedParts = parts.map((part): UIMessage['parts'][number] => {
+    if (!hasInlineDataUrl(part)) {
+      return part
+    }
+
+    replacedPartCount += 1
+
+    return {
+      type: 'text',
+      text: hasImageMediaType(part)
+        ? gatewayGeneratedImageFailureText
+        : gatewayNonImageFileFailureText,
+    }
+  })
+
+  if (replacedPartCount > 0) {
+    logger.set({
+      assistantFiles: {
+        action: 'undelivered-inline-data-part-replaced',
+        count: replacedPartCount,
+      },
+    })
+  }
+
+  const estimatedBytes = new TextEncoder().encode(
+    JSON.stringify(sanitizedParts),
+  ).byteLength
+
+  if (estimatedBytes <= maxPersistedAssistantPartsBytes) {
+    return sanitizedParts
+  }
+
+  logger.set({
+    assistantFiles: {
+      action: 'oversized-assistant-parts-replaced',
+      estimatedBytes,
+    },
+    attributes: {
+      assistantPersist: {
+        oversizedBreakdown: buildOversizedPartTypeBreakdown(sanitizedParts),
+      },
+    },
+  })
+
+  return [{
+    type: 'text',
+    text: getPersistedOversizedResponseFailureText(),
+  }]
+}
+
+function buildOversizedPartTypeBreakdown(
+  parts: UIMessage['parts'],
+): Record<string, number> {
+  const breakdown: Record<string, number> = {}
+
+  for (const part of parts) {
+    const partBytes = new TextEncoder().encode(
+      JSON.stringify(part),
+    ).byteLength
+
+    breakdown[part.type] = (breakdown[part.type] ?? 0) + partBytes
+  }
+
+  return breakdown
+}
+
+function hasInlineDataUrl(part: UIMessage['parts'][number]): boolean {
+  return 'url' in part
+    && typeof part.url === 'string'
+    && part.url.startsWith('data:')
+}
+
+function hasImageMediaType(part: UIMessage['parts'][number]): boolean {
+  return 'mediaType' in part
+    && typeof part.mediaType === 'string'
+    && part.mediaType.startsWith('image/')
+}
+
+function decodeBase64DataUrl(url: string): Uint8Array | null {
+  const commaIndex = url.indexOf(',')
+
+  if (!url.startsWith('data:') || commaIndex === -1) {
+    return null
+  }
+
+  const meta = url.slice('data:'.length, commaIndex)
+
+  if (!meta.endsWith(';base64')) {
+    return null
+  }
+
+  const base64 = url.slice(commaIndex + 1)
+
+  if (base64.length > maxGeneratedImageBase64Length) {
+    return null
+  }
+
+  try {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+
+    return bytes
+  } catch {
+    return null
+  }
+}
+
+function buildGatewayGeneratedImageFileName(mediaType: string): string {
+  const extension = getPreferredFileExtension(mediaType)
+
+  return `generated-image-${Date.now()}.${extension}`
 }
 
 export function getGeneratedImageFileIds(
@@ -299,7 +806,8 @@ function isImageGenerationReady(
 
   if (
     !('provider' in output)
-    || (output.provider !== 'openai' && output.provider !== 'google')
+    || typeof output.provider !== 'string'
+    || !(getImageGenerationProviders() as string[]).includes(output.provider)
     || (providerId !== undefined && output.provider !== providerId)
     || !('model' in output)
     || typeof output.model !== 'string'

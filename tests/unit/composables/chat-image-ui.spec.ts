@@ -246,6 +246,229 @@ describe('useChatImageUi', () => {
     expect(hasImageGenerationProgress.value).toBe(false)
   })
 
+  it('merges the pending skeleton into the real assistant message for a '
+    + 'gateway send, instead of a second bubble', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([userMessage])
+    const {
+      shouldRenderPendingImageGeneration,
+      shouldRenderPendingImageGenerationInline,
+      isImageGenerationSkeletonVisible,
+    } = useChatImageUi(() => messages.value, {
+      isImageGenerationTurnPending: () => true,
+      isTurnActive: () => true,
+      isGatewaySendTurnPending: () => true,
+    })
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(true)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'reasoning',
+        text: 'Choosing a scene and lighting for this request.',
+      }]),
+    ]
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(false)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(true)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [
+        {
+          type: 'reasoning',
+          text: 'Choosing a scene and lighting for this request.',
+        },
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: 'data:image/webp;base64,AAAA',
+        },
+      ]),
+    ]
+
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
+    expect(isImageGenerationSkeletonVisible.value).toBe(false)
+  })
+
+  it('never merges a direct-provider send into the real message, even '
+    + 'once it exists', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'reasoning',
+        text: 'Choosing a scene and lighting for this request.',
+      }]),
+    ])
+    const {
+      shouldRenderPendingImageGeneration,
+      shouldRenderPendingImageGenerationInline,
+    } = useChatImageUi(() => messages.value, {
+      isImageGenerationTurnPending: () => true,
+      isTurnActive: () => true,
+      isGatewaySendTurnPending: () => false,
+    })
+
+    expect(shouldRenderPendingImageGeneration.value).toBe(true)
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
+  })
+
+  it('shows the generic failure card when a gateway image turn ends in '
+    + 'silence — no image, no text, no chat error banner', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'reasoning',
+        text: 'Choosing a scene and lighting for this request.',
+      }]),
+    ])
+    const isTurnActive = shallowRef<boolean>(true)
+    const { shouldRenderGatewayImageGenerationFailure } = useChatImageUi(
+      () => messages.value,
+      {
+        isImageGenerationTurnPending: () => true,
+        isTurnActive: () => isTurnActive.value,
+        isGatewaySendTurnPending: () => true,
+        isTurnStopped: () => false,
+      },
+    )
+
+    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(false)
+
+    isTurnActive.value = false
+
+    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(true)
+  })
+
+  it('shows the failure card when a gateway turn ends with text but no '
+    + 'image, since the pending card promised one at the end of the '
+    + 'message', () => {
+    const messages = shallowRef<UIMessage[]>([
+      createMessage('user-1', 'user', [{
+        type: 'text',
+        text: 'Generate an image of a cat',
+      }]),
+      createMessage('assistant-1', 'assistant', [{
+        type: 'text',
+        text: 'I cannot generate images right now.',
+      }]),
+    ])
+    const { shouldRenderGatewayImageGenerationFailure } = useChatImageUi(
+      () => messages.value,
+      {
+        isImageGenerationTurnPending: () => true,
+        isTurnActive: () => false,
+        isGatewaySendTurnPending: () => true,
+        isTurnStopped: () => false,
+      },
+    )
+
+    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(true)
+  })
+
+  it('does not dismiss the pending skeleton on streamed text for a '
+    + 'gateway send, only on a file part', () => {
+    const userMessage = createMessage('user-1', 'user', [{
+      type: 'text',
+      text: 'Generate an image of a cat',
+    }])
+    const messages = shallowRef<UIMessage[]>([
+      userMessage,
+      createMessage('assistant-1', 'assistant', [{
+        type: 'text',
+        text: 'Here is your cat, generated as requested.',
+      }]),
+    ])
+    const {
+      shouldRenderPendingImageGenerationInline,
+      isImageGenerationSkeletonVisible,
+    } = useChatImageUi(() => messages.value, {
+      isImageGenerationTurnPending: () => true,
+      isTurnActive: () => true,
+      isGatewaySendTurnPending: () => true,
+    })
+
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(true)
+    expect(isImageGenerationSkeletonVisible.value).toBe(true)
+
+    messages.value = [
+      userMessage,
+      createMessage('assistant-1', 'assistant', [
+        {
+          type: 'text',
+          text: 'Here is your cat, generated as requested.',
+        },
+        {
+          type: 'file',
+          mediaType: 'image/webp',
+          filename: 'generated.webp',
+          url: 'data:image/webp;base64,AAAA',
+        },
+      ]),
+    ]
+
+    expect(shouldRenderPendingImageGenerationInline.value).toBe(false)
+    expect(isImageGenerationSkeletonVisible.value).toBe(false)
+  })
+
+  it('does not show the failure card when the user stopped the turn', () => {
+    const messages = shallowRef<UIMessage[]>([
+      createMessage('user-1', 'user', [{
+        type: 'text',
+        text: 'Generate an image of a cat',
+      }]),
+      createMessage('assistant-1', 'assistant', []),
+    ])
+    const { shouldRenderGatewayImageGenerationFailure } = useChatImageUi(
+      () => messages.value,
+      {
+        isImageGenerationTurnPending: () => true,
+        isTurnActive: () => false,
+        isGatewaySendTurnPending: () => true,
+        isTurnStopped: () => true,
+      },
+    )
+
+    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(false)
+  })
+
+  it('does not show the failure card for a direct-provider send', () => {
+    const messages = shallowRef<UIMessage[]>([
+      createMessage('user-1', 'user', [{
+        type: 'text',
+        text: 'Generate an image of a cat',
+      }]),
+      createMessage('assistant-1', 'assistant', []),
+    ])
+    const { shouldRenderGatewayImageGenerationFailure } = useChatImageUi(
+      () => messages.value,
+      {
+        isImageGenerationTurnPending: () => true,
+        isTurnActive: () => false,
+        isGatewaySendTurnPending: () => false,
+        isTurnStopped: () => false,
+      },
+    )
+
+    expect(shouldRenderGatewayImageGenerationFailure.value).toBe(false)
+  })
+
   it('stops the pending skeleton once the turn resolves without a tool part', () => {
     const userMessage = createMessage('user-1', 'user', [{
       type: 'text',

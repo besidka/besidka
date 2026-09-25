@@ -1,6 +1,10 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { describe, expect, it, vi } from 'vitest'
-import type { ModelCategory } from '~/types/models-picker'
+import type {
+  GatewayCapabilityFilter,
+  GatewayCapabilityFilterOption,
+  ModelCategory,
+} from '~/types/models-picker'
 import FilterDropdown
   from '../../../../../app/components/ChatInput/ModelsTrigger/FilterDropdown.vue'
 
@@ -10,13 +14,33 @@ const mocks = vi.hoisted(() => ({
 
 mockNuxtImport('onClickOutside', () => mocks.onClickOutside)
 
-async function mountFilterDropdown(selected: ModelCategory | null = null) {
+const capabilityOptions: GatewayCapabilityFilterOption[] = [
+  { value: 'reasoning', label: 'Reasoning', icon: 'lucide:brain' },
+  { value: 'web-search', label: 'Web search', icon: 'lucide:globe' },
+  { value: 'tool-calling', label: 'Tool calling', icon: 'lucide:wrench' },
+]
+
+async function mountFilterDropdown(
+  selected: ModelCategory | null = null,
+  visionOnly = false,
+  capabilities: GatewayCapabilityFilter[] = [],
+  options: { capabilityOptions?: GatewayCapabilityFilterOption[] } = {},
+) {
   const wrapper = await mountSuspended(FilterDropdown, {
     props: {
       'modelValue': selected,
       'onUpdate:modelValue': (value: ModelCategory | null) => {
         wrapper.setProps({ modelValue: value })
       },
+      'visionOnly': visionOnly,
+      'onUpdate:visionOnly': (value: boolean) => {
+        wrapper.setProps({ visionOnly: value })
+      },
+      'capabilities': capabilities,
+      'onUpdate:capabilities': (value: GatewayCapabilityFilter[]) => {
+        wrapper.setProps({ capabilities: value })
+      },
+      'capabilityOptions': options.capabilityOptions ?? [],
     },
   })
 
@@ -139,6 +163,9 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
 
     expect(clear.classes()).toContain('menu-disabled')
     expect(clear.get('button').attributes('disabled')).toBeDefined()
+    expect(clear.classes()).toContain('border-t')
+    expect(clear.classes()).toContain('mt-1')
+    expect(clear.classes()).toContain('pt-1')
   })
 
   it('clears the selected category and closes the dropdown', async () => {
@@ -155,6 +182,46 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([null])
     expect(dropdown.element.open).toBe(false)
+  })
+
+  it('toggles vision-only on and off, closing the dropdown each time', async () => {
+    const wrapper = await mountFilterDropdown()
+    const dropdown = wrapper.get('details')
+    const vision = wrapper.get('[data-testid="models-picker-filter-vision"]')
+
+    dropdown.element.open = true
+    await vision.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([true])
+    expect(dropdown.element.open).toBe(false)
+
+    dropdown.element.open = true
+    await vision.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([false])
+    expect(dropdown.element.open).toBe(false)
+  })
+
+  it('badges the trigger while only vision-only is applied', async () => {
+    const wrapper = await mountFilterDropdown(null, true)
+    const trigger = wrapper.get(
+      '[data-testid="models-picker-filter-trigger"]',
+    )
+
+    expect(trigger.classes()).toContain('text-accent')
+    expect(trigger.find('.badge').exists()).toBe(true)
+  })
+
+  it('enables the clear action while only vision-only is applied', async () => {
+    const wrapper = await mountFilterDropdown(null, true)
+    const clear = wrapper.get('[data-testid="models-picker-filter-clear"]')
+
+    expect(clear.classes()).not.toContain('menu-disabled')
+    expect(clear.get('button').attributes('disabled')).toBeUndefined()
+
+    await clear.get('button').trigger('click')
+
+    expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([false])
   })
 
   it('closes the open dropdown on an outside click', async () => {
@@ -174,5 +241,101 @@ describe('ChatInput/ModelsTrigger/FilterDropdown', () => {
     getClickOutsideHandler()()
 
     expect(dropdown.element.open).toBe(false)
+  })
+
+  describe('gateway capability filters', () => {
+    it('renders no capability rows when no options are given', async () => {
+      const wrapper = await mountFilterDropdown()
+
+      expect(
+        wrapper.find('[data-testid="models-picker-filter-reasoning"]')
+          .exists(),
+      ).toBe(false)
+    })
+
+    it('renders one row per capability option', async () => {
+      const wrapper = await mountFilterDropdown(null, false, [], {
+        capabilityOptions,
+      })
+      const menu = wrapper.get('[data-testid="models-picker-filter-menu"]')
+
+      expect(menu.text()).toContain('Reasoning')
+      expect(menu.text()).toContain('Web search')
+      expect(menu.text()).toContain('Tool calling')
+      expect(
+        wrapper.find('[data-testid="models-picker-filter-reasoning"]')
+          .exists(),
+      ).toBe(true)
+      expect(
+        wrapper.find('[data-testid="models-picker-filter-web-search"]')
+          .exists(),
+      ).toBe(true)
+      expect(
+        wrapper.find('[data-testid="models-picker-filter-tool-calling"]')
+          .exists(),
+      ).toBe(true)
+    })
+
+    it('adds a capability filter on click and closes the dropdown', async () => {
+      const wrapper = await mountFilterDropdown(null, false, [], {
+        capabilityOptions,
+      })
+      const dropdown = wrapper.get('details')
+
+      dropdown.element.open = true
+      await wrapper.get('[data-testid="models-picker-filter-reasoning"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('update:capabilities')?.at(-1))
+        .toEqual([['reasoning']])
+      expect(dropdown.element.open).toBe(false)
+    })
+
+    it('removes an active capability filter on a second click', async () => {
+      const wrapper = await mountFilterDropdown(null, false, ['reasoning'], {
+        capabilityOptions,
+      })
+      const reasoning = wrapper.get(
+        '[data-testid="models-picker-filter-reasoning"]',
+      )
+
+      expect(reasoning.get('button').attributes('aria-pressed')).toBe('true')
+
+      await reasoning.trigger('click')
+
+      expect(wrapper.emitted('update:capabilities')?.at(-1)).toEqual([[]])
+    })
+
+    it('badges the trigger and enables Clear for a capability-only filter', async () => {
+      const wrapper = await mountFilterDropdown(null, false, ['reasoning'], {
+        capabilityOptions,
+      })
+      const trigger = wrapper.get(
+        '[data-testid="models-picker-filter-trigger"]',
+      )
+      const clear = wrapper.get('[data-testid="models-picker-filter-clear"]')
+
+      expect(trigger.classes()).toContain('text-accent')
+      expect(trigger.find('.badge').exists()).toBe(true)
+      expect(clear.classes()).not.toContain('menu-disabled')
+      expect(clear.get('button').attributes('disabled')).toBeUndefined()
+    })
+
+    it('clears capability filters along with category and vision', async () => {
+      const wrapper = await mountFilterDropdown(
+        'chat',
+        true,
+        ['reasoning', 'tool-calling'],
+        { capabilityOptions },
+      )
+
+      await wrapper.get('[data-testid="models-picker-filter-clear"]')
+        .get('button')
+        .trigger('click')
+
+      expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([null])
+      expect(wrapper.emitted('update:visionOnly')?.at(-1)).toEqual([false])
+      expect(wrapper.emitted('update:capabilities')?.at(-1)).toEqual([[]])
+    })
   })
 })

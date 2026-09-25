@@ -30,9 +30,12 @@ import {
 import anthropic from '../providers/anthropic.ts'
 import google from '../providers/google.ts'
 import openai from '../providers/openai.ts'
+import xai from '../providers/xai.ts'
+import deepseek from '../providers/deepseek.ts'
+import moonshotai from '../providers/moonshotai.ts'
 
 const isDryRun = process.argv.includes('--dry-run')
-const providers = [anthropic, google, openai]
+const providers = [anthropic, google, openai, xai, deepseek, moonshotai]
 
 const catalog = await fetchCatalog()
 const result = findSuccessorProposals({ providers, catalog })

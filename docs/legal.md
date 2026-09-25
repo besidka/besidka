@@ -35,6 +35,18 @@ Structural facts worth knowing before editing:
   removing it silently breaks the condition Cloudflare attaches to using
   Turnstile at all.
 
+## Independent controller vs. processor classification
+
+The recipients table classifies a party as an **independent controller**
+whenever Besidka has no contract governing what that party does with the
+data — true for AI providers, search providers and AI gateways alike, since
+in every one of those three categories the user supplies their own key or
+account to the recipient directly. A party is a **processor** only when
+Besidka itself holds a data-processing agreement with it, which today is
+true solely for Cloudflare-as-host and Axiom. This is the same test applied
+across all three "new recipient" categories in `privacy-policy.md`, not a
+per-category judgment call.
+
 ## Why no postal address is published
 
 This is load-bearing. Do not "tidy" the identity block without reading it.
