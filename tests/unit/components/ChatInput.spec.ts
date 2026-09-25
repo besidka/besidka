@@ -1104,6 +1104,19 @@ describe('ChatInput.client', () => {
         .toBe(false)
     })
 
+    it('hides both triggers as soon as image generation is required, '
+      + 'even before the tools-forcing watcher has removed the saved '
+      + 'search/reasoning tools', async () => {
+      useMutualExclusionSelection({ isImageGenerationRequired: true })
+
+      const wrapper = await mountChatInput({ tools: ['web_search'] })
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="web-search-trigger"]').exists())
+        .toBe(false)
+    })
+
     it('sets the live reasoning level off when image generation is '
       + 'enabled, without writing a new saved default', async () => {
       useMutualExclusionSelection()

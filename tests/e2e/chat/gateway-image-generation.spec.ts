@@ -16,6 +16,16 @@ type WindowWithImageCardSampler = typeof window & {
   __imageCardSamplerHandle?: number
 }
 
+interface TriggerRaceSample {
+  webSearchTrigger: boolean
+  reasoningTrigger: boolean
+}
+
+type WindowWithTriggerRaceSampler = typeof window & {
+  __triggerRaceSamples?: TriggerRaceSample[]
+  __triggerRaceSamplerHandle?: number
+}
+
 test.describe.configure({
   mode: 'serial',
   timeout: 45_000,
@@ -100,6 +110,93 @@ async function stopImageCardSampler(
 
     return sampledWindow.__imageCardSamples ?? []
   })
+}
+
+async function installTriggerRaceSampler(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const sampledWindow = window as WindowWithTriggerRaceSampler
+
+    sampledWindow.__triggerRaceSamples = []
+
+    function isPaintedAndVisible(testId: string): boolean {
+      const element = document.querySelector(`[data-testid="${testId}"]`)
+
+      if (!element) {
+        return false
+      }
+
+      const rectangle = element.getBoundingClientRect()
+      const style = window.getComputedStyle(element)
+
+      return rectangle.width > 0
+        && rectangle.height > 0
+        && style.visibility !== 'hidden'
+        && style.display !== 'none'
+    }
+
+    function sample() {
+      sampledWindow.__triggerRaceSamples?.push({
+        webSearchTrigger: isPaintedAndVisible('web-search-trigger'),
+        reasoningTrigger: isPaintedAndVisible('reasoning-trigger'),
+      })
+      sampledWindow.__triggerRaceSamplerHandle
+        = requestAnimationFrame(sample)
+    }
+
+    sample()
+  })
+}
+
+async function stopTriggerRaceSampler(
+  page: Page,
+): Promise<TriggerRaceSample[]> {
+  return page.evaluate(() => {
+    const sampledWindow = window as WindowWithTriggerRaceSampler
+
+    cancelAnimationFrame(sampledWindow.__triggerRaceSamplerHandle ?? 0)
+
+    return sampledWindow.__triggerRaceSamples ?? []
+  })
+}
+
+function assertTriggersNeverPaintedDuringRace(
+  samples: TriggerRaceSample[],
+): void {
+  expect(samples.length).toBeGreaterThan(10)
+
+  for (const sample of samples) {
+    expect(sample.webSearchTrigger).toBe(false)
+    expect(sample.reasoningTrigger).toBe(false)
+  }
+}
+
+async function routeImageOnlyModelWithNativeSearchAndReasoning(
+  page: Page,
+  delayMs: number,
+): Promise<void> {
+  await page.route(
+    '**/api/v1/gateways/vercel/models**',
+    async (route) => {
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+
+      await route.fulfill({
+        json: {
+          gateway: 'vercel',
+          models: [
+            {
+              id: GATEWAY_TEST_MODEL_ID,
+              name: GATEWAY_TEST_MODEL_NAME,
+              modalities: { input: ['text'], output: ['text', 'image'] },
+              supportsImageGeneration: true,
+              supportsWebSearch: 'native',
+              supportsReasoning: true,
+              toolCall: true,
+            },
+          ],
+        },
+      })
+    },
+  )
 }
 
 test('gateway image turn shows the pending card before the first chunk, '
@@ -360,4 +457,116 @@ test('first turn sent from /chats/new shows the pending image card '
   await expect(
     page.locator('[data-testid="generated-image-ready"]'),
   ).toBeVisible({ timeout: 15_000 })
+})
+
+test('never paints the search/reasoning triggers on /chats/new while an '
+  + 'image-only gateway model restored from a saved default resolves, '
+  + 'sampled every animation frame from page load until settled',
+async ({ page, context }) => {
+  await routeImageOnlyModelWithNativeSearchAndReasoning(page, 800)
+
+  await context.addCookies([
+    {
+      name: 'cookies_consent',
+      value: JSON.stringify({
+        v: 1,
+        granted: ['necessary', 'preferences'],
+        id: 'e2e-consent',
+        date: new Date().toISOString(),
+      }),
+      domain: 'localhost',
+      path: '/',
+    },
+  ])
+
+  await page.addInitScript(
+    ({ modelId }) => {
+      window.localStorage.setItem(
+        'model',
+        JSON.stringify({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId,
+        }),
+      )
+      window.localStorage.setItem(
+        'settings_web_search_tool',
+        'web_search_brave',
+      )
+      window.localStorage.setItem('settings_reasoning_level', 'low')
+    },
+    { modelId: GATEWAY_TEST_MODEL_ID },
+  )
+
+  await installTriggerRaceSampler(page)
+
+  await page.goto('/chats/new')
+  await waitForHydration(page)
+
+  const createImageButton = page.getByRole('button', {
+    name: 'Image creation is required for this model',
+  })
+
+  await expect(createImageButton).toBeVisible({ timeout: 15_000 })
+  await expect(createImageButton).toHaveClass(/btn-active/)
+
+  const samples = await stopTriggerRaceSampler(page)
+
+  assertTriggersNeverPaintedDuringRace(samples)
+})
+
+test('never paints the search/reasoning triggers reloading an existing '
+  + 'chat (/chats/[slug]) whose saved default model is an image-only '
+  + 'gateway model, sampled every animation frame from page load until '
+  + 'settled', async ({ page, context }) => {
+  await routeImageOnlyModelWithNativeSearchAndReasoning(page, 800)
+
+  await context.addCookies([
+    {
+      name: 'cookies_consent',
+      value: JSON.stringify({
+        v: 1,
+        granted: ['necessary', 'preferences'],
+        id: 'e2e-consent',
+        date: new Date().toISOString(),
+      }),
+      domain: 'localhost',
+      path: '/',
+    },
+  ])
+
+  await page.addInitScript(
+    ({ modelId }) => {
+      window.localStorage.setItem(
+        'model',
+        JSON.stringify({
+          source: 'gateway',
+          gatewayId: 'vercel',
+          modelId,
+        }),
+      )
+      window.localStorage.setItem(
+        'settings_web_search_tool',
+        'web_search_brave',
+      )
+      window.localStorage.setItem('settings_reasoning_level', 'low')
+    },
+    { modelId: GATEWAY_TEST_MODEL_ID },
+  )
+
+  await installTriggerRaceSampler(page)
+
+  await page.goto('/chats/test?scenario=short&messages=2')
+  await waitForHydration(page)
+
+  const createImageButton = page.getByRole('button', {
+    name: 'Image creation is required for this model',
+  })
+
+  await expect(createImageButton).toBeVisible({ timeout: 15_000 })
+  await expect(createImageButton).toHaveClass(/btn-active/)
+
+  const samples = await stopTriggerRaceSampler(page)
+
+  assertTriggersNeverPaintedDuringRace(samples)
 })

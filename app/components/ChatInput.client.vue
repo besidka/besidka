@@ -635,18 +635,23 @@ const isImageGenerationEnabled = computed<boolean>(() => {
  * the user or forced by `isImageGenerationRequired` for image-only models),
  * neither the reasoning nor the web-search trigger can produce a request
  * the provider would accept alongside `image_generation`, so both are
- * hidden rather than shown disabled.
+ * hidden rather than shown disabled. `isImageGenerationRequired` is checked
+ * directly (not only through `isImageGenerationEnabled`) so an image-only
+ * model hides both triggers the same render its capability resolves,
+ * rather than one flush later once the tools-forcing watcher catches up.
  */
 const isReasoningTriggerVisible = computed<boolean>(() => {
   return isReasoningSupported.value
     && !isDeepResearchModel.value
     && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
 })
 
 const isWebSearchTriggerVisible = computed<boolean>(() => {
   return (isWebSearchSupported.value || isToolCallingSupported.value)
     && !isDeepResearchModel.value
     && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
 })
 
 /**

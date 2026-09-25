@@ -118,6 +118,29 @@ describe('ChatInput/ToolbarMore', () => {
       expect(wrapper.text()).not.toContain('Web search')
     })
 
+  it('does not render the web search section when image generation is '
+    + 'required, even before it has been enabled', async () => {
+    const wrapper = await mountToolbarMore({
+      isImageGenerationRequired: true,
+      isImageGenerationEnabled: false,
+    })
+
+    expect(wrapper.text()).not.toContain('Web search')
+  })
+
+  it('does not render the reasoning section when image generation is '
+    + 'required, even before it has been enabled', async () => {
+    const wrapper = await mountToolbarMore({
+      isReasoningSupported: true,
+      reasoning: 'off',
+      levels: ['low', 'medium', 'high'],
+      isImageGenerationRequired: true,
+      isImageGenerationEnabled: false,
+    })
+
+    expect(wrapper.text()).not.toContain('Reasoning effort')
+  })
+
   it('emits select-web-search-provider when an option is chosen',
     async () => {
       const wrapper = await mountToolbarMore()
