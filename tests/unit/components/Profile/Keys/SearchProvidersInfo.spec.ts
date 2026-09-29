@@ -103,7 +103,8 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       expect(text).toContain('$5 credit / month (card required)')
       expect(text).toContain('$10 credit / month (no card)')
       expect(text).toContain(
-        'First 5,000 queries / month free on paid billing',
+        'Documented: 5,000 queries / month on paid billing. In practice '
+        + 'Google may bill from the first query.',
       )
       expect(text).toContain(
         '1,500 prompts / day free on paid billing (Flash: 500 / day on '
@@ -111,13 +112,15 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       )
     })
 
-  it('discloses that cost estimates use list prices before any free '
-    + 'allowance', async () => {
+  it('discloses that Gemini search is estimated at list price from the '
+    + 'first query', async () => {
     const wrapper = await mountSuspended(SearchProvidersInfo)
 
     expect(wrapper.text()).toContain(
-      'List prices as of September 2026 and may change. Besidka\'s '
-      + 'cost estimates use list prices before any free allowance.',
+      'List prices as of September 2026 and may change. Besidka '
+      + 'estimates Gemini search at list price from the first query, '
+      + 'which has matched real Google invoices more closely than the '
+      + 'documented allowance.',
     )
   })
 })

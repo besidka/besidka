@@ -512,6 +512,18 @@ of a multi-step turn, while Google counts unique queries per
 step is billed by Google but counted once here. Not fixed in this
 pass — follow-up.
 
+**2026-09-29 update.** The owner's Aug–Sep invoices showed paid-SKU
+billing at 178 and 850 monthly units, with 0 free units on the prepay
+account. Google Cloud Support attributed this to an undocumented daily
+allocation (~161–166/day) and to prepay routing usage straight to paid
+SKUs. Neither appears in any published Google doc (pricing, billing,
+grounding, Gemini API terms, Cloud ToS, prepay/in-product billing
+setup, which instead states "products with a Free Tier continue to
+offer free usage up to their specified limits"). The owner's data
+(Aug 22: 26 free of 58; Sep 20 prepay: 0 free of 24) also contradicts
+the daily claim. The UI now tells users the documented allowance may
+not be applied, and estimates stay list price from the first query.
+
 ### Pricing drift
 
 The rates are literal strings in two `wrangler.jsonc` blocks with an "as of"

@@ -52,8 +52,10 @@
         </table>
       </div>
       <p class="text-xs opacity-75">
-        List prices as of September 2026 and may change. Besidka's cost
-        estimates use list prices before any free allowance.
+        List prices as of September 2026 and may change. Besidka
+        estimates Gemini search at list price from the first query, which
+        has matched real Google invoices more closely than the documented
+        allowance.
       </p>
     </div>
   </div>
@@ -84,8 +86,8 @@ const {
 } = useRuntimeConfig().public
 
 const geminiFreeAllowanceCopy = {
-  gemini3: 'First 5,000 queries / month free on paid billing (shared '
-    + 'across Gemini 3.x; one prompt can run several queries)',
+  gemini3: 'Documented: 5,000 queries / month on paid billing. In '
+    + 'practice Google may bill from the first query.',
   geminiOlder: '1,500 prompts / day free on paid billing (Flash: 500 / '
     + 'day on the free tier)',
 }
