@@ -1,12 +1,21 @@
 import type { Instructions, PrepareStepFunction, ToolSet } from 'ai'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { stepCountIs } from 'ai'
+import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
 export const TOOL_LOOP_TOTAL_TIMEOUT_MS = 540_000
 export const TOOL_LOOP_TOOL_TIMEOUT_MS = 60_000
-export const TOOL_LOOP_CONTINUATION_TIMEOUT_MS = 55_000
+export const TOOL_LOOP_CONTINUATION_TIMEOUT_MS = 90_000
+export const TOOL_LOOP_PERSISTENCE_MARGIN_MS = 30_000
+export const TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS = Math.ceil(
+  (
+    TOOL_LOOP_TOTAL_TIMEOUT_MS
+    + TOOL_LOOP_CONTINUATION_TIMEOUT_MS
+    + TOOL_LOOP_PERSISTENCE_MARGIN_MS
+  ) / 1000,
+)
 
 const TOOL_LOOP_FINAL_STEP_INSTRUCTIONS = [
   'Your search budget is used up. Answer the user\'s question now using',
@@ -69,6 +78,11 @@ function buildToolLoopFinalStepInstructions(
   return `${instructions}\n\n${TOOL_LOOP_FINAL_STEP_INSTRUCTIONS}`
 }
 
+function isAnthropicGatewayModelId(modelId: string): boolean {
+  return getGatewayModelProviderPrefix(modelId).replace(/^~/, '')
+    === 'anthropic'
+}
+
 /**
  * Forces the loop's last allowed step to answer instead of calling another
  * tool. `stepCountIs(TOOL_LOOP_MAX_STEPS)` stops the loop the instant a step
@@ -109,7 +123,7 @@ const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
     return { instructions: finalInstructions }
   }
 
-  if (model.modelId.startsWith('anthropic/')) {
+  if (isAnthropicGatewayModelId(model.modelId)) {
     return { toolChoice: 'none' as const, instructions: finalInstructions }
   }
 
@@ -138,9 +152,10 @@ const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
  * final step (`TOOL_LOOP_MAX_STEPS`) forces an answer — see
  * `toolLoopPrepareStep()` above for how. Each step is a full provider
  * round-trip, and the KV generation-in-progress guard this route sets
- * expires after 600s, so `timeout.totalMs` must stay below that, otherwise a
- * client retry arriving after the guard expired would start a second
- * concurrent generation for the same turn.
+ * expires after `TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS`, which is derived
+ * from this loop's total timeout plus the continuation timeout and a
+ * persistence margin, otherwise a client retry arriving after the guard
+ * expired would start a second concurrent generation for the same turn.
  */
 export function resolveToolLoopOptions(
   tools: FormattedTools['tools'],

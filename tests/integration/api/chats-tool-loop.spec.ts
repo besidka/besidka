@@ -47,6 +47,17 @@ vi.mock('ai', async (importOriginal) => {
   }
 })
 
+vi.mock('~~/server/utils/ai/tool-loop', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../../server/utils/ai/tool-loop')
+  >()
+
+  return {
+    ...actual,
+    TOOL_LOOP_CONTINUATION_TIMEOUT_MS: 150,
+  }
+})
+
 vi.mock('evlog', () => ({
   useLogger: () => ({
     set: mocks.loggerSet,
@@ -180,6 +191,15 @@ function createTextChunks(text: string) {
   ]
 }
 
+function createPreambleToolCallChunks(toolCallId: string, preamble: string) {
+  return [
+    { type: 'text-start' as const, id: 'preamble-1' },
+    { type: 'text-delta' as const, id: 'preamble-1', delta: preamble },
+    { type: 'text-end' as const, id: 'preamble-1' },
+    ...createToolCallChunks(toolCallId),
+  ]
+}
+
 function createNoAnswerFinishChunks() {
   return [
     {
@@ -193,17 +213,37 @@ function createNoAnswerFinishChunks() {
   ]
 }
 
-type ScriptedStep = Array<Record<string, unknown>> | Error
+type ScriptedStep = Array<Record<string, unknown>> | Error | 'stall-after-text'
+
+function createStallingStream(abortSignal: AbortSignal | undefined) {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue({ type: 'text-start', id: 'stalled-text' })
+      controller.enqueue({
+        type: 'text-delta',
+        id: 'stalled-text',
+        delta: 'Half an answer',
+      })
+      abortSignal?.addEventListener('abort', () => {
+        controller.error(abortSignal.reason)
+      })
+    },
+  })
+}
 
 function createScriptedModel(steps: ScriptedStep[]) {
   let callCount = 0
-  const doStream = vi.fn(async () => {
+  const doStream = vi.fn(async (options?: { abortSignal?: AbortSignal }) => {
     const chunks = steps[Math.min(callCount, steps.length - 1)] ?? []
 
     callCount += 1
 
     if (chunks instanceof Error) {
       throw chunks
+    }
+
+    if (chunks === 'stall-after-text') {
+      return { stream: createStallingStream(options?.abortSignal) as any }
     }
 
     return {
@@ -291,6 +331,7 @@ async function runLoopSend(input: {
   withoutMarker?: boolean
   bodyOverrides?: Record<string, unknown>
   existingMessages?: unknown[]
+  reasoning?: 'low' | 'medium' | 'high'
 }) {
   const { model, doStream } = createScriptedModel(input.steps)
   const markedTool = createFixtureFollowUpTool({
@@ -313,7 +354,7 @@ async function runLoopSend(input: {
       },
     },
     providerOptions: {},
-    reasoning: undefined,
+    reasoning: input.reasoning,
   })))
 
   const handler = await getHandler()
@@ -1007,5 +1048,135 @@ describe('multi-step tool loop', () => {
           finishReason: 'stop',
         }))
       })
+    it('logs the held forced-step error text when the continuation '
+      + 'answers', async () => {
+      await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createToolCallChunks('call-2'),
+          createToolCallChunks('call-3'),
+          new Error('function calls require declared tools'),
+          createTextChunks('Answer despite the forced-step failure.'),
+        ],
+      })
+
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationProducedText: true,
+        continuationTruncated: false,
+        forcedStepError: expect.stringContaining(
+          'function calls require declared tools',
+        ),
+      }))
+    })
+
+    it('runs the continuation and persists its answer after a preamble '
+      + 'that preceded the searches', async () => {
+      const { doStream, assistantInsert, writer } = await runLoopSend({
+        steps: [
+          createPreambleToolCallChunks('call-1', 'Let me look that up.'),
+          createNoAnswerFinishChunks(),
+          createTextChunks('Answer after the preamble.'),
+        ],
+      })
+      const parts = assistantInsert?.parts ?? []
+      const preambleIndex = parts.findIndex((part: any) => {
+        return part.type === 'text' && part.text === 'Let me look that up.'
+      })
+      const toolIndex = parts.findIndex((part: any) => {
+        return part.type === `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`
+      })
+      const answerIndex = parts.findIndex((part: any) => {
+        return part.type === 'text'
+          && part.text === 'Answer after the preamble.'
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(preambleIndex).toBeGreaterThan(-1)
+      expect(toolIndex).toBeGreaterThan(preambleIndex)
+      expect(answerIndex).toBeGreaterThan(toolIndex)
+      expect(parts).not.toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(writer.write.mock.calls.some(([chunk]: [{ type?: string }]) => {
+        return chunk?.type === 'error'
+      })).toBe(false)
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationRan: true,
+        continuationProducedText: true,
+      }))
+    })
+
+    it('persists the empty-answer notice when only a preamble preceded the '
+      + 'searches and the continuation is empty', async () => {
+      const { assistantInsert } = await runLoopSend({
+        steps: [
+          createPreambleToolCallChunks('call-1', 'Let me look that up.'),
+          createNoAnswerFinishChunks(),
+          createNoAnswerFinishChunks(),
+        ],
+      })
+
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Let me look that up.',
+      }))
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+    })
+
+    it('closes and persists the partial answer when the continuation times '
+      + 'out mid-stream', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+          'stall-after-text',
+        ],
+      })
+      const chunks = await readClientChunks()
+      const types = chunks.map(chunk => chunk.type)
+      const partialPart = assistantInsert?.parts.find((part: any) => {
+        return part.type === 'text' && part.text === 'Half an answer'
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(types).not.toContain('abort')
+      expect(types.indexOf('text-end')).toBeGreaterThan(
+        types.indexOf('text-delta'),
+      )
+      expect(types.at(-1)).toBe('finish')
+      expect(partialPart).toBeDefined()
+      expect(partialPart?.state).not.toBe('streaming')
+      expect(assistantInsert?.parts).not.toContainEqual(
+        expect.objectContaining({
+          type: 'text',
+          text: getPersistedEmptyAnswerFailureText(),
+        }),
+      )
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationRan: true,
+        continuationProducedText: true,
+        continuationTruncated: true,
+      }))
+    })
+
+    it('caps the continuation reasoning effort to low', async () => {
+      const { doStream } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+          createTextChunks('Answer'),
+        ],
+        reasoning: 'high',
+        bodyOverrides: { reasoning: 'high' },
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(doStream.mock.calls[0]?.[0]?.reasoning).toBe('high')
+      expect(doStream.mock.calls[2]?.[0]?.reasoning).toBe('low')
+    })
   })
 })

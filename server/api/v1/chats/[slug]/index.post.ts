@@ -25,7 +25,6 @@ import type {
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import {
-  hasVisibleTextPart,
   isExternalWebSearchTool,
   isWebSearchTool,
 } from '#shared/utils/message-metadata'
@@ -103,6 +102,7 @@ import {
 import {
   resolveToolLoopOptions,
   TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
+  TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
   TOOL_LOOP_MAX_STEPS,
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
@@ -115,6 +115,8 @@ import type {
 } from '~~/server/utils/ai/search-answer-continuation'
 import {
   buildSearchAnswerContinuationMessages,
+  capContinuationReasoningEffort,
+  hasVisibleTextAfterLastFollowUpTool,
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
@@ -1054,7 +1056,9 @@ export default defineEventHandler(async (event) => {
       // user turn (caught by Codex's automated review). Awaiting here
       // guarantees the flag is visible before any provider work begins.
       try {
-        await kv.put(generatingKey, '1', { expirationTtl: 600 })
+        await kv.put(generatingKey, '1', {
+          expirationTtl: TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
+        })
       } catch (exception) {
         logger.set({
           generationGuard: {
@@ -1109,6 +1113,8 @@ export default defineEventHandler(async (event) => {
                 continuationRan: outcome.continuationRan,
                 continuationProducedText: outcome.continuationProducedText,
                 continuationError: outcome.continuationError,
+                continuationTruncated: outcome.continuationTruncated,
+                forcedStepError: outcome.forcedStepError,
                 finishReason: outcome.finishReason,
               },
             },
@@ -1385,7 +1391,7 @@ export default defineEventHandler(async (event) => {
               [],
               gatewayId,
             ),
-            reasoning: reasoningEffort,
+            reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
               modelMessages,
               searchResults,
@@ -1405,6 +1411,7 @@ export default defineEventHandler(async (event) => {
               sendReasoning: reasoningLevel !== 'off',
               onError: error => exceptionMessage(error),
             }),
+            settleUsage: async () => await continuationResult.totalUsage,
             settle: async () => {
               const steps = await continuationResult.steps
 
@@ -2016,7 +2023,10 @@ async function persistAssistantMessageFromStream(input: {
       normalizationInput,
     )
     const ranFollowUpToolWithoutAnswer = input.followUpToolNames.size > 0
-      && !hasVisibleTextPart({ parts: normalizedParts })
+      && !hasVisibleTextAfterLastFollowUpTool({
+        parts: normalizedParts,
+        followUpToolNames: input.followUpToolNames,
+      })
       && responseParts.some((part) => {
         return isToolUIPart(part)
           && part.type.startsWith('tool-')

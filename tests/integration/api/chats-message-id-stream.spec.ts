@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS } from '../../../server/utils/ai/tool-loop'
 
 const mocks = vi.hoisted(() => ({
   failConvertToModelMessages: false,
@@ -713,7 +714,7 @@ describe('chat stream message ids', () => {
     expect(put).toHaveBeenCalledWith(
       'chat-generating:chat-1:message-1',
       '1',
-      { expirationTtl: 600 },
+      { expirationTtl: TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS },
     )
     expect(remove).toHaveBeenCalledWith('chat-generating:chat-1:message-1')
   })
