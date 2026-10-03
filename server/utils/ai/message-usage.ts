@@ -61,6 +61,81 @@ export function buildMessageUsage(
   }
 }
 
+function addTokenCount(
+  first: number | undefined,
+  second: number | undefined,
+): number | undefined {
+  if (first === undefined && second === undefined) {
+    return undefined
+  }
+
+  return (first ?? 0) + (second ?? 0)
+}
+
+/**
+ * Sums per-call usages into one total, keeping a field `undefined` (never
+ * `0`) only when every usage left it unknown — the same semantics as the AI
+ * SDK's internal `addLanguageModelUsage`, which `ai` does not export. Used to
+ * total a tool loop from its recorded steps (its own `totalUsage` is empty
+ * when the loop ended on an error) plus the search-answer continuation.
+ */
+export function sumLanguageModelUsages(
+  usages: ReadonlyArray<LanguageModelUsage | undefined>,
+): LanguageModelUsage {
+  let total: LanguageModelUsage = {
+    inputTokens: undefined,
+    inputTokenDetails: {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokens: undefined,
+    outputTokenDetails: {
+      textTokens: undefined,
+      reasoningTokens: undefined,
+    },
+    totalTokens: undefined,
+  }
+
+  for (const usage of usages) {
+    if (!usage) {
+      continue
+    }
+
+    total = {
+      inputTokens: addTokenCount(total.inputTokens, usage.inputTokens),
+      inputTokenDetails: {
+        noCacheTokens: addTokenCount(
+          total.inputTokenDetails.noCacheTokens,
+          usage.inputTokenDetails?.noCacheTokens,
+        ),
+        cacheReadTokens: addTokenCount(
+          total.inputTokenDetails.cacheReadTokens,
+          usage.inputTokenDetails?.cacheReadTokens,
+        ),
+        cacheWriteTokens: addTokenCount(
+          total.inputTokenDetails.cacheWriteTokens,
+          usage.inputTokenDetails?.cacheWriteTokens,
+        ),
+      },
+      outputTokens: addTokenCount(total.outputTokens, usage.outputTokens),
+      outputTokenDetails: {
+        textTokens: addTokenCount(
+          total.outputTokenDetails.textTokens,
+          usage.outputTokenDetails?.textTokens,
+        ),
+        reasoningTokens: addTokenCount(
+          total.outputTokenDetails.reasoningTokens,
+          usage.outputTokenDetails?.reasoningTokens,
+        ),
+      },
+      totalTokens: addTokenCount(total.totalTokens, usage.totalTokens),
+    }
+  }
+
+  return total
+}
+
 /**
  * Fold a generated image's dollar cost into `outputCost` so the text model's
  * per-token cost and the image model's flat per-image cost show up as one

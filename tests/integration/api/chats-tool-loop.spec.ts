@@ -24,6 +24,7 @@ const LOOP_PROVIDER_ID = 'moonshotai'
 const mocks = vi.hoisted(() => ({
   mergedStreams: [] as ReadableStream[],
   loggerSet: vi.fn(),
+  aiLoggerSet: vi.fn(),
 }))
 
 vi.mock('ai', async (importOriginal) => {
@@ -52,7 +53,7 @@ vi.mock('evlog', () => ({
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
-    set: vi.fn(),
+    set: mocks.aiLoggerSet,
     emit: vi.fn(() => null),
     getContext: () => ({}),
   }),
@@ -192,12 +193,18 @@ function createNoAnswerFinishChunks() {
   ]
 }
 
-function createScriptedModel(steps: Array<Array<Record<string, unknown>>>) {
+type ScriptedStep = Array<Record<string, unknown>> | Error
+
+function createScriptedModel(steps: ScriptedStep[]) {
   let callCount = 0
   const doStream = vi.fn(async () => {
     const chunks = steps[Math.min(callCount, steps.length - 1)] ?? []
 
     callCount += 1
+
+    if (chunks instanceof Error) {
+      throw chunks
+    }
 
     return {
       stream: simulateReadableStream({ chunks: chunks as any }),
@@ -278,7 +285,7 @@ function baseBody(overrides: Record<string, unknown> = {}) {
 }
 
 async function runLoopSend(input: {
-  steps: Array<Array<Record<string, unknown>>>
+  steps: ScriptedStep[]
   onExecute?: (query: string) => void
   shouldThrow?: boolean
   withoutMarker?: boolean
@@ -625,7 +632,7 @@ describe('multi-step tool loop', () => {
         ],
       })
 
-      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(doStream).toHaveBeenCalledTimes(3)
       expect(assistantInsert).toBeDefined()
       expect(assistantInsert?.parts).toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -670,7 +677,7 @@ describe('multi-step tool loop', () => {
         ],
       })
 
-      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(doStream).toHaveBeenCalledTimes(3)
       expect(globalThis.sendPushNotificationToUser).not.toHaveBeenCalled()
     })
 
@@ -727,5 +734,278 @@ describe('multi-step tool loop', () => {
         }),
       ]))
     })
+  })
+
+  describe('search-answer continuation', () => {
+    function getAiLoggerField(field: string) {
+      return mocks.aiLoggerSet.mock.calls
+        .map(([fields]) => fields as Record<string, any>)
+        .filter(fields => fields[field] !== undefined)
+        .at(-1)?.[field]
+    }
+
+    function getToolLoopAttributes() {
+      return mocks.aiLoggerSet.mock.calls
+        .map(([fields]) => fields as Record<string, any>)
+        .filter(fields => fields.attributes?.toolLoop !== undefined)
+        .at(-1)?.attributes.toolLoop
+    }
+
+    function getPromptText(callOptions: any): string {
+      return JSON.stringify(callOptions?.prompt ?? [])
+    }
+
+    it('answers in a tool-less continuation when the forced step still '
+      + 'calls a tool', async () => {
+      const queries: string[] = []
+      const { doStream, assistantInsert, writer } = await runLoopSend({
+        steps: [
+          createReasoningToolCallStepChunks('call-1'),
+          createReasoningToolCallStepChunks('call-2'),
+          createReasoningToolCallStepChunks('call-3'),
+          createToolCallChunks('call-4'),
+          createTextChunks('Grounded answer from the continuation.'),
+        ],
+        onExecute: query => queries.push(query),
+      })
+      const chunks = await readClientChunks()
+      const parts = assistantInsert?.parts ?? []
+      const lastSourceIndex = parts.findLastIndex((part: any) => {
+        return part.type === 'source-url'
+      })
+      const answerIndex = parts.findIndex((part: any) => {
+        return part.type === 'text'
+          && part.text === 'Grounded answer from the continuation.'
+      })
+      const forcedStepCallOptions = doStream.mock.calls[3]?.[0]
+      const continuationCallOptions = doStream.mock.calls[4]?.[0]
+      const modelCost = getModelCostMap()[LOOP_MODEL_ID]
+
+      expect(doStream).toHaveBeenCalledTimes(5)
+      expect(queries).toHaveLength(3)
+      expect(forcedStepCallOptions?.toolChoice).toEqual({ type: 'none' })
+      expect(forcedStepCallOptions?.tools).toBeUndefined()
+      expect(continuationCallOptions?.tools).toBeUndefined()
+      expect(getPromptText(continuationCallOptions))
+        .toContain('Web search results gathered for this conversation')
+      expect(getPromptText(continuationCallOptions))
+        .toContain('Result for besidka release notes')
+      expect(continuationCallOptions?.prompt.some((message: any) => {
+        return message.role === 'tool'
+      })).toBe(false)
+      expect(lastSourceIndex).toBeGreaterThan(-1)
+      expect(answerIndex).toBeGreaterThan(lastSourceIndex)
+      expect(parts).not.toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(writer.write.mock.calls.some(([chunk]: [{ type?: string }]) => {
+        return chunk?.type === 'error'
+      })).toBe(false)
+      expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+      expect(chunks.filter(chunk => chunk.type === 'finish')).toHaveLength(1)
+      expect(chunks.at(-1)?.type).toBe('finish')
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        inputTokens: 50,
+        outputTokens: 100,
+        inputCost: (50 * (modelCost?.input ?? 0)) / 1_000_000,
+        outputCost: (100 * (modelCost?.output ?? 0)) / 1_000_000,
+      }))
+      expect(chunks.at(-1)?.messageMetadata?.usage)
+        .toEqual(assistantInsert?.usage)
+      expect(getAiLoggerField('ai')).toEqual(expect.objectContaining({
+        tokens: expect.objectContaining({ input: 50, output: 100 }),
+        cost: assistantInsert?.usage.inputCost
+          + assistantInsert?.usage.outputCost,
+      }))
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        steps: 4,
+        forcedStepToolCall: true,
+        continuationRan: true,
+        continuationProducedText: true,
+        finishReason: 'stop',
+      }))
+    })
+
+    it('sends the continuation no tool history from earlier search turns',
+      async () => {
+        const existingMessages = [
+          {
+            id: 'user-db-id',
+            publicId: 'user-public-0',
+            role: 'user',
+            parts: [{ type: 'text', text: 'What shipped last month?' }],
+            tools: [],
+            reasoning: 'off',
+          },
+          {
+            id: 'assistant-db-id',
+            publicId: 'assistant-public-0',
+            role: 'assistant',
+            parts: [
+              {
+                type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
+                toolCallId: 'earlier-call',
+                state: 'output-available',
+                input: { query: 'besidka last month' },
+                output: {
+                  results: [{
+                    title: 'Earlier result',
+                    url: 'https://example.com/earlier',
+                  }],
+                },
+              },
+              { type: 'text', text: 'Last month shipped search.' },
+            ],
+            tools: [],
+            reasoning: 'off',
+          },
+        ]
+        const { doStream, assistantInsert } = await runLoopSend({
+          steps: [
+            createToolCallChunks('call-1'),
+            createNoAnswerFinishChunks(),
+            createTextChunks('Answer without tool history.'),
+          ],
+          existingMessages,
+        })
+        const continuationPrompt = doStream.mock.calls[2]?.[0]?.prompt ?? []
+
+        expect(doStream).toHaveBeenCalledTimes(3)
+        expect(continuationPrompt.some((message: any) => {
+          return message.role === 'tool'
+        })).toBe(false)
+        expect(continuationPrompt.some((message: any) => {
+          return Array.isArray(message.content)
+            && message.content.some((part: any) => {
+              return part.type === 'tool-call' || part.type === 'tool-result'
+            })
+        })).toBe(false)
+        expect(JSON.stringify(continuationPrompt))
+          .toContain('Last month shipped search.')
+        expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+          type: 'text',
+          text: 'Answer without tool history.',
+        }))
+      })
+
+    it('falls back to the empty-answer notice when the continuation also '
+      + 'returns no text', async () => {
+      const { doStream, assistantInsert, writer } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createNoAnswerFinishChunks(),
+          createNoAnswerFinishChunks(),
+        ],
+      })
+      const errorCall = writer.write.mock.calls.find(([chunk]: [{
+        type?: string
+      }]) => {
+        return chunk?.type === 'error'
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(JSON.parse(errorCall?.[0]?.errorText).code)
+        .toBe('assistant-empty-answer')
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        inputTokens: 30,
+        outputTokens: 60,
+      }))
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationRan: true,
+        continuationProducedText: false,
+      }))
+    })
+
+    it('runs the continuation instead of surfacing an error thrown by the '
+      + 'forced step after a completed search', async () => {
+      const { doStream, assistantInsert, writer } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createToolCallChunks('call-2'),
+          createToolCallChunks('call-3'),
+          new Error('function calls require declared tools'),
+          createTextChunks('Answer despite the forced-step failure.'),
+        ],
+      })
+      const chunks = await readClientChunks()
+
+      expect(doStream).toHaveBeenCalledTimes(5)
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Answer despite the forced-step failure.',
+      }))
+      expect(assistantInsert?.parts).not.toContainEqual(
+        expect.objectContaining({
+          type: 'text',
+          text: getPersistedEmptyAnswerFailureText(),
+        }),
+      )
+      expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+      expect(chunks.at(-1)?.type).toBe('finish')
+      expect(writer.write.mock.calls.some(([chunk]: [{ type?: string }]) => {
+        return chunk?.type === 'error'
+      })).toBe(false)
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        inputTokens: 40,
+        outputTokens: 80,
+      }))
+    })
+
+    it('keeps the existing error handling for an error before the forced '
+      + 'step', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          new Error('provider unavailable'),
+        ],
+      })
+      const chunks = await readClientChunks()
+
+      expect(doStream).toHaveBeenCalledTimes(2)
+      expect(chunks.map(chunk => chunk.type)).toContain('error')
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationRan: false,
+      }))
+    })
+
+    it('never runs a continuation for a turn that already answered',
+      async () => {
+        const { doStream, assistantInsert } = await runLoopSend({
+          steps: [
+            createToolCallChunks('call-1'),
+            createToolCallChunks('call-2'),
+            createTextChunks('Answered within the loop.'),
+          ],
+        })
+        const chunks = await readClientChunks()
+
+        expect(doStream).toHaveBeenCalledTimes(3)
+        expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+          type: 'text',
+          text: 'Answered within the loop.',
+        }))
+        expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+          inputTokens: 30,
+          outputTokens: 60,
+        }))
+        expect(chunks.filter(chunk => chunk.type === 'finish'))
+          .toHaveLength(1)
+        expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+          steps: 3,
+          forcedStepToolCall: false,
+          continuationRan: false,
+          continuationProducedText: false,
+          finishReason: 'stop',
+        }))
+      })
   })
 })

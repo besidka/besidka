@@ -179,12 +179,43 @@ completes, with no regard for whether that step was itself a tool call, so
 without the forced final step the model could spend its whole budget on tool
 calls and the send would persist zero text — three real production rows hit
 exactly this before the fix. `prepareStep()` enforces the final step by
-setting `toolChoice: 'none'` and appending an "answer now" instruction; for
-Anthropic models it only adds the instruction; `@ai-sdk/anthropic@4.0.34`
-maps `toolChoice: 'none'` to `tools: undefined` while still sending the
-prior turns' `tool_use`/`tool_result` history, an unverified combination
-against Anthropic's API, so Anthropic's final step is a best-effort nudge,
-not a guarantee. `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on
+setting `toolChoice: 'none'`, `activeTools: []` and appending an "answer now"
+instruction. `toolChoice: 'none'` alone was not enough: `@ai-sdk/google`
+still sends the function declarations with `functionCallingConfig.mode:
+'NONE'`, and Gemini 3.8 Flash ignored it and issued a fourth search
+(request `a44f03be4a43dd13`); an empty `activeTools` makes the core's
+`prepareTools()` return `undefined`, so no declarations reach the wire.
+Anthropic keeps its declarations: a direct Anthropic model only gets the
+instruction (its API rejects `tool_use`/`tool_result` history sent without
+tools), and an `anthropic/*` model routed through a gateway gets
+`toolChoice: 'none'` without `activeTools: []`. **Unverified live risk:**
+another provider may also reject function-call history with no tools
+declared; the forced step then errors, which the continuation below
+absorbs.
+
+**Search-answer continuation (the guarantee).** `withSearchAnswerGuarantee()`
+(`server/utils/ai/search-answer-continuation.ts`) wraps the loop's UI stream
+on loop sends only. It holds back the `finish` chunk, and an `error` raised
+on the forced step once a search has completed. If the loop ends with a
+follow-up tool result but no visible text, it runs ONE tool-less
+`streamText()` with the same model, reasoning and provider options: the
+turn's model messages, with the search results flattened to plain text
+(query, title, URL, snippet; capped by result count and characters) and an
+answer-now instruction appended to the final user message — no tool-call
+history, so no provider can reject it for missing declarations. Its chunks
+stream into the same assistant message after the tool/source parts, then a
+single `finish` with metadata recomputed over loop + continuation steps.
+Persisted `messages.usage` and the `ai-stream` event's `ai.tokens`/`ai.cost`
+both sum the loop's recorded step usages with the continuation's (the loop's
+own `totalUsage` is empty when it ended on an error); search cost is
+unchanged because the continuation never searches. Only when the
+continuation is also empty (or throws) are the held chunks released and the
+empty-answer notice persisted as before. Errors on earlier steps and aborts
+never trigger it. `attributes.toolLoop` on the `ai-stream` event records
+`steps`, `forcedStepToolCall`, `continuationRan`,
+`continuationProducedText`, `continuationError` and `finishReason`. The
+continuation's own `timeout.totalMs` is 55s, so loop plus continuation stays
+under the 600s KV guard. `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on
 the loop path only: the KV generation-in-progress guard this route writes
 expires after 600s, so the loop's total budget must stay under that —
 otherwise a client retry arriving after the guard expired would start a

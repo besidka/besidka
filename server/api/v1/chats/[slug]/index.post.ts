@@ -3,6 +3,7 @@ import type {
   UIMessage,
   InferUIMessageChunk,
   LanguageModelUsage,
+  ModelMessage,
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { GatewayProvider } from '@ai-sdk/gateway'
@@ -60,6 +61,7 @@ import {
   buildMessageUsage,
   addImageGenerationCostToUsage,
   addSearchUsage,
+  sumLanguageModelUsages,
 } from '~~/server/utils/ai/message-usage'
 import {
   resolveSearchRates,
@@ -100,8 +102,21 @@ import {
 } from '~~/server/utils/ai/image-generation-errors'
 import {
   resolveToolLoopOptions,
+  TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
+  TOOL_LOOP_MAX_STEPS,
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
+import type {
+  CollectedSearchResult,
+  SearchAnswerContinuationResult,
+  SearchAnswerContinuationRun,
+  SearchAnswerContinuationStep,
+  SearchAnswerOutcome,
+} from '~~/server/utils/ai/search-answer-continuation'
+import {
+  buildSearchAnswerContinuationMessages,
+  withSearchAnswerGuarantee,
+} from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
@@ -1067,10 +1082,105 @@ export default defineEventHandler(async (event) => {
         }
 
         let result: ReturnType<typeof streamText>
+        let modelMessages: ModelMessage[] = []
+        let mainLoopSteps: SearchAnswerContinuationStep[] = []
         const messagesForModel = buildMessagesForModel(
           messagesForAI,
           errorProviderId,
         )
+
+        function recordToolLoopOutcome(outcome: SearchAnswerOutcome) {
+          const { continuation } = outcome
+
+          if (continuation) {
+            const steps = [...mainLoopSteps, ...continuation.steps]
+
+            recordAiStreamUsage({
+              usage: sumLanguageModelUsages(steps.map(step => step.usage)),
+              steps,
+            })
+          }
+
+          aiLogger.set({
+            attributes: {
+              toolLoop: {
+                steps: outcome.stepsCount,
+                forcedStepToolCall: outcome.forcedStepToolCall,
+                continuationRan: outcome.continuationRan,
+                continuationProducedText: outcome.continuationProducedText,
+                continuationError: outcome.continuationError,
+                finishReason: outcome.finishReason,
+              },
+            },
+          })
+        }
+
+        function recordAiStreamUsage(input: {
+          usage: LanguageModelUsage
+          steps: readonly SearchAnswerContinuationStep[]
+          providerMetadata?: unknown
+        }) {
+          const textCost = gatewayId
+            ? sumGatewayReportedStepCosts(input.steps)
+            ?? readGatewayReportedCost(input.providerMetadata)
+            : computeModelCost(modelId, telemetryProviderId, input.usage)
+          const imageCost = generatedImage
+            ? getImageGenerationCost(
+              generatedImage.modelId,
+              generatedImage.aspectRatio,
+            )
+            : undefined
+          const search = resolveUnbundledSearchUsage({
+            gatewayId,
+            providerId: telemetryProviderId,
+            modelId,
+            steps: input.steps,
+            rates: searchRates,
+            externalSearchProvider,
+          })
+          const searchCost = search?.cost
+          const hasCost = textCost !== undefined
+            || imageCost !== undefined
+            || searchCost !== undefined
+          const { usage } = input
+
+          aiLogger.set({
+            ai: {
+              tokens: {
+                input: usage.inputTokens ?? 0,
+                output: usage.outputTokens ?? 0,
+                reasoning: usage.outputTokenDetails?.reasoningTokens,
+                total: usage.totalTokens
+                  ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
+              },
+              cost: hasCost
+                ? (textCost ?? 0) + (imageCost ?? 0) + (searchCost ?? 0)
+                : undefined,
+            },
+          })
+
+          if (search) {
+            aiLogger.set({
+              attributes: {
+                ai: {
+                  webSearchUnits: search.units,
+                  webSearchBillingUnit: search.billingUnit,
+                  webSearchCost: search.cost,
+                  webSearchProvider: search.provider,
+                  googleSearchQueries: search.googleQueries,
+                  googleSearchGroundedSteps: search.googleGroundedSteps,
+                  googleSearchBillingUnit:
+                    search.googleQueries === undefined
+                      ? undefined
+                      : search.billingUnit,
+                  googleSearchCost: search.googleQueries === undefined
+                    ? undefined
+                    : search.cost,
+                },
+              },
+            })
+          }
+        }
 
         try {
           // No abortSignal here: the cloudflare_module preset (Nitro 2.13 /
@@ -1080,6 +1190,7 @@ export default defineEventHandler(async (event) => {
           // wire one: on this stack it is a no-op, or would defeat that
           // replay by skipping persist. (Providers also bill and omit usage
           // on abort, so there is no cost to recover here either.)
+          modelMessages = await convertToModelMessages(messagesForModel)
           result = streamText({
             model: instance,
             instructions: buildChatInstructions(
@@ -1088,7 +1199,7 @@ export default defineEventHandler(async (event) => {
               gatewayId,
             ),
             reasoning: reasoningEffort,
-            messages: await convertToModelMessages(messagesForModel),
+            messages: modelMessages,
             experimental_transform: smoothStream(),
             // Only Vercel/Cloudflare populate gatewayMaxOutputTokens (from
             // the model's own catalog entry — see GatewayChatResult in
@@ -1102,65 +1213,8 @@ export default defineEventHandler(async (event) => {
             // behavior unchanged.
             maxOutputTokens: gatewayMaxOutputTokens,
             onEnd({ usage, providerMetadata, steps }) {
-              const textCost = gatewayId
-                ? sumGatewayReportedStepCosts(steps)
-                ?? readGatewayReportedCost(providerMetadata)
-                : computeModelCost(modelId, telemetryProviderId, usage)
-              const imageCost = generatedImage
-                ? getImageGenerationCost(
-                  generatedImage.modelId,
-                  generatedImage.aspectRatio,
-                )
-                : undefined
-              const search = resolveUnbundledSearchUsage({
-                gatewayId,
-                providerId: telemetryProviderId,
-                modelId,
-                steps,
-                rates: searchRates,
-                externalSearchProvider,
-              })
-              const searchCost = search?.cost
-              const hasCost = textCost !== undefined
-                || imageCost !== undefined
-                || searchCost !== undefined
-
-              aiLogger.set({
-                ai: {
-                  tokens: {
-                    input: usage.inputTokens ?? 0,
-                    output: usage.outputTokens ?? 0,
-                    reasoning: usage.outputTokenDetails?.reasoningTokens,
-                    total: usage.totalTokens
-                      ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
-                  },
-                  cost: hasCost
-                    ? (textCost ?? 0) + (imageCost ?? 0) + (searchCost ?? 0)
-                    : undefined,
-                },
-              })
-
-              if (search) {
-                aiLogger.set({
-                  attributes: {
-                    ai: {
-                      webSearchUnits: search.units,
-                      webSearchBillingUnit: search.billingUnit,
-                      webSearchCost: search.cost,
-                      webSearchProvider: search.provider,
-                      googleSearchQueries: search.googleQueries,
-                      googleSearchGroundedSteps: search.googleGroundedSteps,
-                      googleSearchBillingUnit:
-                        search.googleQueries === undefined
-                          ? undefined
-                          : search.billingUnit,
-                      googleSearchCost: search.googleQueries === undefined
-                        ? undefined
-                        : search.cost,
-                    },
-                  },
-                })
-              }
+              mainLoopSteps = [...steps]
+              recordAiStreamUsage({ usage, steps, providerMetadata })
             },
             ...parsedTools,
             ...(toolLoopOptions ?? {}),
@@ -1207,11 +1261,52 @@ export default defineEventHandler(async (event) => {
         // the Anthropic/OpenAI web_search structural fallback (which reads a
         // step's `content` array) sees the same shape it would from
         // `StepResult.content`.
-        const finishedSteps: Array<{
-          providerMetadata?: unknown
-          content: unknown[]
-        }> = []
+        const finishedSteps: SearchAnswerContinuationStep[] = []
         const pendingStepContent: unknown[] = []
+
+        function buildLiveMessageMetadata(
+          totalUsage: LanguageModelUsage,
+          steps: readonly SearchAnswerContinuationStep[],
+        ) {
+          const gatewayCost = resolveLiveGatewayCost({
+            gatewayId,
+            steps,
+            pricing: gatewayPricing,
+            usage: totalUsage,
+          })
+          const baseUsage = buildMessageUsage(
+            totalUsage,
+            modelId,
+            telemetryProviderId,
+            gatewayCost?.totalCost,
+          )
+          const imageGenerationCost = generatedImage
+            ? getImageGenerationCost(
+              generatedImage.modelId,
+              generatedImage.aspectRatio,
+            )
+            : undefined
+          const search = resolveUnbundledSearchUsage({
+            gatewayId,
+            providerId: telemetryProviderId,
+            modelId,
+            steps,
+            rates: searchRates,
+            externalSearchProvider,
+          })
+          const usageWithCosts = addSearchUsage(
+            addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
+            search,
+          )
+          const usage = usageWithCosts && gatewayCost?.costEstimated
+            ? { ...usageWithCosts, costEstimated: true }
+            : usageWithCosts
+
+          return {
+            createdAt: new Date().toISOString(),
+            ...(usage ? { usage } : {}),
+          }
+        }
         const uiMessageStream = toUIMessageStream({
           stream: result.stream,
           originalMessages: messagesForAI,
@@ -1231,6 +1326,7 @@ export default defineEventHandler(async (event) => {
 
             if (part.type === 'finish-step') {
               finishedSteps.push({
+                usage: part.usage,
                 providerMetadata: part.providerMetadata,
                 content: [...pendingStepContent],
               })
@@ -1243,44 +1339,7 @@ export default defineEventHandler(async (event) => {
               return undefined
             }
 
-            const gatewayCost = resolveLiveGatewayCost({
-              gatewayId,
-              steps: finishedSteps,
-              pricing: gatewayPricing,
-              usage: part.totalUsage,
-            })
-            const baseUsage = buildMessageUsage(
-              part.totalUsage,
-              modelId,
-              telemetryProviderId,
-              gatewayCost?.totalCost,
-            )
-            const imageGenerationCost = generatedImage
-              ? getImageGenerationCost(
-                generatedImage.modelId,
-                generatedImage.aspectRatio,
-              )
-              : undefined
-            const search = resolveUnbundledSearchUsage({
-              gatewayId,
-              providerId: telemetryProviderId,
-              modelId,
-              steps: finishedSteps,
-              rates: searchRates,
-              externalSearchProvider,
-            })
-            const usageWithCosts = addSearchUsage(
-              addImageGenerationCostToUsage(baseUsage, imageGenerationCost),
-              search,
-            )
-            const usage = usageWithCosts && gatewayCost?.costEstimated
-              ? { ...usageWithCosts, costEstimated: true }
-              : usageWithCosts
-
-            return {
-              createdAt: new Date().toISOString(),
-              ...(usage ? { usage } : {}),
-            }
+            return buildLiveMessageMetadata(part.totalUsage, finishedSteps)
           },
           onError(error) {
             const chatError = normalizeChatError({
@@ -1315,7 +1374,70 @@ export default defineEventHandler(async (event) => {
         const correctedUiMessageStream = emitSourcesForExternalSearchResults(
           insertParagraphBreakAfterNonTextGap(uiMessageStream),
         )
-        const [clientStream, persistenceStream] = correctedUiMessageStream.tee()
+
+        function startSearchAnswerContinuation(
+          searchResults: CollectedSearchResult[],
+        ): SearchAnswerContinuationRun {
+          const continuationResult = streamText({
+            model: instance,
+            instructions: buildChatInstructions(
+              projectSystemPrompt,
+              [],
+              gatewayId,
+            ),
+            reasoning: reasoningEffort,
+            messages: buildSearchAnswerContinuationMessages(
+              modelMessages,
+              searchResults,
+            ),
+            experimental_transform: smoothStream(),
+            maxOutputTokens: gatewayMaxOutputTokens,
+            timeout: { totalMs: TOOL_LOOP_CONTINUATION_TIMEOUT_MS },
+            providerOptions,
+          })
+
+          return {
+            stream: toUIMessageStream({
+              stream: continuationResult.stream,
+              sendStart: false,
+              sendFinish: false,
+              sendSources: true,
+              sendReasoning: reasoningLevel !== 'off',
+              onError: error => exceptionMessage(error),
+            }),
+            settle: async () => {
+              const steps = await continuationResult.steps
+
+              return {
+                usage: sumLanguageModelUsages(steps.map((step) => {
+                  return step.usage
+                })),
+                steps: [...steps],
+                finishReason: await continuationResult.finishReason,
+              }
+            },
+          }
+        }
+
+        const searchAnswerGuarantee = toolLoopOptions
+          ? withSearchAnswerGuarantee({
+            stream: correctedUiMessageStream,
+            followUpToolNames,
+            forcedStepIndex: TOOL_LOOP_MAX_STEPS - 1,
+            startContinuation: startSearchAnswerContinuation,
+            buildFinishMessageMetadata: (continuation) => {
+              const steps = [...finishedSteps, ...continuation.steps]
+
+              return buildLiveMessageMetadata(
+                sumLanguageModelUsages(steps.map(step => step.usage)),
+                steps,
+              )
+            },
+          })
+          : undefined
+        const answeredUiMessageStream = searchAnswerGuarantee?.stream
+          ?? correctedUiMessageStream
+        const [clientStream, persistenceStream] = answeredUiMessageStream.tee()
 
         writer.merge(filterRecoverableUIMessageStreamErrors(clientStream))
 
@@ -1341,8 +1463,15 @@ export default defineEventHandler(async (event) => {
           vercelGatewayClient,
           scheduleBackgroundWork: cfCtx?.waitUntil?.bind(cfCtx),
           followUpToolNames,
+          getSearchAnswerContinuation: () => {
+            return searchAnswerGuarantee?.getOutcome().continuation
+          },
         })
         const wasPersisted = persistResult.persisted
+
+        if (searchAnswerGuarantee) {
+          recordToolLoopOutcome(searchAnswerGuarantee.getOutcome())
+        }
 
         if (persistResult.emptyAnswerFailure) {
           const emptyAnswerError = normalizeChatError({
@@ -1812,6 +1941,7 @@ async function persistAssistantMessageFromStream(input: {
   gatewayId?: GatewayId
   gatewayPricing?: GatewayModel['pricing']
   followUpToolNames: Set<string>
+  getSearchAnswerContinuation?: () => SearchAnswerContinuationResult | undefined
 }): Promise<PersistAssistantMessageResult> {
   try {
     let isAborted = false
@@ -1932,7 +2062,13 @@ async function persistAssistantMessageFromStream(input: {
 
     try {
       const steps = await input.result.steps
-      const resolvedUsage = await input.result.usage
+      const continuation = input.getSearchAnswerContinuation?.()
+      const usageSteps: SearchAnswerContinuationStep[] = continuation
+        ? [...steps, ...continuation.steps]
+        : steps
+      const resolvedUsage = continuation
+        ? sumLanguageModelUsages(usageSteps.map(step => step.usage))
+        : await input.result.usage
 
       if (input.gatewayId === 'vercel') {
         vercelGenerationId = readVercelGenerationId(
@@ -1942,7 +2078,7 @@ async function persistAssistantMessageFromStream(input: {
 
       const gatewayCost = resolveLiveGatewayCost({
         gatewayId: input.gatewayId,
-        steps,
+        steps: usageSteps,
         pricing: input.gatewayPricing,
         usage: resolvedUsage,
       })
@@ -1959,7 +2095,7 @@ async function persistAssistantMessageFromStream(input: {
         gatewayId: input.gatewayId,
         providerId: input.providerId,
         modelId: input.modelId,
-        steps,
+        steps: usageSteps,
         rates: input.searchRates,
         externalSearchProvider: input.externalSearchProvider,
       })

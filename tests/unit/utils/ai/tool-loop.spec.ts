@@ -172,7 +172,7 @@ describe('tool loop trigger', () => {
       const prepareStep = getPrepareStep()
       const result = await prepareStep({
         stepNumber: TOOL_LOOP_MAX_STEPS - 1,
-        model: { provider: 'openai.chat' },
+        model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
         instructions: 'Base instructions.',
       } as any)
 
@@ -188,13 +188,53 @@ describe('tool loop trigger', () => {
       const prepareStep = getPrepareStep()
       const result = await prepareStep({
         stepNumber: TOOL_LOOP_MAX_STEPS - 1,
-        model: { provider: 'anthropic.messages' },
+        model: {
+          provider: 'anthropic.messages',
+          modelId: 'claude-sonnet-4-5',
+        },
         instructions: undefined,
       } as any)
 
       expect(result?.toolChoice).toBeUndefined()
+      expect(result?.activeTools).toBeUndefined()
       expect(typeof result?.instructions).toBe('string')
       expect((result?.instructions as string).length).toBeGreaterThan(0)
+    })
+
+    it.each([
+      ['google', 'google.generative-ai', 'gemini-3.8-flash'],
+      ['openai', 'openai.responses', 'gpt-5.5'],
+      ['xai', 'xai.responses', 'grok-4.3'],
+      ['deepseek', 'deepseek.chat', 'deepseek-v4-flash'],
+      ['moonshotai', 'moonshotai.chat', 'kimi-k2.6'],
+      ['qwen', 'qwen.chat', 'qwen3.6-plus'],
+      ['vercel gateway', 'gateway', 'google/gemini-3.8-flash'],
+      ['openrouter gateway', 'openrouter.chat', 'openai/gpt-5.5'],
+      ['cloudflare gateway', 'cloudflare-gateway.chat', 'openai/gpt-5.5'],
+    ])('removes every tool declaration on the final step for %s',
+      async (_label, provider, modelId) => {
+        const prepareStep = getPrepareStep()
+        const result = await prepareStep({
+          stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+          model: { provider, modelId },
+          instructions: undefined,
+        } as any)
+
+        expect(result?.toolChoice).toBe('none')
+        expect(result?.activeTools).toEqual([])
+      })
+
+    it('keeps the declarations with toolChoice: none for an Anthropic model '
+      + 'routed through a gateway', async () => {
+      const prepareStep = getPrepareStep()
+      const result = await prepareStep({
+        stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+        model: { provider: 'gateway', modelId: 'anthropic/claude-sonnet-4.5' },
+        instructions: undefined,
+      } as any)
+
+      expect(result?.toolChoice).toBe('none')
+      expect(result?.activeTools).toBeUndefined()
     })
   })
 })
