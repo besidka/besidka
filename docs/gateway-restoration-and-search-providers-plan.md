@@ -691,9 +691,10 @@ No browser verification — no UI reads `toolCall` until Epic 1 WP 1.6.
 
 ## Epic 0 gate
 
-- [ ] CI green on PR #362 with all three packages landed (Build PR pending
+- [x] CI green on PR #362 with all three packages landed (Build PR pending
       as of commit `e6c1997`; Check PR state and Check latest commit paths
-      already pass)
+      already pass) — CI green on `459794a` (2026-09-30), branch merged with
+      `main`
 - [~] `/profile/keys` browser script (WP 0.2) — steps 1-5 and the tab/panel/
       card-order/dashboard-link checks verified live against local dev
       (`Rail Test` session): tab bar renders, providers panel unchanged,
@@ -3406,7 +3407,9 @@ Expect **no output**. Any line printed is a spec that will never run on a PR.
       (Brave)" Tools row, separate ~$0.015 search line). Exa was not
       re-sent this pass
 - [ ] The Vercel and OpenRouter live catalog shapes were diffed against the
-      restored normalisers (WP 2.5)
+      restored normalisers (WP 2.5) — **post-merge follow-up** (both
+      catalogs load live with pricing, so this is a drift check, not a
+      blocker)
 - [x] WP 2.5's live catalog checks passed for **all three** gateways —
       Cloudflare returns 27 `@cf/*` models with pricing and `toolCall`
       after the owner granted Workers AI Read (the two-format join works
@@ -3423,7 +3426,10 @@ Expect **no output**. Any line printed is a spec that will never run on a PR.
       (no gateway tool sets `withFollowUpTurn()`)
 - [ ] **R12 answered and recorded:** whether a BYOK gateway strips
       provider-native web search, established by a real call rather than
-      inferred
+      inferred — **post-merge follow-up.** Partly answered by the pre-Epic 2
+      spike (Vercel pass, OpenRouter incompatible and uses its `web` plugin,
+      Cloudflare inconclusive on account state); the open part is the BYOK
+      header question and the Cloudflare re-run
 - [x] Gateway image generation verified end to end, rendering a
       `/files/<storageKey>` URL rather than an inline `data:` blob (verified
       live 2026-09-24 on OpenRouter/Vercel — found broken rendering, fixed)
@@ -3495,9 +3501,14 @@ E picker core) → review → deploy → browser check.
       for the owner to paste in. Known gap: gateway-native search
       (OpenRouter's `web` plugin) emits no `webSearchUnits` by design (the
       double-count guard), so it won't appear in this widget even after
-      the fix
+      the fix. **Post-merge follow-up** (owner, in the separate
+      `.axiom-dashboard` repo)
 - [ ] **Live bug (2026-09-23): a Brave/Exa/Moonshot multi-step search turn
-      that used its full tool budget renders completely blank.** Root
+      that used its full tool budget renders completely blank.** **Fixed in
+      code (`825f575` forces a final answer step; `c4a5768` additionally
+      persists a visible notice instead of dropping a tool-only turn), live
+      confirmation pending — post-merge follow-up**, including a live
+      Anthropic + Brave send to confirm the instructions-only nudge path. Root
       cause found by D1 read of three real broken rows (all three ended
       after exactly 3 `step-start`s, all `output-available`, zero `text`
       parts): `server/utils/ai/tool-loop.ts`'s `stopWhen: stepCountIs(3)`
@@ -3645,7 +3656,8 @@ pnpm vitest run  # the landingTests group
       typecheck`, `pnpm run lint`, and a full `pnpm vitest run` (292 files,
       3432 tests) all green.
   - [ ] The 5-step manual browser verification script above has **not** been
-        run yet.
+        run yet. **Owner manual check**; do not tick until the owner has run
+        it.
   - Explicitly left open by this commit, not lost:
     - the comparison table's `priceDate: June 2026` and the competitor price
       figures were **not** re-verified this pass
@@ -3776,7 +3788,8 @@ pnpm vitest run   # the landing/legal groups
       and a full `pnpm vitest run` (292 files, 3432 tests) all green.
   - [ ] The 5-step manual browser verification script above, including
         clicking every new vendor privacy-policy link, has **not** been run
-        yet.
+        yet. **Owner manual check**; do not tick until the owner has run
+        it.
   - **The gateway controller/processor classification is resolved.** On
     2026-09-23 the owner determined the classification directly rather than
     leaving it open: gateways are **independent controllers**, using the same
@@ -3807,13 +3820,23 @@ owner determined the classification directly on 2026-09-23 (see WP 3.2
 above) and it has been landed in `content/legal/privacy-policy.md`.
 Checkboxes below stay unchecked until each remaining item is actually done.
 
-- [ ] CI green on PR #362
-- [ ] WP 3.1's 5-step landing script passed
-- [ ] WP 3.2's 5-step legal script passed, including every link clicked
+- [x] CI green on PR #362 — CI green on `459794a` (2026-09-30), branch
+      merged with `main`
+- [ ] WP 3.1's 5-step landing script passed — **owner manual check**, not
+      automatable; leave unchecked until the owner has run it
+- [ ] WP 3.2's 5-step legal script passed, including every link clicked —
+      **owner manual check**, not automatable; leave unchecked until the
+      owner has run it
 - [x] **Owner sign-off on the gateway controller/processor classification**
       — resolved 2026-09-23: independent controller, same test as AI
       providers and search providers.
-- [ ] All three `updatedAt` dates bumped
+- [x] All three `updatedAt` dates bumped — verified 2026-10-03: `privacy-
+      policy.md`, `terms-of-use.md` and `cookie-policy.md` all carry
+      `updatedAt: 2026-09-23` (the privacy policy's previous date was
+      2026-08-03). Note: the privacy
+      policy's controller/processor edit landed later (`7bf211f`,
+      2026-09-24) without a further bump; the owner may want to set the
+      merge date at release
 
 ---
 
@@ -4091,39 +4114,43 @@ would learn a fact this work establishes.
       providers only
   - [x] Add a **`docs/providers/gateways.md` entry to the Project Docs
         bullet list**
-  - [ ] Update the line-3 overview to mention the search providers
-        (Brave, Exa) alongside the seven LLM providers. **Epic 1.**
+  - [x] Update the line-3 overview to mention the search providers
+        (Brave, Exa) alongside the seven LLM providers. **Epic 1.** Completed
+        2026-10-03: the overview now mentions Brave/Exa with pointer to
+        `docs/web-search-cost-accounting.md`.
   - [x] **Do NOT re-add the old blanket "no AI gateway of any kind… do not
         reintroduce it" block.**
-- [ ] **`docs/auth-security.md`** — lost material on removal (archaeology
+- [x] **`docs/auth-security.md`** — lost material on removal (archaeology
       § 1.5) and is missing new material:
-  - [ ] Restore the "Reused outside Better Auth: the gateway catalog route"
+  - [x] Restore the "Reused outside Better Auth: the gateway catalog route"
         section (`GET /api/v1/gateways/[gateway]/models`). **WP 2.10.**
-  - [ ] Restore the nine gateway key-route rate-limit budget rows and the
+  - [x] Restore the nine gateway key-route rate-limit budget rows and the
         gateway `keyPrefix` design rationale. **WP 2.10.**
-  - [ ] **Add** six new rows for the Brave and Exa key routes — currently
+  - [x] **Add** six new rows for the Brave and Exa key routes — currently
         absent entirely. **Epic 0 / WP 0.2, or WP 2.10 at the latest.**
-- [ ] **`docs/web-search-cost-accounting.md`** — the document this whole
+        Verified 2026-10-03 against the route files; the summary route's
+        row was corrected from 30 to 300 per 60s (`749473d`).
+- [x] **`docs/web-search-cost-accounting.md`** — the document this whole
       effort extends:
-  - [ ] § "Sketch: external search backends" — annotate as **implemented**,
+  - [x] § "Sketch: external search backends" — annotate as **implemented**,
         recording the shipped tool keys, the fixed request shapes, and the
         **Exa $17/1,000 derivation**. **Epic 1 gate.**
-  - [ ] § "Key storage" — annotate the separate-surface recommendation as
+  - [x] § "Key storage" — annotate the separate-surface recommendation as
         **Reversed** (the enum was widened; the `SupportedProviderId` leak it
         feared does not exist), per that document's own convention of keeping
         superseded conclusions legible. **Epic 1.**
-  - [ ] § "The AI Gateway question" — `:419`'s "**besidka does not route
+  - [x] § "The AI Gateway question" — `:419`'s "**besidka does not route
         through any AI Gateway today**" becomes false the moment Epic 2
         lands. Rewrite the section; **do not delete it** — it is the
         pre-written case for this restoration and its unresolved
         passthrough question (R12) is still live. **Epic 2.**
-  - [ ] § "If we build this next" items 2–7 — mark each resolved, with the
+  - [x] § "If we build this next" items 2–7 — mark each resolved, with the
         resolution. Item 7 (the `wrangler.jsonc` two-block consistency
         check) is **implemented** by WP 1.2's new spec. **Epic 2.**
 - [x] **`docs/providers/gateways.md`** — **new document**, per the contents
       list in WP 2.10 (exists; updated 2026-09-24 with Cloudflare third-party
       routing and gateway image rendering details)
-- [ ] **`docs/providers/general.md`** — its title is literally "# Direct
+- [x] **`docs/providers/general.md`** — its title is literally "# Direct
       providers: architecture and shared patterns" and `:206`/`:213`
       reference "direct-provider gaps". Add a cross-link to the new
       `gateways.md` and to the Brave/Exa work, and update its § "Multi-step
@@ -4134,31 +4161,35 @@ would learn a fact this work establishes.
       (reasoning steps plus `source-url` citations). **Epic 1 and Epic 2.**
 - [x] **`docs/gateway-removal-plan.md`** — superseded note present (verified
       2026-09-24)
-- [ ] **`docs/models-data-fetching.md`** — three updates:
-  - [ ] the per-field merge policy table gains `toolCall` on the **fetched**
+- [x] **`docs/models-data-fetching.md`** — three updates:
+  - [x] the per-field merge policy table gains `toolCall` on the **fetched**
         side. **Epic 0 / WP 0.3.**
-  - [ ] the `EXEMPT_IDS` hard-fail section gains `toolCall` in its required
+  - [x] the `EXEMPT_IDS` hard-fail section gains `toolCall` in its required
         set. **WP 0.3.**
-  - [ ] `:15`'s two gateway references in the curated-vs-dynamic catalog
+  - [x] `:15`'s two gateway references in the curated-vs-dynamic catalog
         description were stripped on removal and are now wrong again (there
         *is* a dynamic gateway catalog). **Epic 2.**
-  - [ ] its known-trade-off note that "a fifth capability would need adding
+  - [x] its known-trade-off note that "a fifth capability would need adding
         in two places" — record that the fifth has arrived (WP 1.6) and the
         duplication was consciously not refactored. **Epic 1.**
-- [ ] **`docs/legal.md`** — the recipients-table and `updatedAt` conventions
+- [x] **`docs/legal.md`** — the recipients-table and `updatedAt` conventions
       are the spec WP 3.2 follows; check whether the doc itself needs a note
       about the new *categories* of recipient (search vendor, gateway) as
       distinct from "AI provider". **Epic 3.**
-- [ ] **`docs/model-catalog-expansion-plan.md`** — `:88` ("131 commits:
+- [x] **`docs/model-catalog-expansion-plan.md`** — `:88` ("131 commits:
       gateway…"), `:197` ("`SupportedProviderId` during gateway removal") and
       `:1478` (pointing at the removal plan's header) all describe the
       removal as settled. Add a forward-pointer to this plan. **Epic 2.**
-- [ ] **`docs/seo.md`** — re-check after WP 3.1's FAQ edits that the
+- [x] **`docs/seo.md`** — re-check after WP 3.1's FAQ edits that the
       documented `#about-the-name` / `alternateName` sync rule still holds.
-      **Epic 3.** (checked 2026-09-24: no stale provider enumerations found)
+      **Epic 3.** (checked 2026-09-24: no stale provider enumerations found;
+      re-checked 2026-10-03 against `content/index.md` and
+      `app/utils/landing-jsonld.ts`: `ALTERNATE_NAMES` and the
+      `#about-the-name` section still agree, and the FAQ edits did not touch
+      either)
 - [x] **`README.md`** — updated to reflect current provider support
       (2026-09-24): direct providers (7 LLM), gateways (3), Brave/Exa search
-- [ ] **Source doc comments that assert gateways are gone** — each reads as
+- [x] **Source doc comments that assert gateways are gone** — each reads as
       false the moment Epic 2 lands, and the repo has a no-stale-comment
       rule. All are covered by their owning package, listed here so none is
       missed: `shared/utils/model-selection.ts:1-6`,
@@ -4169,7 +4200,14 @@ would learn a fact this work establishes.
       `server/utils/keys-rate-limit.ts`,
       `server/utils/providers/qwen.ts:17-18`,
       `server/utils/providers/moonshotai-web-search.ts:96-104`,
-      `tests/fixtures/follow-up-turn-tool.ts:18`.
+      `tests/fixtures/follow-up-turn-tool.ts:18`. Re-checked 2026-10-03: a
+      grep of `app/`, `server/`, `shared/`, `providers/`, `scripts/` and
+      `tests/` found no comment still asserting gateways are gone or that
+      only OpenAI/Anthropic/Google exist; all nine listed sites now describe
+      gateways accurately. (Unrelated nit, not changed: a JSDoc in
+      `server/utils/ai/external-search-cost.ts` still cites
+      `stepCountIs(3)`; the loop cap is now 3 search rounds plus a forced
+      answer step.)
 
 ---
 
@@ -4250,3 +4288,37 @@ key) and a re-run of the saved spike script before it can be advertised as
 working. Record all three verdicts in `docs/providers/gateways.md` and
 annotate `docs/web-search-cost-accounting.md` § "The AI Gateway question"
 when Epic 2 lands.
+
+---
+
+# Post-merge follow-ups (2026-10-03)
+
+None of these block merging PR #362. Each is either an owner action or a
+live check that needs an account or a deployed environment.
+
+- [ ] **Per-step Gemini search query dedup.** `getGoogleSearchGrounding`
+      dedups queries across all steps of a multi-step turn, while Google
+      counts unique queries per `generateContent` call. A query repeated in a
+      later step is billed by Google but counted once here. See
+      `docs/web-search-cost-accounting.md` "Known gap".
+- [ ] **Curated Cloudflare third-party model catalog.** Cloudflare's catalog
+      lists only `@cf/*` models but routes third-party ones; see the
+      2026-09-24 note in `docs/providers/gateways.md`.
+- [ ] **Deep-research badge for gateway models.** Decide whether and how
+      gateway-routed deep-research models should show the deep-research
+      capability badge direct models carry.
+- [ ] **October check on the Gemini 3 free search allowance (owner,
+      billing).** Confirm in the billing export whether Google applies the
+      documented free allowance; see `docs/web-search-cost-accounting.md`
+      "The free quota exists". Estimates stay list price until then.
+- [ ] **Production D1 migration apply runbook.** The
+      `favorite_gateway_models` `ALTER TABLE ... ADD COLUMN` on
+      `user_settings` (`.drizzle/migrations/20260923065554_flimsy_gladiator`)
+      must be applied to production. Per `CLAUDE.md`: take a Time Travel
+      bookmark first, apply to `besidka-preview` and verify, confirm the SQL
+      contains no `DROP TABLE`, then apply to `besidka` and compare
+      cascade-child row counts before and after.
+- [ ] **Owner `.dev.vars` rename.** Rename the six search-rate variables in
+      any local `.dev.vars` to the `NUXT_PUBLIC_` prefix, as listed in
+      `docs/web-search-cost-accounting.md` "Rates" and `.dev.vars.example`;
+      the committed `wrangler.jsonc` values already use the new names.

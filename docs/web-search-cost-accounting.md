@@ -48,8 +48,10 @@ hard, and all four get worse as providers are added:
 
 ## Current architecture
 
-As shipped, this app accounts for separately-billed web search on **all
-three** providers it supports — Google, Anthropic, and OpenAI — through a
+As shipped, this app accounts for separately-billed web search on Google,
+Anthropic, and OpenAI (the three providers that existed when this pattern
+was built; Brave and Exa are covered separately by
+`external-search-cost.ts`, see "Sketch: external search backends") through a
 provider-dispatcher pattern:
 
 - `server/utils/ai/google-search-cost.ts` — Google-only, untouched since PR
@@ -547,7 +549,9 @@ Three options, none chosen here:
 
 Preference, weakly held: option 2, plus a lint/test that asserts the two
 `wrangler.jsonc` blocks agree with each other, which is cheap and eliminates
-the divergence failure entirely. Not implemented yet.
+the divergence failure entirely. The consistency test is implemented
+(`tests/unit/config/wrangler-search-rates.spec.ts`); the dated review
+reminder is not.
 
 ### Double counting, once an external backend exists
 
@@ -588,12 +592,19 @@ problem this whole section is about.
 
 ## The AI Gateway question
 
-**besidka does not route through any AI Gateway today.**
-`server/utils/providers/{openai,anthropic,google}.ts` each call
-`createOpenAI` / `createAnthropic` / `createGoogleGenerativeAI` with nothing
-but a decrypted `apiKey` — no `baseURL`, no gateway abstraction anywhere in
-the resolution path. Whatever is true about Gateways is currently
-hypothetical for this app.
+**Status, 2026-10-03: besidka now routes through AI Gateways, but only
+when the user explicitly selects one.** Direct providers stay the default
+routing path — the `server/utils/providers/*.ts` builders still construct
+each direct provider from the user's own key with no `baseURL`. Vercel AI
+Gateway, Cloudflare AI Gateway and OpenRouter are an optional,
+user-selected layer built in `server/utils/gateways/` (see
+`docs/providers/gateways.md`), and a direct-provider key is never routed
+through one. The question below was written when this was hypothetical; it
+is kept as the pre-written case for that restoration, and its passthrough
+question is only partly answered (see "Partially resolved" below).
+
+The paragraphs from here through the "Partially resolved" note record what
+was known on 2026-09-22, before gateways were restored.
 
 On the stated concern — that a Gateway strips web search from models that
 support it directly — the research says it probably isn't real:
@@ -638,6 +649,14 @@ Cloudflare as unresolved until an owner funds credits or adds a key and the
 saved `test2-cloudflare-gateway-openai-search.mjs` script is re-run to a
 real 200.
 
+**Still open after the restoration (post-merge):** the Cloudflare half of
+the passthrough question, and a BYOK-header re-check on Vercel and
+OpenRouter. OpenRouter is not a passthrough at all — its native-tool
+object is rejected with HTTP 400, and the shipped path uses its own
+`plugins: [{ id: 'web' }]` request flag instead, whose cost arrives
+blended into `usage.cost` (the double-count guard in
+`docs/providers/gateways.md` keeps it from also emitting a search line).
+
 Separately, and more interesting than the passthrough question: Vercel AI
 Gateway ships its **own** model-agnostic search tools usable with any model
 regardless of native support — Perplexity $5/1,000, Exa $7/1,000, Tako
@@ -665,10 +684,20 @@ adopts a Gateway for other reasons first.
 `docs/gateway-restoration-and-search-providers-plan.md` built Brave and Exa
 web search substantially as sketched below: BYOK function tools, Brave
 first, tool keys distinct from `web_search_preview`
-(`web_search_brave`/`web_search_exa`), a separate key-storage surface rather
-than a widened `keys` enum, and capability-first routing. What follows is
-kept for its reasoning trail, not as a live proposal — see the plan doc for
-what actually shipped.
+(`web_search_brave`/`web_search_exa`), and capability-first routing. The
+one deliberate departure is key storage, which went the other way — see
+"Key storage" below. What follows is kept for its reasoning trail, not as a
+live proposal — see the plan doc for what actually shipped.
+
+Shipped request shapes are fixed module constants, not model-configurable
+(`server/utils/search/{brave,exa}.ts`). Exa sends `type: 'auto'`,
+`numResults: 10` and `contents.highlights: true`; Exa's pricing page lists
+a $1/1,000-per-extracted-page charge that would make that shape $17/1,000
+($7 base plus 10 pages), but two live calls on 2026-09-22 both reported
+`costDollars.total: 0.007`. The live path therefore prefers the
+vendor-reported `costDollars` and falls back to the committed $7/1,000 rate
+only when the response omits it; revisit the $17 figure with more samples
+before raising that fallback.
 
 ### Candidates
 
@@ -699,6 +728,15 @@ the constraint above. Routing between it and native search decided per
 turn, per the capability-first rule.
 
 ### Key storage — checked, and it doesn't generalise for free
+
+> **Reversed.** The separate-surface recommendation below was not followed.
+> The `keys.provider` enum in `server/db/schemas/keys.ts` was widened to
+> include `brave`, `exa` and the three gateway ids, and the `keys` table
+> holds every one of them. The feared `SupportedProviderId` leak does not
+> exist: the chat handler's `toSupportedProviderId()` narrows an arbitrary
+> string to the LLM-provider union, and gateway ids travel as a separate
+> `GatewayId` type. The text is kept below, unedited, as the reasoning
+> trail.
 
 What exists today: `server/db/schemas/keys.ts` has `provider: text({ enum:
 ['openai', 'anthropic', 'google'] })` plus a `uq_key_user_provider` unique
@@ -763,6 +801,10 @@ This document doesn't propose building anything. Specifically out of scope:
 
 - Adopting an AI Gateway, or changing how providers are constructed.
 - Integrating Brave, Exa, or any external search vendor.
+
+(Both of the above were later done — see the "Implemented" notes in this
+document and `docs/providers/gateways.md`. This list records the scope of
+the original investigation.)
 - A declarative billing-rule engine (argued against above).
 - Automated pricing scraping.
 - Changing how image generation cost is folded into `outputCost`.
@@ -778,29 +820,33 @@ decisions actually made during Epic 0/1 of
 `docs/gateway-restoration-and-search-providers-plan.md`, not a
 forward-looking plan; see that document for the execution detail.
 
-Ordered decisions, each blocking the next, before any code:
+Ordered decisions, each blocking the next, before any code. Each is marked
+with how it resolved:
 
 1. **Verify the two counting unknowns empirically** — does Anthropic's
    `server_tool_use.web_search_requests` counter include errored searches,
    and does one OpenAI `web_search_call` map to exactly one emitted part at
    every integration point. One live call each. Don't trust a count nobody
-   has watched.
-2. **Decide whether besidka adopts an AI Gateway at all.** A larger
-   architectural decision than this document's scope, and it gates
-   everything below — if yes, a Gateway's bundled search tools may make
-   step 4 unnecessary; if no, step 4 is the only path. If the Gateway
-   question is live for other reasons, run the passthrough test call
-   ("The AI Gateway question," above) at the same time.
-3. **Decide the routing rule** — capability-first with user override, or
-   something else — and whether a search-enabled turn may ever produce
-   zero billable units given the current forced `toolChoice`.
-4. **Decide build-your-own vs. bundled**, informed by (2). If
-   build-your-own: Brave first, behind a swappable client interface, with a
-   tool key distinct from `web_search_preview`.
-5. **Decide the key-storage surface** — widen the `keys` enum and accept
-   the `supportedProviderId` leak, or add a separate search-keys table and
-   settings surface. Recommendation above is the latter.
+   has watched. *Still unverified live for Anthropic's counter; the
+   structural `tool-result` fallback provably excludes errored searches, and
+   unit counts are always recorded so a human can reconcile.*
+2. **Decide whether besidka adopts an AI Gateway at all.** *Resolved:
+   gateways are an optional, user-selected layer; direct providers remain
+   the default (`docs/providers/gateways.md`). The passthrough test ran for
+   Vercel (pass) and OpenRouter (incompatible, uses its own plugin);
+   Cloudflare is still open.*
+3. **Decide the routing rule.** *Resolved: capability-first, and at most
+   one of `web_search` / `web_search_brave` / `web_search_exa` is active per
+   turn (`docs/gateway-restoration-and-search-providers-plan.md`).*
+4. **Decide build-your-own vs. bundled.** *Resolved: build-your-own, Brave
+   first and Exa second, behind a swappable client interface, with tool keys
+   `web_search_brave`/`web_search_exa` distinct from `web_search_preview`.*
+5. **Decide the key-storage surface.** *Resolved the opposite way from this
+   document's recommendation: the `keys` enum was widened (see "Key
+   storage" above).*
 6. **Update `docs/legal.md` / `content/legal/`** for the new processor, and
-   bump `updatedAt`. This gates shipping, not building.
-7. **Add the `wrangler.jsonc` two-block consistency check** regardless of
-   everything above — it's a few lines and removes a live failure mode.
+   bump `updatedAt`. *Done: `content/legal/` now covers search vendors and
+   gateways; see `docs/legal.md`.*
+7. **Add the `wrangler.jsonc` two-block consistency check.** *Implemented:
+   `tests/unit/config/wrangler-search-rates.spec.ts` asserts the preview and
+   production `vars` blocks agree.*

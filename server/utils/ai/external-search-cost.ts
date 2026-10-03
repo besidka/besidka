@@ -36,10 +36,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * output. Only `tool-result` parts are counted — the AI SDK converts a
  * failed provider tool call into a `tool-error` part type, so a failed
  * search structurally never contributes a billable unit here. A turn can
- * call the tool more than once (`stepCountIs(3)` allows it), so this walks
- * every step rather than assuming at most one call. Returns `undefined` when
- * zero calls ran, so a turn that merely offers the tool never gains a
- * fabricated usage record.
+ * call the tool more than once (budget is 3 search rounds + a forced final
+ * answer step, stopWhen stepCountIs(4)), so this walks every step rather
+ * than assuming at most one call. Returns `undefined` when zero calls ran,
+ * so a turn that merely offers the tool never gains a fabricated usage record.
  */
 export function getExternalSearchUsage(
   steps: ReadonlyArray<ExternalSearchStep>,

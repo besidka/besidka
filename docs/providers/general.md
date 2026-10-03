@@ -5,7 +5,17 @@ models.dev-backed data structure — `docs/models-data-fetching.md` documents
 the catalog machinery itself. This directory is the permanent record of the
 four providers added alongside the pre-existing Anthropic/Google/OpenAI
 ones, of the mechanisms they needed (openai-compatible wiring, per-provider
-web search, the multi-step tool loop) and of the decisions behind them.
+web search, the multi-step tool loop) and of the decisions behind them. It
+also holds the restored half of the routing story:
+[`gateways.md`](./gateways.md) covers the optional, user-selected gateway
+layer (Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter) that sits on
+top of these direct providers. Direct providers stay the default path; a
+direct-provider key is never routed through a gateway.
+
+Brave and Exa BYOK web search, which any model can use through the
+multi-step tool loop below, are documented in
+`docs/web-search-cost-accounting.md` and
+`docs/gateway-restoration-and-search-providers-plan.md`.
 
 **This file** covers the cross-cutting architecture and the patterns shared
 across every direct provider. Per-provider capability decisions, wiring
@@ -18,6 +28,7 @@ own files:
 | [`deepseek.md`](./deepseek.md) | `deepseek-flash`/`deepseek-v4-pro`, reasoning wiring, the unwired Anthropic-compatible web-search endpoint |
 | [`moonshotai.md`](./moonshotai.md) | Kimi models, Formula-API web search, reasoning notes |
 | [`alibaba.md`](./alibaba.md) | Qwen/Alibaba models, DashScope web search, the `qwen`-vs-`alibaba` catalog-key divergence |
+| [`gateways.md`](./gateways.md) | The optional gateway layer: Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter — per-gateway cost capture, reasoning, web search and image generation |
 
 ## Model catalog architecture
 
@@ -203,9 +214,11 @@ client, the `v-if` chain in `app/pages/chats/[slug].vue` and
 and `text`, so an unrecognized tool part renders nothing and throws nothing.
 One cosmetic consequence worth knowing: `shouldFitMessageBubble()` returns
 `false` for any part type outside `text`/`reasoning`/`step-start`/`file`, so
-a message carrying a tool part loses fit-content bubble styling. Deciding how
-search steps should *look* (chips, collapsed steps, or nothing) is still
-deliberately open.
+a message carrying a tool part loses fit-content bubble styling. How search
+steps look was decided with Brave and Exa: a search tool part renders as a
+reasoning step ("Searching with Brave" / "Searched with Brave", see
+`app/utils/reasoning.ts`), and the results arrive as `source-url` citation
+parts.
 
 ## No-key UX gating
 

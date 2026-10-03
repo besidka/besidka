@@ -2,6 +2,13 @@
 
 Status: Waves 0-6c EXECUTED, committed, and pushed. Written 2026-09-16.
 
+> **Superseded context (2026-10-03).** This plan was written while gateways
+> were removed from the branch. They have since been restored as an optional,
+> user-selected routing layer on top of the direct providers described here;
+> see `docs/gateway-restoration-and-search-providers-plan.md` and
+> `docs/providers/gateways.md`. Every reference below to "gateway removal"
+> describes the state at the time of writing, not the current state.
+
 - Wave 0 (merge `origin/main`) — `5347f57f`.
 - Wave 1 (P0 DeepSeek retired ids) — `2f9324c6`.
 - Wave 2a (xAI +4 text models) — `c94e46cf`.
@@ -86,7 +93,8 @@ the owner rather than an executor.
 
 1. Merge `origin/main` (59 commits: model-curation system, successor proposal
    pipeline, search indexing, PWA fixes) into this branch (131 commits: gateway
-   removal + four new direct providers).
+   removal + four new direct providers; the removal was later reversed — see
+   the note under the Status line).
 2. Replace DeepSeek's two retired model ids — a confirmed production bug that
    also breaks `pnpm run models:fetch` **today**.
 3. Expand catalogs: xAI +4 text models +1 image model, Moonshot AI +2, Qwen +43.
@@ -195,9 +203,10 @@ Main added, inside the stream setup:
 `providerId` existed as a local at the merge base. This branch renamed it to
 `errorProviderId` and retyped it from a three-literal union to
 `SupportedProviderId` during gateway removal (see line ~392,
-`let errorProviderId: SupportedProviderId | undefined`). The rename and main's
-new usage sit in textually distant parts of the file, so the merge composes
-cleanly into a file that references an undefined identifier.
+`let errorProviderId: SupportedProviderId | undefined`; gateway restoration
+later widened it to `SupportedProviderId | GatewayId | undefined`). The rename
+and main's new usage sit in textually distant parts of the file, so the merge
+composes cleanly into a file that references an undefined identifier.
 
 Two mandatory edits immediately after the merge, before anything else:
 
@@ -1475,7 +1484,8 @@ without a live key" with the specific check to run.
 ### 12.4 This document
 
 Flip the Status line from PLANNED to EXECUTED with per-wave results, mirroring
-`docs/gateway-removal-plan.md`'s header.
+`docs/gateway-removal-plan.md`'s header (that plan is itself superseded by
+`docs/gateway-restoration-and-search-providers-plan.md`).
 
 ## 13. Verification gates (definition of done)
 

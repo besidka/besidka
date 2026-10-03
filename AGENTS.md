@@ -1,6 +1,6 @@
 ## Project Overview
 
-Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI, Qwen) and pay for what they use — see `docs/providers/general.md`.
+Besidka is an open-source AI chat application that runs on Cloudflare Workers. Users bring their own API keys for LLM providers (Anthropic, Google, OpenAI, xAI, DeepSeek, Moonshot AI, Qwen) and pay for what they use — see `docs/providers/general.md`. Users can also add Brave or Exa keys for web search — see `docs/web-search-cost-accounting.md`.
 
 **Direct providers are the default routing path.** Gateways (Vercel AI
 Gateway, Cloudflare AI Gateway, OpenRouter) are an optional, user-selected

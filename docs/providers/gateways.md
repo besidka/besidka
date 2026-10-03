@@ -627,7 +627,23 @@ verification across all three gateways.
   `kimi-k2.7-code`/`glm-5.3`, `false` for `llama-3.2-3b-instruct`/
   `llama-guard-3-8b`).
 
-**Still genuinely open, not settled by this restoration:**
+**Update 2026-10-03.** Several items in the list below were closed by live
+checks after this section was first written; the restoration plan
+(`docs/gateway-restoration-and-search-providers-plan.md`, "Epic 2 gate" and
+R12) is the authoritative record. Closed since: real sends through all three
+gateways (2026-09-23, including a Cloudflare `@cf/openai/gpt-oss-120b` reply
+with an estimated cost), the OpenRouter and Vercel picker catalogs, and
+gateway image generation end to end on OpenRouter and Vercel (2026-09-24;
+the Vercel 403 was the free-tier restriction and cleared once the owner
+bought credits). R12 is no longer wholly unanswered: a spike found Vercel
+passes native search through (billed on a separate line), OpenRouter
+rejects the native-tool object with HTTP 400 and uses its own `web` plugin
+instead, and Cloudflare stayed inconclusive because of the owner's account
+state. A BYOK-header re-check and the Cloudflare half remain post-merge
+follow-ups.
+
+**Still genuinely open, not settled by this restoration (as originally
+written, see the update above for what has since closed):**
 
 - **Vercel image generation is unverified.** The owner's Vercel account is
   on the free tier, which returns HTTP 403 `RestrictedModelsError` ("Free

@@ -11,10 +11,16 @@ The model catalog is split in two halves that are merged at import time.
 `providers/merge.ts` and exports the same fully shaped `Providers` array
 consumers have always read through `getProviders()`.
 
-This is the **curated, direct-provider** catalog — the only catalog. Every
-model the app can select is declared here; nothing is fetched at runtime.
-`docs/providers/general.md` records the per-provider capability decisions
-layered on top of this pipeline, and links out to each provider's own file.
+This is the **curated, direct-provider** catalog. Every direct-provider model
+the app can select is declared here; nothing in it is fetched at runtime.
+It is not the only catalog: the optional gateways (Vercel AI Gateway,
+Cloudflare AI Gateway, OpenRouter) have a separate **dynamic** catalog
+fetched at runtime from each gateway's own models endpoint and cached in KV
+(`server/utils/gateways/catalog.ts`; `docs/providers/gateways.md`). The
+curated-vs-fetched split and merge policy described here apply only to the
+direct-provider half. `docs/providers/general.md` records the per-provider
+capability decisions layered on top of this pipeline, and links out to each
+provider's own file.
 
 ## Refreshing the snapshot
 
@@ -606,8 +612,11 @@ deliberately not fixed now — logged here instead of silently dropped:
   data. Cosmetic inconsistency only.
 - **Capability-icon conditionals are duplicated** between the row and the
   detail panel for reasoning/web-search/deep-research (the
-  image-generation one was deduplicated during review). A fifth
-  capability would need adding in two places.
+  image-generation one was deduplicated during review). The fifth capability
+  has since arrived — the tool-calling chip driven by `model.toolCall`,
+  rendered in both `ModelItem.vue` and `ModelDetail.vue` — and the
+  duplication was consciously not refactored when it was added. A sixth
+  would again need adding in two places.
 - **Staged Escape** (closes the detail panel, then clears search, then
   closes the picker) can take up to three presses to fully dismiss.
   Deliberate — matches a pattern several command-palette-style UIs use —

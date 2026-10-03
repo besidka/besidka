@@ -216,7 +216,7 @@ catalog rule above:
 
 | Path | Window | Max |
 | --- | --- | --- |
-| `GET /api/v1/profiles/keys` | 60s | 30 |
+| `GET /api/v1/profiles/keys` | 60s | 300 |
 | `GET /api/v1/profiles/keys/vercel-gateway` | 60s | 30 |
 | `POST /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
 | `DELETE /api/v1/profiles/keys/vercel-gateway` | 60s | 10 |
@@ -233,9 +233,11 @@ catalog rule above:
 | `POST /api/v1/profiles/keys/exa` | 60s | 10 |
 | `DELETE /api/v1/profiles/keys/exa` | 60s | 10 |
 
-The summary route and every gateway `GET` are read-mostly, user-initiated,
-and low-frequency — a single DB lookup with no secret decryption cost
-beyond one `crypto-shield` call — so they get a generous 30-per-60s row,
+The summary route is read-mostly and fetched from chat pages, so it gets a
+much looser 300-per-60s row (raised from 30 in `749473d`). Every gateway
+`GET` is read-mostly, user-initiated, and low-frequency — a single DB lookup
+with no secret decryption cost beyond one `crypto-shield` call — so they get
+a generous 30-per-60s row,
 looser than the gateway catalog route's 20-per-60s because there's no
 upstream fetch on this hot path. Every gateway `POST`/`DELETE` gets a
 tighter 10-per-60s row because those verbs mutate state, even though a
@@ -257,7 +259,7 @@ The Brave and Exa key routes (`server/api/v1/profiles/keys/brave/index.
 {get,post,delete}.ts` and their `exa` counterparts) follow the identical
 pattern: each calls `enforceKeysRateLimit()` with its own `keyPrefix`,
 giving all six routes an independent 10-per-60s bucket per verb — tighter
-than the summary route's 30-per-60s for the same reason as the gateway
+than the gateway `GET` rows' 30-per-60s for the same reason as the gateway
 routes above, since these verbs also write and decrypt a secret rather than
 just reading a boolean.
 
