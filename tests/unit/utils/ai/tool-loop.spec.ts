@@ -4,6 +4,8 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import {
   resolveToolLoopOptions,
+  TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
+  TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
   TOOL_LOOP_MAX_STEPS,
   TOOL_LOOP_MAX_TOOL_STEPS,
   TOOL_LOOP_TOOL_TIMEOUT_MS,
@@ -107,10 +109,13 @@ describe('tool loop trigger', () => {
     expect(options).toBeDefined()
   })
 
-  it('caps the loop below the 600s generation-in-progress guard', () => {
+  it('derives the generation-in-progress guard from the loop and the '
+    + 'continuation timeouts', () => {
     expect(TOOL_LOOP_MAX_TOOL_STEPS).toBe(3)
     expect(TOOL_LOOP_MAX_STEPS).toBe(TOOL_LOOP_MAX_TOOL_STEPS + 1)
-    expect(TOOL_LOOP_TOTAL_TIMEOUT_MS).toBeLessThan(600_000)
+    expect(TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS * 1000).toBeGreaterThan(
+      TOOL_LOOP_TOTAL_TIMEOUT_MS + TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
+    )
     expect(TOOL_LOOP_TOOL_TIMEOUT_MS).toBeLessThan(TOOL_LOOP_TOTAL_TIMEOUT_MS)
   })
 
@@ -172,7 +177,7 @@ describe('tool loop trigger', () => {
       const prepareStep = getPrepareStep()
       const result = await prepareStep({
         stepNumber: TOOL_LOOP_MAX_STEPS - 1,
-        model: { provider: 'openai.chat' },
+        model: { provider: 'openai.chat', modelId: 'gpt-5.5' },
         instructions: 'Base instructions.',
       } as any)
 
@@ -188,13 +193,70 @@ describe('tool loop trigger', () => {
       const prepareStep = getPrepareStep()
       const result = await prepareStep({
         stepNumber: TOOL_LOOP_MAX_STEPS - 1,
-        model: { provider: 'anthropic.messages' },
+        model: {
+          provider: 'anthropic.messages',
+          modelId: 'claude-sonnet-4-5',
+        },
         instructions: undefined,
       } as any)
 
       expect(result?.toolChoice).toBeUndefined()
+      expect(result?.activeTools).toBeUndefined()
       expect(typeof result?.instructions).toBe('string')
       expect((result?.instructions as string).length).toBeGreaterThan(0)
     })
+
+    it.each([
+      ['google', 'google.generative-ai', 'gemini-3.8-flash'],
+      ['openai', 'openai.responses', 'gpt-5.5'],
+      ['xai', 'xai.responses', 'grok-4.3'],
+      ['deepseek', 'deepseek.chat', 'deepseek-v4-flash'],
+      ['moonshotai', 'moonshotai.chat', 'kimi-k2.6'],
+      ['qwen', 'qwen.chat', 'qwen3.6-plus'],
+      ['vercel gateway', 'gateway', 'google/gemini-3.8-flash'],
+      ['openrouter gateway', 'openrouter.chat', 'openai/gpt-5.5'],
+      ['cloudflare gateway', 'cloudflare-gateway.chat', 'openai/gpt-5.5'],
+    ])('removes every tool declaration on the final step for %s',
+      async (_label, provider, modelId) => {
+        const prepareStep = getPrepareStep()
+        const result = await prepareStep({
+          stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+          model: { provider, modelId },
+          instructions: undefined,
+        } as any)
+
+        expect(result?.toolChoice).toBe('none')
+        expect(result?.activeTools).toEqual([])
+      })
+
+    it('keeps the declarations with toolChoice: none for an Anthropic model '
+      + 'routed through a gateway', async () => {
+      const prepareStep = getPrepareStep()
+      const result = await prepareStep({
+        stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+        model: { provider: 'gateway', modelId: 'anthropic/claude-sonnet-4.5' },
+        instructions: undefined,
+      } as any)
+
+      expect(result?.toolChoice).toBe('none')
+      expect(result?.activeTools).toBeUndefined()
+    })
+
+    it.each([
+      ['openrouter alias', 'openrouter.chat', '~anthropic/claude-opus-latest'],
+      ['openrouter', 'openrouter.chat', 'anthropic/claude-opus-5'],
+      ['cloudflare unified', 'cloudflare.chat', 'anthropic/claude-sonnet-4-5'],
+    ])('keeps the declarations for an Anthropic model on %s',
+      async (_label, provider, modelId) => {
+        const prepareStep = getPrepareStep()
+        const result = await prepareStep({
+          stepNumber: TOOL_LOOP_MAX_STEPS - 1,
+          model: { provider, modelId },
+          instructions: undefined,
+        } as any)
+
+        expect(result?.toolChoice).toBe('none')
+        expect(result?.activeTools).toBeUndefined()
+      })
   })
 })

@@ -1,11 +1,21 @@
 import type { Instructions, PrepareStepFunction, ToolSet } from 'ai'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { stepCountIs } from 'ai'
+import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 
 export const TOOL_LOOP_MAX_TOOL_STEPS = 3
 export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
 export const TOOL_LOOP_TOTAL_TIMEOUT_MS = 540_000
 export const TOOL_LOOP_TOOL_TIMEOUT_MS = 60_000
+export const TOOL_LOOP_CONTINUATION_TIMEOUT_MS = 90_000
+export const TOOL_LOOP_PERSISTENCE_MARGIN_MS = 30_000
+export const TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS = Math.ceil(
+  (
+    TOOL_LOOP_TOTAL_TIMEOUT_MS
+    + TOOL_LOOP_CONTINUATION_TIMEOUT_MS
+    + TOOL_LOOP_PERSISTENCE_MARGIN_MS
+  ) / 1000,
+)
 
 const TOOL_LOOP_FINAL_STEP_INSTRUCTIONS = [
   'Your search budget is used up. Answer the user\'s question now using',
@@ -36,11 +46,10 @@ export interface ToolLoopOptions {
  * Never combine this marker with a forced `toolChoice: { type: 'tool' }`: a
  * forced choice re-selects the same tool on every step, defeating the
  * follow-up turn's purpose of letting the model choose to answer instead.
- * `resolveToolLoopOptions()`'s final-step `toolChoice: 'none'` overrides a
- * forced choice for most providers on that last step, but Anthropic gets an
- * instructions-only nudge instead (see that function's doc), so a forced
- * choice there would still win and the loop would exhaust its budget without
- * ever answering.
+ * `resolveToolLoopOptions()`'s final step removes the tools for most
+ * providers, but Anthropic gets an instructions-only nudge instead (see
+ * `toolLoopPrepareStep()`), so a forced choice there would still win and the
+ * loop would exhaust its budget without ever answering.
  */
 export function withFollowUpTurn<Tool extends object>(
   tool: Tool,
@@ -69,6 +78,11 @@ function buildToolLoopFinalStepInstructions(
   return `${instructions}\n\n${TOOL_LOOP_FINAL_STEP_INSTRUCTIONS}`
 }
 
+function isAnthropicGatewayModelId(modelId: string): boolean {
+  return getGatewayModelProviderPrefix(modelId).replace(/^~/, '')
+    === 'anthropic'
+}
+
 /**
  * Forces the loop's last allowed step to answer instead of calling another
  * tool. `stepCountIs(TOOL_LOOP_MAX_STEPS)` stops the loop the instant a step
@@ -76,14 +90,19 @@ function buildToolLoopFinalStepInstructions(
  * without this, the model can spend its entire step budget on tool calls and
  * the send persists zero text.
  *
- * `toolChoice: 'none'` is how every provider except Anthropic is told to
- * stop calling tools. Anthropic is the exception: `@ai-sdk/anthropic@4.0.34`
- * maps `toolChoice: 'none'` to `tools: undefined` on the wire while still
- * sending the prior turns' `tool_use`/`tool_result` message history, and
- * whether Anthropic's API accepts that combination is unverified (no live
- * key to test against). Anthropic instead keeps its tools declared and only
- * gets the instructions addendum, which is a best-effort nudge, not a
- * guarantee — the model can still choose to call a tool on this step.
+ * `toolChoice: 'none'` alone is not enough: `@ai-sdk/google` still sends the
+ * function declarations with `functionCallingConfig.mode: 'NONE'`, and Gemini
+ * has been observed ignoring it and calling a tool anyway. `activeTools: []`
+ * removes the declarations from the request entirely (the core's
+ * `prepareTools()` returns `undefined` for an empty tool set), so the model
+ * has nothing left to call.
+ *
+ * Anthropic is the exception: its API rejects `tool_use`/`tool_result`
+ * history sent without tool declarations, so a direct Anthropic model keeps
+ * its tools and only gets the instructions addendum, and an Anthropic model
+ * routed through a gateway keeps the declarations with `toolChoice: 'none'`.
+ * Either can still call a tool on this step; the search-answer continuation
+ * in the chat route is what guarantees the turn still ends with an answer.
  */
 const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
   stepNumber,
@@ -96,11 +115,23 @@ const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
 
   const finalInstructions = buildToolLoopFinalStepInstructions(instructions)
 
-  if (typeof model !== 'string' && model.provider.startsWith('anthropic')) {
+  if (typeof model === 'string') {
+    return { toolChoice: 'none' as const, instructions: finalInstructions }
+  }
+
+  if (model.provider.startsWith('anthropic')) {
     return { instructions: finalInstructions }
   }
 
-  return { toolChoice: 'none' as const, instructions: finalInstructions }
+  if (isAnthropicGatewayModelId(model.modelId)) {
+    return { toolChoice: 'none' as const, instructions: finalInstructions }
+  }
+
+  return {
+    toolChoice: 'none' as const,
+    activeTools: [],
+    instructions: finalInstructions,
+  }
 }
 
 /**
@@ -121,9 +152,10 @@ const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
  * final step (`TOOL_LOOP_MAX_STEPS`) forces an answer — see
  * `toolLoopPrepareStep()` above for how. Each step is a full provider
  * round-trip, and the KV generation-in-progress guard this route sets
- * expires after 600s, so `timeout.totalMs` must stay below that, otherwise a
- * client retry arriving after the guard expired would start a second
- * concurrent generation for the same turn.
+ * expires after `TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS`, which is derived
+ * from this loop's total timeout plus the continuation timeout and a
+ * persistence margin, otherwise a client retry arriving after the guard
+ * expired would start a second concurrent generation for the same turn.
  */
 export function resolveToolLoopOptions(
   tools: FormattedTools['tools'],
