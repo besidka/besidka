@@ -513,6 +513,188 @@ describe('withSearchAnswerGuarantee', () => {
     expect(guarantee.getOutcome().forcedStepToolCall).toBe(true)
   })
 
+  describe('a tool call rejected as unavailable on the forced step', () => {
+    const UNAVAILABLE_TOOL_ERROR_TEXT = JSON.stringify({
+      code: 'unknown',
+      message: 'AI_NoSuchToolError: Model tried to call unavailable tool '
+        + `'${SEARCH_TOOL_NAME}'. Available tools: .`,
+    })
+
+    function createRejectedForcedStepChunks(
+      toolCallId: string,
+    ): UIMessageChunk[] {
+      return [
+        { type: 'start-step' },
+        {
+          type: 'tool-input-start',
+          toolCallId,
+          toolName: SEARCH_TOOL_NAME,
+          dynamic: true,
+        },
+        {
+          type: 'tool-input-delta',
+          toolCallId,
+          inputTextDelta: '{"query":"q"}',
+        },
+        {
+          type: 'tool-input-error',
+          toolCallId,
+          toolName: SEARCH_TOOL_NAME,
+          input: { query: 'q' },
+          dynamic: true,
+          errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+        },
+        {
+          type: 'tool-output-error',
+          toolCallId,
+          dynamic: true,
+          errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+        },
+        { type: 'finish-step' },
+      ]
+    }
+
+    it('drops the rejected call chunks, keeps the step markers and still '
+      + 'runs the continuation', async () => {
+      const { guarantee, startContinuation } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          ...createSearchStepChunks('call-2'),
+          ...createSearchStepChunks('call-3'),
+          ...createRejectedForcedStepChunks('call-4'),
+          { type: 'finish', finishReason: 'tool-calls' },
+        ],
+        continuationChunks: createTextChunks('Answer'),
+      })
+      const chunks = await readAll(guarantee.stream)
+      const rejectedChunks = chunks.filter((chunk) => {
+        return 'toolCallId' in chunk && chunk.toolCallId === 'call-4'
+      })
+
+      expect(rejectedChunks).toEqual([])
+      expect(chunks.filter(chunk => chunk.type === 'start-step'))
+        .toHaveLength(4)
+      expect(chunks.filter(chunk => chunk.type === 'finish-step'))
+        .toHaveLength(4)
+      expect(chunks.filter((chunk) => {
+        return chunk.type === 'tool-output-available'
+      })).toHaveLength(3)
+      expect(startContinuation).toHaveBeenCalledTimes(1)
+      expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+        forcedStepToolCall: true,
+        forcedStepRejectedToolCall: true,
+        continuationRan: true,
+        continuationProducedText: true,
+      }))
+    })
+
+    it('keeps a genuine tool failure on an earlier step', async () => {
+      const failedCallChunks: UIMessageChunk[] = [
+        { type: 'start-step' },
+        {
+          type: 'tool-input-start',
+          toolCallId: 'call-1',
+          toolName: SEARCH_TOOL_NAME,
+        },
+        {
+          type: 'tool-input-available',
+          toolCallId: 'call-1',
+          toolName: SEARCH_TOOL_NAME,
+          input: { query: 'q' },
+        },
+        {
+          type: 'tool-output-error',
+          toolCallId: 'call-1',
+          errorText: 'Brave returned 429',
+        },
+        { type: 'finish-step' },
+      ]
+      const earlierUnavailableCallChunks: UIMessageChunk[] = [
+        { type: 'start-step' },
+        {
+          type: 'tool-input-error',
+          toolCallId: 'call-0',
+          toolName: SEARCH_TOOL_NAME,
+          input: {},
+          errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+        },
+        {
+          type: 'tool-output-error',
+          toolCallId: 'call-0',
+          errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+        },
+        { type: 'finish-step' },
+      ]
+      const { guarantee } = createGuarantee({
+        chunks: [
+          ...earlierUnavailableCallChunks,
+          ...failedCallChunks,
+          ...createSearchStepChunks('call-2'),
+          ...createRejectedForcedStepChunks('call-4'),
+          { type: 'finish', finishReason: 'tool-calls' },
+        ],
+        continuationChunks: createTextChunks('Answer'),
+      })
+      const chunks = await readAll(guarantee.stream)
+
+      expect(chunks).toContainEqual({
+        type: 'tool-output-error',
+        toolCallId: 'call-1',
+        errorText: 'Brave returned 429',
+      })
+      expect(chunks).toContainEqual(expect.objectContaining({
+        type: 'tool-input-start',
+        toolCallId: 'call-1',
+      }))
+      expect(chunks).toContainEqual({
+        type: 'tool-output-error',
+        toolCallId: 'call-0',
+        errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+      })
+      expect(guarantee.getOutcome().forcedStepRejectedToolCall).toBe(true)
+    })
+
+    it('keeps a forced-step tool call that was not rejected as '
+      + 'unavailable', async () => {
+      const { guarantee } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          ...createSearchStepChunks('call-2'),
+          ...createSearchStepChunks('call-3'),
+          { type: 'start-step' },
+          {
+            type: 'tool-input-start',
+            toolCallId: 'call-4',
+            toolName: SEARCH_TOOL_NAME,
+          },
+          {
+            type: 'tool-input-error',
+            toolCallId: 'call-4',
+            toolName: SEARCH_TOOL_NAME,
+            input: 'not json',
+            errorText: 'Invalid input for tool',
+          },
+          {
+            type: 'tool-output-error',
+            toolCallId: 'call-4',
+            errorText: 'Invalid input for tool',
+          },
+          { type: 'finish-step' },
+          { type: 'finish', finishReason: 'tool-calls' },
+        ],
+        continuationChunks: createTextChunks('Answer'),
+      })
+      const chunks = await readAll(guarantee.stream)
+
+      expect(chunks.map(chunk => chunk.type)).toEqual(expect.arrayContaining([
+        'tool-input-start',
+        'tool-input-error',
+        'tool-output-error',
+      ]))
+      expect(guarantee.getOutcome().forcedStepRejectedToolCall).toBe(false)
+    })
+  })
+
   it('records the held forced-step error when the continuation answers',
     async () => {
       const { guarantee } = createGuarantee({

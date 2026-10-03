@@ -97,6 +97,7 @@ export function hasVisibleTextAfterLastFollowUpTool(input: {
 export interface SearchAnswerOutcome {
   stepsCount: number
   forcedStepToolCall: boolean
+  forcedStepRejectedToolCall: boolean
   continuationRan: boolean
   continuationProducedText: boolean
   continuationError: string | undefined
@@ -376,6 +377,20 @@ function trackOpenPart(
   }
 }
 
+const UNAVAILABLE_TOOL_ERROR_PATTERN = /NoSuchTool|unavailable tool/i
+
+type PendingToolInputChunk = Extract<
+  UIMessageChunk,
+  { type: 'tool-input-start' | 'tool-input-delta' }
+>
+
+function isPendingToolInputChunk(
+  chunk: UIMessageChunk,
+): chunk is PendingToolInputChunk {
+  return chunk.type === 'tool-input-start'
+    || chunk.type === 'tool-input-delta'
+}
+
 type FinishChunk = Extract<UIMessageChunk, { type: 'finish' }>
 type ErrorChunk = Extract<UIMessageChunk, { type: 'error' }>
 
@@ -435,6 +450,14 @@ function readHeldErrorText(
  * open (a timeout mid-stream) is closed before the final `finish`, and when
  * `settle()` fails the outcome is marked truncated and the run's
  * `settleUsage()` is folded in if it resolves.
+ *
+ * A tool call the model still emits on the forced step while no tools are
+ * declared is rejected by the SDK as unavailable (`tool-input-error` followed
+ * by `tool-output-error`). That is an expected rejection, not a failed
+ * search, so its chunks are dropped from the output; the call is only
+ * recorded as `forcedStepRejectedToolCall`. Tool-input chunks on the forced
+ * step are buffered per call until the call resolves, and tool errors on
+ * earlier steps always pass through.
  */
 export function withSearchAnswerGuarantee(input: {
   stream: ReadableStream<UIMessageChunk>
@@ -453,6 +476,7 @@ export function withSearchAnswerGuarantee(input: {
   const outcome: SearchAnswerOutcome = {
     stepsCount: 0,
     forcedStepToolCall: false,
+    forcedStepRejectedToolCall: false,
     continuationRan: false,
     continuationProducedText: false,
     continuationError: undefined,
@@ -464,6 +488,8 @@ export function withSearchAnswerGuarantee(input: {
   const toolNamesByCallId = new Map<string, string>()
   const searchResultsByCallId = new Map<string, CollectedSearchResult>()
   const heldErrors: ErrorChunk[] = []
+  const pendingToolInputChunks = new Map<string, PendingToolInputChunk[]>()
+  const rejectedToolCallIds = new Set<string>()
   let heldFinish: FinishChunk | undefined
   let hasAnswerAfterFollowUp = false
   let followUpToolOutputCount = 0
@@ -508,7 +534,7 @@ export function withSearchAnswerGuarantee(input: {
       return
     }
 
-    if (outcome.stepsCount >= input.forcedStepIndex) {
+    if (isOnForcedStep()) {
       outcome.forcedStepToolCall = true
     }
 
@@ -525,8 +551,76 @@ export function withSearchAnswerGuarantee(input: {
     }
   }
 
-  function isForcedStepError(): boolean {
+  function isOnForcedStep(): boolean {
     return outcome.stepsCount >= input.forcedStepIndex
+  }
+
+  function releasePendingToolInput(
+    controller: TransformStreamDefaultController<UIMessageChunk>,
+    toolCallId?: string,
+  ) {
+    for (const [pendingId, chunks] of pendingToolInputChunks) {
+      if (toolCallId !== undefined && pendingId !== toolCallId) {
+        continue
+      }
+
+      for (const pendingChunk of chunks) {
+        controller.enqueue(pendingChunk)
+      }
+
+      pendingToolInputChunks.delete(pendingId)
+    }
+  }
+
+  function filterRejectedForcedStepToolChunk(
+    chunk: UIMessageChunk,
+    controller: TransformStreamDefaultController<UIMessageChunk>,
+  ): boolean {
+    if (!isOnForcedStep()) {
+      return false
+    }
+
+    if (isPendingToolInputChunk(chunk)) {
+      const pendingChunks = pendingToolInputChunks.get(chunk.toolCallId) ?? []
+
+      pendingChunks.push(chunk)
+      pendingToolInputChunks.set(chunk.toolCallId, pendingChunks)
+
+      return true
+    }
+
+    if (chunk.type === 'tool-input-available') {
+      releasePendingToolInput(controller, chunk.toolCallId)
+
+      return false
+    }
+
+    if (chunk.type === 'tool-input-error') {
+      if (!UNAVAILABLE_TOOL_ERROR_PATTERN.test(chunk.errorText)) {
+        releasePendingToolInput(controller, chunk.toolCallId)
+
+        return false
+      }
+
+      pendingToolInputChunks.delete(chunk.toolCallId)
+      rejectedToolCallIds.add(chunk.toolCallId)
+      outcome.forcedStepRejectedToolCall = true
+
+      return true
+    }
+
+    if (
+      chunk.type === 'tool-output-error'
+      || chunk.type === 'tool-output-available'
+    ) {
+      return rejectedToolCallIds.has(chunk.toolCallId)
+    }
+
+    return false
+  }
+
+  function isForcedStepError(): boolean {
+    return isOnForcedStep()
       && followUpToolOutputCount > 0
       && !hasAnswerAfterFollowUp
   }
@@ -691,6 +785,7 @@ export function withSearchAnswerGuarantee(input: {
       }
 
       if (chunk.type === 'finish-step') {
+        releasePendingToolInput(controller)
         outcome.stepsCount += 1
       }
 
@@ -699,10 +794,17 @@ export function withSearchAnswerGuarantee(input: {
       }
 
       recordToolCall(chunk)
+
+      if (filterRejectedForcedStepToolChunk(chunk, controller)) {
+        return
+      }
+
       recordToolOutput(chunk)
       controller.enqueue(chunk)
     },
     async flush(controller) {
+      releasePendingToolInput(controller)
+
       const shouldContinue = followUpToolOutputCount > 0
         && !hasAnswerAfterFollowUp
         && !isAborted

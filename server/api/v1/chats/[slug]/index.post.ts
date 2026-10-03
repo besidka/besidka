@@ -1110,6 +1110,8 @@ export default defineEventHandler(async (event) => {
               toolLoop: {
                 steps: outcome.stepsCount,
                 forcedStepToolCall: outcome.forcedStepToolCall,
+                forcedStepRejectedToolCall:
+                  outcome.forcedStepRejectedToolCall,
                 continuationRan: outcome.continuationRan,
                 continuationProducedText: outcome.continuationProducedText,
                 continuationError: outcome.continuationError,

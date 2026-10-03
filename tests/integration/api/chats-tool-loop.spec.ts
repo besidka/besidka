@@ -868,6 +868,47 @@ describe('multi-step tool loop', () => {
       }))
     })
 
+    it('hides the expected rejection of a tool call on the forced step '
+      + 'from the persisted parts and the client stream', async () => {
+      const { assistantInsert } = await runLoopSend({
+        steps: [
+          createReasoningToolCallStepChunks('call-1'),
+          createReasoningToolCallStepChunks('call-2'),
+          createReasoningToolCallStepChunks('call-3'),
+          createToolCallChunks('call-4'),
+          createTextChunks('Grounded answer from the continuation.'),
+        ],
+      })
+      const chunks = await readClientChunks()
+      const parts = assistantInsert?.parts ?? []
+      const toolParts = parts.filter((part: any) => {
+        return part.type.startsWith('tool-')
+      })
+
+      expect(toolParts).toHaveLength(3)
+      expect(toolParts.map((part: any) => part.state))
+        .toEqual(['output-available', 'output-available', 'output-available'])
+      expect(parts).not.toContainEqual(expect.objectContaining({
+        state: 'output-error',
+      }))
+      expect(JSON.stringify(parts)).not.toContain('NoSuchTool')
+      expect(JSON.stringify(parts)).not.toContain('call-4')
+      expect(parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Grounded answer from the continuation.',
+      }))
+      expect(chunks.some((chunk) => {
+        return chunk.toolCallId === 'call-4'
+      })).toBe(false)
+      expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        forcedStepToolCall: true,
+        forcedStepRejectedToolCall: true,
+        continuationRan: true,
+        continuationProducedText: true,
+      }))
+    })
+
     it('sends the continuation no tool history from earlier search turns',
       async () => {
         const existingMessages = [
