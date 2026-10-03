@@ -230,7 +230,7 @@ async function assertGeneratedImageStorageAvailable(
   })
 }
 
-function getProviderGenerationOptions(
+export function getProviderGenerationOptions(
   provider: ImageGenerationProvider,
   aspectRatio: ImageGenerationAspectRatio,
 ): Pick<GenerateImageOptions, 'size' | 'aspectRatio' | 'providerOptions'> {
@@ -246,6 +246,32 @@ function getProviderGenerationOptions(
       providerOptions: {
         openai: providerOptions,
       },
+    } as const
+  }
+
+  if (provider === 'xai') {
+    /**
+     * xAI's image model rejects the `size` option outright (the provider
+     * emits an unsupported-setting warning: "This model does not support
+     * the `size` option. Use `aspectRatio` instead."), so this is the one
+     * image provider that takes the top-level `aspectRatio` and nothing
+     * else. Deliberately no `providerOptions.xai` here: xAI's own docs for
+     * `grok-imagine-image-2.0` only accept `quality: 'low' | 'medium' |
+     * 'auto'` — NOT `'high'`, despite the AI SDK's TypeScript type
+     * (`XaiImageModelOptions`) listing `'high'` as a valid literal. The SDK
+     * passes `quality` straight through without validating it against the
+     * specific model, so setting `'high'` type-checks but 400s at request
+     * time against a real key — a failure mode no test in this repo can
+     * catch. `resolution` isn't an xAI request parameter at all (only
+     * `aspect_ratio`, `quality`, `output_format`, `sync_mode`, `user` are
+     * documented) and does nothing if sent. Omitting the object leaves
+     * xAI's default `quality: 'auto'`, which resolves to `'low'` for
+     * generation — confirm with a live key that this is the tier
+     * `flatImageGenerationCostUsdByModelId`'s flat $0.04 actually bills.
+     * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#image-models
+     */
+    return {
+      aspectRatio,
     } as const
   }
 

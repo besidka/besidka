@@ -4,7 +4,10 @@ import type {
   ImageGenerationReady,
 } from '#shared/types/image-generation.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
-import { markUrlAsGeneratedFile } from '#shared/utils/files'
+import {
+  HIDDEN_FILE_MEDIA_TYPE,
+  markUrlAsGeneratedFile,
+} from '#shared/utils/files'
 
 export const TEST_IMAGE_PROMPT: string
   = 'Generate an image of a mountain at sunset.'
@@ -82,10 +85,13 @@ export function buildTestImageAssistantParts(
 // markUrlAsGeneratedFile()-tagged `file` part before it's ever persisted, and
 // server/api/v1/shared/[slug]/index.get.ts's filterPublicParts() strips tool
 // parts from the public response — so a real shared-chat page only ever sees
-// the `file` shape, rendered by ChatFiles.vue (size-48, 192px) rather than
-// ChatGeneratedImage.vue (w-80, 320px). Only /chats/test (personal chat)
-// should use buildTestImageAssistantParts(); this is what /shared/test needs
-// to faithfully reproduce the real shared-page layout.
+// the `file` shape. Since app/utils/generated-images.ts's
+// isAssistantGeneratedImageFilePart() now claims any image `file` part on an
+// assistant message (not just live gateway sends), this renders through
+// ChatGeneratedImage.vue's w-80 (320px) card on the shared page too, not
+// ChatFiles.vue's size-48 (192px) thumbnail. Only /chats/test (personal
+// chat) should use buildTestImageAssistantParts(); this is what /shared/test
+// needs to faithfully reproduce the real shared-page layout.
 export function buildTestSharedImageFileParts(idSeed: string): FileUIPart[] {
   const storageKey = `${idSeed}${TEST_IMAGE_FIXTURE_STORAGE_KEY_SUFFIX}`
 
@@ -94,5 +100,23 @@ export function buildTestSharedImageFileParts(idSeed: string): FileUIPart[] {
     mediaType: 'image/png',
     filename: 'sunset-mountain.png',
     url: markUrlAsGeneratedFile(`/files/${storageKey}`),
+  }]
+}
+
+// A generated image's file part still falls back to ChatFiles.vue's narrow
+// (192px) hidden-placeholder tile when server/utils/files/rewrite-share-file
+// -urls.ts's hideFileParts() replaces it for a `showFiles: false` share
+// (isHiddenFilePart() short-circuits before isAssistantGeneratedImageFilePart
+// in ChatFiles.vue's parts computed). This is the one narrower-than-menu
+// bubble left in the shared-page image flow after ChatGeneratedImage.vue
+// took over the visible case, so it is what
+// tests/e2e/shared/context-menu-clipping.spec.ts uses to keep covering
+// ContextMenu's off-screen `right` fallback.
+export function buildTestHiddenFilePart(): FileUIPart[] {
+  return [{
+    type: 'file',
+    mediaType: HIDDEN_FILE_MEDIA_TYPE,
+    filename: undefined,
+    url: '',
   }]
 }

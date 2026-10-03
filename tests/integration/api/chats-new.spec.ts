@@ -348,6 +348,44 @@ describe('new chat API', () => {
     })
   })
 
+  it('rejects two search tools selected together', async () => {
+    const handler = await getNewChatHandler()
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Hello' }],
+        tools: ['web_search', 'web_search_brave'],
+        reasoning: 'off',
+      },
+    } as any)).rejects.toEqual(expect.objectContaining({
+      message: 'Invalid request body',
+      why: expect.stringContaining(
+        'Only one web search provider may be selected per message.',
+      ),
+    }))
+
+    expect(mocks.validateMessageFilePolicy).not.toHaveBeenCalled()
+  })
+
+  it('rejects search combined with image generation', async () => {
+    const handler = await getNewChatHandler()
+
+    await expect(handler({
+      body: {
+        parts: [{ type: 'text', text: 'Hello' }],
+        tools: ['web_search_exa', 'image_generation'],
+        reasoning: 'off',
+      },
+    } as any)).rejects.toEqual(expect.objectContaining({
+      message: 'Invalid request body',
+      why: expect.stringContaining(
+        'Web search and image generation cannot be combined.',
+      ),
+    }))
+
+    expect(mocks.validateMessageFilePolicy).not.toHaveBeenCalled()
+  })
+
   it('propagates a resolveResearchStartContext failure without inserting a chat row', async () => {
     mocks.resolveResearchStartContext.mockRejectedValue(
       Object.assign(

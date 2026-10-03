@@ -1,16 +1,23 @@
 import type { UIMessage } from 'ai'
-import { computed, shallowRef, triggerRef } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { computed, nextTick, shallowRef, triggerRef } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Message } from '../../../shared/types/chats.d'
 import {
   applyChatErrorToMessages,
   buildChatErrorLines,
   buildChatErrorMessage,
+  createReasoningSegmentTracker,
+  findLastUserMessageTools,
+  foldReasoningSegment,
   getRenderableChatMessages,
   hasVisibleAssistantContent,
   hasRetryableAssistantFailure,
   isAutoRecoverableTransportInterruption,
   isChatErrorTextPart,
+  isFailureOnlyAssistantMessage,
+  isReasoningActiveForTurn,
   normalizeChatClientError,
+  REASONING_SEGMENT_GRACE_WINDOW_MS,
   shouldBlockGenerationRecovery,
   shouldDisplayRegenerate,
   shouldForceGenericLoadingIndicator,
@@ -381,6 +388,121 @@ describe('chat error helpers', () => {
         id: 'assistant-1',
         role: 'assistant',
         parts: [],
+      } as UIMessage,
+    ])).toBe(false)
+  })
+
+  it('marks a persisted empty-answer notice as retryable after reload', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          { type: 'tool-web_search', state: 'output-available' },
+          {
+            type: 'source-url',
+            sourceId: 'source-1',
+            url: 'https://example.com',
+          },
+          {
+            type: 'text',
+            text: 'The model finished searching but didn\'t write an'
+              + ' answer. Try again or pick another model.',
+          },
+        ],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('marks a persisted image-generation failure notice as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Draw a cat' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          {
+            type: 'text',
+            text: 'Image generation failed. Revise the prompt or try a'
+              + ' different provider. (ref: abc123)',
+          },
+        ],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('marks a persisted gateway generated-image-save failure notice as '
+    + 'retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Draw a cat' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          {
+            type: 'text',
+            text: 'An image was generated but could not be saved.',
+          },
+        ],
+      } as UIMessage,
+    ])).toBe(true)
+  })
+
+  it('does not mark an image failure retryable when a real image succeeded', () => {
+    expect(isFailureOnlyAssistantMessage({
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'step-start' },
+        {
+          type: 'tool-generate_image',
+          state: 'output-available',
+          output: { status: 'ready' },
+        },
+        {
+          type: 'text',
+          text: 'Image generation failed. Revise the prompt or try a'
+            + ' different provider.',
+        },
+      ],
+    } as unknown as UIMessage)).toBe(false)
+  })
+
+  it('does not mark a normal reply with sources as retryable', () => {
+    expect(hasRetryableAssistantFailure([
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      } as UIMessage,
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          {
+            type: 'source-url',
+            sourceId: 'source-1',
+            url: 'https://example.com',
+          },
+          { type: 'text', text: 'Here is a real answer.' },
+        ],
       } as UIMessage,
     ])).toBe(false)
   })
@@ -764,6 +886,37 @@ describe('chat error helpers', () => {
     expect(isAssistantVisible.value).toBe(true)
   })
 
+  it('treats a tool-only assistant message with no text or reasoning as visible content', () => {
+    const toolOnlyMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as unknown as UIMessage
+
+    expect(hasVisibleAssistantContent(toolOnlyMessage)).toBe(true)
+  })
+
+  it('leaves a generate_image-only message governed by the existing image path', () => {
+    const generateImageOnlyMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-generate_image',
+          state: 'input-available',
+          input: { prompt: 'A quiet forest' },
+        },
+      ],
+    } as unknown as UIMessage
+
+    // Already true via isVisibleGenerateImageToolPart (input-available is a
+    // visible in-progress state for image generation) — unaffected by the
+    // new isThinkingToolPart clause, since generate_image is excluded there.
+    expect(hasVisibleAssistantContent(generateImageOnlyMessage)).toBe(true)
+  })
+
   it('treats a persisted file-only reply as visible assistant content', () => {
     const fileAssistantMessage = {
       id: 'assistant-1',
@@ -829,6 +982,95 @@ describe('chat error helpers', () => {
       message: 'Please select a model to continue.',
       status: 400,
     }))
+  })
+
+  it('redacts an unknown-code message that looks like a leaked header value',
+    async () => {
+      const { normalizeChatError } = await import(
+        '../../../server/utils/chats/errors'
+      )
+
+      const result = normalizeChatError({
+        error: new TypeError(
+          'Headers.append: "Bearer sk-real-secret-token\n'
+          + '" is an invalid header value.',
+        ),
+        status: 500,
+      })
+
+      expect(result.code).toBe('unknown')
+      expect(result.message).not.toContain('sk-real-secret-token')
+      expect(result.why).toBeUndefined()
+    })
+
+  it('redacts an unknown-code message containing a raw control character',
+    async () => {
+      const { normalizeChatError } = await import(
+        '../../../server/utils/chats/errors'
+      )
+
+      const result = normalizeChatError({
+        error: new Error('x-account-id: bad-account-id\nsome-secret'),
+        status: 500,
+      })
+
+      expect(result.code).toBe('unknown')
+      expect(result.message).not.toContain('some-secret')
+      expect(result.why).toBeUndefined()
+    })
+
+  it('rewrites an upstream "image input" rejection embedded mid-sentence '
+    + 'into a friendly message', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error(
+        'No endpoints found that support image input.',
+      ),
+      status: 400,
+    })
+
+    expect(result.message).toBe(
+      'This model does not support image input. Remove the attached'
+      + ' image or switch to a vision-capable model.',
+    )
+    expect(result.why).toBe('No endpoints found that support image input.')
+  })
+
+  it('rewrites a "does not support image" rejection into a friendly '
+    + 'message', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error(
+        'Bad Request: this model does not support image inputs.',
+      ),
+      status: 400,
+    })
+
+    expect(result.message).toBe(
+      'This model does not support image input. Remove the attached'
+      + ' image or switch to a vision-capable model.',
+    )
+  })
+
+  it('leaves an unrelated 400 error message untouched', async () => {
+    const { normalizeChatError } = await import(
+      '../../../server/utils/chats/errors'
+    )
+
+    const result = normalizeChatError({
+      error: new Error('Invalid request: missing required field "model".'),
+      status: 400,
+    })
+
+    expect(result.message).toBe(
+      'Invalid request: missing required field "model".',
+    )
   })
 
   it('reads cf-ray from the H3 event when available', async () => {
@@ -972,5 +1214,386 @@ describe('chat error helpers', () => {
 
   it('does not recover an empty message list', () => {
     expect(shouldRecoverGeneration([])).toBe(false)
+  })
+})
+
+describe('isReasoningActiveForTurn', () => {
+  function reasoningMessage(
+    state: 'streaming' | 'done',
+    text = 'Thinking…',
+  ): UIMessage {
+    return {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text, state }],
+    } as UIMessage
+  }
+
+  it('is false when the chat status is not streaming', () => {
+    expect(
+      isReasoningActiveForTurn('ready', reasoningMessage('streaming')),
+    ).toBe(false)
+  })
+
+  it('is false when the last message is not the assistant', () => {
+    const message = {
+      id: 'user-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true while the last message has a streaming reasoning part', () => {
+    expect(
+      isReasoningActiveForTurn('streaming', reasoningMessage('streaming')),
+    ).toBe(true)
+  })
+
+  it('is false once every reasoning part has settled to done and text has appeared', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('ignores a reasoning part left streaming with no text, once text has appeared elsewhere', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: '', state: 'streaming' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true for a bodyless reasoning part before any text has appeared (dead zone)', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: '', state: 'streaming' }],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is true again for a second reasoning part after a tool call', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'First pass', state: 'done' },
+        { type: 'tool-web_search', state: 'input-available' },
+        { type: 'reasoning', text: 'Second pass', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is true while reasoning is done but a web-search tool call is pending', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is true once reasoning and the tool call have both settled but no text has appeared yet (dead zone)', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'tool-web_search_preview', state: 'output-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('turns off the dead zone once text appears after reasoning and the tool call have settled', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Thinking…', state: 'done' },
+        { type: 'tool-web_search_preview', state: 'output-available' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true for a pending tool call with no reasoning at all', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is false for a pending generate_image tool call once text has appeared', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-generate_image', state: 'input-available' },
+        { type: 'text', text: 'Here is the answer.', state: 'streaming' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+
+  it('is true for a pending generate_image tool call before any text has appeared (dead zone; image generation is not itself excluded from this clause)', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-generate_image', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(true)
+  })
+
+  it('is false for a pending tool call when the status is not streaming', () => {
+    const message = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('ready', message)).toBe(false)
+  })
+
+  it('is false for a pending tool call on a user-role last message', () => {
+    const message = {
+      id: 'user-1',
+      role: 'user',
+      parts: [
+        { type: 'tool-web_search_preview', state: 'input-available' },
+      ],
+    } as UIMessage
+
+    expect(isReasoningActiveForTurn('streaming', message)).toBe(false)
+  })
+})
+
+describe('foldReasoningSegment', () => {
+  it('adds the elapsed segment duration into the accumulated total', () => {
+    const now = Date.now()
+    const segmentStartedAt = now - 1_700
+
+    expect(foldReasoningSegment(true, 0, segmentStartedAt, now)).toBe(1_700)
+  })
+
+  it('adds on top of an already-accumulated total from prior segments', () => {
+    const now = Date.now()
+    const segmentStartedAt = now - 2_000
+
+    expect(foldReasoningSegment(true, 5_000, segmentStartedAt, now))
+      .toBe(7_000)
+  })
+
+  it('leaves the total unchanged when there was no active segment', () => {
+    expect(foldReasoningSegment(false, 5_000, 0, Date.now())).toBe(5_000)
+  })
+
+  it('leaves the total unchanged when no segment start was ever recorded', () => {
+    expect(foldReasoningSegment(true, 5_000, 0, Date.now())).toBe(5_000)
+  })
+})
+
+describe('createReasoningSegmentTracker', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function createTracker() {
+    const isActive = shallowRef<boolean>(false)
+    const isStreaming = shallowRef<boolean>(true)
+    const tracker = createReasoningSegmentTracker(
+      isActive,
+      () => isStreaming.value,
+    )
+
+    return { isActive, isStreaming, tracker }
+  }
+
+  it('keeps the same segment across a transient gap recovered within the grace window', async () => {
+    const { isActive, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    const segmentStartedAt = tracker.segmentStartedAt.value
+
+    vi.advanceTimersByTime(1000)
+
+    isActive.value = false
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS - 100)
+
+    isActive.value = true
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+    expect(tracker.accumulatedMs.value).toBe(0)
+    expect(tracker.segmentStartedAt.value).toBe(segmentStartedAt)
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+    expect(tracker.accumulatedMs.value).toBe(0)
+  })
+
+  it('folds immediately with no grace window once status itself leaves streaming', async () => {
+    const { isActive, isStreaming, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    vi.advanceTimersByTime(1500)
+
+    isStreaming.value = false
+    isActive.value = false
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(false)
+    expect(tracker.accumulatedMs.value).toBeGreaterThanOrEqual(1500)
+
+    const accumulatedAfterFold = tracker.accumulatedMs.value
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.accumulatedMs.value).toBe(accumulatedAfterFold)
+  })
+
+  it('folds the segment once the grace window elapses with no recovery', async () => {
+    const { isActive, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    vi.advanceTimersByTime(1000)
+
+    isActive.value = false
+    await nextTick()
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(true)
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.isTurnThinkingHeld.value).toBe(false)
+    expect(tracker.accumulatedMs.value).toBeGreaterThanOrEqual(1000)
+  })
+
+  it('clears a pending grace-window fold on reset, so it cannot corrupt the next turn', async () => {
+    const { isActive, tracker } = createTracker()
+
+    isActive.value = true
+    await nextTick()
+
+    vi.advanceTimersByTime(1000)
+
+    isActive.value = false
+    await nextTick()
+
+    tracker.reset()
+
+    vi.advanceTimersByTime(REASONING_SEGMENT_GRACE_WINDOW_MS)
+
+    expect(tracker.accumulatedMs.value).toBe(0)
+    expect(tracker.segmentStartedAt.value).toBe(0)
+    expect(tracker.isTurnThinkingHeld.value).toBe(false)
+  })
+})
+
+describe('findLastUserMessageTools', () => {
+  function userMessage(tools: Message['tools']): Message {
+    return { role: 'user', tools } as unknown as Message
+  }
+
+  function assistantMessage(tools: Message['tools']): Message {
+    return { role: 'assistant', tools } as unknown as Message
+  }
+
+  it('returns an empty array for a chat with no messages', () => {
+    expect(findLastUserMessageTools([])).toEqual([])
+  })
+
+  it('reads the tools from the last user message, ignoring a trailing '
+    + 'assistant reply', () => {
+    const messages = [
+      userMessage(['web_search_brave']),
+      assistantMessage([]),
+    ]
+
+    expect(findLastUserMessageTools(messages)).toEqual(['web_search_brave'])
+  })
+
+  it('does not fall back to an assistant message\'s image_generation '
+    + 'tools when the last user message selected none', () => {
+    const messages = [
+      userMessage([]),
+      assistantMessage(['image_generation']),
+    ]
+
+    expect(findLastUserMessageTools(messages)).toEqual([])
+  })
+
+  it('picks the most recent user message, not the first one', () => {
+    const messages = [
+      userMessage(['web_search_exa']),
+      assistantMessage([]),
+      userMessage(['web_search_brave']),
+      assistantMessage(['image_generation']),
+    ]
+
+    expect(findLastUserMessageTools(messages)).toEqual(['web_search_brave'])
+  })
+
+  it('returns an empty array when no user message exists', () => {
+    const messages = [assistantMessage(['image_generation'])]
+
+    expect(findLastUserMessageTools(messages)).toEqual([])
+  })
+
+  it('falls back to an empty array when the user message has no '
+    + 'persisted tools', () => {
+    const messages = [userMessage(null as unknown as Message['tools'])]
+
+    expect(findLastUserMessageTools(messages)).toEqual([])
   })
 })

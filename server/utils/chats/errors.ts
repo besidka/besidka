@@ -1,4 +1,6 @@
 import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type { GatewayId } from '#shared/types/gateways.d'
+import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
 import type { H3Event } from 'h3'
 import { getRequestHeader } from 'h3'
@@ -9,6 +11,7 @@ const chatErrorCodes: ChatErrorCode[] = [
   'provider-quota-exceeded',
   'provider-unavailable',
   'provider-auth',
+  'provider-model-restricted',
   'generation-busy',
   'storage-quota',
   'provider-safety',
@@ -23,13 +26,14 @@ const chatErrorCodes: ChatErrorCode[] = [
   'research-cancelled',
   'research-start-failed',
   'clarification-failed',
+  'assistant-empty-answer',
   'unknown',
 ]
 
 interface NormalizeChatErrorInput {
   error: unknown
   event?: H3Event
-  providerId?: 'openai' | 'google' | 'anthropic'
+  providerId?: SupportedProviderId | GatewayId
   code?: ChatErrorCode
   message?: string
   why?: string
@@ -43,10 +47,15 @@ export function normalizeChatError(
   const structuredError = getStructuredChatError(input.error)
 
   if (structuredError) {
+    const structuredMessage = input.message || structuredError.message
+
     return {
       code: input.code || structuredError.code,
-      message: input.message || structuredError.message,
-      why: input.why || structuredError.why,
+      message: structuredMessage,
+      why: dedupeChatErrorWhy(
+        structuredMessage,
+        input.why || structuredError.why,
+      ),
       fix: input.fix || structuredError.fix,
       status: input.status ?? structuredError.status ?? 500,
       requestId: structuredError.requestId
@@ -67,18 +76,22 @@ export function normalizeChatError(
     errorMessage,
     providerStatus,
   )
+  const message = input.message
+    || getPreferredChatMessage({
+      code,
+      errorMessage,
+      status,
+    })
+    || getDefaultChatMessage(code)
 
   return {
     code,
-    message: input.message
-      || getPreferredChatMessage({
-        code,
-        errorMessage,
-        status,
-      })
-      || getDefaultChatMessage(code),
-    why: input.why || getDefaultChatWhy(code, errorMessage),
-    fix: input.fix || getDefaultChatFix(code),
+    message,
+    why: dedupeChatErrorWhy(
+      message,
+      input.why || getDefaultChatWhy(code, errorMessage),
+    ),
+    fix: input.fix || getDefaultChatFix(code, errorMessage),
     status,
     requestId,
     providerId: input.providerId,
@@ -86,20 +99,114 @@ export function normalizeChatError(
   }
 }
 
+/**
+ * A raw upstream message with no dedicated classification (an `unknown`
+ * code, or a structured error whose `why` was never set independently) ends
+ * up assigned to both `message` and `why` — see the "no endpoints available"
+ * OpenRouter case that surfaced this: the toast showed the identical
+ * sentence twice. `why` exists to add detail beyond the headline message, so
+ * an identical `why` carries no information and is dropped.
+ */
+function dedupeChatErrorWhy(
+  message: string,
+  why: string | undefined,
+): string | undefined {
+  return why && why !== message ? why : undefined
+}
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x1F\x7F]/
+const HEADER_VALUE_ERROR_PATTERN
+  = /invalid header|not a legal header|illegal header/i
+
+/**
+ * A malformed credential (for example a pasted API token or Cloudflare
+ * account/gateway id with a trailing control character) can make the Fetch
+ * API's `Headers` constructor throw a `TypeError` whose message embeds the
+ * raw invalid value verbatim — e.g. Node/undici's
+ * `Headers.append: "<value>" is an invalid header value.`. An error message
+ * that contains a raw control character, or that reads like one of these
+ * header-construction errors, is treated as a potential credential leak
+ * rather than surfaced to the client or logs.
+ */
+function looksLikeHeaderValueLeak(message: string): boolean {
+  return CONTROL_CHARACTER_PATTERN.test(message)
+    || HEADER_VALUE_ERROR_PATTERN.test(message)
+}
+
+const IMAGE_INPUT_UNSUPPORTED_PATTERN = /image input|does not support image/i
+const NO_ENDPOINTS_AVAILABLE_PATTERN = /no endpoints (found|available)/i
+const IMAGE_TERM_PATTERN = /image/i
+const IMAGE_INPUT_REJECTION_MESSAGE = 'This model does not support image'
+  + ' input. Remove the attached image or switch to a vision-capable model.'
+
+/**
+ * Some gateways/providers reject an image attachment at request time with a
+ * raw, unhelpful upstream message instead of a normal 400 the client-side
+ * vision gate would have already caught before sending (see
+ * `docs/providers/gateways.md` — Cloudflare's catalog exposes no modality
+ * data at all, so the client-side gate fails open for it specifically;
+ * OpenRouter has also been observed returning this for some routed
+ * models). Detected by
+ * content rather than status code or provider, since the same wording can
+ * come from either gateway.
+ */
+function looksLikeImageInputRejection(message: string): boolean {
+  if (IMAGE_INPUT_UNSUPPORTED_PATTERN.test(message)) {
+    return true
+  }
+
+  return NO_ENDPOINTS_AVAILABLE_PATTERN.test(message)
+    && IMAGE_TERM_PATTERN.test(message)
+}
+
+/**
+ * A gateway reporting no routable upstream for the selected model (observed
+ * from OpenRouter's auto-router: "No endpoints available for any resolved
+ * ... models: <model>") is a deterministic routing failure, not a transient
+ * one — retrying the identical request hits the identical routing decision.
+ * "Retry the message" is actively wrong advice here.
+ */
+function looksLikeNoAvailableEndpointsError(message: string): boolean {
+  return NO_ENDPOINTS_AVAILABLE_PATTERN.test(message)
+}
+
 function getPreferredChatMessage(input: {
   code: ChatErrorCode
   errorMessage: string | undefined
   status: number
 }): string | undefined {
-  if (!input.errorMessage || input.code === 'provider-auth') {
+  if (
+    !input.errorMessage
+    || input.code === 'provider-auth'
+    || input.code === 'provider-model-restricted'
+  ) {
     return undefined
   }
 
-  if (
-    input.code === 'chat-request-invalid'
-    || input.code === 'unknown'
-  ) {
+  if (looksLikeImageInputRejection(input.errorMessage)) {
+    return IMAGE_INPUT_REJECTION_MESSAGE
+  }
+
+  if (input.code === 'chat-request-invalid') {
     return input.errorMessage
+  }
+
+  /**
+   * Unlike `chat-request-invalid` (always a caller-controlled, safe-to-show
+   * validation message), an `unknown` error can originate from any
+   * unclassified exception thrown anywhere in the request — including a
+   * `Headers` construction failure that embeds a raw credential or header
+   * value (see `looksLikeHeaderValueLeak`). Redacting only that narrow,
+   * detectable case — rather than every `unknown` message outright —
+   * preserves legitimate, non-sensitive `unknown`-coded messages (for
+   * example client-side setup validation like "Please select a model to
+   * continue.") while still closing the credential-leak path.
+   */
+  if (input.code === 'unknown') {
+    return looksLikeHeaderValueLeak(input.errorMessage)
+      ? undefined
+      : input.errorMessage
   }
 
   if (
@@ -190,6 +297,15 @@ function getResearchAdapterErrorText(error: unknown): string {
   return error instanceof ResearchAdapterError ? error.message : ''
 }
 
+/**
+ * Matches only Vercel AI Gateway's free-tier "RestrictedModelsError" wording
+ * (see `docs/providers/gateways.md`). This is deliberately narrow — it is
+ * not a general classifier for every 403, which must keep mapping to
+ * `provider-auth`.
+ */
+const MODEL_ACCESS_RESTRICTED_PATTERN
+  = /do not have access to this model|upgrade to paid credits/i
+
 function resolveChatErrorCode(
   errorMessage: string | undefined,
   status: number | undefined,
@@ -197,7 +313,8 @@ function resolveChatErrorCode(
   const normalizedMessage = errorMessage?.toLowerCase() || ''
 
   if (
-    normalizedMessage.includes('quota')
+    status === 402
+    || normalizedMessage.includes('quota')
     || normalizedMessage.includes('insufficient_quota')
   ) {
     return 'provider-quota-exceeded'
@@ -209,6 +326,13 @@ function resolveChatErrorCode(
     || normalizedMessage.includes('too many requests')
   ) {
     return 'provider-rate-limit'
+  }
+
+  if (
+    status === 403
+    && MODEL_ACCESS_RESTRICTED_PATTERN.test(normalizedMessage)
+  ) {
+    return 'provider-model-restricted'
   }
 
   if (status === 401 || status === 403) {
@@ -244,6 +368,8 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
       return 'The provider failed to process this request.'
     case 'provider-auth':
       return 'The provider rejected the API credentials.'
+    case 'provider-model-restricted':
+      return 'Your gateway account can\'t use this model.'
     case 'message-persist-failed':
       return 'The message could not be saved.'
     case 'chat-request-invalid':
@@ -262,6 +388,8 @@ function getDefaultChatMessage(code: ChatErrorCode): string {
       return 'Could not start the research job.'
     case 'clarification-failed':
       return 'Could not prepare research questions.'
+    case 'assistant-empty-answer':
+      return 'The model finished searching but didn\'t write an answer.'
     default:
       return 'The chat request failed.'
   }
@@ -280,6 +408,10 @@ function getDefaultChatWhy(
       return 'The upstream model provider returned an internal error.'
     case 'provider-auth':
       return 'The saved API key is missing, invalid, or does not allow this model.'
+    case 'provider-model-restricted':
+      return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
+        ? errorMessage
+        : undefined
     case 'message-persist-failed':
       return 'The response could not be stored in the database.'
     case 'chat-request-invalid':
@@ -299,12 +431,22 @@ function getDefaultChatWhy(
       return errorMessage
     case 'clarification-failed':
       return errorMessage
+    case 'assistant-empty-answer':
+      return 'The model completed its tool calls without producing a'
+        + ' final response.'
+    case 'unknown':
+      return errorMessage && !looksLikeHeaderValueLeak(errorMessage)
+        ? errorMessage
+        : undefined
     default:
       return errorMessage
   }
 }
 
-function getDefaultChatFix(code: ChatErrorCode): string | undefined {
+function getDefaultChatFix(
+  code: ChatErrorCode,
+  errorMessage: string | undefined,
+): string | undefined {
   switch (code) {
     case 'provider-rate-limit':
       return 'Wait a moment and retry the message.'
@@ -314,6 +456,9 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
       return 'Retry the message. If it keeps failing, try another model or provider.'
     case 'provider-auth':
       return 'Update the provider API key in settings and try again.'
+    case 'provider-model-restricted':
+      return 'Add paid credits to your gateway account, or choose a'
+        + ' different model.'
     case 'message-persist-failed':
       return 'Retry the message. If it keeps failing, contact support with the request ID.'
     case 'research-tier-required':
@@ -330,8 +475,12 @@ function getDefaultChatFix(code: ChatErrorCode): string | undefined {
       return 'Retry the request, or try a different research level.'
     case 'clarification-failed':
       return 'Retry the request.'
+    case 'assistant-empty-answer':
+      return 'Try again or pick another model.'
     default:
-      return 'Retry the message.'
+      return errorMessage && looksLikeNoAvailableEndpointsError(errorMessage)
+        ? 'Try a different model or provider.'
+        : 'Retry the message.'
   }
 }
 

@@ -2,23 +2,23 @@
   <li
     :id="optionId"
     role="option"
-    :aria-selected="isLegacy ? false : isSelected"
-    :aria-disabled="isLegacy ? true : undefined"
+    :aria-selected="isDisabled ? false : isSelected"
+    :aria-disabled="isDisabled ? true : undefined"
   >
     <div
       class="flex items-center gap-1 rounded-xl pl-2 pr-1 py-1 transition-colors"
       :class="{
-        'bg-accent/15': isSelected && !isLegacy,
-        'bg-base-content/10': isHighlighted && !isSelected && !isLegacy,
-        'hover:bg-base-content/5': !isSelected && !isHighlighted && !isLegacy
+        'bg-accent/15': isSelected && !isDisabled,
+        'bg-base-content/10': isHighlighted && !isSelected && !isDisabled,
+        'hover:bg-base-content/5': !isSelected && !isHighlighted && !isDisabled
       }"
     >
       <component
-        :is="isLegacy ? 'div' : 'button'"
-        :type="isLegacy ? undefined : 'button'"
-        :aria-label="isLegacy ? undefined : selectLabel"
+        :is="isDisabled ? 'div' : 'button'"
+        :type="isDisabled ? undefined : 'button'"
+        :aria-label="isDisabled ? undefined : selectLabel"
         class="grow min-w-0 flex flex-wrap xs:flex-nowrap items-center gap-x-2 gap-y-1 py-1 text-left"
-        :class="isLegacy ? 'opacity-50' : 'cursor-pointer'"
+        :class="isDisabled ? 'opacity-50' : 'cursor-pointer'"
         @click="onSelect"
       >
         <span
@@ -28,19 +28,17 @@
           Deprecated, no longer selectable.
         </span>
         <span
+          v-else-if="isKeyMissing"
+          class="sr-only"
+        >
+          {{ keyMissingLabel }}
+        </span>
+        <span
           class="w-full xs:w-auto min-w-0 flex items-center gap-1.5"
         >
-          <SvgoGeminiShort
-            v-if="providerId === 'google'"
-            class="w-3.5 shrink-0 fill-base-content/40"
-          />
-          <SvgoOpenai
-            v-else-if="providerId === 'openai'"
-            class="w-3.5 shrink-0 fill-base-content/40"
-          />
-          <SvgoAnthropic
-            v-else-if="providerId === 'anthropic'"
-            class="w-3.5 shrink-0 fill-base-content/40"
+          <ProviderIcon
+            :provider-id="providerId"
+            class="!size-3.5 shrink-0 text-base-content/40"
           />
           <span
             class="truncate text-sm font-medium"
@@ -50,10 +48,24 @@
           </span>
         </span>
         <span
+          v-if="isKeyMissing"
+          data-testid="model-key-required"
+          class="badge badge-xs badge-soft badge-warning shrink-0 gap-1 font-semibold max-xs:ml-5"
+        >
+          <Icon
+            name="lucide:key-round"
+            size="10"
+          />
+          Key required
+        </span>
+        <span
           v-if="model.priceTier"
           data-testid="model-price-tier"
-          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom max-xs:ml-5"
-          :class="getPriceTierClass(model.priceTier)"
+          class="badge badge-xs badge-soft shrink-0 font-semibold tooltip tooltip-soft tooltip-bottom"
+          :class="[
+            getPriceTierClass(model.priceTier),
+            { 'max-xs:ml-5': !isKeyMissing },
+          ]"
           :data-tip="priceTip"
         >
           {{ model.priceTier }}
@@ -74,37 +86,76 @@
           }"
         >
           <span
-            v-if="model.reasoning"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-warning"
+            v-if="model.reasoning || model.reasoningAlwaysOn"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-warning"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            data-tip="Reasoning"
+            :data-tip="model.reasoningAlwaysOn
+              ? 'Always-on reasoning'
+              : 'Reasoning'
+            "
           >
-            <Icon name="lucide:brain" />
+            <Icon
+              name="lucide:brain"
+              size="12"
+            />
           </span>
           <span
             v-if="model.tools.includes('web_search')"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-info"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-info"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Web search"
           >
-            <Icon name="lucide:globe" />
+            <Icon
+              name="lucide:globe"
+              size="12"
+            />
           </span>
           <span
             v-if="hasImageGenerationCapability(model)"
             data-testid="model-image-generation-capability"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-violet-700 dark:text-violet-200"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-violet-700 dark:text-violet-200"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Image generation"
           >
-            <Icon name="lucide:image-plus" />
+            <Icon
+              name="lucide:image-plus"
+              size="12"
+            />
+          </span>
+          <span
+            v-if="hasVisionCapability(model)"
+            data-testid="model-vision-capability"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-accent"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Vision"
+          >
+            <Icon
+              name="lucide:eye"
+              size="12"
+            />
           </span>
           <span
             v-if="model.research"
-            class="capability-chip shrink-0 flex items-center p-0.5 rounded-full text-success"
+            class="capability-chip shrink-0 flex items-center p-1 rounded-full text-success"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
             data-tip="Deep research"
           >
-            <Icon name="lucide:telescope" />
+            <Icon
+              name="lucide:telescope"
+              size="12"
+            />
+          </span>
+          <span
+            v-if="model.toolCall"
+            data-testid="model-tool-call-capability"
+            class="shrink-0 flex items-center p-1 rounded-full bg-base-200 dark:bg-base-300 text-slate-700 dark:text-slate-300"
+            :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
+            data-tip="Tool calling"
+          >
+            <Icon
+              name="lucide:wrench"
+              size="12"
+            />
           </span>
         </span>
       </component>
@@ -168,6 +219,8 @@ const props = defineProps<{
   isFavorite: boolean
   isDetailOpen: boolean
   isLegacy?: boolean
+  isKeyMissing?: boolean
+  providerName?: string
 }>()
 
 const emit = defineEmits<{
@@ -182,6 +235,16 @@ const priceTip = computed<string | undefined>(() => {
   return getModelPriceTip(props.model)
 })
 
+const isDisabled = computed<boolean>(() => {
+  return !!props.isLegacy || !!props.isKeyMissing
+})
+
+const keyMissingLabel = computed<string>(() => {
+  const owner = props.providerName || 'this provider'
+
+  return `Add your ${owner} API key to use this model.`
+})
+
 const hasTooltip = computed<boolean>(() => {
   return isDesktop && !props.isLegacy
 })
@@ -190,9 +253,12 @@ const hasCapabilities = computed<boolean>(() => {
   const { model } = props
 
   return !!model.reasoning
+    || !!model.reasoningAlwaysOn
     || model.tools.includes('web_search')
     || hasImageGenerationCapability(model)
+    || hasVisionCapability(model)
     || !!model.research
+    || model.toolCall
 })
 
 const selectLabel = computed<string>(() => {
@@ -208,7 +274,7 @@ const detailId = computed<string>(() => {
 })
 
 function onSelect() {
-  if (props.isLegacy) {
+  if (isDisabled.value) {
     return
   }
 

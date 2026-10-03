@@ -1,13 +1,18 @@
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import type { ChatErrorCode } from '#shared/types/chat-errors.d'
 import type {
   GeneratedImageFile,
   ImageGenerationToolOutput,
 } from '#shared/types/image-generation.d'
-import { isHiddenFilePart } from '#shared/utils/files'
+import {
+  getPreferredFileExtension,
+  isHiddenFilePart,
+} from '#shared/utils/files'
 import {
   getFileDownloadUrl,
   getFileUrl,
+  getSafeFileLinks,
+  isImageFile,
 } from '~/utils/files'
 
 const MAX_GENERATED_IMAGE_BYTES = 10 * 1024 * 1024
@@ -85,6 +90,14 @@ const imageGenerationFailureTextByCode = new Map<ChatErrorCode, string>([
     ].join(' '),
   ],
   [
+    'provider-model-restricted',
+    [
+      'Your gateway account can\'t use this model.',
+      'Add paid credits to your gateway account, or choose a different',
+      'model.',
+    ].join(' '),
+  ],
+  [
     'provider-unavailable',
     [
       'The image provider is temporarily unavailable.',
@@ -137,7 +150,7 @@ export function getGenerateImageOutput(
     return null
   }
 
-  if (candidate.provider !== 'openai' && candidate.provider !== 'google') {
+  if (!isImageGenerationProviderCandidate(candidate.provider)) {
     return null
   }
 
@@ -291,6 +304,177 @@ export function shouldRenderGenerateImageToolPart(
   })
 }
 
+/**
+ * A gateway-generated image (OpenRouter/Vercel) has no tool wrapper — it
+ * arrives as a plain AI SDK `file` UI part, either a live `data:` URL (tee'd
+ * straight from the stream, before persistence rewrites it) or a persisted
+ * `/files/...` URL once the chat reloads (see
+ * `docs/providers/gateways.md`'s "Gateway image generation" section). An
+ * assistant message can never legitimately carry a user-uploaded attachment
+ * — attachments only ever exist on user messages — so any image `file` part
+ * on an assistant message is model output by construction, independent of
+ * whether persistence has already marked it with the `generated=1` query
+ * param `isGeneratedFilePart` checks for (a live `data:` part predates that
+ * marker entirely). `isHiddenFilePart` is excluded so a `showFiles: false`
+ * shared-chat redaction still falls through to `ChatFiles`' existing hidden
+ * placeholder instead of being claimed here.
+ */
+export function isAssistantGeneratedImageFilePart(
+  message: Pick<UIMessage, 'role'>,
+  part: unknown,
+): boolean {
+  if (message.role !== 'assistant' || !part || typeof part !== 'object') {
+    return false
+  }
+
+  const candidate = part as Partial<FileUIPart>
+
+  if (
+    candidate.type !== 'file'
+    || typeof candidate.mediaType !== 'string'
+    || typeof candidate.url !== 'string'
+    || isHiddenFilePart(candidate as { type: string, mediaType?: string })
+  ) {
+    return false
+  }
+
+  return isImageFile(candidate.mediaType)
+}
+
+/**
+ * Mirrors the server-side selection rule in
+ * `persistGatewayGeneratedImageParts` (`server/utils/files/assistant-files.ts`)
+ * so a live-streamed Gemini turn renders the same image the reload will show
+ * once persisted. Gemini can narrate image generation through one or more
+ * intermediate THOUGHT images (`reasoning-file` UI parts, identical shape to
+ * `file` but never matched by `isAssistantGeneratedImageFilePart`) before
+ * the real answer arrives as a plain `file` part. While no `file` image has
+ * streamed in yet, the last `reasoning-file` image is promoted to a `file`
+ * part so it displays as a tentative answer; once a real `file` image
+ * arrives, the promotion stops and only that image renders — matching the
+ * settled, persisted state exactly. Non-assistant messages and messages
+ * with no reasoning-file image are returned unchanged.
+ */
+export function getDisplayMessageParts(
+  message: Pick<UIMessage, 'role' | 'parts'>,
+): UIMessage['parts'] {
+  if (message.role !== 'assistant') {
+    return message.parts
+  }
+
+  const hasDeliveredFileImagePart = message.parts.some((part) => {
+    return part.type === 'file' && isImageFile(part.mediaType)
+  })
+
+  if (hasDeliveredFileImagePart) {
+    return message.parts
+  }
+
+  let lastReasoningFileImagePartIndex = -1
+
+  message.parts.forEach((part, index) => {
+    if (part.type === 'reasoning-file' && isImageFile(part.mediaType)) {
+      lastReasoningFileImagePartIndex = index
+    }
+  })
+
+  if (lastReasoningFileImagePartIndex === -1) {
+    return message.parts
+  }
+
+  return message.parts.map((part, index) => {
+    if (
+      index !== lastReasoningFileImagePartIndex
+      || part.type !== 'reasoning-file'
+    ) {
+      return part
+    }
+
+    const promotedFilePart: FileUIPart = {
+      type: 'file',
+      mediaType: part.mediaType,
+      url: part.url,
+      providerMetadata: part.providerMetadata,
+    }
+
+    return promotedFilePart
+  })
+}
+
+/**
+ * True when `part` renders as a `ChatGeneratedImage` card — either a
+ * direct-provider tool call or a gateway/reasoning-file image — matching the
+ * same `v-if` used to select `ChatGeneratedImage` in the message parts loop.
+ */
+export function isGeneratedImagePart(
+  message: UIMessage,
+  part: unknown,
+): boolean {
+  return (
+    shouldRenderGenerateImageToolPart(message, part)
+    || isAssistantGeneratedImageFilePart(message, part)
+  )
+}
+
+/**
+ * True when `parts[index]` is a text part immediately preceded by a
+ * generated-image card, so callers can add spacing between the two without
+ * affecting a leading image or text that precedes an image.
+ */
+export function isTextPartAfterGeneratedImage(
+  message: UIMessage,
+  parts: UIMessage['parts'],
+  index: number,
+): boolean {
+  const part = parts[index]
+
+  if (!part || part.type !== 'text' || index === 0) {
+    return false
+  }
+
+  return isGeneratedImagePart(message, parts[index - 1])
+}
+
+export interface AssistantGeneratedImageDisplay {
+  imageUrl: string
+  downloadUrl: string
+  name: string
+}
+
+const safeGeneratedImageDataUrlPattern
+  = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=?=?$/
+
+/**
+ * Resolves a gateway `file` part into safe display links, or `null` when the
+ * URL is neither a well-formed inline image `data:` URL nor a URL
+ * `getSafeFileLinks` can turn into a same-origin `/files/...` link (a
+ * persisted image, including a shared-chat's tokenized copy). `null` tells
+ * the caller to render the same failure card a tool-based generation failure
+ * shows, instead of leaving a broken image or an "Unavailable" tile.
+ */
+export function resolveAssistantGeneratedImageDisplay(
+  filePart: FileUIPart,
+): AssistantGeneratedImageDisplay | null {
+  const name = filePart.filename?.trim()
+    || `generated-image.${getPreferredFileExtension(filePart.mediaType)}`
+
+  if (safeGeneratedImageDataUrlPattern.test(filePart.url)) {
+    return { imageUrl: filePart.url, downloadUrl: filePart.url, name }
+  }
+
+  const safeLinks = getSafeFileLinks(filePart.url)
+
+  if (!safeLinks) {
+    return null
+  }
+
+  return {
+    imageUrl: safeLinks.openUrl,
+    downloadUrl: safeLinks.downloadUrl,
+    name,
+  }
+}
+
 export function shouldFitMessageBubble(
   message: Pick<UIMessage, 'role' | 'parts'>,
 ): boolean {
@@ -399,6 +583,13 @@ function isSafeFileSize(value: unknown): value is number {
 
 function isAcceptedImageType(value: unknown): value is string {
   return typeof value === 'string' && acceptedImageTypes.has(value)
+}
+
+function isImageGenerationProviderCandidate(
+  value: unknown,
+): value is ImageGenerationProvider {
+  return typeof value === 'string'
+    && (getImageGenerationProviders() as string[]).includes(value)
 }
 
 function isSafeModelName(value: unknown): value is string {

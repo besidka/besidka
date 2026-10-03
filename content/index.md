@@ -9,16 +9,16 @@ benefits:
     body: Your conversations live in your Cloudflare D1 database. Cancel, self-host, or switch deployments — your data moves with you, no export required.
   - icon: lucide:shuffle
     title: Pick the best model for each job
-    body: Claude Opus for hard reasoning, GPT-5 for creative work, Gemini Flash for quick drafts, a nano model for high-volume tasks — switch freely across providers in the same interface.
+    body: Claude Opus for hard reasoning, GPT-5.6 for creative work, Gemini Flash for quick drafts, DeepSeek or Qwen for high-volume tasks — switch freely across providers in the same interface.
 carousel:
   - src: /preview-light-desktop.svg
-    alt: Besidka chat interface in light theme — a conversation using GPT-5 showing a markdown response with syntax-highlighted code.
+    alt: Besidka chat interface in light theme — a conversation showing a markdown response with syntax-highlighted code.
     caption: Light theme — desktop
   - src: /preview-dark-desktop.svg
     alt: Besidka chat interface in dark theme — file attachments panel open with a PDF selected for the current chat.
     caption: Dark theme — desktop
   - src: /preview-light-mobile.svg
-    alt: Besidka chat interface on a mobile device — model selector open, switching between Claude, GPT and Gemini flagship models.
+    alt: Besidka chat interface on a mobile device — model selector open, switching between models from different AI providers.
     caption: Mobile — model switcher
 comparison:
   caption: How Besidka compares to popular AI chat subscriptions
@@ -92,6 +92,20 @@ comparison:
         - no
         - no
         - Only for the most expensive models like Gpt 5.5 Pro ($30/$180)
+    - label: Bring your own search key (Brave / Exa)
+      values:
+        - yes
+        - no
+        - no
+        - no
+        - no
+    - label: Route through your own AI gateway (BYOK)
+      values:
+        - yes
+        - no
+        - no
+        - no
+        - OpenRouter key for some models
     - label: Deep research
       values:
         - yes
@@ -108,14 +122,14 @@ comparison:
         - no
   note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup. Image generation is billed separately at the provider's published image rates.
   priceDate: June 2026
-description: Besidka is an open-source, self-hostable AI chat app. Bring your own Anthropic, OpenAI or Google API key and pay the provider directly. No subscriptions, no markup, no lock-in.
+description: Besidka is an open-source, self-hostable AI chat app. Bring your own key for Anthropic, OpenAI, Google, xAI and more, or an AI gateway. No subscriptions, no markup, no lock-in.
 faqs:
   - question: What does BYOK mean?
-    answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from Anthropic, OpenAI or Google AI Studio directly. You pay the provider at their published rates — Besidka adds no markup.
+    answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from an AI provider — Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen — or from an AI gateway such as Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter. You pay the provider or gateway at its published rates — Besidka adds no markup.
   - question: Which AI providers are supported?
-    answer: Currently Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5 and the full GPT model family), and Google AI Studio (Gemini models including Gemini 2.5 Pro and the Gemini 3 series). More providers are planned. Check the GitHub repository for the latest list.
+    answer: Besidka connects directly to seven AI providers — Anthropic (Claude Opus 5, Claude Sonnet 5 and Claude Haiku 4.5), OpenAI (GPT-5.6, GPT-5.5 and the wider GPT family), Google AI Studio (Gemini 3.8 Flash, Gemini 3.1 Pro Preview and other Gemini models), xAI (Grok 4.6 and other Grok models), DeepSeek (DeepSeek V4 Pro and DeepSeek V4.1 Flash), Moonshot AI (Kimi K3 and Kimi K2.6) and Qwen (Qwen3.8 Max, Qwen3.8 Flash and other Qwen models). Instead of per-provider keys, you can also route chats through your own AI gateway account — Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter — using the models that gateway makes available to your account. For web search, you can add your own Brave Search or Exa key and use it with any model that supports tool calling, whichever provider or gateway runs it. Check the GitHub repository for the full, current model list.
   - question: Can Besidka generate images and documents?
-    answer: Yes for images. Select Create image with a supported OpenAI or Google chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
+    answer: Yes for images. Select Create image with a supported OpenAI, Google or xAI chat model, and Besidka generates one image per request. The image is stored privately in your file library, counts toward your storage quota, and remains available to download. Besidka does not generate PDF, PPTX, or XLSX files yet.
   - question: Do you store my API keys?
     answer: Your keys are stored encrypted in Cloudflare D1, isolated per account behind Better Auth session guards. They are never logged or transmitted to third parties. You can delete them from your profile at any time.
   - question: Can I self-host this?
@@ -127,7 +141,7 @@ faqs:
   - question: Does Besidka support deep research like ChatGPT?
     answer: Yes. Besidka supports deep research the same way ChatGPT and Gemini do, running on dedicated research-agent models — OpenAI's o3-deep-research and o4-mini-deep-research, or Google's Gemini Deep Research. Instead of a single quick reply, the agent autonomously browses the web, cross-checks multiple sources, and writes a fully cited report on the topic you give it. It runs on your own OpenAI or Google API key, so a typical report costs roughly $1 to $10 depending on the model and depth you pick, with no Besidka markup. Anthropic does not currently offer a dedicated deep-research agent model, so this is not available on a Claude key. You get a push notification the moment the report is ready, so you do not need to keep the tab open while it works.
   - question: How is pricing calculated?
-    answer: Besidka itself is free to use and open-source. You pay the AI provider (Anthropic, OpenAI or Google) directly at its published API rates, including token usage and any image-generation charges. There is no monthly fee, no seat charge, and no Besidka markup. You pay only when you use a provider-backed feature.
+    answer: Besidka itself is free to use and open-source. You pay your AI provider (such as Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI or Qwen) directly at its published API rates, including token usage and any image-generation charges — or, if you route chats through an AI gateway, you pay that gateway at its own rates instead. If you add a Brave Search or Exa key for web search, that search provider bills you separately at its own rates. There is no monthly fee, no seat charge, and no Besidka markup on any of these. You pay only when you use a provider-backed feature.
   - question: How to pronounce Besidka?
     answer: |-
       Besidka is pronounced “beh-SEED-kah”.
@@ -138,16 +152,16 @@ faqs:
 features:
   - icon: lucide:layers
     title: Multiple AI models
-    body: Switch between the latest Claude, GPT and Gemini models in one place without creating separate accounts.
+    body: Switch between the latest models from Anthropic, OpenAI, Google, xAI, DeepSeek, Moonshot AI and Qwen in one place — on your own keys or through your own AI gateway.
   - icon: lucide:globe
     title: Web search
-    body: Ground AI answers with real-time web context. Besidka can search the web and cite sources inline.
+    body: Ground AI answers with real-time web context and inline sources. Pick your search provider — the model's built-in search, or your own Brave or Exa key.
   - icon: lucide:brain
     title: Reasoning mode
     body: Enable step-by-step thinking for complex questions. The model works through its reasoning before giving a final answer.
   - icon: lucide:image-plus
     title: AI image generation
-    body: Generate one image at a time with supported OpenAI and Google models. Besidka saves each result privately in your file library so you can preview and download it.
+    body: Generate one image at a time with supported OpenAI, Google and xAI models. Besidka saves each result privately in your file library so you can preview and download it.
   - icon: lucide:paperclip
     title: File attachments
     body: Send images and PDFs. Files are stored in your own R2 bucket and can be reused across different chats.
@@ -166,7 +180,7 @@ features:
 hero:
   eyebrow: OPEN SOURCE · BYOK · SELF-HOSTABLE
   headline: Besidka — open-source AI chat. Your keys, your costs.
-  subheadline: Self-host it or use besidka.com. Switch between Claude, GPT and Gemini models on your own API key — pay per use, no subscriptions, no markup, no lock-in.
+  subheadline: Self-host it or use besidka.com. Switch between Claude, GPT, Gemini, Grok, DeepSeek, Kimi and Qwen models on your own API keys — pay per use, no subscriptions, no markup, no lock-in.
   primaryCta:
     label: Start chatting
     href: /signup
@@ -181,10 +195,10 @@ steps:
     body: Create a free account with email and password, or sign in with Google or GitHub. No credit card required.
   - icon: lucide:key
     title: 2. Add your API key
-    body: Paste your Anthropic, OpenAI or Google AI Studio API key into your profile. Keys are encrypted at rest and never shared.
+    body: Paste an API key from Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen into your profile, or connect your own AI gateway instead. Keys are encrypted at rest and never shared.
   - icon: lucide:message-square
     title: 3. Start chatting
-    body: Open a new chat, pick your model, and go. You pay the provider's rate directly — Besidka adds nothing on top.
+    body: Open a new chat, pick your model, and go. You pay your provider or gateway directly — Besidka adds nothing on top.
 useCases:
   - icon: lucide:code-2
     persona: Developer
@@ -196,7 +210,7 @@ useCases:
     payoff: Every byte of chat history stays in infrastructure they control — no third-party reads their conversations.
   - icon: lucide:briefcase
     persona: Occasional AI user
-    scenario: Skips the flat monthly subscription and pays only for the tokens they actually use, switching between Claude, GPT and Gemini flagships depending on the task.
+    scenario: Skips the flat monthly subscription and pays only for the tokens they actually use, switching between Claude, GPT, Gemini and other flagship models depending on the task.
     payoff: A typical light-use month costs a few dollars instead of twenty.
 video:
   src: /videos/demo.mp4
@@ -272,7 +286,7 @@ sr-label: BYOK solution summary and call to action
 ---
 Your keys, your costs, your data.
 
-Connect an Anthropic, OpenAI or Google AI Studio key and pay only for what you use — no monthly fee, no per-seat charge, no markup. Switch between the latest Claude, GPT and Gemini models in one place. Add or remove keys any time from your profile. Because Besidka is open-source and self-hostable, you are never locked in.
+Connect your own key from any of seven AI providers, or route through your own AI gateway, and pay only for what you use — no monthly fee, no per-seat charge, no Besidka markup. Switch between the latest Claude, GPT, Gemini, Grok, DeepSeek, Kimi and Qwen models in one place. Add or remove keys any time from your profile. Because Besidka is open-source and self-hostable, you are never locked in.
 
   :::home-cta
   ---

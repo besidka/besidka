@@ -4,6 +4,7 @@ import { generateText } from 'ai'
 export async function useChatTitle(
   model: LanguageModel,
   message: string,
+  maxOutputTokens?: number,
 ) {
   const instructions: string[] = [
     `Generate a concise and descriptive title for a chat based on the following user's message`,
@@ -15,6 +16,7 @@ export async function useChatTitle(
   const { text } = await generateText({
     model,
     instructions: instructions.join('.\n -'),
+    maxOutputTokens,
     messages: [
       {
         role: 'user',

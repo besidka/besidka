@@ -53,6 +53,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ChatInput/Files/Trigger.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select.client.spec.ts',
     'tests/unit/components/ChatInput/Files/Modal/Select/Grid/View.spec.ts',
+    'tests/unit/components/ChatInput/Files/Modal/Upload.client.spec.ts',
     'tests/unit/composables/chat-files.spec.ts',
     'tests/unit/composables/file-manager.spec.ts',
     'tests/unit/utils/files.spec.ts',
@@ -63,10 +64,16 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/files-index.spec.ts',
     'tests/integration/server/file-governance.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
+    'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
     'tests/integration/server/file-download.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/convert-files-for-ai.spec.ts',
     'tests/integration/server/chat-deletion-cleanup.spec.ts',
+    'tests/integration/server/cache-invalidation.spec.ts',
+    'tests/integration/server/file-retention.spec.ts',
+    'tests/integration/server/file-retention-cleanup-plugin.spec.ts',
+    'tests/unit/components/Confirmation.spec.ts',
+    'tests/unit/composables/confirmation.spec.ts',
     'tests/e2e/chat/files.spec.ts',
     'tests/e2e/chat/files-carousel-scroll.spec.ts',
     'tests/e2e/shared/context-menu-image-hover.spec.ts',
@@ -80,9 +87,17 @@ export function getAffectedTests(changedFiles) {
   const imageGenerationTests = [
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/image-generation-cost.spec.ts',
+    'tests/unit/utils/ai/image-generation-xai.spec.ts',
+    'tests/unit/utils/ai/image-generation-errors.spec.ts',
     'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/composables/chat-input-url-detection.spec.ts',
+    'tests/unit/composables/chat-image-preview-guard.spec.ts',
     'tests/unit/components/ChatInput.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
+    'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+    'tests/unit/components/ChatInput/WebSearchMenuItems.spec.ts',
+    'tests/unit/components/ChatInput/WebSearchTrigger.spec.ts',
+    'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
     'tests/integration/server/image-generation.spec.ts',
     'tests/integration/server/image-generation-lock.spec.ts',
     'tests/integration/server/assistant-files.spec.ts',
@@ -93,16 +108,39 @@ export function getAffectedTests(changedFiles) {
   const modelsTriggerTests = [
     'tests/unit/components/ChatInput/ModelsTrigger.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger.research.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger.keys.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/Search.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ProviderRail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
     'tests/unit/components/ChatInput/ModelsTrigger/FilterDropdown.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelDetail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelItem.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayProviderRail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayRail.spec.ts',
+    'tests/unit/components/ChatInput/ModelsTrigger/GatewayModelList.spec.ts',
     'tests/unit/utils/models-picker.spec.ts',
+  ]
+  const userKeysTests = [
+    'tests/unit/composables/user-keys.spec.ts',
+    'tests/unit/components/ChatInput.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    ...modelsTriggerTests,
+  ]
+  const modelSelectionTests = [
+    'tests/unit/composables/model.spec.ts',
+    'tests/unit/composables/selected-model-info.spec.ts',
+    'tests/unit/composables/chat-input.spec.ts',
+    'tests/unit/composables/chat-research.spec.ts',
   ]
   const modelCatalogTests = [
     'tests/unit/providers/merge.spec.ts',
     'tests/unit/providers/anthropic.spec.ts',
+    'tests/unit/providers/xai.spec.ts',
+    'tests/unit/providers/deepseek.spec.ts',
+    'tests/unit/providers/moonshotai.spec.ts',
+    'tests/unit/providers/qwen.spec.ts',
+    'tests/unit/providers/default-model.spec.ts',
     'tests/unit/providers/ordering.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/scripts/detect-model-successors.spec.ts',
@@ -111,25 +149,50 @@ export function getAffectedTests(changedFiles) {
     ...modelsTriggerTests,
     'tests/e2e/chat/scroll-spacer.spec.ts',
   ]
+  const providerReasoningWiringTests = [
+    'tests/unit/utils/providers/deepseek.spec.ts',
+    'tests/unit/utils/providers/moonshotai.spec.ts',
+    'tests/unit/utils/providers/xai.spec.ts',
+    'tests/unit/utils/providers/qwen.spec.ts',
+    'tests/unit/utils/reasoning-levels.spec.ts',
+  ]
+  const moonshotWebSearchTests = [
+    'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+    'tests/unit/utils/providers/moonshotai.spec.ts',
+    'tests/unit/providers/moonshotai.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+  ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/utils/filter-ui-message-stream.spec.ts',
     'tests/integration/api/chats-branch.spec.ts',
     'tests/integration/api/chats-duplicate-message.spec.ts',
     'tests/integration/api/chats-message-id-stream.spec.ts',
+    'tests/integration/api/chats-single-step-characterization.spec.ts',
+    'tests/integration/api/chats-tool-loop.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
+    'tests/integration/api/chats-external-search-validation.spec.ts',
+    'tests/integration/api/chats-external-search.spec.ts',
+    'tests/integration/api/chats-gateway.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
     'tests/e2e/chat/context-menu-image.spec.ts',
     'tests/e2e/chat/context-menu-image-desktop.spec.ts',
+    'tests/e2e/chat/gateway-image-generation.spec.ts',
   ]
   const historyProjectsTests = [
     'tests/unit/components/History/PageShell.spec.ts',
     'tests/unit/components/History/ActionsDropdown.spec.ts',
     'tests/unit/components/History/ChatRow.spec.ts',
+    'tests/unit/components/Projects/ActionsDropdown.spec.ts',
     'tests/unit/composables/history.spec.ts',
+    'tests/unit/composables/history-race.spec.ts',
+    'tests/unit/composables/history-load-more-race.spec.ts',
     'tests/unit/composables/projects.spec.ts',
+    'tests/unit/composables/projects-rename.spec.ts',
+    'tests/unit/composables/projects-rename-sort.spec.ts',
     'tests/unit/composables/project-chats.spec.ts',
     'tests/unit/components/History/ChatSections.spec.ts',
     'tests/unit/pages/chats-new.spec.ts',
@@ -172,6 +235,33 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/search-usage.spec.ts',
     'tests/unit/components/Chat/ContextMenu.client.spec.ts',
     'tests/unit/utils/markdown-plain.spec.ts',
+  ]
+
+  const gatewaySharedTests = [
+    'tests/unit/utils/message-metadata.spec.ts',
+    'tests/unit/utils/provider-meta.spec.ts',
+    'tests/unit/utils/gateways.spec.ts',
+    'tests/unit/composables/model.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+    'tests/unit/utils/gateway-capabilities.spec.ts',
+    'tests/unit/utils/gateway-model-id.spec.ts',
+    'tests/unit/utils/gateway-pricing.spec.ts',
+  ]
+
+  const gatewayChatTests = [
+    'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-gateway-images.spec.ts',
+    'tests/integration/api/chats-title.spec.ts',
+  ]
+
+  const gatewayCatalogTests = [
+    'tests/unit/utils/gateways/vercel.spec.ts',
+    'tests/unit/utils/gateways/openrouter.spec.ts',
+    'tests/unit/utils/gateways/cloudflare.spec.ts',
+    'tests/unit/utils/gateways/index.spec.ts',
+    'tests/unit/utils/gateway-catalog-normalize.spec.ts',
+    'tests/integration/api/gateways-models.spec.ts',
+    'tests/unit/composables/gateway-catalog.spec.ts',
   ]
 
   const chatShareTests = [
@@ -230,6 +320,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/ui/Form/Otp.spec.ts',
     'tests/unit/pages/(auth)/2fa.spec.ts',
     'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/e2e/auth/signin.spec.ts',
     'tests/unit/components/Profile/Security/TwoFactor.spec.ts',
     'tests/unit/components/Profile/Security/BackupCodes.spec.ts',
     'tests/unit/components/Profile/Security/Passkeys.spec.ts',
@@ -284,6 +375,24 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-hosts.spec.ts',
   ]
 
+  const keysApiTests = [
+    'tests/integration/api/profile-keys-qwen.spec.ts',
+    'tests/integration/api/profile-keys-brave.spec.ts',
+    'tests/integration/api/profile-keys-exa.spec.ts',
+    'tests/integration/api/profile-keys-summary.spec.ts',
+    'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
+    'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
+    'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/unit/components/Profile/Keys/Card.spec.ts',
+    'tests/unit/components/Profile/Keys/ProviderKeyCard.spec.ts',
+    'tests/unit/components/Profile/Keys/CloudflareGateway.spec.ts',
+    'tests/unit/components/Profile/Keys/SearchProvidersInfo.spec.ts',
+    'tests/unit/components/Profile/Keys/GatewaysInfo.spec.ts',
+    'tests/unit/pages/profile/keys.spec.ts',
+    'tests/unit/components/ProviderIcon.spec.ts',
+    'tests/unit/utils/provider-meta.spec.ts',
+  ]
+
   const turnstileTests = [
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
@@ -314,6 +423,16 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/chats/history/search-cursor.spec.ts',
     'tests/integration/api/chats-history-content-search.spec.ts',
     'tests/integration/api/chats-message-delete.spec.ts',
+  ]
+
+  const externalSearchTests = [
+    'tests/unit/utils/search/brave.spec.ts',
+    'tests/unit/utils/search/exa.spec.ts',
+    'tests/unit/utils/ai/external-search-cost.spec.ts',
+    'tests/unit/config/wrangler-search-rates.spec.ts',
+    'tests/unit/utils/search-usage.spec.ts',
+    'tests/unit/utils/message-usage.spec.ts',
+    'tests/integration/api/chats-external-search.spec.ts',
   ]
 
   const deepResearchTests = [
@@ -347,8 +466,25 @@ export function getAffectedTests(changedFiles) {
   const testMappings = [
     {
       pattern:
-        /^(server\/utils\/ai\/image-generation(-lock|-cost)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic)\.ts|providers\/(openai|google|anthropic)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/components\/ChatInput(\.client\.vue|\/ToolbarMore\.client\.vue)|server\/types\/tools\.d\.ts)$/,
+        /^(server\/utils\/ai\/image-generation(-lock|-cost|-errors)?\.ts|server\/db\/schemas\/image-generation-locks\.ts|server\/utils\/providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/(openai|google|anthropic|xai|deepseek|moonshotai|qwen)\.ts|shared\/types\/(image-generation|providers)\.d\.ts|shared\/utils\/model\.ts|app\/composables\/chat-input\.ts|app\/types\/web-search\.d\.ts|app\/components\/ChatInput(\.client\.vue|\/(WebSearch(Trigger|MenuItems)|ToolbarMore\.client|ReasoningTrigger)\.vue)|server\/types\/tools\.d\.ts)$/,
       tests: imageGenerationTests,
+    },
+    {
+      pattern: /^app\/composables\/image-input-support\.ts$/,
+      tests: [
+        ...imageGenerationTests,
+        ...filesModuleTests,
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(server\/utils\/ai\/tool-loop\.ts|tests\/fixtures\/follow-up-turn-tool\.ts)$/,
+      tests: [
+        'tests/unit/utils/ai/tool-loop.spec.ts',
+        'tests/integration/api/chats-tool-loop.spec.ts',
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+        'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/ai\/image-generation-cost\.ts$/,
@@ -356,35 +492,85 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(providers\/(index|merge|google|openai|anthropic)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models|detect-model-successors|propose-model-successors|models-dev-catalog)\.mjs|shared\/types\/providers\.d\.ts)$/,
+        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models|detect-model-successors|propose-model-successors|models-dev-catalog)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
+      tests: providerReasoningWiringTests,
+    },
+    {
+      pattern: /^shared\/utils\/reasoning\.ts$/,
+      tests: [
+        ...providerReasoningWiringTests,
+        'tests/unit/composables/chat-input.spec.ts',
+        'tests/unit/components/ChatInput.spec.ts',
+        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+      ],
+    },
+    {
+      pattern: /^providers\/qwen\.ts$/,
+      tests: ['tests/unit/utils/providers/qwen.spec.ts'],
+    },
+    {
+      pattern: /^server\/utils\/providers\/moonshotai-web-search\.ts$/,
+      tests: moonshotWebSearchTests,
     },
     {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,
       tests: [
         'tests/integration/api/chats-message-id-stream.spec.ts',
         'tests/integration/api/chats-new.spec.ts',
+        'tests/unit/utils/chats/request-schema.spec.ts',
+        'tests/integration/api/chats-external-search-validation.spec.ts',
       ],
     },
     {
       pattern: /^app\/components\/Chat\/GeneratedImage\.vue$/,
-      tests: ['tests/unit/components/Chat/GeneratedImage.spec.ts'],
+      tests: [
+        'tests/unit/components/Chat/GeneratedImage.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/Chat\/ImagePreview\.client\.vue$/,
       tests: ['tests/unit/components/Chat/ImagePreview.client.spec.ts'],
     },
     {
-      pattern: /^app\/components\/Pwa\/Refresher\.client\.vue$/,
-      tests: ['tests/unit/components/Pwa/Refresher.spec.ts'],
+      pattern:
+        /^(app\/components\/Pwa\/Refresher\.client\.vue|app\/composables\/pwa-auto-refresh\.ts)$/,
+      tests: [
+        'tests/unit/components/Pwa/Refresher.spec.ts',
+        'tests/unit/composables/pwa-auto-refresh.spec.ts',
+      ],
     },
     {
       pattern: modelsTriggerPattern,
       tests: modelsTriggerTests,
     },
     {
+      pattern:
+        /^(app\/components\/ProviderIcon\.vue|shared\/utils\/provider-meta\.ts|server\/db\/schemas\/keys\.ts)$/,
+      tests: [
+        ...userKeysTests,
+        ...keysApiTests,
+        'tests/integration/api/chats-title.spec.ts',
+        ...messageUsageTests,
+        ...modelsTriggerTests,
+      ],
+    },
+    {
       pattern: /^app\/utils\/generated-images\.ts$/,
       tests: ['tests/unit/utils/generated-images.spec.ts'],
+    },
+    {
+      pattern: /^app\/utils\/chat-failure-notice\.ts$/,
+      tests: ['tests/unit/utils/chat-failure-notice.spec.ts'],
+    },
+    {
+      pattern: /^app\/components\/Chat\/ErrorCard\.vue$/,
+      tests: ['tests/unit/components/Chat/ErrorCard.spec.ts'],
     },
     {
       pattern:
@@ -395,6 +581,58 @@ export function getAffectedTests(changedFiles) {
       pattern:
         /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts)\.ts$/,
       tests: [...emailTests, ...authSecurityTests],
+    },
+    {
+      pattern:
+        /^server\/api\/v1\/chats\/\[slug\]\/(index\.post|title\.patch)\.ts$/,
+      tests: [
+        ...chatStreamBranchTests,
+        'tests/integration/api/chats-title.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/composables\/chat-title\.ts$/,
+      tests: ['tests/integration/api/chats-title.spec.ts'],
+    },
+    {
+      pattern:
+        /^(app\/composables\/(model|selected-model-info|gateway-catalog|chat-title)\.ts|shared\/utils\/model-selection\.ts)$/,
+      tests: [...modelSelectionTests, ...modelsTriggerTests],
+    },
+    {
+      pattern:
+        /^(shared\/(types\/gateways\.d\.ts|utils\/(gateways|gateway-(capabilities|model-id|pricing)|model-selection|provider-meta)\.ts))$/,
+      tests: [
+        ...gatewaySharedTests,
+        ...gatewayCatalogTests,
+        ...gatewayChatTests,
+        ...modelsTriggerTests,
+      ],
+    },
+    {
+      pattern:
+        /^(server\/utils\/gateways\/.+\.ts|server\/api\/v1\/gateways\/.+|app\/composables\/gateway-catalog\.ts)$/,
+      tests: [...gatewayCatalogTests, ...gatewayChatTests],
+    },
+    {
+      pattern: /^app\/composables\/user-setting\.ts$/,
+      tests: [...profileSettingsTests, ...modelsTriggerTests],
+    },
+    {
+      pattern: /^app\/composables\/user-keys\.ts$/,
+      tests: [...userKeysTests, ...keysApiTests],
+    },
+    {
+      pattern:
+        /^(server\/api\/v1\/profiles\/keys(\/.*)?\.ts|server\/utils\/keys-rate-limit\.ts|server\/db\/schemas\/keys\.ts|app\/pages\/profile\/keys\.vue|app\/components\/Profile\/Keys\/.*\.vue)$/,
+      tests: [...keysApiTests, ...userKeysTests],
+    },
+    {
+      pattern: /^app\/composables\/clipboard\.ts$/,
+      tests: [
+        'tests/unit/composables/clipboard.spec.ts',
+        ...keysApiTests,
+      ],
     },
     {
       pattern: /^(server\/utils\/email-template\.ts|app\/emails\/.*)$/,
@@ -427,6 +665,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^content\/legal\/.*\.md$/,
       tests: ['tests/unit/config/seo-pages.spec.ts'],
+    },
+    {
+      pattern: /^content\/index\.md$/,
+      tests: [...landingTests, 'tests/unit/utils/landing-jsonld.spec.ts'],
     },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,
@@ -520,8 +762,12 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost|web-search-cost|search-usage)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts)$/,
-      tests: messageUsageTests,
+        /^(shared\/utils\/message-format\.ts|shared\/utils\/message-metadata\.ts|server\/utils\/ai\/(message-usage|google-search-cost|web-search-cost|search-usage)\.ts|shared\/types\/message-usage\.d\.ts|server\/utils\/ai\/cost-map\.ts|shared\/types\/providers\.d\.ts)$/,
+      tests: [
+        ...messageUsageTests,
+        ...chatStreamBranchTests,
+        ...gatewayChatTests,
+      ],
     },
     {
       pattern: /^app\/pages\/chats\/\[slug\]\.vue$/,
@@ -580,8 +826,24 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/search\/.*\.ts$/,
+      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
       tests: messageSearchTests,
+    },
+    {
+      pattern:
+        /^(server\/utils\/search\/(brave|exa|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
+      tests: externalSearchTests,
+    },
+    {
+      pattern: /^server\/utils\/search\/search-error\.ts$/,
+      tests: [
+        ...externalSearchTests,
+        'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+      ],
+    },
+    {
+      pattern: /^wrangler\.jsonc$/,
+      tests: ['tests/unit/config/wrangler-search-rates.spec.ts'],
     },
     {
       pattern: /^server\/plugins\/message-search-index-sweep\.ts$/,
@@ -654,7 +916,18 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^(server\/api\/v1\/chats\/test\/index\.post\.ts|app\/composables\/chat-test\.ts)$/,
-      tests: ['tests/e2e/chat/scroll-spacer.spec.ts'],
+      tests: [
+        'tests/e2e/chat/scroll-spacer.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/composables\/chat-image-ui\.ts$/,
+      tests: [
+        'tests/unit/composables/chat-image-ui.spec.ts',
+        'tests/e2e/chat/scroll-spacer.spec.ts',
+        'tests/e2e/chat/gateway-image-generation.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/ChatInput\/Files\/.*\.vue$/,
@@ -678,7 +951,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/composables\/chat\.ts$/,
-      tests: [...chatStreamBranchTests, ...messageUsageTests],
+      tests: [
+        ...chatStreamBranchTests,
+        ...messageUsageTests,
+        'tests/integration/api/chats-title.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/chat-test\.ts$/,
@@ -688,7 +965,9 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/chats\/errors\.ts$/,
       tests: [
         ...chatStreamBranchTests,
+        'tests/integration/api/chats-title.spec.ts',
         'tests/unit/utils/research/errors.spec.ts',
+        'tests/unit/utils/chats/errors.spec.ts',
       ],
     },
     {
@@ -723,6 +1002,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/chats\/filter-ui-message-stream\.ts$/,
       tests: chatStreamBranchTests,
+    },
+    {
+      pattern: /^server\/utils\/chats\/title\.ts$/,
+      tests: ['tests/integration/api/chats-title.spec.ts'],
     },
     {
       pattern: /^server\/utils\/chats\/provider\.ts$/,
@@ -869,7 +1152,14 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
-      tests: ['tests/integration/api/chats-detail.spec.ts'],
+      tests: [
+        'tests/integration/api/chats-detail.spec.ts',
+        'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/files\/(assistant-files|persist-file)\.ts$/,
+      tests: gatewayChatTests,
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
@@ -897,7 +1187,23 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^shared\/types\/chat-errors\.d\.ts$/,
-      tests: chatStreamBranchTests,
+      tests: [
+        ...chatStreamBranchTests,
+        'tests/integration/api/chats-title.spec.ts',
+        'tests/unit/utils/chats/errors.spec.ts',
+      ],
+    },
+    {
+      pattern: /^shared\/utils\/chat-failure-text\.ts$/,
+      tests: [
+        'tests/unit/utils/chat-failure-text.spec.ts',
+        'tests/unit/utils/chat-failure-notice.spec.ts',
+        'tests/unit/utils/ai/image-generation-errors.spec.ts',
+        'tests/unit/utils/search/text.spec.ts',
+        'tests/unit/composables/chat.spec.ts',
+        'tests/integration/api/chats-tool-loop.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
+      ],
     },
     {
       pattern: /^shared\/utils\/chat-test-errors\.ts$/,
@@ -952,11 +1258,29 @@ export function getAffectedTests(changedFiles) {
       tests: [
         ...profileSettingsTests,
         'tests/unit/components/Chat/Reasoning.spec.ts',
+        'tests/unit/components/Chat/UrlSources.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/utils\/reasoning\.ts$/,
+      tests: [
+        'tests/unit/utils/reasoning.spec.ts',
+        'tests/unit/components/Chat/Reasoning.spec.ts',
       ],
     },
     {
       pattern: /^app\/components\/ChatInput\/ReasoningTrigger\.vue$/,
-      tests: profileSettingsTests,
+      tests: [
+        ...profileSettingsTests,
+        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+      ],
+    },
+    {
+      pattern: /^app\/components\/ChatInput\/ReasoningMenuItems\.vue$/,
+      tests: [
+        ...profileSettingsTests,
+        'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+      ],
     },
     {
       pattern: /^app\/plugins\/.*user-settings.*\.ts$/,
@@ -988,6 +1312,26 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^(server\/db\/|drizzle.*\.config\.ts$|\.drizzle\/migrations)/,
       tests: ['tests/unit/db/migrations-clean.spec.ts'],
+    },
+    {
+      pattern: /^app\/composables\/social-oauth\.ts$/,
+      tests: ['tests/unit/composables/social-oauth.spec.ts'],
+    },
+    {
+      pattern: /^app\/composables\/validation\.ts$/,
+      tests: ['tests/unit/composables/validation.spec.ts'],
+    },
+    {
+      pattern: /^app\/composables\/wake-lock\.ts$/,
+      tests: ['tests/unit/composables/wake-lock.spec.ts'],
+    },
+    {
+      pattern: /^app\/utils\/user-agent\.ts$/,
+      tests: ['tests/unit/utils/user-agent.spec.ts'],
+    },
+    {
+      pattern: /^server\/plugins\/file-retention-cleanup\.ts$/,
+      tests: filesModuleTests,
     },
   ]
 

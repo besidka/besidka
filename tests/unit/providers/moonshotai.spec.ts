@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest'
+import moonshotai from '../../../providers/moonshotai'
+import snapshot from '../../../providers/data/models-dev-snapshot.json'
+
+const expectedModelIds = [
+  'kimi-k2.6',
+  'kimi-k3',
+  'kimi-k2.7-code',
+  'kimi-k2.7-code-highspeed',
+]
+
+describe('curated moonshotai provider', () => {
+  it('curates exactly the four expected models', () => {
+    const ids = moonshotai.models.map(model => model.id)
+
+    expect(moonshotai.models).toHaveLength(expectedModelIds.length)
+    expect(new Set(ids)).toEqual(new Set(expectedModelIds))
+  })
+
+  it('no longer curates the sunset kimi-k2.5 model', () => {
+    const ids = moonshotai.models.map(model => model.id)
+
+    expect(ids).not.toContain('kimi-k2.5')
+  })
+
+  it('keeps the cheaper kimi-k2.6 as the first-listed default even though '
+    + 'kimi-k3 is newer in the same parsed family', () => {
+    expect(moonshotai.models[0]?.id).toBe('kimi-k2.6')
+
+    const snapshotByModelId = snapshot as Record<
+      string,
+      { cost?: { input: number, output: number } }
+    >
+    const kimiK26Cost = snapshotByModelId['kimi-k2.6']?.cost
+    const kimiK3Cost = snapshotByModelId['kimi-k3']?.cost
+
+    expect(kimiK26Cost).toBeDefined()
+    expect(kimiK3Cost).toBeDefined()
+    expect(kimiK26Cost!.input).toBeLessThan(kimiK3Cost!.input)
+    expect(kimiK26Cost!.output).toBeLessThan(kimiK3Cost!.output)
+  })
+
+  it('does not curate the sunset moonshot-v1 line', () => {
+    const ids = moonshotai.models.map(model => model.id)
+
+    for (const id of ids) {
+      expect(id.startsWith('moonshot-v1')).toBe(false)
+    }
+  })
+
+  it('has no model marked as the app-wide default', () => {
+    for (const model of moonshotai.models) {
+      expect(model.default).toBeFalsy()
+    }
+  })
+
+  it('has no model marked for project memory', () => {
+    for (const model of moonshotai.models) {
+      expect(model.forProjectMemory).toBeFalsy()
+    }
+  })
+
+  it('exposes the web_search tool for every curated model', () => {
+    for (const model of moonshotai.models) {
+      expect(model.tools).toEqual(['web_search'])
+      expect(model.imageGeneration).toBeUndefined()
+    }
+  })
+
+  it('has no model configured as a deep-research agent', () => {
+    for (const model of moonshotai.models) {
+      expect(model.research).toBeUndefined()
+    }
+  })
+
+  it('gives kimi-k2.6 a toggle-only reasoning capability', () => {
+    const k26 = moonshotai.models.find(model => model.id === 'kimi-k2.6')
+
+    expect(k26?.reasoning).toEqual({ mode: 'toggle' })
+    expect(k26?.reasoningAlwaysOn).toBeUndefined()
+  })
+
+  it('curates kimi-k3 as always-on reasoning without a toggle', () => {
+    const k3 = moonshotai.models.find(model => model.id === 'kimi-k3')
+
+    expect(k3?.reasoning).toBeUndefined()
+    expect(k3?.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('curates kimi-k2.7-code as always-on reasoning without a toggle', () => {
+    const k27Code = moonshotai.models.find((model) => {
+      return model.id === 'kimi-k2.7-code'
+    })
+
+    expect(k27Code?.reasoning).toBeUndefined()
+    expect(k27Code?.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('curates kimi-k2.7-code-highspeed as always-on reasoning without a '
+    + 'toggle', () => {
+    const k27CodeHighspeed = moonshotai.models.find((model) => {
+      return model.id === 'kimi-k2.7-code-highspeed'
+    })
+
+    expect(k27CodeHighspeed?.reasoning).toBeUndefined()
+    expect(k27CodeHighspeed?.reasoningAlwaysOn).toBe(true)
+  })
+
+  it('has a models.dev snapshot entry for every curated id', () => {
+    const snapshotIds = Object.keys(snapshot)
+
+    for (const id of expectedModelIds) {
+      expect(snapshotIds).toContain(id)
+    }
+  })
+})

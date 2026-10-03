@@ -1,6 +1,6 @@
 import type { FileSource } from './files.d'
 
-export type ImageGenerationProvider = 'openai' | 'google'
+export type ImageGenerationProvider = 'openai' | 'google' | 'xai'
 
 export type ImageGenerationAspectRatio
   = | '1:1'

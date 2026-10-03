@@ -1,7 +1,7 @@
 ---
 title: "Cookie Policy"
 description: "Every cookie and browser storage key Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
-updatedAt: 2026-07-26
+updatedAt: 2026-09-23
 summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, and protect an unsent message you have typed. The optional ones only remember preferences such as your theme and your last used model, and they are set only if you agree. There is no analytics or marketing category: my page-view counting happens on the server with no cookie, no identifier and no stored IP address. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
@@ -84,7 +84,7 @@ I do not embed third-party advertising or analytics scripts, so no other company
 Two things happen off my site and are worth knowing about:
 
 - **Signing in with Google or GitHub** sends you to their domain, where they set their own cookies under their own policies. That is their sign-in flow, not mine.
-- **Your AI provider** receives your prompts through a server-to-server API call. No provider cookie is set in your browser by that.
+- **Your AI provider**, or the **AI gateway** you route a chat through, receives your prompts through a server-to-server API call, and the **search provider** you turn on (Brave Search or Exa) receives your search queries the same way. No cookie from any of them is set in your browser by that.
 
 ## Consent records
 

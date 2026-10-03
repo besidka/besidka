@@ -45,4 +45,35 @@ describe('ChatInput/Files/Trigger', () => {
 
     expect(wrapper.emitted('open')).toEqual([['select', undefined]])
   })
+
+  it('shows the generated-by-AI shortcut by default', async () => {
+    const wrapper = await mountSuspended(Trigger, {
+      props: {
+        files: [],
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="files-open-generated"]').exists(),
+    ).toBe(true)
+  })
+
+  it('hides the generated-by-AI shortcut when image input is unsupported', async () => {
+    const wrapper = await mountSuspended(Trigger, {
+      props: {
+        files: [],
+        isImageInputSupported: false,
+      },
+    })
+
+    expect(
+      wrapper.find('[data-testid="files-open-generated"]').exists(),
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="files-open-select"]').exists(),
+    ).toBe(true)
+    expect(
+      wrapper.find('[data-testid="files-open-upload"]').exists(),
+    ).toBe(true)
+  })
 })

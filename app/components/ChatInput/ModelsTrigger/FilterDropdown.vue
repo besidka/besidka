@@ -7,7 +7,7 @@
     <summary
       data-testid="models-picker-filter-trigger"
       class="btn btn-ghost btn-sm btn-circle relative hitslop"
-      :class="{ 'text-accent': selected }"
+      :class="{ 'text-accent': hasActiveFilter }"
       aria-label="Filter models by category"
     >
       <Icon
@@ -15,7 +15,7 @@
         size="16"
       />
       <span
-        v-if="selected"
+        v-if="hasActiveFilter"
         aria-hidden="true"
         class="badge badge-xs badge-accent absolute -top-0.5 -right-0.5"
       />
@@ -27,7 +27,7 @@
       class="dropdown-content menu menu-sm z-50 mt-1 w-52 p-1 rounded-box bg-base-100 border border-base-content/10 shadow-lg"
     >
       <li
-        v-for="option in modelCategoryOptions"
+        v-for="option in options"
         :key="option.value"
         role="option"
         :aria-selected="selected === option.value"
@@ -50,13 +50,65 @@
       </li>
       <li
         role="presentation"
+        data-testid="models-picker-filter-vision"
+        class="mt-1 pt-1 border-t border-base-content/10"
+        @click="toggleVisionOnly"
+      >
+        <button
+          type="button"
+          :aria-pressed="visionOnly"
+          :class="{ 'menu-active': visionOnly }"
+          class="flex items-center gap-2"
+        >
+          <Icon
+            name="lucide:eye"
+            size="14"
+            class="opacity-60"
+          />
+          <span class="grow">Vision only</span>
+          <Icon
+            v-if="visionOnly"
+            name="lucide:check"
+            size="14"
+          />
+        </button>
+      </li>
+      <li
+        v-for="option in capabilityOptions"
+        :key="option.value"
+        role="presentation"
+        :data-testid="`models-picker-filter-${option.value}`"
+        @click="toggleCapability(option.value)"
+      >
+        <button
+          type="button"
+          :aria-pressed="capabilities.includes(option.value)"
+          :class="{ 'menu-active': capabilities.includes(option.value) }"
+          class="flex items-center gap-2"
+        >
+          <Icon
+            :name="option.icon"
+            size="14"
+            class="opacity-60"
+          />
+          <span class="grow">{{ option.label }}</span>
+          <Icon
+            v-if="capabilities.includes(option.value)"
+            name="lucide:check"
+            size="14"
+          />
+        </button>
+      </li>
+      <li
+        role="presentation"
         data-testid="models-picker-filter-clear"
-        :class="{ 'menu-disabled': selected === null }"
+        class="mt-1 pt-1 border-t border-base-content/10"
+        :class="{ 'menu-disabled': !hasActiveFilter }"
       >
         <button
           type="button"
           class="flex w-full justify-start text-error disabled:opacity-50"
-          :disabled="selected === null ? true : undefined"
+          :disabled="hasActiveFilter ? undefined : true"
           @click="onClear"
         >
           <Icon
@@ -71,10 +123,36 @@
 </template>
 
 <script setup lang="ts">
-import type { ModelCategory } from '~/types/models-picker'
+import type {
+  GatewayCapabilityFilter,
+  GatewayCapabilityFilterOption,
+  ModelCategory,
+  ModelCategoryOption,
+} from '~/types/models-picker'
+
+withDefaults(
+  defineProps<{
+    options?: ModelCategoryOption[]
+    capabilityOptions?: GatewayCapabilityFilterOption[]
+  }>(),
+  {
+    options: () => modelCategoryOptions,
+    capabilityOptions: () => [],
+  },
+)
 
 const selected = defineModel<ModelCategory | null>({ default: null })
+const visionOnly = defineModel<boolean>('visionOnly', { default: false })
+const capabilities = defineModel<GatewayCapabilityFilter[]>('capabilities', {
+  default: () => [],
+})
 const dropdown = useTemplateRef<HTMLDetailsElement>('dropdown')
+
+const hasActiveFilter = computed<boolean>(() => {
+  return selected.value !== null
+    || visionOnly.value
+    || capabilities.value.length > 0
+})
 
 onClickOutside(dropdown, () => {
   close()
@@ -93,8 +171,24 @@ function selectCategory(category: ModelCategory) {
   close()
 }
 
+function toggleVisionOnly() {
+  visionOnly.value = !visionOnly.value
+  close()
+}
+
+function toggleCapability(value: GatewayCapabilityFilter) {
+  capabilities.value = capabilities.value.includes(value)
+    ? capabilities.value.filter((filter) => {
+      return filter !== value
+    })
+    : [...capabilities.value, value]
+  close()
+}
+
 function onClear() {
   selected.value = null
+  visionOnly.value = false
+  capabilities.value = []
   close()
 }
 </script>

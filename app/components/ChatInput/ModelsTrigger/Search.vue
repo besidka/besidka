@@ -50,16 +50,22 @@ const emit = defineEmits<{
 const query = defineModel<string>({ default: '' })
 const input = useTemplateRef<HTMLInputElement>('input')
 
-function clear() {
-  query.value = ''
+function focus() {
   input.value?.focus()
 }
+
+function clear() {
+  query.value = ''
+  focus()
+}
+
+defineExpose({ focus })
 
 onMounted(() => {
   if (!props.autofocus) {
     return
   }
 
-  input.value?.focus()
+  focus()
 })
 </script>

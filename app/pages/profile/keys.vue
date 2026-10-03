@@ -10,29 +10,123 @@
     <Icon name="lucide:info" size="16" />
     All keys are stored securely and encrypted in database
   </div>
-  <ul
-    v-if="providers.length"
-    class="grid gap-4"
+  <nav
+    aria-label="Key sections"
+    class="tabs tabs-box tabs-sm mb-6"
   >
-    <li v-if="isAnthropicEnabled">
-      <UiBubble>
-        <LazyProfileKeysAnthropic />
-      </UiBubble>
-    </li>
-    <li v-if="isGoogleEnabled">
-      <UiBubble>
-        <LazyProfileKeysGoogle />
-      </UiBubble>
-    </li>
-    <li v-if="isOpenAiEnabled">
-      <UiBubble>
-        <LazyProfileKeysOpenAi />
-      </UiBubble>
-    </li>
-  </ul>
+    <button
+      v-for="tab in tabs"
+      :id="`key-tab-${tab.id}`"
+      :key="tab.id"
+      type="button"
+      class="tab grow gap-2"
+      :class="{ 'tab-active': activeTab === tab.id }"
+      :aria-controls="`key-panel-${tab.id}`"
+      :aria-current="activeTab === tab.id ? 'true' : undefined"
+      :aria-label="tab.label"
+      :title="tab.label"
+      :data-testid="`key-tab-${tab.id}`"
+      @click="activeTab = tab.id"
+    >
+      <Icon
+        :name="tab.icon"
+        size="16"
+        class="shrink-0"
+      />
+      <span v-if="activeTab === tab.id">{{ tab.label }}</span>
+    </button>
+  </nav>
+  <div
+    v-show="activeTab === providersTabId"
+    :id="`key-panel-${providersTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${providersTabId}`"
+    :data-testid="`key-panel-${providersTabId}`"
+  >
+    <ul class="grid gap-4">
+      <li
+        v-for="provider in enabledProviders"
+        :key="provider.id"
+      >
+        <UiBubble>
+          <LazyProfileKeysProviderKeyCard
+            :provider-id="provider.id"
+            :group="providersAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
+  <div
+    v-show="activeTab === searchTabId"
+    :id="`key-panel-${searchTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${searchTabId}`"
+    :data-testid="`key-panel-${searchTabId}`"
+  >
+    <ProfileKeysSearchProvidersInfo />
+    <ul class="grid gap-4">
+      <li
+        v-for="providerId in enabledSearchProviders"
+        :key="providerId"
+      >
+        <UiBubble>
+          <LazyProfileKeysProviderKeyCard
+            :provider-id="providerId"
+            :group="searchAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
+  <div
+    v-show="activeTab === gatewaysTabId"
+    :id="`key-panel-${gatewaysTabId}`"
+    role="tabpanel"
+    :aria-labelledby="`key-tab-${gatewaysTabId}`"
+    :data-testid="`key-panel-${gatewaysTabId}`"
+  >
+    <ProfileKeysGatewaysInfo />
+    <ul class="grid gap-4">
+      <li
+        v-for="gatewayId in enabledGateways"
+        :key="gatewayId"
+      >
+        <UiBubble>
+          <LazyProfileKeysCloudflareGateway
+            v-if="gatewayId === 'cloudflare'"
+            :group="gatewaysAccordionGroup"
+          />
+          <LazyProfileKeysProviderKeyCard
+            v-else
+            :provider-id="gatewayId"
+            :group="gatewaysAccordionGroup"
+          />
+        </UiBubble>
+      </li>
+    </ul>
+  </div>
 </template>
 <script setup lang="ts">
 import type { Providers, Provider } from '#shared/types/providers.d'
+import {
+  enabledGateways,
+  enabledSearchProviders,
+  providerMeta,
+} from '#shared/utils/provider-meta'
+
+interface KeyTab {
+  id: string
+  label: string
+  icon: string
+}
+
+const providersTabId = 'providers'
+const searchTabId = 'search'
+const gatewaysTabId = 'gateways'
+const providersAccordionGroup = 'profile-provider-keys'
+const searchAccordionGroup = 'profile-search-provider-keys'
+const gatewaysAccordionGroup = 'profile-gateway-keys'
 
 definePageMeta({
   layout: 'profile',
@@ -47,26 +141,35 @@ useSeoMeta({
 })
 
 const config = useRuntimeConfig().public
+const route = useRoute()
+
+const tabIds = [providersTabId, searchTabId, gatewaysTabId]
+
+function resolveInitialTab(): string {
+  const tabParam = route.query.tab
+
+  if (typeof tabParam === 'string' && tabIds.includes(tabParam)) {
+    return tabParam
+  }
+
+  return providersTabId
+}
+
+const activeTab = shallowRef<string>(resolveInitialTab())
 
 const providers = computed<Providers>(() => {
   return config?.providers as Providers ?? []
 })
 
-const isOpenAiEnabled = computed<boolean>(() => {
-  return providers.value.some((provider: Provider) => {
-    return provider.id === 'openai'
+const enabledProviders = computed<Providers>(() => {
+  return providers.value.filter((provider: Provider) => {
+    return !!providerMeta[provider.id]
   })
 })
 
-const isAnthropicEnabled = computed<boolean>(() => {
-  return providers.value.some((provider: Provider) => {
-    return provider.id === 'anthropic'
-  })
-})
-
-const isGoogleEnabled = computed<boolean>(() => {
-  return providers.value.some((provider: Provider) => {
-    return provider.id === 'google'
-  })
-})
+const tabs: KeyTab[] = [
+  { id: providersTabId, label: 'Direct Providers', icon: 'lucide:key-round' },
+  { id: searchTabId, label: 'Search Providers', icon: 'lucide:globe' },
+  { id: gatewaysTabId, label: 'Gateways', icon: 'lucide:waypoints' },
+]
 </script>

@@ -7,7 +7,9 @@
  * The curated
  * half — which tools, reasoning, research and image-generation capabilities
  * a model is offered with — stays hand-written in providers/anthropic.ts,
- * providers/google.ts and providers/openai.ts and is never touched here.
+ * providers/google.ts, providers/openai.ts, providers/xai.ts,
+ * providers/deepseek.ts, providers/moonshotai.ts and providers/qwen.ts and
+ * is never touched here.
  *
  * The join only ever looks curated ids UP in models.dev; it never iterates
  * the remote catalog outward, so embedding, video, music, TTS and realtime
@@ -39,6 +41,10 @@ import { fetchCatalog } from './models-dev-catalog.mjs'
 import anthropic from '../providers/anthropic.ts'
 import google from '../providers/google.ts'
 import openai from '../providers/openai.ts'
+import xai from '../providers/xai.ts'
+import deepseek from '../providers/deepseek.ts'
+import moonshotai from '../providers/moonshotai.ts'
+import qwen from '../providers/qwen.ts'
 
 const SNAPSHOT_PATH = fileURLToPath(
   new URL('../providers/data/models-dev-snapshot.json', import.meta.url),
@@ -51,15 +57,36 @@ const SNAPSHOT_PATH = fileURLToPath(
 //  - Retired-but-kept legacy ids models.dev no longer publishes at all.
 //    Fully curated in providers/*.ts with `status: 'deprecated'` so the
 //    legacy picker section and useChatProvider() guard keep working.
+//  - Image models models.dev lists but with no `cost` block, which
+//    toSnapshotEntry() below treats as incomplete. Fully curated in
+//    providers/*.ts instead.
+//  - Models genuinely available on this app's endpoint but not yet tracked
+//    by models.dev under the provider's international key. Example:
+//    `qwen3.7-flash`/`qwen3.5-flash` run on DashScope's Singapore
+//    (international) endpoint per Alibaba Cloud's own docs, but models.dev
+//    only tracks them under `alibaba-cn` (mainland China), not `alibaba`
+//    (international) — a metadata-tracking gap, not a region restriction.
+//    Fully curated in providers/qwen.ts.
 const EXEMPT_IDS = [
   'o3-deep-research',
   'o4-mini-deep-research',
   'gemini-3-pro-preview',
+  'grok-imagine-image-2.0',
+  'qwen3.7-flash',
+  'qwen3.5-flash',
 ]
 
 const KNOWN_MODEL_STATUSES = ['deprecated', 'beta', 'alpha']
 
-const curatedProviders = [anthropic, google, openai]
+const curatedProviders = [
+  anthropic,
+  google,
+  openai,
+  xai,
+  deepseek,
+  moonshotai,
+  qwen,
+]
 
 const catalog = await fetchCatalog()
 const snapshot = {}
@@ -67,12 +94,14 @@ const missingIds = []
 const incompleteIds = []
 
 for (const provider of curatedProviders) {
-  const remoteModels = catalog[provider.id]?.models
+  const modelsDevKey = provider.modelsDevKey ?? provider.id
+  const remoteModels = catalog[modelsDevKey]?.models
 
   if (!remoteModels) {
     console.error(
-      `models.dev has no "${provider.id}" provider. Its top-level keys are `
-      + 'provider ids; check whether it was renamed.',
+      `models.dev has no "${modelsDevKey}" provider. Its top-level keys `
+      + 'are provider ids; check whether it was renamed, or whether '
+      + `"${provider.id}" needs a modelsDevKey override.`,
     )
     process.exit(1)
   }
@@ -136,7 +165,7 @@ console.log(
 
 const providerReports = curatedProviders.map((provider) => {
   const curatedIds = new Set(provider.models.map(model => model.id))
-  const remoteModels = catalog[provider.id].models
+  const remoteModels = catalog[provider.modelsDevKey ?? provider.id].models
 
   return {
     providerId: provider.id,
@@ -191,6 +220,9 @@ function toSnapshotEntry(model) {
       : {}),
     ...(KNOWN_MODEL_STATUSES.includes(model.status)
       ? { status: model.status }
+      : {}),
+    ...(typeof model.tool_call === 'boolean'
+      ? { toolCall: model.tool_call }
       : {}),
     limit: {
       context: model.limit.context,

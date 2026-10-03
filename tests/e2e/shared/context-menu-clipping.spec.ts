@@ -94,6 +94,65 @@ async function getMenuViewportOverflow(
   })
 }
 
+const METADATA_ROW_TEST_IDS = [
+  'message-menu-model',
+  'message-menu-provider',
+  'message-menu-tools',
+  'message-menu-search-grounding',
+] as const
+
+interface MetadataRowMeasurement {
+  testId: string
+  right: number
+  scrollWidth: number
+  clientWidth: number
+}
+
+interface MetadataOverflowResult {
+  menuRight: number
+  infoScrollWidth: number
+  infoClientWidth: number
+  rows: MetadataRowMeasurement[]
+}
+
+async function getMetadataOverflow(
+  page: Page,
+): Promise<MetadataOverflowResult> {
+  return page.evaluate((rowTestIds) => {
+    const menu = document.querySelector('ul.menu')
+    const info = document.querySelector(
+      '[data-testid="message-menu-info"]',
+    )
+
+    if (!menu || !info) {
+      throw new Error('Context menu metadata is not open')
+    }
+
+    const rows = rowTestIds.map((testId) => {
+      const row = document.querySelector(`[data-testid="${testId}"]`)
+      const value = row?.querySelector('.truncate')
+
+      if (!row || !value) {
+        throw new Error(`Missing metadata row or value for ${testId}`)
+      }
+
+      return {
+        testId,
+        right: value.getBoundingClientRect().right,
+        scrollWidth: value.scrollWidth,
+        clientWidth: value.clientWidth,
+      }
+    })
+
+    return {
+      menuRight: menu.getBoundingClientRect().right,
+      infoScrollWidth: info.scrollWidth,
+      infoClientWidth: info.clientWidth,
+      rows,
+    }
+  }, [...METADATA_ROW_TEST_IDS])
+}
+
 test.describe('shared chat context menu layout', () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(30_000)
@@ -112,7 +171,12 @@ test.describe('shared chat context menu layout', () => {
   test('does not clip the metadata card for the last image message', async ({
     page,
   }) => {
-    const imageMessage = page.locator('[data-role="assistant"]').last()
+    // Selected by id rather than `.last()`: the long-metadata regression
+    // fixture below is appended after this message, so it — not this one —
+    // is now the last assistant message in the DOM.
+    const imageMessage = page.locator(
+      '[data-message-id="shared-test-image-assistant"]',
+    )
 
     await expect(imageMessage).toBeVisible()
 
@@ -148,16 +212,25 @@ test.describe('shared chat context menu layout', () => {
   // A real generated-image message only ever reaches the shared page as a
   // bare `file` part (server/utils/files/assistant-files.ts converts the
   // tool-generate_image part to `file` at persistence, and the shared
-  // endpoint's filterPublicParts() strips tool parts) so it renders through
-  // ChatFiles.vue's 192px thumbnail, not ChatGeneratedImage.vue's 320px
-  // card. That narrow, image-only bubble is exactly what makes
-  // shouldFitMessageBubble() shrink `.js-chat-bubble` to fit-content, which
-  // can land it below the menu's own 256px (w-64) width — the scenario the
-  // menu's unclamped `right` fallback did not defend against.
+  // endpoint's filterPublicParts() strips tool parts). Since
+  // isAssistantGeneratedImageFilePart() now claims any such part (see
+  // app/utils/generated-images.ts), a *visible* generated image renders
+  // through ChatGeneratedImage.vue's fixed w-80 (320px) card, which can
+  // never be narrower than the menu. The one remaining narrow, image-only
+  // bubble is a `showFiles: false` share's hidden-file placeholder — it
+  // short-circuits to ChatFiles.vue's 192px tile before
+  // isAssistantGeneratedImageFilePart() ever runs (see
+  // buildTestHiddenFilePart() in server/utils/chats/test/image-fixture.ts)
+  // — so that is what this test selects to keep covering
+  // shouldFitMessageBubble() shrinking `.js-chat-bubble` to fit-content
+  // below the menu's own 256px (w-64) width, the scenario the menu's
+  // unclamped `right` fallback did not defend against.
   test('does not push the menu off-screen for a narrower-than-menu bubble', async ({
     page,
   }) => {
-    const imageMessage = page.locator('[data-role="assistant"]').last()
+    const imageMessage = page.locator(
+      '[data-message-id="shared-test-hidden-file-assistant"]',
+    )
 
     await expect(imageMessage).toBeVisible()
 
@@ -182,5 +255,51 @@ test.describe('shared chat context menu layout', () => {
     const overflow = await getMenuViewportOverflow(page)
 
     expect(overflow.fitsWithinViewport).toBe(true)
+  })
+
+  // Regression coverage for a real-world overflow: a long Cloudflare model
+  // id, a gateway provider label, a Brave-attributed tool, and a web-search
+  // cost row together push each row's natural (max-content) width well past
+  // the menu's 256px (w-64). Without an explicit width constraint winning
+  // over daisyUI's `.menu { width: fit-content }`, the whole metadata block
+  // grows to fit its widest row instead of staying pinned to the menu's own
+  // width, so every value renders at full size and gets hard-clipped by the
+  // menu's own overflow-x-hidden with no ellipsis — not gracefully truncated
+  // by the per-row `truncate` classes, which never get a chance to shrink.
+  test('constrains every metadata row to the menu width, truncating '
+    + 'the long model id with an ellipsis', async ({ page }) => {
+    const message = page.locator(
+      '[data-message-id="shared-test-long-metadata-assistant"]',
+    )
+
+    await expect(message).toBeVisible()
+
+    await selectMessage(message)
+
+    await expect(page.getByTestId('message-menu-model')).toBeVisible()
+    await expect(page.getByTestId('message-menu-provider')).toBeVisible()
+    await expect(page.getByTestId('message-menu-tools')).toBeVisible()
+    await expect(
+      page.getByTestId('message-menu-search-grounding'),
+    ).toBeVisible()
+
+    const overflow = await getMetadataOverflow(page)
+
+    expect(overflow.infoScrollWidth).toBeLessThanOrEqual(
+      overflow.infoClientWidth + CLIPPING_CHECK_EPSILON,
+    )
+
+    for (const row of overflow.rows) {
+      expect(row.right).toBeLessThanOrEqual(
+        overflow.menuRight + CLIPPING_CHECK_EPSILON,
+      )
+    }
+
+    const modelRow = overflow.rows.find((row) => {
+      return row.testId === 'message-menu-model'
+    })
+
+    expect(modelRow).toBeDefined()
+    expect(modelRow?.scrollWidth).toBeGreaterThan(modelRow?.clientWidth ?? 0)
   })
 })

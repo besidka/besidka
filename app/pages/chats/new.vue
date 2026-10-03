@@ -77,6 +77,7 @@ import type {
   ResearchClarificationResponse,
   ResearchJobView,
 } from '#shared/types/research.d'
+import { isWebSearchTool } from '#shared/utils/message-metadata'
 
 definePageMeta({
   layout: 'chat',
@@ -107,7 +108,10 @@ const message = customRef<string>((track, trigger) => ({
   },
 }))
 const files = ref<FileMetadata[]>([])
-const tools = shallowRef<Tools>([])
+const savedWebSearchTool = prefStorage.getItem('settings_web_search_tool')
+const tools = shallowRef<Tools>(
+  isWebSearchTool(savedWebSearchTool) ? [savedWebSearchTool] : [],
+)
 const pending = shallowRef<boolean>(false)
 const isClarifying = shallowRef<boolean>(false)
 const isCreatingResearchChat = shallowRef<boolean>(false)
@@ -165,19 +169,9 @@ if (import.meta.client) {
   )
 }
 
-const reasoning = customRef<ReasoningLevel>((track, trigger) => ({
-  get() {
-    track()
-
-    return (
-      prefStorage.getItem('settings_reasoning_level') as ReasoningLevel
-    ) ?? 'off'
-  },
-  set(value) {
-    prefStorage.setItem('settings_reasoning_level', value)
-    trigger()
-  },
-}))
+const reasoning = shallowRef<ReasoningLevel>(
+  normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
+)
 
 function parseRouteProjectId(projectId: unknown): string | null {
   return typeof projectId === 'string' && projectId.length > 0
@@ -252,8 +246,6 @@ if (!projectId.value) {
   projectMemory.value = null
   projectMemoryStatus.value = 'stale'
 }
-
-reasoning.value = normalizeReasoningLevel(reasoning.value)
 
 interface ProjectPickerInstance {
   open: (projectId: string | null) => void

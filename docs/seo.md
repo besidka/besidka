@@ -158,10 +158,10 @@ the graph, so a rename cannot silently produce a dangling reference.
 Each of these was investigated and rejected. Re-litigate with new evidence, not
 by assuming it was overlooked.
 
-- **`lastmod` in the sitemap.** No page has a real modification date — neither
-  legal page carries a "last updated" date, and the landing content has no
-  reliable timestamp. A build-time `lastmod` restamped on every deploy is a
-  signal search engines learn to distrust. Add it only when backed by real dates.
+- **`lastmod` in the sitemap.** No page has a real modification date — legal
+  pages carry an `updatedAt` date and the landing content has no reliable
+  timestamp. A build-time `lastmod` restamped on every deploy is a signal
+  search engines learn to distrust. Add it only when backed by real dates.
 - **`/shared/*` in the sitemap.** Tempting (it is the only scalable source of
   unique content) but rejected. In August 2025 roughly 4,500 opt-in-shared
   ChatGPT conversations were indexed by Google, became a privacy incident, and

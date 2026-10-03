@@ -55,7 +55,7 @@
     </template>
   </TransitionGroup>
   <li class="menu-title text-xs">
-    Reasoning effort
+    {{ isToggleMode ? 'Reasoning' : 'Reasoning effort' }}
   </li>
   <li
     v-for="level in levelsForMenu"
@@ -74,7 +74,7 @@
         :is="getIconComponent(level)"
         class="size-4 text-current"
       />
-      <span class="capitalize">{{ level }}</span>
+      <span class="capitalize">{{ getLevelLabel(level) }}</span>
     </button>
   </li>
 </template>
@@ -104,6 +104,18 @@ const {
 const levelsForMenu = computed<ReasoningLevel[]>(() => {
   return ['off', ...props.levels]
 })
+
+const isToggleMode = computed<boolean>(() => {
+  return props.levels.length === 1
+})
+
+function getLevelLabel(level: ReasoningLevel): string {
+  if (isToggleMode.value && level !== 'off') {
+    return 'On'
+  }
+
+  return level
+}
 
 function getIconComponent(level: ReasoningLevel): string {
   return `SvgoThink${level.charAt(0).toUpperCase() + level.slice(1)}`

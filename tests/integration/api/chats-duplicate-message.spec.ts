@@ -142,6 +142,8 @@ vi.mock('~~/server/utils/files/assistant-files', () => ({
   normalizeAssistantMessagePartsForPersistence: vi.fn(
     async (input: { parts: unknown }) => input.parts,
   ),
+  isPersistedOversizedResponseFailureText: vi.fn(() => false),
+  stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
 }))
 
 vi.mock('~~/server/utils/projects/memory', () => ({
@@ -473,6 +475,65 @@ describe('chat duplicate message detection', () => {
       delta: 'Stored answer',
     }))
     expect(chunks.at(-1)).toEqual({ type: 'finish' })
+  })
+
+  it('regenerates instead of replaying a persisted image-generation '
+    + 'failure notice (Regenerate after fixing the provider key)', async () => {
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Draw a red square' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const failureOnlyAssistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [{
+        type: 'text',
+        text: [
+          'The image provider rejected the saved API key.',
+          'Update the provider key in settings, then try again.',
+        ].join(' '),
+      }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db } = createDb({
+      messages: [userMessage, failureOnlyAssistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Draw a red square' }],
+        }],
+      },
+    } as any)
+
+    await collectStreamChunks(stream)
+
+    expect(streamText).toHaveBeenCalledTimes(1)
+    expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
+      messages: expect.arrayContaining([{
+        id: 'user-public-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Draw a red square' }],
+      }]),
+    }))
   })
 
   it('retries past an empty assistant row with one user prompt', async () => {

@@ -1,3 +1,4 @@
+import type { GatewayId } from '#shared/types/gateways.d'
 import {
   snakeCase,
   integer,
@@ -25,6 +26,8 @@ export const userSettings = snakeCase.table(
     notificationPromptState: integer({ mode: 'boolean' }),
     sidebarPinned: integer({ mode: 'boolean' }),
     favoriteModels: text({ mode: 'json' }).$type<string[]>(),
+    favoriteGatewayModels: text({ mode: 'json' })
+      .$type<Partial<Record<GatewayId, string[]>>>(),
   },
   table => [
     uniqueIndex('uq_user_settings_user').on(table.userId),

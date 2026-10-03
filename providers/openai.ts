@@ -20,6 +20,7 @@ export default {
         output: ['text'],
       },
       tools: [],
+      toolCall: false,
       research: {
         tier: 'thorough',
         assistModel: 'gpt-5.4-nano',
@@ -44,6 +45,7 @@ export default {
         output: ['text'],
       },
       tools: [],
+      toolCall: false,
       research: {
         tier: 'quick',
         assistModel: 'gpt-5.4-nano',

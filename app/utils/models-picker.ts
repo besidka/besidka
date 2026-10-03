@@ -1,5 +1,13 @@
+import type { GatewayModel } from '#shared/types/gateways.d'
 import type { Model, ModelPriceTier } from '#shared/types/providers.d'
-import type { ModelCategory, ModelCategoryOption } from '~/types/models-picker'
+import type {
+  GatewayCapabilityFilter,
+  GatewayCapabilityFilterOption,
+  GatewayProviderGroup,
+  ModelCategory,
+  ModelCategoryOption,
+} from '~/types/models-picker'
+import { getGatewayModelProviderPrefix } from '#shared/utils/gateway-model-id'
 
 export const modelCategoryOptions: ModelCategoryOption[] = [
   { value: 'chat', label: 'Chat', icon: 'lucide:message-square' },
@@ -9,6 +17,26 @@ export const modelCategoryOptions: ModelCategoryOption[] = [
     label: 'Image generation',
     icon: 'lucide:image-plus',
   },
+]
+
+/**
+ * Gateway catalogs carry none of the curated `chat`/`research`/
+ * `image-generation` classification, so gateway mode filters on the one
+ * objective property every catalog does report — price.
+ */
+export const gatewayModelCategoryOptions: ModelCategoryOption[] = [
+  { value: 'free', label: 'Free', icon: 'lucide:banknote-x' },
+]
+
+export const gatewayCapabilityFilterOptions: GatewayCapabilityFilterOption[] = [
+  { value: 'reasoning', label: 'Reasoning', icon: 'lucide:brain' },
+  { value: 'web-search', label: 'Web search', icon: 'lucide:globe' },
+  {
+    value: 'image-generation',
+    label: 'Image generation',
+    icon: 'lucide:image-plus',
+  },
+  { value: 'tool-calling', label: 'Tool calling', icon: 'lucide:wrench' },
 ]
 
 const priceTierClasses: Record<ModelPriceTier, string> = {
@@ -44,6 +72,14 @@ export function hasImageGenerationCapability(model: Model): boolean {
     || isImageGenerationModel(model)
 }
 
+/**
+ * Vision covers image/video/PDF *input*, fully separate from image
+ * *generation* above — a model can have either, both, or neither.
+ */
+export function hasVisionCapability(model: Model): boolean {
+  return model.modalities.input.includes('image')
+}
+
 export function getModelPriceTip(model: Model): string | undefined {
   if (model.research) {
     return `${model.research.costEstimate} · ${model.research.timeEstimate}`
@@ -72,6 +108,193 @@ export function formatModelTokenLimit(count: number): string {
   }
 
   return `${count.toLocaleString('en-US')} tokens`
+}
+
+const pricePerMillionFormatters: Record<2 | 3, Intl.NumberFormat> = {
+  2: new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }),
+  3: new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }),
+}
+
+/**
+ * Gateways quote prices PER TOKEN as decimal strings, while the curated
+ * catalog quotes per million. The explicit scale-up here is what makes the
+ * two comparable; the resulting float noise (2.5e-6 * 1e6 lands on
+ * 2.4999999999999996) is absorbed by fixed-fraction formatting, never by
+ * stringifying the product.
+ */
+function formatPricePerMillionTokens(perTokenPrice: string): string | null {
+  const perToken = Number(perTokenPrice)
+
+  if (!Number.isFinite(perToken) || perToken < 0) {
+    return null
+  }
+
+  const perMillion = perToken * 1_000_000
+  const fractionDigits = perMillion > 0 && perMillion < 1 ? 3 : 2
+
+  return `$${pricePerMillionFormatters[fractionDigits].format(perMillion)}`
+}
+
+function toPricePair(
+  pricing: GatewayModel['pricing'],
+): { input: string, output: string, isFree: boolean } | null {
+  if (!pricing) {
+    return null
+  }
+
+  const input = formatPricePerMillionTokens(pricing.input)
+  const output = formatPricePerMillionTokens(pricing.output)
+
+  if (!input || !output) {
+    return null
+  }
+
+  return {
+    input,
+    output,
+    isFree: Number(pricing.input) === 0 && Number(pricing.output) === 0,
+  }
+}
+
+/**
+ * The only place a gateway model's per-token numbers are spelled out. Rows
+ * carry the same `$`/`$$`/`$$$` tier badge direct-provider models do, resolved
+ * through `resolveGatewayPriceTier()` against the shared ceilings in
+ * `providers/merge.ts`, and reach this string only as the badge's tooltip.
+ */
+export function formatGatewayPriceDetail(
+  pricing: GatewayModel['pricing'],
+): string | undefined {
+  const pair = toPricePair(pricing)
+
+  if (!pair) {
+    return undefined
+  }
+
+  if (pair.isFree) {
+    return 'Free'
+  }
+
+  return `${pair.input} in / ${pair.output} out per 1M tokens`
+}
+
+const gatewayCapabilityFilterMatchers: Record<
+  GatewayCapabilityFilter,
+  (model: GatewayModel) => boolean
+> = {
+  'reasoning': (model) => {
+    return model.supportsReasoning === true
+  },
+  'web-search': (model) => {
+    return !!model.supportsWebSearch
+  },
+  'image-generation': (model) => {
+    return model.supportsImageGeneration === true
+  },
+  'tool-calling': (model) => {
+    return model.toolCall === true
+  },
+}
+
+/**
+ * Fails closed on `undefined` — a catalog that doesn't report a signal is
+ * treated as "does not match", never as "unknown, so let it through".
+ */
+export function matchesGatewayCapabilityFilters(
+  model: GatewayModel,
+  filters: GatewayCapabilityFilter[],
+): boolean {
+  return filters.every((filter) => {
+    return gatewayCapabilityFilterMatchers[filter](model)
+  })
+}
+
+/**
+ * What a rail count badge claims to describe: the models the picker will
+ * actually list for that provider. Deprecated entries live behind the
+ * collapsed legacy section and cannot be selected, so counting them would
+ * promise rows the user never reaches.
+ */
+export function countSelectableModels(models: Model[]): number {
+  return models.filter((model) => {
+    return model.status !== 'deprecated'
+  }).length
+}
+
+/**
+ * Keeps a rail badge to three glyphs. A vertical rail is one icon wide, and
+ * an uncapped count from a gateway with hundreds of models per vendor would
+ * grow the badge wider than the button it hangs off.
+ */
+export function formatRailCount(count: number): string {
+  return count > 99 ? '99+' : `${count}`
+}
+
+/**
+ * Spells the badge out for the tooltip and the accessible name, where the
+ * bare number has no unit to lean on. Most of OpenRouter's 58 vendor
+ * prefixes carry a single model, so the singular is the common case.
+ */
+export function formatModelCount(count: number): string {
+  return `${count} ${count === 1 ? 'model' : 'models'}`
+}
+
+/**
+ * The underlying providers a gateway catalog proxies, most-stocked first so
+ * the handful worth browsing lead the strip and the long tail (OpenRouter
+ * reports 58 prefixes across 400 models, most of them one-model vendors)
+ * trails it. Ties break alphabetically to keep the order stable across
+ * catalog refreshes.
+ */
+export function getGatewayProviderGroups(
+  models: GatewayModel[],
+): GatewayProviderGroup[] {
+  const counts = new Map<string, number>()
+
+  models.forEach((model) => {
+    const prefix = getGatewayModelProviderPrefix(model.id)
+
+    counts.set(prefix, (counts.get(prefix) ?? 0) + 1)
+  })
+
+  return [...counts.entries()]
+    .map(([prefix, count]) => {
+      return { prefix, count }
+    })
+    .sort((first, second) => {
+      return second.count - first.count
+        || first.prefix.localeCompare(second.prefix)
+    })
+}
+
+/**
+ * Clusters a gateway catalog by underlying provider in the same order
+ * `getGatewayProviderGroups()` reports, then by model name inside each
+ * cluster. Returns a new array — the catalog itself is shared state read
+ * from the composable cache and must not be sorted in place.
+ */
+export function sortGatewayModelsByProvider(
+  models: GatewayModel[],
+  groups: GatewayProviderGroup[] = getGatewayProviderGroups(models),
+): GatewayModel[] {
+  const groupOrder = new Map(groups.map((group, index) => {
+    return [group.prefix, index]
+  }))
+
+  return [...models].sort((first, second) => {
+    const firstPrefix = getGatewayModelProviderPrefix(first.id)
+    const secondPrefix = getGatewayModelProviderPrefix(second.id)
+    const orderDifference = (groupOrder.get(firstPrefix) ?? Number.MAX_VALUE)
+      - (groupOrder.get(secondPrefix) ?? Number.MAX_VALUE)
+
+    return orderDifference || first.name.localeCompare(second.name)
+  })
 }
 
 /**

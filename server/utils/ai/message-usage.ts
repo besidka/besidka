@@ -14,11 +14,17 @@ import type { SearchUsage } from '~~/server/utils/ai/search-usage'
  * misrepresent an unknown cost as a free one. Cost fields are likewise
  * omitted (never fabricated as `0`) when the model has no known price in
  * `getModelCostMap()`.
+ *
+ * `totalCost` is an optional, separately-sourced override for gateway sends
+ * (OpenRouter/Vercel AI Gateway report their own billed cost; gateway model
+ * ids never appear in `getModelCostMap()`, so `inputCost`/`outputCost` stay
+ * unset for them and this is the only cost field populated instead).
  */
 export function buildMessageUsage(
   usage: LanguageModelUsage,
   modelId: string,
   providerId: string,
+  totalCost?: number,
 ): MessageUsage | undefined {
   const isIncompleteUsage = usage.inputTokens === undefined
     && usage.outputTokens === undefined
@@ -51,6 +57,7 @@ export function buildMessageUsage(
     ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
     ...(inputCost === undefined ? {} : { inputCost }),
     ...(outputCost === undefined ? {} : { outputCost }),
+    ...(totalCost === undefined ? {} : { totalCost }),
   }
 }
 
@@ -78,13 +85,16 @@ export function addImageGenerationCostToUsage(
 
 /**
  * Records separately-billed search-tool usage (Google Search grounding,
- * Anthropic web_search, OpenAI web_search) onto a message's usage as its
- * own line, never folded into outputCost/inputCost — the provider bills
- * this separately from tokens, and merging it in would misrepresent the
- * token cost while hiding the actual reason the bill is higher. The unit
- * count is recorded unconditionally so an operator can cross-reference it
- * against a real provider invoice even when no rate is configured; the
- * dollar cost is added only when a rate resolved.
+ * Anthropic web_search, OpenAI web_search, and the BYOK Brave/Exa tools)
+ * onto a message's usage as its own line, never folded into
+ * outputCost/inputCost — the provider bills this separately from tokens,
+ * and merging it in would misrepresent the token cost while hiding the
+ * actual reason the bill is higher. The unit count is recorded
+ * unconditionally so an operator can cross-reference it against a real
+ * provider invoice even when no rate is configured; the dollar cost is
+ * added only when a rate resolved. `searchProvider` names which one ran, so
+ * the context-menu cost row can say "Web search (Brave)" instead of a bare
+ * "Web search".
  */
 export function addSearchUsage(
   usage: MessageUsage | undefined,
@@ -101,6 +111,9 @@ export function addSearchUsage(
       ? {}
       : { searchBillingUnit: search.billingUnit }),
     ...(search.cost === undefined ? {} : { searchCost: search.cost }),
+    ...(search.provider === undefined
+      ? {}
+      : { searchProvider: search.provider }),
   }
 }
 

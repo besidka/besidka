@@ -4,6 +4,11 @@ import { extractLocalFileStorageKey } from '#shared/utils/files'
 
 const FILE_URL_ORIGIN = 'https://besidka.local'
 
+export const IMAGE_INPUT_UNSUPPORTED_MESSAGE = [
+  'This model does not support image input.',
+  'Attach a PDF or text file instead, or switch models.',
+].join(' ')
+
 export interface SafeFileLinks {
   storageKey: string
   openUrl: string

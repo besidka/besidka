@@ -85,16 +85,22 @@ export function isReasoningLevelSupported(
   return capability.levels.includes(level)
 }
 
-export function getReasoningDropdownLevels(
+export function getReasoningMenuLevels(
   capability: ReasoningCapability | null,
-): ReasoningLevel[] {
+): ReasoningEnabledLevel[] {
   if (!capability) {
-    return ['off']
+    return []
   }
 
   if (capability.mode === 'toggle') {
-    return ['off', 'medium']
+    return ['medium']
   }
 
-  return ['off', ...capability.levels]
+  return capability.levels
+}
+
+export function getReasoningDropdownLevels(
+  capability: ReasoningCapability | null,
+): ReasoningLevel[] {
+  return ['off', ...getReasoningMenuLevels(capability)]
 }

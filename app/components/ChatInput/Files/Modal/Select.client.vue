@@ -19,7 +19,8 @@
       <input
         type="radio"
         name="file_source_tabs"
-        class="tab w-1/3 min-h-11 sm:min-h-8"
+        class="tab min-h-11 sm:min-h-8"
+        :class="isImageInputSupported ? 'w-1/3' : 'w-1/2'"
         aria-label="All"
         :checked="source === 'all'"
         data-testid="files-source-all"
@@ -28,13 +29,15 @@
       <input
         type="radio"
         name="file_source_tabs"
-        class="tab w-1/3 min-h-11 sm:min-h-8"
+        class="tab min-h-11 sm:min-h-8"
+        :class="isImageInputSupported ? 'w-1/3' : 'w-1/2'"
         aria-label="Uploaded"
         :checked="source === 'upload'"
         data-testid="files-source-upload"
         @change="source = 'upload'"
       >
       <input
+        v-if="isImageInputSupported"
         type="radio"
         name="file_source_tabs"
         class="tab w-1/3 min-h-11 sm:min-h-8"
@@ -147,10 +150,13 @@
 <script setup lang="ts">
 import type { FileManagerFile, FileSourceFilter } from '~/types/file-manager'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   attachedIds: Set<string>
   initialSource?: FileSourceFilter
-}>()
+  isImageInputSupported?: boolean
+}>(), {
+  isImageInputSupported: true,
+})
 
 const emit = defineEmits<{
   attach: [files: FileManagerFile[]]
@@ -201,8 +207,18 @@ watch(() => props.initialSource, (newSource) => {
     return
   }
 
-  source.value = newSource
+  source.value = newSource === 'assistant' && !props.isImageInputSupported
+    ? 'all'
+    : newSource
 }, { immediate: true })
+
+watch(() => props.isImageInputSupported, (supported) => {
+  if (supported || source.value !== 'assistant') {
+    return
+  }
+
+  source.value = 'all'
+})
 
 const emptyStateIcon = computed<string>(() => {
   if (source.value === 'assistant') {

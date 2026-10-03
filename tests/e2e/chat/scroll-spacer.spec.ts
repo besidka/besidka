@@ -574,6 +574,19 @@ async function expectStableImageTurnPin(
 }
 
 test.describe('Image generation spacer and scroll behavior', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route(
+      '**/api/v1/profiles/keys**',
+      async (route) => {
+        await route.fulfill({
+          json: {
+            keys: [{ provider: 'google', hasKey: true }],
+          },
+        })
+      },
+    )
+  })
+
   test('Case #1: pending skeleton appears without a jump through the whole turn', async ({
     page,
   }) => {

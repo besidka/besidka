@@ -1,4 +1,28 @@
+import type {
+  GatewayId,
+  GatewayFavoriteModels,
+} from '#shared/types/gateways.d'
 import { parseError } from 'evlog'
+
+function toGatewayFavoriteModels(parsed: unknown): GatewayFavoriteModels {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return {}
+  }
+
+  const favorites: GatewayFavoriteModels = {}
+
+  for (const [gatewayId, modelIds] of Object.entries(parsed)) {
+    if (!Array.isArray(modelIds)) {
+      continue
+    }
+
+    favorites[gatewayId as GatewayId] = modelIds.filter((modelId) => {
+      return typeof modelId === 'string'
+    })
+  }
+
+  return favorites
+}
 
 export function useUserSetting() {
   const activeUserId = useState<string | null>(
@@ -33,6 +57,10 @@ export function useUserSetting() {
     'user-settings:favorite-models',
     () => null,
   )
+  const serverFavoriteGatewayModels = useState<GatewayFavoriteModels | null>(
+    'user-settings:favorite-gateway-models',
+    () => null,
+  )
   const isLoadingSettings = useState<boolean>(
     'user-settings:is-loading',
     () => false,
@@ -51,6 +79,10 @@ export function useUserSetting() {
   )
   const lastFavoriteModelsRequestToken = useState<number>(
     'user-settings:favorite-models-request-token',
+    () => 0,
+  )
+  const lastFavoriteGatewayModelsRequestToken = useState<number>(
+    'user-settings:favorite-gateway-models-request-token',
     () => 0,
   )
   const prefStorage = usePreferenceStorage()
@@ -116,6 +148,32 @@ export function useUserSetting() {
       trigger()
     },
   }))
+  const fallbackFavoriteGatewayModels = customRef<GatewayFavoriteModels>(
+    (track, trigger) => ({
+      get() {
+        track()
+
+        const raw = prefStorage.getItem('settings_favorite_gateway_models')
+
+        if (raw === null) {
+          return {}
+        }
+
+        try {
+          return toGatewayFavoriteModels(JSON.parse(raw))
+        } catch {
+          return {}
+        }
+      },
+      set(value) {
+        prefStorage.setItem(
+          'settings_favorite_gateway_models',
+          JSON.stringify(value),
+        )
+        trigger()
+      },
+    }),
+  )
 
   const reasoningExpanded = computed<boolean>(() => {
     if (
@@ -214,6 +272,27 @@ export function useUserSetting() {
     })
   })
 
+  // Intentionally NOT filtered against a catalog, unlike favoriteModels
+  // above: gateway catalogs are fetched at runtime, so any catalog-based
+  // filter here would read as "empty" while a fetch is pending and wipe the
+  // favorites it then persists. Callers scope these ids by only rendering
+  // rows a loaded catalog actually returned.
+  const favoriteGatewayModels = computed<GatewayFavoriteModels>(() => {
+    if (
+      !activeUserId.value
+      || loadedUserId.value !== activeUserId.value
+      || serverFavoriteGatewayModels.value === null
+    ) {
+      return fallbackFavoriteGatewayModels.value
+    }
+
+    return serverFavoriteGatewayModels.value
+  })
+
+  function getFavoriteGatewayModels(gatewayId: GatewayId): string[] {
+    return favoriteGatewayModels.value[gatewayId] ?? []
+  }
+
   async function syncForUser(userId: string) {
     activeUserId.value = userId
     settingsError.value = null
@@ -266,6 +345,12 @@ export function useUserSetting() {
       const nextFavoriteModels = response.favoriteModels ?? []
       serverFavoriteModels.value = nextFavoriteModels
       fallbackFavoriteModels.value = nextFavoriteModels
+
+      const nextFavoriteGatewayModels = toGatewayFavoriteModels(
+        response.favoriteGatewayModels,
+      )
+      serverFavoriteGatewayModels.value = nextFavoriteGatewayModels
+      fallbackFavoriteGatewayModels.value = nextFavoriteGatewayModels
     } catch (exception) {
       if (
         activeUserId.value !== userId
@@ -281,6 +366,7 @@ export function useUserSetting() {
       serverNotificationPromptState.value = null
       serverSidebarPinned.value = null
       serverFavoriteModels.value = null
+      serverFavoriteGatewayModels.value = null
 
       const parsedException = parseError(exception)
 
@@ -605,6 +691,88 @@ export function useUserSetting() {
     await setFavoriteModels(next)
   }
 
+  async function setFavoriteGatewayModels(
+    favoriteGatewayModels: GatewayFavoriteModels,
+  ) {
+    settingsError.value = null
+
+    const previousFallbackFavoriteGatewayModels
+      = fallbackFavoriteGatewayModels.value
+    fallbackFavoriteGatewayModels.value = favoriteGatewayModels
+
+    if (!activeUserId.value) {
+      return
+    }
+
+    const currentUserId = activeUserId.value as string
+    const previousServerFavoriteGatewayModels
+      = serverFavoriteGatewayModels.value as GatewayFavoriteModels
+
+    serverFavoriteGatewayModels.value = favoriteGatewayModels
+    isSavingSettings.value = true
+
+    const requestToken = lastFavoriteGatewayModelsRequestToken.value + 1
+    lastFavoriteGatewayModelsRequestToken.value = requestToken
+
+    try {
+      await $fetch('/api/v1/profiles/settings', {
+        method: 'PATCH',
+        body: {
+          favoriteGatewayModels,
+        },
+      })
+
+      if (
+        activeUserId.value !== currentUserId
+        || lastFavoriteGatewayModelsRequestToken.value !== requestToken
+      ) {
+        return
+      }
+
+      loadedUserId.value = currentUserId
+      serverFavoriteGatewayModels.value = favoriteGatewayModels
+      fallbackFavoriteGatewayModels.value = favoriteGatewayModels
+    } catch (exception) {
+      if (
+        activeUserId.value !== currentUserId
+        || lastFavoriteGatewayModelsRequestToken.value !== requestToken
+      ) {
+        return
+      }
+
+      serverFavoriteGatewayModels.value = previousServerFavoriteGatewayModels
+      fallbackFavoriteGatewayModels.value
+        = previousFallbackFavoriteGatewayModels
+
+      const parsedException = parseError(exception)
+
+      settingsError.value = parsedException.message
+        || 'Failed to save profile settings'
+    } finally {
+      if (lastFavoriteGatewayModelsRequestToken.value === requestToken) {
+        isSavingSettings.value = false
+      }
+    }
+  }
+
+  async function toggleFavoriteGatewayModel(
+    gatewayId: GatewayId,
+    modelId: string,
+  ) {
+    const current = favoriteGatewayModels.value
+    const currentForGateway = current[gatewayId] ?? []
+    const nextForGateway = currentForGateway.includes(modelId)
+      ? currentForGateway.filter((id) => {
+        return id !== modelId
+      })
+      : [...currentForGateway, modelId]
+
+    await setFavoriteGatewayModels({
+      ...current,
+      [gatewayId]: nextForGateway,
+    })
+  }
+
   function clearUserContext() {
     activeUserId.value = null
     loadedUserId.value = null
@@ -614,6 +782,7 @@ export function useUserSetting() {
     serverNotificationPromptState.value = null
     serverSidebarPinned.value = null
     serverFavoriteModels.value = null
+    serverFavoriteGatewayModels.value = null
     settingsError.value = null
     isLoadingSettings.value = false
     isSavingSettings.value = false
@@ -627,6 +796,8 @@ export function useUserSetting() {
     notificationPromptState,
     sidebarPinned,
     favoriteModels,
+    favoriteGatewayModels,
+    getFavoriteGatewayModels,
     isLoadingSettings,
     isSavingSettings,
     settingsError,
@@ -638,6 +809,8 @@ export function useUserSetting() {
     setSidebarPinned,
     setFavoriteModels,
     toggleFavoriteModel,
+    setFavoriteGatewayModels,
+    toggleFavoriteGatewayModel,
     clearUserContext,
   }
 }

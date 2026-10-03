@@ -1,8 +1,12 @@
+import type { GatewayId } from './gateways.d'
+import type { SupportedProviderId } from './providers.d'
+
 export type ChatErrorCode
   = 'provider-rate-limit'
     | 'provider-quota-exceeded'
     | 'provider-unavailable'
     | 'provider-auth'
+    | 'provider-model-restricted'
     | 'generation-busy'
     | 'storage-quota'
     | 'provider-safety'
@@ -17,6 +21,7 @@ export type ChatErrorCode
     | 'research-cancelled'
     | 'research-start-failed'
     | 'clarification-failed'
+    | 'assistant-empty-answer'
     | 'unknown'
 
 export interface ChatErrorPayload {
@@ -26,6 +31,6 @@ export interface ChatErrorPayload {
   fix?: string
   status?: number
   requestId?: string
-  providerId?: 'openai' | 'google' | 'anthropic'
+  providerId?: SupportedProviderId | GatewayId
   providerRequestId?: string
 }

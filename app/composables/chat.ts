@@ -5,8 +5,9 @@ import type {
   ReasoningUIPart,
   ChatStatus,
 } from 'ai'
+import type { Ref, ComputedRef } from 'vue'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
-import type { Chat, Tools } from '#shared/types/chats.d'
+import type { Chat, Message, Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type {
@@ -22,6 +23,11 @@ import {
   isVisibleGenerateImageToolPart,
 } from '~/utils/generated-images'
 import { hydrateMessageUsage } from '#shared/utils/message-metadata'
+import {
+  isPersistedEmptyAnswerFailureText,
+  isPersistedOversizedResponseFailureText,
+  parsePersistedChatFailureNotice,
+} from '#shared/utils/chat-failure-text'
 
 export interface ProcessedMessage {
   message: UIMessage
@@ -241,13 +247,63 @@ export function shouldSurfaceEmptyAssistantResponse(
   return !hasMeaningfulAssistantParts(lastMessage)
 }
 
+function hasMeaningfulPersistedAssistantParts(
+  parts: UIMessage['parts'],
+): boolean {
+  return parts.some((part) => {
+    if (part.type === 'text' || part.type === 'reasoning') {
+      return Boolean(part.text?.trim().length)
+    }
+
+    return part.type === 'file'
+      || part.type === 'source-url'
+      || (
+        part.type === 'tool-generate_image'
+        && (
+          part.state === 'output-available'
+          || part.state === 'output-error'
+        )
+      )
+  })
+}
+
+export function isFailureOnlyAssistantMessage(
+  message: UIMessage | undefined,
+): boolean {
+  if (!message || message.role !== 'assistant' || !message.parts?.length) {
+    return false
+  }
+
+  const hasUnconditionalFailureText = message.parts.some((part) => {
+    return part.type === 'text'
+      && (
+        isPersistedEmptyAnswerFailureText(part.text)
+        || isPersistedOversizedResponseFailureText(part.text)
+      )
+  })
+
+  if (hasUnconditionalFailureText) {
+    return true
+  }
+
+  const partsWithoutFailureText = message.parts.filter((part) => {
+    return part.type !== 'text'
+      || !parsePersistedChatFailureNotice(part.text)
+  })
+
+  return !hasMeaningfulPersistedAssistantParts(partsWithoutFailureText)
+}
+
 export function hasRetryableAssistantFailure(messages: UIMessage[]): boolean {
   const lastMessage = messages.at(-1)
   const previousMessage = messages.at(-2)
 
-  return lastMessage?.role === 'assistant'
-    && previousMessage?.role === 'user'
-    && !hasMeaningfulAssistantParts(lastMessage)
+  if (lastMessage?.role !== 'assistant' || previousMessage?.role !== 'user') {
+    return false
+  }
+
+  return !hasMeaningfulAssistantParts(lastMessage)
+    || isFailureOnlyAssistantMessage(lastMessage)
 }
 
 // Issue #275: iOS suspends the page on screen-lock or app-switch with no
@@ -385,6 +441,15 @@ export function hasVisibleAssistantContent(message: UIMessage | undefined) {
 
   return message.parts?.some((part) => {
     if (part.type === 'file' || isVisibleGenerateImageToolPart(part)) {
+      return true
+    }
+
+    // A non-image tool part alone (no reasoning, no text yet) must count as
+    // visible content, otherwise shouldDisplayMessage hides the whole
+    // message bubble and the reasoning box's tool-call step can never
+    // render — this is a load-bearing dependency of the tool-call-as-
+    // reasoning-step feature, not a cosmetic change.
+    if (isThinkingToolPart(part)) {
       return true
     }
 
@@ -609,10 +674,166 @@ function reportChatClientError(payload: ChatClientErrorReport) {
 const MAX_GENERATION_RETRY_ATTEMPTS = 150
 const GENERATION_RETRY_DELAY_MS = 4_000
 
+// A turn counts as active "thinking" while the last message is the
+// assistant's in-progress reply and EITHER at least one of its reasoning
+// parts is still being streamed by the provider or a non-image tool call is
+// currently in flight (never inferred from the presence of a text part
+// ALONE, since xAI/OpenAI-agentic/Google turns can reopen reasoning or call
+// tools after a gap that already produced visible text) OR no text part has
+// appeared at all yet. That second clause covers both the moment before the
+// very first token and the real multi-second gap after reasoning/tool calls
+// finish but before the model's answer starts streaming — there is no SDK
+// event to hook into for that gap, so absence of text is the only signal.
+export function isReasoningActiveForTurn(
+  status: ChatStatus,
+  lastMessage: UIMessage | undefined,
+): boolean {
+  if (status !== 'streaming') {
+    return false
+  }
+
+  if (lastMessage?.role !== 'assistant') {
+    return false
+  }
+
+  return isThinkingActive(lastMessage.parts)
+    || !hasAnyTextPart(lastMessage.parts)
+}
+
+export const REASONING_SEGMENT_GRACE_WINDOW_MS = 500
+
+export interface ReasoningSegmentTracker {
+  accumulatedMs: Ref<number>
+  segmentStartedAt: Ref<number>
+  isTurnThinkingHeld: ComputedRef<boolean>
+  reset: () => void
+}
+
+// Wraps the raw, un-debounced isTurnReasoningActive signal with hysteresis so
+// a genuinely momentary part-level gap (xAI settling one web search and
+// opening the next as two fully separate SDK events leaves a real sub-second
+// gap with nothing pending, confirmed via a live recording) doesn't fold the
+// segment and restart the "time spent thinking" clock or flip the header
+// wording several times a second. A real end of turn — status itself leaving
+// 'streaming' — still folds immediately, since there is no more turn left to
+// resume within.
+export function createReasoningSegmentTracker(
+  isTurnReasoningActive: Ref<boolean>,
+  isTurnStreaming: () => boolean,
+): ReasoningSegmentTracker {
+  const accumulatedMs = shallowRef<number>(0)
+  const segmentStartedAt = shallowRef<number>(0)
+  let pendingFoldTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  const isTurnThinkingHeld = computed<boolean>(() => {
+    return segmentStartedAt.value !== 0
+  })
+
+  function clearPendingFold(): void {
+    if (pendingFoldTimeoutId === null) {
+      return
+    }
+
+    clearTimeout(pendingFoldTimeoutId)
+    pendingFoldTimeoutId = null
+  }
+
+  function fold(endedAt: number): void {
+    accumulatedMs.value = foldReasoningSegment(
+      true,
+      accumulatedMs.value,
+      segmentStartedAt.value,
+      endedAt,
+    )
+    segmentStartedAt.value = 0
+  }
+
+  watch(isTurnReasoningActive, (isActive) => {
+    if (isActive) {
+      clearPendingFold()
+
+      if (!segmentStartedAt.value) {
+        segmentStartedAt.value = Date.now()
+      }
+
+      return
+    }
+
+    if (!isTurnStreaming()) {
+      clearPendingFold()
+      fold(Date.now())
+
+      return
+    }
+
+    // Captured now, at the false edge -- not inside the timeout callback --
+    // so a gap that is never recovered folds as ending here, not 500ms later.
+    // Using the timer's own fire time would silently pad every unrecovered
+    // gap's "time spent thinking" by up to the grace window itself.
+    const goneInactiveAt = Date.now()
+
+    clearPendingFold()
+    pendingFoldTimeoutId = setTimeout(() => {
+      pendingFoldTimeoutId = null
+      fold(goneInactiveAt)
+    }, REASONING_SEGMENT_GRACE_WINDOW_MS)
+  })
+
+  function reset(): void {
+    clearPendingFold()
+    accumulatedMs.value = 0
+    segmentStartedAt.value = 0
+  }
+
+  return {
+    accumulatedMs,
+    segmentStartedAt,
+    isTurnThinkingHeld,
+    reset,
+  }
+}
+
+// Folds a just-ended thinking segment (streaming reasoning or an in-flight
+// tool call) duration into the running total. wasActive false or a missing
+// segmentStartedAt means there was no live segment to fold (e.g. the very
+// first evaluation, or a turn that never reasoned at all), so the
+// accumulated total is returned unchanged.
+export function foldReasoningSegment(
+  wasActive: boolean,
+  accumulatedMs: number,
+  segmentStartedAt: number,
+  now: number,
+): number {
+  if (!wasActive || !segmentStartedAt) {
+    return accumulatedMs
+  }
+
+  return accumulatedMs + (now - segmentStartedAt)
+}
+
+export function findLastUserMessageTools(messages: Message[]): Tools {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index]
+
+    if (candidate?.role === 'user') {
+      return candidate.tools || []
+    }
+  }
+
+  return []
+}
+
 export function useChat(chat: MaybeRefOrGetter<Chat>) {
-  const { userModel } = useUserModel()
+  const { selection, userModel } = useUserModel()
+  const { isModelCapabilityResolved } = useChatInput()
   const isStopped = shallowRef<boolean>(false)
   const prefStorage = usePreferenceStorage()
+  // App-wide signal for whether any chat turn is actively streaming, read by
+  // the PWA Refresher to avoid auto-applying a service-worker update (and
+  // reloading the page) mid-response. Scoped to 'submitted'/'streaming'
+  // rather than isLoading's broader definition, since those are the only
+  // statuses where a reload would actually cut off in-flight generation.
+  const isChatStreaming = useState<boolean>('chat-streaming', () => false)
   const input = customRef<string>((track, trigger) => ({
     get() {
       track()
@@ -631,23 +852,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
 
   chat = toValue(chat)
 
-  const tools = shallowRef<Tools>(
-    chat.messages[chat.messages.length - 1]?.tools || [],
-  )
-  const savedReasoningLevel = customRef<ReasoningLevel>((track, trigger) => ({
-    get() {
-      track()
-
-      return (prefStorage.getItem('settings_reasoning_level') as ReasoningLevel)
-        ?? 'off'
-    },
-    set(value) {
-      prefStorage.setItem('settings_reasoning_level', value)
-      trigger()
-    },
-  }))
+  const tools = shallowRef<Tools>(findLastUserMessageTools(chat.messages))
   const reasoning = shallowRef<ReasoningLevel>(
-    normalizeReasoningLevel(savedReasoningLevel.value),
+    normalizeReasoningLevel(prefStorage.getItem('settings_reasoning_level')),
   )
   const pendingClarification = shallowRef<
     ResearchClarificationResponse | null
@@ -708,12 +915,17 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       prepareSendMessagesRequest({ messages }) {
         const lastMessage = messages[messages.length - 1]
 
+        const canSendCapabilityGatedFields = isModelCapabilityResolved.value
+
         return {
           body: {
             model: userModel.value,
-            tools: tools.value,
+            gateway: getSelectionGatewayId(selection.value),
+            tools: canSendCapabilityGatedFields ? tools.value : [],
             messages: [lastMessage],
-            reasoning: reasoning.value,
+            reasoning: canSendCapabilityGatedFields
+              ? reasoning.value
+              : 'off',
           },
         }
       },
@@ -864,9 +1076,35 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     },
   })
 
+  watch(sdkStatus, (status) => {
+    isChatStreaming.value = status === 'submitted' || status === 'streaming'
+  }, { immediate: true })
+
   const renderableMessages = computed<UIMessage[]>(() => {
     return getRenderableChatMessages(sdkMessages.value)
   })
+
+  const isTurnReasoningActive = computed<boolean>(() => {
+    return isReasoningActiveForTurn(sdkStatus.value, sdkMessages.value.at(-1))
+  })
+
+  // Sum of completed reasoning segments for the current turn, plus the live
+  // segment's anchor — together they let Reasoning.vue show genuine "time
+  // spent thinking" rather than wall-clock-since-turn-start, even for
+  // providers (xAI, OpenAI agentic tool loops, Google) that reopen reasoning
+  // after a tool-calling gap. Tracked here rather than in Reasoning.vue
+  // because the recovery-poll loop can destroy/recreate that component mid
+  // segment, and only this page-lifetime composable is guaranteed to observe
+  // the segment's true start and end.
+  const reasoningSegmentTracker = createReasoningSegmentTracker(
+    isTurnReasoningActive,
+    () => sdkStatus.value === 'streaming',
+  )
+  const currentTurnReasoningAccumulatedMs
+    = reasoningSegmentTracker.accumulatedMs
+  const currentReasoningSegmentStartedAt
+    = reasoningSegmentTracker.segmentStartedAt
+  const isTurnThinkingHeld = reasoningSegmentTracker.isTurnThinkingHeld
 
   const chatSdk = {
     get messages() {
@@ -1054,6 +1292,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
       // "still generating" poll loop as a live recovery, not just a replay.
       isAwaitingGeneration.value = true
       currentTurnStartedAt.value = Date.now()
+      reasoningSegmentTracker.reset()
       wakeLock.acquire()
       chatSdk.regenerate()
     }
@@ -1066,8 +1305,10 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener('focus', recoverIfInterrupted)
     clearScheduledGenerationRetry()
+    reasoningSegmentTracker.reset()
     disposeChatResearch()
     wakeLock.release()
+    isChatStreaming.value = false
   })
 
   useSetChatTitle(chat.title)
@@ -1221,6 +1462,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
+    reasoningSegmentTracker.reset()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
 
@@ -1245,6 +1487,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     isAwaitingGeneration.value = false
     hadInterruptionThisTurn = false
     currentTurnStartedAt.value = 0
+    reasoningSegmentTracker.reset()
     wakeLock.release()
     chatSdk.stop()
     nuxtApp.callHook('chat:stop')
@@ -1263,6 +1506,7 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     hadInterruptionThisTurn = false
     pendingRetryAttempts = 0
     currentTurnStartedAt.value = Date.now()
+    reasoningSegmentTracker.reset()
     clearScheduledGenerationRetry()
     wakeLock.acquire()
     chatSdk.regenerate()
@@ -1340,13 +1584,6 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     return 'off'
   }
 
-  watch(reasoning, (level) => {
-    savedReasoningLevel.value = level
-  }, {
-    immediate: true,
-    flush: 'post',
-  })
-
   return {
     chatSdk,
     input,
@@ -1365,6 +1602,9 @@ export function useChat(chat: MaybeRefOrGetter<Chat>) {
     shouldDisplayMessage,
     files,
     currentTurnStartedAt,
+    currentTurnReasoningAccumulatedMs,
+    currentReasoningSegmentStartedAt,
+    isTurnThinkingHeld,
     pendingClarification,
     pendingResearchTopic,
     isClarifying,

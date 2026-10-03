@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import * as schema from '~~/server/db/schema'
 import {
-  chatToolSchema,
+  chatToolsSchema,
   userMessagePartsSchema,
 } from '~~/server/utils/chats/request-schema'
 import { insertMessageWithPublicId } from '~~/server/utils/chats/insert-message'
@@ -18,7 +18,7 @@ import {
 
 const rules = z.object({
   parts: userMessagePartsSchema,
-  tools: z.array(chatToolSchema),
+  tools: chatToolsSchema,
   reasoning: z.enum(['off', 'low', 'medium', 'high']).default('off'),
   projectId: z.string().nonempty().optional(),
   model: z.string().nonempty().optional(),

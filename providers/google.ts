@@ -137,6 +137,7 @@ export default {
         output: ['text'],
       },
       tools: ['web_search', 'image_generation'],
+      toolCall: true,
       reasoning: {
         mode: 'levels',
         levels: ['low', 'high'],

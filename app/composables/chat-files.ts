@@ -1,4 +1,4 @@
-import type { ModelRef } from 'vue'
+import type { ModelRef, Ref } from 'vue'
 import type { FileMetadata } from '#shared/types/files.d'
 import { uploadWithProgress } from '~/utils/upload-with-progress'
 
@@ -25,7 +25,10 @@ function delay(ms: number): Promise<void> {
   })
 }
 
-export function useChatFiles(attachedFiles: ModelRef<FileMetadata[]>) {
+export function useChatFiles(
+  attachedFiles: ModelRef<FileMetadata[]>,
+  isImageInputSupported: Ref<boolean>,
+) {
   const nuxtApp = useNuxtApp()
   const uploadingFiles = ref<Map<string, UploadingFile>>(new Map())
   const uploadQueue = ref<string[]>([])
@@ -156,9 +159,37 @@ export function useChatFiles(attachedFiles: ModelRef<FileMetadata[]>) {
   }
 
   /**
+   * Central choke point for every upload path (the modal, the full-page
+   * drop zone, and clipboard paste) — filtering here instead of in each
+   * caller guarantees an image never reaches the server for a model that
+   * can't take it, regardless of which affordance the user picked.
+   */
+  function rejectUnsupportedImages(candidateFiles: File[]): File[] {
+    if (isImageInputSupported.value) {
+      return candidateFiles
+    }
+
+    const allowedFiles = candidateFiles.filter((file) => {
+      return !isImageFile(file.type)
+    })
+
+    if (allowedFiles.length < candidateFiles.length) {
+      useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+    }
+
+    return allowedFiles
+  }
+
+  /**
    * Add files to upload queue
    */
-  async function uploadFiles(newFiles: File[]) {
+  async function uploadFiles(candidateFiles: File[]) {
+    const newFiles = rejectUnsupportedImages(candidateFiles)
+
+    if (newFiles.length === 0) {
+      return
+    }
+
     const {
       maxFilesPerMessage,
       maxMessageFilesBytes,
@@ -267,7 +298,14 @@ export function useChatFiles(attachedFiles: ModelRef<FileMetadata[]>) {
       }
 
       if (response.data) {
-        attachedFiles.value.push(response.data)
+        if (
+          !isImageInputSupported.value
+          && isImageFile(response.data.type)
+        ) {
+          useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+        } else {
+          attachedFiles.value.push(response.data)
+        }
       }
 
       emitFilesUploaded()

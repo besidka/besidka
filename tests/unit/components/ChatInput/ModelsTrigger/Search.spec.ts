@@ -101,4 +101,15 @@ describe('ChatInput/ModelsTrigger/Search', () => {
       wrapper.get('[data-testid="models-picker-search"]').element,
     )
   })
+
+  it('exposes a focus method the parent picker can call on reopen', async () => {
+    const wrapper = await mountSearch()
+    const input = wrapper.get('[data-testid="models-picker-search"]')
+
+    expect(document.activeElement).not.toBe(input.element)
+
+    wrapper.vm.focus()
+
+    expect(document.activeElement).toBe(input.element)
+  })
 })

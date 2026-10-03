@@ -11,7 +11,22 @@ export const keys = snakeCase.table(
     userId: integer({ mode: 'number' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    provider: text({ enum: ['openai', 'anthropic', 'google'] }).notNull(),
+    provider: text({
+      enum: [
+        'openai',
+        'anthropic',
+        'google',
+        'xai',
+        'deepseek',
+        'moonshotai',
+        'qwen',
+        'brave',
+        'exa',
+        'vercel-gateway',
+        'cloudflare-gateway',
+        'openrouter',
+      ],
+    }).notNull(),
     apiKey: text().notNull(),
   },
   table => [

@@ -57,6 +57,10 @@ export function isProposableTemplate(model) {
     return false
   }
 
+  if (model.reasoningAlwaysOn) {
+    return false
+  }
+
   const priceKeys = Object.keys(model.price)
   const hasOnlyTokensPrice = priceKeys.length === 1
     && priceKeys[0] === 'tokens'
@@ -309,7 +313,8 @@ export function findSuccessorProposals({ providers, catalog }) {
   const familiesNeedingHuman = []
 
   for (const provider of providers) {
-    const remoteModels = catalog[provider.id]?.models ?? {}
+    const modelsDevKey = provider.modelsDevKey ?? provider.id
+    const remoteModels = catalog[modelsDevKey]?.models ?? {}
     const rawFamilyTemplates = buildFamilyTemplates(provider)
     const familyTemplates = new Map()
 

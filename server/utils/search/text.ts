@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { parsePersistedChatFailureNotice } from '#shared/utils/chat-failure-text'
 
 export const SEARCH_APOSTROPHE = 'ʼ'
 export const MAX_INDEXED_BODY_LENGTH = 20000
@@ -16,7 +17,12 @@ const PRE_NORMALIZE_LENGTH_MULTIPLIER = 2
 /**
  * Extracts only `type === 'text'` parts, mirroring toMessageText() in
  * server/utils/projects/memory.ts. Tool calls, reasoning, file refs and
- * step-start parts are excluded on purpose.
+ * step-start parts are excluded on purpose. A persisted synthetic failure
+ * notice (empty-answer, oversized-response, or image-generation — see
+ * `parsePersistedChatFailureNotice`) is excluded too, so it never becomes
+ * searchable content: it is not something the user wrote or asked for, and
+ * indexing it would surface the same boilerplate notice across every failed
+ * turn.
  */
 export function extractMessageSearchText(parts: unknown): string {
   if (!Array.isArray(parts)) {
@@ -27,6 +33,10 @@ export function extractMessageSearchText(parts: unknown): string {
 
   for (const part of parts as UIMessage['parts']) {
     if (part.type !== 'text' || !part.text?.trim()) {
+      continue
+    }
+
+    if (parsePersistedChatFailureNotice(part.text)) {
       continue
     }
 

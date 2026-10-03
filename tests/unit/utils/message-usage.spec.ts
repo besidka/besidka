@@ -1,5 +1,6 @@
 import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it } from 'vitest'
+import type { MessageUsage } from '../../../shared/types/message-usage.d'
 import type { SearchUsage } from '../../../server/utils/ai/search-usage'
 import {
   addImageGenerationCostToUsage,
@@ -132,6 +133,108 @@ describe('buildMessageUsage', () => {
 
     expect(result).not.toHaveProperty('reasoningTokens')
     expect(result).not.toHaveProperty('cachedInputTokens')
+  })
+
+  it('never sets totalCost, which only a gateway send path writes', () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    expect(result).not.toHaveProperty('totalCost')
+  })
+
+  it('sets totalCost from the 4th argument a gateway send path supplies',
+    () => {
+      const usage = createUsage({
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+      })
+
+      const result = buildMessageUsage(
+        usage,
+        'anthropic/claude-opus-5',
+        'openrouter',
+        0.0042,
+      )
+
+      expect(result?.totalCost).toBe(0.0042)
+    })
+
+  it('leaves the computed input/output split untouched when a gateway '
+    + 'totalCost is supplied for a model that also has curated pricing',
+  () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+      0.0042,
+    )
+
+    expect(result?.totalCost).toBe(0.0042)
+    expect(result?.inputCost).toBe(
+      (10 * PRICED_MODEL_INPUT_PER_MILLION) / 1_000_000,
+    )
+    expect(result?.outputCost).toBe(
+      (20 * PRICED_MODEL_OUTPUT_PER_MILLION) / 1_000_000,
+    )
+  })
+
+  it('omitting the 4th argument is byte-identical to passing undefined',
+    () => {
+      const usage = createUsage({
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+      })
+
+      const withoutArgument = buildMessageUsage(
+        usage,
+        PRICED_MODEL_ID,
+        PRICED_PROVIDER_ID,
+      )
+      const withUndefined = buildMessageUsage(
+        usage,
+        PRICED_MODEL_ID,
+        PRICED_PROVIDER_ID,
+        undefined,
+      )
+
+      expect(withUndefined).toEqual(withoutArgument)
+      expect(withUndefined).not.toHaveProperty('totalCost')
+    })
+
+  it('omits totalCost for an unpriced gateway model rather than '
+    + 'fabricating a zero', () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      'anthropic/claude-opus-5',
+      'openrouter',
+    )
+
+    expect(result).not.toHaveProperty('totalCost')
+    expect(result).not.toHaveProperty('inputCost')
+    expect(result).not.toHaveProperty('outputCost')
   })
 })
 
@@ -271,6 +374,30 @@ describe('addSearchUsage', () => {
     expect(result?.searchCost).toBe(0.04)
   })
 
+  it('sets searchProvider when the search usage carries one', () => {
+    const usage = buildBaseUsage()
+    const braveSearch: SearchUsage = {
+      units: 1,
+      billingUnit: 'search',
+      cost: 0.005,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+      provider: 'brave',
+    }
+
+    const result = addSearchUsage(usage, braveSearch)
+
+    expect(result?.searchProvider).toBe('brave')
+  })
+
+  it('omits searchProvider when the search usage does not carry one', () => {
+    const usage = buildBaseUsage()
+
+    const result = addSearchUsage(usage, querySearch)
+
+    expect(result && 'searchProvider' in result).toBe(false)
+  })
+
   it('returns usage unchanged for undefined usage', () => {
     const result = addSearchUsage(undefined, querySearch)
 
@@ -384,5 +511,45 @@ describe('addResearchCostEstimateToUsage', () => {
     )
 
     expect(result).toBeUndefined()
+  })
+})
+
+describe('totalCost passthrough', () => {
+  function buildGatewayUsage(): MessageUsage {
+    return {
+      model: 'openai/gpt-5',
+      provider: 'openrouter',
+      inputTokens: 1000,
+      outputTokens: 500,
+      totalTokens: 1500,
+      totalCost: 0.42,
+    }
+  }
+
+  it('addSearchUsage preserves a blended totalCost a gateway send already '
+    + 'wrote, since it never derives its own decomposition', () => {
+    const usage = buildGatewayUsage()
+    const braveSearch: SearchUsage = {
+      units: 1,
+      billingUnit: 'search',
+      cost: 0.005,
+      googleQueries: undefined,
+      googleGroundedSteps: undefined,
+      provider: 'brave',
+    }
+
+    const result = addSearchUsage(usage, braveSearch)
+
+    expect(result?.totalCost).toBe(0.42)
+    expect(result?.searchCost).toBe(0.005)
+  })
+
+  it('addImageGenerationCostToUsage preserves a blended totalCost '
+    + 'untouched', () => {
+    const usage = buildGatewayUsage()
+
+    const result = addImageGenerationCostToUsage(usage, 0.067)
+
+    expect(result?.totalCost).toBe(0.42)
   })
 })

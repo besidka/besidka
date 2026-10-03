@@ -142,6 +142,16 @@ describe('isProposableTemplate', () => {
 
     expect(isProposableTemplate(template)).toBe(true)
   })
+
+  it('rejects a template with reasoningAlwaysOn even when otherwise '
+    + 'eligible', () => {
+    const template = buildTemplate({
+      reasoning: undefined,
+      reasoningAlwaysOn: true,
+    })
+
+    expect(isProposableTemplate(template)).toBe(false)
+  })
 })
 
 describe('findSuccessorProposals', () => {
@@ -225,6 +235,49 @@ describe('findSuccessorProposals', () => {
       declinedSkips: [],
       familiesNeedingHuman: [],
     })
+  })
+
+  it('resolves the catalog entry via modelsDevKey when it differs from '
+    + 'the provider id', () => {
+    const provider = {
+      id: 'widgetco',
+      modelsDevKey: 'widgetco-upstream',
+      models: [gemini35Flash, gemini36Flash, gemini37Flash],
+    }
+    const catalog = {
+      'widgetco-upstream': primaryGoogleCatalog.google,
+    }
+
+    const result = findSuccessorProposals({
+      providers: [provider],
+      catalog,
+    })
+
+    expect(result.proposals).toEqual([{
+      providerId: 'widgetco',
+      templateId: 'gemini-3.7-flash',
+      modelId: 'gemini-3.8-flash',
+      template: gemini37Flash,
+    }])
+  })
+
+  it('proposes nothing when a provider has a modelsDevKey but the '
+    + 'catalog is only keyed by its plain id', () => {
+    const provider = {
+      id: 'widgetco',
+      modelsDevKey: 'widgetco-upstream',
+      models: [gemini35Flash, gemini36Flash, gemini37Flash],
+    }
+    const catalog = {
+      widgetco: primaryGoogleCatalog.google,
+    }
+
+    const result = findSuccessorProposals({
+      providers: [provider],
+      catalog,
+    })
+
+    expect(result.proposals).toEqual([])
   })
 
   it('proposes nothing once the successor is already curated', () => {

@@ -49,6 +49,7 @@
               ref="selectTabRef"
               :attached-ids="attachedIds"
               :initial-source="selectSource"
+              :is-image-input-supported="isImageInputSupported"
               class="flex-1 min-h-0"
               @attach="onFilesAttached"
               @detach="onFilesDetached"
@@ -56,6 +57,7 @@
             />
             <ChatInputFilesModalUpload
               v-else-if="activeTab === 'upload'"
+              :is-image-input-supported="isImageInputSupported"
               @upload="onFilesUploaded"
             />
           </KeepAlive>
@@ -81,9 +83,12 @@ type SelectTabRef = {
   fetchFiles: (reset?: boolean) => Promise<boolean>
 }
 
-defineProps<{
+withDefaults(defineProps<{
   attachedIds: Set<string>
-}>()
+  isImageInputSupported?: boolean
+}>(), {
+  isImageInputSupported: true,
+})
 
 const emit = defineEmits<{
   attach: [files: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[]]

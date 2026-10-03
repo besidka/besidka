@@ -3,8 +3,8 @@
     ref="dropdown"
     class="dropdown dropdown-top"
     :class="{
-      'dropdown-end': isWebSearchEnabled,
-      'max-xs:dropdown-start xs:dropdown-end': !isWebSearchEnabled
+      'dropdown-end': align === 'end',
+      'max-xs:dropdown-start xs:dropdown-end': align !== 'end'
     }"
   >
     <summary
@@ -16,14 +16,14 @@
         'btn-circle': !isReasoningActive,
       }"
       aria-label="Set reasoning level"
-      :title="`Reasoning: ${reasoning}`"
+      :title="`Reasoning: ${reasoningLabel}`"
     >
       <component
         :is="getIconComponent(reasoning)"
         class="size-4 text-current"
       />
       <span v-if="isReasoningActive" class="capitalize">
-        {{ reasoning }}
+        {{ reasoningLabel }}
       </span>
     </summary>
     <ClientOnly>
@@ -50,7 +50,7 @@ import type {
 
 const props = defineProps<{
   levels: ReasoningEnabledLevel[]
-  isWebSearchEnabled?: boolean
+  align?: 'start' | 'end'
 }>()
 
 const reasoning = defineModel<ReasoningLevel>('reasoning', {
@@ -64,6 +64,18 @@ const isDropdownHovered = useElementHover(dropdown)
 
 const isReasoningActive = computed<boolean>(() => {
   return reasoning.value !== 'off'
+})
+
+const isToggleMode = computed<boolean>(() => {
+  return props.levels.length === 1
+})
+
+const reasoningLabel = computed<ReasoningLevel | 'On'>(() => {
+  if (isToggleMode.value && isReasoningActive.value) {
+    return 'On'
+  }
+
+  return reasoning.value
 })
 
 onClickOutside(dropdown, () => {

@@ -122,6 +122,7 @@
                   v-if="!isDeepResearchModel"
                   hydrate-on-idle
                   :files="files"
+                  :is-image-input-supported="isImageInputSupported"
                   @detach-all="files = []"
                   @open="openFilesModal"
                 />
@@ -150,62 +151,21 @@
                   }"
                   @click="toggleImageGeneration"
                 />
-                <UiButton
-                  v-if="isWebSearchSupported && !isDeepResearchModel"
-                  mode="accent"
-                  :ghost="isWebSearchEnabled ? undefined : true"
-                  :circle="!isWebSearchEnabled"
-                  icon-name="lucide:globe"
-                  :icon-size="16"
-                  :icon-only="!isWebSearchEnabled"
-                  :title="isWebSearchEnabled
-                    ? 'Disable web search'
-                    : 'Enable web search'
-                  "
-                  text="Search"
-                  tooltip-position="top"
-                  size="xs"
-                  class="rounded-full"
-                  :class="{
-                    'pl-[5px] btn-active': isWebSearchEnabled,
-                  }"
-                  @click="toggleWebSearch"
+                <LazyChatInputWebSearchTrigger
+                  v-if="isWebSearchTriggerVisible"
+                  :selected="selectedWebSearchProvider"
+                  :options="webSearchProviderOptions"
+                  :is-tool-calling-supported="isToolCallingSupported"
+                  :align="toolbarDropdownAlign"
+                  @select-provider="selectWebSearchProvider"
                 />
-                <template v-if="!isDeepResearchModel">
-                  <LazyChatInputReasoningTrigger
-                    v-if="isReasoningSupported && reasoningMode === 'levels'"
-                    v-model:reasoning="reasoning"
-                    :is-web-search-enabled="isWebSearchEnabled"
-                    :levels="reasoningCapability?.mode === 'levels'
-                      ? reasoningCapability.levels
-                      : []
-                    "
-                  />
-                  <UiButton
-                    v-else-if="isReasoningSupported"
-                    mode="accent"
-                    :ghost="isReasoningActive ? undefined : true"
-                    :circle="!isReasoningActive"
-                    :icon-only="!isReasoningActive"
-                    text="Reasoning"
-                    :icon-size="16"
-                    :title="isReasoningActive
-                      ? 'Disable reasoning'
-                      : 'Enable reasoning'
-                    "
-                    tooltip-position="top"
-                    size="xs"
-                    class="rounded-full pl-[5px]"
-                    :class="{
-                      'btn-active': isReasoningActive,
-                    }"
-                    @click="toggleReasoning"
-                  >
-                    <template #icon>
-                      <SvgoThinkMedium class="size-4 text-current" />
-                    </template>
-                  </UiButton>
-                </template>
+                <LazyChatInputReasoningTrigger
+                  v-if="isReasoningTriggerVisible"
+                  :reasoning="reasoning"
+                  :align="toolbarDropdownAlign"
+                  :levels="reasoningMenuLevels"
+                  @update:reasoning="selectReasoningLevel"
+                />
                 <LazyChatInputDeepResearchTrigger
                   v-if="isDeepResearchModel"
                   :research="researchConfig"
@@ -216,30 +176,28 @@
                 hydrate-on-idle
                 :is-web-search-supported="isWebSearchSupported"
                 :is-web-search-enabled="isWebSearchEnabled"
+                :is-tool-calling-supported="isToolCallingSupported"
+                :web-search-options="webSearchProviderOptions"
+                :selected-web-search-provider="selectedWebSearchProvider"
                 :is-image-generation-supported="isImageGenerationSupported"
                 :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-image-generation-required="isImageGenerationRequired"
                 :is-reasoning-supported="isReasoningSupported"
                 :is-reasoning-active="isReasoningActive"
-                :reasoning-mode="reasoningMode"
                 :reasoning="reasoning"
-                :levels="reasoningCapability?.mode === 'levels'
-                  ? reasoningCapability.levels
-                  : []
-                "
+                :levels="reasoningMenuLevels"
                 :is-deep-research-model="isDeepResearchModel"
                 :research="researchConfig"
                 :display-project-picker="shouldDisplayProjectPicker"
                 :project-context="projectContext"
                 :files-count="files.length"
-                @toggle-web-search="toggleWebSearch"
+                @select-web-search-provider="selectWebSearchProvider"
                 @toggle-image-generation="toggleImageGeneration"
                 @open-project-picker="emit('open-project-picker')"
                 @clear-project-context="emit('clear-project-context')"
                 @open-files-select="openFilesModal('select')"
                 @open-files-upload="openFilesModal('upload')"
-                @select-reasoning-level="reasoning = $event"
-                @toggle-reasoning="toggleReasoning"
+                @select-reasoning-level="selectReasoningLevel"
               />
             </div>
             <div class="flex items-center gap-2">
@@ -260,11 +218,11 @@
                 mode="accent"
                 soft
                 circle
-                title="Regenerate"
+                :title="regenerateButtonTitle"
                 icon-name="lucide:refresh-ccw"
                 icon-only
                 tooltip-position="left"
-                @click="regenerate"
+                @click="onRegenerate"
               />
               <UiButton
                 v-show="!displayStop && !canShowRegenerate"
@@ -300,6 +258,7 @@
     <LazyChatInputFilesModal
       ref="filesModalRef"
       :attached-ids="attachedIds"
+      :is-image-input-supported="isImageInputSupported"
       @attach="onFilesAttached"
       @detach="onFilesDetached"
       @upload="uploadFiles"
@@ -311,7 +270,9 @@ import type { ChatStatus } from 'ai'
 import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { isWebSearchTool } from '#shared/utils/message-metadata'
 import type { FileSourceFilter } from '~/types/file-manager'
+import type { WebSearchSelection } from '~/types/web-search'
 import { LazyChatInputFilesModal } from '#components'
 
 const props = defineProps<{
@@ -342,17 +303,25 @@ const route = useRoute()
 const { isDesktop } = useDevice()
 const {
   isWebSearchSupported,
+  isToolCallingSupported,
+  webSearchProviderOptions,
   isImageGenerationSupported,
   isImageGenerationRequired,
+  isImageInputSupported,
   isReasoningSupported,
   reasoningCapability,
-  reasoningMode,
+  reasoningMenuLevels,
   isDeepResearchModel,
   researchConfig,
+  isSelectedModelKeyless,
+  selectedModelKeyOwnerLabel,
+  isModelCapabilityResolved,
+  isSelectedModelUnavailable,
 } = useChatInput()
 const { hasSafeAreaBottom } = useDeviceSafeArea()
 const { visible } = useAnimateAppear()
 const nuxtApp = useNuxtApp()
+const prefStorage = usePreferenceStorage()
 
 const message = defineModel<string>('message', {
   default: '',
@@ -374,7 +343,71 @@ const isReasoningActive = computed<boolean>(() => {
   return isReasoningEnabled(reasoning.value)
 })
 
+const missingKeyWarning = computed<string>(() => {
+  return `Add your ${selectedModelKeyOwnerLabel.value} API key to send this message`
+})
+
+const unavailableModelWarning = computed<string>(() => {
+  return `This model is no longer available on `
+    + `${selectedModelKeyOwnerLabel.value}. Pick another model.`
+})
+
+const regenerateButtonTitle = computed<string>(() => {
+  if (isSelectedModelUnavailable.value) {
+    return unavailableModelWarning.value
+  }
+
+  if (isSelectedModelKeyless.value) {
+    return missingKeyWarning.value
+  }
+
+  return 'Regenerate'
+})
+
+/**
+ * Kept clickable rather than disabled: a dead button explains nothing on
+ * touch, where the title never surfaces, and this is a state the user has to
+ * leave deliberately by adding a key.
+ */
+function warnAboutMissingKey() {
+  useWarningMessage(
+    `${missingKeyWarning.value}.`,
+    'Open Profile → API Keys to add it, or pick a model you have a key for.',
+  )
+}
+
+/**
+ * Mirrors `warnAboutMissingKey()` above: kept clickable rather than disabled,
+ * and the user leaves this state deliberately by picking another model.
+ */
+function warnAboutUnavailableModel() {
+  useWarningMessage(
+    unavailableModelWarning.value,
+    'Open the model picker and choose another model to continue.',
+  )
+}
+
+function onRegenerate() {
+  if (isSelectedModelUnavailable.value) {
+    return warnAboutUnavailableModel()
+  }
+
+  if (isSelectedModelKeyless.value) {
+    return warnAboutMissingKey()
+  }
+
+  props.regenerate()
+}
+
 const sendButtonTitle = computed<string>(() => {
+  if (isSelectedModelUnavailable.value) {
+    return unavailableModelWarning.value
+  }
+
+  if (isSelectedModelKeyless.value) {
+    return missingKeyWarning.value
+  }
+
   if (props.researchJobActive) {
     return 'Research in progress — please wait'
   }
@@ -464,11 +497,32 @@ const {
   cancelAllUploads,
   removeAttachedFile,
   removeAllFiles,
-} = useChatFiles(files)
+} = useChatFiles(files, isImageInputSupported)
+
+watch(isImageInputSupported, (supported) => {
+  if (supported) {
+    return
+  }
+
+  const remainingFiles = files.value.filter((file) => {
+    return !isImageFile(file.type)
+  })
+
+  if (remainingFiles.length === files.value.length) {
+    return
+  }
+
+  files.value = remainingFiles
+  useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+}, { flush: 'post' })
 
 watch(
-  [isReasoningSupported, reasoningCapability],
-  ([supported, capability]) => {
+  [isReasoningSupported, reasoningCapability, isModelCapabilityResolved],
+  ([supported, capability, isResolved]) => {
+    if (!isResolved) {
+      return
+    }
+
     if (!supported || !capability) {
       reasoning.value = 'off'
 
@@ -487,19 +541,25 @@ watch(
 
 watch(
   [
-    isWebSearchSupported,
+    webSearchProviderOptions,
     isImageGenerationSupported,
     isImageGenerationRequired,
+    isModelCapabilityResolved,
   ],
   ([
-    webSearchSupported,
+    searchOptions,
     imageGenerationSupported,
     imageGenerationRequired,
+    isResolved,
   ], [
     ,
     ,
     wasImageGenerationRequired,
-  ] = [undefined, undefined, undefined]) => {
+  ] = [undefined, undefined, undefined, undefined]) => {
+    if (!isResolved) {
+      return
+    }
+
     if (imageGenerationRequired) {
       tools.value = ['image_generation']
 
@@ -513,8 +573,12 @@ watch(
     }
 
     tools.value = tools.value.filter((tool) => {
-      if (tool === 'web_search') {
-        return webSearchSupported && !tools.value.includes('image_generation')
+      if (isWebSearchTool(tool)) {
+        const option = searchOptions.find((candidate) => {
+          return candidate.value === tool
+        })
+
+        return !!option?.enabled && !tools.value.includes('image_generation')
       }
 
       if (tool === 'image_generation') {
@@ -542,12 +606,65 @@ const canShowRegenerate = computed<boolean>(() => {
   return !!props.displayRegenerate && !hasMessage.value
 })
 
+const selectedWebSearchProvider = computed<WebSearchSelection>(() => {
+  if (tools.value.includes('web_search_brave')) {
+    return 'web_search_brave'
+  }
+
+  if (tools.value.includes('web_search_exa')) {
+    return 'web_search_exa'
+  }
+
+  if (tools.value.includes('web_search')) {
+    return 'web_search'
+  }
+
+  return 'off'
+})
+
 const isWebSearchEnabled = computed<boolean>(() => {
-  return tools.value.includes('web_search')
+  return selectedWebSearchProvider.value !== 'off'
 })
 
 const isImageGenerationEnabled = computed<boolean>(() => {
   return tools.value.includes('image_generation')
+})
+
+/**
+ * Mirrors direct providers: while image generation is active (toggled by
+ * the user or forced by `isImageGenerationRequired` for image-only models),
+ * neither the reasoning nor the web-search trigger can produce a request
+ * the provider would accept alongside `image_generation`, so both are
+ * hidden rather than shown disabled. `isImageGenerationRequired` is checked
+ * directly (not only through `isImageGenerationEnabled`) so an image-only
+ * model hides both triggers the same render its capability resolves,
+ * rather than one flush later once the tools-forcing watcher catches up.
+ */
+const isReasoningTriggerVisible = computed<boolean>(() => {
+  return isReasoningSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
+})
+
+const isWebSearchTriggerVisible = computed<boolean>(() => {
+  return (isWebSearchSupported.value || isToolCallingSupported.value)
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
+})
+
+/**
+ * The single alignment source both the web-search and reasoning dropdowns
+ * read, replacing the old boolean that only the web-search toggle used to
+ * set. It generalises the same "does a wider control sit before me"
+ * signal (now web search OR image generation) to whichever pair of
+ * dropdowns ends up adjacent in the toolbar.
+ */
+const toolbarDropdownAlign = computed<'start' | 'end'>(() => {
+  return isImageGenerationEnabled.value || isWebSearchEnabled.value
+    ? 'end'
+    : 'start'
 })
 
 const textareaPlaceholder = computed<string>(() => {
@@ -596,26 +713,117 @@ watchPostEffect(() => {
   nuxtApp.callHook('chat-input:visibility-changed', isChatInputVisibleOnScroll.value)
 })
 
-function toggleWebSearch() {
+function selectWebSearchProvider(option: WebSearchSelection) {
   if (isImageGenerationRequired.value) {
     return
   }
 
-  if (!isWebSearchEnabled.value) {
-    tools.value = [
-      ...tools.value.filter((tool) => {
-        return tool !== 'image_generation'
-      }),
-      'web_search',
-    ]
+  prefStorage.setItem('settings_web_search_tool', option)
+
+  const withoutSearch = tools.value.filter((tool) => {
+    return !isWebSearchTool(tool)
+  })
+
+  if (option === 'off') {
+    tools.value = withoutSearch
 
     return
   }
 
-  tools.value = tools.value.filter((tool) => {
-    return tool !== 'web_search'
-  })
+  tools.value = [
+    ...withoutSearch.filter((tool) => {
+      return tool !== 'image_generation'
+    }),
+    option,
+  ]
 }
+
+function selectReasoningLevel(level: ReasoningLevel) {
+  reasoning.value = level
+  prefStorage.setItem('settings_reasoning_level', level)
+}
+
+/**
+ * Restores the live reasoning level after image generation turns off,
+ * without touching `settings_reasoning_level` — only an explicit pick
+ * through `selectReasoningLevel()` persists a new default. Validated
+ * against the current model's capability here rather than left to the
+ * separate capability watcher above, since that watcher only reacts to its
+ * own tracked sources and would not re-run just because `reasoning.value`
+ * changed.
+ */
+function restoreLiveReasoningLevel() {
+  const savedLevel = normalizeReasoningLevel(
+    prefStorage.getItem('settings_reasoning_level'),
+  )
+
+  reasoning.value = isReasoningLevelSupported(
+    savedLevel,
+    reasoningCapability.value,
+  )
+    ? savedLevel
+    : 'off'
+}
+
+/**
+ * Mirrors `restoreLiveReasoningLevel()` for web search: safe to restore
+ * without a persisted-default write because it re-validates the saved
+ * option against the model's current `webSearchProviderOptions` itself,
+ * rather than relying on the unrelated tools-filtering watcher to catch an
+ * unsupported restore later.
+ */
+function restoreLiveWebSearchSelection() {
+  if (tools.value.some(isWebSearchTool)) {
+    return
+  }
+
+  const savedOption = prefStorage.getItem('settings_web_search_tool')
+
+  if (!isWebSearchTool(savedOption)) {
+    return
+  }
+
+  const option = webSearchProviderOptions.value.find((candidate) => {
+    return candidate.value === savedOption
+  })
+
+  if (!option?.enabled) {
+    return
+  }
+
+  tools.value = [...tools.value, savedOption]
+}
+
+/**
+ * The single place that reacts to `image_generation` entering or leaving
+ * `tools` — whichever of `toggleImageGeneration()`, the required-model
+ * branch above, or `selectWebSearchProvider()` caused it. Forcing reasoning
+ * off is unconditional on every enabled state (also covers mounting into an
+ * already-image-generation chat), while restoring only fires on an actual
+ * enabled-to-disabled transition, so it never clobbers a reasoning level
+ * the user picked while image generation was already off.
+ */
+watch(
+  isImageGenerationEnabled,
+  (enabled, wasEnabled) => {
+    if (enabled) {
+      reasoning.value = 'off'
+
+      return
+    }
+
+    if (wasEnabled !== true) {
+      return
+    }
+
+    restoreLiveReasoningLevel()
+    restoreLiveWebSearchSelection()
+  },
+  {
+    immediate: true,
+    flush: 'post',
+  },
+)
 
 function toggleImageGeneration() {
   if (isImageGenerationRequired.value) {
@@ -625,7 +833,7 @@ function toggleImageGeneration() {
   if (!isImageGenerationEnabled.value) {
     tools.value = [
       ...tools.value.filter((tool) => {
-        return tool !== 'web_search'
+        return !isWebSearchTool(tool)
       }),
       'image_generation',
     ]
@@ -636,16 +844,6 @@ function toggleImageGeneration() {
   tools.value = tools.value.filter((tool) => {
     return tool !== 'image_generation'
   })
-}
-
-function toggleReasoning() {
-  if (isReasoningActive.value) {
-    reasoning.value = 'off'
-
-    return
-  }
-
-  reasoning.value = 'medium'
 }
 
 onMounted(async () => {
@@ -676,15 +874,22 @@ function onFilesAttached(
   attachedFiles: Pick<FileMetadata, 'id' | 'storageKey' | 'name' | 'size' | 'type'>[],
 ) {
   const existingKeys = new Set(files.value.map(file => file.storageKey))
-  const newFiles = attachedFiles.filter(
+  const incomingFiles = attachedFiles.filter(
     file => !existingKeys.has(file.storageKey),
   )
+  const newFiles = isImageInputSupported.value
+    ? incomingFiles
+    : incomingFiles.filter(file => !isImageFile(file.type))
+
+  if (newFiles.length < incomingFiles.length) {
+    useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
+  }
 
   if (newFiles.length === 0) {
     return
   }
 
-  files.value.push(...newFiles as FileMetadata[])
+  files.value = [...files.value, ...newFiles as FileMetadata[]]
 }
 
 function onFilesDetached(fileIds: string[]) {
@@ -705,6 +910,14 @@ function handleEnter(event: KeyboardEvent) {
 function sendMessage() {
   if (!message.value?.trim()) {
     return useWarningMessage('Please enter a message before sending.')
+  }
+
+  if (isSelectedModelUnavailable.value) {
+    return warnAboutUnavailableModel()
+  }
+
+  if (isSelectedModelKeyless.value) {
+    return warnAboutMissingKey()
   }
 
   if (props.isClarifying) {

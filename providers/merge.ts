@@ -27,16 +27,25 @@ export interface CuratedModel {
   price: CuratedModelPrice
   modalities?: Model['modalities']
   tools: ModelTool[]
+  toolCall?: boolean
   default?: boolean
   forProjectMemory?: boolean
   imageGeneration?: ModelImageGenerationCapability
   reasoning?: ReasoningCapability
+  reasoningAlwaysOn?: true
   research?: ModelResearchConfig
 }
 
 export interface CuratedProvider {
   id: string
   name: string
+  /**
+   * Overrides the models.dev top-level catalog key looked up by
+   * `scripts/fetch-models-metadata.mjs` when it diverges from `id` — for
+   * example this app's `qwen` provider id vs. models.dev's `alibaba` key.
+   * Defaults to `id` when omitted.
+   */
+  modelsDevKey?: string
   models: CuratedModel[]
 }
 
@@ -45,6 +54,7 @@ export interface ModelSnapshotEntry {
   description: string
   releaseDate?: string
   status?: 'deprecated' | 'beta' | 'alpha'
+  toolCall?: boolean
   limit: {
     context: number
     output: number
@@ -64,7 +74,7 @@ export type ModelSnapshot = Record<string, ModelSnapshotEntry>
 
 const highestPriceTier: ModelPriceTier = '$$$+'
 
-const tierCeilingsPerMillionTokens: [number, ModelPriceTier][] = [
+export const tierCeilingsPerMillionTokens: [number, ModelPriceTier][] = [
   [0.5, '$'],
   [2, '$$'],
   [5, '$$$'],
@@ -92,6 +102,17 @@ function resolveTier(
   }
 
   return highestPriceTier
+}
+
+/**
+ * Resolves a per-million-token USD amount against
+ * `tierCeilingsPerMillionTokens`, the single source of truth for provider
+ * pricing tiers.
+ */
+export function resolvePriceTierFromPerMillion(
+  amount: number,
+): ModelPriceTier {
+  return resolveTier(amount, tierCeilingsPerMillionTokens)
 }
 
 /**
@@ -150,7 +171,7 @@ function resolvePriceTier(
   }
 
   if (snapshot) {
-    return resolveTier(snapshot.cost.input, tierCeilingsPerMillionTokens)
+    return resolvePriceTierFromPerMillion(snapshot.cost.input)
   }
 
   const curatedInput = parseUpperBoundPrice(curated.price.input ?? '')
@@ -179,6 +200,9 @@ function curatedCapabilities(curated: CuratedModel) {
       ? { imageGeneration: curated.imageGeneration }
       : {}),
     ...(curated.reasoning ? { reasoning: curated.reasoning } : {}),
+    ...(curated.reasoningAlwaysOn
+      ? { reasoningAlwaysOn: curated.reasoningAlwaysOn }
+      : {}),
     ...(curated.research ? { research: curated.research } : {}),
   }
 }
@@ -204,6 +228,7 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     contextLength,
     maxOutputTokens,
     modalities,
+    toolCall,
   } = curated
 
   if (
@@ -212,12 +237,13 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     || contextLength === undefined
     || maxOutputTokens === undefined
     || modalities === undefined
+    || toolCall === undefined
   ) {
     throw new Error(
       `Model "${id}" has no models.dev snapshot entry. Run `
       + '`pnpm run models:fetch`, or curate name, description, '
-      + 'contextLength, maxOutputTokens and modalities for it the way '
-      + 'EXEMPT_IDS models are curated.',
+      + 'contextLength, maxOutputTokens, modalities and toolCall for it '
+      + 'the way EXEMPT_IDS models are curated.',
     )
   }
 
@@ -237,6 +263,7 @@ function toFullyCuratedModel(curated: CuratedModel): Model {
     ),
     priceTier: resolvePriceTier(curated, undefined),
     modalities,
+    toolCall,
     ...curatedCapabilities(curated),
   }
 }
@@ -294,6 +321,7 @@ export function mergeModelMetadata(
     ),
     priceTier: resolvePriceTier(curated, snapshot),
     modalities: snapshot.modalities,
+    toolCall: snapshot.toolCall ?? curated.toolCall ?? false,
     ...curatedCapabilities(curated),
   }
 }

@@ -1,20 +1,35 @@
-import { defineComponent, nextTick, reactive } from 'vue'
+import { computed, defineComponent, nextTick, reactive } from 'vue'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as messagesComposable from '../../../app/composables/messages'
+import { usePreferenceStorage } from '../../../app/composables/preference-storage'
+import { useUserModel } from '../../../app/composables/model'
+import { useGatewayCatalogCache } from '../../../app/composables/gateway-catalog'
 import ChatsNewPage from '../../../app/pages/chats/new.vue'
 import {
   installMockNuxtState,
   resetMockNuxtState,
 } from '../../setup/helpers/nuxt-state'
 
-const { navigateToMock, fetchMock } = vi.hoisted(() => ({
+const {
+  navigateToMock,
+  fetchMock,
+  useUserKeysMock,
+  useChatFilesMock,
+  useDeviceMock,
+} = vi.hoisted(() => ({
   navigateToMock: vi.fn(),
   fetchMock: vi.fn(),
+  useUserKeysMock: vi.fn(),
+  useChatFilesMock: vi.fn(),
+  useDeviceMock: vi.fn(),
 }))
 
 mockNuxtImport('navigateTo', () => navigateToMock)
 mockNuxtImport('$fetch', () => fetchMock)
+mockNuxtImport('useUserKeys', () => useUserKeysMock)
+mockNuxtImport('useChatFiles', () => useChatFilesMock)
+mockNuxtImport('useDevice', () => useDeviceMock)
 
 async function flushPromises() {
   await Promise.resolve()
@@ -153,6 +168,11 @@ describe('chats new page', () => {
     })
     vi.stubGlobal('normalizeReasoningLevel', (value: string) => value)
     vi.stubGlobal('getFileUrl', vi.fn())
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.removeItem('settings_web_search_tool')
+    prefStorage.removeItem('settings_reasoning_level')
   })
 
   afterEach(async () => {
@@ -167,6 +187,11 @@ describe('chats new page', () => {
     replace.mockReset()
     resetMockNuxtState()
     vi.unstubAllGlobals()
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.removeItem('settings_web_search_tool')
+    prefStorage.removeItem('settings_reasoning_level')
   })
 
   it('ignores stale project lookups after the user selects another project', async () => {
@@ -462,6 +487,73 @@ describe('chats new page', () => {
 
     expect(navigateToMock).toHaveBeenCalledWith('/chats/created-chat')
     expect(storage.getItem('chat_input_backup')).toBeNull()
+  })
+
+  it('restores a saved web-search tool as the new-chat default', async () => {
+    const storage = createStorageShim()
+
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+    fetchMock.mockImplementation(() => {
+      return Promise.resolve({ slug: 'created-chat' })
+    })
+
+    usePreferenceStorage().setItem(
+      'settings_web_search_tool',
+      'web_search_brave',
+    )
+
+    const { chatInputStub, stubs } = createSendStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'hello there')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const sentBody = fetchMock.mock.calls[0]?.[1]?.body as {
+      tools: string[]
+    }
+
+    expect(sentBody.tools).toEqual(['web_search_brave'])
+  })
+
+  it('does not restore an unrecognised saved web-search value', async () => {
+    const storage = createStorageShim()
+
+    vi.stubGlobal('localStorage', storage)
+    navigateToMock.mockClear()
+    fetchMock.mockImplementation(() => {
+      return Promise.resolve({ slug: 'created-chat' })
+    })
+
+    usePreferenceStorage().setItem('settings_web_search_tool', 'off')
+
+    const { chatInputStub, stubs } = createSendStubs()
+
+    wrapper = await mountSuspended(ChatsNewPage, { global: { stubs } })
+
+    const chatInput = wrapper.findComponent(chatInputStub)
+
+    chatInput.vm.$emit('update:message', 'hello there')
+    await nextTick()
+
+    chatInput.vm.$emit('submit')
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const sentBody = fetchMock.mock.calls[0]?.[1]?.body as {
+      tools: string[]
+    }
+
+    expect(sentBody.tools).toEqual([])
   })
 
   it('restores a backed-up draft on mount', async () => {
@@ -855,5 +947,204 @@ describe('chats new page', () => {
       'The research provider rejected the request.',
     )
     expect(storage.getItem('chat_input_backup')).toBeNull()
+  })
+})
+
+const GATEWAY_MODEL_ID = 'google/gemini-3.1-flash-image'
+
+const uiButtonStub = defineComponent({
+  name: 'UiButtonStub',
+  props: {
+    disabled: { type: Boolean, default: false },
+    title: { type: String, default: '' },
+  },
+  emits: ['click'],
+  template: '<button :disabled="disabled" :title="title" '
+    + '@click="$emit(\'click\')"><slot /></button>',
+})
+
+const filesModalStub = defineComponent({
+  name: 'ChatInputFilesModalStub',
+  methods: {
+    open: vi.fn(),
+  },
+  template: '<div />',
+})
+
+describe('chats new page with a real ChatInput and a gateway image-only '
+  + 'model resolved after mount', () => {
+  const route = reactive({
+    query: reactive({} as Record<string, unknown>),
+  })
+
+  beforeEach(() => {
+    resetMockNuxtState()
+    installMockNuxtState()
+    vi.stubGlobal('definePageMeta', vi.fn())
+    vi.stubGlobal('useSeoMeta', vi.fn())
+    vi.stubGlobal('useRoute', () => route)
+    vi.stubGlobal('useRouter', () => ({ replace: vi.fn() }))
+    vi.stubGlobal('navigateTo', vi.fn())
+    vi.stubGlobal('getFileUrl', vi.fn())
+
+    useUserKeysMock.mockReturnValue({
+      pending: computed(() => false),
+      error: computed(() => null),
+      hasKey: vi.fn(),
+      hasKeyForProvider: (providerId: string) => {
+        return ['brave', 'exa', 'vercel'].includes(providerId)
+      },
+      hasAnyKey: computed(() => true),
+      refresh: vi.fn(),
+    })
+
+    useChatFilesMock.mockReturnValue({
+      uploadFiles: vi.fn(),
+      uploadingFiles: computed(() => new Map()),
+      uploadingCount: computed(() => 0),
+      cancelUpload: vi.fn(),
+      retryUpload: vi.fn(),
+      cancelAllUploads: vi.fn(),
+      removeAttachedFile: vi.fn(),
+      removeAllFiles: vi.fn(),
+    })
+
+    useDeviceMock.mockReturnValue({
+      isIos: false,
+      isAndroid: false,
+      isDesktop: true,
+    })
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.setItem('settings_web_search_tool', 'web_search_brave')
+    prefStorage.setItem('settings_reasoning_level', 'low')
+
+    useGatewayCatalogCache().value = {}
+
+    const { selection } = useUserModel()
+
+    selection.value = {
+      source: 'gateway',
+      gatewayId: 'vercel',
+      modelId: GATEWAY_MODEL_ID,
+    }
+  })
+
+  afterEach(async () => {
+    await nextTick()
+    await flushPromises()
+
+    route.query = reactive({} as Record<string, unknown>)
+    resetMockNuxtState()
+    vi.unstubAllGlobals()
+
+    const prefStorage = usePreferenceStorage()
+
+    prefStorage.removeItem('settings_web_search_tool')
+    prefStorage.removeItem('settings_reasoning_level')
+  })
+
+  it('forces image_generation, keeps search/reasoning hidden, and sends '
+    + 'tools=[image_generation] + reasoning=off once the gateway catalog '
+    + 'resolves after mount — even when the saved defaults were Brave '
+    + 'search and low reasoning', async () => {
+    const catalogDeferred = createDeferred<{
+      gateway: string
+      models: Array<Record<string, unknown>>
+    }>()
+
+    fetchMock.mockImplementation((
+      url: string,
+      options?: { method?: string },
+    ) => {
+      if (url.includes('/api/v1/gateways/vercel/models')) {
+        return catalogDeferred.promise
+      }
+
+      if (
+        url === '/api/v1/chats/new'
+        && options?.method?.toLowerCase() === 'put'
+      ) {
+        return Promise.resolve({ slug: 'new-chat-slug' })
+      }
+
+      return Promise.resolve({ keys: [] })
+    })
+
+    const wrapper = await mountSuspended(ChatsNewPage, {
+      global: {
+        stubs: {
+          ChatContainer: { template: '<div><slot /></div>' },
+          ChatProjectInstructions: { template: '<div />' },
+          ChatMessage: { template: '<div><slot /></div>' },
+          LazyBackgroundLogo: true,
+          LazyChatInputProjectPicker: true,
+          ChatInputProjectPicker: true,
+          LazyChatInputFilesModal: filesModalStub,
+          ChatInputFilesModal: filesModalStub,
+          LazyChatInputFilesDropZone: true,
+          LazyChatScroll: true,
+          LazyChatInputFilesAttachedPreview: true,
+          LazyChatInputModelsTrigger: true,
+          LazyChatInputFilesTrigger: true,
+          LazyChatInputWebSearchTrigger: true,
+          LazyChatInputReasoningTrigger: true,
+          LazyChatInputDeepResearchTrigger: true,
+          LazyChatInputToolbarMore: true,
+          UiBubble: { template: '<div><slot /></div>' },
+          UiButton: uiButtonStub,
+        },
+      },
+    })
+
+    await nextTick()
+    await flushPromises()
+
+    catalogDeferred.resolve({
+      gateway: 'vercel',
+      models: [{
+        id: GATEWAY_MODEL_ID,
+        name: 'Nano Banana 2',
+        modalities: { input: ['text'], output: ['text', 'image'] },
+        supportsImageGeneration: true,
+        supportsWebSearch: 'native',
+        supportsReasoning: true,
+        toolCall: true,
+      }],
+    })
+
+    await nextTick()
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    const createImageButton = wrapper.get(
+      '[title="Image creation is required for this model"]',
+    )
+
+    expect(createImageButton.classes()).toContain('btn-active')
+    expect(wrapper.find(
+      '[title="Disable image creation"]',
+    ).exists()).toBe(false)
+
+    await wrapper.get('textarea').setValue('draw me a cat')
+    await wrapper.get('[data-testid="send-message"]').trigger('click')
+    await flushPromises()
+
+    const putCall = fetchMock.mock.calls.find(([url, options]) => {
+      return url === '/api/v1/chats/new'
+        && options?.method?.toLowerCase() === 'put'
+    })
+
+    expect(putCall).toBeDefined()
+
+    const body = putCall?.[1]?.body as {
+      tools: string[]
+      reasoning: string
+    }
+
+    expect(body.tools).toEqual(['image_generation'])
+    expect(body.reasoning).toBe('off')
   })
 })

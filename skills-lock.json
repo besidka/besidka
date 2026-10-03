@@ -21,6 +21,12 @@
       "sourceType": "github",
       "computedHash": "5717187bba9c22030c7174c74012f01c359f21e2ce87e0eb80e24244d8b8c915"
     },
+    "build-with-exa": {
+      "source": "exa-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/build-with-exa/SKILL.md",
+      "computedHash": "5df03b9d54ad6235abb09ff520e05946ac1043bbe05e3d00872d609000fadd9f"
+    },
     "cloudflare": {
       "source": "cloudflare/skills",
       "sourceType": "github",
@@ -130,6 +136,12 @@
       "source": "cloudflare/skills",
       "sourceType": "github",
       "computedHash": "520d36ee93779146266dcdeec31d5e42341c3a40cc35007c1b5e02d6824ff86b"
+    },
+    "web-search": {
+      "source": "brave/brave-search-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-search/SKILL.md",
+      "computedHash": "e116346eda8d92aa6050318674593d7f809c5347db3d881a3757c3d19489c26f"
     },
     "workers-best-practices": {
       "source": "cloudflare/skills",
