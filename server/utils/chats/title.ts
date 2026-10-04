@@ -15,6 +15,8 @@ const USER_MESSAGE_OPEN_TAG = '<user_message>'
 const USER_MESSAGE_CLOSE_TAG = '</user_message>'
 const USER_MESSAGE_TAG_PATTERN = /<\s*\/?\s*user_message\s*>/gi
 const INVISIBLE_CHARACTERS_PATTERN = /[\u200B-\u200D\u2060\uFEFF]/g
+const SPECIAL_TOKEN_PATTERN = /<\|[a-z_]+\|>/gi
+const STRAY_TOKEN_FRAGMENT_PATTERN = /<\||\|>/g
 const TITLE_LABEL_PATTERN
   = /^(?:title|назва|название|tytuł|titre|título|标题)\s*[:：\-–—]\s*/iu
 const ORDERED_LIST_MARKER_PATTERN = /^\d+[.)]\s+/
@@ -79,6 +81,19 @@ function stripUserMessageTags(text: string): string {
   return stripped
 }
 
+function stripSpecialTokens(text: string): string {
+  const segments = text
+    .split(SPECIAL_TOKEN_PATTERN)
+    .map(segment => segment.replace(STRAY_TOKEN_FRAGMENT_PATTERN, '').trim())
+  const hasLeadingText = text.search(SPECIAL_TOKEN_PATTERN) !== 0
+
+  if (hasLeadingText) {
+    return segments[0] ?? ''
+  }
+
+  return segments.findLast(segment => segment.length > 0) ?? ''
+}
+
 /**
  * Turns raw model output into a usable chat title, or `null` when the output
  * is clearly not a title (empty, longer than `CHAT_TITLE_REJECT_LENGTH`
@@ -87,8 +102,9 @@ function stripUserMessageTags(text: string): string {
  * model that answered the user's message instead of titling it.
  */
 export function sanitizeChatTitle(rawTitle: string): string | null {
-  const trimmedTitle = rawTitle.replace(INVISIBLE_CHARACTERS_PATTERN, '')
-    .trim()
+  const trimmedTitle = stripSpecialTokens(
+    rawTitle.replace(INVISIBLE_CHARACTERS_PATTERN, '').trim(),
+  )
 
   if (!trimmedTitle || trimmedTitle.length > CHAT_TITLE_REJECT_LENGTH) {
     return null
