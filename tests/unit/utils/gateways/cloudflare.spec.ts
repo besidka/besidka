@@ -222,6 +222,73 @@ describe('useCloudflareGateway', () => {
     )
   })
 
+  it('sends an empty string instead of null content on an assistant '
+    + 'tool-call turn', async () => {
+    stubKeyLookup('encrypted-blob')
+    stubDecrypt(JSON.stringify({
+      accountId: 'account-123',
+      apiKey: 'cf-token',
+    }))
+
+    const { useCloudflareGateway } = await importCloudflareGateway()
+    const result = await useCloudflareGateway('1', '@cf/openai/gpt-oss-120b')
+    const requestBodies: Array<Record<string, unknown>> = []
+
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init.body)))
+
+      return new Response(JSON.stringify({
+        id: 'chatcmpl-1',
+        created: 0,
+        model: '@cf/openai/gpt-oss-120b',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: 'Paris.' },
+          finish_reason: 'stop',
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+
+    const instance = result.instance as unknown as {
+      doGenerate: (options: unknown) => Promise<unknown>
+    }
+
+    await instance.doGenerate({
+      prompt: [
+        { role: 'user', content: [{ type: 'text', text: 'Capital?' }] },
+        {
+          role: 'assistant',
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'call-1',
+            toolName: 'web_search_brave',
+            input: { query: 'capital of France' },
+          }],
+        },
+        {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call-1',
+            toolName: 'web_search_brave',
+            output: { type: 'json', value: { results: [] } },
+          }],
+        },
+      ],
+    })
+
+    const messages = requestBodies[0]?.messages as Array<
+      Record<string, unknown>
+    >
+    const assistantMessage = messages.find((message) => {
+      return message.role === 'assistant'
+    })
+
+    expect(assistantMessage).toMatchObject({ content: '' })
+    expect(assistantMessage?.tool_calls).toHaveLength(1)
+  })
+
   it('sends the stored gatewayId instead of "default" when one was saved', async () => {
     stubKeyLookup('encrypted-blob')
     stubDecrypt(JSON.stringify({
@@ -386,4 +453,57 @@ describe('useCloudflareGateway', () => {
         4096,
       )
     })
+})
+
+describe('withStringAssistantContent', () => {
+  it('replaces null assistant content with an empty string', async () => {
+    const { withStringAssistantContent } = await importCloudflareGateway()
+    const toolCalls = [{ id: 'call-1', type: 'function' }]
+
+    expect(withStringAssistantContent({
+      model: '@cf/openai/gpt-oss-120b',
+      messages: [
+        { role: 'user', content: 'Capital?' },
+        {
+          role: 'assistant',
+          content: null,
+          reasoning_content: 'Search first.',
+          tool_calls: toolCalls,
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: '{}' },
+      ],
+    })).toEqual({
+      model: '@cf/openai/gpt-oss-120b',
+      messages: [
+        { role: 'user', content: 'Capital?' },
+        {
+          role: 'assistant',
+          content: '',
+          reasoning_content: 'Search first.',
+          tool_calls: toolCalls,
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: '{}' },
+      ],
+    })
+  })
+
+  it('leaves string assistant content and non-assistant roles untouched',
+    async () => {
+      const { withStringAssistantContent } = await importCloudflareGateway()
+      const body = {
+        messages: [
+          { role: 'system', content: null },
+          { role: 'assistant', content: 'Already text.' },
+        ],
+      }
+
+      expect(withStringAssistantContent(body)).toEqual(body)
+    })
+
+  it('returns a body without messages unchanged', async () => {
+    const { withStringAssistantContent } = await importCloudflareGateway()
+    const body = { model: '@cf/openai/gpt-oss-120b', prompt: 'Hi' }
+
+    expect(withStringAssistantContent(body)).toBe(body)
+  })
 })

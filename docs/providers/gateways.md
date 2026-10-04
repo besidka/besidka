@@ -589,6 +589,29 @@ a structured `why`/`fix` from a gateway builder gets flattened to a generic
 message today. Not closed; the catalog path was fixed first since it's the
 fetch the model picker depends on to list a model to send to.
 
+### Cloudflare: string assistant content
+
+`toolCall: true` in Cloudflare's catalog is not enough on its own for the
+multi-step Brave/Exa loop. `@ai-sdk/openai-compatible` serializes an
+assistant turn that only holds tool calls as `content: null` (valid per the
+OpenAI spec), and Workers AI validates each request against the routed
+model's own input schema. `@cf/openai/gpt-oss-120b`'s schema requires a
+string, so every step after a tool call failed with `400 Bad Request`,
+`AiError: Bad input: ... Type mismatch of '/messages/2/content', 'string'
+not in 'null'` (code `5006`); the first step and the search itself
+succeeded, which is why the preview showed ten sources and then an error
+card. This is per-backend strictness, not a Cloudflare-wide rule:
+`@cf/zai-org/glm-4.7-flash` accepted the identical `null` body
+(2026-10-04, one live round trip each). `useCloudflareGateway()` therefore
+passes `transformRequestBody: withStringAssistantContent`, which rewrites
+only `role: 'assistant'` + `content: null` to `''` — valid for every
+backend — and leaves `reasoning_content` and `tool_calls` untouched (echoing
+`reasoning_content` back was verified fine on `gpt-oss-120b`). No
+`toolCall` gating change was needed: with the rewrite, `gpt-oss-120b`
+completed the tool round trip and answered. Not verified live: the forced
+final step, which sends tool-call history with no `tools` declared, against
+`gpt-oss`'s schema — the search-answer continuation absorbs it if it fails.
+
 ## Live-verification status
 
 State honestly: most of the following was verified by reading installed

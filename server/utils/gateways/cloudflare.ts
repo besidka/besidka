@@ -96,6 +96,43 @@ export async function getCloudflareGatewayCredentials(
   return parseCloudflareCredentials(decrypted)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * `@ai-sdk/openai-compatible` serializes an assistant turn that only holds
+ * tool calls as `content: null`, which is what the OpenAI spec allows, but
+ * Workers AI validates each request against the routed model's own input
+ * schema and some of those schemas require a string. `@cf/openai/gpt-oss-*`
+ * rejects the tool-result round trip with `400 Bad input: Type mismatch of
+ * '/messages/N/content', 'string' not in 'null'`, so every follow-up step
+ * after a tool call failed. An empty string is accepted by every backend, so
+ * the rewrite is unconditional; nothing else in the body is touched.
+ */
+export function withStringAssistantContent(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!Array.isArray(body.messages)) {
+    return body
+  }
+
+  return {
+    ...body,
+    messages: body.messages.map((message: unknown) => {
+      if (
+        !isRecord(message)
+        || message.role !== 'assistant'
+        || message.content !== null
+      ) {
+        return message
+      }
+
+      return { ...message, content: '' }
+    }),
+  }
+}
+
 /**
  * Path B: the generic `@ai-sdk/openai-compatible` package against
  * Cloudflare's unified REST endpoint, rather than a dedicated Cloudflare
@@ -130,6 +167,7 @@ export async function useCloudflareGateway(
       'cf-aig-gateway-id': credentials.gatewayId
         ?? CLOUDFLARE_DEFAULT_GATEWAY_ID,
     },
+    transformRequestBody: withStringAssistantContent,
   })
   const catalogModel = await findGatewayCatalogModel(
     () => getCachedCloudflareGatewayCatalog(credentials, { logger }),
