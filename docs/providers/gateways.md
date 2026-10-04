@@ -616,8 +616,10 @@ This is per-backend strictness, not a Cloudflare-wide rule:
 (2026-10-04, one live round trip each). `useCloudflareGateway()` therefore
 passes `transformRequestBody: withStringMessageContent`, which rewrites
 `role: 'assistant'` + `content: null` to `''` and joins a content array made
-only of text parts into one string with no separator (callers that need a
-break start their part with one, as the continuation does). An array that
+only of text parts into one string joined with a blank line (inlined text
+files and omitted-file notes are separate parts with no surrounding
+newlines, so joining them bare glued them to the user text and broke code
+fences). An array that
 holds any non-text part (an image) is left alone, so vision-capable backends
 keep multimodal content, and `reasoning_content` and `tool_calls` are never
 touched (echoing `reasoning_content` back was verified fine on
@@ -640,8 +642,12 @@ stream failures, both used to be persisted as an `unknown` 500 attributed to
 `cloudflare` and logged as `stage: 'stream'` chat errors, which looked
 exactly like a provider 500. `normalizeModelToolCallError()`
 (`server/utils/chats/errors.ts`) now labels them `invalid-provider-output`
-with status 422 and records them only as `attributes.modelToolCallError` on
-the `ai-stream` event.
+with status 422 and a stable `kind` field (`unavailable-tool` or
+`invalid-tool-input`), and records them only as
+`attributes.modelToolCallError` on the request event. `withSearchAnswerGuarantee()`
+matches `code === 'invalid-provider-output' && kind === 'unavailable-tool'`
+to drop the expected forced-step rejection, with a fallback on the SDK's raw
+`AI_NoSuchToolError` / "unavailable tool" string form.
 
 ## Live-verification status
 

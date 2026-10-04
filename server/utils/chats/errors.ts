@@ -1,4 +1,8 @@
-import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type {
+  ChatErrorCode,
+  ChatErrorPayload,
+  ChatToolCallErrorKind,
+} from '#shared/types/chat-errors.d'
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
@@ -101,6 +105,12 @@ export function normalizeChatError(
 }
 
 export const MODEL_TOOL_CALL_ERROR_STATUS = 422
+export const MODEL_TOOL_CALL_ERROR_CODE: ChatErrorCode
+  = 'invalid-provider-output'
+export const UNAVAILABLE_TOOL_ERROR_KIND: ChatToolCallErrorKind
+  = 'unavailable-tool'
+export const INVALID_TOOL_INPUT_ERROR_KIND: ChatToolCallErrorKind
+  = 'invalid-tool-input'
 
 const INVALID_TOOL_INPUT_MESSAGE_PATTERN
   = /^(?:AI_InvalidToolInputError: )?Invalid input for tool ([^:\s]+):/
@@ -108,7 +118,7 @@ const UNAVAILABLE_TOOL_MESSAGE_PATTERN
   = /^(?:AI_NoSuchToolError: )?Model tried to call unavailable tool '([^']+)'/
 
 interface ModelToolCallErrorDetails {
-  kind: 'invalid-input' | 'unavailable-tool'
+  kind: ChatToolCallErrorKind
   toolName: string
 }
 
@@ -123,11 +133,11 @@ function readModelToolCallError(
   error: unknown,
 ): ModelToolCallErrorDetails | undefined {
   if (InvalidToolInputError.isInstance(error)) {
-    return { kind: 'invalid-input', toolName: error.toolName }
+    return { kind: INVALID_TOOL_INPUT_ERROR_KIND, toolName: error.toolName }
   }
 
   if (NoSuchToolError.isInstance(error)) {
-    return { kind: 'unavailable-tool', toolName: error.toolName }
+    return { kind: UNAVAILABLE_TOOL_ERROR_KIND, toolName: error.toolName }
   }
 
   if (typeof error !== 'string') {
@@ -137,13 +147,19 @@ function readModelToolCallError(
   const invalidInputMatch = INVALID_TOOL_INPUT_MESSAGE_PATTERN.exec(error)
 
   if (invalidInputMatch?.[1]) {
-    return { kind: 'invalid-input', toolName: invalidInputMatch[1] }
+    return {
+      kind: INVALID_TOOL_INPUT_ERROR_KIND,
+      toolName: invalidInputMatch[1],
+    }
   }
 
   const unavailableToolMatch = UNAVAILABLE_TOOL_MESSAGE_PATTERN.exec(error)
 
   if (unavailableToolMatch?.[1]) {
-    return { kind: 'unavailable-tool', toolName: unavailableToolMatch[1] }
+    return {
+      kind: UNAVAILABLE_TOOL_ERROR_KIND,
+      toolName: unavailableToolMatch[1],
+    }
   }
 
   return undefined
@@ -155,9 +171,9 @@ function readModelToolCallError(
  * wrong would otherwise become an `unknown` 500 attributed to the provider.
  * `gpt-oss` calls a declared search tool with its built-in browser's
  * `{ cursor, id }` arguments and calls undeclared tools such as `open_file`;
- * neither is a provider failure. The unavailable-tool `why` keeps the words
- * "unavailable tool", which `withSearchAnswerGuarantee()` matches to drop
- * the expected rejection of a call on the forced step. Returns `undefined`
+ * neither is a provider failure. The payload carries a stable `kind`, which
+ * `withSearchAnswerGuarantee()` matches to drop the expected rejection of a
+ * call on the forced step. Returns `undefined`
  * for any other error so the caller keeps its normal handling.
  */
 export function normalizeModelToolCallError(input: {
@@ -171,19 +187,21 @@ export function normalizeModelToolCallError(input: {
     return undefined
   }
 
-  return normalizeChatError({
+  const chatError = normalizeChatError({
     error: input.error,
     event: input.event,
     providerId: input.providerId,
-    code: 'invalid-provider-output',
+    code: MODEL_TOOL_CALL_ERROR_CODE,
     status: MODEL_TOOL_CALL_ERROR_STATUS,
     message: 'The model sent an invalid tool call.',
-    why: details.kind === 'invalid-input'
+    why: details.kind === INVALID_TOOL_INPUT_ERROR_KIND
       ? `The model called ${details.toolName} with input that does not `
       + 'match its schema.'
       : `The model called an unavailable tool: ${details.toolName}.`,
     fix: 'Retry the message, or pick another model.',
   })
+
+  return { ...chatError, kind: details.kind }
 }
 
 /**

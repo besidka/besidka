@@ -418,7 +418,7 @@ describe('buildSearchAnswerContinuationMessages', () => {
     output: { results: [] },
   }]
 
-  it('appends the context to the final user message instead of adding a '
+  it('merges the context into the final user message instead of adding a '
     + 'second user turn', () => {
     const messages = buildSearchAnswerContinuationMessages([
       { role: 'user', content: 'Earlier question' },
@@ -429,26 +429,51 @@ describe('buildSearchAnswerContinuationMessages', () => {
 
     expect(messages).toHaveLength(3)
     expect(lastMessage?.role).toBe('user')
-    expect(lastMessage?.content).toEqual([
-      { type: 'text', text: 'What shipped?' },
-      {
-        type: 'text',
-        text: expect.stringContaining('Answer the user\'s last message now'),
-      },
-    ])
+    expect(lastMessage?.content).toEqual([{
+      type: 'text',
+      text: expect.stringMatching(
+        /^What shipped\?\n\nWeb search results[\s\S]*Answer the user's last message now/,
+      ),
+    }])
   })
 
-  it('separates the appended context from the question when a provider '
-    + 'concatenates user text parts', () => {
-    const messages = buildSearchAnswerContinuationMessages([
-      { role: 'user', content: [{ type: 'text', text: 'What shipped?' }] },
-    ], searchResults)
-    const content = messages.at(-1)?.content as Array<{ text: string }>
-    const concatenated = content.map(part => part.text).join('')
+  it('collapses several user text parts and the context into one text part',
+    () => {
+      const messages = buildSearchAnswerContinuationMessages([{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Explain this file' },
+          { type: 'text', text: '**notes.ts**\n\n```ts\nconst a = 1\n```' },
+        ],
+      }], searchResults)
+      const content = messages.at(-1)?.content as Array<{ text: string }>
 
-    expect(content.at(-1)?.text.startsWith('\n\n')).toBe(true)
-    expect(concatenated).toContain('What shipped?\n\nWeb search results')
-  })
+      expect(content).toHaveLength(1)
+      expect(content[0]?.text).toContain(
+        'Explain this file\n\n**notes.ts**\n\n```ts\nconst a = 1\n```'
+        + '\n\nWeb search results',
+      )
+    })
+
+  it('keeps file parts of the final user message beside the merged text',
+    () => {
+      const imagePart = {
+        type: 'image' as const,
+        image: new Uint8Array([1, 2, 3]),
+        mediaType: 'image/png',
+      }
+      const messages = buildSearchAnswerContinuationMessages([{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is this?' },
+          imagePart,
+        ],
+      }], searchResults)
+      const content = messages.at(-1)?.content as Array<{ type: string }>
+
+      expect(content.map(part => part.type)).toEqual(['text', 'image'])
+      expect(content[1]).toBe(imagePart)
+    })
 
   it('tells the model the enclosed results are untrusted content', () => {
     const messages = buildSearchAnswerContinuationMessages([
@@ -984,6 +1009,7 @@ describe('withSearchAnswerGuarantee', () => {
 
     function createRejectedForcedStepChunks(
       toolCallId: string,
+      errorText: string = UNAVAILABLE_TOOL_ERROR_TEXT,
     ): UIMessageChunk[] {
       return [
         { type: 'start-step' },
@@ -1004,13 +1030,13 @@ describe('withSearchAnswerGuarantee', () => {
           toolName: SEARCH_TOOL_NAME,
           input: { query: 'q' },
           dynamic: true,
-          errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+          errorText,
         },
         {
           type: 'tool-output-error',
           toolCallId,
           dynamic: true,
-          errorText: UNAVAILABLE_TOOL_ERROR_TEXT,
+          errorText,
         },
         { type: 'finish-step' },
       ]
@@ -1049,6 +1075,57 @@ describe('withSearchAnswerGuarantee', () => {
         continuationProducedText: true,
       }))
     })
+
+    it('drops a call tagged with the structured unavailable-tool kind',
+      async () => {
+        const { guarantee } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            ...createSearchStepChunks('call-2'),
+            ...createSearchStepChunks('call-3'),
+            ...createRejectedForcedStepChunks('call-4', JSON.stringify({
+              code: 'invalid-provider-output',
+              kind: 'unavailable-tool',
+              message: 'The model sent an invalid tool call.',
+            })),
+            { type: 'finish', finishReason: 'tool-calls' },
+          ],
+          continuationChunks: createTextChunks('Answer'),
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(chunks.filter((chunk) => {
+          return 'toolCallId' in chunk && chunk.toolCallId === 'call-4'
+        })).toEqual([])
+        expect(guarantee.getOutcome().forcedStepRejectedToolCall).toBe(true)
+      })
+
+    it('keeps a forced-step call tagged with the invalid-tool-input kind',
+      async () => {
+        const { guarantee } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            ...createSearchStepChunks('call-2'),
+            ...createSearchStepChunks('call-3'),
+            ...createRejectedForcedStepChunks('call-4', JSON.stringify({
+              code: 'invalid-provider-output',
+              kind: 'invalid-tool-input',
+              message: 'The model sent an invalid tool call.',
+              why: 'The model called web_search_brave with input that does '
+                + 'not match its schema.',
+            })),
+            { type: 'finish', finishReason: 'tool-calls' },
+          ],
+          continuationChunks: createTextChunks('Answer'),
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(chunks.filter((chunk) => {
+          return 'toolCallId' in chunk && chunk.toolCallId === 'call-4'
+        }).length).toBeGreaterThan(0)
+        expect(guarantee.getOutcome().forcedStepRejectedToolCall)
+          .toBeFalsy()
+      })
 
     it('keeps a genuine tool failure on an earlier step', async () => {
       const failedCallChunks: UIMessageChunk[] = [

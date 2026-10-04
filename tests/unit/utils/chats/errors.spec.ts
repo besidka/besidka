@@ -123,6 +123,7 @@ describe('normalizeModelToolCallError', () => {
       message: 'The model sent an invalid tool call.',
       why: 'The model called web_search_brave with input that does not '
         + 'match its schema.',
+      kind: 'invalid-tool-input',
     }))
   })
 
@@ -132,6 +133,7 @@ describe('normalizeModelToolCallError', () => {
     })
 
     expect(chatError?.code).toBe('invalid-provider-output')
+    expect(chatError?.kind).toBe('unavailable-tool')
     expect(chatError?.why)
       .toBe('The model called an unavailable tool: open_file.')
   })

@@ -241,14 +241,15 @@ count and characters — up to 1,500 characters per result and 32,000 in
 total, since Brave and Exa now return page content rather than short
 snippets; non-result text such as the tool input and error text is capped
 at 600 characters) and an
-answer-now instruction appended to the final user message — no tool-call
-history, so no provider can reject it for missing declarations. That
-appended text part makes the final user message a multi-part array on the
-wire, which Cloudflare's `gpt-oss-120b` rejects with `400 ... 'string' not in
-'array'`; the Cloudflare request transform joins text-only arrays into one
-string (`gateways.md`, "Cloudflare: string message content"), and any new
-gateway or provider with a string-only schema needs the same treatment or
-the continuation silently degrades to the empty-answer notice. The results
+answer-now instruction merged into the final user message as a single text
+part (the message's own text parts are joined with a blank line first, and
+its file and image parts are kept) — no tool-call history, so no provider can
+reject it for missing declarations. A text-only turn therefore reaches every
+provider as one piece of text. Cloudflare's `gpt-oss-120b` still rejects any
+multi-text-part user message with `400 ... 'string' not in 'array'`, so the
+Cloudflare request transform joins text-only arrays into one string with a
+blank line (`gateways.md`, "Cloudflare: string message content"), and any new
+gateway or provider with a string-only schema needs the same treatment. The results
 sit inside `<untrusted_web_search_results>` delimiters that the instruction
 declares information-only. Every `<` and `>` in the flattened text is
 replaced with `‹`/`›`, so a title, URL, snippet, date or error text cannot
@@ -256,9 +257,7 @@ forge a closing tag however it is cased or nested (the earlier
 remove-the-tag-name approach collapsed
 `</untrusted_web_search_resuuntrusted_web_search_resultslts>` back into a
 real closer). Every line of a multi-line snippet is indented like the
-first, so a snippet cannot mimic the `N. Title` / `URL:` structure. The
-appended text part starts with a blank
-line because `@ai-sdk/deepseek` joins user text parts with no separator.
+first, so a snippet cannot mimic the `N. Title` / `URL:` structure.
 Level-based reasoning effort is lowered to `low` for the continuation (off
 and toggle-only providers are unchanged). Its chunks
 stream into the same assistant message after the tool/source parts, then a

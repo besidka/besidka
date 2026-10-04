@@ -109,6 +109,8 @@ function isTextContentPart(part: unknown): part is TextContentPart {
   return isRecord(part) && part.type === 'text' && typeof part.text === 'string'
 }
 
+const TEXT_PARTS_SEPARATOR = '\n\n'
+
 function toStringMessageContent(message: unknown): unknown {
   if (!isRecord(message)) {
     return message
@@ -125,7 +127,9 @@ function toStringMessageContent(message: unknown): unknown {
   ) {
     return {
       ...message,
-      content: message.content.map(part => part.text).join(''),
+      content: message.content
+        .map(part => part.text)
+        .join(TEXT_PARTS_SEPARATOR),
     }
   }
 
@@ -141,12 +145,11 @@ function toStringMessageContent(message: unknown): unknown {
  *   failed every step after a tool call with `400 Bad input: Type mismatch of
  *   '/messages/N/content', 'string' not in 'null'`;
  * - a message with more than one text part as an array of `{ type: 'text' }`
- *   parts, which failed the search-answer continuation (it appends the
- *   gathered results as a second text part of the final user message) with
- *   `'string' not in 'array'`.
+ *   parts (a user message plus an inlined text file, or an omitted-file
+ *   note), which failed with `'string' not in 'array'`.
  * Both are rewritten to the equivalent string: `''` for the null content, and
- * the text parts joined with no separator, matching how `@ai-sdk/deepseek`
- * joins them (callers that need a break already start their part with one).
+ * the text parts joined with a blank line so adjacent parts, such as a
+ * message followed by a fenced file, do not run together.
  * An array holding any non-text part (an image) is left as it is, so
  * vision-capable backends keep their multimodal content. Nothing else in the
  * body is touched.

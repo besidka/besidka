@@ -568,11 +568,48 @@ describe('withStringMessageContent', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'Latest news?' },
-          { type: 'text', text: '\n\nSearch results.' },
+          { type: 'text', text: 'Search results.' },
         ],
       }],
     })).toEqual({
       messages: [{ role: 'user', content: 'Latest news?\n\nSearch results.' }],
+    })
+  })
+
+  it('keeps the code fence of an inlined text file intact after the user '
+    + 'text', async () => {
+    const { withStringMessageContent } = await importCloudflareGateway()
+    const inlinedFile = '**notes.ts**\n\n```ts\nconst answer = 42\n```'
+
+    expect(withStringMessageContent({
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Explain this file' },
+          { type: 'text', text: inlinedFile },
+        ],
+      }],
+    })).toEqual({
+      messages: [{
+        role: 'user',
+        content: `Explain this file\n\n${inlinedFile}`,
+      }],
+    })
+  })
+
+  it('joins a text-only assistant content array the same way', async () => {
+    const { withStringMessageContent } = await importCloudflareGateway()
+
+    expect(withStringMessageContent({
+      messages: [{
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'First.' },
+          { type: 'text', text: 'Second.' },
+        ],
+      }],
+    })).toEqual({
+      messages: [{ role: 'assistant', content: 'First.\n\nSecond.' }],
     })
   })
 

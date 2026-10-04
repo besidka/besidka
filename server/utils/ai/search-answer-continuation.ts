@@ -4,6 +4,10 @@ import type {
   ModelMessage,
   UIMessageChunk,
 } from 'ai'
+import {
+  MODEL_TOOL_CALL_ERROR_CODE,
+  UNAVAILABLE_TOOL_ERROR_KIND,
+} from '~~/server/utils/chats/errors'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24
@@ -333,12 +337,13 @@ function withoutToolHistory(
  * The continuation's prompt: the turn's own model messages with any tool
  * history stripped (the continuation declares no tools, and Anthropic and
  * Gemini reject tool calls/results sent without declarations), plus the
- * flattened search results and the answer-now instruction appended as one
- * extra text part of the final user message. Appending to that message
- * instead of adding a second consecutive user turn keeps the roles strictly
- * alternating, which `@ai-sdk/google` would otherwise forward verbatim. The
- * appended part starts with a blank line because `@ai-sdk/deepseek` joins
- * user text parts with no separator.
+ * flattened search results and the answer-now instruction merged into the
+ * final user message. Merging into that message instead of adding a second
+ * consecutive user turn keeps the roles strictly alternating, which
+ * `@ai-sdk/google` would otherwise forward verbatim, and collapsing its text
+ * parts plus the results into one text part means a text-only turn reaches
+ * every provider as a single piece of text rather than relying on how each
+ * provider joins several. File and image parts of that message are kept.
  */
 export function buildSearchAnswerContinuationMessages(
   messages: readonly ModelMessage[],
@@ -361,18 +366,23 @@ export function buildSearchAnswerContinuationMessages(
   const existingContent = typeof lastMessage.content === 'string'
     ? [{ type: 'text' as const, text: lastMessage.content }]
     : lastMessage.content
+  const existingText = existingContent
+    .flatMap((part) => {
+      return part.type === 'text' ? [part.text] : []
+    })
+    .join(SEARCH_ANSWER_CONTEXT_SEPARATOR)
+  const nonTextParts = existingContent.filter((part) => {
+    return part.type !== 'text'
+  })
+  const mergedText = existingText
+    ? `${existingText}${SEARCH_ANSWER_CONTEXT_SEPARATOR}${contextText}`
+    : contextText
 
   return [
     ...toollessMessages.slice(0, -1),
     {
       ...lastMessage,
-      content: [
-        ...existingContent,
-        {
-          type: 'text',
-          text: `${SEARCH_ANSWER_CONTEXT_SEPARATOR}${contextText}`,
-        },
-      ],
+      content: [{ type: 'text', text: mergedText }, ...nonTextParts],
     },
   ]
 }
@@ -405,7 +415,8 @@ function trackOpenPart(
   }
 }
 
-const UNAVAILABLE_TOOL_ERROR_PATTERN = /NoSuchTool|unavailable tool/i
+const UNAVAILABLE_TOOL_RAW_ERROR_PATTERN
+  = /AI_NoSuchToolError|unavailable tool/i
 
 type PendingToolInputChunk = Extract<
   UIMessageChunk,
@@ -438,6 +449,19 @@ const NON_RETRYABLE_ERROR_STATUSES: ReadonlySet<number> = new Set([
   403,
   404,
 ])
+
+function isUnavailableToolError(errorText: string): boolean {
+  const payload = parseJsonRecord(errorText)
+
+  if (
+    payload?.code === MODEL_TOOL_CALL_ERROR_CODE
+    && payload.kind === UNAVAILABLE_TOOL_ERROR_KIND
+  ) {
+    return true
+  }
+
+  return UNAVAILABLE_TOOL_RAW_ERROR_PATTERN.test(errorText)
+}
 
 function readErrorStatus(errorText: string): number | undefined {
   const status = parseJsonRecord(errorText)?.status
@@ -661,7 +685,7 @@ export function withSearchAnswerGuarantee(input: {
     }
 
     if (chunk.type === 'tool-input-error') {
-      if (!UNAVAILABLE_TOOL_ERROR_PATTERN.test(chunk.errorText)) {
+      if (!isUnavailableToolError(chunk.errorText)) {
         releasePendingToolInput(controller, chunk.toolCallId)
 
         return false

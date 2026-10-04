@@ -1367,7 +1367,7 @@ export default defineEventHandler(async (event) => {
             })
 
             if (toolCallError) {
-              aiLogger.set({
+              logger.set({
                 attributes: {
                   modelToolCallError: {
                     why: toolCallError.why,
