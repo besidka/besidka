@@ -289,6 +289,66 @@ describe('useCloudflareGateway', () => {
     expect(assistantMessage?.tool_calls).toHaveLength(1)
   })
 
+  it('sends the search-answer continuation prompt as string user content',
+    async () => {
+      stubKeyLookup('encrypted-blob')
+      stubDecrypt(JSON.stringify({
+        accountId: 'account-123',
+        apiKey: 'cf-token',
+      }))
+
+      const { useCloudflareGateway } = await importCloudflareGateway()
+      const { buildSearchAnswerContinuationMessages } = await import(
+        '../../../../server/utils/ai/search-answer-continuation'
+      )
+      const { generateText } = await import('ai')
+      const result = await useCloudflareGateway('1', '@cf/openai/gpt-oss-120b')
+      const requestBodies: Array<Record<string, unknown>> = []
+
+      vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+        requestBodies.push(JSON.parse(String(init.body)))
+
+        return new Response(JSON.stringify({
+          id: 'chatcmpl-1',
+          created: 0,
+          model: '@cf/openai/gpt-oss-120b',
+          choices: [{
+            index: 0,
+            message: { role: 'assistant', content: 'Answer.' },
+            finish_reason: 'stop',
+          }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }))
+
+      await generateText({
+        model: result.instance,
+        messages: buildSearchAnswerContinuationMessages(
+          [{ role: 'user', content: 'Latest news in Poland?' }],
+          [{
+            toolName: 'web_search_brave',
+            input: { query: 'Poland news' },
+            output: {
+              results: [{
+                title: 'Poland today',
+                url: 'https://example.com/poland',
+                snippet: 'Page content.',
+              }],
+            },
+          }],
+        ),
+      })
+
+      const messages = requestBodies[0]?.messages as Array<
+        Record<string, unknown>
+      >
+      const userContent = messages.at(-1)?.content
+
+      expect(typeof userContent).toBe('string')
+      expect(userContent).toMatch(/^Latest news in Poland\?\n\n/)
+      expect(userContent).toContain('Poland today')
+    })
+
   it('sends the stored gatewayId instead of "default" when one was saved', async () => {
     stubKeyLookup('encrypted-blob')
     stubDecrypt(JSON.stringify({
@@ -455,12 +515,12 @@ describe('useCloudflareGateway', () => {
     })
 })
 
-describe('withStringAssistantContent', () => {
+describe('withStringMessageContent', () => {
   it('replaces null assistant content with an empty string', async () => {
-    const { withStringAssistantContent } = await importCloudflareGateway()
+    const { withStringMessageContent } = await importCloudflareGateway()
     const toolCalls = [{ id: 'call-1', type: 'function' }]
 
-    expect(withStringAssistantContent({
+    expect(withStringMessageContent({
       model: '@cf/openai/gpt-oss-120b',
       messages: [
         { role: 'user', content: 'Capital?' },
@@ -489,7 +549,7 @@ describe('withStringAssistantContent', () => {
 
   it('leaves string assistant content and non-assistant roles untouched',
     async () => {
-      const { withStringAssistantContent } = await importCloudflareGateway()
+      const { withStringMessageContent } = await importCloudflareGateway()
       const body = {
         messages: [
           { role: 'system', content: null },
@@ -497,13 +557,44 @@ describe('withStringAssistantContent', () => {
         ],
       }
 
-      expect(withStringAssistantContent(body)).toEqual(body)
+      expect(withStringMessageContent(body)).toEqual(body)
     })
 
+  it('joins a text-only content array into one string', async () => {
+    const { withStringMessageContent } = await importCloudflareGateway()
+
+    expect(withStringMessageContent({
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Latest news?' },
+          { type: 'text', text: '\n\nSearch results.' },
+        ],
+      }],
+    })).toEqual({
+      messages: [{ role: 'user', content: 'Latest news?\n\nSearch results.' }],
+    })
+  })
+
+  it('keeps a content array that holds a non-text part', async () => {
+    const { withStringMessageContent } = await importCloudflareGateway()
+    const body = {
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'What is this?' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,' } },
+        ],
+      }],
+    }
+
+    expect(withStringMessageContent(body)).toEqual(body)
+  })
+
   it('returns a body without messages unchanged', async () => {
-    const { withStringAssistantContent } = await importCloudflareGateway()
+    const { withStringMessageContent } = await importCloudflareGateway()
     const body = { model: '@cf/openai/gpt-oss-120b', prompt: 'Hi' }
 
-    expect(withStringAssistantContent(body)).toBe(body)
+    expect(withStringMessageContent(body)).toBe(body)
   })
 })

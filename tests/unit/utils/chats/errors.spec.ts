@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeChatError } from '../../../../server/utils/chats/errors'
+import { InvalidToolInputError, NoSuchToolError } from 'ai'
+import {
+  MODEL_TOOL_CALL_ERROR_STATUS,
+  normalizeChatError,
+  normalizeModelToolCallError,
+} from '../../../../server/utils/chats/errors'
 
 describe('normalizeChatError status classification', () => {
   it('classifies a 402 as provider-quota-exceeded', () => {
@@ -99,4 +104,65 @@ describe('assistant-empty-answer error code', () => {
       )
       expect(chatError.fix).toBe('Try again or pick another model.')
     })
+})
+
+describe('normalizeModelToolCallError', () => {
+  it('labels invalid tool input as model output, not a provider 500', () => {
+    const chatError = normalizeModelToolCallError({
+      error: new InvalidToolInputError({
+        toolName: 'web_search_brave',
+        toolInput: '{"cursor":1,"id":0}',
+        cause: new Error('query: Required'),
+      }),
+      providerId: 'cloudflare',
+    })
+
+    expect(chatError).toEqual(expect.objectContaining({
+      code: 'invalid-provider-output',
+      status: MODEL_TOOL_CALL_ERROR_STATUS,
+      message: 'The model sent an invalid tool call.',
+      why: 'The model called web_search_brave with input that does not '
+        + 'match its schema.',
+    }))
+  })
+
+  it('labels a call to an undeclared tool', () => {
+    const chatError = normalizeModelToolCallError({
+      error: new NoSuchToolError({ toolName: 'open_file' }),
+    })
+
+    expect(chatError?.code).toBe('invalid-provider-output')
+    expect(chatError?.why)
+      .toBe('The model called an unavailable tool: open_file.')
+  })
+
+  it('recognizes the message strings the SDK passes for tool-output-error',
+    () => {
+      const invalidInput = new InvalidToolInputError({
+        toolName: 'web_search_brave',
+        toolInput: '{"cursor":1,"id":0}',
+        cause: new Error('query: Required'),
+      })
+      const unavailableTool = new NoSuchToolError({
+        toolName: 'open_file',
+        availableTools: [],
+      })
+
+      expect(normalizeModelToolCallError({
+        error: `${invalidInput.name}: ${invalidInput.message}`,
+      })?.why)
+        .toContain('web_search_brave with input that does not match')
+      expect(normalizeModelToolCallError({
+        error: `${unavailableTool.name}: ${unavailableTool.message}`,
+      })?.why).toBe('The model called an unavailable tool: open_file.')
+    })
+
+  it('returns undefined for any other error', () => {
+    expect(normalizeModelToolCallError({
+      error: new Error('Bad Request'),
+    })).toBeUndefined()
+    expect(normalizeModelToolCallError({
+      error: 'Search limit for this message reached.',
+    })).toBeUndefined()
+  })
 })

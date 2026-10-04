@@ -175,6 +175,40 @@ function createReasoningToolCallStepChunks(toolCallId: string) {
   ]
 }
 
+function createStreamedToolCallChunks(input: {
+  toolCallId: string
+  toolName: string
+  rawInput: string
+}) {
+  return [
+    {
+      type: 'tool-input-start' as const,
+      id: input.toolCallId,
+      toolName: input.toolName,
+    },
+    {
+      type: 'tool-input-delta' as const,
+      id: input.toolCallId,
+      delta: input.rawInput,
+    },
+    { type: 'tool-input-end' as const, id: input.toolCallId },
+    {
+      type: 'tool-call' as const,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      input: input.rawInput,
+    },
+    {
+      type: 'finish' as const,
+      finishReason: {
+        unified: 'tool-calls' as const,
+        raw: undefined,
+      },
+      usage: createUsage(),
+    },
+  ]
+}
+
 function createTextChunks(text: string) {
   return [
     { type: 'text-start' as const, id: 'text-1' },
@@ -1118,6 +1152,72 @@ describe('multi-step tool loop', () => {
         continuationProducedText: false,
         continuationError: expect.stringContaining('continuation failed'),
         heldStepError: expect.objectContaining({ stepNumber: 1 }),
+      }))
+    })
+
+    it('answers after a browser-style tool call with invalid input and a '
+      + 'forced-step call to an undeclared tool', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          createToolCallChunks('call-2'),
+          createStreamedToolCallChunks({
+            toolCallId: 'call-3',
+            toolName: FIXTURE_FOLLOW_UP_TOOL_NAME,
+            rawInput: JSON.stringify({ cursor: 1, id: 0 }),
+          }),
+          createStreamedToolCallChunks({
+            toolCallId: 'call-4',
+            toolName: 'open_file',
+            rawInput: JSON.stringify({ cursor: 1 }),
+          }),
+          createTextChunks('Answer from the gathered results.'),
+        ],
+      })
+      const chunks = await readClientChunks()
+      const parts = assistantInsert?.parts ?? []
+      const invalidCallPart = parts.find((part: any) => {
+        return part.toolCallId === 'call-3'
+      })
+      const continuationPrompt = getPromptText(doStream.mock.calls[4]?.[0])
+      const loggedFields = mocks.loggerSet.mock.calls.map(([fields]) => {
+        return fields as Record<string, unknown>
+      })
+      const streamFailureLogs = loggedFields.filter((fields) => {
+        return fields.stage === 'stream'
+      })
+
+      expect(doStream).toHaveBeenCalledTimes(5)
+      expect(invalidCallPart).toEqual(expect.objectContaining({
+        type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
+        state: 'output-error',
+        rawInput: { cursor: 1, id: 0 },
+      }))
+      expect(JSON.parse(invalidCallPart?.errorText)).toEqual(
+        expect.objectContaining({
+          code: 'invalid-provider-output',
+          status: 422,
+          message: 'The model sent an invalid tool call.',
+        }),
+      )
+      expect(streamFailureLogs).toHaveLength(0)
+      expect(JSON.stringify(parts)).not.toContain('open_file')
+      expect(continuationPrompt).toContain('Result for besidka release notes')
+      expect(parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Answer from the gathered results.',
+      }))
+      expect(parts).not.toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        steps: 4,
+        forcedStepToolCall: true,
+        forcedStepRejectedToolCall: true,
+        continuationRan: true,
+        continuationProducedText: true,
       }))
     })
 

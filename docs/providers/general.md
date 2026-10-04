@@ -227,7 +227,7 @@ successful output and no answer text followed it. The second case exists
 because a provider can reject the tool-result round trip itself — Cloudflare
 AI Gateway's `@cf/openai/gpt-oss-120b` failed every step after a Brave
 search with `400 Bad Request` (see `gateways.md`, "Cloudflare: string
-assistant content"), which used to end the turn with the empty-answer notice
+message content"), which used to end the turn with the empty-answer notice
 although ten sources were already gathered. An error before any successful
 search output (nothing to answer from, including a turn whose searches all
 failed) and an error after answer text already started keep the existing
@@ -242,7 +242,13 @@ total, since Brave and Exa now return page content rather than short
 snippets; non-result text such as the tool input and error text is capped
 at 600 characters) and an
 answer-now instruction appended to the final user message — no tool-call
-history, so no provider can reject it for missing declarations. The results
+history, so no provider can reject it for missing declarations. That
+appended text part makes the final user message a multi-part array on the
+wire, which Cloudflare's `gpt-oss-120b` rejects with `400 ... 'string' not in
+'array'`; the Cloudflare request transform joins text-only arrays into one
+string (`gateways.md`, "Cloudflare: string message content"), and any new
+gateway or provider with a string-only schema needs the same treatment or
+the continuation silently degrades to the empty-answer notice. The results
 sit inside `<untrusted_web_search_results>` delimiters that the instruction
 declares information-only. Every `<` and `>` in the flattened text is
 replaced with `‹`/`›`, so a title, URL, snippet, date or error text cannot
@@ -285,7 +291,13 @@ only: the KV generation-in-progress guard this route writes expires after
 `TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS` (loop timeout + continuation
 timeout + a 30s persistence margin), so it must outlive both —
 otherwise a client retry arriving after the guard expired would start a
-second concurrent generation for the same turn. A tool `execute()` that
+second concurrent generation for the same turn. A tool call the model itself gets wrong (input that fails the tool's schema,
+or a call to a tool that is not declared) also ends as a tool part with
+`state: 'output-error'`, never as a held stream `error`; it counts as a
+follow-up output, so the forced step and, if still needed, the continuation
+run as usual. Its `errorText` is labelled `invalid-provider-output` (422) by
+`normalizeModelToolCallError()` rather than an `unknown` 500, see
+`gateways.md` ("`gpt-oss` tool-call quirks"). A tool `execute()` that
 throws produces a `tool-error` output, which the model sees and answers
 from, so a failing tool terminates the loop rather than retrying it.
 

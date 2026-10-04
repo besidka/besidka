@@ -589,28 +589,59 @@ a structured `why`/`fix` from a gateway builder gets flattened to a generic
 message today. Not closed; the catalog path was fixed first since it's the
 fetch the model picker depends on to list a model to send to.
 
-### Cloudflare: string assistant content
+### Cloudflare: string message content
 
 `toolCall: true` in Cloudflare's catalog is not enough on its own for the
-multi-step Brave/Exa loop. `@ai-sdk/openai-compatible` serializes an
-assistant turn that only holds tool calls as `content: null` (valid per the
-OpenAI spec), and Workers AI validates each request against the routed
-model's own input schema. `@cf/openai/gpt-oss-120b`'s schema requires a
-string, so every step after a tool call failed with `400 Bad Request`,
-`AiError: Bad input: ... Type mismatch of '/messages/2/content', 'string'
-not in 'null'` (code `5006`); the first step and the search itself
-succeeded, which is why the preview showed ten sources and then an error
-card. This is per-backend strictness, not a Cloudflare-wide rule:
+multi-step Brave/Exa loop. Workers AI validates each request against the
+routed model's own input schema, and `@cf/openai/gpt-oss-120b`'s schema only
+accepts **string** message content, while `@ai-sdk/openai-compatible` sends
+two other shapes the OpenAI spec allows:
+
+- An assistant turn that only holds tool calls goes out as `content: null`.
+  Every step after a tool call failed with `400 Bad Request`,
+  `AiError: Bad input: ... Type mismatch of '/messages/2/content', 'string'
+  not in 'null'` (code `5006`); the first step and the search itself
+  succeeded, which is why the preview showed ten sources and then an error
+  card.
+- A message with more than one text part goes out as an array of
+  `{ type: 'text' }` parts. The search-answer continuation appends the
+  gathered results as a second text part of the final user message, so it
+  failed with `400`, `Type mismatch of '/messages/0/content', 'string' not in
+  'array'` (code `5006`), and the turn ended with the empty-answer notice
+  although two searches had returned results (pr-392 preview, request
+  `a456087e1b85cce9`, reproduced locally 2026-10-04).
+
+This is per-backend strictness, not a Cloudflare-wide rule:
 `@cf/zai-org/glm-4.7-flash` accepted the identical `null` body
 (2026-10-04, one live round trip each). `useCloudflareGateway()` therefore
-passes `transformRequestBody: withStringAssistantContent`, which rewrites
-only `role: 'assistant'` + `content: null` to `''` — valid for every
-backend — and leaves `reasoning_content` and `tool_calls` untouched (echoing
-`reasoning_content` back was verified fine on `gpt-oss-120b`). No
-`toolCall` gating change was needed: with the rewrite, `gpt-oss-120b`
-completed the tool round trip and answered, and also answered on a forced
-final step that sends the tool-call history with no `tools` declared
-(`toolChoice: 'none'`, `activeTools: []`), verified live the same day.
+passes `transformRequestBody: withStringMessageContent`, which rewrites
+`role: 'assistant'` + `content: null` to `''` and joins a content array made
+only of text parts into one string with no separator (callers that need a
+break start their part with one, as the continuation does). An array that
+holds any non-text part (an image) is left alone, so vision-capable backends
+keep multimodal content, and `reasoning_content` and `tool_calls` are never
+touched (echoing `reasoning_content` back was verified fine on
+`gpt-oss-120b`). No `toolCall` gating change was needed: with the rewrite,
+`gpt-oss-120b` completed the tool round trip and answered, answered on a
+forced final step that sends the tool-call history with no `tools` declared
+(`toolChoice: 'none'`, `activeTools: []`), and answered in the tool-less
+continuation, all verified live on 2026-10-04.
+
+**`gpt-oss` tool-call quirks.** The model is trained on a built-in browser
+tool and leaks it into function calls: it called the declared
+`web_search_brave` with `{ "cursor": 1, "id": 0 }` (an "open search result"
+call), and on the forced step, with no tools declared, it called an
+undeclared `open_file` with `{ "cursor": … }`. The SDK rejects the first as
+`InvalidToolInputError` and the second as `NoSuchToolError`; both become
+tool parts with `state: 'output-error'`, never a stream error, and the
+forced-step rejection is dropped by `withSearchAnswerGuarantee()`. Because
+`toUIMessageStream()` routes tool-part errors through the same `onError` as
+stream failures, both used to be persisted as an `unknown` 500 attributed to
+`cloudflare` and logged as `stage: 'stream'` chat errors, which looked
+exactly like a provider 500. `normalizeModelToolCallError()`
+(`server/utils/chats/errors.ts`) now labels them `invalid-provider-output`
+with status 422 and records them only as `attributes.modelToolCallError` on
+the `ai-stream` event.
 
 ## Live-verification status
 

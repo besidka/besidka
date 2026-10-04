@@ -67,7 +67,11 @@ import {
   resolveSearchUsage,
 } from '~~/server/utils/ai/search-usage'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
-import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
+import {
+  getRequestId,
+  normalizeChatError,
+  normalizeModelToolCallError,
+} from '~~/server/utils/chats/errors'
 import {
   emitSourcesForExternalSearchResults,
   filterRecoverableUIMessageStreamErrors,
@@ -1356,6 +1360,24 @@ export default defineEventHandler(async (event) => {
             return buildLiveMessageMetadata(part.totalUsage, finishedSteps)
           },
           onError(error) {
+            const toolCallError = normalizeModelToolCallError({
+              error,
+              event,
+              providerId: errorProviderId,
+            })
+
+            if (toolCallError) {
+              aiLogger.set({
+                attributes: {
+                  modelToolCallError: {
+                    why: toolCallError.why,
+                  },
+                },
+              })
+
+              return JSON.stringify(toolCallError)
+            }
+
             const chatError = normalizeChatError({
               error,
               event,

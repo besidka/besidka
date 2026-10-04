@@ -495,6 +495,7 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/ai/search-answer-continuation.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
+        'tests/unit/utils/gateways/cloudflare.spec.ts',
       ],
     },
     {

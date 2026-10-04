@@ -100,17 +100,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+interface TextContentPart {
+  type: 'text'
+  text: string
+}
+
+function isTextContentPart(part: unknown): part is TextContentPart {
+  return isRecord(part) && part.type === 'text' && typeof part.text === 'string'
+}
+
+function toStringMessageContent(message: unknown): unknown {
+  if (!isRecord(message)) {
+    return message
+  }
+
+  if (message.role === 'assistant' && message.content === null) {
+    return { ...message, content: '' }
+  }
+
+  if (
+    Array.isArray(message.content)
+    && message.content.length > 0
+    && message.content.every(isTextContentPart)
+  ) {
+    return {
+      ...message,
+      content: message.content.map(part => part.text).join(''),
+    }
+  }
+
+  return message
+}
+
 /**
- * `@ai-sdk/openai-compatible` serializes an assistant turn that only holds
- * tool calls as `content: null`, which is what the OpenAI spec allows, but
  * Workers AI validates each request against the routed model's own input
- * schema and some of those schemas require a string. `@cf/openai/gpt-oss-*`
- * rejects the tool-result round trip with `400 Bad input: Type mismatch of
- * '/messages/N/content', 'string' not in 'null'`, so every follow-up step
- * after a tool call failed. An empty string is accepted by every backend, so
- * the rewrite is unconditional; nothing else in the body is touched.
+ * schema, and `@cf/openai/gpt-oss-*`'s schema only accepts string message
+ * content, while `@ai-sdk/openai-compatible` sends two other shapes that the
+ * OpenAI spec allows:
+ * - an assistant turn that only holds tool calls as `content: null`, which
+ *   failed every step after a tool call with `400 Bad input: Type mismatch of
+ *   '/messages/N/content', 'string' not in 'null'`;
+ * - a message with more than one text part as an array of `{ type: 'text' }`
+ *   parts, which failed the search-answer continuation (it appends the
+ *   gathered results as a second text part of the final user message) with
+ *   `'string' not in 'array'`.
+ * Both are rewritten to the equivalent string: `''` for the null content, and
+ * the text parts joined with no separator, matching how `@ai-sdk/deepseek`
+ * joins them (callers that need a break already start their part with one).
+ * An array holding any non-text part (an image) is left as it is, so
+ * vision-capable backends keep their multimodal content. Nothing else in the
+ * body is touched.
  */
-export function withStringAssistantContent(
+export function withStringMessageContent(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
   if (!Array.isArray(body.messages)) {
@@ -119,17 +160,7 @@ export function withStringAssistantContent(
 
   return {
     ...body,
-    messages: body.messages.map((message: unknown) => {
-      if (
-        !isRecord(message)
-        || message.role !== 'assistant'
-        || message.content !== null
-      ) {
-        return message
-      }
-
-      return { ...message, content: '' }
-    }),
+    messages: body.messages.map(toStringMessageContent),
   }
 }
 
@@ -167,7 +198,7 @@ export async function useCloudflareGateway(
       'cf-aig-gateway-id': credentials.gatewayId
         ?? CLOUDFLARE_DEFAULT_GATEWAY_ID,
     },
-    transformRequestBody: withStringAssistantContent,
+    transformRequestBody: withStringMessageContent,
   })
   const catalogModel = await findGatewayCatalogModel(
     () => getCachedCloudflareGatewayCatalog(credentials, { logger }),
