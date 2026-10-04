@@ -12,7 +12,7 @@ export const SEARCH_ANSWER_SNIPPET_MAX_CHARS = 600
 export const SEARCH_ANSWER_OPAQUE_OUTPUT_MAX_CHARS = 4_000
 
 export const SEARCH_ANSWER_RESULTS_TAG = 'untrusted_web_search_results'
-export const SEARCH_ANSWER_FORCED_STEP_ERROR_MAX_CHARS = 500
+export const SEARCH_ANSWER_HELD_ERROR_MAX_CHARS = 500
 
 const SEARCH_ANSWER_INSTRUCTIONS = [
   'Your search budget is used up and no tools are available any more.',
@@ -94,6 +94,11 @@ export function hasVisibleTextAfterLastFollowUpTool(input: {
   })
 }
 
+export interface HeldStepError {
+  stepNumber: number
+  error: string
+}
+
 export interface SearchAnswerOutcome {
   stepsCount: number
   forcedStepToolCall: boolean
@@ -103,6 +108,7 @@ export interface SearchAnswerOutcome {
   continuationError: string | undefined
   continuationTruncated: boolean
   forcedStepError: string | undefined
+  heldStepError: HeldStepError | undefined
   finishReason: FinishReason | undefined
   continuation: SearchAnswerContinuationResult | undefined
 }
@@ -418,7 +424,7 @@ function readHeldErrorText(
   if (typeof payload?.message !== 'string') {
     return truncate(
       heldError.errorText,
-      SEARCH_ANSWER_FORCED_STEP_ERROR_MAX_CHARS,
+      SEARCH_ANSWER_HELD_ERROR_MAX_CHARS,
     )
   }
 
@@ -426,20 +432,30 @@ function readHeldErrorText(
     ? `${payload.message}: ${payload.why}`
     : payload.message
 
-  return truncate(text, SEARCH_ANSWER_FORCED_STEP_ERROR_MAX_CHARS)
+  return truncate(text, SEARCH_ANSWER_HELD_ERROR_MAX_CHARS)
 }
 
 /**
  * Guarantees that a tool-loop turn whose follow-up tool ran still ends with
  * a visible answer. The loop's own UI stream passes through untouched except
- * for its `finish` chunk (held back) and an `error` raised on the forced
- * final step after a search already completed (also held back). When the
- * loop ends with no visible text, `startContinuation()` runs ONE tool-less
+ * for its `finish` chunk (held back) and a recoverable step `error` (also
+ * held back): one raised on the forced final step after any follow-up tool
+ * output, or one raised on ANY step once a follow-up search has returned a
+ * successful output and no answer followed it. That covers a provider that
+ * rejects the tool-result round trip itself (Cloudflare's `gpt-oss` did,
+ * with `400 Bad Request`): the gathered results are still answerable. When
+ * the loop ends with no visible text, `startContinuation()` runs ONE tool-less
  * generation and its chunks stream into the same assistant message, after
  * the tool and source parts, followed by a single `finish` chunk whose
  * metadata comes from `buildFinishMessageMetadata()` so usage and cost cover
- * the continuation too. Errors on earlier steps and aborts keep the
- * existing error handling: no continuation runs for them.
+ * the continuation too. An error before any successful search output (no
+ * results to answer from) and aborts keep the existing error handling: no
+ * continuation runs for them. The held error is recorded as
+ * `heldStepError` with its 0-based step number (the SDK's `prepareStep`
+ * index, so the forced step is `forcedStepIndex`), and additionally as
+ * `forcedStepError` when it was raised on the forced step. Any text or
+ * reasoning part the failed step left open is closed before the
+ * continuation streams.
  *
  * When the continuation also produces no text (or throws), the held error
  * and `finish` chunks are released as they were, so the persistence path's
@@ -482,6 +498,7 @@ export function withSearchAnswerGuarantee(input: {
     continuationError: undefined,
     continuationTruncated: false,
     forcedStepError: undefined,
+    heldStepError: undefined,
     finishReason: undefined,
     continuation: undefined,
   }
@@ -490,9 +507,13 @@ export function withSearchAnswerGuarantee(input: {
   const heldErrors: ErrorChunk[] = []
   const pendingToolInputChunks = new Map<string, PendingToolInputChunk[]>()
   const rejectedToolCallIds = new Set<string>()
+  const mainOpenPartClosers = new Map<string, UIMessageChunk>()
   let heldFinish: FinishChunk | undefined
+  let heldErrorStepNumber = 0
+  let isHeldErrorOnForcedStep = false
   let hasAnswerAfterFollowUp = false
   let followUpToolOutputCount = 0
+  let successfulFollowUpToolOutputCount = 0
   let isAborted = false
   let hadUnrecoverableError = false
 
@@ -517,6 +538,7 @@ export function withSearchAnswerGuarantee(input: {
       ?? { toolName, input: undefined }
 
     if (chunk.type === 'tool-output-available') {
+      successfulFollowUpToolOutputCount += 1
       searchResult.output = chunk.output
     } else {
       searchResult.errorText = chunk.errorText
@@ -623,6 +645,36 @@ export function withSearchAnswerGuarantee(input: {
     return isOnForcedStep()
       && followUpToolOutputCount > 0
       && !hasAnswerAfterFollowUp
+  }
+
+  function isErrorAfterSuccessfulSearch(): boolean {
+    return successfulFollowUpToolOutputCount > 0 && !hasAnswerAfterFollowUp
+  }
+
+  function holdError(chunk: ErrorChunk) {
+    if (heldErrors.length === 0) {
+      heldErrorStepNumber = outcome.stepsCount
+      isHeldErrorOnForcedStep = isOnForcedStep()
+    }
+
+    heldErrors.push(chunk)
+  }
+
+  function recordHeldError() {
+    const heldErrorText = readHeldErrorText(heldErrors)
+
+    if (heldErrorText === undefined) {
+      return
+    }
+
+    outcome.heldStepError = {
+      stepNumber: heldErrorStepNumber,
+      error: heldErrorText,
+    }
+
+    if (isHeldErrorOnForcedStep) {
+      outcome.forcedStepError = heldErrorText
+    }
   }
 
   function buildFinalFinishChunk(): FinishChunk | undefined {
@@ -771,8 +823,8 @@ export function withSearchAnswerGuarantee(input: {
       }
 
       if (chunk.type === 'error') {
-        if (isForcedStepError()) {
-          heldErrors.push(chunk)
+        if (isForcedStepError() || isErrorAfterSuccessfulSearch()) {
+          holdError(chunk)
 
           return
         }
@@ -800,6 +852,7 @@ export function withSearchAnswerGuarantee(input: {
       }
 
       recordToolOutput(chunk)
+      trackOpenPart(mainOpenPartClosers, chunk)
       controller.enqueue(chunk)
     },
     async flush(controller) {
@@ -811,10 +864,14 @@ export function withSearchAnswerGuarantee(input: {
         && !hadUnrecoverableError
 
       if (shouldContinue) {
+        for (const closer of mainOpenPartClosers.values()) {
+          controller.enqueue(closer)
+        }
+
         await pumpContinuation(controller)
       }
 
-      outcome.forcedStepError = readHeldErrorText(heldErrors)
+      recordHeldError()
 
       if (!outcome.continuationProducedText) {
         for (const heldError of heldErrors) {

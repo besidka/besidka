@@ -459,19 +459,154 @@ describe('withSearchAnswerGuarantee', () => {
       }))
     })
 
-  it('never runs a continuation after an error before the forced step',
-    async () => {
+  describe('an error on a step before the forced step', () => {
+    const PROVIDER_ERROR_TEXT = JSON.stringify({
+      code: 'unknown',
+      message: 'Bad Request',
+      why: 'Type mismatch of \'/messages/2/content\'',
+    })
+
+    it('holds the error after a successful search and answers from the '
+      + 'gathered results', async () => {
       const { guarantee, startContinuation } = createGuarantee({
         chunks: [
           ...createSearchStepChunks('call-1'),
-          { type: 'error', errorText: 'provider unavailable' },
+          { type: 'start-step' },
+          { type: 'error', errorText: PROVIDER_ERROR_TEXT },
         ],
+        continuationChunks: createTextChunks('Answer from results'),
       })
       const chunks = await readAll(guarantee.stream)
+      const types = chunks.map(chunk => chunk.type)
 
-      expect(startContinuation).not.toHaveBeenCalled()
-      expect(chunks.at(-1)?.type).toBe('error')
+      expect(startContinuation).toHaveBeenCalledWith([
+        expect.objectContaining({
+          toolName: SEARCH_TOOL_NAME,
+          output: expect.objectContaining({ provider: 'brave' }),
+        }),
+      ])
+      expect(types).not.toContain('error')
+      expect(types.at(-1)).toBe('finish')
+      expect(chunks).toContainEqual({
+        type: 'text-delta',
+        id: 'answer',
+        delta: 'Answer from results',
+      })
+      expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+        continuationRan: true,
+        continuationProducedText: true,
+        heldStepError: {
+          stepNumber: 1,
+          error: 'Bad Request: Type mismatch of \'/messages/2/content\'',
+        },
+        forcedStepError: undefined,
+      }))
     })
+
+    it('releases the held error when the continuation also fails',
+      async () => {
+        const { guarantee, startContinuation } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+          ],
+          continuationChunks: [
+            { type: 'error', errorText: 'continuation failed' },
+          ],
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(startContinuation).toHaveBeenCalledTimes(1)
+        expect(chunks.at(-1)).toEqual({
+          type: 'error',
+          errorText: PROVIDER_ERROR_TEXT,
+        })
+        expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+          continuationRan: true,
+          continuationProducedText: false,
+          continuationError: 'continuation failed',
+          heldStepError: expect.objectContaining({ stepNumber: 1 }),
+        }))
+      })
+
+    it('closes a reasoning part the failed step left open before the '
+      + 'continuation streams', async () => {
+      const { guarantee } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          { type: 'start-step' },
+          { type: 'reasoning-start', id: 'thinking' },
+          { type: 'reasoning-delta', id: 'thinking', delta: 'Hmm' },
+          { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+        ],
+        continuationChunks: createTextChunks('Answer'),
+      })
+      const types = (await readAll(guarantee.stream)).map(chunk => chunk.type)
+
+      expect(types.indexOf('reasoning-end'))
+        .toBeGreaterThan(types.indexOf('reasoning-delta'))
+      expect(types.indexOf('reasoning-end'))
+        .toBeLessThan(types.indexOf('text-start'))
+    })
+
+    it('never runs a continuation for an error before any search',
+      async () => {
+        const { guarantee, startContinuation } = createGuarantee({
+          chunks: [
+            { type: 'start-step' },
+            { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+          ],
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(startContinuation).not.toHaveBeenCalled()
+        expect(chunks.at(-1)?.type).toBe('error')
+        expect(guarantee.getOutcome().heldStepError).toBeUndefined()
+      })
+
+    it('never runs a continuation when every search before the error failed',
+      async () => {
+        const { guarantee, startContinuation } = createGuarantee({
+          chunks: [
+            { type: 'start-step' },
+            {
+              type: 'tool-input-available',
+              toolCallId: 'call-1',
+              toolName: SEARCH_TOOL_NAME,
+              input: { query: 'q' },
+            },
+            {
+              type: 'tool-output-error',
+              toolCallId: 'call-1',
+              errorText: 'Brave returned 429',
+            },
+            { type: 'finish-step' },
+            { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+          ],
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(startContinuation).not.toHaveBeenCalled()
+        expect(chunks.at(-1)?.type).toBe('error')
+      })
+
+    it('never holds an error raised after the answer already started',
+      async () => {
+        const { guarantee, startContinuation } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            { type: 'start-step' },
+            { type: 'text-start', id: 'answer' },
+            { type: 'text-delta', id: 'answer', delta: 'Partial' },
+            { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+          ],
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(startContinuation).not.toHaveBeenCalled()
+        expect(chunks.at(-1)?.type).toBe('error')
+      })
+  })
 
   it('never forwards the continuation\'s own abort or error chunks',
     async () => {
@@ -720,6 +855,10 @@ describe('withSearchAnswerGuarantee', () => {
         continuationProducedText: true,
         forcedStepError:
           'Something went wrong: function calls require declared tools',
+        heldStepError: {
+          stepNumber: FORCED_STEP_INDEX,
+          error: 'Something went wrong: function calls require declared tools',
+        },
       }))
     })
 

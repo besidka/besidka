@@ -195,8 +195,18 @@ absorbs.
 
 **Search-answer continuation (the guarantee).** `withSearchAnswerGuarantee()`
 (`server/utils/ai/search-answer-continuation.ts`) wraps the loop's UI stream
-on loop sends only. It holds back the `finish` chunk, and an `error` raised
-on the forced step once a search has completed. If no visible text follows
+on loop sends only. It holds back the `finish` chunk and a recoverable
+step `error`: one raised on the forced step once a search has completed, or
+one raised on **any** step once a follow-up search has returned a
+successful output and no answer text followed it. The second case exists
+because a provider can reject the tool-result round trip itself — Cloudflare
+AI Gateway's `@cf/openai/gpt-oss-120b` failed every step after a Brave
+search with `400 Bad Request` (see `gateways.md`, "Cloudflare: string
+assistant content"), which used to end the turn with the empty-answer notice
+although ten sources were already gathered. An error before any successful
+search output (nothing to answer from, including a turn whose searches all
+failed) and an error after answer text already started keep the existing
+error card. If no visible text follows
 the last follow-up tool result (a step-0 preamble such as "Let me look that
 up." does not count, here and in persistence's empty-answer check), it runs ONE tool-less
 `streamText()` with the same model, reasoning and provider options: the
@@ -216,15 +226,19 @@ both sum the loop's recorded step usages with the continuation's (the loop's
 own `totalUsage` is empty when it ended on an error); search cost is
 unchanged because the continuation never searches. Only when the
 continuation is also empty (or throws) are the held chunks released and the
-empty-answer notice persisted as before. Errors on earlier steps and aborts
-never trigger it. A continuation that times out
+empty-answer notice persisted as before. Aborts never trigger it, and a
+text/reasoning part the failed step left open is closed before the
+continuation streams. A continuation that times out
 mid-stream keeps its partial text: any open text/reasoning part is closed
 before the final `finish`, the abort chunk is swallowed, and available usage
 is folded in. `attributes.toolLoop` on the `ai-stream` event records
 `steps`, `forcedStepToolCall`, `continuationRan`,
 `continuationProducedText`, `continuationError` (first one wins),
 `continuationTruncated`, `forcedStepError` (the held forced-step error text,
-logged even when the continuation answers) and `finishReason`. The
+logged even when the continuation answers), `heldStepError`
+(`{ stepNumber, error }` for any held error, forced step included;
+`stepNumber` is 0-based like `prepareStep`'s, so the second model call is
+`1` and the forced step is `3`) and `finishReason`. The
 continuation's own `timeout.totalMs` is 90s.
 `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on the loop path
 only: the KV generation-in-progress guard this route writes expires after

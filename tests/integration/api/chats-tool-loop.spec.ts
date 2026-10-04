@@ -1038,26 +1038,103 @@ describe('multi-step tool loop', () => {
       }))
     })
 
-    it('keeps the existing error handling for an error before the forced '
-      + 'step', async () => {
-      const { doStream, assistantInsert } = await runLoopSend({
+    it('answers from the gathered results when the step after a search '
+      + 'errors', async () => {
+      const { doStream, assistantInsert, writer } = await runLoopSend({
         steps: [
           createToolCallChunks('call-1'),
-          new Error('provider unavailable'),
+          new Error('Bad Request'),
+          createTextChunks('Answer despite the round-trip failure.'),
         ],
       })
       const chunks = await readClientChunks()
+      const parts = assistantInsert?.parts ?? []
+      const continuationPrompt = doStream.mock.calls[2]?.[0]?.prompt ?? []
 
-      expect(doStream).toHaveBeenCalledTimes(2)
-      expect(chunks.map(chunk => chunk.type)).toContain('error')
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(doStream.mock.calls[2]?.[0]?.tools).toBeUndefined()
+      expect(JSON.stringify(continuationPrompt))
+        .toContain('Result for besidka release notes')
+      expect(parts).toContainEqual(expect.objectContaining({
+        type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
+        state: 'output-available',
+      }))
+      expect(parts).toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: 'Answer despite the round-trip failure.',
+      }))
+      expect(parts).not.toContainEqual(expect.objectContaining({
+        type: 'text',
+        text: getPersistedEmptyAnswerFailureText(),
+      }))
+      expect(chunks.map(chunk => chunk.type)).not.toContain('error')
+      expect(chunks.at(-1)?.type).toBe('finish')
+      expect(writer.write.mock.calls.some(([chunk]: [{ type?: string }]) => {
+        return chunk?.type === 'error'
+      })).toBe(false)
+      expect(assistantInsert?.usage).toEqual(expect.objectContaining({
+        inputTokens: 20,
+        outputTokens: 40,
+      }))
+      expect(getAiLoggerField('ai')).toEqual(expect.objectContaining({
+        tokens: expect.objectContaining({ input: 20, output: 40 }),
+      }))
+      expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+        continuationRan: true,
+        continuationProducedText: true,
+        forcedStepError: undefined,
+        heldStepError: {
+          stepNumber: 1,
+          error: expect.stringContaining('Bad Request'),
+        },
+      }))
+    })
+
+    it('falls back to the error and the empty-answer notice when the '
+      + 'continuation after a mid-loop error also fails', async () => {
+      const { doStream, assistantInsert } = await runLoopSend({
+        steps: [
+          createToolCallChunks('call-1'),
+          new Error('Bad Request'),
+          new Error('continuation failed'),
+        ],
+      })
+      const chunks = await readClientChunks()
+      const errorChunks = chunks.filter(chunk => chunk.type === 'error')
+
+      expect(doStream).toHaveBeenCalledTimes(3)
+      expect(errorChunks).toHaveLength(1)
+      expect(errorChunks[0]?.errorText).toContain('Bad Request')
+      expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
+        type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
+        state: 'output-available',
+      }))
       expect(assistantInsert?.parts).toContainEqual(expect.objectContaining({
         type: 'text',
         text: getPersistedEmptyAnswerFailureText(),
       }))
       expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
-        continuationRan: false,
+        continuationRan: true,
+        continuationProducedText: false,
+        continuationError: expect.stringContaining('continuation failed'),
+        heldStepError: expect.objectContaining({ stepNumber: 1 }),
       }))
     })
+
+    it('keeps the existing error handling for an error before any search',
+      async () => {
+        const { doStream } = await runLoopSend({
+          steps: [new Error('provider unavailable')],
+        })
+        const chunks = await readClientChunks()
+
+        expect(doStream).toHaveBeenCalledTimes(1)
+        expect(chunks.map(chunk => chunk.type)).toContain('error')
+        expect(getToolLoopAttributes()).toEqual(expect.objectContaining({
+          continuationRan: false,
+          heldStepError: undefined,
+        }))
+      })
 
     it('never runs a continuation for a turn that already answered',
       async () => {

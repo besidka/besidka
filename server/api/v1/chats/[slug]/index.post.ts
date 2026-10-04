@@ -1117,6 +1117,7 @@ export default defineEventHandler(async (event) => {
                 continuationError: outcome.continuationError,
                 continuationTruncated: outcome.continuationTruncated,
                 forcedStepError: outcome.forcedStepError,
+                heldStepError: outcome.heldStepError,
                 finishReason: outcome.finishReason,
               },
             },
