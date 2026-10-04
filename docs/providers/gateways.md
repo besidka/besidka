@@ -608,9 +608,9 @@ only `role: 'assistant'` + `content: null` to `''` — valid for every
 backend — and leaves `reasoning_content` and `tool_calls` untouched (echoing
 `reasoning_content` back was verified fine on `gpt-oss-120b`). No
 `toolCall` gating change was needed: with the rewrite, `gpt-oss-120b`
-completed the tool round trip and answered. Not verified live: the forced
-final step, which sends tool-call history with no `tools` declared, against
-`gpt-oss`'s schema — the search-answer continuation absorbs it if it fails.
+completed the tool round trip and answered, and also answered on a forced
+final step that sends the tool-call history with no `tools` declared
+(`toolChoice: 'none'`, `activeTools: []`), verified live the same day.
 
 ## Live-verification status
 
