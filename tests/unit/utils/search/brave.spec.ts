@@ -224,8 +224,41 @@ describe('web_search_brave tool execute()', () => {
       url: 'https://www.besidka.com/',
       snippet: 'Bring your own API key and pay for what you use.\n'
         + '- Supports Anthropic, Google and OpenAI.\n- No subscription.',
-      publishedDate: '2025-10-21',
+      publishedDate: '2025-10-21T07:25:05Z',
     })
+  })
+
+  it('prefers the full timestamp age[3], falls back to age[1], and '
+    + 'accepts only ISO values', async () => {
+    const ageCases: Array<[Array<string | null> | null, string | undefined]> = [
+      [['x', '2025-10-21', 'y', '2025-10-21T07:25:05Z'], '2025-10-21T07:25:05Z'],
+      [['x', '2025-10-21', 'y', null], '2025-10-21'],
+      [['x', '2025-10-21', 'y', 'October 21, 2025'], '2025-10-21'],
+      [['x', 'October 21, 2025', 'y', '2025-10-21T07:25:05.123+02:00'],
+        '2025-10-21T07:25:05.123+02:00'],
+      [['x', 'October 21, 2025', 'y', 'yesterday'], undefined],
+      [['x', '2025-10-21; DROP', 'y', null], undefined],
+      [['x', '2025-10-21'], '2025-10-21'],
+      [null, undefined],
+    ]
+    const { getBraveWebSearchTools } = await importModule()
+
+    for (const [age, expectedDate] of ageCases) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+        grounding: {
+          generic: [{ url: 'https://dated.example/', snippets: ['S'] }],
+        },
+        sources: { 'https://dated.example/': { hostname: 'dated.example', age } },
+      })))
+
+      const result = await getBraveWebSearchTools('brave-key')
+      const output = await result.tools?.web_search_brave.execute(
+        { query: 'dated' },
+        createExecutionOptions(),
+      )
+
+      expect(output.results[0].publishedDate).toBe(expectedDate)
+    }
   })
 
   it('falls back to the source hostname when Brave omits a title and has '
@@ -398,6 +431,25 @@ describe('web_search_brave tool execute()', () => {
       })
     })
 
+  it.each([400, 422])('reports an invalid search request on a %i, not a '
+    + 'transient outage', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({}, { ok: false, status }),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    await expect(searchTool.execute(
+      { query: 'x' },
+      createExecutionOptions(),
+    )).rejects.toMatchObject({
+      message: 'Brave Search rejected the search request as invalid.',
+      status,
+    })
+  })
+
   it('tells the caller to update the key on a 401', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       jsonResponse({}, { ok: false, status: 401 }),
@@ -505,4 +557,95 @@ describe('web_search_brave tool execute()', () => {
       createExecutionOptions(),
     )).rejects.toBe(abortException)
   })
+})
+
+describe('web_search_brave per-request search budget', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects the 9th call without calling Brave', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      return jsonResponse(BRAVE_SEARCH_RESPONSE)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getBraveWebSearchTools } = await importModule()
+    const { EXTERNAL_SEARCH_LIMIT_MESSAGE } = await import(
+      '../../../../server/utils/search/search-budget'
+    )
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 9 }, () => {
+        return searchTool.execute(
+          { query: 'many' },
+          createExecutionOptions(),
+        )
+      }),
+    )
+    const rejected = outcomes.filter(outcome => outcome.status === 'rejected')
+
+    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0]).toMatchObject({
+      reason: { message: EXTERNAL_SEARCH_LIMIT_MESSAGE },
+    })
+  })
+
+  it('shares one budget across tool sets built from the same budget',
+    async () => {
+      const fetchMock = vi.fn().mockImplementation(async () => {
+        return jsonResponse(BRAVE_SEARCH_RESPONSE)
+      })
+
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { getBraveWebSearchTools } = await importModule()
+      const { createExternalSearchBudget } = await import(
+        '../../../../server/utils/search/search-budget'
+      )
+      const searchBudget = createExternalSearchBudget(1)
+      const first = await getBraveWebSearchTools('brave-key', searchBudget)
+      const second = await getBraveWebSearchTools('brave-key', searchBudget)
+
+      await first.tools?.web_search_brave.execute(
+        { query: 'one' },
+        createExecutionOptions(),
+      )
+
+      await expect(second.tools?.web_search_brave.execute(
+        { query: 'two' },
+        createExecutionOptions(),
+      )).rejects.toMatchObject({ status: 429 })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+  it('does not share a budget between separately built tool sets',
+    async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        jsonResponse(BRAVE_SEARCH_RESPONSE),
+      ))
+
+      const { getBraveWebSearchTools } = await importModule()
+      const { EXTERNAL_SEARCH_MAX_CALLS_PER_TURN } = await import(
+        '../../../../server/utils/search/search-budget'
+      )
+
+      async function spendFreshBudget() {
+        const result = await getBraveWebSearchTools('brave-key')
+
+        for (let call = 0; call < EXTERNAL_SEARCH_MAX_CALLS_PER_TURN; call++) {
+          await result.tools?.web_search_brave.execute(
+            { query: 'q' },
+            createExecutionOptions(),
+          )
+        }
+      }
+
+      await expect(spendFreshBudget()).resolves.toBeUndefined()
+      await expect(spendFreshBudget()).resolves.toBeUndefined()
+    })
 })

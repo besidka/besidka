@@ -710,7 +710,7 @@ call) or to either rate:
 
 | | Request | Snippet |
 |---|---|---|
-| Brave | `GET /res/v1/llm/context` with `q`, `count=8`, `maximum_number_of_tokens=3072`, `maximum_number_of_tokens_per_url=1024`, `enable_source_metadata=true` (was `/res/v1/web/search`, `count=10`, `result_filter=web`) | `grounding.generic[].snippets` joined with `\n`; title falls back to `sources[url].title`, then hostname; `publishedDate` is `sources[url].age[1]` when it parses as a date |
+| Brave | `GET /res/v1/llm/context` with `q`, `count=8`, `maximum_number_of_tokens=3072`, `maximum_number_of_tokens_per_url=1024`, `enable_source_metadata=true` (was `/res/v1/web/search`, `count=10`, `result_filter=web`) | `grounding.generic[].snippets` joined with `\n`; title falls back to `sources[url].title`, then hostname; `publishedDate` is `sources[url].age[3]` (full ISO timestamp), falling back to `age[1]`, and only when the value matches an ISO date/datetime pattern |
 | Exa | `POST /search` with `type: 'auto'`, `numResults: 10`, `contents.text.maxCharacters: 1500` (was `contents.highlights: true`) | `results[].text`, falling back to joined `highlights`, else empty |
 
 Why the rate is unchanged:
@@ -736,10 +736,42 @@ resent to the model on every later step of the tool loop. The size is
 therefore capped by constants, not by the user: Brave by the token budgets
 above, Exa by `maxCharacters`, and the guaranteed-answer continuation
 (`server/utils/ai/search-answer-continuation.ts`) by
-`SEARCH_ANSWER_SNIPPET_MAX_CHARS = 1500` per result and
-`SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32_000` in total (24 results max). That
-extra input is priced by the ordinary model-token path
+`SEARCH_ANSWER_RESULT_SNIPPET_MAX_CHARS = 1500` per result (tool input
+and error text use the separate `SEARCH_ANSWER_AUXILIARY_TEXT_MAX_CHARS =
+600`) and `SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32_000` in total (24 results
+max). That extra input is priced by the ordinary model-token path
 (`computeModelCost`), not by the search-cost dispatcher.
+
+Earlier turns do not re-pay for it: `sanitizeMessagesForModelContext` drops
+every tool and `source-url` part from previous messages before the prompt is
+built, so search output costs input tokens only on the turn that gathered
+it.
+
+### Per-turn call cap and untrusted content
+
+Richer content raises both the cost and the injection surface of each
+search call, so three guards sit next to it:
+
+- **Per-turn call cap.** A per-request `ExternalSearchBudget`
+  (`server/utils/search/search-budget.ts`) is shared by the Brave and Exa
+  tool `execute`s. Past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8` the call
+  throws before any provider request, which the AI SDK turns into a
+  `tool-error` part. `getExternalSearchUsage` counts `tool-result` parts
+  only, so the rejected call adds neither a fetch nor a billed unit; a
+  turn that hits the cap records exactly 8 search units. The cap is needed
+  because one step can fan out parallel calls and Anthropic keeps tools
+  declared on the forced final step.
+- **Tag neutralisation.** The continuation wraps results in
+  `<untrusted_web_search_results>` and replaces every `<` and `>` in the
+  wrapped text with `‹`/`›`. Stripping the tag name instead is bypassable
+  by nesting it inside itself.
+- **Source URL scheme allowlist.** Only `http:`/`https:` result URLs are
+  emitted as `source-url` parts and opened from `UrlSources.vue`
+  (`shared/utils/http-url.ts`), so a `javascript:` or `data:` URL in a
+  search result never becomes a clickable source.
+
+A 400/422 from either provider maps to a non-transient "rejected the search
+request as invalid" error instead of "temporarily unavailable".
 
 ### Candidates
 

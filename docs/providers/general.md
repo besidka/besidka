@@ -171,6 +171,31 @@ fixture tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the
 real send pipeline with a real `streamText` and a `MockLanguageModelV4`;
 that fixture must never be wired into a provider builder.
 
+**Per-turn search cap.** One model step can emit many parallel search
+calls, and Anthropic keeps tools declared on the forced step, so the step
+budget alone does not bound provider requests. `index.post.ts` creates one
+`ExternalSearchBudget` per chat request (`server/utils/search/search-budget.ts`,
+never module-global) and passes it to `getBraveWebSearchTools` /
+`getExaWebSearchTools`. Each `execute` spends one call before any provider
+request; past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8` it throws a 429
+`createError` whose message tells the model to answer from the results
+already gathered. A throw inside a tool `execute()` becomes a `tool-error`
+part, not a stream failure, and `getExternalSearchUsage` only counts
+`tool-result` parts, so a rejected call is neither fetched nor billed. A
+legitimate DeepSeek turn used 7 calls, hence 8.
+
+**Earlier turns' search output is not replayed.** `sanitizeMessagesForModelContext`
+keeps only `text` and (converted) `file` parts of previous messages, so
+`tool-web_search_*` outputs and `source-url` parts from earlier turns never
+re-enter the model's prompt; page content costs input tokens only on the
+turn that gathered it (and on that turn's later loop steps).
+
+**Source URL scheme.** Brave/Exa result URLs are third-party content. Only
+`http:`/`https:` URLs become `source-url` parts
+(`emitSourcesForExternalSearchResults`), and `Chat/UrlSources.vue` ignores a
+click on any other scheme, both through `isHttpUrl` in
+`shared/utils/http-url.ts`.
+
 **Bounds.** `TOOL_LOOP_MAX_TOOL_STEPS` is 3 search rounds, plus one
 guaranteed final step (`TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1`)
 that forces an answer instead of another tool call.
@@ -211,13 +236,22 @@ the last follow-up tool result (a step-0 preamble such as "Let me look that
 up." does not count, here and in persistence's empty-answer check), it runs ONE tool-less
 `streamText()` with the same model, reasoning and provider options: the
 turn's model messages, with the search results flattened to plain text
-(query, title, URL, snippet; capped by result count and characters — up to
-1,500 characters per result and 32,000 in total, since Brave and Exa now
-return page content rather than short snippets) and an
+(query, title, URL, optional `Published:` date, snippet; capped by result
+count and characters — up to 1,500 characters per result and 32,000 in
+total, since Brave and Exa now return page content rather than short
+snippets; non-result text such as the tool input and error text is capped
+at 600 characters) and an
 answer-now instruction appended to the final user message — no tool-call
 history, so no provider can reject it for missing declarations. The results
 sit inside `<untrusted_web_search_results>` delimiters that the instruction
-declares information-only, and the appended text part starts with a blank
+declares information-only. Every `<` and `>` in the flattened text is
+replaced with `‹`/`›`, so a title, URL, snippet, date or error text cannot
+forge a closing tag however it is cased or nested (the earlier
+remove-the-tag-name approach collapsed
+`</untrusted_web_search_resuuntrusted_web_search_resultslts>` back into a
+real closer). Every line of a multi-line snippet is indented like the
+first, so a snippet cannot mimic the `N. Title` / `URL:` structure. The
+appended text part starts with a blank
 line because `@ai-sdk/deepseek` joins user text parts with no separator.
 Level-based reasoning effort is lowered to `low` for the continuation (off
 and toggle-only providers are unchanged). Its chunks

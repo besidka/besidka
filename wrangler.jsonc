@@ -72,13 +72,15 @@
 		// (exa.ai/pricing) — this fallback rate is used only when Exa's own
 		// response omits `costDollars`, which the live path always prefers.
 		// Exa's pricing page separately lists a $1/1,000-per-extracted-page
-		// highlights charge that would put this app's fixed 10-result,
-		// highlights-on request shape at $17/1,000 — but two real smoke-test
-		// calls against that exact shape on 2026-09-22 both reported
-		// `costDollars.total: 0.007` ($7/1,000, base fee only, no separate
-		// highlights line). Set to the empirically-observed $7, not the
-		// theoretical $17 the pricing page alone would suggest — re-verify
-		// with more samples before raising it back.
+		// charge that would put this app's fixed 10-result request shape at
+		// $17/1,000 — but a live call on 2026-10-04 with the shipped shape
+		// (`contents.text.maxCharacters: 1500`) reported `costDollars.total:
+		// 0.007` ($7/1,000, base fee only; text content bundled in the search
+		// price). An earlier highlights-shape call on 2026-09-22 reported the
+		// same. Set to the empirically-observed $7, not the theoretical $17 the
+		// pricing page alone would suggest — re-verify with more samples before
+		// raising it back. Brave's LLM Context endpoint is part of the same
+		// Search plan ($5/1,000 requests), so the Brave rate is unchanged.
 		"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
 		"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
 	},
@@ -234,13 +236,15 @@
 				// (exa.ai/pricing) — this fallback rate is used only when Exa's own
 				// response omits `costDollars`, which the live path always prefers.
 				// Exa's pricing page separately lists a $1/1,000-per-extracted-page
-				// highlights charge that would put this app's fixed 10-result,
-				// highlights-on request shape at $17/1,000 — but two real smoke-test
-				// calls against that exact shape on 2026-09-22 both reported
-				// `costDollars.total: 0.007` ($7/1,000, base fee only, no separate
-				// highlights line). Set to the empirically-observed $7, not the
-				// theoretical $17 the pricing page alone would suggest — re-verify
-				// with more samples before raising it back.
+				// charge that would put this app's fixed 10-result request shape at
+				// $17/1,000 — but a live call on 2026-10-04 with the shipped shape
+				// (`contents.text.maxCharacters: 1500`) reported `costDollars.total:
+				// 0.007` ($7/1,000, base fee only; text content bundled in the search
+				// price). An earlier highlights-shape call on 2026-09-22 reported the
+				// same. Set to the empirically-observed $7, not the theoretical $17 the
+				// pricing page alone would suggest — re-verify with more samples before
+				// raising it back. Brave's LLM Context endpoint is part of the same
+				// Search plan ($5/1,000 requests), so the Brave rate is unchanged.
 				"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
 				"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
 			},

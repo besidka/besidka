@@ -37,6 +37,15 @@ export function buildSearchProviderStatusError(input: {
     }
   }
 
+  if (status === 400 || status === 422) {
+    return {
+      message: `${providerLabel} rejected the search request as invalid.`,
+      status,
+      why: `${providerLabel} responded with HTTP ${status}.`,
+      fix: 'Rephrase the query and try again.',
+    }
+  }
+
   return {
     message: `${providerLabel} is temporarily unavailable.`,
     status,

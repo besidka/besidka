@@ -18,6 +18,13 @@ import {
   buildSearchProviderStatusError,
   isUserAbortError,
 } from '~~/server/utils/search/search-error'
+import {
+  consumeExternalSearchCall,
+  createExternalSearchBudget,
+} from '~~/server/utils/search/search-budget'
+import type {
+  ExternalSearchBudget,
+} from '~~/server/utils/search/search-budget'
 
 const EXA_SEARCH_API_URL = 'https://api.exa.ai/search'
 const EXA_SEARCH_REQUEST_TIMEOUT_MS = 15_000
@@ -172,10 +179,13 @@ async function executeExaSearch(
  * comment on why that would loop the tool forever instead of answering.
  * Registered under a name distinct from every native `web_search*` tool key
  * so external and native search stay distinguishable in telemetry and in
- * persisted message parts.
+ * persisted message parts. Every `execute` spends one call from the
+ * per-request `searchBudget` before any provider request, so parallel calls
+ * in one step cannot exceed `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN`.
  */
 export async function getExaWebSearchTools(
   apiKey: string,
+  searchBudget: ExternalSearchBudget = createExternalSearchBudget(),
   logger?: LoggerLike,
 ): Promise<FormattedTools> {
   return {
@@ -190,6 +200,8 @@ export async function getExaWebSearchTools(
           freshness: searchFreshnessSchema,
         }),
         async execute(input, options) {
+          consumeExternalSearchCall(searchBudget)
+
           return await executeExaSearch(
             apiKey,
             input.query,

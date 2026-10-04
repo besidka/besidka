@@ -18,6 +18,13 @@ import {
   buildSearchProviderStatusError,
   isUserAbortError,
 } from '~~/server/utils/search/search-error'
+import {
+  consumeExternalSearchCall,
+  createExternalSearchBudget,
+} from '~~/server/utils/search/search-budget'
+import type {
+  ExternalSearchBudget,
+} from '~~/server/utils/search/search-budget'
 
 const BRAVE_SEARCH_API_URL = 'https://api.search.brave.com/res/v1/llm/context'
 const BRAVE_SEARCH_REQUEST_TIMEOUT_MS = 10_000
@@ -26,6 +33,8 @@ const BRAVE_SEARCH_MAX_TOKENS = 3072
 const BRAVE_SEARCH_MAX_TOKENS_PER_URL = 1024
 const BRAVE_SEARCH_QUERY_MAX_LENGTH = 400
 const BRAVE_SEARCH_SNIPPET_SEPARATOR = '\n'
+const ISO_DATE_PATTERN
+  = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/
 
 interface BraveGroundingResult {
   url?: string
@@ -58,16 +67,31 @@ function hostnameFallback(url: string | undefined): string {
   }
 }
 
+function isIsoDateString(value: unknown): value is string {
+  return typeof value === 'string' && ISO_DATE_PATTERN.test(value)
+}
+
+/**
+ * Brave's `age` array is `[display text, ISO date, relative text, ISO
+ * timestamp]`. The full timestamp (index 3) is preferred over the date-only
+ * entry (index 1); anything that is not an ISO date or datetime is dropped
+ * rather than parsed leniently, so free text never reaches the model as a
+ * "date".
+ */
 function readPublishedDate(
   source: BraveSourceMetadata | undefined,
 ): string | undefined {
-  const isoDate = source?.age?.[1]
+  const age = source?.age
 
-  if (typeof isoDate !== 'string' || Number.isNaN(Date.parse(isoDate))) {
-    return undefined
+  if (isIsoDateString(age?.[3])) {
+    return age[3]
   }
 
-  return isoDate
+  if (isIsoDateString(age?.[1])) {
+    return age[1]
+  }
+
+  return undefined
 }
 
 function normalizeBraveResults(
@@ -187,10 +211,13 @@ async function executeBraveSearch(
  * doc comment on why that would loop the tool forever instead of answering.
  * Registered under a name distinct from every native `web_search*` tool key
  * so external and native search stay distinguishable in telemetry and in
- * persisted message parts.
+ * persisted message parts. Every `execute` spends one call from the
+ * per-request `searchBudget` before any provider request, so parallel calls
+ * in one step cannot exceed `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN`.
  */
 export async function getBraveWebSearchTools(
   apiKey: string,
+  searchBudget: ExternalSearchBudget = createExternalSearchBudget(),
   logger?: LoggerLike,
 ): Promise<FormattedTools> {
   return {
@@ -205,6 +232,8 @@ export async function getBraveWebSearchTools(
           freshness: searchFreshnessSchema,
         }),
         async execute(input, options) {
+          consumeExternalSearchCall(searchBudget)
+
           return await executeBraveSearch(
             apiKey,
             input.query,

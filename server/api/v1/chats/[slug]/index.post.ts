@@ -124,6 +124,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
 import { getExaWebSearchTools } from '~~/server/utils/search/exa'
+import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 
 export default defineEventHandler(async (event) => {
@@ -1000,9 +1001,12 @@ export default defineEventHandler(async (event) => {
         ? 'exa'
         : undefined
 
+  const externalSearchBudget = createExternalSearchBudget()
+
   if (externalSearchProvider === 'brave' && encryptedBraveApiKey) {
     const { tools: braveTools } = await getBraveWebSearchTools(
       await useDecryptText(encryptedBraveApiKey),
+      externalSearchBudget,
       aiLogger,
     )
 
@@ -1015,6 +1019,7 @@ export default defineEventHandler(async (event) => {
   if (externalSearchProvider === 'exa' && encryptedExaApiKey) {
     const { tools: exaTools } = await getExaWebSearchTools(
       await useDecryptText(encryptedExaApiKey),
+      externalSearchBudget,
       aiLogger,
     )
 

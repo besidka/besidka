@@ -454,3 +454,58 @@ describe('web_search_exa tool execute()', () => {
     )).rejects.toBe(abortException)
   })
 })
+
+describe('web_search_exa per-request search budget', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects the 9th call without calling Exa', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      return jsonResponse(EXA_SEARCH_RESPONSE)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getExaWebSearchTools } = await importModule()
+    const { EXTERNAL_SEARCH_LIMIT_MESSAGE } = await import(
+      '../../../../server/utils/search/search-budget'
+    )
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 9 }, () => {
+        return searchTool.execute(
+          { query: 'many' },
+          createExecutionOptions(),
+        )
+      }),
+    )
+    const rejected = outcomes.filter(outcome => outcome.status === 'rejected')
+
+    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0]).toMatchObject({
+      reason: { message: EXTERNAL_SEARCH_LIMIT_MESSAGE },
+    })
+  })
+
+  it.each([400, 422])('reports an invalid search request on a %i',
+    async (status) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        jsonResponse({}, { ok: false, status }),
+      ))
+
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key')
+
+      await expect(result.tools?.web_search_exa.execute(
+        { query: 'x' },
+        createExecutionOptions(),
+      )).rejects.toMatchObject({
+        message: 'Exa rejected the search request as invalid.',
+        status,
+      })
+    })
+})

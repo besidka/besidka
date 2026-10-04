@@ -303,6 +303,44 @@ describe('assistant files scaffolding', () => {
     expect(sanitizedMessages).toHaveLength(0)
   })
 
+  it('never replays earlier external search tool outputs to the model',
+    () => {
+      const messages: UIMessage[] = [
+        {
+          id: 'assistant-searched',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-web_search_brave',
+              toolCallId: 'call-1',
+              state: 'output-available',
+              input: { query: 'q' },
+              output: {
+                provider: 'brave',
+                results: [{
+                  title: 'T',
+                  url: 'https://example.com',
+                  snippet: 'x'.repeat(1500),
+                }],
+              },
+            },
+            {
+              type: 'source-url',
+              sourceId: 'source-1',
+              url: 'https://example.com',
+            },
+            { type: 'text', text: 'Answer from search.' },
+          ],
+        } as any,
+      ]
+
+      const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+      expect(sanitizedMessages[0]?.parts).toEqual([
+        { type: 'text', text: 'Answer from search.' },
+      ])
+    })
+
   it('keeps an assistant message with ordinary text untouched', () => {
     const messages: UIMessage[] = [
       {
