@@ -69,7 +69,7 @@ avoid an uncached passthrough on every picker open, short enough that adding
 a model to a Workers AI account doesn't stay invisible for long.
 
 The cache entry is versioned (`GATEWAY_CATALOG_SCHEMA_VERSION` in
-`server/utils/gateways/catalog.ts`, currently `'v3'`) and bumped whenever
+`server/utils/gateways/catalog.ts`, currently `'v5'`) and bumped whenever
 `GatewayModel`'s shape changes in a way an old cached entry wouldn't carry —
 this restoration's own round added the required `toolCall` field, which
 older cached entries never wrote at all, so the version was bumped to avoid
@@ -82,12 +82,52 @@ in two shapes, and `fetchCloudflareGatewayCatalog()`
 (`server/utils/gateways/catalog.ts`) fetches **both and joins them**, because
 neither is sufficient alone:
 
-- `?format=openrouter` — the marketplace projection `GatewayModel` is built
-  around. Carries ids, names and descriptions, but no pricing, tool-calling
-  or reasoning data.
+- `?format=openrouter` — the projection `GatewayModel` is built around.
+  Carries ids, names, descriptions, modalities, context length and max
+  output length. Its pricing and feature lists are not read; pricing,
+  tool-calling and reasoning come from the default format below.
 - the default format (no `format` param) — Cloudflare's own model objects,
   whose `properties[]` array is the only place pricing, `function_calling`
   and `reasoning` are exposed.
+
+**`format=openrouter` is the flat shape, not the documented marketplace
+shape.** Cloudflare documents it as OpenRouter's provider "marketplace"
+format (per-modality objects, `output_modalities[].max_length.value`), but a
+live account (checked 2026-10-04, 29 models) returns OpenRouter's flat
+consumer shape: `input_modalities: ["text"]` as strings, top-level
+`context_length` and `max_output_length` (present on every model), flat
+`pricing.{prompt,completion}` and `supported_features: string[]`. The
+normalizer reads both shapes, preferring the per-modality values. Before it
+did, every `@cf/*` model resolved with `maxOutputTokens: undefined`, so no
+`max_tokens` was sent, and **Workers AI then applies a 256-token default**.
+`@cf/openai/gpt-oss-120b` spends that on `reasoning_content` and stops with
+`finish_reason: length` and empty `content`, with no error: the search
+continuation (and chat titles) came back empty after a turn that searched
+fine (pr-392 preview, chat `01M442YTJ34BQF6R42Y5BWDTAS`, request
+`a45643863842bf56`; the raw continuation SSE ended at
+`completion_tokens: 256`). The tool-loop telemetry now records the
+continuation's own `continuationFinishReason`, because the outer
+`finishReason` is the main loop's and showed `tool-calls`.
+
+Every `@cf/*` model reports `max_output_length == context_length`, and
+Workers AI rejects prompt + `max_tokens` above the context window (live,
+2026-10-04, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, 24000 context: HTTP
+400 "you requested 24000 output tokens" for a 40-token prompt), while
+`gpt-oss-120b` happened to accept it. A static cap does not work: the first
+attempt (`context - min(16384, context / 2)`) sent `max_tokens` 12000 on the
+24000-context llama and so rejected every prompt above ~12k tokens, which the
+pre-fix request (no `max_tokens`, Workers AI default of 256) had accepted up to
+~23.7k. The builder therefore passes the catalog `max_output_length` as
+`maxOutputTokens` unchanged and `withContextSizedMaxTokens`, inside the
+client's `transformRequestBody`, sizes `max_tokens` per request: the context
+minus a pessimistic prompt estimate (serialized `messages` + `tools` at 2.5
+characters per token, so Cyrillic-heavy text stays covered) minus a 1024-token
+safety margin, lowered only. When that budget falls below 256 (Workers AI's own
+default) `max_tokens` is omitted rather than floored, so Workers AI applies its
+default and a prompt that was accepted before is never rejected now. The
+estimate is deliberately blind to images: inlined base64 counts as text, so a
+large image can push a vision request into the omit path, which is the safe
+direction.
 
 **The identity relationship between the two is inverted — the join key
 trap.** In the marketplace shape, `id` is the real `@cf/vendor/model`
@@ -494,6 +534,12 @@ through as `streamText({ maxOutputTokens })`. The same cap is applied to
 title generation for consistency, though that codepath's tiny output size
 makes it unlikely to ever hit the limit in practice.
 
+On Cloudflare the value is not only a ceiling: leaving it `undefined` sends
+no `max_tokens`, and Workers AI's 256-token default then truncates a
+reasoning model inside its reasoning (see "Cloudflare's two-format join").
+A catalog miss on Cloudflare therefore degrades to that default rather than
+to an uncapped send.
+
 **OpenRouter is deliberately left uncapped.** It already handles this
 correctly today, and OpenRouter's own advertised
 `top_provider.max_completion_tokens` can be *lower* than a model's real
@@ -588,6 +634,66 @@ in `index.post.ts` does with an unrecognized upstream error, which is where
 a structured `why`/`fix` from a gateway builder gets flattened to a generic
 message today. Not closed; the catalog path was fixed first since it's the
 fetch the model picker depends on to list a model to send to.
+
+### Cloudflare: string message content
+
+`toolCall: true` in Cloudflare's catalog is not enough on its own for the
+multi-step Brave/Exa loop. Workers AI validates each request against the
+routed model's own input schema, and `@cf/openai/gpt-oss-120b`'s schema only
+accepts **string** message content, while `@ai-sdk/openai-compatible` sends
+two other shapes the OpenAI spec allows:
+
+- An assistant turn that only holds tool calls goes out as `content: null`.
+  Every step after a tool call failed with `400 Bad Request`,
+  `AiError: Bad input: ... Type mismatch of '/messages/2/content', 'string'
+  not in 'null'` (code `5006`); the first step and the search itself
+  succeeded, which is why the preview showed ten sources and then an error
+  card.
+- A message with more than one text part goes out as an array of
+  `{ type: 'text' }` parts. The search-answer continuation appends the
+  gathered results as a second text part of the final user message, so it
+  failed with `400`, `Type mismatch of '/messages/0/content', 'string' not in
+  'array'` (code `5006`), and the turn ended with the empty-answer notice
+  although two searches had returned results (pr-392 preview, request
+  `a456087e1b85cce9`, reproduced locally 2026-10-04).
+
+This is per-backend strictness, not a Cloudflare-wide rule:
+`@cf/zai-org/glm-4.7-flash` accepted the identical `null` body
+(2026-10-04, one live round trip each). `useCloudflareGateway()` therefore
+passes `transformRequestBody: withStringMessageContent`, which rewrites
+`role: 'assistant'` + `content: null` to `''` and joins a content array made
+only of text parts into one string joined with a blank line (inlined text
+files and omitted-file notes are separate parts with no surrounding
+newlines, so joining them bare glued them to the user text and broke code
+fences). An array that
+holds any non-text part (an image) is left alone, so vision-capable backends
+keep multimodal content, and `reasoning_content` and `tool_calls` are never
+touched (echoing `reasoning_content` back was verified fine on
+`gpt-oss-120b`). No `toolCall` gating change was needed: with the rewrite,
+`gpt-oss-120b` completed the tool round trip and answered, answered on a
+forced final step that sends the tool-call history with no `tools` declared
+(`toolChoice: 'none'`, `activeTools: []`), and answered in the tool-less
+continuation, all verified live on 2026-10-04.
+
+**`gpt-oss` tool-call quirks.** The model is trained on a built-in browser
+tool and leaks it into function calls: it called the declared
+`web_search_brave` with `{ "cursor": 1, "id": 0 }` (an "open search result"
+call), and on the forced step, with no tools declared, it called an
+undeclared `open_file` with `{ "cursor": … }`. The SDK rejects the first as
+`InvalidToolInputError` and the second as `NoSuchToolError`; both become
+tool parts with `state: 'output-error'`, never a stream error, and the
+forced-step rejection is dropped by `withSearchAnswerGuarantee()`. Because
+`toUIMessageStream()` routes tool-part errors through the same `onError` as
+stream failures, both used to be persisted as an `unknown` 500 attributed to
+`cloudflare` and logged as `stage: 'stream'` chat errors, which looked
+exactly like a provider 500. `normalizeModelToolCallError()`
+(`server/utils/chats/errors.ts`) now labels them `invalid-provider-output`
+with status 422 and a stable `kind` field (`unavailable-tool` or
+`invalid-tool-input`), and records them only as
+`attributes.modelToolCallError` on the request event. `withSearchAnswerGuarantee()`
+matches `code === 'invalid-provider-output' && kind === 'unavailable-tool'`
+to drop the expected forced-step rejection, with a fallback on the SDK's raw
+`AI_NoSuchToolError` / "unavailable tool" string form.
 
 ## Live-verification status
 

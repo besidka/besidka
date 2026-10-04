@@ -176,6 +176,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-external-search-validation.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
     'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -263,6 +264,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateway-catalog-normalize.spec.ts',
     'tests/integration/api/gateways-models.spec.ts',
     'tests/unit/composables/gateway-catalog.spec.ts',
+    'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
   ]
 
   const chatShareTests = [
@@ -429,6 +431,9 @@ export function getAffectedTests(changedFiles) {
   const externalSearchTests = [
     'tests/unit/utils/search/brave.spec.ts',
     'tests/unit/utils/search/exa.spec.ts',
+    'tests/unit/utils/search/freshness.spec.ts',
+    'tests/unit/utils/search/search-budget.spec.ts',
+    'tests/unit/utils/search/search-error.spec.ts',
     'tests/unit/utils/ai/external-search-cost.spec.ts',
     'tests/unit/config/wrangler-search-rates.spec.ts',
     'tests/unit/utils/search-usage.spec.ts',
@@ -492,6 +497,8 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/ai/search-answer-continuation.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
+        'tests/unit/utils/gateways/cloudflare.spec.ts',
+        'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
       ],
     },
     {
@@ -834,12 +841,12 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
+      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|freshness\.ts|search-budget\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
       tests: messageSearchTests,
     },
     {
       pattern:
-        /^(server\/utils\/search\/(brave|exa|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
+        /^(server\/utils\/search\/(brave|exa|freshness|search-budget|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
       tests: externalSearchTests,
     },
     {
@@ -1012,8 +1019,19 @@ export function getAffectedTests(changedFiles) {
       tests: chatStreamBranchTests,
     },
     {
+      pattern: /^shared\/utils\/http-url\.ts$/,
+      tests: [
+        'tests/unit/utils/http-url.spec.ts',
+        'tests/unit/utils/filter-ui-message-stream.spec.ts',
+        'tests/unit/components/Chat/UrlSources.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/chats\/title\.ts$/,
-      tests: ['tests/integration/api/chats-title.spec.ts'],
+      tests: [
+        'tests/unit/utils/chats/title.spec.ts',
+        'tests/integration/api/chats-title.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/chats\/provider\.ts$/,

@@ -171,6 +171,31 @@ fixture tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the
 real send pipeline with a real `streamText` and a `MockLanguageModelV4`;
 that fixture must never be wired into a provider builder.
 
+**Per-turn search cap.** One model step can emit many parallel search
+calls, and Anthropic keeps tools declared on the forced step, so the step
+budget alone does not bound provider requests. `index.post.ts` creates one
+`ExternalSearchBudget` per chat request (`server/utils/search/search-budget.ts`,
+never module-global) and passes it to `getBraveWebSearchTools` /
+`getExaWebSearchTools`. Each `execute` spends one call before any provider
+request; past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8` it throws a 429
+`createError` whose message tells the model to answer from the results
+already gathered. A throw inside a tool `execute()` becomes a `tool-error`
+part, not a stream failure, and `getExternalSearchUsage` only counts
+`tool-result` parts, so a rejected call is neither fetched nor billed. A
+legitimate DeepSeek turn used 7 calls, hence 8.
+
+**Earlier turns' search output is not replayed.** `sanitizeMessagesForModelContext`
+keeps only `text` and (converted) `file` parts of previous messages, so
+`tool-web_search_*` outputs and `source-url` parts from earlier turns never
+re-enter the model's prompt; page content costs input tokens only on the
+turn that gathered it (and on that turn's later loop steps).
+
+**Source URL scheme.** Brave/Exa result URLs are third-party content. Only
+`http:`/`https:` URLs become `source-url` parts
+(`emitSourcesForExternalSearchResults`), and `Chat/UrlSources.vue` ignores a
+click on any other scheme, both through `isHttpUrl` in
+`shared/utils/http-url.ts`.
+
 **Bounds.** `TOOL_LOOP_MAX_TOOL_STEPS` is 3 search rounds, plus one
 guaranteed final step (`TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1`)
 that forces an answer instead of another tool call.
@@ -195,18 +220,44 @@ absorbs.
 
 **Search-answer continuation (the guarantee).** `withSearchAnswerGuarantee()`
 (`server/utils/ai/search-answer-continuation.ts`) wraps the loop's UI stream
-on loop sends only. It holds back the `finish` chunk, and an `error` raised
-on the forced step once a search has completed. If no visible text follows
+on loop sends only. It holds back the `finish` chunk and a recoverable
+step `error`: one raised on the forced step once a search has completed, or
+one raised on **any** step once a follow-up search has returned a
+successful output and no answer text followed it. The second case exists
+because a provider can reject the tool-result round trip itself — Cloudflare
+AI Gateway's `@cf/openai/gpt-oss-120b` failed every step after a Brave
+search with `400 Bad Request` (see `gateways.md`, "Cloudflare: string
+message content"), which used to end the turn with the empty-answer notice
+although ten sources were already gathered. An error before any successful
+search output (nothing to answer from, including a turn whose searches all
+failed) and an error after answer text already started keep the existing
+error card. If no visible text follows
 the last follow-up tool result (a step-0 preamble such as "Let me look that
 up." does not count, here and in persistence's empty-answer check), it runs ONE tool-less
 `streamText()` with the same model, reasoning and provider options: the
 turn's model messages, with the search results flattened to plain text
-(query, title, URL, snippet; capped by result count and characters) and an
-answer-now instruction appended to the final user message — no tool-call
-history, so no provider can reject it for missing declarations. The results
+(query, title, URL, optional `Published:` date, snippet; capped by result
+count and characters — up to 1,500 characters per result and 32,000 in
+total, since Brave and Exa now return page content rather than short
+snippets; non-result text such as the tool input and error text is capped
+at 600 characters) and an
+answer-now instruction merged into the final user message as a single text
+part (the message's own text parts are joined with a blank line first, and
+its file and image parts are kept) — no tool-call history, so no provider can
+reject it for missing declarations. A text-only turn therefore reaches every
+provider as one piece of text. Cloudflare's `gpt-oss-120b` still rejects any
+multi-text-part user message with `400 ... 'string' not in 'array'`, so the
+Cloudflare request transform joins text-only arrays into one string with a
+blank line (`gateways.md`, "Cloudflare: string message content"), and any new
+gateway or provider with a string-only schema needs the same treatment. The results
 sit inside `<untrusted_web_search_results>` delimiters that the instruction
-declares information-only, and the appended text part starts with a blank
-line because `@ai-sdk/deepseek` joins user text parts with no separator.
+declares information-only. Every `<` and `>` in the flattened text is
+replaced with `‹`/`›`, so a title, URL, snippet, date or error text cannot
+forge a closing tag however it is cased or nested (the earlier
+remove-the-tag-name approach collapsed
+`</untrusted_web_search_resuuntrusted_web_search_resultslts>` back into a
+real closer). Every line of a multi-line snippet is indented like the
+first, so a snippet cannot mimic the `N. Title` / `URL:` structure.
 Level-based reasoning effort is lowered to `low` for the continuation (off
 and toggle-only providers are unchanged). Its chunks
 stream into the same assistant message after the tool/source parts, then a
@@ -216,22 +267,39 @@ both sum the loop's recorded step usages with the continuation's (the loop's
 own `totalUsage` is empty when it ended on an error); search cost is
 unchanged because the continuation never searches. Only when the
 continuation is also empty (or throws) are the held chunks released and the
-empty-answer notice persisted as before. Errors on earlier steps and aborts
-never trigger it. A continuation that times out
+empty-answer notice persisted as before. Aborts never trigger it, and a
+text/reasoning part the failed step left open is closed before the
+continuation streams. Non-retryable statuses (401, 402, 403, 404: revoked
+key, billing, quota, model not found) are not held: a second call with the
+same key or model would fail the same way, so the error passes through at
+once and no continuation runs. A failed step emits no `finish-step`, so its
+usage, if the provider billed it, is not counted. A continuation that times out
 mid-stream keeps its partial text: any open text/reasoning part is closed
 before the final `finish`, the abort chunk is swallowed, and available usage
 is folded in. `attributes.toolLoop` on the `ai-stream` event records
 `steps`, `forcedStepToolCall`, `continuationRan`,
 `continuationProducedText`, `continuationError` (first one wins),
-`continuationTruncated`, `forcedStepError` (the held forced-step error text,
-logged even when the continuation answers) and `finishReason`. The
+`continuationTruncated`, `continuationFinishReason` (the continuation's own
+finish reason; `length` with no text means it ran out of output tokens,
+usually inside reasoning), `forcedStepError` (the held forced-step error text,
+logged even when the continuation answers), `heldStepError`
+(`{ stepNumber, error }` for any held error, forced step included;
+`stepNumber` is 0-based like `prepareStep`'s, so the second model call is
+`1` and the forced step is `3`) and `finishReason` (the final `finish`
+chunk's, which is the main loop's when the continuation wrote nothing). The
 continuation's own `timeout.totalMs` is 90s.
 `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on the loop path
 only: the KV generation-in-progress guard this route writes expires after
 `TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS` (loop timeout + continuation
 timeout + a 30s persistence margin), so it must outlive both —
 otherwise a client retry arriving after the guard expired would start a
-second concurrent generation for the same turn. A tool `execute()` that
+second concurrent generation for the same turn. A tool call the model itself gets wrong (input that fails the tool's schema,
+or a call to a tool that is not declared) also ends as a tool part with
+`state: 'output-error'`, never as a held stream `error`; it counts as a
+follow-up output, so the forced step and, if still needed, the continuation
+run as usual. Its `errorText` is labelled `invalid-provider-output` (422) by
+`normalizeModelToolCallError()` rather than an `unknown` 500, see
+`gateways.md` ("`gpt-oss` tool-call quirks"). A tool `execute()` that
 throws produces a `tool-error` output, which the model sees and answers
 from, so a failing tool terminates the loop rather than retrying it.
 

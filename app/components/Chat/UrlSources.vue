@@ -52,6 +52,10 @@ const sources = computed<SourceUrlUIPart[]>(() => {
 })
 
 async function openLink(source: SourceUrlUIPart) {
+  if (!isHttpUrl(source.url)) {
+    return
+  }
+
   if (allowExternalLinks.value) {
     window.open(source.url, '_blank', 'noopener,noreferrer')
 

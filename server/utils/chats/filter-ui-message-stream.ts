@@ -1,4 +1,5 @@
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
+import { isHttpUrl } from '#shared/utils/http-url'
 
 interface UIMessageChunkLike {
   type?: string
@@ -223,7 +224,11 @@ export function emitSourcesForExternalSearchResults<
       }
 
       for (const result of chunk.output.results ?? []) {
-        if (!result.url || emittedUrls.has(result.url)) {
+        if (
+          !result.url
+          || !isHttpUrl(result.url)
+          || emittedUrls.has(result.url)
+        ) {
           continue
         }
 

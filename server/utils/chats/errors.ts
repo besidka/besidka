@@ -1,9 +1,14 @@
-import type { ChatErrorCode, ChatErrorPayload } from '#shared/types/chat-errors.d'
+import type {
+  ChatErrorCode,
+  ChatErrorPayload,
+  ChatToolCallErrorKind,
+} from '#shared/types/chat-errors.d'
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
 import type { H3Event } from 'h3'
 import { getRequestHeader } from 'h3'
+import { InvalidToolInputError, NoSuchToolError } from 'ai'
 import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
 const chatErrorCodes: ChatErrorCode[] = [
@@ -97,6 +102,106 @@ export function normalizeChatError(
     providerId: input.providerId,
     providerRequestId,
   }
+}
+
+export const MODEL_TOOL_CALL_ERROR_STATUS = 422
+export const MODEL_TOOL_CALL_ERROR_CODE: ChatErrorCode
+  = 'invalid-provider-output'
+export const UNAVAILABLE_TOOL_ERROR_KIND: ChatToolCallErrorKind
+  = 'unavailable-tool'
+export const INVALID_TOOL_INPUT_ERROR_KIND: ChatToolCallErrorKind
+  = 'invalid-tool-input'
+
+const INVALID_TOOL_INPUT_MESSAGE_PATTERN
+  = /^(?:AI_InvalidToolInputError: )?Invalid input for tool ([^:\s]+):/
+const UNAVAILABLE_TOOL_MESSAGE_PATTERN
+  = /^(?:AI_NoSuchToolError: )?Model tried to call unavailable tool '([^']+)'/
+
+interface ModelToolCallErrorDetails {
+  kind: ChatToolCallErrorKind
+  toolName: string
+}
+
+/**
+ * The SDK hands `onError` the error object for a `tool-input-error` chunk but
+ * only that error's string form (`AI_<Name>: <message>`) for the
+ * `tool-output-error` that follows it, so both shapes are recognized; the
+ * patterns are the SDK's own `InvalidToolInputError` and `NoSuchToolError`
+ * message formats.
+ */
+function readModelToolCallError(
+  error: unknown,
+): ModelToolCallErrorDetails | undefined {
+  if (InvalidToolInputError.isInstance(error)) {
+    return { kind: INVALID_TOOL_INPUT_ERROR_KIND, toolName: error.toolName }
+  }
+
+  if (NoSuchToolError.isInstance(error)) {
+    return { kind: UNAVAILABLE_TOOL_ERROR_KIND, toolName: error.toolName }
+  }
+
+  if (typeof error !== 'string') {
+    return undefined
+  }
+
+  const invalidInputMatch = INVALID_TOOL_INPUT_MESSAGE_PATTERN.exec(error)
+
+  if (invalidInputMatch?.[1]) {
+    return {
+      kind: INVALID_TOOL_INPUT_ERROR_KIND,
+      toolName: invalidInputMatch[1],
+    }
+  }
+
+  const unavailableToolMatch = UNAVAILABLE_TOOL_MESSAGE_PATTERN.exec(error)
+
+  if (unavailableToolMatch?.[1]) {
+    return {
+      kind: UNAVAILABLE_TOOL_ERROR_KIND,
+      toolName: unavailableToolMatch[1],
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * `toUIMessageStream()` passes every tool part's error through the same
+ * `onError` as a real stream failure, so a tool call the model itself got
+ * wrong would otherwise become an `unknown` 500 attributed to the provider.
+ * `gpt-oss` calls a declared search tool with its built-in browser's
+ * `{ cursor, id }` arguments and calls undeclared tools such as `open_file`;
+ * neither is a provider failure. The payload carries a stable `kind`, which
+ * `withSearchAnswerGuarantee()` matches to drop the expected rejection of a
+ * call on the forced step. Returns `undefined`
+ * for any other error so the caller keeps its normal handling.
+ */
+export function normalizeModelToolCallError(input: {
+  error: unknown
+  event?: H3Event
+  providerId?: SupportedProviderId | GatewayId
+}): ChatErrorPayload | undefined {
+  const details = readModelToolCallError(input.error)
+
+  if (!details) {
+    return undefined
+  }
+
+  const chatError = normalizeChatError({
+    error: input.error,
+    event: input.event,
+    providerId: input.providerId,
+    code: MODEL_TOOL_CALL_ERROR_CODE,
+    status: MODEL_TOOL_CALL_ERROR_STATUS,
+    message: 'The model sent an invalid tool call.',
+    why: details.kind === INVALID_TOOL_INPUT_ERROR_KIND
+      ? `The model called ${details.toolName} with input that does not `
+      + 'match its schema.'
+      : `The model called an unavailable tool: ${details.toolName}.`,
+    fix: 'Retry the message, or pick another model.',
+  })
+
+  return { ...chatError, kind: details.kind }
 }
 
 /**

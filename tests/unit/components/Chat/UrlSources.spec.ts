@@ -103,6 +103,36 @@ describe('Chat/UrlSources', () => {
     expect(wrapper.text()).toContain('not-a-valid-url')
   })
 
+  it('opens an https source in a new tab', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
+    const wrapper = await mountUrlSources([
+      createSource({ url: 'https://example.com/article' }),
+    ])
+
+    await wrapper.find('button').trigger('click')
+
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://example.com/article',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    openSpy.mockRestore()
+  })
+
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'file:///etc/passwd',
+  ])('ignores a click on a non-http source (%s)', async (url) => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
+    const wrapper = await mountUrlSources([createSource({ url })])
+
+    await wrapper.find('button').trigger('click')
+
+    expect(openSpy).not.toHaveBeenCalled()
+    openSpy.mockRestore()
+  })
+
   it('renders one entry per source-url part', async () => {
     const wrapper = await mountUrlSources([
       createSource({ sourceId: 'source-1', url: 'https://a.example.com' }),

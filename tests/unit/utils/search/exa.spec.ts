@@ -20,13 +20,24 @@ const EXA_SEARCH_RESPONSE = {
       url: 'https://github.com/besidka/besidka/',
       publishedDate: '2025-06-16T08:06:04.000Z',
       author: 'besidka',
-      highlights: ['Your digital besidka for all AI chats.', 'BYOK.'],
+      text: 'Your digital besidka for all AI chats.\n\nBYOK.',
     },
     {
       id: 'https://example.com/no-title',
       title: null,
       url: 'https://example.com/no-title',
-      highlights: ['A result with no title at all.'],
+      text: 'A result with no title at all.',
+    },
+    {
+      id: 'https://example.com/legacy-highlights',
+      title: 'Legacy highlights',
+      url: 'https://example.com/legacy-highlights',
+      highlights: ['First highlight.', 'Second highlight.'],
+    },
+    {
+      id: 'https://example.com/empty',
+      title: 'Empty',
+      url: 'https://example.com/empty',
     },
   ],
   costDollars: {
@@ -125,7 +136,7 @@ describe('web_search_exa tool execute()', () => {
   })
 
   it('always sends the fixed, non-configurable request body: type auto, '
-    + 'numResults 10, contents.highlights true', async () => {
+    + 'numResults 10, contents.text.maxCharacters 1500', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(EXA_SEARCH_RESPONSE),
     )
@@ -148,12 +159,85 @@ describe('web_search_exa tool execute()', () => {
       query: 'battery breakthroughs',
       type: 'auto',
       numResults: 10,
-      contents: { highlights: true },
+      contents: { text: { maxCharacters: 1500 } },
     })
   })
 
+  it('maps freshness to startPublishedDate relative to now', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-04T12:00:00.000Z'))
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(EXA_SEARCH_RESPONSE),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key')
+      const searchTool = result.tools?.web_search_exa
+      const expectedDates = {
+        day: '2026-10-03T12:00:00.000Z',
+        week: '2026-09-27T12:00:00.000Z',
+        month: '2026-09-03T12:00:00.000Z',
+        year: '2025-10-04T12:00:00.000Z',
+      }
+
+      for (const [freshness, startPublishedDate] of Object.entries(
+        expectedDates,
+      )) {
+        await searchTool.execute(
+          { query: 'news', freshness },
+          createExecutionOptions(),
+        )
+
+        const [, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit]
+        const body = JSON.parse(init.body as string)
+
+        expect(body.startPublishedDate).toBe(startPublishedDate)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends no startPublishedDate when freshness is omitted', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(EXA_SEARCH_RESPONSE),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+
+    await searchTool.execute({ query: 'x' }, createExecutionOptions())
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+
+    expect(JSON.parse(init.body as string))
+      .not.toHaveProperty('startPublishedDate')
+  })
+
+  it('accepts an optional freshness enum and rejects other values',
+    async () => {
+      vi.stubGlobal('fetch', vi.fn())
+
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key')
+      const schema = result.tools?.web_search_exa.inputSchema
+
+      expect(schema.safeParse({ query: 'x' }).success).toBe(true)
+      expect(schema.safeParse({ query: 'x', freshness: 'day' }).success)
+        .toBe(true)
+      expect(schema.safeParse({ query: 'x', freshness: 'hour' }).success)
+        .toBe(false)
+    })
+
   it('normalizes results[] to { title, url, snippet, publishedDate, '
-    + 'author } with highlights joined into the snippet', async () => {
+    + 'author } with the page text as the snippet', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       jsonResponse(EXA_SEARCH_RESPONSE),
     ))
@@ -171,7 +255,7 @@ describe('web_search_exa tool execute()', () => {
     expect(output.results[0]).toEqual({
       title: 'besidka/besidka',
       url: 'https://github.com/besidka/besidka/',
-      snippet: 'Your digital besidka for all AI chats. BYOK.',
+      snippet: 'Your digital besidka for all AI chats.\n\nBYOK.',
       publishedDate: '2025-06-16T08:06:04.000Z',
       author: 'besidka',
     })
@@ -196,6 +280,25 @@ describe('web_search_exa tool execute()', () => {
       url: 'https://example.com/no-title',
       snippet: 'A result with no title at all.',
     })
+  })
+
+  it('falls back to joined highlights when text is absent and to an empty '
+    + 'snippet when neither is present', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse(EXA_SEARCH_RESPONSE),
+    ))
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+
+    const output = await searchTool.execute(
+      { query: 'besidka' },
+      createExecutionOptions(),
+    )
+
+    expect(output.results[2].snippet).toBe('First highlight. Second highlight.')
+    expect(output.results[3].snippet).toBe('')
   })
 
   it('surfaces the response\'s costDollars.total as a flat costDollars '
@@ -350,4 +453,59 @@ describe('web_search_exa tool execute()', () => {
       createExecutionOptions(),
     )).rejects.toBe(abortException)
   })
+})
+
+describe('web_search_exa per-request search budget', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects the 9th call without calling Exa', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      return jsonResponse(EXA_SEARCH_RESPONSE)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getExaWebSearchTools } = await importModule()
+    const { EXTERNAL_SEARCH_LIMIT_MESSAGE } = await import(
+      '../../../../server/utils/search/search-budget'
+    )
+    const result = await getExaWebSearchTools('exa-key')
+    const searchTool = result.tools?.web_search_exa
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 9 }, () => {
+        return searchTool.execute(
+          { query: 'many' },
+          createExecutionOptions(),
+        )
+      }),
+    )
+    const rejected = outcomes.filter(outcome => outcome.status === 'rejected')
+
+    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0]).toMatchObject({
+      reason: { message: EXTERNAL_SEARCH_LIMIT_MESSAGE },
+    })
+  })
+
+  it.each([400, 422])('reports an invalid search request on a %i',
+    async (status) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        jsonResponse({}, { ok: false, status }),
+      ))
+
+      const { getExaWebSearchTools } = await importModule()
+      const result = await getExaWebSearchTools('exa-key')
+
+      await expect(result.tools?.web_search_exa.execute(
+        { query: 'x' },
+        createExecutionOptions(),
+      )).rejects.toMatchObject({
+        message: 'Exa rejected the search request as invalid.',
+        status,
+      })
+    })
 })

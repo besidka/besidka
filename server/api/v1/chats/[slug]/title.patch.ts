@@ -1,9 +1,14 @@
 import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
+import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
+import {
+  buildFallbackChatTitle,
+  CHAT_TITLE_DEFAULT,
+} from '~~/server/utils/chats/title'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export default defineEventHandler(async (event) => {
@@ -83,18 +88,19 @@ export default defineEventHandler(async (event) => {
     return null
   }
 
-  // @ts-expect-error
-  const initialMessages = initialMessage.parts?.[0]?.text as string
+  const initialText = getFirstTextPart(initialMessage.parts)
   let title = ''
 
   const runtimeConfig = useRuntimeConfig()
 
   try {
-    if (
+    if (!initialText.trim()) {
+      title = CHAT_TITLE_DEFAULT
+    } else if (
       runtimeConfig.researchMockEnabled
-      && initialMessages?.trim().toLowerCase().startsWith('mock:')
+      && initialText.trim().toLowerCase().startsWith('mock:')
     ) {
-      title = buildMockChatTitle(initialMessages)
+      title = buildMockChatTitle(initialText)
     } else if (gatewayId) {
       const { generateChatTitle } = await useGateway(
         gatewayId,
@@ -104,7 +110,7 @@ export default defineEventHandler(async (event) => {
         'off',
       )
 
-      title = await generateChatTitle(initialMessages)
+      title = await generateChatTitle(initialText)
     } else {
       const { provider, model } = useChatProvider(body.data.model)
       const research = getModelResearch(model)
@@ -119,7 +125,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
         case 'google': {
@@ -130,7 +136,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
         case 'anthropic': {
@@ -141,7 +147,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
         case 'xai': {
@@ -152,7 +158,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
         case 'deepseek': {
@@ -163,7 +169,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
         case 'moonshotai': {
@@ -174,7 +180,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
         case 'qwen': {
@@ -185,7 +191,7 @@ export default defineEventHandler(async (event) => {
             'off',
           )
 
-          title = await generateChatTitle(initialMessages)
+          title = await generateChatTitle(initialText)
           break
         }
       }
@@ -196,14 +202,18 @@ export default defineEventHandler(async (event) => {
     useLogger(event).set({
       attributes: {
         titleGeneration: {
+          fallback: true,
+          reason: 'error',
           error: exceptionMessage(exception),
           status: chatError.status,
         },
       },
     })
 
-    title = buildMockChatTitle(initialMessages)
+    title = buildFallbackChatTitle(initialText)
   }
+
+  title = title.trim() || CHAT_TITLE_DEFAULT
 
   const { title: savedTitle } = await db.update(schema.chats)
     .set({
@@ -215,6 +225,14 @@ export default defineEventHandler(async (event) => {
 
   return savedTitle
 })
+
+function getFirstTextPart(parts: UIMessage['parts'] | null | undefined) {
+  const textPart = parts?.find((part) => {
+    return part.type === 'text'
+  })
+
+  return textPart?.type === 'text' ? textPart.text ?? '' : ''
+}
 
 export function buildMockChatTitle(topic: string): string {
   const withoutPrefix = topic.trim()

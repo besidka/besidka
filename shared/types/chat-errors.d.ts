@@ -24,6 +24,10 @@ export type ChatErrorCode
     | 'assistant-empty-answer'
     | 'unknown'
 
+export type ChatToolCallErrorKind
+  = 'unavailable-tool'
+    | 'invalid-tool-input'
+
 export interface ChatErrorPayload {
   code: ChatErrorCode
   message: string
@@ -33,4 +37,5 @@ export interface ChatErrorPayload {
   requestId?: string
   providerId?: SupportedProviderId | GatewayId
   providerRequestId?: string
+  kind?: ChatToolCallErrorKind
 }

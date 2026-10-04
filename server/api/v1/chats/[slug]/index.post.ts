@@ -67,7 +67,11 @@ import {
   resolveSearchUsage,
 } from '~~/server/utils/ai/search-usage'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
-import { getRequestId, normalizeChatError } from '~~/server/utils/chats/errors'
+import {
+  getRequestId,
+  normalizeChatError,
+  normalizeModelToolCallError,
+} from '~~/server/utils/chats/errors'
 import {
   emitSourcesForExternalSearchResults,
   filterRecoverableUIMessageStreamErrors,
@@ -124,6 +128,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
 import { getExaWebSearchTools } from '~~/server/utils/search/exa'
+import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
 
 export default defineEventHandler(async (event) => {
@@ -1000,9 +1005,12 @@ export default defineEventHandler(async (event) => {
         ? 'exa'
         : undefined
 
+  const externalSearchBudget = createExternalSearchBudget()
+
   if (externalSearchProvider === 'brave' && encryptedBraveApiKey) {
     const { tools: braveTools } = await getBraveWebSearchTools(
       await useDecryptText(encryptedBraveApiKey),
+      externalSearchBudget,
       aiLogger,
     )
 
@@ -1015,6 +1023,7 @@ export default defineEventHandler(async (event) => {
   if (externalSearchProvider === 'exa' && encryptedExaApiKey) {
     const { tools: exaTools } = await getExaWebSearchTools(
       await useDecryptText(encryptedExaApiKey),
+      externalSearchBudget,
       aiLogger,
     )
 
@@ -1116,7 +1125,9 @@ export default defineEventHandler(async (event) => {
                 continuationProducedText: outcome.continuationProducedText,
                 continuationError: outcome.continuationError,
                 continuationTruncated: outcome.continuationTruncated,
+                continuationFinishReason: continuation?.finishReason,
                 forcedStepError: outcome.forcedStepError,
+                heldStepError: outcome.heldStepError,
                 finishReason: outcome.finishReason,
               },
             },
@@ -1350,6 +1361,24 @@ export default defineEventHandler(async (event) => {
             return buildLiveMessageMetadata(part.totalUsage, finishedSteps)
           },
           onError(error) {
+            const toolCallError = normalizeModelToolCallError({
+              error,
+              event,
+              providerId: errorProviderId,
+            })
+
+            if (toolCallError) {
+              logger.set({
+                attributes: {
+                  modelToolCallError: {
+                    why: toolCallError.why,
+                  },
+                },
+              })
+
+              return JSON.stringify(toolCallError)
+            }
+
             const chatError = normalizeChatError({
               error,
               event,

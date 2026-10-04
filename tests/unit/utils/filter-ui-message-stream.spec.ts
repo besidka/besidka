@@ -611,6 +611,41 @@ describe('emitSourcesForExternalSearchResults', () => {
     }])
   })
 
+  it('emits source-url chunks only for http and https urls', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: {
+            provider: 'exa',
+            results: [
+              { title: 'Script', url: 'javascript:alert(1)' },
+              { title: 'Data', url: 'data:text/html,<b>x</b>' },
+              { title: 'File', url: 'file:///etc/passwd' },
+              { title: 'Relative', url: '/relative' },
+              { title: 'Plain http', url: 'http://example.com/plain' },
+              { title: 'Secure', url: 'https://example.com/secure' },
+            ],
+          },
+        })
+        controller.close()
+      },
+    })
+
+    const chunks = await readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )
+    const sourceUrls = chunks
+      .filter(chunk => chunk.type === 'source-url')
+      .map(chunk => chunk.url)
+
+    expect(sourceUrls).toEqual([
+      'http://example.com/plain',
+      'https://example.com/secure',
+    ])
+  })
+
   it('passes through unchanged when given a non-stream value', () => {
     const notAStream = { pipeThrough: undefined } as unknown as ReadableStream
 

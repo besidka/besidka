@@ -51,6 +51,19 @@ describe('getExternalSearchUsage', () => {
     expect(usage?.searches).toBe(1)
   })
 
+  it('counts only the executed searches when a turn hits the per-turn '
+    + 'search limit', () => {
+    const executedSearches = Array.from({ length: 8 }, () => {
+      return toolResultStep('web_search_brave', { results: [] })
+    })
+    const usage = getExternalSearchUsage(
+      [...executedSearches, toolErrorStep('web_search_brave')],
+      'brave',
+    )
+
+    expect(usage?.searches).toBe(8)
+  })
+
   it('ignores tool-result parts for a different tool name', () => {
     const usage = getExternalSearchUsage(
       [toolResultStep('web_search_brave', { results: [] })],
