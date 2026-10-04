@@ -125,6 +125,34 @@ describe('sanitizeChatTitle', () => {
     expect(sanitizeChatTitle('\u200B\u200C\uFEFF')).toBeNull()
     expect(sanitizeChatTitle(' \u200B \n\u2060 ')).toBeNull()
   })
+
+  describe('harmony special tokens', () => {
+    it('keeps only the text before the first special token', () => {
+      expect(sanitizeChatTitle('Останні новини Польщі <|constrain|>24)'))
+        .toBe('Останні новини Польщі')
+    })
+
+    it('takes the final message when the output starts with tokens', () => {
+      expect(
+        sanitizeChatTitle('<|channel|>final<|message|>Новини Польщі<|end|>'),
+      ).toBe('Новини Польщі')
+    })
+
+    it('rejects token-only output', () => {
+      expect(sanitizeChatTitle('<|start|><|end|>')).toBeNull()
+      expect(sanitizeChatTitle('<|return|>')).toBeNull()
+    })
+
+    it('removes stray unmatched token fragments', () => {
+      expect(sanitizeChatTitle('Trip to Kyoto <|')).toBe('Trip to Kyoto')
+      expect(sanitizeChatTitle('Trip |> to Kyoto')).toBe('Trip to Kyoto')
+    })
+
+    it('leaves titles without special tokens unchanged', () => {
+      expect(sanitizeChatTitle('Compare a < b | c > d'))
+        .toBe('Compare a < b | c > d')
+    })
+  })
 })
 
 describe('buildFallbackChatTitle', () => {
