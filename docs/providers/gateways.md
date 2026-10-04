@@ -109,6 +109,16 @@ fine (pr-392 preview, chat `01M442YTJ34BQF6R42Y5BWDTAS`, request
 continuation's own `continuationFinishReason`, because the outer
 `finishReason` is the main loop's and showed `tool-calls`.
 
+Every `@cf/*` model reports `max_output_length == context_length`, and
+Workers AI rejects prompt + `max_tokens` above the context window (live,
+2026-10-04, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, 24000 context: HTTP
+400 "you requested 24000 output tokens" for a 40-token prompt), while
+`gpt-oss-120b` happened to accept it. `useCloudflareGateway` therefore sends
+`clampCloudflareMaxOutputTokens`: output is capped at
+`context - min(16384, context / 2)`, floored at 1024. A prompt that itself
+exceeds the reserved headroom can still be rejected; that needs context
+trimming, not a smaller `max_tokens`.
+
 **The identity relationship between the two is inverted — the join key
 trap.** In the marketplace shape, `id` is the real `@cf/vendor/model`
 string. In the default shape, `id` is an internal UUID, and that same

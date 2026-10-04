@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getPersistedEmptyAnswerFailureText } from '../../../shared/utils/chat-failure-text'
+import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-text'
 
 /**
  * Drives a Cloudflare AI Gateway + Brave search send through the real route,
@@ -15,6 +15,7 @@ import { getPersistedEmptyAnswerFailureText } from '../../../shared/utils/chat-f
 const MODEL_ID = '@cf/openai/gpt-oss-120b'
 const WORKERS_AI_DEFAULT_MAX_TOKENS = 256
 const CONTINUATION_REASONING_TOKENS = 400
+const CLAMPED_MAX_TOKENS = 128000 - 16384
 const CONTINUATION_ANSWER = '**Новини Польщі** — [TVN24](https://tvn24.pl/a).'
 const USER_PROMPT = 'останні новини в польщі за сьогодні — коротко, з джерелами'
 
@@ -488,7 +489,7 @@ describe('Cloudflare gpt-oss search answer', () => {
     vi.stubGlobal('useRuntimeConfig', vi.fn(() => ({ public: {} })))
   })
 
-  it('sends the catalog max_tokens on every step so the continuation '
+  it('sends the clamped catalog max_tokens on every step so the continuation '
     + 'answers after three searches', async () => {
     const {
       chatRequests,
@@ -498,7 +499,7 @@ describe('Cloudflare gpt-oss search answer', () => {
 
     expect(chatRequests).toHaveLength(5)
     expect(chatRequests.map(request => request.max_tokens))
-      .toEqual([128000, 128000, 128000, 128000, 128000])
+      .toEqual(Array(5).fill(CLAMPED_MAX_TOKENS))
     expect(persistedText).toBe(CONTINUATION_ANSWER)
     expect(toolLoop).toMatchObject({
       forcedStepRejectedToolCall: true,

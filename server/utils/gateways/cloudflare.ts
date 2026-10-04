@@ -8,6 +8,8 @@ import type { GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
 const CLOUDFLARE_DEFAULT_GATEWAY_ID = 'default'
+const CLOUDFLARE_PROMPT_TOKEN_HEADROOM = 16_384
+const CLOUDFLARE_MIN_OUTPUT_TOKENS = 1024
 
 export interface CloudflareGatewayCredentials {
   accountId: string
@@ -168,6 +170,39 @@ export function withStringMessageContent(
 }
 
 /**
+ * Cloudflare's catalog reports `max_output_length` equal to the whole
+ * `context_length`, and Workers AI rejects any request whose prompt plus
+ * `max_tokens` exceeds the model's context window (observed live on
+ * `@cf/meta/llama-3.3-70b-instruct-fp8-fast`: HTTP 400, "maximum context
+ * length is 24000 tokens. However, you requested 24000 output tokens"). Larger
+ * models such as `@cf/openai/gpt-oss-120b` happen to accept it, so the clamp
+ * reserves room for the prompt on every model: up to
+ * `CLOUDFLARE_PROMPT_TOKEN_HEADROOM` tokens, but never more than half the
+ * context, and never less than `CLOUDFLARE_MIN_OUTPUT_TOKENS` of output. The
+ * value is only ever lowered, and is returned untouched when either limit
+ * is unknown.
+ */
+export function clampCloudflareMaxOutputTokens(
+  maxOutputTokens: number | undefined,
+  contextLength: number | undefined,
+): number | undefined {
+  if (maxOutputTokens === undefined || contextLength === undefined) {
+    return maxOutputTokens
+  }
+
+  const promptHeadroom = Math.min(
+    CLOUDFLARE_PROMPT_TOKEN_HEADROOM,
+    Math.floor(contextLength / 2),
+  )
+  const outputBudget = Math.max(
+    CLOUDFLARE_MIN_OUTPUT_TOKENS,
+    contextLength - promptHeadroom,
+  )
+
+  return Math.min(maxOutputTokens, outputBudget)
+}
+
+/**
  * Path B: the generic `@ai-sdk/openai-compatible` package against
  * Cloudflare's unified REST endpoint, rather than a dedicated Cloudflare
  * SDK. `cf-aig-gateway-id` selects the AI Gateway to route through —
@@ -209,18 +244,19 @@ export async function useCloudflareGateway(
     logger,
   )
 
+  const maxOutputTokens = clampCloudflareMaxOutputTokens(
+    catalogModel?.maxOutputTokens,
+    catalogModel?.contextLength,
+  )
+
   function getInstance() {
     return client.chatModel(model)
   }
 
   async function generateChatTitle(message: string) {
-    return catalogModel?.maxOutputTokens === undefined
+    return maxOutputTokens === undefined
       ? await useChatTitle(getInstance(), message)
-      : await useChatTitle(
-        getInstance(),
-        message,
-        catalogModel.maxOutputTokens,
-      )
+      : await useChatTitle(getInstance(), message, maxOutputTokens)
   }
 
   return {
@@ -228,7 +264,7 @@ export async function useCloudflareGateway(
     generateChatTitle,
     tools: {},
     providerOptions: {},
-    maxOutputTokens: catalogModel?.maxOutputTokens,
+    maxOutputTokens,
     pricing: catalogModel?.pricing,
     toolCall: catalogModel?.toolCall,
   }

@@ -465,7 +465,7 @@ describe('useCloudflareGateway', () => {
     })
 
   it('caps maxOutputTokens from the flat catalog shape a live account '
-    + 'returns', async () => {
+    + 'returns, leaving room for the prompt', async () => {
     stubKeyLookup('encrypted-blob')
     stubDecrypt(JSON.stringify({
       accountId: 'account-123',
@@ -485,8 +485,46 @@ describe('useCloudflareGateway', () => {
     const { useCloudflareGateway } = await importCloudflareGateway()
     const result = await useCloudflareGateway('1', '@cf/openai/gpt-oss-120b')
 
-    expect(result.maxOutputTokens).toBe(128000)
+    expect(result.maxOutputTokens).toBe(128000 - 16384)
   })
+
+  it('clamps the flat catalog max_output_length of a small-context model',
+    async () => {
+      stubKeyLookup('encrypted-blob')
+      stubDecrypt(JSON.stringify({
+        accountId: 'account-123',
+        apiKey: 'cf-token',
+      }))
+      stubCloudflareCatalog([
+        {
+          id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          name: 'Meta: Llama 3.3 70B',
+          input_modalities: ['text'],
+          output_modalities: ['text'],
+          context_length: 24000,
+          max_output_length: 24000,
+        },
+      ])
+
+      const useChatTitleMock = vi.fn(async () => 'A title')
+
+      vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+      const { useCloudflareGateway } = await importCloudflareGateway()
+      const result = await useCloudflareGateway(
+        '1',
+        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      )
+
+      await result.generateChatTitle('Plan a trip to Kyoto')
+
+      expect(result.maxOutputTokens).toBe(12000)
+      expect(useChatTitleMock).toHaveBeenCalledWith(
+        expect.anything(),
+        'Plan a trip to Kyoto',
+        12000,
+      )
+    })
 
   it('leaves maxOutputTokens, pricing and toolCall undefined when the model '
     + 'is not in the catalog', async () => {
@@ -536,6 +574,40 @@ describe('useCloudflareGateway', () => {
         'Plan a trip to Kyoto',
         4096,
       )
+    })
+})
+
+describe('clampCloudflareMaxOutputTokens', () => {
+  it('reserves the full prompt headroom on a large context', async () => {
+    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+
+    expect(clampCloudflareMaxOutputTokens(262144, 262144)).toBe(262144 - 16384)
+  })
+
+  it('reserves half the context on a small context', async () => {
+    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+
+    expect(clampCloudflareMaxOutputTokens(8192, 8192)).toBe(4096)
+  })
+
+  it('never goes below the minimum output budget', async () => {
+    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+
+    expect(clampCloudflareMaxOutputTokens(1500, 1500)).toBe(1024)
+  })
+
+  it('keeps a max output that is already below the budget', async () => {
+    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+
+    expect(clampCloudflareMaxOutputTokens(4096, 128000)).toBe(4096)
+  })
+
+  it('returns the max output untouched when the context is unknown',
+    async () => {
+      const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+
+      expect(clampCloudflareMaxOutputTokens(4096, undefined)).toBe(4096)
+      expect(clampCloudflareMaxOutputTokens(undefined, 24000)).toBeUndefined()
     })
 })
 
