@@ -422,6 +422,8 @@ describe('useCloudflareGateway', () => {
     expect(useChatTitleMock).toHaveBeenCalledWith(
       expect.objectContaining({ modelId: 'llama-3.3-70b' }),
       'Plan a trip to Kyoto',
+      undefined,
+      'low',
     )
   })
 
@@ -523,6 +525,7 @@ describe('useCloudflareGateway', () => {
         expect.anything(),
         'Plan a trip to Kyoto',
         24000,
+        'low',
       )
     })
 
@@ -573,6 +576,7 @@ describe('useCloudflareGateway', () => {
         expect.objectContaining({ modelId: 'llama-3.3-70b' }),
         'Plan a trip to Kyoto',
         4096,
+        'low',
       )
     })
 })

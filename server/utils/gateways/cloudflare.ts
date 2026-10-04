@@ -11,6 +11,7 @@ const CLOUDFLARE_DEFAULT_GATEWAY_ID = 'default'
 const CLOUDFLARE_CHARACTERS_PER_TOKEN_ESTIMATE = 2.5
 const CLOUDFLARE_CONTEXT_SAFETY_MARGIN_TOKENS = 1024
 const CLOUDFLARE_MIN_OUTPUT_TOKENS = 256
+const CLOUDFLARE_TITLE_REASONING = 'low'
 
 export interface CloudflareGatewayCredentials {
   accountId: string
@@ -287,9 +288,12 @@ export async function useCloudflareGateway(
   }
 
   async function generateChatTitle(message: string) {
-    return maxOutputTokens === undefined
-      ? await useChatTitle(getInstance(), message)
-      : await useChatTitle(getInstance(), message, maxOutputTokens)
+    return await useChatTitle(
+      getInstance(),
+      message,
+      maxOutputTokens,
+      CLOUDFLARE_TITLE_REASONING,
+    )
   }
 
   return {

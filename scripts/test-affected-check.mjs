@@ -1028,7 +1028,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/chats\/title\.ts$/,
-      tests: ['tests/integration/api/chats-title.spec.ts'],
+      tests: [
+        'tests/unit/utils/chats/title.spec.ts',
+        'tests/integration/api/chats-title.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/chats\/provider\.ts$/,
