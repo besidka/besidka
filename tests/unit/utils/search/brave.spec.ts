@@ -12,18 +12,48 @@ vi.mock('evlog', () => ({
 }))
 
 const BRAVE_SEARCH_RESPONSE = {
-  web: {
-    results: [
+  grounding: {
+    generic: [
       {
-        title: 'Besidka — AI Chat',
         url: 'https://www.besidka.com/',
-        description: 'Bring your own API key and pay for what you use.',
+        title: 'Besidka — AI Chat',
+        snippets: [
+          'Bring your own API key and pay for what you use.',
+          '- Supports Anthropic, Google and OpenAI.\n- No subscription.',
+        ],
       },
       {
         url: 'https://example.com/no-title',
-        description: 'A result with no title at all.',
+        snippets: ['A result with no title at all.'],
+      },
+      {
+        url: 'https://example.com/source-title',
+        snippets: ['Title comes from source metadata.'],
       },
     ],
+    map: [],
+  },
+  sources: {
+    'https://www.besidka.com/': {
+      title: 'Besidka — AI Chat',
+      hostname: 'www.besidka.com',
+      age: [
+        'Tuesday, October 21, 2025',
+        '2025-10-21',
+        '348 days ago',
+        '2025-10-21T07:25:05Z',
+      ],
+      site_name: 'Besidka',
+    },
+    'https://example.com/no-title': {
+      hostname: 'example.com',
+      age: null,
+    },
+    'https://example.com/source-title': {
+      title: 'Source metadata title',
+      hostname: 'example.com',
+      age: ['not a date', 'garbage', '1 day ago', null],
+    },
   },
 }
 
@@ -92,7 +122,7 @@ describe('web_search_brave tool execute()', () => {
     vi.unstubAllGlobals()
   })
 
-  it('requests Brave\'s Web Search endpoint with the fixed params and the '
+  it('requests Brave\'s LLM Context endpoint with the fixed params and the '
     + 'X-Subscription-Token header, never Bearer', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(BRAVE_SEARCH_RESPONSE),
@@ -112,18 +142,68 @@ describe('web_search_brave tool execute()', () => {
     const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit]
 
     expect(url.origin + url.pathname).toBe(
-      'https://api.search.brave.com/res/v1/web/search',
+      'https://api.search.brave.com/res/v1/llm/context',
     )
     expect(url.searchParams.get('q')).toBe('python web frameworks')
-    expect(url.searchParams.get('count')).toBe('10')
-    expect(url.searchParams.get('result_filter')).toBe('web')
+    expect(url.searchParams.get('count')).toBe('8')
+    expect(url.searchParams.get('maximum_number_of_tokens')).toBe('3072')
+    expect(url.searchParams.get('maximum_number_of_tokens_per_url'))
+      .toBe('1024')
+    expect(url.searchParams.get('enable_source_metadata')).toBe('true')
+    expect(url.searchParams.has('freshness')).toBe(false)
+    expect(url.searchParams.has('result_filter')).toBe(false)
     expect(init.headers).toMatchObject({
       'X-Subscription-Token': 'brave-key',
     })
     expect(init.headers).not.toHaveProperty('Authorization')
   })
 
-  it('normalizes web.results[] to { title, url, snippet }', async () => {
+  it('maps each freshness value to Brave\'s freshness code', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(BRAVE_SEARCH_RESPONSE),
+    )
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+    const expectedCodes = {
+      day: 'pd',
+      week: 'pw',
+      month: 'pm',
+      year: 'py',
+    }
+
+    for (const [freshness, code] of Object.entries(expectedCodes)) {
+      await searchTool.execute(
+        { query: 'news', freshness },
+        createExecutionOptions(),
+      )
+
+      const [url] = fetchMock.mock.calls.at(-1) as [URL]
+
+      expect(url.searchParams.get('freshness')).toBe(code)
+    }
+  })
+
+  it('accepts an optional freshness enum and rejects other values',
+    async () => {
+      vi.stubGlobal('fetch', vi.fn())
+
+      const { getBraveWebSearchTools } = await importModule()
+      const result = await getBraveWebSearchTools('brave-key')
+      const schema = result.tools?.web_search_brave.inputSchema
+
+      expect(schema.safeParse({ query: 'x' }).success).toBe(true)
+      expect(schema.safeParse({ query: 'x', freshness: 'week' }).success)
+        .toBe(true)
+      expect(schema.safeParse({ query: 'x', freshness: 'decade' }).success)
+        .toBe(false)
+    })
+
+  it('normalizes grounding.generic[] to { title, url, snippet, '
+    + 'publishedDate } with snippets joined by newlines', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       jsonResponse(BRAVE_SEARCH_RESPONSE),
     ))
@@ -138,17 +218,71 @@ describe('web_search_brave tool execute()', () => {
     )
 
     expect(output.provider).toBe('brave')
+    expect(output.results).toHaveLength(3)
     expect(output.results[0]).toEqual({
       title: 'Besidka — AI Chat',
       url: 'https://www.besidka.com/',
-      snippet: 'Bring your own API key and pay for what you use.',
+      snippet: 'Bring your own API key and pay for what you use.\n'
+        + '- Supports Anthropic, Google and OpenAI.\n- No subscription.',
+      publishedDate: '2025-10-21',
     })
   })
 
-  it('falls back to the result\'s hostname when Brave omits a title',
+  it('falls back to the source hostname when Brave omits a title and has '
+    + 'no source title', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse(BRAVE_SEARCH_RESPONSE),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    const output = await searchTool.execute(
+      { query: 'besidka' },
+      createExecutionOptions(),
+    )
+
+    expect(output.results[1]).toEqual({
+      title: 'example.com',
+      url: 'https://example.com/no-title',
+      snippet: 'A result with no title at all.',
+    })
+  })
+
+  it('falls back to the source metadata title and drops an invalid age '
+    + 'date', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse(BRAVE_SEARCH_RESPONSE),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    const output = await searchTool.execute(
+      { query: 'besidka' },
+      createExecutionOptions(),
+    )
+
+    expect(output.results[2]).toEqual({
+      title: 'Source metadata title',
+      url: 'https://example.com/source-title',
+      snippet: 'Title comes from source metadata.',
+    })
+  })
+
+  it('falls back to the URL hostname when there is no source entry at all',
     async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        jsonResponse(BRAVE_SEARCH_RESPONSE),
+        jsonResponse({
+          grounding: {
+            generic: [{
+              url: 'https://orphan.example.org/page',
+              snippets: ['Orphan.'],
+            }],
+          },
+        }),
       ))
 
       const { getBraveWebSearchTools } = await importModule()
@@ -160,12 +294,26 @@ describe('web_search_brave tool execute()', () => {
         createExecutionOptions(),
       )
 
-      expect(output.results[1]).toEqual({
-        title: 'example.com',
-        url: 'https://example.com/no-title',
-        snippet: 'A result with no title at all.',
-      })
+      expect(output.results[0].title).toBe('orphan.example.org')
     })
+
+  it('returns an empty result list when grounding.generic is empty or '
+    + 'missing', async () => {
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const searchTool = result.tools?.web_search_brave
+
+    for (const body of [{ grounding: { generic: [] } }, {}]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(body)))
+
+      const output = await searchTool.execute(
+        { query: 'besidka' },
+        createExecutionOptions(),
+      )
+
+      expect(output.results).toEqual([])
+    }
+  })
 
   it('never surfaces a costDollars field, since Brave reports no cost',
     async () => {

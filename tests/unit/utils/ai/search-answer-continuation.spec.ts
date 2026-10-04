@@ -5,9 +5,11 @@ import {
   buildSearchResultsContext,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
+  SEARCH_ANSWER_CONTEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_RESULTS,
   SEARCH_ANSWER_OPAQUE_OUTPUT_MAX_CHARS,
   SEARCH_ANSWER_RESULTS_TAG,
+  SEARCH_ANSWER_SNIPPET_MAX_CHARS,
   withSearchAnswerGuarantee,
 } from '../../../../server/utils/ai/search-answer-continuation'
 
@@ -198,6 +200,70 @@ describe('buildSearchResultsContext', () => {
 
     expect(context).toContain(`Result ${SEARCH_ANSWER_CONTEXT_MAX_RESULTS - 1}`)
     expect(context).not.toContain(`Result ${SEARCH_ANSWER_CONTEXT_MAX_RESULTS}\n`)
+    expect(context).toContain('(Further search results omitted.)')
+  })
+})
+
+describe('richer search content caps', () => {
+  it('keeps the raised snippet and context budgets', () => {
+    expect(SEARCH_ANSWER_SNIPPET_MAX_CHARS).toBe(1500)
+    expect(SEARCH_ANSWER_CONTEXT_MAX_CHARS).toBe(32_000)
+    expect(SEARCH_ANSWER_CONTEXT_MAX_RESULTS).toBe(24)
+  })
+
+  it('renders a multi-line page-content snippet up to the snippet cap',
+    () => {
+      const snippet = `${'Line of page content.\n'.repeat(100)}END`
+      const context = buildSearchResultsContext([{
+        toolName: SEARCH_TOOL_NAME,
+        input: { query: 'q' },
+        output: {
+          results: [{
+            title: 'Long page',
+            url: 'https://example.com/long',
+            snippet,
+          }],
+        },
+      }])
+
+      expect(context).toContain('Line of page content.\nLine of page')
+      expect(context).not.toContain('END')
+      expect(context).toContain('…')
+      expect(context.length).toBeLessThan(
+        SEARCH_ANSWER_SNIPPET_MAX_CHARS + 400,
+      )
+    })
+
+  it('keeps a snippet under the cap whole', () => {
+    const snippet = `${'x'.repeat(1400)}END`
+    const context = buildSearchResultsContext([{
+      toolName: SEARCH_TOOL_NAME,
+      input: { query: 'q' },
+      output: {
+        results: [{
+          title: 'Page',
+          url: 'https://example.com/page',
+          snippet,
+        }],
+      },
+    }])
+
+    expect(context).toContain(snippet)
+  })
+
+  it('stops adding results once the context budget is spent', () => {
+    const results = Array.from({ length: 24 }, (_, index) => ({
+      title: `Result ${index}`,
+      url: `https://example.com/${index}`,
+      snippet: 'y'.repeat(SEARCH_ANSWER_SNIPPET_MAX_CHARS),
+    }))
+    const context = buildSearchResultsContext([{
+      toolName: SEARCH_TOOL_NAME,
+      input: { query: 'many' },
+      output: { results },
+    }])
+
+    expect(context.length).toBeLessThan(SEARCH_ANSWER_CONTEXT_MAX_CHARS + 500)
     expect(context).toContain('(Further search results omitted.)')
   })
 })

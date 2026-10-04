@@ -9,26 +9,41 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
 import {
+  searchFreshnessSchema,
+  toBraveFreshnessCode,
+} from '~~/server/utils/search/freshness'
+import type { SearchFreshness } from '~~/server/utils/search/freshness'
+import {
   buildSearchProviderNetworkError,
   buildSearchProviderStatusError,
   isUserAbortError,
 } from '~~/server/utils/search/search-error'
 
-const BRAVE_SEARCH_API_URL = 'https://api.search.brave.com/res/v1/web/search'
+const BRAVE_SEARCH_API_URL = 'https://api.search.brave.com/res/v1/llm/context'
 const BRAVE_SEARCH_REQUEST_TIMEOUT_MS = 10_000
-const BRAVE_SEARCH_RESULT_COUNT = 10
+const BRAVE_SEARCH_RESULT_COUNT = 8
+const BRAVE_SEARCH_MAX_TOKENS = 3072
+const BRAVE_SEARCH_MAX_TOKENS_PER_URL = 1024
 const BRAVE_SEARCH_QUERY_MAX_LENGTH = 400
+const BRAVE_SEARCH_SNIPPET_SEPARATOR = '\n'
 
-interface BraveWebResult {
-  title?: string
+interface BraveGroundingResult {
   url?: string
-  description?: string
+  title?: string
+  snippets?: string[]
 }
 
-interface BraveSearchResponse {
-  web?: {
-    results?: BraveWebResult[]
+interface BraveSourceMetadata {
+  title?: string
+  hostname?: string
+  age?: Array<string | null> | null
+}
+
+interface BraveLlmContextResponse {
+  grounding?: {
+    generic?: BraveGroundingResult[]
   }
+  sources?: Record<string, BraveSourceMetadata>
 }
 
 function hostnameFallback(url: string | undefined): string {
@@ -43,31 +58,57 @@ function hostnameFallback(url: string | undefined): string {
   }
 }
 
+function readPublishedDate(
+  source: BraveSourceMetadata | undefined,
+): string | undefined {
+  const isoDate = source?.age?.[1]
+
+  if (typeof isoDate !== 'string' || Number.isNaN(Date.parse(isoDate))) {
+    return undefined
+  }
+
+  return isoDate
+}
+
 function normalizeBraveResults(
-  response: BraveSearchResponse,
+  response: BraveLlmContextResponse,
 ): ExternalSearchResult[] {
-  const results = response.web?.results ?? []
+  const results = response.grounding?.generic ?? []
+  const sources = response.sources ?? {}
 
   return results.slice(0, BRAVE_SEARCH_RESULT_COUNT).map((result) => {
+    const source = result.url ? sources[result.url] : undefined
+    const publishedDate = readPublishedDate(source)
+
     return {
-      title: result.title ?? hostnameFallback(result.url),
+      title: result.title
+        || source?.title
+        || source?.hostname
+        || hostnameFallback(result.url),
       url: result.url ?? '',
-      snippet: result.description ?? '',
+      snippet: (result.snippets ?? []).join(BRAVE_SEARCH_SNIPPET_SEPARATOR),
+      ...(publishedDate === undefined ? {} : { publishedDate }),
     }
   })
 }
 
 /**
- * Calls Brave's Web Search endpoint with a fixed, non-user-configurable
- * request shape: `result_filter=web` keeps the response to the single `web`
- * vertical (Brave nests `news`/`videos`/`locations`/`infobox` otherwise), and
- * `count=10` bounds the result set the model has to read. Auth is
+ * Calls Brave's LLM Context endpoint, which returns page-content snippets
+ * extracted for LLM consumption instead of the short `description` the Web
+ * Search endpoint gives. The request shape is fixed and not
+ * model-configurable apart from `freshness`: `count=8` results, a
+ * `maximum_number_of_tokens=3072` total budget and
+ * `maximum_number_of_tokens_per_url=1024` bound the content the model has to
+ * read (and that is resent on every later loop step), and
+ * `enable_source_metadata=true` adds per-URL title, hostname and age. It is
+ * billed as one Search-plan request, the same unit as Web Search. Auth is
  * `X-Subscription-Token`, not `Bearer` — Brave's one deviation from the
  * pattern every other provider in this app uses.
  */
 async function executeBraveSearch(
   apiKey: string,
   query: string,
+  freshness: SearchFreshness | undefined,
   abortSignal: AbortSignal | undefined,
   logger?: LoggerLike,
 ): Promise<ExternalSearchToolOutput> {
@@ -75,7 +116,19 @@ async function executeBraveSearch(
 
   url.searchParams.set('q', query)
   url.searchParams.set('count', String(BRAVE_SEARCH_RESULT_COUNT))
-  url.searchParams.set('result_filter', 'web')
+  url.searchParams.set(
+    'maximum_number_of_tokens',
+    String(BRAVE_SEARCH_MAX_TOKENS),
+  )
+  url.searchParams.set(
+    'maximum_number_of_tokens_per_url',
+    String(BRAVE_SEARCH_MAX_TOKENS_PER_URL),
+  )
+  url.searchParams.set('enable_source_metadata', 'true')
+
+  if (freshness) {
+    url.searchParams.set('freshness', toBraveFreshnessCode(freshness))
+  }
 
   const timeoutSignal = AbortSignal.timeout(BRAVE_SEARCH_REQUEST_TIMEOUT_MS)
   const signal = abortSignal
@@ -110,7 +163,7 @@ async function executeBraveSearch(
     }))
   }
 
-  const body = await response.json() as BraveSearchResponse
+  const body = await response.json() as BraveLlmContextResponse
   const results = normalizeBraveResults(body)
 
   logger?.set({
@@ -149,11 +202,13 @@ export async function getBraveWebSearchTools(
           + 'query per call.',
         inputSchema: z.object({
           query: z.string().min(1).max(BRAVE_SEARCH_QUERY_MAX_LENGTH),
+          freshness: searchFreshnessSchema,
         }),
         async execute(input, options) {
           return await executeBraveSearch(
             apiKey,
             input.query,
+            input.freshness,
             options.abortSignal,
             logger,
           )

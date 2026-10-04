@@ -211,7 +211,9 @@ the last follow-up tool result (a step-0 preamble such as "Let me look that
 up." does not count, here and in persistence's empty-answer check), it runs ONE tool-less
 `streamText()` with the same model, reasoning and provider options: the
 turn's model messages, with the search results flattened to plain text
-(query, title, URL, snippet; capped by result count and characters) and an
+(query, title, URL, snippet; capped by result count and characters — up to
+1,500 characters per result and 32,000 in total, since Brave and Exa now
+return page content rather than short snippets) and an
 answer-now instruction appended to the final user message — no tool-call
 history, so no provider can reject it for missing declarations. The results
 sit inside `<untrusted_web_search_results>` delimiters that the instruction

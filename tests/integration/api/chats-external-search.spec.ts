@@ -276,11 +276,11 @@ function braveFetch() {
   return vi.fn(async () => ({
     ok: true,
     json: async () => ({
-      web: {
-        results: [{
+      grounding: {
+        generic: [{
           title: 'Besidka release notes',
           url: 'https://example.com/release-notes',
-          description: 'Latest release notes for Besidka.',
+          snippets: ['Latest release notes for Besidka.'],
         }],
       },
     }),
@@ -294,7 +294,7 @@ function exaFetch(costDollarsTotal: number) {
       results: [{
         title: 'Besidka release notes',
         url: 'https://example.com/release-notes',
-        highlights: ['Latest release notes for Besidka.'],
+        text: 'Latest release notes for Besidka.',
       }],
       costDollars: { total: costDollarsTotal },
     }),

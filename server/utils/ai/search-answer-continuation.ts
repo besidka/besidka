@@ -7,8 +7,8 @@ import type {
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24
-export const SEARCH_ANSWER_CONTEXT_MAX_CHARS = 16_000
-export const SEARCH_ANSWER_SNIPPET_MAX_CHARS = 600
+export const SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32_000
+export const SEARCH_ANSWER_SNIPPET_MAX_CHARS = 1500
 export const SEARCH_ANSWER_OPAQUE_OUTPUT_MAX_CHARS = 4_000
 
 export const SEARCH_ANSWER_RESULTS_TAG = 'untrusted_web_search_results'

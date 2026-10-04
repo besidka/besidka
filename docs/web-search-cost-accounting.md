@@ -690,14 +690,56 @@ one deliberate departure is key storage, which went the other way — see
 live proposal — see the plan doc for what actually shipped.
 
 Shipped request shapes are fixed module constants, not model-configurable
-(`server/utils/search/{brave,exa}.ts`). Exa sends `type: 'auto'`,
-`numResults: 10` and `contents.highlights: true`; Exa's pricing page lists
-a $1/1,000-per-extracted-page charge that would make that shape $17/1,000
-($7 base plus 10 pages), but two live calls on 2026-09-22 both reported
-`costDollars.total: 0.007`. The live path therefore prefers the
-vendor-reported `costDollars` and falls back to the committed $7/1,000 rate
-only when the response omits it; revisit the $17 figure with more samples
-before raising that fallback.
+apart from an optional `freshness` input
+(`server/utils/search/{brave,exa,freshness}.ts`); see "Richer page content,
+same unit" below for the current shapes. Exa's pricing page lists a
+$1/1,000-per-extracted-page charge that would make a 10-result content
+request $17/1,000 ($7 base plus 10 pages), but live calls on 2026-09-22
+(`contents.highlights: true`) and 2026-10-04 (`contents.text.maxCharacters:
+1500`) all reported `costDollars.total: 0.007`. The live path therefore
+prefers the vendor-reported `costDollars` and falls back to the committed
+$7/1,000 rate only when the response omits it; revisit the $17 figure with
+more samples before raising that fallback.
+
+### Richer page content, same unit
+
+The search tools used to hand the model only short snippets (Brave's Web
+Search `description`, Exa's `highlights`). They now return real page
+content, with no change to the billing unit (still one request per tool
+call) or to either rate:
+
+| | Request | Snippet |
+|---|---|---|
+| Brave | `GET /res/v1/llm/context` with `q`, `count=8`, `maximum_number_of_tokens=3072`, `maximum_number_of_tokens_per_url=1024`, `enable_source_metadata=true` (was `/res/v1/web/search`, `count=10`, `result_filter=web`) | `grounding.generic[].snippets` joined with `\n`; title falls back to `sources[url].title`, then hostname; `publishedDate` is `sources[url].age[1]` when it parses as a date |
+| Exa | `POST /search` with `type: 'auto'`, `numResults: 10`, `contents.text.maxCharacters: 1500` (was `contents.highlights: true`) | `results[].text`, falling back to joined `highlights`, else empty |
+
+Why the rate is unchanged:
+
+- **Exa** — the 2026-10-04 live call with exactly this body returned
+  `costDollars {"total":0.007,"search":{"neural":0.007}}`: text content up
+  to 1,500 characters is bundled into the $7/1,000 search price, same as
+  the highlights shape. The rate constant stays derived from this exact
+  request shape, which is why `exa.ts` documents it as an invariant.
+- **Brave** — the LLM Context endpoint is part of the same Search plan at
+  $5/1,000 requests as Web Search, so one call is still one billed request.
+  The `braveWebSearch.resultCount` log attribute is unchanged.
+
+Both tools also accept an optional `freshness: 'day' | 'week' | 'month' |
+'year'`. Brave maps it to `freshness=pd|pw|pm|py`; Exa maps it to
+`startPublishedDate` (now minus 1/7/31/365 days, ISO string). The model is
+told to set it for news and recent-events queries; omitted means no filter.
+A filter does not change the request count or price.
+
+The trade-off is LLM input tokens, not search cost. Page content is
+roughly an order of magnitude longer than a snippet, and the tool result is
+resent to the model on every later step of the tool loop. The size is
+therefore capped by constants, not by the user: Brave by the token budgets
+above, Exa by `maxCharacters`, and the guaranteed-answer continuation
+(`server/utils/ai/search-answer-continuation.ts`) by
+`SEARCH_ANSWER_SNIPPET_MAX_CHARS = 1500` per result and
+`SEARCH_ANSWER_CONTEXT_MAX_CHARS = 32_000` in total (24 results max). That
+extra input is priced by the ordinary model-token path
+(`computeModelCost`), not by the search-cost dispatcher.
 
 ### Candidates
 
@@ -705,7 +747,7 @@ before raising that fallback.
 |---|---|---|
 | Price | $5 / 1,000 requests (Search plan) | $7 / 1,000 standard Search |
 | Free | no always-free tier since Feb 2026; $5/mo recurring credit (~1,000 queries), card required, no default overage cap | $20 new-account credit (~2,800 searches) + $10/mo recurring credit, no subscription |
-| Returns | structured JSON — URLs, titles, snippets, up to 5/query, plus news/image results | full page content, highlights and citations for the first 10 results; +$1/1,000 beyond 10 |
+| Returns | structured JSON — URLs, titles, snippets, up to 5/query, plus news/image results (shipped tool uses the LLM Context endpoint instead, see above) | full page content, highlights and citations for the first 10 results; +$1/1,000 beyond 10 |
 | Other endpoints | — | Answer $5/1,000; Deep Search $12-15/1,000 |
 | Model | keyword search | neural/semantic, auto/fast/instant modes |
 
