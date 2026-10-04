@@ -15,7 +15,8 @@ import { getPersistedEmptyAnswerFailureText } from '#shared/utils/chat-failure-t
 const MODEL_ID = '@cf/openai/gpt-oss-120b'
 const WORKERS_AI_DEFAULT_MAX_TOKENS = 256
 const CONTINUATION_REASONING_TOKENS = 400
-const CLAMPED_MAX_TOKENS = 128000 - 16384
+const CONTEXT_LENGTH = 128000
+const CONTEXT_SAFETY_MARGIN_TOKENS = 1024
 const CONTINUATION_ANSWER = '**Новини Польщі** — [TVN24](https://tvn24.pl/a).'
 const USER_PROMPT = 'останні новини в польщі за сьогодні — коротко, з джерелами'
 
@@ -489,17 +490,21 @@ describe('Cloudflare gpt-oss search answer', () => {
     vi.stubGlobal('useRuntimeConfig', vi.fn(() => ({ public: {} })))
   })
 
-  it('sends the clamped catalog max_tokens on every step so the continuation '
+  it('sends a context-sized catalog max_tokens on every step so the continuation '
     + 'answers after three searches', async () => {
     const {
       chatRequests,
       toolLoop,
       persistedText,
-    } = await runCloudflareSearchSend(128000)
+    } = await runCloudflareSearchSend(CONTEXT_LENGTH)
 
     expect(chatRequests).toHaveLength(5)
-    expect(chatRequests.map(request => request.max_tokens))
-      .toEqual(Array(5).fill(CLAMPED_MAX_TOKENS))
+    chatRequests.forEach((request) => {
+      expect(request.max_tokens).toBeLessThanOrEqual(
+        CONTEXT_LENGTH - CONTEXT_SAFETY_MARGIN_TOKENS,
+      )
+      expect(request.max_tokens).toBeGreaterThan(CONTEXT_LENGTH / 2)
+    })
     expect(persistedText).toBe(CONTINUATION_ANSWER)
     expect(toolLoop).toMatchObject({
       forcedStepRejectedToolCall: true,

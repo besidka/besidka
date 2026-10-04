@@ -464,8 +464,8 @@ describe('useCloudflareGateway', () => {
       expect(result.toolCall).toBe(false)
     })
 
-  it('caps maxOutputTokens from the flat catalog shape a live account '
-    + 'returns, leaving room for the prompt', async () => {
+  it('reads maxOutputTokens from the flat catalog shape a live account '
+    + 'returns', async () => {
     stubKeyLookup('encrypted-blob')
     stubDecrypt(JSON.stringify({
       accountId: 'account-123',
@@ -485,10 +485,10 @@ describe('useCloudflareGateway', () => {
     const { useCloudflareGateway } = await importCloudflareGateway()
     const result = await useCloudflareGateway('1', '@cf/openai/gpt-oss-120b')
 
-    expect(result.maxOutputTokens).toBe(128000 - 16384)
+    expect(result.maxOutputTokens).toBe(128000)
   })
 
-  it('clamps the flat catalog max_output_length of a small-context model',
+  it('passes the unclamped catalog max_output_length to the chat title',
     async () => {
       stubKeyLookup('encrypted-blob')
       stubDecrypt(JSON.stringify({
@@ -518,11 +518,11 @@ describe('useCloudflareGateway', () => {
 
       await result.generateChatTitle('Plan a trip to Kyoto')
 
-      expect(result.maxOutputTokens).toBe(12000)
+      expect(result.maxOutputTokens).toBe(24000)
       expect(useChatTitleMock).toHaveBeenCalledWith(
         expect.anything(),
         'Plan a trip to Kyoto',
-        12000,
+        24000,
       )
     })
 
@@ -577,37 +577,196 @@ describe('useCloudflareGateway', () => {
     })
 })
 
-describe('clampCloudflareMaxOutputTokens', () => {
-  it('reserves the full prompt headroom on a large context', async () => {
-    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+describe('withContextSizedMaxTokens', () => {
+  const SMALL_CONTEXT = 24000
+  const FIFTEEN_THOUSAND_TOKENS_OF_TEXT = 'word '.repeat(7500)
 
-    expect(clampCloudflareMaxOutputTokens(262144, 262144)).toBe(262144 - 16384)
+  function chatBody(content: string, maxTokens: number = SMALL_CONTEXT) {
+    return {
+      model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content }],
+    }
+  }
+
+  it('keeps a large max_tokens for a short prompt', async () => {
+    const { withContextSizedMaxTokens } = await importCloudflareGateway()
+    const result = withContextSizedMaxTokens(
+      chatBody('Plan a trip to Kyoto'),
+      SMALL_CONTEXT,
+    )
+
+    expect(result.max_tokens).toBeGreaterThan(20000)
+    expect(result.max_tokens).toBeLessThan(SMALL_CONTEXT)
   })
 
-  it('reserves half the context on a small context', async () => {
-    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
-
-    expect(clampCloudflareMaxOutputTokens(8192, 8192)).toBe(4096)
-  })
-
-  it('never goes below the minimum output budget', async () => {
-    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
-
-    expect(clampCloudflareMaxOutputTokens(1500, 1500)).toBe(1024)
-  })
-
-  it('keeps a max output that is already below the budget', async () => {
-    const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
-
-    expect(clampCloudflareMaxOutputTokens(4096, 128000)).toBe(4096)
-  })
-
-  it('returns the max output untouched when the context is unknown',
+  it('never lets prompt plus output exceed the context for a long prompt',
     async () => {
-      const { clampCloudflareMaxOutputTokens } = await importCloudflareGateway()
+      const { withContextSizedMaxTokens } = await importCloudflareGateway()
+      const body = chatBody('x'.repeat(40_000))
+      const result = withContextSizedMaxTokens(body, SMALL_CONTEXT)
+      const promptTokensAtOneCharacterPerToken = JSON.stringify(
+        body.messages,
+      ).length
 
-      expect(clampCloudflareMaxOutputTokens(4096, undefined)).toBe(4096)
-      expect(clampCloudflareMaxOutputTokens(undefined, 24000)).toBeUndefined()
+      expect(result.max_tokens).toBeLessThan(SMALL_CONTEXT - 15000)
+      expect(result.max_tokens).toBeGreaterThanOrEqual(256)
+      expect(
+        (result.max_tokens as number)
+        + Math.ceil(promptTokensAtOneCharacterPerToken / 2.5),
+      ).toBeLessThanOrEqual(SMALL_CONTEXT)
+    })
+
+  it('sizes a roughly fifteen thousand token prompt below the context',
+    async () => {
+      const { withContextSizedMaxTokens } = await importCloudflareGateway()
+      const result = withContextSizedMaxTokens(
+        chatBody(FIFTEEN_THOUSAND_TOKENS_OF_TEXT),
+        SMALL_CONTEXT,
+      )
+
+      expect(result.max_tokens).toBeGreaterThanOrEqual(256)
+      expect(result.max_tokens).toBeLessThan(SMALL_CONTEXT - 15000)
+    })
+
+  it('never raises a max_tokens that is already below the budget',
+    async () => {
+      const { withContextSizedMaxTokens } = await importCloudflareGateway()
+      const result = withContextSizedMaxTokens(
+        chatBody('Hi', 100),
+        SMALL_CONTEXT,
+      )
+
+      expect(result.max_tokens).toBe(100)
+    })
+
+  it('omits max_tokens when the prompt leaves less than the minimum budget',
+    async () => {
+      const { withContextSizedMaxTokens } = await importCloudflareGateway()
+      const body = chatBody('x'.repeat(57_000))
+      const result = withContextSizedMaxTokens(body, SMALL_CONTEXT)
+
+      expect(result).not.toHaveProperty('max_tokens')
+      expect(result.messages).toEqual(body.messages)
+      expect(result.model).toBe(body.model)
+      expect(body.max_tokens).toBe(SMALL_CONTEXT)
+    })
+
+  it('omits max_tokens when the prompt alone exceeds the context',
+    async () => {
+      const { withContextSizedMaxTokens } = await importCloudflareGateway()
+      const result = withContextSizedMaxTokens(
+        chatBody('x'.repeat(100_000)),
+        SMALL_CONTEXT,
+      )
+
+      expect(result).not.toHaveProperty('max_tokens')
+    })
+
+  it('counts tool definitions toward the prompt', async () => {
+    const { withContextSizedMaxTokens } = await importCloudflareGateway()
+    const withoutTools = chatBody('Hi')
+    const withTools = {
+      ...withoutTools,
+      tools: [{
+        type: 'function',
+        function: { name: 'search', description: 'y'.repeat(10_000) },
+      }],
+    }
+
+    expect(
+      withContextSizedMaxTokens(withTools, SMALL_CONTEXT).max_tokens as number,
+    ).toBeLessThan(
+      withContextSizedMaxTokens(withoutTools, SMALL_CONTEXT)
+        .max_tokens as number,
+    )
+  })
+
+  it('estimates Cyrillic text conservatively', async () => {
+    const { withContextSizedMaxTokens } = await importCloudflareGateway()
+    const cyrillicText = 'привіт світе '.repeat(1500)
+    const result = withContextSizedMaxTokens(
+      chatBody(cyrillicText),
+      SMALL_CONTEXT,
+    )
+    const estimatedPromptTokens = Math.ceil(
+      JSON.stringify({ messages: chatBody(cyrillicText).messages }).length
+      / 2.5,
+    )
+
+    expect(result.max_tokens).toBeLessThanOrEqual(
+      SMALL_CONTEXT - estimatedPromptTokens - 1024,
+    )
+    expect(result.max_tokens).toBeGreaterThan(
+      SMALL_CONTEXT - estimatedPromptTokens - 1024 - 50,
+    )
+  })
+
+  it('returns the body untouched when the context is unknown', async () => {
+    const { withContextSizedMaxTokens } = await importCloudflareGateway()
+    const body = chatBody('x'.repeat(100_000))
+
+    expect(withContextSizedMaxTokens(body, undefined)).toBe(body)
+  })
+
+  it('returns bodies without max_tokens or messages untouched', async () => {
+    const { withContextSizedMaxTokens } = await importCloudflareGateway()
+    const withoutMaxTokens = { model: 'm', messages: [] }
+    const nonChatBody = { model: 'm', input: 'x'.repeat(100_000) }
+
+    expect(withContextSizedMaxTokens(withoutMaxTokens, SMALL_CONTEXT))
+      .toBe(withoutMaxTokens)
+    expect(withContextSizedMaxTokens(nonChatBody, SMALL_CONTEXT))
+      .toBe(nonChatBody)
+  })
+})
+
+describe('useCloudflareGateway request body', () => {
+  it('sizes max_tokens from the catalog context on the outgoing request',
+    async () => {
+      stubKeyLookup('encrypted-blob')
+      stubDecrypt(JSON.stringify({
+        accountId: 'account-123',
+        apiKey: 'cf-token',
+      }))
+      stubCloudflareCatalog([
+        {
+          id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          name: 'Meta: Llama 3.3 70B',
+          input_modalities: ['text'],
+          output_modalities: ['text'],
+          context_length: 24000,
+          max_output_length: 24000,
+        },
+      ])
+
+      const catalogFetch = vi.mocked(fetch)
+      const { useCloudflareGateway } = await importCloudflareGateway()
+      const result = await useCloudflareGateway(
+        '1',
+        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      )
+
+      catalogFetch.mockResolvedValue(new Response(JSON.stringify({
+        id: 'chatcmpl-1',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: 'ok' },
+          finish_reason: 'stop',
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }), { headers: { 'content-type': 'application/json' } }))
+
+      await result.instance.doGenerate({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
+        maxOutputTokens: result.maxOutputTokens,
+      })
+
+      const [, init] = catalogFetch.mock.calls.at(-1) as [string, RequestInit]
+      const sentBody = JSON.parse(init.body as string)
+
+      expect(sentBody.max_tokens).toBeGreaterThan(20000)
+      expect(sentBody.max_tokens).toBeLessThan(24000)
     })
 })
 

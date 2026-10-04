@@ -113,11 +113,21 @@ Every `@cf/*` model reports `max_output_length == context_length`, and
 Workers AI rejects prompt + `max_tokens` above the context window (live,
 2026-10-04, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, 24000 context: HTTP
 400 "you requested 24000 output tokens" for a 40-token prompt), while
-`gpt-oss-120b` happened to accept it. `useCloudflareGateway` therefore sends
-`clampCloudflareMaxOutputTokens`: output is capped at
-`context - min(16384, context / 2)`, floored at 1024. A prompt that itself
-exceeds the reserved headroom can still be rejected; that needs context
-trimming, not a smaller `max_tokens`.
+`gpt-oss-120b` happened to accept it. A static cap does not work: the first
+attempt (`context - min(16384, context / 2)`) sent `max_tokens` 12000 on the
+24000-context llama and so rejected every prompt above ~12k tokens, which the
+pre-fix request (no `max_tokens`, Workers AI default of 256) had accepted up to
+~23.7k. The builder therefore passes the catalog `max_output_length` as
+`maxOutputTokens` unchanged and `withContextSizedMaxTokens`, inside the
+client's `transformRequestBody`, sizes `max_tokens` per request: the context
+minus a pessimistic prompt estimate (serialized `messages` + `tools` at 2.5
+characters per token, so Cyrillic-heavy text stays covered) minus a 1024-token
+safety margin, lowered only. When that budget falls below 256 (Workers AI's own
+default) `max_tokens` is omitted rather than floored, so Workers AI applies its
+default and a prompt that was accepted before is never rejected now. The
+estimate is deliberately blind to images: inlined base64 counts as text, so a
+large image can push a vision request into the omit path, which is the safe
+direction.
 
 **The identity relationship between the two is inverted — the join key
 trap.** In the marketplace shape, `id` is the real `@cf/vendor/model`
