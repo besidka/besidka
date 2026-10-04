@@ -95,7 +95,7 @@ describe('chat title API', () => {
             projectId: 'project-1',
             messages: [
               {
-                parts: [{ text: 'Create a roadmap for Q2' }],
+                parts: [{ type: 'text', text: 'Create a roadmap for Q2' }],
               },
             ],
           })),
@@ -161,7 +161,7 @@ describe('chat title API', () => {
             title: null,
             projectId: 'project-1',
             messages: [
-              { parts: [{ text: 'Research the best espresso machines' }] },
+              { parts: [{ type: 'text', text: 'Research the best espresso machines' }] },
             ],
           })),
         },
@@ -217,7 +217,7 @@ describe('chat title API', () => {
             title: null,
             projectId: 'project-1',
             messages: [
-              { parts: [{ text: 'Research the best espresso machines' }] },
+              { parts: [{ type: 'text', text: 'Research the best espresso machines' }] },
             ],
           })),
         },
@@ -267,7 +267,7 @@ describe('chat title API', () => {
             title: null,
             projectId: 'project-1',
             messages: [
-              { parts: [{ text: 'mock: best espresso machines' }] },
+              { parts: [{ type: 'text', text: 'mock: best espresso machines' }] },
             ],
           })),
         },
@@ -309,7 +309,7 @@ describe('chat title API', () => {
             title: null,
             projectId: 'project-1',
             messages: [
-              { parts: [{ text: 'Create a roadmap for Q2' }] },
+              { parts: [{ type: 'text', text: 'Create a roadmap for Q2' }] },
             ],
           })),
         },
@@ -328,6 +328,128 @@ describe('chat title API', () => {
       'Create a roadmap for Q2',
     )
   })
+})
+
+describe('chat title API first message guards', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    mocks.generateChatTitle.mockResolvedValue('Generated title')
+
+    vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('readValidatedBody', async (
+      event: { body: unknown },
+      parser: (body: unknown) => unknown,
+    ) => {
+      return parser(event.body)
+    })
+    vi.stubGlobal('getValidatedRouterParams', async (
+      event: { params: unknown },
+      parser: (params: unknown) => unknown,
+    ) => {
+      return parser(event.params)
+    })
+    vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
+      user: { id: '1' },
+    }))
+    vi.stubGlobal('useChatProvider', () => ({
+      provider: { id: 'openai' },
+      model: { id: 'gpt-4.1-mini' },
+    }))
+    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+      generateChatTitle: mocks.generateChatTitle,
+    })))
+    useRuntimeConfig().researchMockEnabled = false
+  })
+
+  function createDbForParts(parts: unknown[]) {
+    const set = vi.fn(() => ({
+      where: vi.fn(() => ({
+        returning: vi.fn(() => ({
+          get: vi.fn(() => ({ title: 'saved' })),
+        })),
+      })),
+    }))
+
+    return {
+      set,
+      db: {
+        query: {
+          chats: {
+            findFirst: vi.fn(async () => ({
+              id: 'chat-1',
+              title: null,
+              projectId: null,
+              messages: [{ parts }],
+            })),
+          },
+        },
+        update: vi.fn(() => ({ set })),
+      },
+    }
+  }
+
+  async function runHandler(parts: unknown[]) {
+    const handler = await getTitleHandler()
+    const { db, set } = createDbForParts(parts)
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      body: { model: 'openai:gpt-4.1-mini' },
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+    } as any)
+
+    return set
+  }
+
+  it('titles from the first text part when a file part comes first',
+    async () => {
+      await runHandler([
+        { type: 'file', url: 'https://example.com/a.png' },
+        { type: 'text', text: 'Describe this image' },
+      ])
+
+      expect(mocks.generateChatTitle)
+        .toHaveBeenCalledWith('Describe this image')
+    })
+
+  it('uses the default title without a model call when there is no text',
+    async () => {
+      const set = await runHandler([
+        { type: 'file', url: 'https://example.com/a.png' },
+      ])
+
+      expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+      expect(set).toHaveBeenCalledWith({ title: 'Untitled Chat' })
+    })
+
+  it('uses the default title for a whitespace-only message', async () => {
+    const set = await runHandler([{ type: 'text', text: '   ' }])
+
+    expect(mocks.generateChatTitle).not.toHaveBeenCalled()
+    expect(set).toHaveBeenCalledWith({ title: 'Untitled Chat' })
+  })
+
+  it('uses the default title when generation returns an empty title',
+    async () => {
+      mocks.generateChatTitle.mockResolvedValue('')
+
+      const set = await runHandler([{ type: 'text', text: 'Hello' }])
+
+      expect(set).toHaveBeenCalledWith({ title: 'Untitled Chat' })
+    })
+
+  it('falls back to the leading words, not the mock builder, on error',
+    async () => {
+      mocks.generateChatTitle.mockRejectedValue(new Error('boom'))
+
+      const set = await runHandler([
+        { type: 'text', text: 'What is Cloudflare Workers?' },
+      ])
+
+      expect(set).toHaveBeenCalledWith({ title: 'What is Cloudflare Workers' })
+    })
 })
 
 describe('chat title API gateway routing', () => {
@@ -385,7 +507,7 @@ describe('chat title API gateway routing', () => {
             title: null,
             projectId: 'project-1',
             messages: [
-              { parts: [{ text: 'Create a roadmap for Q2' }] },
+              { parts: [{ type: 'text', text: 'Create a roadmap for Q2' }] },
             ],
           })),
         },
@@ -463,6 +585,8 @@ describe('chat title API gateway routing', () => {
     expect(mocks.loggerSet).toHaveBeenCalledWith({
       attributes: {
         titleGeneration: {
+          fallback: true,
+          reason: 'error',
           error: expect.stringContaining('Free tier'),
           status: 403,
         },
@@ -561,7 +685,7 @@ describe('chat title API openrouter plugin isolation', () => {
             title: null,
             projectId: 'project-1',
             messages: [
-              { parts: [{ text: 'Create a roadmap for Q2' }] },
+              { parts: [{ type: 'text', text: 'Create a roadmap for Q2' }] },
             ],
           })),
         },
