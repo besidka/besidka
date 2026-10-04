@@ -625,6 +625,48 @@ describe('fetchCloudflareGatewayCatalog', () => {
       ])
     })
 
+  it('reads the flat shape a live account returns for format=openrouter',
+    async () => {
+      mockFetchOnce({
+        data: [
+          {
+            id: '@cf/openai/gpt-oss-120b',
+            hugging_face_id: 'openai/gpt-oss-120b',
+            name: 'OpenAI: Gpt Oss 120B',
+            input_modalities: ['text'],
+            output_modalities: ['text'],
+            context_length: 128000,
+            max_output_length: 128000,
+            pricing: {
+              prompt: '0.0000003500',
+              completion: '0.0000007500',
+            },
+            supported_features: ['structured_outputs', 'tools', 'reasoning'],
+            reasoning: {
+              supported_efforts: ['high', 'medium', 'low'],
+              default_effort: 'medium',
+              mandatory: true,
+            },
+          },
+        ],
+      })
+
+      const { fetchCloudflareGatewayCatalog } = await getFetchers()
+      const models = await fetchCloudflareGatewayCatalog({
+        accountId: 'account-1',
+        apiKey: 'cf-token',
+      })
+
+      expect(models[0]).toMatchObject({
+        id: '@cf/openai/gpt-oss-120b',
+        contextLength: 128000,
+        maxOutputTokens: 128000,
+        modalities: { input: ['text'], output: ['text'] },
+        supportsImageGeneration: false,
+      })
+      expect(models[0]?.supportsTools).toBeUndefined()
+    })
+
   it('reports supportsTools as false when the text output modality omits tools',
     async () => {
       mockFetchOnce({
@@ -1377,7 +1419,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
       const apiKeyHash = await sha256Hex('token-1')
 
       await cache.setItem(
-        `gateway-catalog:v4:cloudflare:account-1:${apiKeyHash}`,
+        `gateway-catalog:v5:cloudflare:account-1:${apiKeyHash}`,
         {
           models: staleModels,
           cachedAt: Date.now() - (60 * 60 * 1000),
@@ -1420,7 +1462,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
     const apiKeyHash = await sha256Hex('token-1')
 
     await cache.setItem(
-      `gateway-catalog:v4:cloudflare:account-1:${apiKeyHash}`,
+      `gateway-catalog:v5:cloudflare:account-1:${apiKeyHash}`,
       {
         models: staleModels,
         cachedAt: Date.now() - (60 * 60 * 1000),
@@ -1460,7 +1502,7 @@ describe('getCachedCloudflareGatewayCatalog', () => {
       const apiKeyHash = await sha256Hex('token-1')
 
       await cache.setItem(
-        `gateway-catalog:v4:cloudflare:account-1:${apiKeyHash}`,
+        `gateway-catalog:v5:cloudflare:account-1:${apiKeyHash}`,
         {
           models: staleModels,
           cachedAt: Date.now() - (60 * 60 * 1000),

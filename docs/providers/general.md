@@ -279,11 +279,14 @@ before the final `finish`, the abort chunk is swallowed, and available usage
 is folded in. `attributes.toolLoop` on the `ai-stream` event records
 `steps`, `forcedStepToolCall`, `continuationRan`,
 `continuationProducedText`, `continuationError` (first one wins),
-`continuationTruncated`, `forcedStepError` (the held forced-step error text,
+`continuationTruncated`, `continuationFinishReason` (the continuation's own
+finish reason; `length` with no text means it ran out of output tokens,
+usually inside reasoning), `forcedStepError` (the held forced-step error text,
 logged even when the continuation answers), `heldStepError`
 (`{ stepNumber, error }` for any held error, forced step included;
 `stepNumber` is 0-based like `prepareStep`'s, so the second model call is
-`1` and the forced step is `3`) and `finishReason`. The
+`1` and the forced step is `3`) and `finishReason` (the final `finish`
+chunk's, which is the main loop's when the continuation wrote nothing). The
 continuation's own `timeout.totalMs` is 90s.
 `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on the loop path
 only: the KV generation-in-progress guard this route writes expires after

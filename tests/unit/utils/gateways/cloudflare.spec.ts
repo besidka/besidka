@@ -464,6 +464,30 @@ describe('useCloudflareGateway', () => {
       expect(result.toolCall).toBe(false)
     })
 
+  it('caps maxOutputTokens from the flat catalog shape a live account '
+    + 'returns', async () => {
+    stubKeyLookup('encrypted-blob')
+    stubDecrypt(JSON.stringify({
+      accountId: 'account-123',
+      apiKey: 'cf-token',
+    }))
+    stubCloudflareCatalog([
+      {
+        id: '@cf/openai/gpt-oss-120b',
+        name: 'OpenAI: Gpt Oss 120B',
+        input_modalities: ['text'],
+        output_modalities: ['text'],
+        context_length: 128000,
+        max_output_length: 128000,
+      },
+    ])
+
+    const { useCloudflareGateway } = await importCloudflareGateway()
+    const result = await useCloudflareGateway('1', '@cf/openai/gpt-oss-120b')
+
+    expect(result.maxOutputTokens).toBe(128000)
+  })
+
   it('leaves maxOutputTokens, pricing and toolCall undefined when the model '
     + 'is not in the catalog', async () => {
     stubKeyLookup('encrypted-blob')

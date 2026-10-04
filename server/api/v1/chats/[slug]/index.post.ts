@@ -1125,6 +1125,7 @@ export default defineEventHandler(async (event) => {
                 continuationProducedText: outcome.continuationProducedText,
                 continuationError: outcome.continuationError,
                 continuationTruncated: outcome.continuationTruncated,
+                continuationFinishReason: continuation?.finishReason,
                 forcedStepError: outcome.forcedStepError,
                 heldStepError: outcome.heldStepError,
                 finishReason: outcome.finishReason,

@@ -176,6 +176,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-external-search-validation.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
     'tests/integration/api/chats-gateway.spec.ts',
+    'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
   ]
   const chatTestEndpointTests = [
     'tests/integration/api/chats-test-endpoint.spec.ts',
@@ -263,6 +264,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/gateway-catalog-normalize.spec.ts',
     'tests/integration/api/gateways-models.spec.ts',
     'tests/unit/composables/gateway-catalog.spec.ts',
+    'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
   ]
 
   const chatShareTests = [
@@ -496,6 +498,7 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/utils/ai/search-answer-continuation.spec.ts',
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/unit/utils/gateways/cloudflare.spec.ts',
+        'tests/integration/api/chats-cloudflare-search-answer.spec.ts',
       ],
     },
     {

@@ -22,11 +22,13 @@ const GATEWAY_CATALOG_CACHE_TTL_MS = 60 * 60 * 1000
  * cached entries never wrote at all; this round forces
  * `supportsImageGeneration` to `false` for OpenRouter meta-router ids like
  * `openrouter/auto`, which a `v3` cache entry may have written as `true` —
- * see `isOpenRouterMetaRouterModelId`) — a KV entry written under the old
+ * see `isOpenRouterMetaRouterModelId`; `v5` reads Cloudflare's flat
+ * `max_output_length`, which a `v4` entry stored as a missing
+ * `maxOutputTokens`) — a KV entry written under the old
  * schema would otherwise keep serving stale-shaped data for up to
  * `GATEWAY_CATALOG_CACHE_TTL_MS` after deploy.
  */
-const GATEWAY_CATALOG_SCHEMA_VERSION = 'v4'
+const GATEWAY_CATALOG_SCHEMA_VERSION = 'v5'
 /**
  * Cloudflare's catalog is a per-account resource (it requires the caller's
  * own account id + token), not a shared public one like Vercel's or
@@ -282,8 +284,10 @@ interface CloudflareGatewayRawModel {
   id: string
   name: string
   description?: string
-  input_modalities?: CloudflareGatewayInputModality[]
-  output_modalities?: CloudflareGatewayOutputModality[]
+  input_modalities?: Array<CloudflareGatewayInputModality | string>
+  output_modalities?: Array<CloudflareGatewayOutputModality | string>
+  context_length?: number
+  max_output_length?: number
 }
 
 interface CloudflareGatewayModelsResponse {
@@ -362,19 +366,20 @@ async function createCloudflareCatalogError(
  * key in a text output modality's `supported_parameters` map, not a
  * top-level `supported_parameters: string[]` array.
  *
- * This normalizer targets that documented marketplace schema. It is backed
- * by OpenRouter's own published OpenAPI schema for the format (strong,
- * versioned, machine-checkable evidence of what "marketplace format" means),
- * but has NOT been verified against a live Cloudflare account response in
- * this environment (no real Workers AI token available) — Cloudflare's own
- * API reference confirms the `format=openrouter` parameter and the
- * `{data: [...]}` envelope, but does not publish its own per-model field
- * schema, only pointing at "marketplace format". If a live account later
- * shows Cloudflare's actual response deviates from this schema, update this
- * normalizer and its tests accordingly — the parsing below is written
- * defensively (optional chaining throughout, `find`-or-`undefined`) so an
- * unexpected shape degrades to a `{id, name}`-only `GatewayModel` rather
- * than throwing.
+ * A live account (checked 2026-10-04) does NOT return that shape: it
+ * returns OpenRouter's flat consumer shape instead, with string modalities
+ * (`input_modalities: ['text']`), top-level `context_length` and
+ * `max_output_length`, flat `pricing.{prompt,completion}` and a
+ * `supported_features: string[]` list. The normalizer reads both shapes:
+ * the per-modality values win when present, and the flat
+ * `context_length`/`max_output_length` are the fallback. Missing
+ * `maxOutputTokens` is not harmless on this gateway: the chat builder then
+ * sends no `max_tokens`, Workers AI applies its 256-token default, and a
+ * reasoning model such as `@cf/openai/gpt-oss-120b` spends all of it on
+ * reasoning and returns `finish_reason: length` with empty content. Pricing
+ * and tool support for the flat shape still come from the default-format
+ * enrichment below, and the parsing stays defensive so an unexpected shape
+ * degrades to a `{id, name}`-only `GatewayModel` rather than throwing.
  *
  * `supportsReasoning` is deliberately never set from this shape: unlike
  * `supportsTools`, whose `tools` key this schema documents landing in a text
@@ -456,16 +461,54 @@ export async function fetchCloudflareGatewayCatalog(
   return enriched
 }
 
+function isCloudflareModalityObject<Modality extends { type?: string }>(
+  modality: Modality | string,
+): modality is Modality {
+  return typeof modality !== 'string'
+}
+
+function readCloudflareModalityType(
+  modality: { type?: string } | string,
+): string | undefined {
+  return isCloudflareModalityObject(modality) ? modality.type : modality
+}
+
+function readCloudflareModalityTypes(
+  modalities: Array<{ type?: string } | string> | undefined,
+): string[] | undefined {
+  return modalities
+    ?.map(readCloudflareModalityType)
+    .filter((type): type is string => Boolean(type))
+}
+
 function findCloudflareTextInputModality(
-  inputModalities: CloudflareGatewayInputModality[] | undefined,
+  inputModalities: Array<CloudflareGatewayInputModality | string> | undefined,
 ): CloudflareGatewayInputModality | undefined {
-  return inputModalities?.find(modality => modality.type === 'text')
+  return inputModalities
+    ?.filter(isCloudflareModalityObject)
+    .find(modality => modality.type === 'text')
 }
 
 function findCloudflareTextOutputModality(
-  outputModalities: CloudflareGatewayOutputModality[] | undefined,
+  outputModalities: Array<CloudflareGatewayOutputModality | string> | undefined,
 ): CloudflareGatewayOutputModality | undefined {
-  return outputModalities?.find(modality => modality.type === 'text')
+  return outputModalities
+    ?.filter(isCloudflareModalityObject)
+    .find(modality => modality.type === 'text')
+}
+
+function readCloudflareSupportsTools(
+  outputModalities: Array<CloudflareGatewayOutputModality | string> | undefined,
+): boolean | undefined {
+  const modalityObjects = outputModalities?.filter(isCloudflareModalityObject)
+
+  if (!modalityObjects?.length) {
+    return undefined
+  }
+
+  return modalityObjects.some((modality) => {
+    return Boolean(modality.supported_parameters?.tools)
+  })
 }
 
 function findCloudflarePricingCost(
@@ -492,9 +535,9 @@ function normalizeCloudflareGatewayModel(
     textOutputModality?.pricing,
     'completion',
   )
-  const outputModalityTypes = model.output_modalities
-    ?.map(modality => modality.type)
-    .filter((type): type is string => Boolean(type))
+  const outputModalityTypes = readCloudflareModalityTypes(
+    model.output_modalities,
+  )
   const supportsImageGeneration = deriveGatewayImageGenerationSupport(
     outputModalityTypes,
   )
@@ -504,24 +547,19 @@ function normalizeCloudflareGatewayModel(
     name: model.name,
     description: model.description,
     contextLength: textInputModality?.supported_inputs
-      ?.max_context_length?.value,
-    maxOutputTokens: textOutputModality?.max_length?.value,
+      ?.max_context_length?.value ?? model.context_length,
+    maxOutputTokens: textOutputModality?.max_length?.value
+      ?? model.max_output_length,
     pricing: inputCost && outputCost
       ? { input: inputCost, output: outputCost }
       : undefined,
     modalities: model.input_modalities || model.output_modalities
       ? {
-        input: (model.input_modalities || [])
-          .map(modality => modality.type)
-          .filter((type): type is string => Boolean(type)),
+        input: readCloudflareModalityTypes(model.input_modalities) || [],
         output: outputModalityTypes || [],
       }
       : undefined,
-    supportsTools: model.output_modalities
-      ? model.output_modalities.some((modality) => {
-        return Boolean(modality.supported_parameters?.tools)
-      })
-      : undefined,
+    supportsTools: readCloudflareSupportsTools(model.output_modalities),
     supportsWebSearch: resolveGatewayWebSearchSupport({
       gatewayId: 'cloudflare',
       hasNativeSignal: false,
@@ -531,8 +569,8 @@ function normalizeCloudflareGatewayModel(
     /**
      * The marketplace shape's own `supported_parameters.tools` key (already
      * read into `supportsTools` above) is per-modality and, per this file's
-     * own schema-fidelity note, has never been verified against a live
-     * Cloudflare response. The specified source for the strict `toolCall`
+     * own schema-fidelity note, absent from the flat shape a live account
+     * returns. The specified source for the strict `toolCall`
      * gate is the default-format `function_calling` property instead, which
      * `enrichCloudflareGatewayModel` below fills in once the second fetch
      * resolves. `false` here is a placeholder pending that enrichment, not a

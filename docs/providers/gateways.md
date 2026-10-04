@@ -69,7 +69,7 @@ avoid an uncached passthrough on every picker open, short enough that adding
 a model to a Workers AI account doesn't stay invisible for long.
 
 The cache entry is versioned (`GATEWAY_CATALOG_SCHEMA_VERSION` in
-`server/utils/gateways/catalog.ts`, currently `'v3'`) and bumped whenever
+`server/utils/gateways/catalog.ts`, currently `'v5'`) and bumped whenever
 `GatewayModel`'s shape changes in a way an old cached entry wouldn't carry —
 this restoration's own round added the required `toolCall` field, which
 older cached entries never wrote at all, so the version was bumped to avoid
@@ -82,12 +82,32 @@ in two shapes, and `fetchCloudflareGatewayCatalog()`
 (`server/utils/gateways/catalog.ts`) fetches **both and joins them**, because
 neither is sufficient alone:
 
-- `?format=openrouter` — the marketplace projection `GatewayModel` is built
-  around. Carries ids, names and descriptions, but no pricing, tool-calling
-  or reasoning data.
+- `?format=openrouter` — the projection `GatewayModel` is built around.
+  Carries ids, names, descriptions, modalities, context length and max
+  output length. Its pricing and feature lists are not read; pricing,
+  tool-calling and reasoning come from the default format below.
 - the default format (no `format` param) — Cloudflare's own model objects,
   whose `properties[]` array is the only place pricing, `function_calling`
   and `reasoning` are exposed.
+
+**`format=openrouter` is the flat shape, not the documented marketplace
+shape.** Cloudflare documents it as OpenRouter's provider "marketplace"
+format (per-modality objects, `output_modalities[].max_length.value`), but a
+live account (checked 2026-10-04, 29 models) returns OpenRouter's flat
+consumer shape: `input_modalities: ["text"]` as strings, top-level
+`context_length` and `max_output_length` (present on every model), flat
+`pricing.{prompt,completion}` and `supported_features: string[]`. The
+normalizer reads both shapes, preferring the per-modality values. Before it
+did, every `@cf/*` model resolved with `maxOutputTokens: undefined`, so no
+`max_tokens` was sent, and **Workers AI then applies a 256-token default**.
+`@cf/openai/gpt-oss-120b` spends that on `reasoning_content` and stops with
+`finish_reason: length` and empty `content`, with no error: the search
+continuation (and chat titles) came back empty after a turn that searched
+fine (pr-392 preview, chat `01M442YTJ34BQF6R42Y5BWDTAS`, request
+`a45643863842bf56`; the raw continuation SSE ended at
+`completion_tokens: 256`). The tool-loop telemetry now records the
+continuation's own `continuationFinishReason`, because the outer
+`finishReason` is the main loop's and showed `tool-calls`.
 
 **The identity relationship between the two is inverted — the join key
 trap.** In the marketplace shape, `id` is the real `@cf/vendor/model`
@@ -493,6 +513,12 @@ never a guessed fallback) into `index.post.ts`, which passes it straight
 through as `streamText({ maxOutputTokens })`. The same cap is applied to
 title generation for consistency, though that codepath's tiny output size
 makes it unlikely to ever hit the limit in practice.
+
+On Cloudflare the value is not only a ceiling: leaving it `undefined` sends
+no `max_tokens`, and Workers AI's 256-token default then truncates a
+reasoning model inside its reasoning (see "Cloudflare's two-format join").
+A catalog miss on Cloudflare therefore degrades to that default rather than
+to an uncapped send.
 
 **OpenRouter is deliberately left uncapped.** It already handles this
 correctly today, and OpenRouter's own advertised
