@@ -549,6 +549,124 @@ describe('withSearchAnswerGuarantee', () => {
         .toBeLessThan(types.indexOf('text-start'))
     })
 
+    it.each([401, 402, 403, 404])(
+      'passes a %i error through without a continuation',
+      async (status) => {
+        const errorText = JSON.stringify({
+          code: 'provider-auth',
+          message: 'Provider rejected the request',
+          status,
+        })
+        const { guarantee, startContinuation } = createGuarantee({
+          chunks: [
+            ...createSearchStepChunks('call-1'),
+            { type: 'start-step' },
+            { type: 'error', errorText },
+            { type: 'finish', finishReason: 'error' },
+          ],
+          continuationChunks: createTextChunks('Never used'),
+        })
+        const chunks = await readAll(guarantee.stream)
+
+        expect(startContinuation).not.toHaveBeenCalled()
+        expect(chunks).toContainEqual({ type: 'error', errorText })
+        expect(guarantee.getOutcome()).toEqual(expect.objectContaining({
+          continuationRan: false,
+          heldStepError: undefined,
+        }))
+      },
+    )
+
+    it('passes a 401 raised on the forced step through without a '
+      + 'continuation', async () => {
+      const errorText = JSON.stringify({
+        code: 'provider-auth',
+        message: 'Provider rejected the request',
+        status: 401,
+      })
+      const { guarantee, startContinuation } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          ...createSearchStepChunks('call-2'),
+          ...createSearchStepChunks('call-3'),
+          { type: 'error', errorText },
+        ],
+        continuationChunks: createTextChunks('Never used'),
+      })
+      const chunks = await readAll(guarantee.stream)
+
+      expect(startContinuation).not.toHaveBeenCalled()
+      expect(chunks.at(-1)).toEqual({ type: 'error', errorText })
+      expect(guarantee.getOutcome().forcedStepError).toBeUndefined()
+    })
+
+    it.each([
+      ['429', JSON.stringify({ message: 'Rate limited', status: 429 })],
+      ['500', JSON.stringify({ message: 'Upstream failed', status: 500 })],
+      ['non-JSON text', 'upstream exploded'],
+      ['JSON without a status', JSON.stringify({ message: 'Odd' })],
+    ])('holds a %s error and answers from the results', async (
+      _label,
+      errorText,
+    ) => {
+      const { guarantee, startContinuation } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          { type: 'start-step' },
+          { type: 'error', errorText },
+        ],
+        continuationChunks: createTextChunks('Answer from results'),
+      })
+      const types = (await readAll(guarantee.stream)).map(chunk => chunk.type)
+
+      expect(startContinuation).toHaveBeenCalledTimes(1)
+      expect(types).not.toContain('error')
+      expect(guarantee.getOutcome().continuationProducedText).toBe(true)
+    })
+
+    it('closes a text part left open with a blank delta before the '
+      + 'continuation streams', async () => {
+      const { guarantee } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          { type: 'start-step' },
+          { type: 'text-start', id: 'blank' },
+          { type: 'text-delta', id: 'blank', delta: '  ' },
+          { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+        ],
+        continuationChunks: createTextChunks('Answer'),
+      })
+      const chunks = await readAll(guarantee.stream)
+      const types = chunks.map(chunk => chunk.type)
+
+      expect(chunks).toContainEqual({ type: 'text-end', id: 'blank' })
+      expect(types.indexOf('text-end'))
+        .toBeLessThan(types.lastIndexOf('text-start'))
+      expect(guarantee.getOutcome().continuationProducedText).toBe(true)
+    })
+
+    it('releases every held error when the continuation fails', async () => {
+      const { guarantee } = createGuarantee({
+        chunks: [
+          ...createSearchStepChunks('call-1'),
+          { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+          { type: 'error', errorText: 'second failure' },
+        ],
+        continuationChunks: [],
+      })
+      const chunks = await readAll(guarantee.stream)
+      const errors = chunks.filter(chunk => chunk.type === 'error')
+
+      expect(errors).toEqual([
+        { type: 'error', errorText: PROVIDER_ERROR_TEXT },
+        { type: 'error', errorText: 'second failure' },
+      ])
+      expect(guarantee.getOutcome().heldStepError).toEqual({
+        stepNumber: 1,
+        error: 'Bad Request: Type mismatch of \'/messages/2/content\'',
+      })
+    })
+
     it('never runs a continuation for an error before any search',
       async () => {
         const { guarantee, startContinuation } = createGuarantee({

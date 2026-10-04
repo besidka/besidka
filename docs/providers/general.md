@@ -228,7 +228,11 @@ unchanged because the continuation never searches. Only when the
 continuation is also empty (or throws) are the held chunks released and the
 empty-answer notice persisted as before. Aborts never trigger it, and a
 text/reasoning part the failed step left open is closed before the
-continuation streams. A continuation that times out
+continuation streams. Non-retryable statuses (401, 402, 403, 404: revoked
+key, billing, quota, model not found) are not held: a second call with the
+same key or model would fail the same way, so the error passes through at
+once and no continuation runs. A failed step emits no `finish-step`, so its
+usage, if the provider billed it, is not counted. A continuation that times out
 mid-stream keeps its partial text: any open text/reasoning part is closed
 before the final `finish`, the abort chunk is swallowed, and available usage
 is folded in. `attributes.toolLoop` on the `ai-stream` event records

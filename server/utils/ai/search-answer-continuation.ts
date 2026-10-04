@@ -410,6 +410,25 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
   }
 }
 
+const NON_RETRYABLE_ERROR_STATUSES: ReadonlySet<number> = new Set([
+  401,
+  402,
+  403,
+  404,
+])
+
+function readErrorStatus(errorText: string): number | undefined {
+  const status = parseJsonRecord(errorText)?.status
+
+  return typeof status === 'number' ? status : undefined
+}
+
+function isRetryableError(chunk: ErrorChunk): boolean {
+  const status = readErrorStatus(chunk.errorText)
+
+  return status === undefined || !NON_RETRYABLE_ERROR_STATUSES.has(status)
+}
+
 function readHeldErrorText(
   heldErrors: readonly ErrorChunk[],
 ): string | undefined {
@@ -450,12 +469,14 @@ function readHeldErrorText(
  * metadata comes from `buildFinishMessageMetadata()` so usage and cost cover
  * the continuation too. An error before any successful search output (no
  * results to answer from) and aborts keep the existing error handling: no
- * continuation runs for them. The held error is recorded as
- * `heldStepError` with its 0-based step number (the SDK's `prepareStep`
- * index, so the forced step is `forcedStepIndex`), and additionally as
- * `forcedStepError` when it was raised on the forced step. Any text or
- * reasoning part the failed step left open is closed before the
- * continuation streams.
+ * continuation runs for them. Neither does one for a non-retryable status
+ * (401, 402, 403, 404): the same key or model would fail the continuation
+ * the same way, so that error is passed through immediately. The held
+ * error is recorded as `heldStepError` with its 0-based step number (the
+ * SDK's `prepareStep` index, so the forced step is `forcedStepIndex`), and
+ * additionally as `forcedStepError` when it was raised on the forced step.
+ * Any text or reasoning part the failed step left open is closed before
+ * the continuation streams.
  *
  * When the continuation also produces no text (or throws), the held error
  * and `finish` chunks are released as they were, so the persistence path's
@@ -651,6 +672,14 @@ export function withSearchAnswerGuarantee(input: {
     return successfulFollowUpToolOutputCount > 0 && !hasAnswerAfterFollowUp
   }
 
+  function shouldHoldError(chunk: ErrorChunk): boolean {
+    if (!isForcedStepError() && !isErrorAfterSuccessfulSearch()) {
+      return false
+    }
+
+    return isRetryableError(chunk)
+  }
+
   function holdError(chunk: ErrorChunk) {
     if (heldErrors.length === 0) {
       heldErrorStepNumber = outcome.stepsCount
@@ -823,7 +852,7 @@ export function withSearchAnswerGuarantee(input: {
       }
 
       if (chunk.type === 'error') {
-        if (isForcedStepError() || isErrorAfterSuccessfulSearch()) {
+        if (shouldHoldError(chunk)) {
           holdError(chunk)
 
           return
