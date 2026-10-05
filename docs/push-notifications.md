@@ -14,7 +14,7 @@ PWA (see [chats/shared-pwa-handoff.md](chats/shared-pwa-handoff.md)).
 | Triggers | `server/api/v1/chats/[slug]/index.post.ts`, `server/api/v1/chats/shares/[slug]/{branch,handoff}.post.ts` | Generation-finished push (fire-and-forget), branch push, awaited handoff |
 | Subscription API | `server/api/v1/push/{subscribe,unsubscribe}.post.ts`, `status.get.ts` | Upload/remove/report subscriptions per user |
 | Client | `app/composables/push-notifications.ts`, `notification-prompt.ts` | Subscribe, permission banner, reconcile, key-rotation healing |
-| Service worker | `app/service-worker/push.ts` (bundled into `app/service-worker/sw.ts` via `injectManifest`) | Show notifications, focused-window suppression, tap navigation |
+| Service worker | `app/service-worker/push.ts` (bundled into `app/service-worker/sw.ts` via `injectManifest`) | Always show notifications (WebKit silent-push rule), tap navigation |
 | Tap navigation | `app/plugins/push-navigation.client.ts` | Navigates on SW postMessage; IndexedDB fallback for cold starts |
 | Storage | `push_subscriptions` (D1) | One row per browser/install per user; endpoint is a capability URL |
 
@@ -117,10 +117,10 @@ is missed first.
 - **Generation finished** (`chats/[slug]/index.post.ts`): always sends when
   a subscription exists, via `waitUntil` (fire-and-forget). There is no
   reliable "is the client still watching" signal server-side (iOS
-  suspension), so filtering happens in the service worker instead — see
-  suppression below. Payloads are always generic strings: they transit
-  Google/Mozilla/Apple infrastructure and can render on a lock screen, so
-  never include generated content, titles, or prompts.
+  suspension), so every push is delivered and the service worker always
+  displays it — see the silent-push rule below. Payloads are always generic
+  strings: they transit Google/Mozilla/Apple infrastructure and can render
+  on a lock screen, so never include generated content, titles, or prompts.
 - **Shared-chat handoff** (`chats/shares/[slug]/handoff.post.ts`): awaited,
   not fire-and-forget — the response reports the real outcome (`sent: true`
   only when a push service accepted; otherwise `reason:
@@ -172,11 +172,26 @@ served from its cache).
   buildId }` reply (see the Web Inspector checklist in
   [pwa-safari-dock-app-launch.md](pwa-safari-dock-app-launch.md));
   this also keeps the constant from being minified away as unused.
-- **Focused suppression**: the push handler skips the banner when any window
-  of the origin is focused — the user is already looking at the app.
-  Browsers waive the `userVisibleOnly` requirement in that case. This is
-  what makes the always-send server strategy quiet during active desktop
-  use.
+- **Silent-push rule (always show)**: the push handler calls
+  `showNotification` for every push event, including events with no data or
+  unparseable JSON (those show a generic "Besidka" / "You have a new update."
+  fallback pointing at `/`). WebKit (Safari, macOS Dock web apps, iOS
+  home-screen apps) counts every push that ends without a displayed
+  notification as a "silent push", and the 3rd silent push revokes the push
+  subscription. The counter is cumulative and never reset by later successful
+  notifications, and there is no focused-window exemption (unlike Chrome).
+  A `waitUntil` promise that rejects counts as silent too — the handler
+  attaches a `.catch` to the `showNotification` promise so a display failure
+  cannot reject it. Since WebKit 2026-05, showing a notification and
+  immediately `close()`-ing it also counts as silent (WebKit 313831@main
+  adds a minimum notification lifetime before `close()` so it cannot drive
+  silent background runtime, see
+  <https://github.com/WebKit/WebKit/commit/7ab26d3bed>), so there is no
+  show-then-hide workaround, and the SW does not UA-sniff WebKit. Source:
+  WebKit `Source/WebKit/Shared/WebPushDaemonConstants.h` `maxSilentPushCount`
+  and <https://webkit.org/blog/12945/meet-web-push/>. The fixed `tag`
+  collapses repeated notifications into one. Accepted trade-off: desktop
+  users now see a notification even while the app is focused.
 - **Tap navigation**: if a window is running, the SW `postMessage`s the
   target path to it (preferring the focused client) and the plugin navigates
   — deterministic, no storage involved. `clients.openWindow()` on iOS merely
@@ -210,6 +225,11 @@ served from its cache).
   every layer looks healthy and FCM accepts sends (201), but the SW `push`
   event never fires. Fix: fully quit Chrome (⌘Q) and restart. Check
   `chrome://gcm-internals` → Connection State.
+- **Safari vs. macOS Dock web app**: these are separate data stores —
+  separate SW registration, notification permission, push subscription and
+  silent-push counter. Add to Dock copies only cookies (the session), not
+  the SW or subscription, and Safari's SW cannot see the web-app window.
+  Each one subscribes and gets revoked independently.
 - **PR previews**: every preview subdomain is a separate origin — separate
   cookies, separate permission, separate subscription. A grant on one
   preview does nothing for another.
@@ -228,8 +248,7 @@ served from its cache).
   and body. Mind the 10s cooldown (429).
 - Verify display independently of macOS settings:
   `(await navigator.serviceWorker.getRegistration()).getNotifications()` in
-  the page console lists what the SW actually displayed. Unfocus all
-  same-origin tabs first, or the suppression hides the banner by design.
+  the page console lists what the SW actually displayed.
   Non-empty there + nothing on screen = macOS presentation settings.
 - Client state audit (page console): `Notification.permission`,
   `(await navigator.serviceWorker.ready).pushManager.getSubscription()`
@@ -241,6 +260,10 @@ served from its cache).
   subscription bound to a different key than the sender (rotate + let the
   client heal); rows silently disappearing → the service returned 404/410
   and pruning removed them.
+- `Notification.permission === 'granted'` but `getSubscription()` returns
+  `null` on WebKit → the subscription was revoked for silent pushes (see the
+  silent-push rule above). The chat layout's reconcile re-subscribes silently
+  once per session.
 
 The unit/integration suites cover the protocol (RFC vector), the send loop,
 both endpoints, and the prompt/reconcile logic:
