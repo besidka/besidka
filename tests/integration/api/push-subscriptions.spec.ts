@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { drizzle } from 'drizzle-orm/d1'
+import type { SQL } from 'drizzle-orm'
+import * as schema from '../../../server/db/schema'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -22,12 +25,22 @@ vi.mock('evlog', () => ({
   },
 }))
 
+const sqlBuilder = drizzle({} as any)
+
+function renderCondition(condition: SQL) {
+  return sqlBuilder.delete(schema.pushSubscriptions)
+    .where(condition)
+    .toSQL()
+}
+
 function createDb(
   existing: { id: number, userId?: number } | null = null,
+  deletedRows: { id: number }[] = [],
 ) {
   const insertValues = vi.fn(async () => undefined)
   const updateSet = vi.fn(() => ({ where: vi.fn(async () => undefined) }))
-  const deleteWhere = vi.fn(async () => undefined)
+  const returning = vi.fn(async () => deletedRows)
+  const deleteWhere = vi.fn(() => ({ returning }))
 
   return {
     db: {
@@ -43,6 +56,7 @@ function createDb(
     insertValues,
     updateSet,
     deleteWhere,
+    returning,
   }
 }
 
@@ -102,6 +116,181 @@ describe('push subscription API', () => {
           userId: 7,
         }),
       }))
+    })
+
+    it('stamps lastSeenAt on insert', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+      const before = Date.now()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      const inserted = (insertValues.mock.calls[0] as unknown[])[0] as {
+        lastSeenAt: Date
+      }
+
+      expect(inserted.lastSeenAt).toBeInstanceOf(Date)
+      expect(inserted.lastSeenAt.getTime()).toBeGreaterThanOrEqual(before)
+    })
+
+    it('stamps lastSeenAt on update of an existing endpoint', async () => {
+      const { db, updateSet } = createDb({ id: 99, userId: 7 })
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+      const before = Date.now()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'new-p256dh', auth: 'new-auth' },
+        },
+      } as any)
+
+      const updated = (updateSet.mock.calls[0] as unknown[])[0] as {
+        lastSeenAt: Date
+      }
+
+      expect(updated.lastSeenAt).toBeInstanceOf(Date)
+      expect(updated.lastSeenAt.getTime()).toBeGreaterThanOrEqual(before)
+    })
+
+    it('deletes the previous endpoint row scoped to the current user', async () => {
+      const { db, deleteWhere, insertValues } = createDb(null, [{ id: 41 }])
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-2',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: 'https://push.example.com/sub-1',
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledTimes(1)
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+
+      const rendered = renderCondition(
+        (deleteWhere.mock.calls[0] as unknown[])[0] as SQL,
+      )
+
+      expect(rendered.sql).toContain('"endpoint"')
+      expect(rendered.sql).toContain('"user_id"')
+      expect(rendered.params).toEqual([
+        'https://push.example.com/sub-1',
+        7,
+      ])
+      expect(mocks.loggerSet).toHaveBeenCalledWith({
+        attributes: { push: { previousEndpointRemoved: true } },
+      })
+    })
+
+    it('never deletes another user row through previousEndpoint', async () => {
+      const { db, deleteWhere } = createDb(null, [])
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-2',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: 'https://push.example.com/other-users-sub',
+        },
+      } as any)
+
+      const rendered = renderCondition(
+        (deleteWhere.mock.calls[0] as unknown[])[0] as SQL,
+      )
+
+      expect(rendered.params).toEqual([
+        'https://push.example.com/other-users-sub',
+        7,
+      ])
+      expect(mocks.loggerSet).toHaveBeenCalledWith({
+        attributes: { push: { previousEndpointRemoved: false } },
+      })
+    })
+
+    it('skips deletion when previousEndpoint equals the endpoint', async () => {
+      const { db, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: 'https://push.example.com/sub-1',
+        },
+      } as any)
+
+      expect(deleteWhere).not.toHaveBeenCalled()
+    })
+
+    it('skips deletion when previousEndpoint is absent', async () => {
+      const { db, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(deleteWhere).not.toHaveBeenCalled()
+    })
+
+    it('rejects a previousEndpoint that is not a url', async () => {
+      const { db } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: 'not-a-url',
+        },
+      } as any)).rejects.toThrow('Invalid push subscription body')
+    })
+
+    it('rejects a previousEndpoint longer than 2048 chars', async () => {
+      const { db } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+      const longEndpoint = `https://push.example.com/${'a'.repeat(2050)}`
+
+      await expect(handler({
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: longEndpoint,
+        },
+      } as any)).rejects.toThrow('Invalid push subscription body')
     })
 
     it('captures the request origin server-side, not from client input', async () => {

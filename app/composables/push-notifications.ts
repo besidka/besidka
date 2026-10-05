@@ -38,6 +38,58 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer | null): string {
     .replace(/=+$/, '')
 }
 
+const PUSH_ENDPOINT_STORAGE_KEY = 'besidka:push-endpoint'
+
+function readStoredEndpoint(): string | null {
+  try {
+    return globalThis.localStorage.getItem(PUSH_ENDPOINT_STORAGE_KEY)
+  } catch (exception) {
+    void exception
+
+    return null
+  }
+}
+
+function writeStoredEndpoint(endpoint: string): void {
+  try {
+    globalThis.localStorage.setItem(PUSH_ENDPOINT_STORAGE_KEY, endpoint)
+  } catch (exception) {
+    void exception
+  }
+}
+
+function clearStoredEndpoint(): void {
+  try {
+    globalThis.localStorage.removeItem(PUSH_ENDPOINT_STORAGE_KEY)
+  } catch (exception) {
+    void exception
+  }
+}
+
+async function uploadSubscription(
+  subscription: Pick<PushSubscription, 'endpoint' | 'getKey'>,
+): Promise<void> {
+  const storedEndpoint = readStoredEndpoint()
+  const previousEndpoint = storedEndpoint
+    && storedEndpoint !== subscription.endpoint
+    ? storedEndpoint
+    : undefined
+
+  await $fetch('/api/v1/push/subscribe', {
+    method: 'POST',
+    body: {
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh: arrayBufferToBase64Url(subscription.getKey('p256dh')),
+        auth: arrayBufferToBase64Url(subscription.getKey('auth')),
+      },
+      ...(previousEndpoint ? { previousEndpoint } : {}),
+    },
+  })
+
+  writeStoredEndpoint(subscription.endpoint)
+}
+
 // After a VAPID key rotation, a browser's existing PushManager subscription
 // stays bound to the applicationServerKey it was created with, so it must be
 // unsubscribed and recreated with the current key before it can be used again.
@@ -115,20 +167,7 @@ export function usePushNotifications() {
               ) as BufferSource,
             })
 
-          await $fetch('/api/v1/push/subscribe', {
-            method: 'POST',
-            body: {
-              endpoint: freshSubscription.endpoint,
-              keys: {
-                p256dh: arrayBufferToBase64Url(
-                  freshSubscription.getKey('p256dh'),
-                ),
-                auth: arrayBufferToBase64Url(
-                  freshSubscription.getKey('auth'),
-                ),
-              },
-            },
-          })
+          await uploadSubscription(freshSubscription)
 
           isSubscribed.value = true
 
@@ -142,18 +181,7 @@ export function usePushNotifications() {
 
       if (subscription !== null && loggedIn.value) {
         try {
-          await $fetch('/api/v1/push/subscribe', {
-            method: 'POST',
-            body: {
-              endpoint: subscription.endpoint,
-              keys: {
-                p256dh: arrayBufferToBase64Url(
-                  subscription.getKey('p256dh'),
-                ),
-                auth: arrayBufferToBase64Url(subscription.getKey('auth')),
-              },
-            },
-          })
+          await uploadSubscription(subscription)
         } catch (exception) {
           const parsedException = parseError(exception)
 
@@ -210,16 +238,7 @@ export function usePushNotifications() {
           ) as BufferSource,
         })
 
-      await $fetch('/api/v1/push/subscribe', {
-        method: 'POST',
-        body: {
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: arrayBufferToBase64Url(subscription.getKey('p256dh')),
-            auth: arrayBufferToBase64Url(subscription.getKey('auth')),
-          },
-        },
-      })
+      await uploadSubscription(subscription)
 
       isSubscribed.value = true
 
@@ -269,6 +288,7 @@ export function usePushNotifications() {
     } catch (exception) {
       void exception
     } finally {
+      clearStoredEndpoint()
       isSubscribed.value = false
     }
   }

@@ -19,9 +19,11 @@ export const pushSubscriptions = snakeCase.table(
     p256dhKey: text().notNull(),
     authKey: text().notNull(),
     origin: text(),
+    lastSeenAt: integer({ mode: 'timestamp' }),
   },
   table => [
     uniqueIndex('uq_push_subscriptions_endpoint').on(table.endpoint),
     index('idx_push_subscriptions_user_id').on(table.userId),
+    index('idx_push_subscriptions_last_seen_at').on(table.lastSeenAt),
   ],
 )
