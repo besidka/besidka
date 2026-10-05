@@ -130,20 +130,56 @@ describe('handlePush', () => {
     }
   }
 
-  it('does nothing when the push event carries no data', async () => {
-    const event = { data: null, waitUntil: vi.fn() }
+  const fallbackNotification = {
+    title: 'Besidka',
+    options: {
+      body: 'You have a new update.',
+      icon: '/web-app-manifest-192x192.png',
+      badge: '/favicon-96x96.png',
+      data: { url: '/' },
+      tag: 'besidka-response-ready',
+    },
+  }
+
+  it('shows the generic fallback when the push event carries no data', async () => {
+    const event = {
+      data: null,
+      waitUntil: vi.fn((promise: Promise<unknown>) => {
+        waitUntilPromise = promise
+      }),
+    }
 
     handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
 
-    expect(event.waitUntil).not.toHaveBeenCalled()
+    expect(showNotification).toHaveBeenCalledWith(
+      fallbackNotification.title,
+      fallbackNotification.options,
+    )
   })
 
-  it('drops the notification when the payload is not valid JSON', async () => {
+  it('shows the generic fallback when the payload is not valid JSON', async () => {
     const event = createFakePushEvent(new Error('bad json'))
 
     handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
 
-    expect(event.waitUntil).not.toHaveBeenCalled()
+    expect(showNotification).toHaveBeenCalledWith(
+      fallbackNotification.title,
+      fallbackNotification.options,
+    )
+  })
+
+  it('shows the generic fallback when the payload is not an object', async () => {
+    const event = createFakePushEvent(null)
+
+    handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
+
+    expect(showNotification).toHaveBeenCalledWith(
+      fallbackNotification.title,
+      fallbackNotification.options,
+    )
   })
 
   it('shows a notification matching the server payload shape', async () => {
@@ -187,7 +223,64 @@ describe('handlePush', () => {
     })
   })
 
-  it('suppresses the notification when a client is focused', async () => {
+  it('replaces a protocol-relative url with the root path', async () => {
+    const event = createFakePushEvent({
+      title: 'x',
+      body: 'y',
+      url: '//evil.example.com',
+    })
+
+    handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
+
+    expect(showNotification).toHaveBeenCalledWith('x', {
+      body: 'y',
+      icon: '/web-app-manifest-192x192.png',
+      badge: '/favicon-96x96.png',
+      data: { url: '/' },
+      tag: 'besidka-response-ready',
+    })
+  })
+
+  it('replaces an absolute external url with the root path', async () => {
+    const event = createFakePushEvent({
+      title: 'x',
+      body: 'y',
+      url: 'https://evil.example.com',
+    })
+
+    handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
+
+    expect(showNotification).toHaveBeenCalledWith('x', {
+      body: 'y',
+      icon: '/web-app-manifest-192x192.png',
+      badge: '/favicon-96x96.png',
+      data: { url: '/' },
+      tag: 'besidka-response-ready',
+    })
+  })
+
+  it('falls back to the default title and body when they are not strings', async () => {
+    const event = createFakePushEvent({
+      title: 42,
+      body: 7,
+      url: '/chats/abc',
+    })
+
+    handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
+
+    expect(showNotification).toHaveBeenCalledWith('Besidka', {
+      body: 'You have a new update.',
+      icon: '/web-app-manifest-192x192.png',
+      badge: '/favicon-96x96.png',
+      data: { url: '/chats/abc' },
+      tag: 'besidka-response-ready',
+    })
+  })
+
+  it('shows the notification even when a client is focused', async () => {
     matchAll.mockResolvedValue([{ focused: true }])
 
     const payload = {
@@ -200,7 +293,23 @@ describe('handlePush', () => {
     handlePush(event as unknown as Parameters<typeof handlePush>[0])
     await waitUntilPromise
 
-    expect(showNotification).not.toHaveBeenCalled()
+    expect(showNotification).toHaveBeenCalledTimes(1)
+    expect(matchAll).not.toHaveBeenCalled()
+  })
+
+  it('keeps the waitUntil promise resolved when showNotification rejects', async () => {
+    showNotification.mockRejectedValue(new Error('display failed'))
+
+    const payload = {
+      title: 'Response ready',
+      body: 'Your generation finished',
+      url: '/chats/abc',
+    }
+    const event = createFakePushEvent(payload)
+
+    handlePush(event as unknown as Parameters<typeof handlePush>[0])
+
+    await expect(waitUntilPromise).resolves.toBeUndefined()
   })
 })
 

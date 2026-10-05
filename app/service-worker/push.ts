@@ -15,6 +15,12 @@ interface PendingNavigation {
 const PENDING_NAVIGATION_DB = 'besidka-push'
 const PENDING_NAVIGATION_STORE = 'pending-navigation'
 const PENDING_NAVIGATION_KEY = 'latest'
+const DEFAULT_NOTIFICATION_TAG = 'besidka-response-ready'
+const FALLBACK_NOTIFICATION: PushNotificationPayload = {
+  title: 'Besidka',
+  body: 'You have a new update.',
+  url: '/',
+}
 
 export function isInternalNavigationUrl(url: unknown): url is string {
   return typeof url === 'string'
@@ -72,40 +78,52 @@ function savePendingNavigation(url: string): Promise<void> {
   })
 }
 
-export function handlePush(event: PushEvent): void {
+function parsePushPayload(event: PushEvent): PushNotificationPayload {
   if (!event.data) {
-    return
+    return FALLBACK_NOTIFICATION
   }
 
-  let payload: PushNotificationPayload
-
   try {
-    payload = event.data.json()
+    const parsedPayload = event.data.json()
+
+    if (!parsedPayload || typeof parsedPayload !== 'object') {
+      return FALLBACK_NOTIFICATION
+    }
+
+    return {
+      title: typeof parsedPayload.title === 'string'
+        ? parsedPayload.title
+        : FALLBACK_NOTIFICATION.title,
+      body: typeof parsedPayload.body === 'string'
+        ? parsedPayload.body
+        : FALLBACK_NOTIFICATION.body,
+      url: isInternalNavigationUrl(parsedPayload.url)
+        ? parsedPayload.url
+        : FALLBACK_NOTIFICATION.url,
+      tag: typeof parsedPayload.tag === 'string'
+        ? parsedPayload.tag
+        : undefined,
+    }
   } catch (exception) {
     void exception
 
-    return
+    return FALLBACK_NOTIFICATION
   }
+}
+
+export function handlePush(event: PushEvent): void {
+  const payload = parsePushPayload(event)
 
   event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .catch(() => [])
-      .then((clients) => {
-        const hasFocusedClient = clients.some(client => client.focused)
-
-        if (hasFocusedClient) {
-          return undefined
-        }
-
-        return self.registration.showNotification(payload.title, {
-          body: payload.body,
-          icon: '/web-app-manifest-192x192.png',
-          badge: '/favicon-96x96.png',
-          data: { url: payload.url },
-          tag: payload.tag ?? 'besidka-response-ready',
-        })
-      }),
+    self.registration
+      .showNotification(payload.title, {
+        body: payload.body,
+        icon: '/web-app-manifest-192x192.png',
+        badge: '/favicon-96x96.png',
+        data: { url: payload.url },
+        tag: payload.tag ?? DEFAULT_NOTIFICATION_TAG,
+      })
+      .catch(() => undefined),
   )
 }
 
