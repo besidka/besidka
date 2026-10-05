@@ -1373,7 +1373,7 @@ describe('Chat/Reasoning', () => {
 
     expect(stepTrigger.text()).toContain('Searched with Brave')
     expect(stepTrigger.text()).toContain('“ukraine news”')
-    expect(stepTrigger.text()).toContain('Past day')
+    expect(stepTrigger.text()).toContain('Last 24 hours')
     expect(stepTrigger.text()).toContain('1 result')
     expect(stepTrigger.attributes('aria-expanded')).toBe('false')
 

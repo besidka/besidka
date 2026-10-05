@@ -5,6 +5,7 @@ import {
   formatSearchResultCount,
   formatSearchResultDate,
   getSearchFreshnessLabel,
+  getSearchFreshnessTooltip,
   getSearchStepData,
   getSearchStepErrorReason,
 } from '../../../app/utils/search-step'
@@ -162,8 +163,59 @@ describe('getSearchStepData', () => {
 
 describe('search step formatting', () => {
   it('labels freshness windows', () => {
-    expect(getSearchFreshnessLabel('day')).toBe('Past day')
-    expect(getSearchFreshnessLabel('year')).toBe('Past year')
+    expect(getSearchFreshnessLabel('day')).toBe('Last 24 hours')
+    expect(getSearchFreshnessLabel('week')).toBe('Last 7 days')
+    expect(getSearchFreshnessLabel('month')).toBe('Last month')
+    expect(getSearchFreshnessLabel('year')).toBe('Last 12 months')
+  })
+
+  describe('freshness tooltip', () => {
+    const searchedAt = '2026-10-05T12:00:00.000Z'
+    const MILLISECONDS_PER_DAY = 86_400_000
+
+    function formatCutoff(days: number): string {
+      const cutoff = new Date(
+        new Date(searchedAt).getTime() - days * MILLISECONDS_PER_DAY,
+      )
+
+      return new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }).format(cutoff)
+    }
+
+    it('shows the cutoff relative to when the search ran', () => {
+      expect(getSearchFreshnessTooltip('day', searchedAt))
+        .toBe(`Only pages published since ${formatCutoff(1)}`)
+      expect(getSearchFreshnessTooltip('week', searchedAt))
+        .toBe(`Only pages published since ${formatCutoff(7)}`)
+      expect(getSearchFreshnessTooltip('month', searchedAt))
+        .toBe(`Only pages published since ${formatCutoff(31)}`)
+      expect(getSearchFreshnessTooltip('year', searchedAt))
+        .toBe(`Only pages published since ${formatCutoff(365)}`)
+    })
+
+    it('accepts a numeric timestamp and a Date', () => {
+      const expected = `Only pages published since ${formatCutoff(7)}`
+
+      expect(
+        getSearchFreshnessTooltip('week', new Date(searchedAt).getTime()),
+      ).toBe(expected)
+      expect(getSearchFreshnessTooltip('week', new Date(searchedAt)))
+        .toBe(expected)
+    })
+
+    it('falls back to the window without a usable timestamp', () => {
+      expect(getSearchFreshnessTooltip('day'))
+        .toBe('Only pages published in the last 24 hours')
+      expect(getSearchFreshnessTooltip('week', null))
+        .toBe('Only pages published in the last 7 days')
+      expect(getSearchFreshnessTooltip('month', 'not a date'))
+        .toBe('Only pages published in the last month')
+      expect(getSearchFreshnessTooltip('year', undefined))
+        .toBe('Only pages published in the last 12 months')
+    })
   })
 
   it('formats result counts', () => {

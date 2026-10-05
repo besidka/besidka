@@ -1319,6 +1319,13 @@ export function getAffectedTests(changedFiles) {
       tests: searchStepTests,
     },
     {
+      pattern: /^shared\/utils\/search-freshness\.ts$/,
+      tests: [
+        ...searchStepTests,
+        'tests/unit/utils/search/freshness.spec.ts',
+      ],
+    },
+    {
       pattern: /^app\/utils\/reasoning\.ts$/,
       tests: [
         'tests/unit/utils/reasoning.spec.ts',
