@@ -772,6 +772,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^shared\/utils\/model-citation-markers\.ts$/,
+      tests: [
+        'tests/unit/utils/model-citation-markers.spec.ts',
+        'tests/unit/components/Chat/Reasoning.spec.ts',
+      ],
+    },
+    {
       pattern: /^shared\/utils\/markdown-plain\.ts$/,
       tests: [...contextMenuTests, ...messageUsageTests],
     },

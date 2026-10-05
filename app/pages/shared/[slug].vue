@@ -216,7 +216,7 @@
               :key="`mdc-${m.id}-part-${index}`"
               :value="m.role === 'user'
                 ? $sanitizeHtml(part.text)
-                : part.text
+                : stripModelCitationMarkers(part.text)
               "
               :cache-key="`mdc-${m.id}-part-${index}`"
               :components="messageComponents"
@@ -416,7 +416,11 @@ const selectedMessageCopyText = computed<string | null>(() => {
     return null
   }
 
-  return textParts.map(part => part.text).join('\n\n')
+  return textParts.map((part) => {
+    return selectedMessage.role === 'assistant'
+      ? stripModelCitationMarkers(part.text)
+      : part.text
+  }).join('\n\n')
 })
 
 function onMessageSelect(
