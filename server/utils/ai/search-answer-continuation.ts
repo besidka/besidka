@@ -8,6 +8,7 @@ import {
   MODEL_TOOL_CALL_ERROR_CODE,
   UNAVAILABLE_TOOL_ERROR_KIND,
 } from '~~/server/utils/chats/errors'
+import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
 export const SEARCH_ANSWER_CONTEXT_MAX_RESULTS = 24
@@ -348,10 +349,12 @@ function withoutToolHistory(
 export function buildSearchAnswerContinuationMessages(
   messages: readonly ModelMessage[],
   searchResults: readonly CollectedSearchResult[],
+  now: Date = new Date(),
 ): ModelMessage[] {
   const contextText = [
     buildSearchResultsContext(searchResults),
     SEARCH_ANSWER_INSTRUCTIONS,
+    buildCurrentDateInstruction(now),
   ].join('\n\n')
   const toollessMessages = withoutToolHistory(messages)
   const lastMessage = toollessMessages.at(-1)

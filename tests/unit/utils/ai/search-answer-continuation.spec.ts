@@ -475,6 +475,15 @@ describe('buildSearchAnswerContinuationMessages', () => {
       expect(content[1]).toBe(imagePart)
     })
 
+  it('tells the model today\'s date from the injected clock', () => {
+    const messages = buildSearchAnswerContinuationMessages([
+      { role: 'user', content: 'What happened today?' },
+    ], searchResults, new Date('2026-10-05T23:30:00.000Z'))
+    const content = messages.at(-1)?.content as Array<{ text: string }>
+
+    expect(content.at(-1)?.text).toContain('Today\'s date is 2026-10-05 (UTC).')
+  })
+
   it('tells the model the enclosed results are untrusted content', () => {
     const messages = buildSearchAnswerContinuationMessages([
       { role: 'user', content: 'What shipped?' },

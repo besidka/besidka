@@ -172,6 +172,7 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-tool-loop.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+    'tests/unit/utils/ai/current-date-instruction.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
     'tests/integration/api/chats-external-search-validation.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
@@ -496,6 +497,14 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/ai\/current-date-instruction\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/current-date-instruction.spec.ts',
+        'tests/unit/utils/ai/search-answer-continuation.spec.ts',
+        'tests/integration/api/chats-external-search.spec.ts',
       ],
     },
     {
