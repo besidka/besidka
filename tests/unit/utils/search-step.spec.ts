@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import {
   SEARCH_STEP_FALLBACK_ERROR,
@@ -177,5 +177,28 @@ describe('search step formatting', () => {
     expect(formatSearchResultDate('2026-05-04T08:06:04.000Z')).toContain('2026')
     expect(formatSearchResultDate('nope')).toBe('')
     expect(formatSearchResultDate('')).toBe('')
+  })
+
+  it('formats a date-only value in UTC regardless of the local zone', () => {
+    expect(formatSearchResultDate('2026-05-04')).toBe(
+      new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+      }).format(new Date('2026-05-04')),
+    )
+  })
+
+  it('reuses module-level formatters instead of constructing per call', () => {
+    const construct = vi.spyOn(Intl, 'DateTimeFormat')
+
+    formatSearchResultDate('2026-05-04')
+    formatSearchResultDate('2026-05-04T08:06:04.000Z')
+    formatSearchResultDate('2026-06-01')
+
+    expect(construct).not.toHaveBeenCalled()
+
+    construct.mockRestore()
   })
 })

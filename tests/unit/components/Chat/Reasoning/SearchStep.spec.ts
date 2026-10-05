@@ -38,7 +38,6 @@ async function mountStep(
       data,
       title: options.title ?? 'Searched with Brave',
       pending: options.pending ?? false,
-      idPrefix: 'reasoning-msg-1-tool-1',
     },
   })
 }
@@ -103,6 +102,8 @@ describe('Chat/Reasoning/SearchStep', () => {
       .toBe(false)
     expect(wrapper.find('.iconify').exists()).toBe(false)
     expect(trigger(wrapper).attributes('disabled')).toBeDefined()
+    expect(trigger(wrapper).attributes('aria-expanded')).toBeUndefined()
+    expect(trigger(wrapper).attributes('aria-controls')).toBeUndefined()
   })
 
   it('renders a streaming step whose input has no query yet', async () => {
@@ -136,14 +137,16 @@ describe('Chat/Reasoning/SearchStep', () => {
     }))
 
     expect(trigger(wrapper).attributes('aria-expanded')).toBe('false')
+    expect(trigger(wrapper).attributes('aria-controls')).toBeUndefined()
 
     await trigger(wrapper).trigger('click')
 
+    const contentId = trigger(wrapper).attributes('aria-controls')
+
     expect(trigger(wrapper).attributes('aria-expanded')).toBe('true')
-    expect(
-      trigger(wrapper).attributes('aria-controls'),
-    ).toBe('reasoning-msg-1-tool-1-content')
-    expect(wrapper.get('#reasoning-msg-1-tool-1-content').exists()).toBe(true)
+    expect(contentId).toBeTruthy()
+    expect(wrapper.get(`[id="${contentId}"]`).exists()).toBe(true)
+    expect(wrapper.find('[role="region"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="reasoning-search-step-host"]').text())
       .toBe('example.com')
     expect(wrapper.get('[data-testid="reasoning-search-step-link"]').text())
@@ -154,6 +157,7 @@ describe('Chat/Reasoning/SearchStep', () => {
     await trigger(wrapper).trigger('click')
 
     expect(trigger(wrapper).attributes('aria-expanded')).toBe('false')
+    expect(trigger(wrapper).attributes('aria-controls')).toBeUndefined()
     expect(wrapper.find('[data-testid="reasoning-search-step-results"]').exists())
       .toBe(false)
   })
@@ -203,6 +207,61 @@ describe('Chat/Reasoning/SearchStep', () => {
 
     expect(wrapper.findAll('[data-testid="reasoning-search-step-link"]'))
       .toHaveLength(10)
+    expect(wrapper.get('[data-testid="reasoning-search-step-more"]').text())
+      .toBe('+2 more')
+  })
+
+  it('omits the "more" line when every result is shown', async () => {
+    const results = Array.from({ length: 10 }, (_value, index) => {
+      return {
+        title: `Result ${index}`,
+        url: `https://example.com/${index}`,
+      }
+    })
+    const wrapper = await mountStep(createData({ results }))
+
+    await trigger(wrapper).trigger('click')
+
+    expect(wrapper.find('[data-testid="reasoning-search-step-more"]').exists())
+      .toBe(false)
+  })
+
+  it('pins the wrapping classes that keep the collapsed row inside '
+    + 'narrow screens', async () => {
+    const wrapper = await mountStep(createData({
+      freshness: 'week',
+      results: [{ title: 'One', url: 'https://example.com/one' }],
+    }))
+    const meta = wrapper.get('[data-testid="reasoning-search-step-meta"]')
+    const query = wrapper.get('[data-testid="reasoning-search-step-query"]')
+
+    expect(trigger(wrapper).classes()).toContain('flex-wrap')
+    expect(trigger(wrapper).classes()).toContain('min-w-0')
+    expect(meta.classes()).toEqual(expect.arrayContaining([
+      'basis-full',
+      'min-w-0',
+      'sm:basis-auto',
+    ]))
+    expect(query.classes()).toEqual(expect.arrayContaining([
+      'min-w-0',
+      'truncate',
+    ]))
+    expect(
+      wrapper.get('[data-testid="reasoning-search-step-freshness"]').classes(),
+    ).toContain('shrink-0')
+    expect(
+      wrapper.get('[data-testid="reasoning-search-step-count"]').classes(),
+    ).toContain('shrink-0')
+  })
+
+  it('renders no meta container when there is nothing to show', async () => {
+    const wrapper = await mountStep(
+      createData({ state: 'pending', hasOutput: false, query: '' }),
+      { pending: true },
+    )
+
+    expect(wrapper.find('[data-testid="reasoning-search-step-meta"]').exists())
+      .toBe(false)
   })
 
   it('opens an http result through the shared external link flow',

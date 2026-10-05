@@ -20,6 +20,19 @@ const SEARCH_STEP_FRESHNESS_LABELS = new Map<SearchStepFreshness, string>([
   ['year', 'Past year'],
 ])
 const DATE_ONLY_LENGTH = 10
+const RESULT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+}
+const LOCAL_RESULT_DATE_FORMATTER = new Intl.DateTimeFormat(
+  undefined,
+  RESULT_DATE_OPTIONS,
+)
+const UTC_RESULT_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  ...RESULT_DATE_OPTIONS,
+  timeZone: 'UTC',
+})
 const ERROR_TEXT_LENGTH_LIMIT = 300
 const PENDING_STATES = new Set<string>(['input-streaming', 'input-available'])
 const FAILED_STATES = new Set<string>(['output-error', 'output-denied'])
@@ -175,12 +188,11 @@ export function formatSearchResultDate(publishedDate: string): string {
 
   const isDateOnly = publishedDate.trim().length === DATE_ONLY_LENGTH
 
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: isDateOnly ? 'UTC' : undefined,
-  }).format(date)
+  const formatter = isDateOnly
+    ? UTC_RESULT_DATE_FORMATTER
+    : LOCAL_RESULT_DATE_FORMATTER
+
+  return formatter.format(date)
 }
 
 export function formatSearchResultCount(count: number): string {

@@ -4,22 +4,21 @@
     class="my-2.5 min-w-0 flex-1"
   >
     <button
-      :id="`${idPrefix}-trigger`"
       type="button"
-      :aria-expanded="isExpanded"
-      :aria-controls="`${idPrefix}-content`"
+      :aria-expanded="isExpandable ? isExpanded : undefined"
+      :aria-controls="isExpandable && isExpanded ? contentId : undefined"
       :disabled="!isExpandable"
       data-testid="reasoning-search-step-trigger"
       class="
-        flex w-full min-w-0 items-center gap-1.5 text-left text-xs
-        disabled:cursor-default
+        flex w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5
+        text-left text-xs disabled:cursor-default
       "
       :class="isExpandable ? 'cursor-pointer' : undefined"
       @click="toggle"
     >
       <span
         data-testid="reasoning-search-step-title"
-        class="shrink-0"
+        class="order-1 min-w-0"
         :class="
           props.pending
             ? 'skeleton skeleton-text reasoning-main-title-skeleton'
@@ -28,40 +27,49 @@
       >
         {{ title }}{{ props.pending ? '…' : '' }}
       </span>
-      <span
-        v-if="data.query.length > 0"
-        :title="data.query"
-        data-testid="reasoning-search-step-query"
-        class="min-w-0 truncate text-base-content/60"
-      >
-        “{{ data.query }}”
-      </span>
-      <span
-        v-if="data.freshness"
-        data-testid="reasoning-search-step-freshness"
-        class="badge badge-soft badge-xs shrink-0"
-      >
-        {{ getSearchFreshnessLabel(data.freshness) }}
-      </span>
-      <span
-        v-if="countLabel.length > 0"
-        data-testid="reasoning-search-step-count"
-        class="shrink-0 text-base-content/60"
-      >
-        {{ countLabel }}
-      </span>
       <Icon
         v-if="isExpandable"
         name="lucide:chevron-right"
-        class="size-4 shrink-0 transition-transform"
+        class="
+          order-2 size-4 shrink-0 transition-transform sm:order-3
+        "
         :class="isExpanded ? 'rotate-90' : undefined"
       />
+      <span
+        v-if="hasMeta"
+        data-testid="reasoning-search-step-meta"
+        class="
+          order-3 flex min-w-0 basis-full items-center gap-1.5
+          sm:order-2 sm:basis-auto
+        "
+      >
+        <span
+          v-if="data.query.length > 0"
+          :title="data.query"
+          data-testid="reasoning-search-step-query"
+          class="min-w-0 truncate text-base-content/60"
+        >
+          “{{ data.query }}”
+        </span>
+        <span
+          v-if="data.freshness"
+          data-testid="reasoning-search-step-freshness"
+          class="badge badge-soft badge-xs shrink-0"
+        >
+          {{ getSearchFreshnessLabel(data.freshness) }}
+        </span>
+        <span
+          v-if="countLabel.length > 0"
+          data-testid="reasoning-search-step-count"
+          class="shrink-0 text-base-content/60"
+        >
+          {{ countLabel }}
+        </span>
+      </span>
     </button>
     <div
       v-if="isExpanded"
-      :id="`${idPrefix}-content`"
-      role="region"
-      :aria-labelledby="`${idPrefix}-trigger`"
+      :id="contentId"
       class="mt-2 min-w-0"
     >
       <p
@@ -85,33 +93,40 @@
             data-testid="reasoning-search-step-host"
             class="max-w-28 shrink-0 truncate text-base-content/60"
           >
-            {{ formatResearchLinkLabel(result.url) }}
+            {{ result.host }}
           </span>
           <button
-            v-if="isHttpUrl(result.url)"
+            v-if="result.isLink"
             type="button"
             data-testid="reasoning-search-step-link"
             class="link link-hover min-w-0 truncate text-left"
-            :title="getResultTitle(result)"
+            :title="result.title"
             @click="openResearchLink(result.url)"
           >
-            {{ getResultTitle(result) }}
+            {{ result.title }}
           </button>
           <span
             v-else
             data-testid="reasoning-search-step-text"
             class="min-w-0 truncate"
-            :title="getResultTitle(result)"
+            :title="result.title"
           >
-            {{ getResultTitle(result) }}
+            {{ result.title }}
           </span>
           <span
-            v-if="formatSearchResultDate(result.publishedDate ?? '')"
+            v-if="result.date.length > 0"
             data-testid="reasoning-search-step-date"
             class="ml-auto shrink-0 text-base-content/60"
           >
-            {{ formatSearchResultDate(result.publishedDate ?? '') }}
+            {{ result.date }}
           </span>
+        </li>
+        <li
+          v-if="hiddenResultsCount > 0"
+          data-testid="reasoning-search-step-more"
+          class="text-xs text-base-content/60"
+        >
+          +{{ hiddenResultsCount }} more
         </li>
       </ul>
     </div>
@@ -126,15 +141,38 @@ const props = defineProps<{
   data: SearchStepData
   title: string
   pending: boolean
-  idPrefix: string
 }>()
+
+interface SearchStepResultRow {
+  url: string
+  title: string
+  host: string
+  date: string
+  isLink: boolean
+}
 
 const { openResearchLink } = useResearchLink()
 
+const contentId = useId()
+
 const isExpanded = shallowRef<boolean>(false)
 
-const visibleResults = computed<SearchStepResult[]>(() => {
-  return props.data.results.slice(0, SEARCH_STEP_MAX_RESULTS)
+const visibleResults = computed<SearchStepResultRow[]>(() => {
+  return props.data.results
+    .slice(0, SEARCH_STEP_MAX_RESULTS)
+    .map((result) => {
+      return {
+        url: result.url,
+        title: getResultTitle(result),
+        host: formatResearchLinkLabel(result.url),
+        date: formatSearchResultDate(result.publishedDate ?? ''),
+        isLink: isHttpUrl(result.url),
+      }
+    })
+})
+
+const hiddenResultsCount = computed<number>(() => {
+  return Math.max(props.data.results.length - SEARCH_STEP_MAX_RESULTS, 0)
 })
 
 const isExpandable = computed<boolean>(() => {
@@ -151,6 +189,12 @@ const countLabel = computed<string>(() => {
   }
 
   return formatSearchResultCount(props.data.results.length)
+})
+
+const hasMeta = computed<boolean>(() => {
+  return props.data.query.length > 0
+    || !!props.data.freshness
+    || countLabel.value.length > 0
 })
 
 watch(isExpandable, (expandable) => {

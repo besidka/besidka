@@ -114,7 +114,6 @@
                 :data="step.search"
                 :title="step.title"
                 :pending="step.pending"
-                :id-prefix="`reasoning-${message.id}-${step.id}`"
               />
               <details
                 v-else
