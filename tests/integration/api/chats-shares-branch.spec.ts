@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 
 const mocks = vi.hoisted(() => ({
   resolveActiveShareBySlug: vi.fn(),
@@ -115,6 +116,7 @@ describe('shared chat branch API', () => {
     vi.clearAllMocks()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
     vi.stubGlobal('getHeader', vi.fn(() => 'same-origin'))
     vi.stubGlobal('getValidatedRouterParams', async (
       event: { params: unknown },

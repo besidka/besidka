@@ -358,6 +358,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/push-encryption.spec.ts',
     'tests/unit/service-worker/push.spec.ts',
     'tests/unit/service-worker/sw.spec.ts',
+    'tests/unit/utils/cross-site-guard.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/push-status.spec.ts',
     'tests/integration/server/push-subscription-sweep-plugin.spec.ts',
@@ -716,6 +717,16 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/api\/v1\/(events|stats)\/.*\.ts$/,
       tests: landingTests,
+    },
+    {
+      pattern: /^server\/utils\/cross-site-guard\.ts$/,
+      tests: [
+        'tests/unit/utils/cross-site-guard.spec.ts',
+        'tests/integration/api/events-ingest.spec.ts',
+        'tests/integration/api/push-subscriptions.spec.ts',
+        'tests/integration/api/chats-shares-branch.spec.ts',
+        'tests/integration/api/chats-shares-handoff.spec.ts',
+      ],
     },
     {
       pattern: /^server\/plugins\/landing-cache-refresh\.ts$/,

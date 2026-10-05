@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
@@ -57,6 +58,7 @@ describe('events ingest API', () => {
     vi.clearAllMocks()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
 
     vi.stubGlobal('getHeader', (
       event: { headers: Record<string, string> },

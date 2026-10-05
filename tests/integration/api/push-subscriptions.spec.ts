@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { assertNotCrossSiteRequest } from '~~/server/utils/cross-site-guard'
 import { drizzle } from 'drizzle-orm/d1'
 import type { SQL } from 'drizzle-orm'
 import * as schema from '../../../server/db/schema'
@@ -65,6 +66,11 @@ describe('push subscription API', () => {
     vi.resetModules()
     mocks.loggerSet.mockClear()
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
+    vi.stubGlobal('getHeader', (
+      event: { headers?: Record<string, string> },
+      key: string,
+    ) => event.headers?.[key.toLowerCase()])
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },
       parser: (body: unknown) => unknown,
@@ -446,6 +452,78 @@ describe('push subscription API', () => {
       } as any)).rejects.toThrow('Unauthorized')
     })
 
+    it('rejects cross-site requests without touching the database', async () => {
+      const { db, insertValues, updateSet, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        headers: { 'sec-fetch-site': 'cross-site' },
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+          previousEndpoint: 'https://push.example.com/sub-0',
+        },
+      } as any)).rejects.toMatchObject({ status: 403 })
+      expect(insertValues).not.toHaveBeenCalled()
+      expect(updateSet).not.toHaveBeenCalled()
+      expect(deleteWhere).not.toHaveBeenCalled()
+    })
+
+    it('rejects cross-site requests before the session lookup', async () => {
+      const { db } = createDb(null)
+      const useUserSession = vi.fn().mockResolvedValue({ user: { id: '7' } })
+
+      vi.stubGlobal('useUserSession', useUserSession)
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        headers: { 'sec-fetch-site': 'cross-site' },
+        body: {},
+      } as any)).rejects.toMatchObject({ status: 403 })
+      expect(useUserSession).not.toHaveBeenCalled()
+    })
+
+    it('accepts requests where sec-fetch-site is missing', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        headers: {},
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledTimes(1)
+    })
+
+    it('accepts same-origin requests', async () => {
+      const { db, insertValues } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        headers: { 'sec-fetch-site': 'same-origin' },
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+        },
+      } as any)
+
+      expect(insertValues).toHaveBeenCalledTimes(1)
+    })
+
     it('rejects an endpoint host outside the push service allowlist', async () => {
       vi.stubGlobal('isAllowedPushServiceEndpoint', vi.fn(() => false))
 
@@ -492,6 +570,66 @@ describe('push subscription API', () => {
           userId: 7,
         }),
       }))
+    })
+
+    it('rejects cross-site requests without deleting anything', async () => {
+      const { db, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        headers: { 'sec-fetch-site': 'cross-site' },
+        body: { endpoint: 'https://push.example.com/sub-1' },
+      } as any)).rejects.toMatchObject({ status: 403 })
+      expect(deleteWhere).not.toHaveBeenCalled()
+    })
+
+    it('rejects cross-site requests before the session lookup', async () => {
+      const { db } = createDb(null)
+      const useUserSession = vi.fn().mockResolvedValue({ user: { id: '7' } })
+
+      vi.stubGlobal('useUserSession', useUserSession)
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await expect(handler({
+        headers: { 'sec-fetch-site': 'cross-site' },
+        body: {},
+      } as any)).rejects.toMatchObject({ status: 403 })
+      expect(useUserSession).not.toHaveBeenCalled()
+    })
+
+    it('accepts requests where sec-fetch-site is missing', async () => {
+      const { db, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        headers: {},
+        body: { endpoint: 'https://push.example.com/sub-1' },
+      } as any)
+
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
+    })
+
+    it('accepts same-origin requests', async () => {
+      const { db, deleteWhere } = createDb(null)
+
+      vi.stubGlobal('useDb', () => db)
+
+      const handler = await getHandler()
+
+      await handler({
+        headers: { 'sec-fetch-site': 'same-origin' },
+        body: { endpoint: 'https://push.example.com/sub-1' },
+      } as any)
+
+      expect(deleteWhere).toHaveBeenCalledTimes(1)
     })
 
     it('rejects an invalid unsubscribe body', async () => {

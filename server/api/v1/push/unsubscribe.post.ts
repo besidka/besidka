@@ -4,6 +4,9 @@ import * as schema from '~~/server/db/schema'
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
+
+  assertNotCrossSiteRequest(event)
+
   const session = await useUserSession()
 
   if (!session) {
