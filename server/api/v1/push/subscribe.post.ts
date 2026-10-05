@@ -7,6 +7,9 @@ const MAX_PUSH_ENDPOINT_LENGTH = 2048
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
+
+  assertNotCrossSiteRequest(event)
+
   const session = await useUserSession()
 
   if (!session) {

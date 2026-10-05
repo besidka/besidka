@@ -87,6 +87,10 @@ Two independent states that are easy to conflate:
 - Enabling uploads the subscription via `POST /api/v1/push/subscribe`;
   `GET /api/v1/push/status` reports whether the account has any rows (used
   to gate the shared page's "Open in the app" button).
+- `subscribe` and `unsubscribe` reject `sec-fetch-site: cross-site` with 403
+  before the session lookup, using the same `assertNotCrossSiteRequest()`
+  guard as handoff (`server/utils/cross-site-guard.ts`). A missing header
+  (older Safari) passes.
 
 ### Server-side pruning
 

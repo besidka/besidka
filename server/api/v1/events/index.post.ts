@@ -30,15 +30,7 @@ const bodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
 
-  const secFetchSite = getHeader(event, 'sec-fetch-site')
-
-  if (secFetchSite === 'cross-site') {
-    throw createError({
-      message: 'Forbidden',
-      status: 403,
-      why: `sec-fetch-site "${secFetchSite}" is cross-site`,
-    })
-  }
+  assertNotCrossSiteRequest(event)
 
   const body = await readValidatedBody(event, bodySchema.safeParse)
 

@@ -21,15 +21,7 @@ const HANDOFF_COOLDOWN_MS = 10_000
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
 
-  const secFetchSite = getHeader(event, 'sec-fetch-site')
-
-  if (secFetchSite === 'cross-site') {
-    throw createError({
-      message: 'Forbidden',
-      status: 403,
-      why: `sec-fetch-site "${secFetchSite}" is cross-site`,
-    })
-  }
+  assertNotCrossSiteRequest(event)
 
   const params = await getValidatedRouterParams(
     event,
