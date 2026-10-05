@@ -117,6 +117,7 @@ import type {
   SearchAnswerContinuationStep,
   SearchAnswerOutcome,
 } from '~~/server/utils/ai/search-answer-continuation'
+import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
@@ -2408,6 +2409,7 @@ function buildChatInstructions(
   projectSystemPrompt: string | null,
   requestedTools: ModelTool[],
   gatewayId: GatewayId | undefined,
+  now: Date = new Date(),
 ): string | undefined {
   const instructions = [projectSystemPrompt]
 
@@ -2439,6 +2441,7 @@ function buildChatInstructions(
       'Call it when the question depends on current information, recent',
       'events, or anything you are not confident about. Cite the sources',
       'you used.',
+      buildCurrentDateInstruction(now),
     ].join(' '))
   }
 

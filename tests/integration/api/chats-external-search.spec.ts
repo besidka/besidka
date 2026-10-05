@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 
@@ -203,10 +203,10 @@ function createDb() {
   }
 }
 
-function baseBody(tool: string) {
+function baseBody(tool: string | undefined) {
   return {
     model: EXTERNAL_SEARCH_MODEL_ID,
-    tools: [tool],
+    tools: tool ? [tool] : [],
     reasoning: 'off',
     messages: [{
       id: 'user-public-1',
@@ -233,7 +233,7 @@ async function readClientChunks() {
 }
 
 async function runExternalSearchSend(input: {
-  tool: 'web_search_brave' | 'web_search_exa'
+  tool: 'web_search_brave' | 'web_search_exa' | undefined
   toolName: string
   steps: Array<Array<Record<string, unknown>>>
   fetchImpl: typeof fetch
@@ -301,7 +301,24 @@ function exaFetch(costDollarsTotal: number) {
   })) as unknown as typeof fetch
 }
 
+function readSystemPrompt(
+  doStream: ReturnType<typeof createScriptedModel>['doStream'],
+): string {
+  const [options] = doStream.mock.calls[0] as unknown as [
+    { prompt: Array<{ role: string, content: unknown }> },
+  ]
+  const systemMessage = options.prompt.find((message) => {
+    return message.role === 'system'
+  })
+
+  return String(systemMessage?.content ?? '')
+}
+
 describe('external search send-path wiring', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -441,4 +458,38 @@ describe('external search send-path wiring', () => {
       searchCost: 0.021,
     }))
   })
+
+  it.each([
+    ['web_search_brave' as const],
+    ['web_search_exa' as const],
+  ])('tells the model today\'s date when %s is requested', async (tool) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-05T23:30:00.000Z'))
+
+    const { doStream } = await runExternalSearchSend({
+      tool,
+      toolName: tool,
+      steps: [createTextChunks('No search needed.')],
+      fetchImpl: tool === 'web_search_brave' ? braveFetch() : exaFetch(0.007),
+    })
+    const systemPrompt = readSystemPrompt(doStream)
+
+    expect(systemPrompt).toContain('Today\'s date is 2026-10-05 (UTC).')
+    expect(systemPrompt).toContain('do not search for the current date')
+  })
+
+  it('does not mention the date when no search tool is requested',
+    async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-10-05T23:30:00.000Z'))
+
+      const { doStream } = await runExternalSearchSend({
+        tool: undefined,
+        toolName: '',
+        steps: [createTextChunks('Plain answer.')],
+        fetchImpl: braveFetch(),
+      })
+
+      expect(readSystemPrompt(doStream)).not.toContain('Today\'s date')
+    })
 })
