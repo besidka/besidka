@@ -39,6 +39,7 @@ describe('usePushNotifications', () => {
     mocks.fetch.mockClear()
     mocks.vapidPublicKey = 'QUJDRA'
     mocks.loggedIn = true
+    window.localStorage.clear()
 
     useState<NotificationPermission>(
       'push-notifications:permission',
@@ -395,6 +396,7 @@ describe('usePushNotifications', () => {
           p256dh: expect.any(String),
           auth: expect.any(String),
         },
+        previousEndpoint: 'https://push.example.com/stale',
       },
     })
     expect(composable.isSubscribed.value).toBe(true)
@@ -418,5 +420,201 @@ describe('usePushNotifications', () => {
       body: { endpoint: 'https://push.example.com/sub-1' },
     })
     expect(composable.isSubscribed.value).toBe(false)
+  })
+
+  describe('previous endpoint tracking', () => {
+    const STORAGE_KEY = 'besidka:push-endpoint'
+
+    it('stores the uploaded endpoint after a successful subscribe', async () => {
+      const composable = usePushNotifications()
+
+      await composable.subscribe()
+
+      expect(window.localStorage.getItem(STORAGE_KEY))
+        .toBe('https://push.example.com/sub-1')
+    })
+
+    it('does not store the endpoint when the subscribe POST fails', async () => {
+      mocks.fetch.mockRejectedValueOnce(new Error('401 Unauthorized'))
+
+      const composable = usePushNotifications()
+
+      await composable.subscribe()
+
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull()
+    })
+
+    it('sends previousEndpoint when the stored endpoint differs', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        'https://push.example.com/old',
+      )
+
+      const composable = usePushNotifications()
+
+      await composable.subscribe()
+
+      expect(mocks.fetch).toHaveBeenCalledWith('/api/v1/push/subscribe', {
+        method: 'POST',
+        body: {
+          endpoint: 'https://push.example.com/sub-1',
+          keys: {
+            p256dh: expect.any(String),
+            auth: expect.any(String),
+          },
+          previousEndpoint: 'https://push.example.com/old',
+        },
+      })
+      expect(window.localStorage.getItem(STORAGE_KEY))
+        .toBe('https://push.example.com/sub-1')
+    })
+
+    it('omits previousEndpoint when the stored endpoint is unchanged', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        'https://push.example.com/sub-1',
+      )
+
+      const composable = usePushNotifications()
+
+      await composable.subscribe()
+
+      const body = (mocks.fetch.mock.calls[0] as unknown[])[1] as {
+        body: Record<string, unknown>
+      }
+
+      expect(body.body).not.toHaveProperty('previousEndpoint')
+    })
+
+    it('omits previousEndpoint when nothing is stored', async () => {
+      const composable = usePushNotifications()
+
+      await composable.subscribe()
+
+      const body = (mocks.fetch.mock.calls[0] as unknown[])[1] as {
+        body: Record<string, unknown>
+      }
+
+      expect(body.body).not.toHaveProperty('previousEndpoint')
+    })
+
+    it('sends previousEndpoint on the load-time re-post', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        'https://push.example.com/old',
+      )
+      getSubscriptionMock.mockResolvedValue({
+        endpoint: 'https://push.example.com/existing',
+        getKey: () => new TextEncoder().encode('key-bytes').buffer,
+      })
+
+      usePushNotifications()
+
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/push/subscribe',
+        expect.objectContaining({
+          body: expect.objectContaining({
+            endpoint: 'https://push.example.com/existing',
+            previousEndpoint: 'https://push.example.com/old',
+          }),
+        }),
+      )
+      expect(window.localStorage.getItem(STORAGE_KEY))
+        .toBe('https://push.example.com/existing')
+    })
+
+    it('sends previousEndpoint when healing a stale-key subscription', async () => {
+      Object.defineProperty(globalThis, 'Notification', {
+        configurable: true,
+        value: {
+          permission: 'granted',
+          requestPermission: requestPermissionMock,
+        },
+      })
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        'https://push.example.com/stale',
+      )
+      getSubscriptionMock.mockResolvedValue({
+        endpoint: 'https://push.example.com/stale',
+        options: {
+          applicationServerKey: new TextEncoder().encode('stale-key').buffer,
+        },
+        getKey: () => new TextEncoder().encode('key-bytes').buffer,
+        unsubscribe: vi.fn(async () => true),
+      })
+
+      usePushNotifications()
+
+      await flushPromises()
+
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/api/v1/push/subscribe',
+        expect.objectContaining({
+          body: expect.objectContaining({
+            endpoint: 'https://push.example.com/sub-1',
+            previousEndpoint: 'https://push.example.com/stale',
+          }),
+        }),
+      )
+      expect(window.localStorage.getItem(STORAGE_KEY))
+        .toBe('https://push.example.com/sub-1')
+    })
+
+    it('clears the stored endpoint on unsubscribe', async () => {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        'https://push.example.com/sub-1',
+      )
+      getSubscriptionMock.mockResolvedValue({
+        endpoint: 'https://push.example.com/sub-1',
+        unsubscribe: vi.fn(async () => true),
+      })
+
+      const composable = usePushNotifications()
+
+      await composable.unsubscribe()
+
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull()
+    })
+
+    it('still subscribes when localStorage throws', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('storage unavailable')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('storage unavailable')
+      })
+
+      const composable = usePushNotifications()
+      const result = await composable.subscribe()
+
+      expect(result).toBe(true)
+      expect(composable.isSubscribed.value).toBe(true)
+
+      const body = (mocks.fetch.mock.calls[0] as unknown[])[1] as {
+        body: Record<string, unknown>
+      }
+
+      expect(body.body).not.toHaveProperty('previousEndpoint')
+    })
+
+    it('still unsubscribes when localStorage throws', async () => {
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new Error('storage unavailable')
+      })
+      getSubscriptionMock.mockResolvedValue({
+        endpoint: 'https://push.example.com/sub-1',
+        unsubscribe: vi.fn(async () => true),
+      })
+
+      const composable = usePushNotifications()
+
+      await composable.unsubscribe()
+
+      expect(composable.isSubscribed.value).toBe(false)
+    })
   })
 })

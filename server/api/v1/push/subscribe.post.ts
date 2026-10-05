@@ -1,7 +1,9 @@
 import { useLogger, createError } from 'evlog'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getRequestURL } from 'h3'
 import * as schema from '~~/server/db/schema'
+
+const MAX_PUSH_ENDPOINT_LENGTH = 2048
 
 export default defineEventHandler(async (event) => {
   const logger = useLogger(event)
@@ -14,11 +16,12 @@ export default defineEventHandler(async (event) => {
   const userId = parseInt(session.user.id)
 
   const body = await readValidatedBody(event, z.object({
-    endpoint: z.string().url(),
+    endpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH),
     keys: z.object({
       p256dh: z.string().nonempty(),
       auth: z.string().nonempty(),
     }),
+    previousEndpoint: z.string().url().max(MAX_PUSH_ENDPOINT_LENGTH).optional(),
   }).safeParse)
 
   if (body.error) {
@@ -29,7 +32,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { endpoint, keys } = body.data
+  const { endpoint, keys, previousEndpoint } = body.data
 
   if (!isAllowedPushServiceEndpoint(endpoint)) {
     throw createError({
@@ -53,6 +56,8 @@ export default defineEventHandler(async (event) => {
     void exception
     origin = undefined
   }
+
+  const lastSeenAt = new Date()
 
   const existing = await db.query.pushSubscriptions.findFirst({
     where: { endpoint },
@@ -86,6 +91,7 @@ export default defineEventHandler(async (event) => {
         p256dhKey: keys.p256dh,
         authKey: keys.auth,
         origin,
+        lastSeenAt,
       })
       .where(eq(schema.pushSubscriptions.id, existing.id))
   } else {
@@ -102,6 +108,24 @@ export default defineEventHandler(async (event) => {
       p256dhKey: keys.p256dh,
       authKey: keys.auth,
       origin,
+      lastSeenAt,
+    })
+  }
+
+  if (previousEndpoint && previousEndpoint !== endpoint) {
+    const removedRows = await db.delete(schema.pushSubscriptions)
+      .where(and(
+        eq(schema.pushSubscriptions.endpoint, previousEndpoint),
+        eq(schema.pushSubscriptions.userId, userId),
+      ))
+      .returning({ id: schema.pushSubscriptions.id })
+
+    logger.set({
+      attributes: {
+        push: {
+          previousEndpointRemoved: removedRows.length > 0,
+        },
+      },
     })
   }
 

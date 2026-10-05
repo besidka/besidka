@@ -88,8 +88,44 @@ Two independent states that are easy to conflate:
   `GET /api/v1/push/status` reports whether the account has any rows (used
   to gate the shared page's "Open in the app" button).
 
-Server-side pruning: a 404/410 from the push service deletes the row — the
-only signal that a browser dropped the subscription.
+### Server-side pruning
+
+Status-based pruning alone cannot keep `push_subscriptions` clean. A 404/410
+from the push service deletes the row (`sendToSubscription` in
+`server/utils/push.ts`), but WebKit revokes subscriptions on-device (silent
+pushes, PWA reinstall, cleared site data) while `web.push.apple.com` keeps
+answering 2xx for those endpoints — production logs showed 257/257 accepted
+sends while known-revoked rows existed. Liveness therefore comes from two
+extra mechanisms:
+
+1. **`previousEndpoint` on resubscribe (instant cleanup).** The client keeps
+   the last successfully uploaded endpoint in `localStorage`
+   (`besidka:push-endpoint`, every access wrapped in try/catch) and sends it
+   as `previousEndpoint` in each `POST /api/v1/push/subscribe` — from
+   `subscribe()`, from `refreshState()`'s normal re-POST, and from its
+   stale-key heal path — when it differs from the endpoint being uploaded.
+   The server deletes the row `WHERE endpoint = previousEndpoint AND user_id =
+   <session user>` in addition to the upsert, so another user's row is never
+   touched. `unsubscribe()` clears the stored value.
+2. **`last_seen_at` + TTL sweep (backstop).** `push_subscriptions.last_seen_at`
+   (nullable, no SQL default — set in application code to avoid a table
+   rebuild) is refreshed by every `subscribe.post.ts` call, which includes
+   the re-POST that runs on each authenticated page load. The Nitro plugin
+   `server/plugins/push-subscription-sweep.ts` runs on the existing hourly
+   cron (`0 * * * *`) and deletes rows with `last_seen_at` older than
+   `PUSH_SUBSCRIPTION_TTL_DAYS` (60), plus rows with `last_seen_at IS NULL`
+   and `created_at` older than the cutoff, in a single `DELETE`. The
+   migration backfills existing rows with the current time so they get a full
+   grace window.
+
+A device not opened for 60 days loses its row and silently resubscribes on
+its next open (the chat layout's reconcile, see above).
+
+The sweep logs only under the `attributes` map field
+(`attributes.pushSweep.{cron,scheduledTime,cutoff,deleted,error}`) and the
+subscribe endpoint under `attributes.push.previousEndpointRemoved`, so no new
+top-level paths count against the Axiom 256-field cap
+(see `docs/axiom-map-fields.md`). Endpoints and keys are never logged.
 
 ### Settings-menu toggle
 
@@ -259,7 +295,8 @@ served from its cache).
   threw before sending (key pair or code); `403 VapidPkHashMismatch` →
   subscription bound to a different key than the sender (rotate + let the
   client heal); rows silently disappearing → the service returned 404/410
-  and pruning removed them.
+  and pruning removed them, or the row was replaced via `previousEndpoint` /
+  expired by the 60-day `last_seen_at` sweep.
 - `Notification.permission === 'granted'` but `getSubscription()` returns
   `null` on WebKit → the subscription was revoked for silent pushes (see the
   silent-push rule above). The chat layout's reconcile re-subscribes silently
@@ -267,4 +304,4 @@ served from its cache).
 
 The unit/integration suites cover the protocol (RFC vector), the send loop,
 both endpoints, and the prompt/reconcile logic:
-`pnpm vitest run tests/unit/utils/push-encryption.spec.ts tests/unit/utils/push.spec.ts tests/unit/composables/push-notifications.spec.ts tests/unit/composables/notification-prompt.spec.ts tests/integration/api/push-subscriptions.spec.ts tests/integration/api/push-status.spec.ts tests/integration/api/chats-shares-handoff.spec.ts`
+`pnpm vitest run tests/unit/utils/push-encryption.spec.ts tests/unit/utils/push.spec.ts tests/unit/composables/push-notifications.spec.ts tests/unit/composables/notification-prompt.spec.ts tests/integration/api/push-subscriptions.spec.ts tests/integration/api/push-status.spec.ts tests/integration/api/chats-shares-handoff.spec.ts tests/integration/server/push-subscription-sweep-plugin.spec.ts`
