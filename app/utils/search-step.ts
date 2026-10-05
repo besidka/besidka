@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import { SEARCH_FRESHNESS_WINDOW_DAYS } from '#shared/utils/search-freshness'
 import type {
   SearchStepData,
   SearchStepFreshness,
@@ -14,11 +15,21 @@ const SEARCH_STEP_TOOL_NAMES = new Set<string>([
   'web_search_exa',
 ])
 const SEARCH_STEP_FRESHNESS_LABELS = new Map<SearchStepFreshness, string>([
-  ['day', 'Past day'],
-  ['week', 'Past week'],
-  ['month', 'Past month'],
-  ['year', 'Past year'],
+  ['day', 'Last 24 hours'],
+  ['week', 'Last 7 days'],
+  ['month', 'Last month'],
+  ['year', 'Last 12 months'],
 ])
+const SEARCH_STEP_FRESHNESS_WINDOW_PHRASES = new Map<
+  SearchStepFreshness,
+  string
+>([
+  ['day', 'in the last 24 hours'],
+  ['week', 'in the last 7 days'],
+  ['month', 'in the last month'],
+  ['year', 'in the last 12 months'],
+])
+const MILLISECONDS_PER_DAY = 86_400_000
 const DATE_ONLY_LENGTH = 10
 const RESULT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
   year: 'numeric',
@@ -177,6 +188,29 @@ export function getSearchFreshnessLabel(
   freshness: SearchStepFreshness,
 ): string {
   return SEARCH_STEP_FRESHNESS_LABELS.get(freshness) ?? freshness
+}
+
+export function getSearchFreshnessTooltip(
+  freshness: SearchStepFreshness,
+  searchedAt?: string | number | Date | null,
+): string {
+  const searchedAtDate = searchedAt === undefined || searchedAt === null
+    ? null
+    : new Date(searchedAt)
+
+  if (searchedAtDate && !Number.isNaN(searchedAtDate.getTime())) {
+    const windowMilliseconds = SEARCH_FRESHNESS_WINDOW_DAYS[freshness]
+      * MILLISECONDS_PER_DAY
+    const cutoff = new Date(searchedAtDate.getTime() - windowMilliseconds)
+
+    return `Only pages published since ${
+      LOCAL_RESULT_DATE_FORMATTER.format(cutoff)
+    }`
+  }
+
+  const windowPhrase = SEARCH_STEP_FRESHNESS_WINDOW_PHRASES.get(freshness)
+
+  return `Only pages published ${windowPhrase}`
 }
 
 export function formatSearchResultDate(publishedDate: string): string {

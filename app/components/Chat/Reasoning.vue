@@ -114,6 +114,7 @@
                 :data="step.search"
                 :title="step.title"
                 :pending="step.pending"
+                :searched-at="searchedAt"
               />
               <details
                 v-else
@@ -205,6 +206,10 @@ const reasoningIcon = computed<string>(() => {
   const capitalized = level.charAt(0).toUpperCase() + level.slice(1)
 
   return `SvgoThink${capitalized}`
+})
+
+const searchedAt = computed<string | number | Date | undefined>(() => {
+  return getMessageMetadata(props.message).createdAt
 })
 
 const reasoningParts = computed<ReasoningUIPart[]>(() => {

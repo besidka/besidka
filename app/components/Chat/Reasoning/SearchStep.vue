@@ -53,10 +53,17 @@
         </span>
         <span
           v-if="data.freshness"
-          data-testid="reasoning-search-step-freshness"
-          class="badge badge-soft badge-xs shrink-0"
+          :data-tip="freshnessTooltip"
+          :aria-label="`${freshnessLabel}. ${freshnessTooltip}`"
+          data-testid="reasoning-search-step-freshness-tooltip"
+          class="tooltip tooltip-bottom shrink-0 before:font-normal"
         >
-          {{ getSearchFreshnessLabel(data.freshness) }}
+          <span
+            data-testid="reasoning-search-step-freshness"
+            class="badge badge-soft badge-xs"
+          >
+            {{ freshnessLabel }}
+          </span>
         </span>
         <span
           v-if="countLabel.length > 0"
@@ -141,6 +148,7 @@ const props = defineProps<{
   data: SearchStepData
   title: string
   pending: boolean
+  searchedAt?: string | number | Date
 }>()
 
 interface SearchStepResultRow {
@@ -189,6 +197,18 @@ const countLabel = computed<string>(() => {
   }
 
   return formatSearchResultCount(props.data.results.length)
+})
+
+const freshnessLabel = computed<string>(() => {
+  return props.data.freshness
+    ? getSearchFreshnessLabel(props.data.freshness)
+    : ''
+})
+
+const freshnessTooltip = computed<string>(() => {
+  return props.data.freshness
+    ? getSearchFreshnessTooltip(props.data.freshness, props.searchedAt)
+    : ''
 })
 
 const hasMeta = computed<boolean>(() => {

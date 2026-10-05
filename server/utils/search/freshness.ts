@@ -1,13 +1,7 @@
 import { z } from 'zod'
+import { SEARCH_FRESHNESS_WINDOW_DAYS } from '#shared/utils/search-freshness'
 
 const MILLISECONDS_PER_DAY = 86_400_000
-
-const FRESHNESS_WINDOW_DAYS = {
-  day: 1,
-  week: 7,
-  month: 31,
-  year: 365,
-} as const
 
 const BRAVE_FRESHNESS_CODES = {
   day: 'pd',
@@ -16,7 +10,7 @@ const BRAVE_FRESHNESS_CODES = {
   year: 'py',
 } as const
 
-export type SearchFreshness = keyof typeof FRESHNESS_WINDOW_DAYS
+export type SearchFreshness = keyof typeof SEARCH_FRESHNESS_WINDOW_DAYS
 
 export const searchFreshnessSchema = z
   .enum(['day', 'week', 'month', 'year'])
@@ -34,7 +28,7 @@ export function toExaStartPublishedDate(
   freshness: SearchFreshness,
   now: Date = new Date(),
 ): string {
-  const windowMilliseconds = FRESHNESS_WINDOW_DAYS[freshness]
+  const windowMilliseconds = SEARCH_FRESHNESS_WINDOW_DAYS[freshness]
     * MILLISECONDS_PER_DAY
 
   return new Date(now.getTime() - windowMilliseconds).toISOString()

@@ -31,13 +31,18 @@ function createData(overrides: Partial<SearchStepData> = {}): SearchStepData {
 
 async function mountStep(
   data: SearchStepData,
-  options: { title?: string, pending?: boolean } = {},
+  options: {
+    title?: string
+    pending?: boolean
+    searchedAt?: string | number | Date
+  } = {},
 ): Promise<VueWrapper> {
   return await mountSuspended(SearchStep, {
     props: {
       data,
       title: options.title ?? 'Searched with Brave',
       pending: options.pending ?? false,
+      searchedAt: options.searchedAt,
     },
   })
 }
@@ -67,11 +72,50 @@ describe('Chat/Reasoning/SearchStep', () => {
       .toBe('“poland election results”')
     expect(
       wrapper.get('[data-testid="reasoning-search-step-freshness"]').text(),
-    ).toBe('Past week')
+    ).toBe('Last 7 days')
     expect(wrapper.get('[data-testid="reasoning-search-step-count"]').text())
       .toBe('2 results')
     expect(wrapper.find('[data-testid="reasoning-search-step-results"]').exists())
       .toBe(false)
+  })
+
+  it('explains the freshness cutoff relative to when the search ran',
+    async () => {
+      const searchedAt = '2026-10-05T12:00:00.000Z'
+      const cutoff = new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }).format(new Date('2026-09-28T12:00:00.000Z'))
+      const wrapper = await mountStep(
+        createData({ freshness: 'week' }),
+        { searchedAt },
+      )
+      const tooltip = wrapper.get(
+        '[data-testid="reasoning-search-step-freshness-tooltip"]',
+      )
+
+      expect(tooltip.attributes('data-tip'))
+        .toBe(`Only pages published since ${cutoff}`)
+      expect(tooltip.attributes('aria-label'))
+        .toBe(`Last 7 days. Only pages published since ${cutoff}`)
+      expect(tooltip.classes()).toContain('tooltip')
+      expect(
+        tooltip.get('[data-testid="reasoning-search-step-freshness"]').text(),
+      ).toBe('Last 7 days')
+    })
+
+  it('describes the window without a date when the search time is '
+    + 'unknown', async () => {
+    const wrapper = await mountStep(createData({ freshness: 'year' }))
+    const tooltip = wrapper.get(
+      '[data-testid="reasoning-search-step-freshness-tooltip"]',
+    )
+
+    expect(tooltip.attributes('data-tip'))
+      .toBe('Only pages published in the last 12 months')
+    expect(tooltip.attributes('aria-label'))
+      .toBe('Last 12 months. Only pages published in the last 12 months')
   })
 
   it('uses the singular for one result and omits the badge without '
@@ -84,6 +128,11 @@ describe('Chat/Reasoning/SearchStep', () => {
       .toBe('1 result')
     expect(
       wrapper.find('[data-testid="reasoning-search-step-freshness"]').exists(),
+    ).toBe(false)
+    expect(
+      wrapper
+        .find('[data-testid="reasoning-search-step-freshness-tooltip"]')
+        .exists(),
     ).toBe(false)
   })
 
@@ -247,7 +296,9 @@ describe('Chat/Reasoning/SearchStep', () => {
       'truncate',
     ]))
     expect(
-      wrapper.get('[data-testid="reasoning-search-step-freshness"]').classes(),
+      wrapper
+        .get('[data-testid="reasoning-search-step-freshness-tooltip"]')
+        .classes(),
     ).toContain('shrink-0')
     expect(
       wrapper.get('[data-testid="reasoning-search-step-count"]').classes(),
