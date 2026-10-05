@@ -114,6 +114,22 @@ describe('getBraveWebSearchTools tool shape', () => {
     expect(result.tools).not.toHaveProperty('web_search')
     expect(result.tools).not.toHaveProperty('web_search_preview')
   })
+
+  it('describes a single broad query first and no longer asks for one '
+    + 'focused query per call', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse(BRAVE_SEARCH_RESPONSE),
+    ))
+
+    const { getBraveWebSearchTools } = await importModule()
+    const result = await getBraveWebSearchTools('brave-key')
+    const description = result.tools?.web_search_brave?.description
+
+    expect(description).toContain('Search the web using Brave Search.')
+    expect(description).toContain('Start with one broad query')
+    expect(description).toContain('Set freshness for news and recent events.')
+    expect(description).not.toContain('one focused')
+  })
 })
 
 describe('web_search_brave tool execute()', () => {

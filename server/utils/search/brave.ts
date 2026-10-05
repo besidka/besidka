@@ -225,8 +225,11 @@ export async function getBraveWebSearchTools(
       web_search_brave: withFollowUpTurn(tool({
         description: 'Search the web using Brave Search. Call this when '
           + 'the question depends on current information, recent events, '
-          + 'or anything you are not confident about. Issue one focused '
-          + 'query per call.',
+          + 'or anything you are not confident about. Start with one '
+          + 'broad query that covers the whole question; search again '
+          + 'only if the results are insufficient or the question has '
+          + 'clearly separate parts. Set freshness for news and recent '
+          + 'events.',
         inputSchema: z.object({
           query: z.string().min(1).max(BRAVE_SEARCH_QUERY_MAX_LENGTH),
           freshness: searchFreshnessSchema,

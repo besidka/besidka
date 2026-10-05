@@ -1337,4 +1337,82 @@ describe('Chat/Reasoning', () => {
     expect(renderedValues[0]).toBe('Found the figure in the report.')
     expect(wrapper.html()).not.toContain('†')
   })
+
+  it('renders an expandable search step with query, freshness and count '
+    + 'for an external search tool part', async () => {
+    const wrapper = await mountSuspended(Reasoning, {
+      props: {
+        message: createMessage([
+          {
+            type: 'tool-web_search_brave',
+            toolCallId: 'call-1',
+            state: 'output-available',
+            input: { query: 'ukraine news', freshness: 'day' },
+            output: {
+              provider: 'brave',
+              results: [{
+                title: 'Headline',
+                url: 'https://news.example.com/a',
+                snippet: 'Body',
+              }],
+            },
+          },
+        ] as UIMessage['parts']),
+        status: 'ready',
+        reasoningLevel: 'low',
+        turnStartedAt: Date.now(),
+        reasoningAccumulatedMs: 0,
+        reasoningSegmentStartedAt: 0,
+        isTurnThinkingHeld: false,
+      },
+    })
+
+    const stepTrigger = wrapper.get(
+      '[data-testid="reasoning-search-step-trigger"]',
+    )
+
+    expect(stepTrigger.text()).toContain('Searched with Brave')
+    expect(stepTrigger.text()).toContain('“ukraine news”')
+    expect(stepTrigger.text()).toContain('Past day')
+    expect(stepTrigger.text()).toContain('1 result')
+    expect(stepTrigger.attributes('aria-expanded')).toBe('false')
+
+    await stepTrigger.trigger('click')
+
+    expect(stepTrigger.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-testid="reasoning-search-step-host"]').text())
+      .toBe('news.example.com')
+    expect(wrapper.text()).not.toContain('Body')
+  })
+
+  it('shows a streaming external search step with a partial input',
+    async () => {
+      const wrapper = await mountSuspended(Reasoning, {
+        props: {
+          message: createMessage([
+            {
+              type: 'tool-web_search_exa',
+              toolCallId: 'call-1',
+              state: 'input-streaming',
+              input: { query: 'partial qu' },
+            },
+          ] as UIMessage['parts']),
+          status: 'streaming',
+          reasoningLevel: 'low',
+          turnStartedAt: Date.now(),
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: Date.now(),
+          isTurnThinkingHeld: true,
+        },
+      })
+
+      expect(
+        wrapper.get('[data-testid="reasoning-search-step-title"]').text(),
+      ).toBe('Searching with Exa…')
+      expect(
+        wrapper.get('[data-testid="reasoning-search-step-query"]').text(),
+      ).toBe('“partial qu”')
+      expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
+        .toHaveLength(0)
+    })
 })

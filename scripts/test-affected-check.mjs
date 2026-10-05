@@ -441,6 +441,12 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/chats-external-search.spec.ts',
   ]
 
+  const searchStepTests = [
+    'tests/unit/utils/search-step.spec.ts',
+    'tests/unit/components/Chat/Reasoning/SearchStep.spec.ts',
+    'tests/unit/components/Chat/Reasoning.spec.ts',
+  ]
+
   const deepResearchTests = [
     'tests/unit/utils/research.spec.ts',
     'tests/unit/utils/research-ui.spec.ts',
@@ -1290,9 +1296,18 @@ export function getAffectedTests(changedFiles) {
       pattern: /^app\/components\/Chat\/(UrlSources|Reasoning)\.vue$/,
       tests: [
         ...profileSettingsTests,
+        ...searchStepTests,
         'tests/unit/components/Chat/Reasoning.spec.ts',
         'tests/unit/components/Chat/UrlSources.spec.ts',
       ],
+    },
+    {
+      pattern: /^app\/components\/Chat\/Reasoning\/SearchStep\.vue$/,
+      tests: searchStepTests,
+    },
+    {
+      pattern: /^app\/(utils\/search-step\.ts|types\/search-step\.d\.ts)$/,
+      tests: searchStepTests,
     },
     {
       pattern: /^app\/utils\/reasoning\.ts$/,

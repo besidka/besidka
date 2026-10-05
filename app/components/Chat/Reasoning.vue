@@ -109,7 +109,15 @@
                   />
                 </span>
               </div>
+              <ChatReasoningSearchStep
+                v-if="step.search"
+                :data="step.search"
+                :title="step.title"
+                :pending="step.pending"
+                :id-prefix="`reasoning-${message.id}-${step.id}`"
+              />
               <details
+                v-else
                 :open="expandedStepId === step.id"
                 class="group/point collapse my-2.5 min-w-0 flex-1"
               >
@@ -171,6 +179,7 @@
 <script setup lang="ts">
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import type { SearchStepData } from '~/types/search-step.d'
 
 const props = defineProps<{
   message: UIMessage
@@ -189,6 +198,7 @@ interface ReasoningStep {
   kind: 'reasoning' | 'tool'
   pending: boolean
   failed: boolean
+  search: SearchStepData | null
 }
 
 const reasoningIcon = computed<string>(() => {
@@ -244,6 +254,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
           kind: 'reasoning',
           pending: false,
           failed: false,
+          search: null,
         })
       }
 
@@ -267,6 +278,7 @@ const reasoningSteps = computed<ReasoningStep[]>(() => {
       kind: 'tool',
       pending: isPending,
       failed: isFailed,
+      search: getSearchStepData(part),
     })
   }
 
@@ -624,8 +636,8 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.reasoning-main-title-skeleton {
+<style>
+.skeleton.reasoning-main-title-skeleton {
   background-color: transparent !important;
   border-radius: 0 !important;
   display: inline-block;
@@ -637,11 +649,11 @@ onBeforeUnmount(() => {
   );
 }
 
-.reasoning-main-title-skeleton.flex {
+.skeleton.reasoning-main-title-skeleton.flex {
   display: flex;
 }
 
-:global([data-theme="dark"]) .reasoning-main-title-skeleton {
+[data-theme="dark"] .skeleton.reasoning-main-title-skeleton {
   background-image: linear-gradient(
     105deg,
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 0% 40%,
@@ -649,7 +661,9 @@ onBeforeUnmount(() => {
     color-mix(in oklab, var(--color-base-content) 95%, transparent) 60% 100%
   );
 }
+</style>
 
+<style scoped>
 .reasoning-step-complete {
   display: inline-flex;
   width: 0.7rem;

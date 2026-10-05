@@ -102,6 +102,22 @@ describe('getExaWebSearchTools tool shape', () => {
     expect(result.tools).not.toHaveProperty('web_search')
     expect(result.tools).not.toHaveProperty('web_search_preview')
   })
+
+  it('describes a single broad query first and no longer asks for one '
+    + 'focused query per call', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse(EXA_SEARCH_RESPONSE),
+    ))
+
+    const { getExaWebSearchTools } = await importModule()
+    const result = await getExaWebSearchTools('exa-key')
+    const description = result.tools?.web_search_exa?.description
+
+    expect(description).toContain('Search the web using Exa.')
+    expect(description).toContain('Start with one broad query')
+    expect(description).toContain('Set freshness for news and recent events.')
+    expect(description).not.toContain('one focused')
+  })
 })
 
 describe('web_search_exa tool execute()', () => {
