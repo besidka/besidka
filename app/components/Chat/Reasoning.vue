@@ -154,7 +154,7 @@
                   <MDCCached
                     :key="`reasoning-${message.id}-${step.id}-${status}`"
                     :cache-key="`reasoning-${message.id}-${step.id}-${status}`"
-                    :value="step.body"
+                    :value="stripModelCitationMarkers(step.body)"
                     :parser-options="{ highlight: false }"
                     class="chat-markdown text-xs !text-text/80"
                   />

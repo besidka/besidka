@@ -1321,4 +1321,20 @@ describe('Chat/Reasoning', () => {
 
     expect(timerLabel(wrapper)).toBe('(5s)')
   })
+
+  it('hides model citation markers in reasoning step bodies', async () => {
+    const wrapper = await mountSettledReasoning([
+      '**Checking sources**',
+      '',
+      'Found the figure 【5†L1-L8】 in the report 【3†source】.',
+    ].join('\n'))
+
+    const renderedValues = wrapper
+      .findAllComponents({ name: 'MDCCached' })
+      .map(component => String(component.props('value')))
+
+    expect(renderedValues).toHaveLength(1)
+    expect(renderedValues[0]).toBe('Found the figure in the report.')
+    expect(wrapper.html()).not.toContain('†')
+  })
 })
