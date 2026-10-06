@@ -413,9 +413,10 @@ curated by the same provider. Referencing models that are themselves
 deprecated (the deep-research pair) are skipped. A `retiredAt`-only helper
 is not flagged, so it must be repointed before its date, not only when its
 status flips. The image controller moved from `gpt-5-nano` (retires
-2026-12-11) to `gpt-6-luna` for this reason; `forProjectMemory` and the
-research `assistModel`, both `gpt-5.4-nano`, still need the same move
-before 2027-04-01 (see "Owner action items").
+2026-12-11) to `gpt-6-luna` for this reason, and `forProjectMemory` followed
+on 2026-10-06. The research `assistModel` (`gpt-5.4-nano`) is moot: it lives
+only on the two deprecated deep-research models tracked in #402 (see "Owner
+action items").
 
 Semantics: `status: 'deprecated'` is the **gate** — legacy tab plus the
 `useChatProvider()` server guard block new chats with the model.
@@ -671,11 +672,14 @@ Nothing is required to deploy this. Specifically:
   it, `git diff providers/data/models-dev-snapshot.json` and skim it
   before committing — a refreshed snapshot can rename a model users
   already picked (as happened with Nano Banana in this PR).
-- **Repoint `gpt-5.4-nano` before 2027-04-01.** It is still the
-  `forProjectMemory` model and the `assistModel` of the OpenAI research
-  pair, and OpenAI retires it on that date. OpenAI's replacement is
-  `gpt-6-luna`. The helper-model guard only flags `status: 'deprecated'`
-  targets, so it will not warn before the date; do it in advance.
+- **Repoint `gpt-5.4-nano` before 2027-04-01 (done 2026-10-06).**
+  `forProjectMemory` moved to `gpt-6-luna`, OpenAI's named replacement.
+  Project memory now requests `low` reasoning effort for OpenAI (`useOpenAI`
+  with `'low'`, forwarded as `generateText({ reasoning })`) so `gpt-6-luna`
+  does not fall back to its default `medium`; Google and Anthropic keep the
+  provider default. The `assistModel` of the OpenAI research pair is still
+  `gpt-5.4-nano` but moot until #402 resolves the two deprecated
+  deep-research models.
 - **The optional provider-key spot-check** (two `curl` commands, above)
   is only useful if you suspect a specific model has quietly stopped
   working for BYOK users. It is not part of any regular workflow.
