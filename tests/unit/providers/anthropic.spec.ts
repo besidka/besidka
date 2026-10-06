@@ -15,7 +15,7 @@ const expectedModelIds = [
 ]
 
 describe('curated anthropic provider', () => {
-  it('curates exactly the nine expected models', () => {
+  it('curates exactly the expected models', () => {
     const ids = anthropic.models.map(model => model.id)
 
     expect(anthropic.models).toHaveLength(expectedModelIds.length)

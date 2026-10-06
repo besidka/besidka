@@ -125,6 +125,28 @@ function buildFamilyTemplates(provider) {
   return templatesByFamily
 }
 
+/**
+ * Lists, per family, the template the proposer would copy from for
+ * `provider`: the highest-version curated model that passes
+ * isProposableTemplate. Side-effect free so tests can rehearse the same
+ * template selection the weekly proposer performs.
+ */
+export function listProposableTemplates(provider) {
+  const proposableTemplates = []
+
+  for (const [family, entry] of buildFamilyTemplates(provider)) {
+    if (isProposableTemplate(entry.template)) {
+      proposableTemplates.push({
+        family,
+        template: entry.template,
+        version: entry.version,
+      })
+    }
+  }
+
+  return proposableTemplates
+}
+
 function hasCompleteSnapshotFields(upstreamModel) {
   return typeof upstreamModel.name === 'string'
     && typeof upstreamModel.description === 'string'
@@ -451,6 +473,112 @@ export function insertCuratedEntry(sourceText, templateId, entryText) {
   }
 
   lines.splice(openingBraceIndex, 0, entryText)
+
+  return lines.join('\n')
+}
+
+function findBlockRange(lines, openingLine, closingLine) {
+  const startIndex = lines.findIndex(line => line.startsWith(openingLine))
+
+  if (startIndex === -1) {
+    return null
+  }
+
+  const endIndex = lines.findIndex((line, index) => {
+    return index > startIndex && line === closingLine
+  })
+
+  if (endIndex === -1) {
+    throw new Error(
+      `Could not find the closing "${closingLine}" for "${openingLine}".`,
+    )
+  }
+
+  return { startIndex, endIndex }
+}
+
+function findUniqueLineInBlock(lines, range, matchesLine, description) {
+  const matchingIndexes = []
+
+  for (let index = range.startIndex + 1; index < range.endIndex; index++) {
+    if (matchesLine(lines[index])) {
+      matchingIndexes.push(index)
+    }
+  }
+
+  if (matchingIndexes.length === 0) {
+    throw new Error(`No ${description} found.`)
+  }
+
+  if (matchingIndexes.length > 1) {
+    throw new Error(
+      `Ambiguous match: found ${matchingIndexes.length} of ${description}.`,
+    )
+  }
+
+  return matchingIndexes[0]
+}
+
+/**
+ * Splices a new id into the pinned expectations of a provider spec
+ * (tests/unit/providers/<provider>.spec.ts) so the spec keeps passing once
+ * insertCuratedEntry has added the same model to providers/<provider>.ts:
+ * `'<newId>',` goes immediately before `'<templateId>',` inside
+ * `const expectedModelIds = [`, and, when the spec also pins
+ * `const expectedToolsById`, a `'<newId>': [...]` line goes immediately
+ * before the template's entry. Throws if the ids block is missing or the
+ * template line is missing or ambiguous in either block.
+ */
+export function insertPinnedSpecEntry(
+  specText,
+  templateId,
+  { newId, tools },
+) {
+  const lines = specText.split('\n')
+  const idsRange = findBlockRange(lines, 'const expectedModelIds = [', ']')
+
+  if (!idsRange) {
+    throw new Error('No "const expectedModelIds = [" block found in spec.')
+  }
+
+  const toolsRange = findBlockRange(
+    lines,
+    'const expectedToolsById',
+    '}',
+  )
+  const idLine = `  '${templateId}',`
+  const toolsLinePrefix = `  '${templateId}': `
+  const idIndex = findUniqueLineInBlock(
+    lines,
+    idsRange,
+    line => line === idLine,
+    `"${templateId}" entries in expectedModelIds`,
+  )
+  const toolsIndex = toolsRange
+    ? findUniqueLineInBlock(
+      lines,
+      toolsRange,
+      line => line.startsWith(toolsLinePrefix),
+      `"${templateId}" entries in expectedToolsById`,
+    )
+    : -1
+
+  const insertions = [{ index: idIndex, line: `  '${newId}',` }]
+
+  if (toolsIndex !== -1) {
+    const renderedTools = tools.map(tool => `'${tool}'`).join(', ')
+
+    insertions.push({
+      index: toolsIndex,
+      line: `  '${newId}': [${renderedTools}],`,
+    })
+  }
+
+  insertions.sort((first, second) => second.index - first.index)
+
+  for (const insertion of insertions) {
+    lines.splice(insertion.index, 0, insertion.line)
+  }
 
   return lines.join('\n')
 }

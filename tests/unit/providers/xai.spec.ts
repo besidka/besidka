@@ -26,7 +26,7 @@ const expectedToolsById: Record<string, string[]> = {
 }
 
 describe('curated xai provider', () => {
-  it('curates exactly the eight expected models', () => {
+  it('curates exactly the expected models', () => {
     const ids = xai.models.map(model => model.id)
 
     expect(xai.models).toHaveLength(expectedModelIds.length)
@@ -34,7 +34,12 @@ describe('curated xai provider', () => {
   })
 
   it('lists the non-reasoning model first as the recommended default', () => {
-    expect(xai.models[0]?.id).toBe('grok-4.20-0309-non-reasoning')
+    const [firstModel] = xai.models
+
+    expect(firstModel?.reasoning).toBeUndefined()
+    expect(firstModel?.reasoningAlwaysOn).toBeFalsy()
+    expect(parseModelFamily(firstModel!.id)?.family)
+      .toBe('grok-{v}-non-reasoning')
   })
 
   it('has no model marked as the app-wide default', () => {

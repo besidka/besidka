@@ -18,13 +18,19 @@
  *   node scripts/propose-model-successors.mjs --dry-run
  */
 
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { fetchCatalog } from './models-dev-catalog.mjs'
 import {
   findSuccessorProposals,
   formatSuccessorProposalsReport,
   insertCuratedEntry,
+  insertPinnedSpecEntry,
   renderCuratedEntry,
 } from './detect-model-successors.mjs'
 import anthropic from '../providers/anthropic.ts'
@@ -75,10 +81,44 @@ function applyProposals(proposals) {
       )
       process.exit(1)
     }
+
+    applyPinnedSpecEntry(proposal, sourcesByPath)
   }
 
   for (const [path, source] of sourcesByPath) {
     writeFileSync(path, source)
+  }
+}
+
+function applyPinnedSpecEntry(proposal, sourcesByPath) {
+  const specPath = fileURLToPath(
+    new URL(
+      `../tests/unit/providers/${proposal.providerId}.spec.ts`,
+      import.meta.url,
+    ),
+  )
+
+  if (!existsSync(specPath)) {
+    return
+  }
+
+  const specSource = sourcesByPath.get(specPath)
+    ?? readFileSync(specPath, 'utf-8')
+
+  try {
+    sourcesByPath.set(
+      specPath,
+      insertPinnedSpecEntry(specSource, proposal.templateId, {
+        newId: proposal.modelId,
+        tools: proposal.template.tools,
+      }),
+    )
+  } catch (exception) {
+    console.error(
+      `Could not insert "${proposal.modelId}" into ${specPath}: `
+      + exception.message,
+    )
+    process.exit(1)
   }
 }
 

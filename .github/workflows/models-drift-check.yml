@@ -113,7 +113,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add providers/*.ts providers/data/models-dev-snapshot.json
+          git add providers/*.ts tests/unit/providers/*.spec.ts providers/data/models-dev-snapshot.json
           git commit -m "$COMMIT_SUBJECT"
 
       - name: Write fetch log to job summary
@@ -189,6 +189,9 @@ jobs:
               echo "  search, image generation, reasoning) against the"
               echo "  provider's own docs — the detector only mechanically"
               echo "  copies its template's flags."
+              echo "- The proposal also edits"
+              echo "  \`tests/unit/providers/<provider>.spec.ts\` (pinned"
+              echo "  id and tools expectations) — review that diff too."
               echo "- If satisfied, no action needed — merging this PR"
               echo "  curates the model."
               echo "- If rejecting a proposal, add its id to \`DECLINED_IDS\`"

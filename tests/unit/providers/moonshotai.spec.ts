@@ -10,7 +10,7 @@ const expectedModelIds = [
 ]
 
 describe('curated moonshotai provider', () => {
-  it('curates exactly the four expected models', () => {
+  it('curates exactly the expected models', () => {
     const ids = moonshotai.models.map(model => model.id)
 
     expect(moonshotai.models).toHaveLength(expectedModelIds.length)
