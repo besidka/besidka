@@ -13,7 +13,7 @@ export interface UploadingFile {
   abortController?: AbortController
 }
 
-export interface UploadError {
+export interface ClassifiedUploadError {
   type: 'network' | 'validation' | 'server' | 'quota' | 'timeout' | 'cancelled'
   message: string
   retryable: boolean
@@ -77,7 +77,7 @@ export function useChatFiles(
   /**
    * Classify upload error for user-friendly messaging
    */
-  function classifyError(error: any): UploadError {
+  function classifyError(error: any): ClassifiedUploadError {
     if (error.message?.includes('Network') || error.message?.includes('network')) {
       return {
         type: 'network',
