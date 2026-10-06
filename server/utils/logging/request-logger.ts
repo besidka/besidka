@@ -8,6 +8,9 @@ import { useLogger } from 'evlog'
  * portable `RequestEvent` omits; only `event.context.log` is read at runtime,
  * and the portable event shares `context` with the real event.
  */
-export function useRequestLogger(event: RequestEvent, service?: string) {
+export function useRequestLogger(
+  event: Pick<RequestEvent, 'context'>,
+  service?: string,
+) {
   return useLogger(event as unknown as ServerEvent, service)
 }

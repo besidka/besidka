@@ -2258,6 +2258,7 @@ async function persistAssistantMessageFromStream(input: {
         try {
           const activeShare = await getActiveShareForChat(
             input.chatId,
+            input.event,
           )
 
           if (activeShare?.showFiles) {
@@ -2266,6 +2267,7 @@ async function persistAssistantMessageFromStream(input: {
               input.chatId,
               input.userId,
               true,
+              input.event,
             )
           }
         } catch {
