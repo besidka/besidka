@@ -43,6 +43,14 @@ vi.mock('#app', () => ({
   abortNavigation: vi.fn(),
 }))
 
+vi.mock('nuxt/server', async (importOriginal) => {
+  const { withGlobalStubOverrides } = await import('./mocks/nuxt-server')
+
+  return withGlobalStubOverrides(
+    await importOriginal<Record<string, unknown>>(),
+  )
+})
+
 /**
  * Stub $fetch to allow MSW interception in tests
  */

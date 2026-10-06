@@ -1,4 +1,10 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
+import {
+  defineEventHandler,
+  readValidatedBody,
+  setResponseStatus,
+} from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const clientErrorReportBodySchema = z.object({
   message: z.string().max(500).optional(),
@@ -13,7 +19,7 @@ const clientErrorReportBodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   const body = await readValidatedBody(
