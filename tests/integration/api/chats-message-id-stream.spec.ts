@@ -1318,12 +1318,16 @@ describe('chat stream message ids', () => {
     expect(updateSet).toHaveBeenCalledWith({
       originMessageId: expect.anything(),
     })
-    expect(mocks.getActiveShareForChat).toHaveBeenCalledWith('chat-1')
+    expect(mocks.getActiveShareForChat).toHaveBeenCalledWith(
+      'chat-1',
+      event,
+    )
     expect(mocks.syncChatShareFiles).toHaveBeenCalledWith(
       'share-1',
       'chat-1',
       1,
       true,
+      event,
     )
   })
 })
