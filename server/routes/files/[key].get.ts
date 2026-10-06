@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { hasShareTokenFileAccess } from '~~/server/utils/files/file-share-access'
 import {
   getTestImageFixtureBytes,
@@ -21,8 +22,8 @@ export default defineEventHandler(async (event) => {
 
   if (!storageKey) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing file Storage Key',
+      message: 'Missing file Storage Key',
+      status: 400,
     })
   }
 
@@ -65,8 +66,8 @@ export default defineEventHandler(async (event) => {
 
   if (!file) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found',
+      message: 'File not found',
+      status: 404,
     })
   }
 
@@ -89,8 +90,8 @@ export default defineEventHandler(async (event) => {
 
   if (!hasAccess) {
     throw createError({
-      statusCode: 403,
-      statusMessage: 'You do not have access to this file',
+      message: 'You do not have access to this file',
+      status: 403,
     })
   }
 
@@ -98,8 +99,8 @@ export default defineEventHandler(async (event) => {
 
   if (!storageObject) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found in storage',
+      message: 'File not found in storage',
+      status: 404,
     })
   }
 

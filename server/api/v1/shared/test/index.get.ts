@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { TextUIPart } from 'ai'
 import {
   buildTestHiddenFilePart,
@@ -14,8 +15,8 @@ export default defineEventHandler(() => {
 
   if (!isTestSharedEndpointEnabled) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Not found',
+      message: 'Not found',
+      status: 404,
     })
   }
 

@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import * as schema from '~~/server/db/schema'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
@@ -15,9 +16,9 @@ export default defineEventHandler(async (event) => {
 
   if (params.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error,
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -60,8 +61,8 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found.',
+      status: 404,
     })
   }
 

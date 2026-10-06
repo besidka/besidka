@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { normalizeMediaType } from '#shared/utils/files'
 import {
   getEffectiveUserFilePolicy,
@@ -41,8 +42,8 @@ export default defineEventHandler(async (event) => {
 
   if (!fileType || !fileName) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing required headers',
+      message: 'Missing required headers',
+      status: 400,
     })
   }
 
@@ -50,8 +51,8 @@ export default defineEventHandler(async (event) => {
 
   if (!normalizedFileType) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid file media type',
+      message: 'Invalid file media type',
+      status: 400,
     })
   }
 
@@ -59,8 +60,8 @@ export default defineEventHandler(async (event) => {
 
   if (!fileBuffer.length) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'No file data provided',
+      message: 'No file data provided',
+      status: 400,
     })
   }
 
@@ -91,8 +92,8 @@ export default defineEventHandler(async (event) => {
     !allowedFileFormats.includes(normalizedFileType as AllowedFileFormat)
   ) {
     throw createError({
-      statusCode: 400,
-      statusMessage: `File type must be one of: ${allowedFileFormats.join(', ')}`,
+      message: `File type must be one of: ${allowedFileFormats.join(', ')}`,
+      status: 400,
     })
   }
 
@@ -102,8 +103,8 @@ export default defineEventHandler(async (event) => {
 
   if (wouldExceed) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Not enough storage space. Please delete some files.',
+      message: 'Not enough storage space. Please delete some files.',
+      status: 400,
     })
   }
 
@@ -138,8 +139,8 @@ export default defineEventHandler(async (event) => {
 
         if (!transformedImage.body) {
           throw createError({
-            statusCode: 500,
-            statusMessage: 'Transform response body was empty',
+            message: 'Transform response body was empty',
+            status: 500,
           })
         }
 

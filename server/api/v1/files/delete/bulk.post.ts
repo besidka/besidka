@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -23,9 +24,9 @@ export default defineEventHandler(async (event) => {
 
   if (!body.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error.flatten(),
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -100,10 +101,10 @@ export default defineEventHandler(async (event) => {
 
   if (deletedCount === 0) {
     throw createError({
-      statusCode: failedCount > 0 ? 409 : 404,
-      statusMessage: failedCount > 0
+      message: failedCount > 0
         ? 'Failed to delete files from storage. Please try again.'
         : 'No files found',
+      status: failedCount > 0 ? 409 : 404,
     })
   }
 
@@ -111,8 +112,8 @@ export default defineEventHandler(async (event) => {
 
   if (failedCount > 0) {
     throw createError({
-      statusCode: 409,
-      statusMessage: `Failed to delete ${failedCount} file(s) from storage`,
+      message: `Failed to delete ${failedCount} file(s) from storage`,
+      status: 409,
     })
   }
 

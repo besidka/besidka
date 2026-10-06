@@ -11,6 +11,18 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('evlog', () => ({
+  createError: (input: {
+    message: string
+    status?: number
+    why?: string
+    fix?: string
+  }) => {
+    const exception = new Error(input.message)
+
+    Object.assign(exception, input)
+
+    return exception
+  },
   useLogger: () => ({
     set: mocks.loggerSet,
   }),
@@ -163,8 +175,8 @@ describe('files upload API', () => {
     await expect(handler(createEvent({
       'content-type': 'text/plain',
     }) as any)).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: 'Missing required headers',
+      status: 400,
+      message: 'Missing required headers',
     })
   })
 
@@ -186,7 +198,7 @@ describe('files upload API', () => {
       'x-filename': encodeURIComponent('notes.txt'),
       'x-filesize': '1',
     }, '123456') as any)).rejects.toMatchObject({
-      statusCode: 400,
+      status: 400,
     })
   })
 
@@ -372,7 +384,7 @@ describe('files upload API', () => {
       'x-filename': encodeURIComponent('note.txt'),
       'x-filesize': '4',
     }) as any)).rejects.toMatchObject({
-      statusCode: 500,
+      status: 500,
     })
 
     expect(remove).toHaveBeenCalledWith('stored.txt')

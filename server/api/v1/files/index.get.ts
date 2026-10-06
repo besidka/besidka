@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, desc, eq, like, sql } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -22,9 +23,9 @@ export default defineEventHandler(async (event) => {
 
   if (!query.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid query parameters',
-      data: query.error.flatten(),
+      message: 'Invalid query parameters',
+      status: 400,
+      why: query.error.message,
     })
   }
 

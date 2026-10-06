@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 
@@ -79,8 +80,8 @@ export const useEmail = (
 
     if (!emailBinding) {
       throw createError({
-        statusCode: 500,
-        statusMessage: 'Email binding (EMAIL) is not available in the runtime.',
+        message: 'Email binding (EMAIL) is not available in the runtime.',
+        status: 500,
       })
     }
 
@@ -102,7 +103,11 @@ export const useEmail = (
         text: text ?? htmlToText(html),
       })
     } catch (exception: any) {
-      throw createError(exception)
+      throw createError({
+        message: exception.message,
+        status: 500,
+        cause: exception,
+      })
     }
   }
 

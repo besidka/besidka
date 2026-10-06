@@ -1,4 +1,5 @@
 import type { Provider, Model } from '#shared/types/providers.d'
+import { createError } from 'evlog'
 import { assertModelNotDeprecated } from '~~/server/utils/chats/deprecated-model'
 
 export function useChatProvider(
@@ -10,8 +11,8 @@ export function useChatProvider(
 } {
   if (!userModel) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Please select a model to continue.',
+      message: 'Please select a model to continue.',
+      status: 400,
     })
   }
 
@@ -19,9 +20,9 @@ export function useChatProvider(
 
   if (!provider || !model) {
     throw createError({
-      statusCode: 400,
-      statusMessage:
+      message:
         'Current model is not supported by any provider. Please select a different model.',
+      status: 400,
     })
   }
 

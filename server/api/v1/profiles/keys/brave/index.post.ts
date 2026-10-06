@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import {
@@ -16,9 +17,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 

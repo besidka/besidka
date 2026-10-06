@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { UIMessage } from 'ai'
 import type { FilePolicy } from '#shared/types/files.d'
 import { and, eq, lt, sql } from 'drizzle-orm'
@@ -129,8 +130,8 @@ export async function getOrCreateStoragePolicyRow(
 
   if (!raceWinnerRow) {
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to initialize user storage policy',
+      message: 'Failed to initialize user storage policy',
+      status: 500,
     })
   }
 
@@ -442,8 +443,8 @@ export async function validateMessageFilePolicy(
 
   if (fileParts.length > policy.maxFilesPerMessage) {
     throw createError({
-      statusCode: 400,
-      statusMessage: `You can attach a maximum of ${policy.maxFilesPerMessage} files per message`,
+      message: `You can attach a maximum of ${policy.maxFilesPerMessage} files per message`,
+      status: 400,
     })
   }
 
@@ -452,8 +453,8 @@ export async function validateMessageFilePolicy(
 
     if (!storageKey) {
       throw createError({
-        statusCode: 400,
-        statusMessage: 'Invalid attached file URL',
+        message: 'Invalid attached file URL',
+        status: 400,
       })
     }
 
@@ -484,8 +485,8 @@ export async function validateMessageFilePolicy(
 
   if (totalFilesSize > policy.maxMessageFilesBytes) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Attached files exceed the maximum total size per message',
+      message: 'Attached files exceed the maximum total size per message',
+      status: 400,
     })
   }
 }

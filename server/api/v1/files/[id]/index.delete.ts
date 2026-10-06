@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
@@ -22,9 +23,9 @@ export default defineEventHandler(async (event) => {
 
   if (!params.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error.flatten(),
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -44,8 +45,8 @@ export default defineEventHandler(async (event) => {
 
   if (!file) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found',
+      message: 'File not found',
+      status: 404,
     })
   }
 
@@ -66,8 +67,8 @@ export default defineEventHandler(async (event) => {
     })
 
     throw createError({
-      statusCode: 409,
-      statusMessage: 'Failed to delete file from storage. Please try again.',
+      message: 'Failed to delete file from storage. Please try again.',
+      status: 409,
     })
   }
 

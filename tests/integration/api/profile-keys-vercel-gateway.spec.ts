@@ -175,8 +175,8 @@ describe('vercel-gateway key API', () => {
     await expect(postHandler({
       body: { apiKey: '' },
     } as any)).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
+      status: 400,
+      message: 'Invalid request body',
     })
   })
 

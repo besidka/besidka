@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { UIMessageChunk } from 'ai'
 import type { RequestEvent } from 'nuxt/server'
 import {
@@ -324,8 +325,8 @@ export default defineEventHandler(async (event) => {
 
   if (!isTestChatEndpointEnabled) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Not found',
+      message: 'Not found',
+      status: 404,
     })
   }
 
@@ -349,9 +350,9 @@ export default defineEventHandler(async (event) => {
 
   if (query.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request query',
-      data: query.error,
+      message: 'Invalid request query',
+      status: 400,
+      why: query.error.message,
     })
   }
 

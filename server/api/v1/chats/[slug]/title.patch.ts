@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
 import type { UIMessage } from 'ai'
@@ -23,9 +24,9 @@ export default defineEventHandler(async (event) => {
 
   if (params.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error,
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -36,9 +37,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -76,8 +77,8 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found.',
+      status: 404,
     })
   }
 

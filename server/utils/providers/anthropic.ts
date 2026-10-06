@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
@@ -26,8 +27,8 @@ export async function useAnthropic(
 
   if (!data?.apiKey) {
     throw createError({
-      statusCode: 401,
-      statusMessage: 'Anthropic API key not found. Please set it up in the settings.',
+      message: 'Anthropic API key not found. Please set it up in the settings.',
+      status: 401,
     })
   }
 
@@ -38,8 +39,8 @@ export async function useAnthropic(
 
   if (!modelData) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Unsupported model.',
+      message: 'Unsupported model.',
+      status: 400,
     })
   }
 

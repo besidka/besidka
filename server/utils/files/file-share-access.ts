@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { H3Event } from 'h3'
 
 const FILE_ACCESS_TOKEN_HEADER = {
@@ -136,8 +137,8 @@ async function getTokenCryptoKey(event: H3Event): Promise<CryptoKey> {
 
   if (!secret) {
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Missing file access token secret',
+      message: 'Missing file access token secret',
+      status: 500,
     })
   }
 

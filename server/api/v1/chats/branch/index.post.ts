@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
 import * as schema from '~~/server/db/schema'
 import {
@@ -20,9 +21,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -64,8 +65,8 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found.',
+      status: 404,
     })
   }
 
@@ -83,8 +84,8 @@ export default defineEventHandler(async (event) => {
 
     if (branchIndex === -1) {
       throw createError({
-        statusCode: 400,
-        statusMessage: 'Message not found in this chat.',
+        message: 'Message not found in this chat.',
+        status: 400,
       })
     }
 
