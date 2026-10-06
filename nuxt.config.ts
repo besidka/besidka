@@ -362,6 +362,9 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 5,
   },
+  vue: {
+    vapor: true,
+  },
   typescript: {
     typeCheck: process.env.CI !== 'true',
   },
@@ -434,6 +437,29 @@ export default defineNuxtConfig({
     prefetchPreloadTags: true,
   },
   hooks: {
+    'vite:extendConfig': (viteConfig) => {
+      const compilerOptions = viteConfig.vue?.template?.compilerOptions
+
+      if (!compilerOptions?.nodeTransforms) {
+        return
+      }
+
+      compilerOptions.nodeTransforms = compilerOptions.nodeTransforms.map(
+        (nodeTransform) => {
+          if (nodeTransform.name !== 'viteMDCSlot') {
+            return nodeTransform
+          }
+
+          return function viteMDCSlot(node, context) {
+            if (!context.nodeTransforms) {
+              return
+            }
+
+            return nodeTransform(node, context)
+          }
+        },
+      )
+    },
     // App-level cookie texts must merge through the same lazy locale-file
     // pipeline as the module's own messages — config-file messages get
     // replaced when registered locale files load.
