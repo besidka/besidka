@@ -144,6 +144,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/ordering.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/scripts/detect-model-successors.spec.ts',
+    'tests/unit/scripts/propose-model-successors-rehearsal.spec.ts',
     'tests/unit/utils/model.spec.ts',
     'tests/unit/utils/cost-map.spec.ts',
     ...modelsTriggerTests,
@@ -520,11 +521,14 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/ai\/image-generation-cost\.ts$/,
-      tests: messageUsageTests,
+      tests: [
+        ...messageUsageTests,
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+      ],
     },
     {
       pattern:
-        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/data\/models-dev-snapshot\.json|scripts\/(fetch-models-metadata|audit-curated-models|detect-model-successors|propose-model-successors|models-dev-catalog)\.mjs|shared\/types\/providers\.d\.ts)$/,
+        /^(providers\/(index|merge|google|openai|anthropic|xai|deepseek|moonshotai|qwen)\.ts|providers\/data\/models-dev-snapshot\.json|tests\/unit\/providers\/(anthropic|xai|deepseek|moonshotai|qwen)\.spec\.ts|scripts\/(fetch-models-metadata|audit-curated-models|detect-model-successors|propose-model-successors|models-dev-catalog)\.mjs|shared\/types\/providers\.d\.ts)$/,
       tests: modelCatalogTests,
     },
     {

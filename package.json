@@ -16,7 +16,7 @@
 		"deploy:prod": "pnpm run build && wrangler deploy --env production",
 		"generate": "nuxt generate",
 		"dev:prepare": "nuxt prepare",
-		"typecheck": "nuxt typecheck",
+		"typecheck": "wrangler types > /dev/null && nuxt typecheck",
 		"analyze": "ROLLDOWN_OPTIONS_VALIDATION=loose nuxt analyze",
 		"cf-typegen": "wrangler types",
 		"lint": "eslint",

@@ -485,17 +485,22 @@ Step order in the job:
    `node scripts/propose-model-successors.mjs`, writing its own
    `proposed_count`/`proposed_ids`/`flagged_count`/`commit_subject` step
    outputs and inserting any proposed entries into `providers/*.ts` on
-   disk (uncommitted at this point).
+   disk (uncommitted at this point). It also adds each new id to the
+   pinned `expectedModelIds` (and `expectedToolsById` where present) in
+   `tests/unit/providers/<provider>.spec.ts`, so the PR stays green on
+   `main` after merge; it hard-fails if a spec can't be spliced.
+   Providers without a pinned spec (google, openai) are skipped.
 4. **Refresh snapshot for proposed models** (only if a successor was
    proposed) — reruns `pnpm run models:fetch` so the newly curated id gets
    its own snapshot entry, or the next run would hard-fail on it as
    missing.
 5. **Validate proposed curation** (same condition) — `pnpm run lint`,
-   `pnpm run typecheck`, and a `pnpm exec vitest run` covering every path in
-   `modelCatalogTests` from `scripts/test-affected-check.mjs` (the same set
-   the repo's own test-affected mapping considers relevant to a
-   `providers/*.ts` change), in sequence. This is the **only** validation a
-   proposed curation gets
+   `pnpm run typecheck` (the script runs `wrangler types` itself, so the
+   Cloudflare env types are always generated first), and a
+   `pnpm exec vitest run` covering every path in `modelCatalogTests` from
+   `scripts/test-affected-check.mjs` (the same set the repo's own
+   test-affected mapping considers relevant to a `providers/*.ts` change),
+   in sequence. This is the **only** validation a proposed curation gets
    before a human looks at the diff — the drift-check PR gets no
    `pull_request`-triggered CI, because `preview-build.yml` doesn't fire
    for PRs opened via `github.token`. A failure here halts the job before
@@ -503,7 +508,8 @@ Step order in the job:
    existing workflow-failure tracking issue (see below) — that week simply
    gets no PR.
 6. **Commit proposed curation** (same condition) — a second `git commit`
-   covering `providers/*.ts` and the re-refreshed snapshot, with the
+   covering `providers/*.ts`, the spliced
+   `tests/unit/providers/*.spec.ts` and the re-refreshed snapshot, with the
    message the script computed (`feat(models): propose <id> as a
    same-family successor`, or the plural form for more than one).
 7. Job summary gets both `models:fetch` and, when present,
@@ -517,8 +523,10 @@ Step order in the job:
    successor was proposed) the successor report and a reviewer checklist:
    verify capability flags against the provider's own docs, no action
    needed if satisfied, add a rejected id to `DECLINED_IDS` in
-   `scripts/detect-model-successors.mjs`, and a note that price-tier-flagged
-   ids and "needs a human" families are informational only.
+   `scripts/detect-model-successors.mjs`, a note that the proposal also
+   edits `tests/unit/providers/<provider>.spec.ts`, and a note that
+   price-tier-flagged ids and "needs a human" families are informational
+   only.
 10. **Open pull request** — by this point the working tree is clean with
     one or two local commits already made (not left uncommitted for the
     action to stage). `peter-evans/create-pull-request@v8` picks up commits
@@ -528,6 +536,31 @@ Step order in the job:
     rather than included — which would silently drop the already-committed
     `providers/*.ts` changes. Title and commit-message differ depending on
     whether a successor was proposed.
+
+The validation gate only runs when something is proposed, so two structural
+failures stayed latent until the first real proposal on 2026-10-05
+(issue #388): `typecheck` failed because the gitignored
+`worker-configuration.d.ts` (`wrangler types`) was never generated in this
+workflow, and vitest failed because the proposer added curated models
+without updating the exact sets pinned in the provider specs. The
+`typecheck` script now generates the env types itself (stdout silenced,
+stderr kept), the proposer splices the specs, and
+`tests/unit/scripts/propose-model-successors-rehearsal.spec.ts` exercises the
+splice path against the real provider and spec files. It runs through the
+affected-test mapping whenever `providers/*.ts`, the pinned provider specs
+or the successor scripts change, and inside the drift gate itself, so a
+format drift that would break the splice fails there rather than on a
+Monday cron. For each proposable template (via `listProposableTemplates`)
+it checks that the provider ids and the spec's `expectedModelIds` stay the
+same set, that the image model stays last, and that `expectedToolsById`
+gains the new id.
+
+Because the proposer splices a successor immediately before its template,
+pinned specs must not assume a fixed template position: the xai
+"first model is the recommended default" test is property-based (no
+`reasoning`, family `grok-{v}-non-reasoning`) for the same reason, so a
+future `grok-4.21-…-non-reasoning` successor landing at index 0 does not
+fail it.
 
 - **Success:** if the snapshot changed or a successor was proposed, the
   workflow opens a refresh PR (label `dependencies`) carrying one or two

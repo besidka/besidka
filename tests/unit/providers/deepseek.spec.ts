@@ -8,7 +8,7 @@ const expectedModelIds = [
 ]
 
 describe('curated deepseek provider', () => {
-  it('curates exactly the two expected models', () => {
+  it('curates exactly the expected models', () => {
     const ids = deepseek.models.map(model => model.id)
 
     expect(deepseek.models).toHaveLength(expectedModelIds.length)

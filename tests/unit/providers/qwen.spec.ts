@@ -115,7 +115,7 @@ function findModel(id: string) {
 }
 
 describe('curated qwen provider', () => {
-  it('curates exactly the 48 expected models', () => {
+  it('curates exactly the expected models', () => {
     const ids = qwen.models.map(model => model.id)
 
     expect(qwen.models).toHaveLength(expectedModelIds.length)
