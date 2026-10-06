@@ -117,7 +117,6 @@ describe('cloudflare-gateway key API', () => {
       getCloudflareGatewayCredentials,
     )
     vi.stubGlobal('useKV', () => fakeKv)
-    vi.stubGlobal('setResponseHeader', vi.fn())
     vi.stubGlobal('setResponseStatus', vi.fn())
     vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
       return `encrypted:${plain}`
@@ -423,6 +422,7 @@ describe('cloudflare-gateway key API', () => {
     }
 
     await expect(postHandler({
+      res: { headers: new Headers() },
       body: { accountId: 'account-1', apiKey: 'cf_over_limit' },
     } as any)).rejects.toMatchObject({
       message: 'Too many requests',

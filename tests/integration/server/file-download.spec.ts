@@ -6,9 +6,11 @@ async function getHandler() {
   return module.default
 }
 
-describe('private file download route', () => {
-  const setResponseHeaders = vi.fn()
+function createEvent() {
+  return { res: { headers: new Headers() } }
+}
 
+describe('private file download route', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -16,7 +18,6 @@ describe('private file download route', () => {
     vi.stubGlobal('getRouterParams', () => ({ key: 'generated-key' }))
     vi.stubGlobal('getQuery', vi.fn().mockReturnValue({}))
     vi.stubGlobal('getRequestHeader', vi.fn())
-    vi.stubGlobal('setResponseHeaders', setResponseHeaders)
     vi.stubGlobal('createError', (input: any) => {
       const exception = new Error(input.statusMessage || input.message)
 
@@ -48,15 +49,11 @@ describe('private file download route', () => {
 
   it('keeps authenticated file display inline by default', async () => {
     const handler = await getHandler()
-    const result = await handler({} as any)
+    const event = createEvent()
+    const result = await handler(event as any)
 
     expect(result).toBe('image-body')
-    expect(setResponseHeaders).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        'Content-Disposition': 'inline',
-      }),
-    )
+    expect(event.res.headers.get('Content-Disposition')).toBe('inline')
   })
 
   it('uses safe RFC 5987 filenames when download is requested', async () => {
@@ -64,10 +61,11 @@ describe('private file download route', () => {
 
     const handler = await getHandler()
 
-    await handler({} as any)
+    const event = createEvent()
 
-    const headers = setResponseHeaders.mock.calls[0]?.[1]
-    const disposition = headers?.['Content-Disposition']
+    await handler(event as any)
+
+    const disposition = event.res.headers.get('Content-Disposition')
 
     expect(disposition).toContain('attachment;')
     expect(disposition).toContain('filename="Zoty _las_.webp"')
@@ -95,17 +93,15 @@ describe('private file download route', () => {
 
     const handler = await getHandler()
 
-    await handler({} as any)
+    const event = createEvent()
 
-    const headers = setResponseHeaders.mock.calls[0]?.[1]
+    await handler(event as any)
 
-    expect(headers?.['Content-Type']).toBe('image/webp')
-    expect(headers?.['Content-Disposition']).toContain(
-      'filename="holiday-photo.webp"',
-    )
-    expect(headers?.['Content-Disposition']).toContain(
-      'filename*=UTF-8\'\'holiday-photo.webp',
-    )
+    const disposition = event.res.headers.get('Content-Disposition')
+
+    expect(event.res.headers.get('Content-Type')).toBe('image/webp')
+    expect(disposition).toContain('filename="holiday-photo.webp"')
+    expect(disposition).toContain('filename*=UTF-8\'\'holiday-photo.webp')
   })
 
   it.each([

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   cachedStats: vi.fn(),
   loggerSet: vi.fn(),
-  setResponseHeaders: vi.fn(),
 }))
 
 vi.mock('evlog', () => ({
@@ -13,6 +12,10 @@ vi.mock('evlog', () => ({
 vi.mock('~~/server/utils/landing/stats', () => ({
   cachedStats: mocks.cachedStats,
 }))
+
+function createEvent() {
+  return { res: { headers: new Headers() } }
+}
 
 async function getHandler() {
   const module = await import('../../../server/api/v1/stats/index.get')
@@ -26,7 +29,6 @@ describe('landing stats API', () => {
     vi.clearAllMocks()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
-    vi.stubGlobal('setResponseHeaders', mocks.setResponseHeaders)
   })
 
   it('returns and logs aggregate file provenance counts', async () => {
@@ -45,7 +47,7 @@ describe('landing stats API', () => {
     mocks.cachedStats.mockResolvedValue(stats)
 
     const handler = await getHandler()
-    const result = await handler({} as never)
+    const result = await handler(createEvent() as never)
 
     expect(result).toEqual({ ...stats, source: 'cache' })
     expect(mocks.loggerSet).toHaveBeenCalledWith({
@@ -63,7 +65,7 @@ describe('landing stats API', () => {
     mocks.cachedStats.mockRejectedValue(new Error('D1 unavailable'))
 
     const handler = await getHandler()
-    const result = await handler({} as never)
+    const result = await handler(createEvent() as never)
 
     expect(result).toMatchObject({
       files: 0,
@@ -85,10 +87,12 @@ describe('landing stats API', () => {
       const module = await import('../../../server/middleware/evlog-auth')
 
       await module.default({
-        headers: new Headers({
-          cookie: 'better-auth.session_token=secret',
-        }),
-        path: '/api/v1/stats?v=image-generation-1',
+        req: {
+          headers: new Headers({
+            cookie: 'better-auth.session_token=secret',
+          }),
+        },
+        url: new URL('http://localhost/api/v1/stats?v=image-generation-1'),
       } as never)
 
       expect(getSession).not.toHaveBeenCalled()
@@ -106,7 +110,7 @@ describe('landing stats API', () => {
     })
 
     const handler = await getHandler()
-    const result = await handler({} as any)
+    const result = await handler(createEvent() as any)
 
     expect(result).toEqual({
       users: 1,
@@ -124,7 +128,7 @@ describe('landing stats API', () => {
     mocks.cachedStats.mockRejectedValue(new Error('D1 unavailable'))
 
     const handler = await getHandler()
-    const result = await handler({} as any)
+    const result = await handler(createEvent() as any)
 
     expect(result).toMatchObject({
       users: 0,

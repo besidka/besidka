@@ -68,8 +68,13 @@ function createDbMock(options: DbMockOptions = {}) {
   }
 }
 
-function createEvent(headers: Record<string, string>) {
-  return { headers }
+function createEvent(headers: Record<string, string>, body = 'data') {
+  return {
+    headers,
+    req: {
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    },
+  }
 }
 
 function createFilePolicy(overrides: Partial<FilePolicy> = {}): FilePolicy {
@@ -113,7 +118,6 @@ describe('files upload API', () => {
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
-    vi.stubGlobal('readRawBody', vi.fn().mockResolvedValue(Buffer.from('data')))
     vi.stubGlobal('getRequestHeader', (event: any, key: string) => {
       return event.headers[key.toLowerCase()]
     })
@@ -167,7 +171,6 @@ describe('files upload API', () => {
   it('enforces quota using real body size, not X-Filesize header', async () => {
     const handler = await getHandler()
 
-    vi.stubGlobal('readRawBody', vi.fn().mockResolvedValue(Buffer.from('123456')))
     mocks.getEffectiveUserFilePolicy.mockResolvedValue(createFilePolicy({
       maxStorageBytes: 10,
     }))
@@ -182,7 +185,7 @@ describe('files upload API', () => {
       'content-type': 'text/plain',
       'x-filename': encodeURIComponent('notes.txt'),
       'x-filesize': '1',
-    }) as any)).rejects.toMatchObject({
+    }, '123456') as any)).rejects.toMatchObject({
       statusCode: 400,
     })
   })

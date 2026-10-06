@@ -53,11 +53,10 @@ describe('chat title API', () => {
     ) => {
       return parser(event.body)
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
@@ -343,11 +342,10 @@ describe('chat title API first message guards', () => {
     ) => {
       return parser(event.body)
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
@@ -476,11 +474,10 @@ describe('chat title API gateway routing', () => {
     ) => {
       return parser(event.body)
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
@@ -653,11 +650,10 @@ describe('chat title API openrouter plugin isolation', () => {
     ) => {
       return parser(event.body)
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },

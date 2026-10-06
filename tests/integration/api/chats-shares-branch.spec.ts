@@ -117,12 +117,11 @@ describe('shared chat branch API', () => {
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
-    vi.stubGlobal('getHeader', vi.fn(() => 'same-origin'))
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRequestHeader', vi.fn(() => 'same-origin'))
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('readValidatedBody', async (
       event: { body?: unknown },
@@ -205,7 +204,7 @@ describe('shared chat branch API', () => {
   })
 
   it('rejects cross-site requests', async () => {
-    vi.stubGlobal('getHeader', vi.fn(() => 'cross-site'))
+    vi.stubGlobal('getRequestHeader', vi.fn(() => 'cross-site'))
 
     const handler = await getHandler()
     const { db } = createDb()

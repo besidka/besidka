@@ -108,11 +108,10 @@ describe('chat share revoke API', () => {
     vi.clearAllMocks()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },

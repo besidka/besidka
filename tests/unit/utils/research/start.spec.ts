@@ -174,15 +174,7 @@ function createDb(input: {
 
 function createRequestEvent(host = 'app.besidka.com') {
   return {
-    node: {
-      req: {
-        headers: {
-          host,
-          'x-forwarded-proto': 'https',
-        },
-        originalUrl: '/api/v1/chats/chat-slug-1/research',
-      },
-    },
+    url: new URL(`https://${host}/api/v1/chats/chat-slug-1/research`),
   } as any
 }
 

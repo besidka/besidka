@@ -287,6 +287,9 @@ describe('chat stream message ids', () => {
     )
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('getRequestURL', (event: { url?: URL }) => {
+      return event.url ?? new URL('http://localhost/api/v1/chats/test')
+    })
     vi.stubGlobal('createError', (input: {
       statusCode?: number
       statusMessage?: string
@@ -298,11 +301,10 @@ describe('chat stream message ids', () => {
 
       return exception
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },
@@ -629,15 +631,10 @@ describe('chat stream message ids', () => {
     const { db } = createDb()
     const { event, waitUntil } = createWaitUntilEvent({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
-      node: {
-        req: {
-          headers: {
-            'host': 'pr-304.besidka-preview.chernenko.workers.dev',
-            'x-forwarded-proto': 'https',
-          },
-          originalUrl: '/api/v1/chats/01ARZ3NDEKTSV4RRFFQ69G5FAV',
-        },
-      },
+      url: new URL(
+        'https://pr-304.besidka-preview.chernenko.workers.dev'
+        + '/api/v1/chats/01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      ),
       body: {
         model: 'gpt-5-mini',
         tools: [],
@@ -1321,16 +1318,12 @@ describe('chat stream message ids', () => {
     expect(updateSet).toHaveBeenCalledWith({
       originMessageId: expect.anything(),
     })
-    expect(mocks.getActiveShareForChat).toHaveBeenCalledWith(
-      'chat-1',
-      event,
-    )
+    expect(mocks.getActiveShareForChat).toHaveBeenCalledWith('chat-1')
     expect(mocks.syncChatShareFiles).toHaveBeenCalledWith(
       'share-1',
       'chat-1',
       1,
       true,
-      event,
     )
   })
 })

@@ -150,11 +150,10 @@ describe('chat detail API — activeResearchJob visibility', () => {
         statusMessage: 'Unauthorized',
       })
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
@@ -291,11 +290,10 @@ describe('chat detail API — generated image reconstruction', () => {
         statusMessage: 'Unauthorized',
       })
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },

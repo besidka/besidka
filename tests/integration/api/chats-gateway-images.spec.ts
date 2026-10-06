@@ -301,6 +301,9 @@ describe('gateway-generated image persistence, end to end', () => {
     })
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('getRequestURL', () => {
+      return new URL('http://localhost/api/v1/chats/test')
+    })
     vi.stubGlobal('createError', (input: {
       statusCode?: number
       statusMessage?: string
@@ -318,11 +321,10 @@ describe('gateway-generated image persistence, end to end', () => {
 
       return exception
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },
