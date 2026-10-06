@@ -250,6 +250,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   unrelated PR changed assistant-persistence semantics on `main`, every
   CI run silently tested code that existed in no real checkout; the fix,
   and the lesson for diagnosing CI-only failures on long-lived branches
+- `docs/ci-e2e-webserver-exit.md` - The `wrangler dev` e2e webServer
+  exiting mid-suite in ~4% of CI runs (empty `[ERROR]`, then
+  `ERR_CONNECTION_REFUSED`): the signature, why the exit reason was
+  invisible, the stdout piping and `wrangler-logs` artifact diagnostics, and
+  what to do on the next occurrence
 
 ### Tech Stack
 
