@@ -10,6 +10,7 @@ import {
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
+import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
 const shortMessage = 'Test message'
 const longMessage = `Here is text with three paragraphs:

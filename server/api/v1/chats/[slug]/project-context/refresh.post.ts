@@ -1,11 +1,13 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { refreshProjectMemory } from '~~/server/utils/projects/memory'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
-  const params = await getValidatedRouterParams(event, z.object({
+  const logger = useRequestLogger(event)
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({

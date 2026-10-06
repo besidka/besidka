@@ -1,7 +1,9 @@
 import { z } from 'zod'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { trackLandingEvent } from '~~/server/utils/landing/analytics-events'
 import type { ClientLandingEventName } from '#shared/types/analytics.d'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const CLIENT_ALLOWED_EVENTS = new Set<ClientLandingEventName>([
   'landing_page_view',
@@ -28,7 +30,7 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   assertNotCrossSiteRequest(event)
 

@@ -7,8 +7,7 @@ import type {
 } from 'ai'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { GatewayProvider } from '@ai-sdk/gateway'
-import type { H3Event } from 'h3'
-import { getRequestURL } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type {
@@ -42,7 +41,7 @@ import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import type { SearchRates, SearchUsage } from '~~/server/utils/ai/search-usage'
 import type { WebSearchStep } from '~~/server/utils/ai/web-search-cost'
-import { useLogger, createError, createRequestLogger, log } from 'evlog'
+import { createError, createRequestLogger, log } from 'evlog'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
@@ -135,12 +134,19 @@ import { getBraveWebSearchTools } from '~~/server/utils/search/brave'
 import { getExaWebSearchTools } from '~~/server/utils/search/exa'
 import { createExternalSearchBudget } from '~~/server/utils/search/search-budget'
 import type { ExternalSearchProviderId } from '~~/server/utils/search/types.d'
+import {
+  defineEventHandler,
+  getRequestURL,
+  getRouterParams,
+  readValidatedBody,
+} from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
-  const params = await getValidatedRouterParams(event, z.object({
+  const logger = useRequestLogger(event)
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({
@@ -624,7 +630,7 @@ export default defineEventHandler(async (event) => {
   const cfCtx = (event.context as WaitUntilCtx | undefined)?.cloudflare?.context
   const aiLogger = createRequestLogger({
     method: 'POST',
-    path: event.path,
+    path: getRequestURL(event).pathname,
     waitUntil: cfCtx?.waitUntil?.bind(cfCtx),
   })
 
@@ -646,7 +652,7 @@ export default defineEventHandler(async (event) => {
   // ai-stream event so geo-grouped queries work for AI cost too. The parent
   // request logger gets this via the evlog-request-observability plugin;
   // standalone child loggers don't inherit so we attach explicitly.
-  attachCloudflareMeta(aiLogger, event)
+  attachCloudflareMeta(aiLogger)
 
   logger.set({
     providerId: telemetryProviderId,
@@ -666,7 +672,7 @@ export default defineEventHandler(async (event) => {
   let gatewayMaxOutputTokens: number | undefined
   let gatewayPricing: GatewayModel['pricing'] | undefined
   let gatewayToolCall: boolean | undefined
-  const searchRates = resolveSearchRates(useRuntimeConfig(event).public)
+  const searchRates = resolveSearchRates(useRuntimeConfig().public)
 
   try {
     if (gatewayId) {
@@ -1966,7 +1972,7 @@ async function persistAssistantMessageFromStream(input: {
   stream: ReadableStream<any>
   result: ReturnType<typeof streamText>
   db: ReturnType<typeof useDb>
-  event: H3Event
+  event: RequestEvent
   providerId: string
   supportedProviderId: SupportedProviderId | GatewayId | undefined
   userId: number
@@ -2252,7 +2258,6 @@ async function persistAssistantMessageFromStream(input: {
         try {
           const activeShare = await getActiveShareForChat(
             input.chatId,
-            input.event,
           )
 
           if (activeShare?.showFiles) {
@@ -2261,7 +2266,6 @@ async function persistAssistantMessageFromStream(input: {
               input.chatId,
               input.userId,
               true,
-              input.event,
             )
           }
         } catch {
@@ -2511,10 +2515,7 @@ function buildGoogleLeadingAssistantPlaceholder(): UIMessage {
 
 function emitChatErrorLog(input: {
   chatError: ChatErrorPayload
-  event: {
-    method?: string
-    path?: string
-  }
+  event: RequestEvent
   stage: string
   userId: number
   chatId: string
@@ -2539,7 +2540,7 @@ function emitChatErrorLog(input: {
     modelId: input.modelId,
     reasoning: input.reasoning,
     tools: input.tools,
-    method: input.event.method,
-    path: input.event.path,
+    method: 'POST',
+    path: getRequestURL(input.event).pathname,
   })
 }

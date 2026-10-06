@@ -4,13 +4,14 @@ import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import { reconstructGeneratedImageParts } from '~~/server/utils/files/reconstruct-generated-image-parts'
 import { rewriteBranchedChatFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
 
 const RECENTLY_FAILED_RESEARCH_JOB_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export default defineEventHandler(async (event) => {
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({
@@ -74,7 +75,7 @@ export default defineEventHandler(async (event) => {
     }))
 
   const sourceShare = chat.branchedFromShareSlug
-    ? await resolveActiveShareBySlug(chat.branchedFromShareSlug, event)
+    ? await resolveActiveShareBySlug(chat.branchedFromShareSlug)
     : null
 
   const resolvedMessages = chat.branchedFromShareSlug
@@ -82,7 +83,6 @@ export default defineEventHandler(async (event) => {
       messages,
       userId,
       sourceShare?.id ?? null,
-      event,
     )
     : messages
 

@@ -1,5 +1,6 @@
-import { useLogger } from 'evlog'
 import { cachedStats } from '~~/server/utils/landing/stats'
+import { defineEventHandler } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
  * GET /api/v1/stats
@@ -22,7 +23,7 @@ import { cachedStats } from '~~/server/utils/landing/stats'
  * }
  */
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   logger.set({ endpoint: 'stats' })
 
@@ -59,9 +60,10 @@ export default defineEventHandler(async (event) => {
     },
   })
 
-  setResponseHeaders(event, {
-    'cache-control': 'public, max-age=300, stale-while-revalidate=86400',
-  })
+  event.res.headers.set(
+    'cache-control',
+    'public, max-age=300, stale-while-revalidate=86400',
+  )
 
   return result
 })

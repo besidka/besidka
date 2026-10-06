@@ -2,11 +2,13 @@ import type {
   ResearchJobStatus,
   ResearchTraceEntry,
 } from '#shared/types/research.d'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { finalizeResearchJob } from '~~/server/utils/research/finalize'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 type WaitUntilCtx = {
   cloudflare?: {
@@ -17,10 +19,10 @@ type WaitUntilCtx = {
 }
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
-  const params = await getValidatedRouterParams(event, z.object({
+  const logger = useRequestLogger(event)
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({

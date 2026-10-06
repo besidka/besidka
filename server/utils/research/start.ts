@@ -1,5 +1,5 @@
 import type { TextUIPart, UIMessage } from 'ai'
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import type { Model } from '#shared/types/providers.d'
 import type {
   ResearchAnswer,
@@ -12,7 +12,7 @@ import { getModel } from '#shared/utils/model'
 import { getModelResearch } from '#shared/utils/research'
 import { createError } from 'evlog'
 import { and, count, eq, inArray } from 'drizzle-orm'
-import { getRequestURL } from 'h3'
+import { getRequestURL } from 'nuxt/server'
 import * as schema from '~~/server/db/schema'
 import { assertModelNotDeprecated } from '~~/server/utils/chats/deprecated-model'
 import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
@@ -33,7 +33,7 @@ const ACTIVE_RESEARCH_JOB_STATUSES: ResearchJobStatus[] = [
 
 export interface StartResearchJobInput {
   db: ReturnType<typeof useDb>
-  event: H3Event
+  event: RequestEvent
   logger: { set: (fields: Record<string, unknown>) => void }
   userId: number
   chat: {

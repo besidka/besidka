@@ -1,17 +1,18 @@
 import { and, desc, eq, gt, isNull, lt, or } from 'drizzle-orm'
-import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   createHistoryCursor,
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
 import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
+import { defineEventHandler, getQuery } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {

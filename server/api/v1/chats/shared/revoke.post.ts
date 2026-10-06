@@ -1,13 +1,15 @@
 import { and, eq, inArray } from 'drizzle-orm'
-import { createError, useLogger } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const bodyRules = z.object({
   chatIds: z.array(z.string().nonempty()).min(1).max(90),
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   const body = await readValidatedBody(event, bodyRules.safeParse)
 

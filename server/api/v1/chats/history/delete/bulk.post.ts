@@ -1,12 +1,14 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
 import { removeChatsFromSearchIndex } from '~~/server/utils/search/index-writer'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const body = await readValidatedBody(event, z.object({
     chatIds: z.array(z.string().nonempty()).min(1).max(90),
   }).safeParse)

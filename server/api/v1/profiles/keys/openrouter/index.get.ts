@@ -1,3 +1,5 @@
+import { defineEventHandler } from 'nuxt/server'
+
 const RATE_LIMIT_RULE = { window: 60, max: 30 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:openrouter:get'
 

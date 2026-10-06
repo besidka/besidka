@@ -1,8 +1,9 @@
-import { useLogger } from 'evlog'
 import { z } from 'zod'
 import {
   recomputeUserFileExpiry,
 } from '~~/server/utils/files/file-governance'
+import { defineEventHandler, getRequestHeader, readBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const bodySchema = z.object({
   userId: z.coerce.number().int().positive(),
@@ -10,7 +11,7 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const maintenanceToken = useRuntimeConfig().filesMaintenanceToken
 
   if (!maintenanceToken) {

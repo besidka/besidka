@@ -1,5 +1,4 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   buildBranchTitle,
@@ -7,6 +6,8 @@ import {
 } from '~~/server/utils/chats/branch'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const rules = z.object({
   chatSlug: z.string().ulid(),
@@ -14,7 +15,7 @@ const rules = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const body = await readValidatedBody(event, rules.safeParse)
 
   if (body.error) {

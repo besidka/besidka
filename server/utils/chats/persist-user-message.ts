@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai'
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import type { Tools } from '#shared/types/chats.d'
 import { createError } from 'evlog'
 import { eq } from 'drizzle-orm'
@@ -11,7 +11,7 @@ import { indexMessagesForSearch } from '~~/server/utils/search/index-writer'
 
 export interface PersistUserMessageInput {
   db: ReturnType<typeof useDb>
-  event: H3Event
+  event: RequestEvent
   logger: { set: (fields: Record<string, unknown>) => void }
   userId: number
   chat: {

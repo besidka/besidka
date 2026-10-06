@@ -69,7 +69,7 @@ function readCloudflareHeaders(event: H3Event): {
  */
 export function attachCloudflareMeta(
   logger: MutableLogger | undefined,
-  event: H3Event,
+  event: H3Event = useEvent(),
 ): void {
   if (typeof logger?.set !== 'function') {
     return

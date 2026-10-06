@@ -8,7 +8,6 @@ import {
   lt,
   or,
 } from 'drizzle-orm'
-import { useLogger } from 'evlog'
 import { z } from 'zod'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
 import * as schema from '~~/server/db/schema'
@@ -30,6 +29,8 @@ import {
 import { containsLikeEscaped } from '~~/server/utils/db/like'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
+import { defineEventHandler, getQuery } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
@@ -40,7 +41,7 @@ const MAX_BATCH_QUERY_PARAMS = 90
 const searchInSchema = z.enum(['all', 'title', 'content']).default('all')
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {

@@ -7,16 +7,14 @@ import {
   hideFileParts,
   rewriteShareFileParts,
 } from '~~/server/utils/files/rewrite-share-file-urls'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
 
 const paramsRules = z.object({
   slug: z.string().nonempty(),
 })
 
 export default defineEventHandler(async (event) => {
-  const params = await getValidatedRouterParams(
-    event,
-    paramsRules.safeParse,
-  )
+  const params = paramsRules.safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({
@@ -26,7 +24,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const share = await resolveActiveShareBySlug(params.data.slug, event)
+  const share = await resolveActiveShareBySlug(params.data.slug)
 
   if (!share) {
     throw createError({
@@ -91,7 +89,7 @@ export default defineEventHandler(async (event) => {
   const publicMessages = filterPublicParts(persistedMessages)
 
   const messagesWithResolvedFiles = share.showFiles
-    ? await rewriteShareFileParts(publicMessages, share.id, event)
+    ? await rewriteShareFileParts(publicMessages, share.id)
     : hideFileParts(publicMessages)
 
   const messages = messagesWithResolvedFiles.map((message) => {

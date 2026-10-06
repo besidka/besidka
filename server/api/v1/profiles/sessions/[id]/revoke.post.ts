@@ -1,5 +1,10 @@
 import { createError } from 'evlog'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  defineEventHandler,
+  getRouterParams,
+  setResponseStatus,
+} from 'nuxt/server'
 
 export default defineEventHandler(async (event) => {
   const session = await useUserSession()
@@ -8,9 +13,9 @@ export default defineEventHandler(async (event) => {
     return useUnauthorizedError()
   }
 
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     id: z.coerce.number().int().positive(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({
@@ -45,7 +50,7 @@ export default defineEventHandler(async (event) => {
         token: row.token,
       },
       // @ts-ignore
-      headers: getHeaders(event),
+      headers: event.req.headers,
     })
   } catch (exception) {
     throw createError({

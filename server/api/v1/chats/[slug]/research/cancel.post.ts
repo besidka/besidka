@@ -1,4 +1,4 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { and, eq, inArray } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { getResearchAdapter } from '~~/server/utils/research/adapters'
@@ -6,12 +6,14 @@ import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
 import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
-  const params = await getValidatedRouterParams(event, z.object({
+  const logger = useRequestLogger(event)
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({

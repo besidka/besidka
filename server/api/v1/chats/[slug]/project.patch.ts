@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import {
@@ -7,9 +7,15 @@ import {
   refreshProjectMemory,
 } from '~~/server/utils/projects/memory'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  defineEventHandler,
+  getRouterParams,
+  readValidatedBody,
+} from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   async function tryRefreshProjectMemory(projectId: string | null) {
     if (!projectId) {
       return
@@ -31,9 +37,9 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({

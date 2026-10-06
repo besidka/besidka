@@ -1,4 +1,5 @@
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler } from 'nuxt/server'
 
 const RATE_LIMIT_RULE = { window: 60, max: 300 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:summary:get'

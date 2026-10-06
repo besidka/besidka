@@ -1,10 +1,12 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const body = await readValidatedBody(event, z.object({
     chatId: z.string().nonempty(),
   }).safeParse)

@@ -1,20 +1,19 @@
-import { createError, useLogger } from 'evlog'
+import { createError } from 'evlog'
 import {
   enumerateChatFileIds,
   getActiveShareForChat,
 } from '~~/server/utils/chats/share'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsRules = z.object({
   slug: z.ulid(),
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
-  const params = await getValidatedRouterParams(
-    event,
-    paramsRules.safeParse,
-  )
+  const params = paramsRules.safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({
@@ -51,10 +50,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const fileIds = await enumerateChatFileIds(chat.id, userId, event)
+  const fileIds = await enumerateChatFileIds(chat.id, userId)
   const hasFiles = fileIds.length > 0
 
-  const share = await getActiveShareForChat(chat.id, event)
+  const share = await getActiveShareForChat(chat.id)
 
   if (!share) {
     return { share: null, hasFiles }

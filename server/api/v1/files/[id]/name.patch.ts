@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, readBody } from 'nuxt/server'
 
 const paramsSchema = z.object({
   id: z.string().min(1),

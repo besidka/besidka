@@ -1,5 +1,5 @@
 import { createError } from 'evlog'
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 
 interface KeysRateLimitRule {
@@ -17,7 +17,7 @@ interface KeysRateLimitRule {
  * false-429 normal usage.
  */
 export async function enforceKeysRateLimit(
-  event: H3Event,
+  event: RequestEvent,
   userId: string,
   keyPrefix: string,
   rule: KeysRateLimitRule,
@@ -30,7 +30,7 @@ export async function enforceKeysRateLimit(
   }
 
   if (result.retryAfter !== null) {
-    setResponseHeader(event, 'Retry-After', result.retryAfter)
+    event.res.headers.set('Retry-After', String(result.retryAfter))
   }
 
   throw createError({

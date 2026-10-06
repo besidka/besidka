@@ -1,8 +1,10 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   const body = await readValidatedBody(event, z.object({
     name: z.string().trim().min(1).max(100),

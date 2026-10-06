@@ -1,13 +1,15 @@
 import { and, eq, sql } from 'drizzle-orm'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     id: z.string().nonempty(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({

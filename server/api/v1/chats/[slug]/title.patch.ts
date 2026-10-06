@@ -2,7 +2,6 @@ import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
-import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import {
@@ -10,11 +9,17 @@ import {
   CHAT_TITLE_DEFAULT,
 } from '~~/server/utils/chats/title'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  defineEventHandler,
+  getRouterParams,
+  readValidatedBody,
+} from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getRouterParams(event, { decode: true }))
 
   if (params.error) {
     throw createError({
@@ -199,7 +204,7 @@ export default defineEventHandler(async (event) => {
   } catch (exception) {
     const chatError = normalizeChatError({ error: exception })
 
-    useLogger(event).set({
+    useRequestLogger(event).set({
       attributes: {
         titleGeneration: {
           fallback: true,

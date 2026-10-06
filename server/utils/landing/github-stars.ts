@@ -1,4 +1,4 @@
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import { createError } from 'evlog'
 
 export interface GithubStars {
@@ -63,7 +63,7 @@ export async function fetchGithubStars(
 }
 
 export const cachedGithubStars = defineCachedFunction(
-  async (_event: H3Event | undefined, repo: string = 'besidka/besidka') => {
+  async (_event: RequestEvent | undefined, repo: string = 'besidka/besidka') => {
     return fetchGithubStars(repo)
   },
   {
@@ -71,7 +71,7 @@ export const cachedGithubStars = defineCachedFunction(
     maxAge: 60 * 60,
     swr: true,
     staleMaxAge: 24 * 60 * 60,
-    getKey: (_event: H3Event | undefined, repo = 'besidka/besidka') => repo,
+    getKey: (_event: RequestEvent | undefined, repo = 'besidka/besidka') => repo,
     group: 'landing',
   },
 )

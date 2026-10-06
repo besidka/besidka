@@ -1,9 +1,15 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import {
+  defineEventHandler,
+  readValidatedBody,
+  setResponseStatus,
+} from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   assertNotCrossSiteRequest(event)
 

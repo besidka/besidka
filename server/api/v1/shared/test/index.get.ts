@@ -5,6 +5,7 @@ import {
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
+import { defineEventHandler } from 'nuxt/server'
 
 export default defineEventHandler(() => {
   const isCiEnvironment: boolean = process.env.CI === 'true'

@@ -1,8 +1,9 @@
 import { createError } from 'evlog'
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
+import { getRequestHeader } from 'nuxt/server'
 
-export function assertNotCrossSiteRequest(event: H3Event): void {
-  const secFetchSite = getHeader(event, 'sec-fetch-site')
+export function assertNotCrossSiteRequest(event: RequestEvent): void {
+  const secFetchSite = getRequestHeader(event, 'sec-fetch-site')
 
   if (secFetchSite === 'cross-site') {
     throw createError({

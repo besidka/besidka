@@ -1,4 +1,3 @@
-import { useLogger } from 'evlog'
 import { normalizeMediaType } from '#shared/utils/files'
 import {
   getEffectiveUserFilePolicy,
@@ -8,6 +7,8 @@ import {
 } from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler, getRequestHeader } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
  * @example
@@ -25,7 +26,7 @@ import { exceptionMessage } from '~~/server/utils/evlog-attributes'
  * @returns {Promise<{ key: string }>}
  */
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   const session = await useUserSession()
 
@@ -54,9 +55,9 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const fileBuffer = await readRawBody(event, false)
+  const fileBuffer = new Uint8Array(await event.req.arrayBuffer())
 
-  if (!fileBuffer) {
+  if (!fileBuffer.length) {
     throw createError({
       statusCode: 400,
       statusMessage: 'No file data provided',
@@ -83,7 +84,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const config = useRuntimeConfig(event).public
+  const config = useRuntimeConfig().public
   const allowedFileFormats = config.allowedFileFormats as AllowedFileFormats
 
   if (

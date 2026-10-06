@@ -5,12 +5,19 @@ import {
 } from '~~/server/utils/chats/test/image-fixture-bytes'
 import { isTestImageFixtureStorageKey } from '~~/server/utils/chats/test/image-fixture'
 import { getPreferredFileExtension } from '#shared/utils/files'
+import {
+  defineEventHandler,
+  getQuery,
+  getRequestHeader,
+  getRouterParams,
+} from 'nuxt/server'
+import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 
 const unsafeBidiControlPattern
   = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u
 
 export default defineEventHandler(async (event) => {
-  const { key: storageKey } = getRouterParams(event)
+  const { key: storageKey } = getRouterParams(event, { decode: true })
 
   if (!storageKey) {
     throw createError({
@@ -31,7 +38,7 @@ export default defineEventHandler(async (event) => {
       )
       : 'inline'
 
-    setResponseHeaders(event, {
+    applyResponseHeaders(event, {
       'Content-Type': TEST_IMAGE_FIXTURE_MEDIA_TYPE,
       'Content-Length': bytes.byteLength.toString(),
       'Cache-Control': 'private, no-store, max-age=0',
@@ -76,7 +83,7 @@ export default defineEventHandler(async (event) => {
     const token = tokenFromHeader || tokenFromQuery
 
     if (token) {
-      hasAccess = await hasShareTokenFileAccess(token, file.id, event)
+      hasAccess = await hasShareTokenFileAccess(token, file.id)
     }
   }
 
@@ -101,7 +108,7 @@ export default defineEventHandler(async (event) => {
     ? buildAttachmentContentDisposition(file.name, file.type)
     : 'inline'
 
-  setResponseHeaders(event, {
+  applyResponseHeaders(event, {
     'Content-Type': file.type,
     'Content-Length': file.size.toString(),
     'Cache-Control': 'private, no-store, max-age=0',
