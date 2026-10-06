@@ -456,6 +456,7 @@ export default defineNuxtConfig({
     },
   },
   experimental: {
+    componentIslands: true,
     asyncContext: true,
     early404: true,
     stripNeverHydratedData: true,
