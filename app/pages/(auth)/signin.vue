@@ -169,7 +169,7 @@
 </template>
 <script setup lang="ts">
 import UiForm from '~/components/ui/Form.vue'
-import AuthTurnstile from '~/components/Auth/Turnstile.client.vue'
+import type TurnstileComponent from '~/components/Auth/Turnstile.client.vue'
 
 interface Data {
   email: string
@@ -227,7 +227,7 @@ const {
   options,
 } = useAuth()
 
-const turnstile = ref<InstanceType<typeof AuthTurnstile> | null>(null)
+const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
 const pending = shallowRef<boolean>(false)
 
 const isSocialOAuthDisabled = computed<boolean>(() => {

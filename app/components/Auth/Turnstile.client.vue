@@ -22,6 +22,8 @@ const containerRef = shallowRef<HTMLDivElement | null>(null)
 const widgetId = shallowRef<string | null>(null)
 
 onMounted(async () => {
+  await nextTick()
+
   if (!isEnabled.value || !containerRef.value) {
     return
   }
