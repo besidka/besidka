@@ -240,6 +240,19 @@ to evlog's (`status` and `message`, with technical detail in `why`).
   `NuxtLoadingIndicator` warnings). A production build has no such reload. The
   underlying design gap, the middleware redirecting on the client after a
   guest render, is out of scope for this upgrade.
+- **`gateway-image-generation.spec.ts:202` fails first-attempt-only under
+  `--retries=0`. Pre-existing, not caused by this upgrade.** Run alone with
+  `--retries=0`, it fails 3 of 3 on the 4.5.2/Vue 3.5 base (`46e48246`) and 3
+  of 3 on this branch, with the same signature: the progress card is never the
+  problem, but `[data-role="assistant"] .js-message-text` is not found, the
+  textarea is empty, and the user bubble shows the `GET /chats/test` seed
+  ("Test message") instead of the typed prompt. Playwright's call log shows
+  `navigated to .../chats/test?scenario=gateway-image` after the click, so the
+  page was reloaded mid-turn by the dev-only optimize-deps full reload that
+  `playwright.config.ts` describes (it only reproduces on a cold
+  dev server). The default local
+  retry hits warm dependencies and passes. A production build or `wrangler
+  dev` (CI) has no such reload.
 - **nuxt#36471** (backtick plus `publicAssetsURL` in inlined CSS) was checked
   and does not apply: the fonts are referenced from the external entry CSS, not
   inlined CSS.
