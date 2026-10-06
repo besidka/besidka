@@ -185,8 +185,61 @@ to evlog's (`status` and `message`, with technical detail in `why`).
 
 ## Known issues and follow-ups
 
-- **Hydration mismatch on `/signin` and `/signup`** from `AuthTurnstile`.
-  Pre-existing: it reproduces with Vapor off, so this upgrade did not cause it.
+- **Dev dependency scan failed on every `nuxt dev` start (fixed locally,
+  upstream [nuxt#36473](https://github.com/nuxt/nuxt/issues/36473)).** The
+  log read `Failed to run dependency scan ... Missing "#components" specifier
+  in "@nuxtjs/i18n" package`. Caused by this upgrade: Nuxt 4.5.2 starts clean.
+  Nuxt 4.6's `nuxt:optimize-deps` plugin (`installedScanEntries` in
+  `@nuxt/vite-builder`) adds every component, plugin and middleware file under
+  `node_modules` to the client `optimizeDeps.entries`. One of them is
+  `@nuxtjs/i18n/dist/runtime/components/NuxtLinkLocale.js`, which imports
+  `NuxtLink` from `#components`. Nuxt only rewrites that specifier in a
+  transform hook, and the scanner never runs transforms. Vite's scanner also
+  checks `optimizeDeps.exclude` only for bare ids (`/^[\w@][^:]/`), so
+  `#components` reached `vite:resolve` as a Node subpath import of the i18n
+  package, and the whole scan aborted. Every dependency was then optimized on
+  demand, and those reloads caused the e2e full reloads in the middle of tests.
+  The local fix in `nuxt.config.ts` is
+  `externalizeComponentsImportInDependencyScan`, a rolldown plugin in
+  `vite.optimizeDeps.rolldownOptions.plugins` (which only runs in the scanner
+  and the optimizer). It marks the exact id `#components` as external. With the
+  fix, a cold start pre-bundles 42 dependencies (base: 27), and only
+  `@better-auth/passkey/client`, `web-haptics/vue` and `zod/v4` are still
+  discovered later. Delete the plugin once #36473 ships.
+- **`AuthTurnstile` hydration mismatch on `/signin`, `/signup` and
+  `/reset-password` (fixed).** Caused by this upgrade, not pre-existing. The
+  earlier note blamed nothing in the upgrade because the mismatch persisted
+  with Vapor off, but on the 4.5.2 base it does not happen at all. Nuxt 4.6
+  added `nuxt:components:client-component-stub`, which resolves a `*.client.vue`
+  file imported by path to the server placeholder in the SSR build. The client
+  only gets the `createClientOnly` wrapper through `#components`. The three
+  pages imported `Turnstile.client.vue` by path, so the server rendered
+  `<!--placeholder-->` while the client hydrated the raw `<div>`. The pages now
+  use the auto-imported `<AuthTurnstile>` and keep a type-only import for the
+  ref type. `onMounted` awaits `nextTick()` because, under `createClientOnly`,
+  the template renders one tick after mount while hydrating. Without that tick
+  the widget never renders and `execute()` returns an empty token. Do not
+  import any `*.client.vue` file by path for rendering.
+- **`<ChatsNew>` node mismatch (server node vs client `Symbol(v-fgt)`) and the
+  `<NuxtLoadingIndicator>` style mismatch (server `right:0`, client
+  `right:0;left:0`). Pre-existing, not caused by this upgrade.** Both appear
+  together, and only when the browser hydrates `/signin` HTML that was
+  rendered for a guest while the session cookie is already set. The client
+  `00.auth.global` middleware then calls `fetchSession()`, sees a user, and
+  redirects to `/chats/new` during hydration, so Vue hydrates the
+  multi-root `ChatsNew` fragment against the sign-in markup. A Playwright probe
+  that serves guest `/signin` HTML to a signed-in context reproduces both
+  warnings identically on the 4.5.2/Vue 3.5 base and on this branch. Loading
+  `/chats/new` or `/signin` directly with a session gives no warnings on either
+  (the server redirects `/signin` itself), and neither does Vapor. In e2e, the
+  trigger was the dev-only optimize-deps full reload around the sign-in submit
+  that the `signIn()` helper comment describes. The dependency scan failure
+  above made that reload far more frequent. After the scan fix, `signin.spec.ts`
+  and `context-menu-image-desktop.spec.ts` with `--repeat-each=3` pass 13 of 13
+  with zero hydration warnings (the full run before had 39 `ChatsNew` and 40
+  `NuxtLoadingIndicator` warnings). A production build has no such reload. The
+  underlying design gap, the middleware redirecting on the client after a
+  guest render, is out of scope for this upgrade.
 - **nuxt#36471** (backtick plus `publicAssetsURL` in inlined CSS) was checked
   and does not apply: the fonts are referenced from the external entry CSS, not
   inlined CSS.
