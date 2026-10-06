@@ -1,14 +1,14 @@
 import type { Providers } from '../shared/types/providers.d'
 import type { ModelSnapshot } from './merge'
-import snapshot from './data/models-dev-snapshot.json'
-import { mergeProvider } from './merge'
-import anthropic from './anthropic'
-import google from './google'
-import openai from './openai'
-import xai from './xai'
-import deepseek from './deepseek'
-import moonshotai from './moonshotai'
-import qwen from './qwen'
+import snapshot from './data/models-dev-snapshot.json' with { type: 'json' }
+import { mergeProvider } from './merge.ts'
+import anthropic from './anthropic.ts'
+import google from './google.ts'
+import openai from './openai.ts'
+import xai from './xai.ts'
+import deepseek from './deepseek.ts'
+import moonshotai from './moonshotai.ts'
+import qwen from './qwen.ts'
 
 const curatedProviders = [
   anthropic,

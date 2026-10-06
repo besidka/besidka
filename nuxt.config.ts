@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { defineNuxtModule } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
-import { providers, defaultModel } from './providers'
+import { providers, defaultModel } from './providers/index.ts'
 
 const enableFonts = process.env.CI !== 'true'
 
@@ -427,7 +427,7 @@ export default defineNuxtConfig({
       tailwindcss(),
     ],
   },
-  css: ['./assets/css/main.css'],
+  css: ['~/assets/css/main.css'],
   app: {
     head: {
       htmlAttrs: {
