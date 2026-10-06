@@ -77,6 +77,17 @@ const guardMdcSlotTransformForVapor = defineNuxtModule({
   },
 })
 
+const externalizeComponentsImportInDependencyScan = {
+  name: 'externalize-components-import-in-dependency-scan',
+  resolveId(id: string) {
+    if (id !== '#components') {
+      return
+    }
+
+    return { id, external: true }
+  },
+}
+
 // Stable per-build identifier, shared by Nuxt's app manifest
 // (runtimeConfig.app.buildId) and the '/' SWR cache key. In CI this is the
 // commit SHA; locally it is a fresh UUID per build. Binding the cache key to
@@ -422,6 +433,9 @@ export default defineNuxtConfig({
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
       // resolution, so it must be served unbundled.
       exclude: ['mediabunny'],
+      rolldownOptions: {
+        plugins: [externalizeComponentsImportInDependencyScan],
+      },
     },
     plugins: [
       tailwindcss(),
