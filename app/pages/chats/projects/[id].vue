@@ -123,9 +123,9 @@ definePageMeta({
   },
 })
 
-const route = useRoute()
+const route = useRoute('chats-projects-id')
 const nuxtApp = useNuxtApp()
-const projectId = computed(() => route.params.id as string)
+const projectId = computed(() => route.params.id)
 const groupedAt = useState<string>('project-chats:grouped-at', () => {
   return new Date().toISOString()
 })

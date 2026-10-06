@@ -1,7 +1,7 @@
 import type { Chat } from '#shared/types/chats.d'
 
 export function useSetChatTitle(title?: Chat['title']) {
-  const route = useRoute()
+  const route = useRoute('chats-slug')
   const { selection, userModel } = useUserModel()
 
   const {

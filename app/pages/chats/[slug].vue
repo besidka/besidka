@@ -273,7 +273,7 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const route = useRoute()
+const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
 
 const isTestChat = computed<boolean>(() => {

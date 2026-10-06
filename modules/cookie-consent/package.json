@@ -25,22 +25,22 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@nuxt/kit": "^4.5.2",
+    "@nuxt/kit": "^4.6.0",
     "@nuxtjs/i18n": "^10.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@nuxt/module-builder": "^1.0.3",
-    "@nuxt/schema": "^4.5.2",
+    "@nuxt/schema": "^4.6.0",
     "@nuxt/test-utils": "^4.1.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@typescript-eslint/parser": "^8.66.0",
     "eslint": "^10.8.0",
     "happy-dom": "^20.11.1",
-    "nuxt": "^4.5.2",
+    "nuxt": "^4.6.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
     "vitest-environment-nuxt": "^2.0.0",
-    "vue": "^3.5.41"
+    "vue": "^3.5.43"
   }
 }

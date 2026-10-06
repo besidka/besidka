@@ -87,9 +87,13 @@ const showPinToggle = computed<boolean>(() => {
   return isDesktop && reducedMotion.value !== 'reduce'
 })
 
+const routeSlug = computed<string>(() => {
+  return 'slug' in route.params ? String(route.params.slug) : ''
+})
+
 const isOwnedChatPage = computed<boolean>(() => {
   return route.path.startsWith('/chats/')
-    && !!route.params.slug
+    && !!routeSlug.value
     && route.path !== '/chats/new'
 })
 
@@ -98,13 +102,13 @@ const isChatLayout = computed<boolean>(() => {
 })
 
 const isSharedChatPage = computed<boolean>(() => {
-  return route.path.startsWith('/shared/') && !!route.params.slug
+  return route.path.startsWith('/shared/') && !!routeSlug.value
 })
 
 const canBranchSharedChat = computed<boolean>(() => {
   return isSharedChatPage.value
     && !!sharedBranchTarget.value?.allowBranch
-    && sharedBranchTarget.value?.slug === route.params.slug
+    && sharedBranchTarget.value?.slug === routeSlug.value
 })
 
 function closeSubmenu(event: MouseEvent): void {
@@ -123,16 +127,16 @@ function openCookieSettings(event: MouseEvent): void {
 
 function onShare(event: MouseEvent): void {
   closeSubmenu(event)
-  openShareModal(route.params.slug as string)
+  openShareModal(routeSlug.value)
 }
 
 function onBranch(event: MouseEvent): void {
   closeSubmenu(event)
-  branchOwnedChat(route.params.slug as string)
+  branchOwnedChat(routeSlug.value)
 }
 
 function onBranchSharedChat(event: MouseEvent): void {
   closeSubmenu(event)
-  branchSharedChat(route.params.slug as string)
+  branchSharedChat(routeSlug.value)
 }
 </script>
