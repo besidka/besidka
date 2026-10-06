@@ -12,7 +12,7 @@
   </p>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 const props = withDefaults(defineProps<{
   label?: MaybeRefOrGetter<string | string[]>
   position?: 'before' | 'after'

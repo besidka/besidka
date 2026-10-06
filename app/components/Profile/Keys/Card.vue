@@ -51,7 +51,7 @@
   </details>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 import type { UserKeyStatus } from '~/composables/user-keys'
 
 withDefaults(defineProps<{

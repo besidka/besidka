@@ -1,4 +1,4 @@
-<template>
+<template vapor>
   <div
     role="alert"
     class="alert alert-soft alert-info !items-start mb-6"

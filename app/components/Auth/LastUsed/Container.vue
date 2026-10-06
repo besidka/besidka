@@ -1,4 +1,4 @@
-<template>
+<template vapor>
   <div class="indicator w-full">
     <slot />
   </div>
