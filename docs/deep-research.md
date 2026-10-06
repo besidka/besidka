@@ -27,6 +27,9 @@ picking the depth.
 | `deep-research-preview-04-2026` (Google) | quick | $1–3, under 20 min |
 | `deep-research-max-preview-04-2026` (Google) | thorough | $3–7, up to 60 min |
 
+Both OpenAI research models were shut down on 2026-07-23 and are curated
+`status: 'deprecated'`, so only the Google pair is selectable (issue #402).
+
 `getModelResearch(model)` (`shared/utils/research.ts`) reads a model's
 `research` block; `isDeepResearchModel(model)` is just `!!getModelResearch(model)`.
 Runs are billed to the user's own key. `assistModel` in the same config block

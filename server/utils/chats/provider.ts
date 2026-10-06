@@ -1,5 +1,5 @@
 import type { Provider, Model } from '#shared/types/providers.d'
-import { createError as createEvlogError } from 'evlog'
+import { assertModelNotDeprecated } from '~~/server/utils/chats/deprecated-model'
 
 export function useChatProvider(
   userModel: string,
@@ -25,15 +25,7 @@ export function useChatProvider(
     })
   }
 
-  if (model.status === 'deprecated') {
-    throw createEvlogError({
-      message: 'This model is no longer available.',
-      status: 400,
-      why: `${model.name} is deprecated and can no longer be used for new`
-        + ' requests.',
-      fix: 'Choose a different model from the picker.',
-    })
-  }
+  assertModelNotDeprecated(model)
 
   return {
     provider,

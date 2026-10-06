@@ -583,7 +583,7 @@ describe('chats new page', () => {
   it('routes into the clarify flow and starts research with the answers', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o4-mini-deep-research')
+    storage.setItem('model', 'deep-research-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
@@ -640,7 +640,7 @@ describe('chats new page', () => {
       body: { model: string, research: { answers: unknown[] } }
     } | undefined
 
-    expect(createCallOptions?.body.model).toBe('o4-mini-deep-research')
+    expect(createCallOptions?.body.model).toBe('deep-research-preview-04-2026')
     expect(createCallOptions?.body.research).toEqual({
       answers: [
         {
@@ -655,7 +655,7 @@ describe('chats new page', () => {
   it('shows a synthetic pending research block while the create request is in flight', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o4-mini-deep-research')
+    storage.setItem('model', 'deep-research-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
@@ -701,7 +701,7 @@ describe('chats new page', () => {
 
     const pendingStub = wrapper.get('[data-testid="pending-stub"]')
 
-    expect(pendingStub.text()).toBe('pending|o4-mini-deep-research')
+    expect(pendingStub.text()).toBe('pending|deep-research-preview-04-2026')
 
     createRequest.resolve({ slug: 'research-chat' })
     await flushPromises()
@@ -714,7 +714,7 @@ describe('chats new page', () => {
   it('spaces the topic bubble and clarify form using only the container gap', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o4-mini-deep-research')
+    storage.setItem('model', 'deep-research-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
 
     fetchMock.mockImplementation((url: string) => {
@@ -754,7 +754,7 @@ describe('chats new page', () => {
   it('reserves clarify-input clearance at every breakpoint, sized to the input height plus a margin', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o4-mini-deep-research')
+    storage.setItem('model', 'deep-research-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
 
     fetchMock.mockImplementation((url: string) => {
@@ -796,7 +796,7 @@ describe('chats new page', () => {
   it('clears the pending research block and restores the draft on a failed create request', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o4-mini-deep-research')
+    storage.setItem('model', 'deep-research-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
@@ -848,7 +848,7 @@ describe('chats new page', () => {
   it('falls back to starting research with no answers when the clarify request fails', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o3-deep-research')
+    storage.setItem('model', 'deep-research-max-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 
@@ -887,7 +887,7 @@ describe('chats new page', () => {
       body: { model: string, research: { answers: unknown[] } }
     } | undefined
 
-    expect(createCallOptions?.body.model).toBe('o3-deep-research')
+    expect(createCallOptions?.body.model).toBe('deep-research-max-preview-04-2026')
     expect(createCallOptions?.body.research).toEqual({
       answers: [],
     })
@@ -896,7 +896,7 @@ describe('chats new page', () => {
   it('still navigates and shows a toast when starting research returns a soft failure', async () => {
     const storage = createStorageShim()
 
-    storage.setItem('model', 'o4-mini-deep-research')
+    storage.setItem('model', 'deep-research-preview-04-2026')
     vi.stubGlobal('localStorage', storage)
     navigateToMock.mockClear()
 

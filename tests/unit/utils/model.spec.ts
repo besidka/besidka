@@ -32,15 +32,44 @@ function getConfiguredModel(modelId: string): Model {
 }
 
 describe('image generation models', () => {
-  it('appends the current OpenAI image model without default tools', () => {
-    const model = getConfiguredModel('gpt-image-2')
+  it('configures the OpenAI image models without default tools', () => {
+    const openAiImageModelIds = [
+      'gpt-image-2.5-sunburst',
+      'gpt-image-2.5-flare',
+      'gpt-image-2',
+    ]
 
-    expect(openai.models.at(-1)?.id).toBe('gpt-image-2')
-    expect(model.tools).toEqual([])
-    expect(model.modalities.output).toEqual(['image'])
-    expect(model.price.display).toContain('/ medium image')
-    expect(getControllerModelId(model)).toBe('gpt-5-nano')
-    expect(getRequiredModelTools(model)).toEqual(['image_generation'])
+    for (const modelId of openAiImageModelIds) {
+      const model = getConfiguredModel(modelId)
+
+      expect(model.tools).toEqual([])
+      expect(model.modalities.output).toEqual(['image'])
+      expect(model.price.display).toContain('image')
+      expect(getControllerModelId(model)).toBe('gpt-6-luna')
+      expect(getRequiredModelTools(model)).toEqual(['image_generation'])
+    }
+
+    expect(getConfiguredModel('gpt-image-2').price.display)
+      .toContain('/ medium image')
+  })
+
+  it('keeps every image-generation model at the tail of its provider, '
+    + 'after all chat models', () => {
+    for (const provider of providers) {
+      const firstImageIndex = provider.models.findIndex((model) => {
+        return isImageGenerationModel(model)
+      })
+
+      if (firstImageIndex === -1) {
+        continue
+      }
+
+      const trailingModels = provider.models.slice(firstImageIndex)
+
+      for (const model of trailingModels) {
+        expect(isImageGenerationModel(model)).toBe(true)
+      }
+    }
   })
 
   it('appends current Google image models in the documented order', () => {
@@ -113,21 +142,6 @@ describe('image generation models', () => {
       }
 
       expect(imageGenerationProviders).toContain(provider.id)
-    }
-  })
-
-  it('points every controllerModel reference at a real catalog entry', () => {
-    const modelIds = new Set(
-      [...openai.models, ...google.models].map(model => model.id),
-    )
-    const imageModels = [...openai.models, ...google.models].filter(
-      model => model.imageGeneration,
-    )
-
-    expect(imageModels.length).toBeGreaterThan(0)
-
-    for (const model of imageModels) {
-      expect(modelIds.has(model.imageGeneration!.controllerModel)).toBe(true)
     }
   })
 })

@@ -327,6 +327,13 @@ const rows = computed<SpecRow[]>(() => {
     })
   }
 
+  if (model.imageGeneration?.costEstimate) {
+    specs.push({
+      label: 'Image cost',
+      value: model.imageGeneration.costEstimate,
+    })
+  }
+
   if (model.research) {
     specs.push({
       label: 'Research cost',

@@ -403,3 +403,181 @@ describe('useQwen reasoning wiring', () => {
     expect(result.reasoning).toBeUndefined()
   })
 })
+
+describe('useQwen effort-level reasoning wiring', () => {
+  const levelsReasoning = {
+    mode: 'levels' as const,
+    levels: ['low', 'medium', 'high'] as ('low' | 'medium' | 'high')[],
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it('sends reasoningEffort none and never enable_thinking when reasoning '
+    + 'is off, so a plain chat does not pay for default xhigh thinking',
+  async () => {
+    stubModel(createModel({
+      id: 'qwen3.8-omni-flash',
+      reasoning: levelsReasoning,
+    }))
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwen3.8-omni-flash', [], 'off')
+
+    expect(result.providerOptions).toEqual({ reasoningEffort: 'none' })
+    expect(result.providerOptions).not.toHaveProperty('enable_thinking')
+    expect(result.reasoning).toBeUndefined()
+  })
+
+  it.each(['low', 'medium', 'high'] as const)(
+    'forwards the %s level as reasoningEffort without enable_thinking',
+    async (level) => {
+      stubModel(createModel({
+        id: 'qwen3.8-omni-flash',
+        reasoning: levelsReasoning,
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen('1', 'qwen3.8-omni-flash', [], level)
+
+      expect(result.providerOptions).toEqual({ reasoningEffort: level })
+      expect(result.providerOptions).not.toHaveProperty('enable_thinking')
+      expect(result.reasoning).toBeUndefined()
+    },
+  )
+
+  it('sends reasoningEffort together with enable_search and search_options',
+    async () => {
+      stubModel(createModel({
+        id: 'qwen3.8-omni-flash',
+        tools: ['web_search'],
+        reasoning: levelsReasoning,
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen(
+        '1',
+        'qwen3.8-omni-flash',
+        ['web_search'],
+        'medium',
+      )
+
+      expect(result.providerOptions).toEqual({
+        reasoningEffort: 'medium',
+        enable_search: true,
+        search_options: {
+          search_strategy: 'agent',
+        },
+      })
+    })
+
+  it('wires the curated qwen3.8-omni-flash catalog entry end to end',
+    async () => {
+      const catalogModel = qwenProvider.models.find((model) => {
+        return model.id === 'qwen3.8-omni-flash'
+      })
+
+      expect(catalogModel).toBeDefined()
+
+      stubModel(createModel({
+        id: catalogModel?.id,
+        tools: catalogModel?.tools,
+        reasoning: catalogModel?.reasoning,
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen(
+        '1',
+        'qwen3.8-omni-flash',
+        ['web_search'],
+        'off',
+      )
+
+      expect(result.providerOptions).toEqual({
+        reasoningEffort: 'none',
+        enable_search: true,
+        search_options: {
+          search_strategy: 'agent',
+        },
+      })
+    })
+
+  it('serializes reasoningEffort into the request body as reasoning_effort',
+    async () => {
+      stubModel(createModel({
+        id: 'qwen3.8-omni-flash',
+        reasoning: levelsReasoning,
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen('1', 'qwen3.8-omni-flash', [], 'off')
+      const instance = result.instance as unknown as {
+        getArgs: (options: Record<string, unknown>) => Promise<{
+          args: Record<string, unknown>
+        }>
+      }
+
+      const { args } = await instance.getArgs({
+        prompt: [],
+        providerOptions: { qwen: result.providerOptions },
+      })
+
+      expect(args.reasoning_effort).toBe('none')
+      expect(args).not.toHaveProperty('enable_thinking')
+    })
+
+  it('titles chats on an effort-level model with minimal reasoning so the '
+    + 'xhigh default is not paid for a title', async () => {
+    stubModel(createModel({
+      id: 'qwen3.8-omni-flash',
+      reasoning: levelsReasoning,
+    }))
+
+    const useChatTitleMock = vi.fn(async () => 'A title')
+
+    vi.stubGlobal('useChatTitle', useChatTitleMock)
+
+    const useQwen = await importUseQwen()
+    const result = await useQwen('1', 'qwen3.8-omni-flash', [], 'off')
+
+    await result.generateChatTitle('Plan a trip to Kyoto')
+
+    expect(useChatTitleMock).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'qwen3.8-omni-flash' }),
+      'Plan a trip to Kyoto',
+      undefined,
+      'minimal',
+    )
+  })
+
+  it('keeps toggle models on enable_thinking with no reasoningEffort',
+    async () => {
+      stubModel(createModel({
+        id: 'qwen3-omni-flash',
+        reasoning: { mode: 'toggle' },
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen('1', 'qwen3-omni-flash', [], 'off')
+
+      expect(result.providerOptions).toEqual({ enable_thinking: false })
+      expect(result.providerOptions).not.toHaveProperty('reasoningEffort')
+    })
+
+  it('sends no reasoning fields for the no-reasoning omni model',
+    async () => {
+      stubModel(createModel({
+        id: 'qwen-omni-turbo',
+        reasoning: undefined,
+      }))
+
+      const useQwen = await importUseQwen()
+      const result = await useQwen('1', 'qwen-omni-turbo', [], 'high')
+
+      expect(result.providerOptions).toEqual({})
+      expect(result.reasoning).toBeUndefined()
+    })
+})

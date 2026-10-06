@@ -275,7 +275,7 @@ describe('useChatInput research config', () => {
 
     const { userModel } = useUserModel()
 
-    userModel.value = 'o4-mini-deep-research'
+    userModel.value = 'deep-research-preview-04-2026'
     await wrapper.vm.$nextTick()
 
     expect(

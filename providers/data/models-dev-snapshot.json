@@ -565,8 +565,8 @@
     "releaseDate": "2026-05-28",
     "toolCall": false,
     "limit": {
-      "context": 65536,
-      "output": 65536
+      "context": 131072,
+      "output": 32768
     },
     "modalities": {
       "input": [
@@ -592,7 +592,7 @@
     "toolCall": true,
     "limit": {
       "context": 65536,
-      "output": 65536
+      "output": 4096
     },
     "modalities": {
       "input": [
@@ -615,7 +615,7 @@
     "releaseDate": "2026-05-28",
     "toolCall": false,
     "limit": {
-      "context": 131072,
+      "context": 65536,
       "output": 32768
     },
     "modalities": {
@@ -656,6 +656,56 @@
       "input": 0.3,
       "output": 30
     }
+  },
+  "gpt-6-sol": {
+    "name": "GPT-6 Sol",
+    "description": "OpenAI model for complex coding and agentic workflows",
+    "releaseDate": "2026-09-22",
+    "toolCall": true,
+    "limit": {
+      "context": 1050000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 2,
+      "output": 10
+    },
+    "tieredPricing": true
+  },
+  "gpt-6-luna": {
+    "name": "GPT-6 Luna",
+    "description": "OpenAI's most efficient model for focused, high-volume tasks",
+    "releaseDate": "2026-09-22",
+    "toolCall": true,
+    "limit": {
+      "context": 1050000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.1,
+      "output": 0.5
+    },
+    "tieredPricing": true
   },
   "gpt-5.6-sol": {
     "name": "GPT-5.6 Sol",
@@ -1434,7 +1484,7 @@
     "toolCall": true,
     "limit": {
       "context": 1000000,
-      "output": 384000
+      "output": 393216
     },
     "modalities": {
       "input": [
@@ -1457,7 +1507,7 @@
     "toolCall": true,
     "limit": {
       "context": 1000000,
-      "output": 384000
+      "output": 393216
     },
     "modalities": {
       "input": [
@@ -1468,8 +1518,8 @@
       ]
     },
     "cost": {
-      "input": 0.435,
-      "output": 0.87
+      "input": 0.66,
+      "output": 1.98
     }
   },
   "kimi-k2.6": {
@@ -1503,7 +1553,7 @@
     "toolCall": true,
     "limit": {
       "context": 1048576,
-      "output": 131072
+      "output": 1048576
     },
     "modalities": {
       "input": [
@@ -1575,7 +1625,7 @@
     "toolCall": true,
     "limit": {
       "context": 1000000,
-      "output": 65536
+      "output": 131072
     },
     "modalities": {
       "input": [
@@ -1588,8 +1638,8 @@
       ]
     },
     "cost": {
-      "input": 0.5,
-      "output": 3
+      "input": 0.4,
+      "output": 1.6
     },
     "tieredPricing": true
   },
@@ -1600,7 +1650,7 @@
     "toolCall": true,
     "limit": {
       "context": 1000000,
-      "output": 65536
+      "output": 131072
     },
     "modalities": {
       "input": [
@@ -1677,6 +1727,31 @@
       "input": [
         "text",
         "image",
+        "video"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.15,
+      "output": 0.47
+    }
+  },
+  "qwen3.8-omni-flash": {
+    "name": "Qwen3.8 Omni Flash",
+    "description": "Qwen omni model for text, vision, audio, and multimodal agent tasks",
+    "releaseDate": "2026-09-17",
+    "toolCall": true,
+    "limit": {
+      "context": 1000000,
+      "output": 131072
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "audio",
         "video"
       ],
       "output": [
@@ -1930,6 +2005,32 @@
     "cost": {
       "input": 0.2,
       "output": 1.6
+    }
+  },
+  "qwen3-omni-flash": {
+    "name": "Qwen3-Omni Flash",
+    "description": "Qwen omni model for text, vision, audio, and multimodal agent tasks",
+    "releaseDate": "2025-09-15",
+    "toolCall": true,
+    "limit": {
+      "context": 65536,
+      "output": 16384
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "output": [
+        "text",
+        "audio"
+      ]
+    },
+    "cost": {
+      "input": 0.43,
+      "output": 1.66
     }
   },
   "qwen3-235b-a22b": {
@@ -2488,6 +2589,32 @@
     "cost": {
       "input": 0.16,
       "output": 0.49
+    }
+  },
+  "qwen-omni-turbo": {
+    "name": "Qwen-Omni Turbo",
+    "description": "Qwen omni model for text, vision, audio, and multimodal agent tasks",
+    "releaseDate": "2025-01-19",
+    "toolCall": true,
+    "limit": {
+      "context": 32768,
+      "output": 2048
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "output": [
+        "text",
+        "audio"
+      ]
+    },
+    "cost": {
+      "input": 0.07,
+      "output": 0.27
     }
   },
   "qwen2-5-vl-72b-instruct": {

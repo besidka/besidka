@@ -13,8 +13,12 @@ export function useUserModel() {
         defaultModel as string,
       )
 
-      if (parsed.source === 'provider' && !getModel(parsed.modelId).model) {
-        return { source: 'provider', modelId: defaultModel as string }
+      if (parsed.source === 'provider') {
+        const { model } = getModel(parsed.modelId)
+
+        if (!model || model.status === 'deprecated') {
+          return { source: 'provider', modelId: defaultModel as string }
+        }
       }
 
       return parsed

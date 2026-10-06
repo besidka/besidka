@@ -18,6 +18,7 @@ export type ModelTool
 
 export interface ModelImageGenerationCapability {
   controllerModel: string
+  costEstimate?: string
 }
 
 export type ModelPriceTier = '$' | '$$' | '$$$' | '$$$+'

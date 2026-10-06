@@ -200,7 +200,11 @@ proposal — a hit on any of these is a skip, never a throw:
   direction trips it), it is NOT skipped silently — it's collected into a
   separate, report-only `priceTierFlags` list. A new price tier (like the
   declined `gpt-5-pro`/`gpt-6-astra` ids) is exactly the kind of decision
-  this detector must never make on its own.
+  this detector must never make on its own. The flag fires in both
+  directions: on 2026-10-06 it flagged `gpt-6-luna` at 2.4x cheaper than
+  the `gpt-5.6-luna` template, which is the "less than 0.5x" side of the
+  band, not a premium tier. The owner added it (see "New models added this
+  pass" below); the flag only means "a human decides", not "too expensive".
 
 Only the single highest-version surviving candidate per family is kept —
 never more than one proposal per family in a run.
@@ -377,6 +381,42 @@ Scraping the deprecation pages on a schedule was rejected (fragile HTML
 churn for little gain) and so was API probing (this repo is 100% BYOK and
 holds no provider keys — see "Optional owner-run spot-check" below).
 
+**OpenAI's deprecations page outranks models.dev** (2026-10-06). models.dev
+still showed `gpt-image-1` (shutdown 2026-10-23) and `gpt-image-1.5`,
+`gpt-image-1-mini` and `chatgpt-image-latest` (shutdown 2026-12-01) as
+active while OpenAI lists all four as deprecated, so none of them were
+added to the catalog. When the two sources disagree, trust the provider.
+
+**Lifecycle rule for scheduled shutdowns** (2026-10-06): a shutdown still in
+the future gets curated `retiredAt` only, so the model stays selectable and
+the detail panel shows the date; a model already shut down gets
+`status: 'deprecated'` (plus `retiredAt`), which moves it to the legacy
+section and arms the `useChatProvider()` guard. Applied to OpenAI on
+2026-10-06:
+
+- `retiredAt` only: `gpt-5`, `gpt-5-mini`, `gpt-5-nano` and `o3` (all
+  2026-12-11); `gpt-5.1` and `gpt-5.4-nano` (2027-04-01).
+- `status: 'deprecated'` + `retiredAt: '2026-07-23'`: `o3-deep-research` and
+  `o4-mini-deep-research`, already shut down (issue #402). The legacy
+  section now holds them and `useChatProvider()` rejects new sends. There
+  is no longer a selectable OpenAI research option: the Deep research
+  filter lists only the two Gemini research models in the main list, and a
+  chat that already persists an OpenAI research model still resolves it
+  but any new send fails with "This model is no longer available".
+
+**Helper-model guard.** A `retiredAt`-only model is still selectable, but
+helper references (an image model's `controllerModel`, a research model's
+`assistModel`, the `forProjectMemory` model) call it behind the user's back.
+`tests/unit/providers/helper-models.spec.ts` therefore fails when any of
+those references point at a `status: 'deprecated'` model, or at a model not
+curated by the same provider. Referencing models that are themselves
+deprecated (the deep-research pair) are skipped. A `retiredAt`-only helper
+is not flagged, so it must be repointed before its date, not only when its
+status flips. The image controller moved from `gpt-5-nano` (retires
+2026-12-11) to `gpt-6-luna` for this reason; `forProjectMemory` and the
+research `assistModel`, both `gpt-5.4-nano`, still need the same move
+before 2027-04-01 (see "Owner action items").
+
 Semantics: `status: 'deprecated'` is the **gate** — legacy tab plus the
 `useChatProvider()` server guard block new chats with the model.
 `retiredAt` alone is **informational** — the model stays selectable but its
@@ -420,20 +460,29 @@ point of fetching: a retired or renamed model becomes a loud, deliberate
 edit instead of silently stale hardcoded values.
 
 `EXEMPT_IDS` in `scripts/fetch-models-metadata.mjs` lists the ids that are
-knowingly incomplete or absent upstream — three distinct reasons, not one:
+knowingly incomplete or absent upstream — five distinct reasons, not one:
 
 - **Not tracked by models.dev at all.** Deep Research snapshots OpenAI
   bills separately but models.dev does not track (`o3-deep-research`,
-  `o4-mini-deep-research`).
+  `o4-mini-deep-research`; both are now also `status: 'deprecated'`).
+- **Not on models.dev yet.** Image models released upstream before
+  models.dev picked them up: `gpt-image-2.5-sunburst` and
+  `gpt-image-2.5-flare` (released 2026-09-08). Fully hand-curated, with
+  `contextLength: 0`, `maxOutputTokens: 0` and modalities text+image ->
+  image, mirroring `gpt-image-2`'s snapshot shape.
 - **Retired-but-kept legacy ids** models.dev no longer publishes at all
-  (`gemini-3-pro-preview`; see "Model status" below).
+  (`gemini-3-pro-preview`; see "Model status" above).
+- **Tracked under a different models.dev key.** `qwen3.7-flash` and
+  `qwen3.5-flash` run on DashScope's international endpoint but models.dev
+  tracks them only under `alibaba-cn`, not `alibaba`.
 - **Tracked, but with no `cost` block.** `toSnapshotEntry()` requires
   `typeof model.cost?.input === 'number'`; a model whose models.dev entry
   omits `cost` entirely returns `null` from that function, which lands the
   id in `incompleteIds` and hard-fails the fetch exactly like a fully
-  missing id would. `grok-imagine-image-2.0` is the first model in this
-  category: models.dev lists it with `limit`, `modalities` and
-  `release_date` fields but no `cost` object whatsoever. `gpt-image-2`
+  missing id would. `grok-imagine-image-2.0` was the first model in this
+  category, followed on 2026-10-06 by `grok-imagine-image` (1.0, $0.02):
+  models.dev lists both with `limit`, `modalities` and `release_date`
+  fields but a null or absent `cost`. `gpt-image-2`
   doesn't need this treatment only because models.dev happens to carry a
   `cost` block for it — the exemption is triggered by the missing field,
   not by "being an image model" in general.
@@ -622,6 +671,11 @@ Nothing is required to deploy this. Specifically:
   it, `git diff providers/data/models-dev-snapshot.json` and skim it
   before committing — a refreshed snapshot can rename a model users
   already picked (as happened with Nano Banana in this PR).
+- **Repoint `gpt-5.4-nano` before 2027-04-01.** It is still the
+  `forProjectMemory` model and the `assistModel` of the OpenAI research
+  pair, and OpenAI retires it on that date. OpenAI's replacement is
+  `gpt-6-luna`. The helper-model guard only flags `status: 'deprecated'`
+  targets, so it will not warn before the date; do it in advance.
 - **The optional provider-key spot-check** (two `curl` commands, above)
   is only useful if you suspect a specific model has quietly stopped
   working for BYOK users. It is not part of any regular workflow.
@@ -727,6 +781,57 @@ ever flips the flag. `gpt-3.5-turbo` has `tool_call: false` upstream, so
 it's curated with `tools: []`, same as `gpt-4-turbo` and `gpt-4`, which
 carry no tool capability worth curating either.
 
+**2026-10-06 refresh.** `gpt-6-sol` ($2/$10) and `gpt-6-luna`
+($0.10/$0.50, the cheap tier) were added, released 2026-09-22. Both copy
+the `gpt-5.6-sol`/`luna` shape (`price.tokens: 1_000_000`, `tools:
+['web_search', 'image_generation']`, reasoning levels low/medium/high) and
+sit newest-first above `gpt-5.6-sol`, so `ordering.spec.ts` stays green.
+Both need a snapshot row before the catalog loads: without it
+`toFullyCuratedModel` throws at import time, which also breaks
+`nuxt.config.ts`, so typecheck and every vitest run fail.
+
+The same pass added two image models, `gpt-image-2.5-sunburst` (editing
+precision) and `gpt-image-2.5-flare` (fast everyday generation), both in
+`EXEMPT_IDS`. Their `price.display` is the published token price,
+`'$30 / 1M image output tokens, plus input'` (the owner's choice). The
+per-image cost in `server/utils/ai/image-generation-cost.ts` is DERIVED, not
+published: 439 output tokens at 1024x1024 and 343 at 1024x1536/1536x1024 at
+$30/1M, from OpenAI's image token calculator, giving 0.013 (1:1) and 0.01
+(2:3, 3:2) at the app's medium quality. Because the price-tier badge
+parses the upper bound of `price.display`, the token price would read as
+$30 and render `$$$+`, so both models also carry
+`imageGeneration.costEstimate: '~$0.010–$0.013 / medium image'`, which
+`resolvePriceTier()` prefers over `price.display` (the same pattern as
+`research.costEstimate`) and the detail panel shows as "Image cost". A unit
+test pins each `costEstimate` upper bound to `getImageGenerationCost(id,
+'1:1')` so the two cannot drift. Their `controllerModel` is `gpt-6-luna`.
+
+xAI gained `grok-imagine-image` (1.0): active, flat $0.02 per image at 1K
+and 2K, same shape as `grok-imagine-image-2.0`, placed after it in the
+image tail. models.dev lists it with a null cost, so it is in `EXEMPT_IDS`
+and fully hand-curated. The description copy, `contextLength: 64_000`,
+`maxOutputTokens: 0` (copied from 2.0) and the input modalities are not
+verified against a source. `getProviderGenerationOptions('xai')` sends only
+`aspectRatio`, so `quality` is never sent to either image model.
+
+Qwen gained three Omni models, `qwen3.8-omni-flash`, `qwen3-omni-flash`
+and `qwen-omni-turbo` (48 -> 51 models, 15 -> 16 with web search), as
+plain streaming text-chat models. The earlier blanket "never curate Omni"
+rule was keyed on `audio` in the output modalities, but on DashScope audio
+output is opt-in through the request `modalities` parameter (default
+`["text"]`), and this app always streams, never sends `modalities` and
+renders text and images only. The exclusion is narrowed to realtime, ASR,
+livetranslate and audio-only models (guarded in
+`tests/unit/providers/qwen.spec.ts`). `qwen3.8-omni-flash` is the first
+Qwen model curated with `reasoning: { mode: 'levels', ... }`: it thinks by
+default at `xhigh` and documents `reasoning_effort` rather than
+`enable_thinking`, so `useQwen()` sends `providerOptions.qwen.reasoningEffort`
+(`off` -> `'none'`, otherwise the level) and chat-title generation uses
+`minimal`. `qwen3-omni-flash` uses the existing `enable_thinking` toggle and
+`qwen-omni-turbo` has no reasoning. Not live-verified: that DashScope
+accepts `reasoning_effort: 'none'`. Details live in
+`docs/providers/alibaba.md` ("Omni models" and "Reasoning effort wiring").
+
 ## Ids deliberately not auto-added (owner review needed)
 
 Found upstream via the audit report above but intentionally left out of
@@ -756,8 +861,19 @@ automatic add:
   $5/$25 Opus pricing); it would add another price tier to the picker,
   and the owner declined.
 - **`gpt-6-astra`** — $10/$50, 2.5x `gpt-5.6-sol`'s pricing; a genuine
-  new price tier, not a same-tier successor, so it needs an explicit
-  owner decision rather than an automatic add.
+  new premium price tier, not a same-tier successor. The owner declined it
+  on 2026-10-06, the same call as `claude-fable-5`, and it is in
+  `DECLINED_IDS` in `scripts/detect-model-successors.mjs` (pinned by
+  `tests/unit/scripts/detect-model-successors.spec.ts`). The detector has no
+  `gpt-{v}-astra` template, so the entry records the decision rather than
+  silencing a live proposal.
+- **`gpt-image-1`, `gpt-image-1.5`, `gpt-image-1-mini`,
+  `chatgpt-image-latest`** — deprecated by OpenAI (`gpt-image-1` shuts down
+  2026-10-23; the other three 2026-12-01) while models.dev still shows them
+  active. OpenAI's deprecations page is authoritative (see "Retirement dates
+  and how we learn about them"), so they were not added.
+- **`deepseek-v4-flash`** — deprecated on models.dev and identical to the
+  already curated `deepseek-flash`.
 - **`gemini-omni-flash-preview`** — models.dev shows `tool_call: false`
   and a video-only output modality; not a chat model, and still preview
   status besides.
@@ -780,28 +896,30 @@ From the model catalog expansion (`docs/model-catalog-expansion-plan.md`):
 - **`grok-imagine-image-quality`** — retires 2026-11-02, roughly seven
   weeks after this catalog change; adding a model that would need removing
   in the same quarter is pure churn.
-- **`grok-imagine-image`** (1.0) — superseded by `grok-imagine-image-2.0`,
-  same modality, strictly older.
 - **Moonshot's 13 discontinued models** — Moonshot documents them as no
   longer maintained or supported, a harder cutoff than xAI/DeepSeek's
   silent-redirect pattern, and they're absent from models.dev, so each
   would need `EXEMPT_IDS` plus hand-curated metadata for a model that most
   likely hard-404s on every send. See `docs/providers/moonshotai.md`'s
   "Owner action items" for the unverified-without-a-live-key framing.
-- **Qwen's omni/realtime/ASR models** (`qwen3-omni-flash`,
-  `qwen3-omni-flash-realtime`, `qwen-omni-turbo`,
-  `qwen-omni-turbo-realtime`, `qwen2-5-omni-7b`, `qwen3-asr-flash`,
-  `qwen3-livetranslate-flash-realtime`) — every one carries `audio` or
-  `video` in its output modalities, or is a realtime/ASR endpoint; same
-  capability filter that already keeps embedding/TTS models out of every
-  other provider's catalog.
+- **Qwen's realtime, ASR and audio-only models**
+  (`qwen3-omni-flash-realtime`, `qwen-omni-turbo-realtime`,
+  `qwen3-asr-flash`, `qwen3-livetranslate-flash-realtime`) — realtime/ASR
+  endpoints; same capability filter that already keeps embedding/TTS models
+  out of every other provider's catalog. The plain streaming Omni models
+  (`qwen3.8-omni-flash`, `qwen3-omni-flash`, `qwen-omni-turbo`) were
+  admitted on 2026-10-06 (see "New models added this pass"), so the filter
+  is now "realtime, ASR, livetranslate or audio-only", not "any Omni".
+  `qwen2-5-omni-7b` stays out: Alibaba says Qwen2.5 models are no longer
+  callable.
 - **Two Alibaba-hosted third-party model ids**, `deepseek-v4-flash-0731` and
   `glm-5.2` — both appear in the live `alibaba` models.dev catalog (Alibaba
   resells other vendors' models on DashScope) but are excluded under the
   standing rule against curating an Alibaba-hosted copy of an id another
   provider already curates under its own name; see
   `docs/providers/alibaba.md`'s Qwen bullet for the full id-collision
-  reasoning.
+  reasoning. The owner re-confirmed the ban on 2026-10-06 (`glm-5.2`,
+  `deepseek-v4-flash-0731` and `kimi-k3` all stay out).
 
 Two ids originally listed here on an earlier pass of this audit were
 subsequently added, not left out — corrected in a follow-up commit:

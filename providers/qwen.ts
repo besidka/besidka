@@ -78,6 +78,17 @@ export default {
       },
     },
     {
+      id: 'qwen3.8-omni-flash',
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+      price: {
+        tokens: 1_000_000,
+      },
+    },
+    {
       id: 'qwen3.6-max-preview',
       tools: ['web_search'],
       reasoning: {
@@ -191,6 +202,16 @@ export default {
     },
     {
       id: 'qwen3-vl-plus',
+      tools: [],
+      reasoning: {
+        mode: 'toggle',
+      },
+      price: {
+        tokens: 1_000_000,
+      },
+    },
+    {
+      id: 'qwen3-omni-flash',
       tools: [],
       reasoning: {
         mode: 'toggle',
@@ -395,6 +416,13 @@ export default {
     },
     {
       id: 'qwen-mt-turbo',
+      tools: [],
+      price: {
+        tokens: 1_000_000,
+      },
+    },
+    {
+      id: 'qwen-omni-turbo',
       tools: [],
       price: {
         tokens: 1_000_000,

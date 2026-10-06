@@ -10,8 +10,9 @@ name and models.dev's catalog key — see "models.dev catalog key" below.
 
 ## Curated models
 
-Qwen (48 models — 3 previously curated plus 43 new plus 2 hand-curated
-`EXEMPT_IDS` additions): the full list is in `providers/qwen.ts`, ordered by
+Qwen (51 models — 3 previously curated plus 43 new plus 2 hand-curated
+`EXEMPT_IDS` additions plus 3 Omni text-chat models added 2026-10-06): the
+full list is in `providers/qwen.ts`, ordered by
 the same "first-listed is the default" convention as every other provider.
 Each new model's reasoning shape is derived mechanically from its
 models.dev `reasoning_options`, not hand-guessed per model:
@@ -55,10 +56,52 @@ pattern as `grok-imagine-image-2.0` in `providers/xai.ts` (see
 attempts a models.dev lookup for them and they never appear in
 `providers/data/models-dev-snapshot.json`. Both are curated with
 `tools: ['web_search']` and `reasoning: { mode: 'toggle' }`, matching their
-same-generation `flash`/`plus` siblings. This brings the totals to 48
-curated Qwen models and 15 with web search enabled.
+same-generation `flash`/`plus` siblings. This brought the totals to 48
+curated Qwen models and 15 with web search enabled; the Omni additions below
+bring them to 51 and 16.
+
+**Omni models (added 2026-10-06): `qwen3.8-omni-flash`, `qwen3-omni-flash`,
+`qwen-omni-turbo`.** An earlier pass excluded every Omni model, keyed on
+`audio` appearing in the model's *output* modalities. That key does not
+describe how DashScope behaves: audio output is opt-in through the request's
+`modalities` parameter, which defaults to `["text"]`. This app always
+streams (mandatory for Omni), never sends `modalities`, never plays audio and
+renders text and images only, so these three are ordinary text-chat models
+here. All three are called on the same
+`/compatible-mode/v1/chat/completions` endpoint through
+`@ai-sdk/openai-compatible`, and none is an `EXEMPT_IDS` model: models.dev
+tracks them under the `alibaba` key, so their metadata comes from
+`pnpm run models:fetch` like the rest. Sources:
+`https://www.alibabacloud.com/help/en/model-studio/qwen-omni`,
+`.../qwen-api-via-openai-chat-completions`, `.../web-search` and
+`.../deep-thinking`.
+
+- **`qwen3.8-omni-flash`** (released 2026-09-17): text-only output
+  (`modalities` defaults to `["text"]`); tool calling and `enable_search`
+  with `search_strategy: 'agent'` are supported on the Singapore/international
+  endpoint, so it is curated with `tools: ['web_search']` (the only Qwen3.8
+  model with search; `qwen3.8-max` and `qwen3.8-flash` stay excluded, see
+  "Web search"). Thinking is on by default at `reasoning_effort: 'xhigh'`
+  and `enable_thinking` is not documented for this model, so it is curated
+  with `reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] }`
+  (see "Reasoning effort wiring" below), not as a toggle.
+- **`qwen3-omni-flash`** (released 2025-09-15): text output by default,
+  hybrid thinking through `enable_thinking` (default false), so it uses the
+  existing `reasoning: { mode: 'toggle' }` path unchanged. No web search
+  (`tools: []`): the Omni capability table lists search as unsupported.
+- **`qwen-omni-turbo`** (released 2025-01-19): text output by default, no
+  thinking (no `reasoning` field), no web search (`tools: []`). Alibaba's
+  docs say it is "no longer updated", but it is not deprecated, so it stays
+  under the owner's policy of offering every non-deprecated model.
+- **Still excluded:** `qwen2.5-omni-7b` (Alibaba's docs state Qwen2.5 models
+  are no longer callable), and every `*-realtime`, ASR and `livetranslate`
+  model, which are different transports or audio-only products. The unit
+  test now guards that narrower rule ("never curates a realtime, ASR,
+  livetranslate or audio-only model") instead of rejecting every Omni id.
 
 **Standing rule: never curate an Alibaba-hosted third-party model id.**
+Re-confirmed by the owner on 2026-10-06 (also covering `kimi-k3`, which
+Alibaba hosts but this app curates only under Moonshot's native API).
 `deepseek-v4-flash-0731` and `glm-5.2` both appear in the live `alibaba`
 models.dev catalog (Alibaba resells other vendors' models on DashScope) and
 are deliberately excluded, permanently, not just for this PR. This app's
@@ -88,7 +131,10 @@ forward, not only DeepSeek/GLM (Zhipu) today.
   mechanism, not a dedicated SDK" below for the rest of that wiring. (This
   package's shape also matters for the separate Qwen3.8 web-search gap — see
   "Owner action items" below.)
-- **Reversal — `qwen3.8-max`'s `xhigh` exclusion.** This document previously
+- **Reversal — `qwen3.8-max`'s `xhigh` exclusion.** (Superseded in part on
+  2026-10-06: the "effort axis is never sent" statement below holds for every
+  toggle-curated model but not for `qwen3.8-omni-flash`, which sends
+  `reasoning_effort`; see "Reasoning effort wiring".) This document previously
   excluded `qwen3.8-max` because its reasoning is a three-way
   `toggle`/`effort` (`low`/`medium`/`xhigh`)/`budget_tokens` choice and
   mapping DashScope's `xhigh` onto this app's `low`/`medium`/`high` levels
@@ -149,7 +195,9 @@ other direct provider in this app uses. DashScope's China-mainland endpoint
 (`https://dashscope.aliyuncs.com/compatible-mode/v1`) is not used — Besidka
 is not China-region-specific.
 
-DashScope's thinking mode is a plain `enable_thinking` boolean forwarded
+Toggle-curated models use `enable_thinking`; the one effort-level model uses
+`reasoning_effort` (see "Reasoning effort wiring" below). DashScope's
+thinking mode is a plain `enable_thinking` boolean forwarded
 directly in the request body (via `extra_body` in Alibaba's own Python/Node
 SDK examples, but just a normal body field over raw HTTP), not an
 OpenAI-style `reasoning_effort` string. `@ai-sdk/openai-compatible` forwards
@@ -159,6 +207,37 @@ JSON body untouched, so `useQwen()` sets `providerOptions.qwen.enable_thinking`
 directly — same `Object.assign`-into-a-typed-`{}` pattern `useXai()` uses to
 route around `SharedV2ProviderOptions`'s `Record<string, Record<string,
 JSONValue>>` shape rejecting a flat boolean value at the type level.
+
+## Reasoning effort wiring
+
+`qwen3.8-omni-flash` is the only Qwen model curated with
+`reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] }`.
+DashScope documents no `enable_thinking` for it; its control is the
+top-level `reasoning_effort`: `none` disables thinking, `low` and `medium`
+are honoured, `minimal` maps to `low`, and `high`/`max` map to `xhigh`.
+Thinking is **on by default at `xhigh`**, so an unset field would silently
+bill every plain chat for maximum thinking.
+
+`useQwen()` therefore branches on `modelData.reasoning?.mode === 'levels'`:
+
+- it sets `providerOptions.qwen.reasoningEffort` (the key
+  `@ai-sdk/openai-compatible` recognizes and serializes as
+  `reasoning_effort`) and never `enable_thinking`;
+- `off` sends `reasoningEffort: 'none'`, and `low`/`medium`/`high` are
+  forwarded unchanged (`high` reaches `xhigh` on Alibaba's side);
+- the top-level `reasoning` streamText option stays `undefined` for this
+  model. The shipped provider derives `reasoning_effort` from that option
+  only when it is not `none`, so relying on it would leave `off` on the
+  `xhigh` default. `enable_search` and `search_options` are merged into the
+  same object exactly as for other models;
+- chat-title generation passes `minimal` (which Alibaba maps to `low`) for
+  this model, because `useChatTitle` cannot carry provider options and the
+  default `xhigh` would otherwise be paid on every new chat's title.
+
+The chat UI's `off` level is the default, so a new chat on this model runs
+with thinking disabled and the user opts in to `low`/`medium`/`high`.
+Not live-verified (no DashScope key): confirm that `reasoning_effort: 'none'`
+is accepted and that thinking stops, alongside the web-search probe below.
 
 ## Web search
 
@@ -222,7 +301,7 @@ region-tabbed `help.aliyun.com` twin):
   `qwen3.6-plus`, `qwen3.6-27b`, `qwen3.6-35b-a3b`), the `qwen3.5-*` family
   (`qwen3.5-plus`, `qwen3.5-397b-a17b`, `qwen3.5-122b-a10b`,
   `qwen3.5-27b`, `qwen3.5-35b-a3b`) and bare `qwen3-max` — 13 models in
-  total, matching `providers/qwen.ts` exactly. It does **not** cover:
+  total. It does **not** cover:
   Qwen3.8 (`qwen3.8-max`, `qwen3.8-flash` — see the dedicated note below);
   the Beijing-only rolling-alias ids (`qwen-max`, `qwen-plus`,
   `qwen-flash`, `qwen-turbo`, `qwq-plus` — this app calls the Singapore
@@ -237,7 +316,11 @@ region-tabbed `help.aliyun.com` twin):
   siblings already on this allowlist, plus each model's dedicated docs
   page, support the same `enable_search` availability, so both are curated
   with `tools: ['web_search']`. This brings the allowlist total to 15
-  models, matching `providers/qwen.ts` exactly.
+  models.
+- **Extended (2026-10-06) to `qwen3.8-omni-flash`.** Alibaba documents tool
+  calling and `enable_search` with the agent strategy for it on the
+  Singapore/international endpoint, unlike `qwen3.8-max`/`qwen3.8-flash`.
+  The allowlist total is now 16, matching `providers/qwen.ts` exactly.
 - **Qwen3.8 is deliberately excluded from web search.** Alibaba's Chat
   Completions API for `qwen3.8-max`/`qwen3.8-flash` does not support
   `search_strategy: 'agent'` — the only search strategy priced and

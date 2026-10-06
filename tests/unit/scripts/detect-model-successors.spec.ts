@@ -924,4 +924,8 @@ describe('DECLINED_IDS', () => {
   it('still declines gpt-5.6', () => {
     expect(DECLINED_IDS).toContain('gpt-5.6')
   })
+
+  it('declines gpt-6-astra as a premium price tier', () => {
+    expect(DECLINED_IDS).toContain('gpt-6-astra')
+  })
 })
