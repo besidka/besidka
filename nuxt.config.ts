@@ -48,6 +48,35 @@ const forceInlineVueI18nForEmailRenderer = defineNuxtModule({
   },
 })
 
+const guardMdcSlotTransformForVapor = defineNuxtModule({
+  meta: { name: 'guard-mdc-slot-transform-for-vapor' },
+  setup(_options, nuxt) {
+    nuxt.hook('vite:extendConfig', (viteConfig) => {
+      const compilerOptions = viteConfig.vue?.template?.compilerOptions
+
+      if (!compilerOptions?.nodeTransforms) {
+        return
+      }
+
+      compilerOptions.nodeTransforms = compilerOptions.nodeTransforms.map(
+        (nodeTransform) => {
+          if (nodeTransform.name !== 'viteMDCSlot') {
+            return nodeTransform
+          }
+
+          return function viteMDCSlot(node, context) {
+            if (!context.nodeTransforms) {
+              return
+            }
+
+            return nodeTransform(node, context)
+          }
+        },
+      )
+    })
+  },
+})
+
 // Stable per-build identifier, shared by Nuxt's app manifest
 // (runtimeConfig.app.buildId) and the '/' SWR cache key. In CI this is the
 // commit SHA; locally it is a fresh UUID per build. Binding the cache key to
@@ -72,6 +101,7 @@ const modules = [
   '@nuxtjs/color-mode',
   '@nuxtjs/device',
   '@nuxtjs/mdc',
+  guardMdcSlotTransformForVapor,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
   'nuxt-svgo',
@@ -437,29 +467,6 @@ export default defineNuxtConfig({
     prefetchPreloadTags: true,
   },
   hooks: {
-    'vite:extendConfig': (viteConfig) => {
-      const compilerOptions = viteConfig.vue?.template?.compilerOptions
-
-      if (!compilerOptions?.nodeTransforms) {
-        return
-      }
-
-      compilerOptions.nodeTransforms = compilerOptions.nodeTransforms.map(
-        (nodeTransform) => {
-          if (nodeTransform.name !== 'viteMDCSlot') {
-            return nodeTransform
-          }
-
-          return function viteMDCSlot(node, context) {
-            if (!context.nodeTransforms) {
-              return
-            }
-
-            return nodeTransform(node, context)
-          }
-        },
-      )
-    },
     // App-level cookie texts must merge through the same lazy locale-file
     // pipeline as the module's own messages — config-file messages get
     // replaced when registered locale files load.
