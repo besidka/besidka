@@ -35,7 +35,7 @@ function truncate(value: string | undefined, maxLength: number): string {
 export function trackLandingEvent(
   name: LandingEventName,
   data: LandingEventData | undefined,
-  h3Event: RequestEvent,
+  requestEvent: RequestEvent,
 ): void {
   try {
     const analytics = useAnalytics()
@@ -44,17 +44,17 @@ export function trackLandingEvent(
       return
     }
 
-    const userAgent = getRequestHeader(h3Event, 'user-agent') ?? ''
+    const userAgent = getRequestHeader(requestEvent, 'user-agent') ?? ''
 
     if (BOT_PATTERN.test(userAgent)) {
       return
     }
 
-    const path = data?.path ?? h3Event.url.pathname
+    const path = data?.path ?? requestEvent.url.pathname
     const target = truncate(data?.target, 100)
     const country = (
-      (h3Event.context.cf as Record<string, unknown> | undefined)?.country
-      ?? getRequestHeader(h3Event, 'cf-ipcountry')
+      (requestEvent.context.cf as Record<string, unknown> | undefined)?.country
+      ?? getRequestHeader(requestEvent, 'cf-ipcountry')
       ?? ''
     ) as string
     const deviceClass = getDeviceClass(userAgent)
@@ -66,7 +66,7 @@ export function trackLandingEvent(
       indexes: [name],
     })
   } catch (exception) {
-    const logger = useRequestLogger(h3Event)
+    const logger = useRequestLogger(requestEvent)
 
     logger.set({
       analytics: {

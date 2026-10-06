@@ -1401,6 +1401,11 @@ export function getAffectedTests(changedFiles) {
       tests: 'all',
     },
     {
+      pattern:
+        /^(tests\/setup\/(vitest\.setup|mocks\/nuxt-server)\.ts|server\/utils\/(logging\/request-logger|http\/apply-response-headers)\.ts)$/,
+      tests: 'all',
+    },
+    {
       pattern: /^app\.config\.ts$/,
       tests: ['tests/e2e/settings/theme.spec.ts'],
     },
