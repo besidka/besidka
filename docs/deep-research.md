@@ -1,7 +1,8 @@
 # Deep Research
 
-Deep research runs the providers' own deep-research agents on the user's API
-key and delivers a cited report into the chat. It is an **async job**, not a
+Deep research runs a provider's own deep-research agent on the user's API
+key (currently Google only — OpenAI's were discontinued, see below) and
+delivers a cited report into the chat. It is an **async job**, not a
 streaming chat turn: the agent runs entirely on the provider's servers for
 minutes to tens of minutes; Besidka starts the job, polls it, and persists the
 final report as a normal assistant message.
@@ -22,13 +23,14 @@ picking the depth.
 
 | Model | Tier | Cost / time |
 |---|---|---|
-| `o4-mini-deep-research` (OpenAI) | quick | ~$1, 5–15 min |
-| `o3-deep-research` (OpenAI) | thorough | ~$10, 10–30 min |
+| `o4-mini-deep-research` (OpenAI, discontinued) | quick | ~$1, 5–15 min |
+| `o3-deep-research` (OpenAI, discontinued) | thorough | ~$10, 10–30 min |
 | `deep-research-preview-04-2026` (Google) | quick | $1–3, under 20 min |
 | `deep-research-max-preview-04-2026` (Google) | thorough | $3–7, up to 60 min |
 
 Both OpenAI research models were shut down on 2026-07-23 and are curated
-`status: 'deprecated'`, so only the Google pair is selectable (issue #402).
+`status: 'deprecated'`, so only the Google pair is selectable — see
+"OpenAI deep research: discontinued" below.
 
 `getModelResearch(model)` (`shared/utils/research.ts`) reads a model's
 `research` block; `isDeepResearchModel(model)` is just `!!getModelResearch(model)`.
@@ -93,6 +95,37 @@ Access gates (surfaced as structured errors with fix text, see
 - OpenAI: free tier not supported (Tier 1+ billing required); organization
   ID verification is very likely required (inherited from the o3 family).
 - Google: the agents are Preview; paid-tier keys expected.
+
+## OpenAI deep research: discontinued (2026-10-06)
+
+OpenAI shut down `o3-deep-research` and `o4-mini-deep-research` on
+2026-07-23 ([deprecations](https://developers.openai.com/api/docs/deprecations)).
+Both are curated `status: 'deprecated'` with `retiredAt: '2026-07-23'` and
+are blocked server-side for chat sends and research starts (PR #403).
+
+OpenAI offers no dedicated, provider-hosted deep-research agent to replace
+them:
+
+- The deprecations table's "substitute `gpt-5.6-sol`" is OpenAI's generic
+  model mapping, not a research agent.
+- The deep-research guide now only documents the shutdown and migration.
+- The only "deep research" OpenAI still documents (in the web-search guide)
+  is a general model (`gpt-5.5` / `gpt-6-astra`) with the `web_search` tool,
+  `xhigh` reasoning and background mode.
+
+That last pattern is rejected by this app's architecture rule: deep research
+only uses provider-hosted research agents that run long multi-source
+investigations. A regular model with web search answers quickly instead of
+researching — the same shape as the abandoned v1 attempt, see
+`docs/deep-research-failed-attempt.md`.
+
+- **Do not** re-add OpenAI deep research on a general model.
+- Re-enable OpenAI only if OpenAI ships a dedicated research agent. The
+  OpenAI adapter (`server/utils/research/adapters/openai.ts`) is kept for
+  that case.
+- Google's Interactions API agents are currently the only deep-research
+  provider.
+- Issue #402 is closed as not planned with this reasoning.
 
 ## Architecture
 
