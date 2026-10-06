@@ -397,7 +397,10 @@ section and arms the `useChatProvider()` guard. Applied to OpenAI on
 - `retiredAt` only: `gpt-5`, `gpt-5-mini`, `gpt-5-nano` and `o3` (all
   2026-12-11); `gpt-5.1` and `gpt-5.4-nano` (2027-04-01).
 - `status: 'deprecated'` + `retiredAt: '2026-07-23'`: `o3-deep-research` and
-  `o4-mini-deep-research`, already shut down (issue #402). The legacy
+  `o4-mini-deep-research`, already shut down. OpenAI deep research is
+  discontinued with no dedicated research-agent successor (issue #402 is
+  closed as not planned; see "OpenAI deep research: discontinued" in
+  `docs/deep-research.md`). The legacy
   section now holds them and `useChatProvider()` rejects new sends. There
   is no longer a selectable OpenAI research option: the Deep research
   filter lists only the two Gemini research models in the main list, and a
@@ -415,8 +418,8 @@ is not flagged, so it must be repointed before its date, not only when its
 status flips. The image controller moved from `gpt-5-nano` (retires
 2026-12-11) to `gpt-6-luna` for this reason, and `forProjectMemory` followed
 on 2026-10-06. The research `assistModel` (`gpt-5.4-nano`) is moot: it lives
-only on the two deprecated deep-research models tracked in #402 (see "Owner
-action items").
+only on the two permanently deprecated deep-research models (see "OpenAI
+deep research: discontinued" in `docs/deep-research.md`).
 
 Semantics: `status: 'deprecated'` is the **gate** — legacy tab plus the
 `useChatProvider()` server guard block new chats with the model.
@@ -678,8 +681,8 @@ Nothing is required to deploy this. Specifically:
   with `'low'`, forwarded as `generateText({ reasoning })`) so `gpt-6-luna`
   does not fall back to its default `medium`; Google and Anthropic keep the
   provider default. The `assistModel` of the OpenAI research pair is still
-  `gpt-5.4-nano` but moot until #402 resolves the two deprecated
-  deep-research models.
+  `gpt-5.4-nano` but moot: the referencing research models are permanently
+  deprecated.
 - **The optional provider-key spot-check** (two `curl` commands, above)
   is only useful if you suspect a specific model has quietly stopped
   working for BYOK users. It is not part of any regular workflow.
