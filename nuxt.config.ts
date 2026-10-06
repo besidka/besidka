@@ -100,9 +100,6 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'cloudflare_module',
-    experimental: {
-      asyncContext: true,
-    },
     moduleSideEffects: [
       'reflect-metadata/',
     ],
@@ -426,13 +423,14 @@ export default defineNuxtConfig({
     },
   },
   experimental: {
-    componentIslands: true,
-    viteEnvironmentApi: true,
+    asyncContext: true,
+    early404: true,
+    stripNeverHydratedData: true,
+    strictRouteTypes: true,
     extractAsyncDataHandlers: true,
     typescriptPlugin: true,
     // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
     nitroAutoImports: true,
-    watcher: 'builder',
     prefetchPreloadTags: true,
   },
   hooks: {
