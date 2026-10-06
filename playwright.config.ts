@@ -117,5 +117,7 @@ export default defineConfig({
     url: E2E_BASE_URL,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
+    stdout: process.env.CI ? 'pipe' : 'ignore',
+    stderr: 'pipe',
   },
 })
