@@ -27,12 +27,12 @@ describe('getImageGenerationCost', () => {
   })
 
   it('returns the square price for gpt-image-2 at 1:1', () => {
-    expect(getImageGenerationCost('gpt-image-2', '1:1')).toBe(0.041)
+    expect(getImageGenerationCost('gpt-image-2', '1:1')).toBe(0.053)
   })
 
   it('returns the non-square price for gpt-image-2 at 2:3 and 3:2', () => {
-    expect(getImageGenerationCost('gpt-image-2', '2:3')).toBe(0.053)
-    expect(getImageGenerationCost('gpt-image-2', '3:2')).toBe(0.053)
+    expect(getImageGenerationCost('gpt-image-2', '2:3')).toBe(0.041)
+    expect(getImageGenerationCost('gpt-image-2', '3:2')).toBe(0.041)
   })
 
   it('returns the flat price for grok-imagine-image-2.0', () => {

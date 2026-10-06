@@ -521,7 +521,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^server\/utils\/ai\/image-generation-cost\.ts$/,
-      tests: messageUsageTests,
+      tests: [
+        ...messageUsageTests,
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+      ],
     },
     {
       pattern:

@@ -8,15 +8,16 @@ const flatImageGenerationCostUsdByModelId: Record<string, number> = {
 
 const openAiImageModelId = 'gpt-image-2'
 const openAiSquareAspectRatio = '1:1'
-const openAiSquareImageCostUsd = 0.041
-const openAiNonSquareImageCostUsd = 0.053
+const openAiSquareImageCostUsd = 0.053
+const openAiNonSquareImageCostUsd = 0.041
 
 /**
  * Dollar cost of one generated image for a given image-only model, the
  * single source of truth shared by per-message usage (chat stream cost) and
  * per-file cost (files manager). Google and xAI image models are
  * flat-priced per image; OpenAI's `gpt-image-2` is aspect-ratio-dependent,
- * cheaper for the square `1:1` size than the non-square `2:3`/`3:2` sizes.
+ * more expensive for the square `1:1` size than the non-square `2:3`/`3:2`
+ * sizes.
  * Cross-checked against each model's `price.display` string in
  * `providers/openai.ts`, `providers/google.ts` and `providers/xai.ts`.
  * Returns `undefined` for any model with no known image-generation price,
