@@ -460,19 +460,19 @@ alone.
 
 ### Forced tool choice means the floor is one unit, not zero
 
-All three providers wire a forced tool choice
+OpenAI and Google wire a forced tool choice
 (`toolChoice: { type: 'tool', toolName: 'web_search_preview' }`) when the
-user enables the tool — Anthropic only when reasoning is off, since it
-rejects a forced tool choice alongside extended thinking (see the comment in
-`server/utils/providers/anthropic.ts`). So the product behaviour today is
-not "the model searches if it decides to"; it's "the user toggles search
-on, and at least one billable search is forced." For OpenAI this is
-documented behaviour; what Google does with a forced choice on
-`googleSearch` (which isn't a function declaration) is unverified.
+user enables the tool. Anthropic never does: it rejects a forced tool choice
+alongside extended thinking, and the Claude 5.5 generation rejects it
+outright (see the JSDoc in `server/utils/providers/anthropic.ts`), so
+Anthropic runs on `auto` and the model decides whether to search. For OpenAI
+the forced search is documented behaviour; what Google does with a forced
+choice on `googleSearch` (which isn't a function declaration) is unverified.
 
-The consequence for any future native-vs-external routing design: **each
-search-enabled turn carries a cost floor of one unit, not zero** — the
-toggle is the spend decision, not the model.
+The consequence for any future native-vs-external routing design: **on
+OpenAI and Google each search-enabled turn carries a cost floor of one unit,
+not zero** — the toggle is the spend decision, not the model. Anthropic
+turns have a floor of zero.
 
 ### The free quota exists; PR #385 verified the rate, not its absence
 

@@ -155,6 +155,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/deepseek.spec.ts',
     'tests/unit/utils/providers/moonshotai.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
+    'tests/unit/utils/providers/anthropic.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
     'tests/unit/utils/reasoning-levels.spec.ts',
   ]
@@ -175,6 +176,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/ai/tool-loop.spec.ts',
     'tests/unit/utils/ai/search-answer-continuation.spec.ts',
     'tests/unit/utils/ai/current-date-instruction.spec.ts',
+    'tests/unit/utils/ai/native-search-instruction.spec.ts',
     'tests/integration/api/chats-google-leading-assistant-placeholder.spec.ts',
     'tests/integration/api/chats-external-search-validation.spec.ts',
     'tests/integration/api/chats-external-search.spec.ts',
@@ -504,8 +506,16 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^server\/utils\/ai\/native-search-instruction\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/native-search-instruction.spec.ts',
+        'tests/integration/api/chats-single-step-characterization.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/ai\/current-date-instruction\.ts$/,
       tests: [
+        'tests/unit/utils/ai/native-search-instruction.spec.ts',
         'tests/unit/utils/ai/current-date-instruction.spec.ts',
         'tests/unit/utils/ai/search-answer-continuation.spec.ts',
         'tests/integration/api/chats-external-search.spec.ts',
@@ -535,7 +545,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/providers\/(deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
+        /^(server\/utils\/providers\/(anthropic|deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
     },
     {

@@ -31,6 +31,17 @@ export default {
       },
     },
     {
+      id: 'grok-4.7',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'grok-4.6',
       tools: ['web_search'],
       reasoning: {

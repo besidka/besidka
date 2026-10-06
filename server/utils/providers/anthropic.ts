@@ -56,6 +56,11 @@ export async function useAnthropic(
     )
   }
 
+  /**
+   * Never forces tool_choice, so the provider default `auto` applies.
+   * Thinking-enabled requests reject forced tool use, and the Claude 5.5
+   * generation rejects forced tool use outright (HTTP 400).
+   */
   function getTools(): FormattedTools {
     if (!requestedTools?.length) {
       return {}
@@ -69,20 +74,6 @@ export async function useAnthropic(
       }
 
       result.tools['web_search_preview'] = anthropic.tools.webSearch_20250305({})
-
-      /**
-       * Anthropic rejects a forced tool_choice while extended thinking is
-       * enabled ("Thinking may not be enabled when tool_choice forces tool
-       * use"), so the tool is only forced when reasoning is off. With
-       * reasoning on, leaving tool_choice unset (provider default `auto`)
-       * keeps web search usable instead of hard-failing the request.
-       */
-      if (reasoningLevel === 'off') {
-        result.toolChoice = {
-          type: 'tool',
-          toolName: 'web_search_preview',
-        }
-      }
     }
 
     return result

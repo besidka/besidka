@@ -119,6 +119,10 @@ import type {
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildCurrentDateInstruction } from '~~/server/utils/ai/current-date-instruction'
 import {
+  buildNativeSearchInstruction,
+  shouldNudgeNativeWebSearch,
+} from '~~/server/utils/ai/native-search-instruction'
+import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
@@ -1217,6 +1221,7 @@ export default defineEventHandler(async (event) => {
               projectSystemPrompt,
               requestedTools,
               gatewayId,
+              shouldNudgeNativeWebSearch(requestedTools, parsedTools),
             ),
             reasoning: reasoningEffort,
             messages: modelMessages,
@@ -1422,6 +1427,7 @@ export default defineEventHandler(async (event) => {
               projectSystemPrompt,
               [],
               gatewayId,
+              false,
             ),
             reasoning: capContinuationReasoningEffort(reasoningEffort),
             messages: buildSearchAnswerContinuationMessages(
@@ -2409,6 +2415,7 @@ function buildChatInstructions(
   projectSystemPrompt: string | null,
   requestedTools: ModelTool[],
   gatewayId: GatewayId | undefined,
+  shouldNudgeNativeSearch: boolean,
   now: Date = new Date(),
 ): string | undefined {
   const instructions = [projectSystemPrompt]
@@ -2427,6 +2434,10 @@ function buildChatInstructions(
         'decline a valid image request or claim image generation is unavailable.',
         'The tool saves the result in the user private file library.',
       ].join(' '))
+  }
+
+  if (shouldNudgeNativeSearch) {
+    instructions.push(buildNativeSearchInstruction(now))
   }
 
   const externalSearchToolName = requestedTools.includes('web_search_brave')

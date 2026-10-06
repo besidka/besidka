@@ -59,6 +59,17 @@ export default {
       },
     },
     {
+      id: 'gpt-6.1-sol',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
       id: 'gpt-6-sol',
       price: {
         tokens: 1_000_000,

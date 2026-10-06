@@ -695,6 +695,66 @@ describe('chat send pipeline: single-step characterization', () => {
     ]))
   })
 
+  it('nudges native web search when the provider leaves tool choice '
+    + 'unset', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'anthropic' },
+      model: {
+        id: 'claude-sonnet-5-5',
+        name: 'Claude Sonnet 5.5',
+        tools: ['web_search'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+    vi.stubGlobal('useAnthropic', vi.fn(async () => ({
+      instance: {},
+      tools: { tools: { web_search_preview: { type: 'provider-defined' } } },
+      providerOptions: {},
+    })))
+
+    await runHandler(baseBody({
+      model: 'claude-sonnet-5-5',
+      tools: ['web_search'],
+    }))
+
+    expect(mocks.streamTextOptions[0]?.instructions).toContain(
+      'Search the web before answering',
+    )
+    expect(mocks.streamTextOptions[0]?.instructions).toContain(
+      'Today\'s date is',
+    )
+  })
+
+  it('does not nudge native web search when the provider forces tool '
+    + 'choice', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'gpt-5-mini',
+        name: 'GPT-5 mini',
+        tools: ['web_search'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+    vi.stubGlobal('useOpenAI', vi.fn(async () => ({
+      instance: {},
+      tools: {
+        tools: { web_search_preview: { type: 'provider-defined' } },
+        toolChoice: { type: 'tool', toolName: 'web_search_preview' },
+      },
+      providerOptions: {},
+    })))
+
+    await runHandler(baseBody({
+      model: 'gpt-5-mini',
+      tools: ['web_search'],
+    }))
+
+    expect(mocks.streamTextOptions[0]?.instructions ?? '').not.toContain(
+      'Search the web before answering',
+    )
+  })
+
   it('(c) openrouter gateway send stays single step, sends no AI SDK tool '
     + 'and never resolves a curated provider', async () => {
     const useChatProviderMock = vi.fn(() => {
