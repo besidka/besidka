@@ -7,7 +7,8 @@ import * as schema from '~~/server/db/schema'
 import { finalizeResearchJob } from '~~/server/utils/research/finalize'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
-import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 type WaitUntilCtx = {
@@ -22,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
   const params = z.object({
     slug: z.ulid(),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

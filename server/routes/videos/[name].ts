@@ -6,9 +6,9 @@ import { env } from 'cloudflare:workers'
 import {
   defineEventHandler,
   getRequestHeader,
-  getRouterParams,
   setResponseStatus,
 } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
@@ -28,7 +28,7 @@ function resolveContentType(name: string): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const { name } = getRouterParams(event, { decode: true }) as { name: string }
+  const { name } = getDecodedRouterParams(event) as { name: string }
 
   if (!ALLOWED_FILES.has(name)) {
     throw createError({

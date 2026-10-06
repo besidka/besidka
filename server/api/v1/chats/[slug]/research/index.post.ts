@@ -6,16 +6,16 @@ import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance
 import { startResearchJobForChat } from '~~/server/utils/research/start'
 import {
   defineEventHandler,
-  getRouterParams,
   readValidatedBody,
 } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
   const params = z.object({
     slug: z.ulid(),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

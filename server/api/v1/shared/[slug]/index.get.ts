@@ -7,14 +7,15 @@ import {
   hideFileParts,
   rewriteShareFileParts,
 } from '~~/server/utils/files/rewrite-share-file-urls'
-import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 
 const paramsRules = z.object({
   slug: z.string().nonempty(),
 })
 
 export default defineEventHandler(async (event) => {
-  const params = paramsRules.safeParse(getRouterParams(event, { decode: true }))
+  const params = paramsRules.safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

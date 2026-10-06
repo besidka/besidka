@@ -10,15 +10,15 @@ import {
   defineEventHandler,
   getQuery,
   getRequestHeader,
-  getRouterParams,
 } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 
 const unsafeBidiControlPattern
   = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u
 
 export default defineEventHandler(async (event) => {
-  const { key: storageKey } = getRouterParams(event, { decode: true })
+  const { key: storageKey } = getDecodedRouterParams(event)
 
   if (!storageKey) {
     throw createError({

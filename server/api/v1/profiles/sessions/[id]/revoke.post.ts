@@ -2,9 +2,9 @@ import { createError } from 'evlog'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import {
   defineEventHandler,
-  getRouterParams,
   setResponseStatus,
 } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 
 export default defineEventHandler(async (event) => {
   const session = await useUserSession()
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
 
   const params = z.object({
     id: z.coerce.number().int().positive(),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

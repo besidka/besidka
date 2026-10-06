@@ -7,7 +7,8 @@ import {
   getCachedGatewayCatalog,
 } from '~~/server/utils/gateways/catalog'
 import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
-import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const GATEWAY_MODELS_RATE_LIMIT = { window: 60, max: 20 }
@@ -42,7 +43,7 @@ async function enforceGatewayModelsRateLimit(
 export default defineEventHandler(async (event) => {
   const params = z.object({
     gateway: z.enum(gatewayIds),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

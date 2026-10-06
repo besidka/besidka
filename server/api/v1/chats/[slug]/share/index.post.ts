@@ -7,9 +7,9 @@ import {
 } from '~~/server/utils/chats/share'
 import {
   defineEventHandler,
-  getRouterParams,
   readValidatedBody,
 } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsRules = z.object({
@@ -28,7 +28,7 @@ const bodyRules = z.object({
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
 
-  const params = paramsRules.safeParse(getRouterParams(event, { decode: true }))
+  const params = paramsRules.safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

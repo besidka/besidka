@@ -1402,7 +1402,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(tests\/setup\/(vitest\.setup|mocks\/nuxt-server)\.ts|server\/utils\/(logging\/request-logger|http\/apply-response-headers)\.ts)$/,
+        /^(tests\/setup\/(vitest\.setup|mocks\/nuxt-server)\.ts|server\/utils\/(logging\/request-logger|http\/(apply-response-headers|get-decoded-router-params))\.ts)$/,
       tests: 'all',
     },
     {

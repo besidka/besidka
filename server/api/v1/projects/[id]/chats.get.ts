@@ -7,7 +7,8 @@ import {
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
 import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
-import { defineEventHandler, getQuery, getRouterParams } from 'nuxt/server'
+import { defineEventHandler, getQuery } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const DEFAULT_LIMIT = 30
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
 
   const params = z.object({
     id: z.string().nonempty(),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

@@ -6,14 +6,15 @@ import { mockResearchAdapter } from '~~/server/utils/research/adapters/mock'
 import { describeResearchAdapterException } from '~~/server/utils/research/adapter-error'
 import { getDecryptedProviderKey } from '~~/server/utils/research/keys'
 import { toResearchJobView } from '~~/server/utils/research/job-view'
-import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
   const params = z.object({
     slug: z.ulid(),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

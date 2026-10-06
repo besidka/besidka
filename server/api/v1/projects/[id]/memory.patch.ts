@@ -2,16 +2,16 @@ import { createError } from 'evlog'
 import { toggleProjectMemory } from '~~/server/utils/projects/memory'
 import {
   defineEventHandler,
-  getRouterParams,
   readValidatedBody,
 } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
   const params = z.object({
     id: z.string().nonempty(),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

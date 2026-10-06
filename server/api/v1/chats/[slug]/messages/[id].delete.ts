@@ -12,7 +12,8 @@ import {
   removeMessageRowsFromSearchIndex,
   safeDecodePublicId,
 } from '~~/server/utils/search/index-writer'
-import { defineEventHandler, getRouterParams } from 'nuxt/server'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
@@ -20,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const params = z.object({
     slug: z.ulid(),
     id: z.string().min(1).max(64),
-  }).safeParse(getRouterParams(event, { decode: true }))
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({
