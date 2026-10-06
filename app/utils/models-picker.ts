@@ -85,6 +85,10 @@ export function getModelPriceTip(model: Model): string | undefined {
     return `${model.research.costEstimate} · ${model.research.timeEstimate}`
   }
 
+  if (model.imageGeneration?.costEstimate) {
+    return model.imageGeneration.costEstimate
+  }
+
   if (model.price.display) {
     return model.price.display
   }

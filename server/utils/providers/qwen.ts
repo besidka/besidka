@@ -9,6 +9,8 @@ import {
 } from './reasoning'
 
 const QWEN_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+const REASONING_EFFORT_DISABLED = 'none'
+const LEVELS_MODEL_TITLE_REASONING = 'minimal'
 
 /**
  * Alibaba's dedicated `qwen-ai-provider` package pins `zod@^3`, which
@@ -77,12 +79,22 @@ export async function useQwen(
   }
 
   const controllerModelId = getControllerModelId(modelData)
+  const isLevelsCapability = modelData.reasoning?.mode === 'levels'
 
   function getInstance() {
     return qwen.chatModel(controllerModelId)
   }
 
   async function generateChatTitle(message: string) {
+    if (isLevelsCapability) {
+      return await useChatTitle(
+        getInstance(),
+        message,
+        undefined,
+        LEVELS_MODEL_TITLE_REASONING,
+      )
+    }
+
     return await useChatTitle(
       getInstance(),
       message,
@@ -106,10 +118,18 @@ export async function useQwen(
    * options). `@ai-sdk/openai-compatible` forwards any `providerOptions.qwen`
    * key it doesn't itself recognize (`user`, `reasoningEffort`,
    * `textVerbosity`, `strictJsonSchema`) straight into the JSON body, so
-   * this is the only place that needs to know the field names. Every
-   * currently curated Qwen model also exposes a `budget_tokens` option
-   * alongside the toggle, left deliberately unused here; none exposes
-   * adjustable effort levels, so the top-level `reasoning` streamText option
+   * this is the only place that needs to know the field names. Toggle
+   * models send `enable_thinking`. Models curated with `mode: 'levels'`
+   * (`qwen3.8-omni-flash`) do not document `enable_thinking`; they think by
+   * default at `xhigh` and are controlled through top-level
+   * `reasoning_effort` instead, so they send `providerOptions.qwen.
+   * reasoningEffort` (the recognized key that becomes `reasoning_effort`)
+   * and never `enable_thinking`. `off` is sent as `none` because the
+   * provider's own top-level `reasoning` option drops `none`, which would
+   * leave the model on its xhigh default. `high` is forwarded as-is; Alibaba
+   * maps `high` and `max` to `xhigh`. Every currently curated Qwen model also
+   * exposes a `budget_tokens` option alongside its toggle or levels, left
+   * deliberately unused here, so the top-level `reasoning` streamText option
    * is never set for this provider. Web search is pinned to
    * `search_strategy: 'agent'` because that is the only strategy Alibaba
    * documents for the Singapore region this app's `dashscope-intl` endpoint
@@ -125,6 +145,14 @@ export async function useQwen(
     if (isToggleCapability) {
       Object.assign(result, {
         enable_thinking: reasoningLevel !== 'off',
+      })
+    }
+
+    if (isLevelsCapability) {
+      Object.assign(result, {
+        reasoningEffort: reasoningLevel === 'off'
+          ? REASONING_EFFORT_DISABLED
+          : reasoningLevel,
       })
     }
 
@@ -145,7 +173,7 @@ export async function useQwen(
     generateChatTitle,
     tools: getTools(),
     providerOptions: getProviderOptions(),
-    reasoning: isToggleCapability
+    reasoning: isToggleCapability || isLevelsCapability
       ? undefined
       : toReasoningEffort(reasoningLevel),
   }

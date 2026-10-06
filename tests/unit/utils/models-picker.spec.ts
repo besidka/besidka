@@ -151,6 +151,23 @@ describe('getModelPriceTip', () => {
     expect(getModelPriceTip(model)).toBe('~$1 / task · 5–15 min')
   })
 
+  it('prefers the image cost estimate over a price display string', () => {
+    const model = createModel({
+      price: {
+        tokens: 1,
+        input: '',
+        output: '',
+        display: '$30 / 1M image output tokens, plus input',
+      },
+      imageGeneration: {
+        controllerModel: 'gpt-6-luna',
+        costEstimate: '~$0.010–$0.013 / medium image',
+      },
+    })
+
+    expect(getModelPriceTip(model)).toBe('~$0.010–$0.013 / medium image')
+  })
+
   it('uses the price display string when there is one', () => {
     const model = createModel({
       price: {

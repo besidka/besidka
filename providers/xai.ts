@@ -92,5 +92,26 @@ export default {
         controllerModel: 'grok-4.20-0309-non-reasoning',
       },
     },
+    {
+      id: 'grok-imagine-image',
+      name: 'Grok Imagine Image',
+      description: 'Image model for prompt-driven generation and visual design workflows',
+      contextLength: 64_000,
+      maxOutputTokens: 0,
+      releaseDate: '2026-01-28',
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['image'],
+      },
+      price: {
+        tokens: 1,
+        display: '$0.02 / image',
+      },
+      tools: [],
+      toolCall: false,
+      imageGeneration: {
+        controllerModel: 'grok-4.20-0309-non-reasoning',
+      },
+    },
   ],
 } satisfies CuratedProvider

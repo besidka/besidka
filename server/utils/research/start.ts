@@ -14,6 +14,7 @@ import { createError } from 'evlog'
 import { and, count, eq, inArray } from 'drizzle-orm'
 import { getRequestURL } from 'h3'
 import * as schema from '~~/server/db/schema'
+import { assertModelNotDeprecated } from '~~/server/utils/chats/deprecated-model'
 import { mapResearchProviderError, normalizeChatError } from '~~/server/utils/chats/errors'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
@@ -78,6 +79,8 @@ export async function resolveResearchStartContext(
       fix: 'Select a different model and try again.',
     })
   }
+
+  assertModelNotDeprecated(model)
 
   const research = getModelResearch(model)
   const supportedProviderId = toSupportedResearchProviderId(provider.id)

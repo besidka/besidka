@@ -35,6 +35,26 @@ describe('getImageGenerationCost', () => {
     expect(getImageGenerationCost('gpt-image-2', '3:2')).toBe(0.041)
   })
 
+  it('returns the derived square price for the gpt-image-2.5 models at 1:1', () => {
+    expect(getImageGenerationCost('gpt-image-2.5-sunburst', '1:1'))
+      .toBe(0.013)
+    expect(getImageGenerationCost('gpt-image-2.5-flare', '1:1'))
+      .toBe(0.013)
+  })
+
+  it('returns the derived non-square price for the gpt-image-2.5 models at 2:3 and 3:2', () => {
+    for (const modelId of ['gpt-image-2.5-sunburst', 'gpt-image-2.5-flare']) {
+      expect(getImageGenerationCost(modelId, '2:3')).toBe(0.01)
+      expect(getImageGenerationCost(modelId, '3:2')).toBe(0.01)
+    }
+  })
+
+  it('returns the flat price for grok-imagine-image', () => {
+    expect(getImageGenerationCost('grok-imagine-image', '1:1')).toBe(0.02)
+    expect(getImageGenerationCost('grok-imagine-image', '2:3')).toBe(0.02)
+    expect(getImageGenerationCost('grok-imagine-image', '3:2')).toBe(0.02)
+  })
+
   it('returns the flat price for grok-imagine-image-2.0', () => {
     expect(getImageGenerationCost('grok-imagine-image-2.0', '1:1'))
       .toBe(0.04)

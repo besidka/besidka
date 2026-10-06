@@ -10,9 +10,9 @@ function createJob(
   return {
     publicId: 'job-1',
     status: 'pending',
-    provider: 'openai',
+    provider: 'google',
     level: 'quick',
-    modelId: 'o4-mini-deep-research',
+    modelId: 'deep-research-preview-04-2026',
     startedAt: Date.now(),
     error: null,
     resultMessageId: null,
@@ -116,7 +116,7 @@ describe('useChatResearch', () => {
     const chatSdk = createChatSdk()
     const { userModel } = useUserModel()
 
-    userModel.value = 'o4-mini-deep-research'
+    userModel.value = 'deep-research-preview-04-2026'
 
     let resolveFetch!: (value: { job: ResearchJobView }) => void
 
@@ -133,16 +133,16 @@ describe('useChatResearch', () => {
     expect(research.researchJob.value).toEqual({
       publicId: 'local-pending',
       status: 'pending',
-      provider: 'openai',
+      provider: 'google',
       level: 'quick',
-      modelId: 'o4-mini-deep-research',
+      modelId: 'deep-research-preview-04-2026',
       startedAt: null,
       error: null,
       resultMessageId: null,
       answers: null,
     })
 
-    resolveFetch({ job: createJob({ status: 'pending', modelId: 'o4-mini-deep-research' }) })
+    resolveFetch({ job: createJob({ status: 'pending', modelId: 'deep-research-preview-04-2026' }) })
     await startPromise
 
     expect(research.researchJob.value?.publicId).toBe('job-1')
@@ -152,7 +152,7 @@ describe('useChatResearch', () => {
     const chatSdk = createChatSdk()
     const { userModel } = useUserModel()
 
-    userModel.value = 'o4-mini-deep-research'
+    userModel.value = 'deep-research-preview-04-2026'
 
     let resolveFetch!: (value: { job: ResearchJobView }) => void
 
@@ -181,7 +181,7 @@ describe('useChatResearch', () => {
     const chatSdk = createChatSdk()
     const { userModel } = useUserModel()
 
-    userModel.value = 'o4-mini-deep-research'
+    userModel.value = 'deep-research-preview-04-2026'
 
     fetchMock.mockRejectedValueOnce(new Error('boom'))
 
@@ -280,8 +280,8 @@ describe('useChatResearch', () => {
       parts: [],
       createdAt: '2026-07-01T00:00:00.000Z',
       usage: {
-        model: 'o4-mini-deep-research',
-        provider: 'openai',
+        model: 'deep-research-preview-04-2026',
+        provider: 'google',
         inputTokens: 49052,
         outputTokens: 35610,
         totalTokens: 84662,
@@ -313,8 +313,8 @@ describe('useChatResearch', () => {
 
     expect(appended?.metadata).toEqual({
       usage: {
-        model: 'o4-mini-deep-research',
-        provider: 'openai',
+        model: 'deep-research-preview-04-2026',
+        provider: 'google',
         inputTokens: 49052,
         outputTokens: 35610,
         totalTokens: 84662,

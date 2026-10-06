@@ -447,4 +447,93 @@ describe('project memory utils', () => {
       projectMemorySummaryUpdatedAt: expect.any(Date),
     }))
   })
+
+  it('requests low reasoning effort for the openai memory model', async () => {
+    const useOpenAI = vi.fn(async () => ({
+      instance: { id: 'openai-memory-model' },
+      reasoning: 'low',
+    }))
+
+    vi.stubGlobal('useOpenAI', useOpenAI)
+
+    mocks.generateText
+      .mockResolvedValueOnce({
+        text: 'User prefers milestone-based roadmap updates.',
+      })
+      .mockResolvedValueOnce({
+        text: 'Keep roadmap updates milestone-based and concise.',
+      })
+
+    const { refreshProjectMemory } = await import(
+      '../../../server/utils/projects/memory'
+    )
+    const db = {
+      query: {
+        keys: {
+          findMany: vi.fn(async () => [{ provider: 'openai' }]),
+        },
+        projects: {
+          findFirst: vi.fn()
+            .mockResolvedValueOnce({
+              id: 'project-1',
+              userId: 1,
+              name: 'Roadmap',
+              memory: null,
+              memoryStatus: 'stale',
+              memoryUpdatedAt: null,
+              memoryDirtyAt: new Date('2026-03-13T10:00:00.000Z'),
+              memoryProvider: null,
+              memoryModel: null,
+              memoryError: null,
+            })
+            .mockResolvedValueOnce({
+              id: 'project-1',
+              memory: 'Keep roadmap updates milestone-based and concise.',
+              memoryStatus: 'ready',
+            }),
+        },
+        chats: {
+          findMany: vi.fn(async () => [{
+            id: 'chat-1',
+            projectId: 'project-1',
+            projectMemorySummary: null,
+            projectMemorySummaryUpdatedAt: null,
+            messages: [
+              {
+                createdAt: new Date('2026-03-13T10:01:00.000Z'),
+                role: 'user',
+                parts: [
+                  {
+                    type: 'text',
+                    text: 'Please keep roadmap summaries grouped by milestone.',
+                  },
+                ],
+              },
+            ],
+          }]),
+        },
+      },
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+      })),
+    }
+
+    vi.stubGlobal('useDb', () => db)
+
+    await refreshProjectMemory('project-1', 1, db as never)
+
+    expect(useOpenAI).toHaveBeenCalledWith(
+      '1',
+      openAIProjectMemoryModel.id,
+      [],
+      'low',
+    )
+    expect(mocks.generateText).toHaveBeenCalledTimes(2)
+
+    for (const [options] of mocks.generateText.mock.calls) {
+      expect(options).toMatchObject({ reasoning: 'low' })
+    }
+  })
 })

@@ -142,6 +142,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/qwen.spec.ts',
     'tests/unit/providers/default-model.spec.ts',
     'tests/unit/providers/ordering.spec.ts',
+    'tests/unit/providers/helper-models.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/scripts/detect-model-successors.spec.ts',
     'tests/unit/scripts/propose-model-successors-rehearsal.spec.ts',
@@ -523,6 +524,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^server\/utils\/ai\/image-generation-cost\.ts$/,
       tests: [
         ...messageUsageTests,
+        'tests/unit/providers/merge.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
       ],
     },
@@ -1069,6 +1071,13 @@ export function getAffectedTests(changedFiles) {
       tests: [
         'tests/unit/utils/chats/title.spec.ts',
         'tests/integration/api/chats-title.spec.ts',
+      ],
+    },
+    {
+      pattern: /^server\/utils\/chats\/deprecated-model\.ts$/,
+      tests: [
+        'tests/unit/utils/chats/provider.spec.ts',
+        'tests/unit/utils/research/start.spec.ts',
       ],
     },
     {

@@ -18,7 +18,7 @@ const REQUIRED_PRICE_TIER_RATIO = 2
  * Append an id here whenever declining a future weekly proposal, so the
  * detector stops re-proposing it.
  */
-export const DECLINED_IDS = ['gpt-5.6']
+export const DECLINED_IDS = ['gpt-5.6', 'gpt-6-astra']
 
 export function parseModelFamily(id) {
   const match = id.match(VERSION_PATTERN)
@@ -82,18 +82,17 @@ export function isProposableTemplate(model) {
  * family's copy source (see isProposableTemplate for the eligibility check
  * applied afterward). Curated models with a `research` or `imageGeneration`
  * block are excluded from ever becoming a template — this is what keeps an
- * image-generation model (the true last array element of both
- * providers/openai.ts and providers/google.ts today, e.g. `gpt-image-2`,
- * pinned by tests/unit/utils/model.spec.ts with `.at(-1)`) from ever being
- * chosen as insertCuratedEntry's insertion anchor. That guarantee is what
- * keeps the array's tail invariant intact regardless of which side of the
- * anchor insertCuratedEntry splices into: inserting immediately before an
- * anchor can only push the true last element (`.at(-1)`) further from the
- * end if the anchor itself is that last element, and an image-generation
- * model — the actual last element in both curated files today — can never
- * be an anchor. The curated files are newest-first, so a successor — being
- * newer than its template — is spliced in immediately before the template,
- * never after.
+ * image-generation model (the image models form the tail of
+ * providers/openai.ts, providers/google.ts and providers/xai.ts, e.g.
+ * `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare` and `gpt-image-2`, pinned
+ * by tests/unit/utils/model.spec.ts as sitting after every chat model) from
+ * ever being chosen as insertCuratedEntry's insertion anchor. That guarantee
+ * is what keeps the image-tail invariant intact regardless of which side of
+ * the anchor insertCuratedEntry splices into: a chat-model anchor can never
+ * sit after an image model, so inserting immediately before it never moves
+ * a chat model into the image tail. The curated files are newest-first, so
+ * a successor — being newer than its template — is spliced in immediately
+ * before the template, never after.
  */
 function buildFamilyTemplates(provider) {
   const templatesByFamily = new Map()

@@ -9,6 +9,7 @@ const expectedModelIds = [
   'qwen3.6-flash',
   'qwen3.8-max',
   'qwen3.8-flash',
+  'qwen3.8-omni-flash',
   'qwen3.6-max-preview',
   'qwen3.6-plus',
   'qwen3.6-27b',
@@ -20,6 +21,7 @@ const expectedModelIds = [
   'qwen3.5-27b',
   'qwen3.5-35b-a3b',
   'qwen3-vl-plus',
+  'qwen3-omni-flash',
   'qwen3-235b-a22b',
   'qwen3-32b',
   'qwen3-14b',
@@ -45,6 +47,7 @@ const expectedModelIds = [
   'qwen-plus-character-ja',
   'qwen-mt-plus',
   'qwen-mt-turbo',
+  'qwen-omni-turbo',
   'qwen2-5-vl-72b-instruct',
   'qwen2-5-vl-7b-instruct',
   'qwen2-5-72b-instruct',
@@ -71,6 +74,7 @@ const toggleReasoningIds = [
   'qwen3.5-27b',
   'qwen3.5-35b-a3b',
   'qwen3-vl-plus',
+  'qwen3-omni-flash',
   'qwen3-235b-a22b',
   'qwen3-32b',
   'qwen3-14b',
@@ -78,6 +82,10 @@ const toggleReasoningIds = [
   'qwen-plus',
   'qwen-flash',
   'qwen-turbo',
+]
+
+const levelsReasoningIds = [
+  'qwen3.8-omni-flash',
 ]
 
 const reasoningAlwaysOnIds = [
@@ -102,6 +110,7 @@ const noReasoningIds = [
   'qwen-plus-character-ja',
   'qwen-mt-plus',
   'qwen-mt-turbo',
+  'qwen-omni-turbo',
   'qwen2-5-vl-72b-instruct',
   'qwen2-5-vl-7b-instruct',
   'qwen2-5-72b-instruct',
@@ -145,6 +154,7 @@ describe('curated qwen provider', () => {
       'qwen3.7-plus',
       'qwen3.7-max',
       'qwen3.7-flash',
+      'qwen3.8-omni-flash',
       'qwen3.6-flash',
       'qwen3.6-max-preview',
       'qwen3.6-plus',
@@ -168,10 +178,17 @@ describe('curated qwen provider', () => {
     }
   })
 
-  it('excludes Qwen3.8 from web search since its Chat Completions API '
-    + 'does not support the agent search strategy', () => {
+  it('excludes Qwen3.8 max and flash from web search since their Chat '
+    + 'Completions API does not support the agent search strategy', () => {
     expect(findModel('qwen3.8-max')?.tools).toEqual([])
     expect(findModel('qwen3.8-flash')?.tools).toEqual([])
+  })
+
+  it('keeps web search on qwen3.8-omni-flash, which documents the agent '
+    + 'search strategy, and off for the other two omni models', () => {
+    expect(findModel('qwen3.8-omni-flash')?.tools).toEqual(['web_search'])
+    expect(findModel('qwen3-omni-flash')?.tools).toEqual([])
+    expect(findModel('qwen-omni-turbo')?.tools).toEqual([])
   })
 
   it('has no model exposing image generation', () => {
@@ -198,6 +215,20 @@ describe('curated qwen provider', () => {
       }
     })
 
+  it('curates qwen3.8-omni-flash with effort levels, not a toggle, since '
+    + 'it documents reasoning_effort and no enable_thinking', () => {
+    for (const id of levelsReasoningIds) {
+      const model = findModel(id)
+
+      expect(model).toBeDefined()
+      expect(model?.reasoning).toEqual({
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      })
+      expect(model?.reasoningAlwaysOn).toBeUndefined()
+    }
+  })
+
   it('marks every always-thinking model as reasoningAlwaysOn with no '
     + 'reasoning object', () => {
     for (const id of reasoningAlwaysOnIds) {
@@ -219,14 +250,16 @@ describe('curated qwen provider', () => {
     }
   })
 
-  it('partitions every curated model into exactly one of the three '
+  it('partitions every curated model into exactly one of the four '
     + 'reasoning groups', () => {
-    expect(toggleReasoningIds).toHaveLength(24)
+    expect(toggleReasoningIds).toHaveLength(25)
+    expect(levelsReasoningIds).toHaveLength(1)
     expect(reasoningAlwaysOnIds).toHaveLength(5)
-    expect(noReasoningIds).toHaveLength(19)
+    expect(noReasoningIds).toHaveLength(20)
 
     const union = new Set([
       ...toggleReasoningIds,
+      ...levelsReasoningIds,
       ...reasoningAlwaysOnIds,
       ...noReasoningIds,
     ])
@@ -254,6 +287,35 @@ describe('curated qwen provider', () => {
       expect(outputModalities).not.toContain('audio')
       expect(outputModalities).not.toContain('video')
     }
+  })
+
+  it('never curates a realtime, ASR, livetranslate or audio-only model',
+    () => {
+      const unsupportedIdPattern = /realtime|asr|livetranslate|tts|audio/i
+
+      for (const model of qwen.models) {
+        expect(model.id).not.toMatch(unsupportedIdPattern)
+      }
+    })
+
+  it('curates the three text-chat omni models, since DashScope audio output '
+    + 'is opt-in and this app only streams text', () => {
+    const omniIds = qwen.models
+      .map(model => model.id)
+      .filter(id => id.includes('omni'))
+
+    expect(new Set(omniIds)).toEqual(new Set([
+      'qwen3.8-omni-flash',
+      'qwen3-omni-flash',
+      'qwen-omni-turbo',
+    ]))
+  })
+
+  it('does not curate the retired qwen2.5 omni model', () => {
+    const ids = qwen.models.map(model => model.id)
+
+    expect(ids).not.toContain('qwen2-5-omni-7b')
+    expect(ids).not.toContain('qwen2.5-omni-7b')
   })
 
   it('has a models.dev snapshot entry for every curated id except the '

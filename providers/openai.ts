@@ -6,6 +6,8 @@ export default {
   models: [
     {
       id: 'o3-deep-research',
+      status: 'deprecated',
+      retiredAt: '2026-07-23',
       name: 'o3 Deep Research',
       description: 'Autonomous agent for exhaustive, cross-checked web research and cited reports on deep or high-stakes topics, around $10 per task',
       contextLength: 200_000,
@@ -31,6 +33,8 @@ export default {
     },
     {
       id: 'o4-mini-deep-research',
+      status: 'deprecated',
+      retiredAt: '2026-07-23',
       name: 'o4-mini Deep Research',
       description: 'Autonomous agent that browses the web, cross-checks sources, and writes a cited research report for around $1 per task',
       contextLength: 200_000,
@@ -53,6 +57,29 @@ export default {
         timeEstimate: '5–15 min',
         maxToolCalls: 30,
       },
+    },
+    {
+      id: 'gpt-6-sol',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    },
+    {
+      id: 'gpt-6-luna',
+      price: {
+        tokens: 1_000_000,
+      },
+      tools: ['web_search', 'image_generation'],
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+      forProjectMemory: true,
     },
     {
       id: 'gpt-5.6-sol',
@@ -122,6 +149,7 @@ export default {
     },
     {
       id: 'gpt-5.4-nano',
+      retiredAt: '2027-04-01',
       price: {
         tokens: 1_000_000,
       },
@@ -130,7 +158,6 @@ export default {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
       },
-      forProjectMemory: true,
     },
     {
       id: 'gpt-5.2',
@@ -145,6 +172,7 @@ export default {
     },
     {
       id: 'gpt-5.1',
+      retiredAt: '2027-04-01',
       price: {
         tokens: 1_000_000,
       },
@@ -156,6 +184,7 @@ export default {
     },
     {
       id: 'gpt-5',
+      retiredAt: '2026-12-11',
       price: {
         tokens: 1_000_000,
       },
@@ -167,6 +196,7 @@ export default {
     },
     {
       id: 'gpt-5-mini',
+      retiredAt: '2026-12-11',
       price: {
         tokens: 1_000_000,
       },
@@ -178,6 +208,7 @@ export default {
     },
     {
       id: 'gpt-5-nano',
+      retiredAt: '2026-12-11',
       price: {
         tokens: 1_000_000,
       },
@@ -189,6 +220,7 @@ export default {
     },
     {
       id: 'o3',
+      retiredAt: '2026-12-11',
       price: {
         tokens: 1_000_000,
       },
@@ -302,6 +334,50 @@ export default {
       tools: [],
     },
     {
+      id: 'gpt-image-2.5-sunburst',
+      name: 'GPT Image 2.5 Sunburst',
+      description: 'Image model for precise, prompt-driven image editing and visual design workflows',
+      contextLength: 0,
+      maxOutputTokens: 0,
+      releaseDate: '2026-09-08',
+      modalities: {
+        input: ['text', 'image'],
+        output: ['image'],
+      },
+      price: {
+        tokens: 1,
+        display: '$30 / 1M image output tokens, plus input',
+      },
+      tools: [],
+      toolCall: false,
+      imageGeneration: {
+        controllerModel: 'gpt-6-luna',
+        costEstimate: '~$0.010–$0.013 / medium image',
+      },
+    },
+    {
+      id: 'gpt-image-2.5-flare',
+      name: 'GPT Image 2.5 Flare',
+      description: 'Fast image model for everyday prompt-driven generation and visual design workflows',
+      contextLength: 0,
+      maxOutputTokens: 0,
+      releaseDate: '2026-09-08',
+      modalities: {
+        input: ['text', 'image'],
+        output: ['image'],
+      },
+      price: {
+        tokens: 1,
+        display: '$30 / 1M image output tokens, plus input',
+      },
+      tools: [],
+      toolCall: false,
+      imageGeneration: {
+        controllerModel: 'gpt-6-luna',
+        costEstimate: '~$0.010–$0.013 / medium image',
+      },
+    },
+    {
       id: 'gpt-image-2',
       name: 'GPT Image 2',
       price: {
@@ -310,7 +386,7 @@ export default {
       },
       tools: [],
       imageGeneration: {
-        controllerModel: 'gpt-5-nano',
+        controllerModel: 'gpt-6-luna',
       },
     },
   ],

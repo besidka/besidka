@@ -267,7 +267,9 @@ export function getProviderGenerationOptions(
      * documented) and does nothing if sent. Omitting the object leaves
      * xAI's default `quality: 'auto'`, which resolves to `'low'` for
      * generation — confirm with a live key that this is the tier
-     * `flatImageGenerationCostUsdByModelId`'s flat $0.04 actually bills.
+     * `flatImageGenerationCostUsdByModelId`'s flat per-image rate ($0.04 for
+     * `grok-imagine-image-2.0`, $0.02 for `grok-imagine-image`) actually
+     * bills.
      * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#image-models
      */
     return {

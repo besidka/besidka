@@ -15,6 +15,13 @@ interface ProjectMemoryModelSelection {
 
 type DbClient = ReturnType<typeof useDb>
 
+type ProjectMemoryReasoning = 'low' | 'medium' | 'high' | undefined
+
+interface ProjectMemoryModelInstance {
+  model: LanguageModel
+  reasoning: ProjectMemoryReasoning
+}
+
 type ProjectMemoryTarget = Pick<
   typeof schema.projects.$inferSelect,
   'id'
@@ -171,7 +178,7 @@ export async function refreshProjectMemory(
   }, db)
 
   try {
-    const model = await getProjectMemoryModelInstance(
+    const { model, reasoning } = await getProjectMemoryModelInstance(
       selection.providerId,
       userId.toString(),
       selection.modelId,
@@ -202,6 +209,7 @@ export async function refreshProjectMemory(
       const summary = await refreshChatProjectMemorySummary(
         chat,
         model,
+        reasoning,
         db,
       )
 
@@ -211,7 +219,12 @@ export async function refreshProjectMemory(
     }
 
     const memory = summaries.length
-      ? await synthesizeProjectMemory(project.name, summaries, model)
+      ? await synthesizeProjectMemory(
+        project.name,
+        summaries,
+        model,
+        reasoning,
+      )
       : null
     const memoryUpdatedAt = memory ? new Date() : null
 
@@ -241,23 +254,38 @@ async function getProjectMemoryModelInstance(
   providerId: string,
   userId: string,
   modelId: string,
-): Promise<LanguageModel> {
+): Promise<ProjectMemoryModelInstance> {
   if (providerId === 'google') {
-    const { instance } = await useGoogle(userId, modelId, [], 'off')
+    const { instance, reasoning } = await useGoogle(
+      userId,
+      modelId,
+      [],
+      'off',
+    )
 
-    return instance
+    return { model: instance, reasoning }
   }
 
   if (providerId === 'openai') {
-    const { instance } = await useOpenAI(userId, modelId, [], 'off')
+    const { instance, reasoning } = await useOpenAI(
+      userId,
+      modelId,
+      [],
+      'low',
+    )
 
-    return instance
+    return { model: instance, reasoning }
   }
 
   if (providerId === 'anthropic') {
-    const { instance } = await useAnthropic(userId, modelId, [], 'off')
+    const { instance, reasoning } = await useAnthropic(
+      userId,
+      modelId,
+      [],
+      'off',
+    )
 
-    return instance
+    return { model: instance, reasoning }
   }
 
   throw createError({
@@ -270,6 +298,7 @@ async function getProjectMemoryModelInstance(
 async function refreshChatProjectMemorySummary(
   chat: ProjectMemoryChat,
   model: LanguageModel,
+  reasoning: ProjectMemoryReasoning,
   db: DbClient,
 ) {
   const latestMessageCreatedAt = getLatestMessageCreatedAt(chat.messages)
@@ -299,6 +328,7 @@ async function refreshChatProjectMemorySummary(
 
   const { text } = await generateText({
     model,
+    reasoning,
     instructions: [
       'Summarize only durable project memory from this chat.',
       'Use a concise structured memo with these sections when relevant:',
@@ -333,9 +363,11 @@ async function synthesizeProjectMemory(
   projectName: string,
   summaries: string[],
   model: LanguageModel,
+  reasoning: ProjectMemoryReasoning,
 ) {
   const { text } = await generateText({
     model,
+    reasoning,
     instructions: [
       `You are maintaining durable memory for the project "${projectName}".`,
       'Merge the provided chat summaries into one concise structured memo.',

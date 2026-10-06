@@ -425,6 +425,26 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
     expect(specs['Research time']).toBe('20–40 min')
   })
 
+  it('lists the image cost estimate for an image model', async () => {
+    const wrapper = await mountDetail(createModel({
+      imageGeneration: {
+        controllerModel: 'gpt-6-luna',
+        costEstimate: '~$0.010–$0.013 / medium image',
+      },
+    }))
+
+    expect(readSpecs(wrapper)['Image cost'])
+      .toBe('~$0.010–$0.013 / medium image')
+  })
+
+  it('omits the image cost row when there is no image cost estimate', async () => {
+    const wrapper = await mountDetail(createModel({
+      imageGeneration: { controllerModel: 'gpt-6-luna' },
+    }))
+
+    expect(readSpecLabels(wrapper)).not.toContain('Image cost')
+  })
+
   it('always offers a close button and ignores hover on the panel', async () => {
     const wrapper = await mountDetail()
     const panel = wrapper.get('[data-testid="model-detail-panel"]')

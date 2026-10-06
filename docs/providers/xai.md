@@ -6,12 +6,13 @@ patterns this file builds on.
 
 ## Curated models
 
-xAI (8 models — 7 text + 1 image): `grok-4.20-0309-non-reasoning`
+xAI (9 models — 7 text + 2 image): `grok-4.20-0309-non-reasoning`
 (default/first-listed), `grok-4.20-0309-reasoning`,
 `grok-4.20-multi-agent-0309`, `grok-4.6`, `grok-4.5`, `grok-4.3`,
-`grok-build-0.1`, and the image model `grok-imagine-image-2.0` (see "Image
-generation" below). Note the dated model ids on the `-0309` pair — the
-undated `grok-4.20-non-reasoning`/`grok-4.20-reasoning` forms do not exist on
+`grok-build-0.1`, and the image models `grok-imagine-image-2.0` and
+`grok-imagine-image` (see "Image generation" below). Note the dated model
+ids on the `-0309` pair — the undated
+`grok-4.20-non-reasoning`/`grok-4.20-reasoning` forms do not exist on
 models.dev or in xAI's own docs. `tools: ['web_search']` via
 `xai.tools.webSearch({})` on every text model except
 `grok-4.20-multi-agent-0309`, which is curated with `tools: []` because
@@ -55,6 +56,17 @@ through the same dedicated-image-model pattern as OpenAI (`gpt-image-2`) and
 Google — a hand-curated `imageGeneration: { controllerModel }` entry, never
 a chat tool the model invokes mid-turn.
 
+`grok-imagine-image` (the original 1.0 model, still active) is curated
+second, after 2.0, so image models stay at the tail of the array. It uses the
+same shape as 2.0 (`tools: []`, controlled by
+`grok-4.20-0309-non-reasoning`) with `price.display: '$0.02 / image'` and a
+flat `0.02` entry in `flatImageGenerationCostUsdByModelId` (billed the same
+at 1K and 2K). models.dev lists it with a null `cost`, so it is in
+`EXEMPT_IDS` and fully hand-curated, exactly like 2.0. It takes no `quality`
+parameter, and none is sent: the xAI path sends only `aspectRatio`.
+`grok-imagine-image-quality` is deliberately not curated; it retires
+2026-11-02.
+
 - **`xai.image(modelId)`, not `xai.tools.imageGeneration()`.** The installed
   `@ai-sdk/xai@4.0.33` exposes both `xai.image`/`xai.imageModel` (confirmed
   via `require()` — no SDK bump needed) and a conversational
@@ -64,7 +76,8 @@ a chat tool the model invokes mid-turn.
   `server/utils/providers/xai.ts`'s `getImageModel()` already uses for
   OpenAI/Google. `xai.tools.imageGeneration()` is also absent from the
   installed SDK version regardless.
-- **`grok-imagine-image-2.0` is in `EXEMPT_IDS`.** models.dev lists the id,
+- **`grok-imagine-image-2.0` (and `grok-imagine-image`) are in
+  `EXEMPT_IDS`.** models.dev lists the id,
   but its entry carries **no `cost` object at all** — `toSnapshotEntry()` in
   `scripts/fetch-models-metadata.mjs` requires `typeof model.cost?.input ===
   'number'`, so without the exemption `pnpm run models:fetch` would hard-fail

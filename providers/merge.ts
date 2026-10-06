@@ -163,7 +163,9 @@ function resolvePriceTier(
   }
 
   if (curated.imageGeneration) {
-    const costPerImage = parseUpperBoundPrice(curated.price.display ?? '')
+    const costPerImage = parseUpperBoundPrice(
+      curated.imageGeneration.costEstimate ?? curated.price.display ?? '',
+    )
 
     if (costPerImage !== null) {
       return resolveTier(costPerImage, tierCeilingsPerImage)

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultModel } from '../../../providers'
 import { useUserModel } from '../../../app/composables/model'
+import { getModel } from '../../../shared/utils/model'
 import {
   getSelectionGatewayId,
   parseModelSelection,
@@ -133,6 +134,18 @@ describe('useUserModel', () => {
   it('falls back to the default model when a stored model id no '
     + 'longer exists in the curated catalog', () => {
     localStorage.setItem('model', 'kimi-k2.5')
+
+    const { userModel } = useUserModel()
+
+    expect(userModel.value).toBe(defaultModel)
+  })
+
+  it('falls back to the default model when the stored model is '
+    + 'deprecated', () => {
+    expect(getModel('o4-mini-deep-research').model?.status)
+      .toBe('deprecated')
+
+    localStorage.setItem('model', 'o4-mini-deep-research')
 
     const { userModel } = useUserModel()
 

@@ -3,10 +3,17 @@ import type {
   CuratedModel,
   ModelSnapshotEntry,
 } from '../../../providers/merge'
-import { formatPrice, mergeModelMetadata } from '../../../providers/merge'
+import {
+  formatPrice,
+  mergeModelMetadata,
+  parseUpperBoundPrice,
+} from '../../../providers/merge'
 import { providers } from '../../../providers'
 import snapshot from '../../../providers/data/models-dev-snapshot.json'
 import { getModelCostMap } from '../../../server/utils/ai/cost-map'
+import {
+  getImageGenerationCost,
+} from '../../../server/utils/ai/image-generation-cost'
 
 const snapshotEntry: ModelSnapshotEntry = {
   name: 'Fetched Name',
@@ -493,6 +500,103 @@ describe('price tiers', () => {
 
     expect(gptImage2.priceTier).toBe('$$')
     expect(nanoBananaPro.priceTier).toBe('$$$')
+  })
+
+  it('prefers the image costEstimate over the token price display', () => {
+    const model = mergeModelMetadata(
+      {
+        ...chatModel,
+        price: {
+          tokens: 1,
+          display: '$30 / 1M image output tokens, plus input',
+        },
+        imageGeneration: {
+          controllerModel: 'test-chat-model',
+          costEstimate: '~$0.010–$0.013 / medium image',
+        },
+      },
+      {
+        ...snapshotEntry,
+        cost: {
+          input: 5,
+          output: 30,
+        },
+      },
+    )
+
+    expect(model.priceTier).toBe('$')
+  })
+
+  it('falls back to the price display without an image costEstimate', () => {
+    const model = mergeModelMetadata(
+      {
+        ...chatModel,
+        price: {
+          tokens: 1,
+          display: '$30 / 1M image output tokens, plus input',
+        },
+        imageGeneration: {
+          controllerModel: 'test-chat-model',
+        },
+      },
+      snapshotEntry,
+    )
+
+    expect(model.priceTier).toBe('$$$+')
+  })
+
+  it.each([
+    'gpt-image-2.5-sunburst',
+    'gpt-image-2.5-flare',
+  ])('gives %s the cheap price tier', (modelId) => {
+    const openai = providers.find((provider) => {
+      return provider.id === 'openai'
+    })
+    const model = openai?.models.find((candidate) => {
+      return candidate.id === modelId
+    })
+
+    expect(model?.priceTier).toBe('$')
+  })
+
+  it('keeps every image costEstimate upper bound equal to the square cost', () => {
+    const imageModels = providers
+      .flatMap((provider) => {
+        return provider.models
+      })
+      .filter((model) => {
+        return !!model.imageGeneration?.costEstimate
+      })
+
+    expect(imageModels.length).toBeGreaterThan(0)
+
+    for (const model of imageModels) {
+      const costEstimate = model.imageGeneration?.costEstimate ?? ''
+
+      expect(parseUpperBoundPrice(costEstimate)).toBe(
+        getImageGenerationCost(model.id, '1:1'),
+      )
+    }
+  })
+})
+
+describe('gpt-image-2 price display', () => {
+  it('spans the non-square to square medium image cost', () => {
+    const gptImage2 = providers
+      .flatMap((provider) => {
+        return provider.models
+      })
+      .find((model) => {
+        return model.id === 'gpt-image-2'
+      })
+    const [lowerBound, upperBound] = (
+      gptImage2?.price.display?.match(/\$(\d+(?:\.\d+)?)/g) ?? []
+    ).map((amount) => {
+      return Number(amount.slice(1))
+    })
+
+    expect(lowerBound).toBe(getImageGenerationCost('gpt-image-2', '2:3'))
+    expect(upperBound).toBe(getImageGenerationCost('gpt-image-2', '1:1'))
   })
 })
 

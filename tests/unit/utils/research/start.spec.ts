@@ -647,6 +647,28 @@ describe('resolveResearchStartContext', () => {
     })).rejects.toMatchObject({ status: 400 })
   })
 
+  it('rejects the deprecated o4-mini-deep-research catalog entry before '
+    + 'looking up an API key', async () => {
+    const { getModel: getCatalogModel } = await vi.importActual<
+      typeof import('#shared/utils/model')
+    >('#shared/utils/model')
+
+    mocks.getModel.mockReturnValue(
+      getCatalogModel('o4-mini-deep-research') as any,
+    )
+
+    const { resolveResearchStartContext } = await importStart()
+
+    await expect(resolveResearchStartContext({
+      userId: 1,
+      model: 'o4-mini-deep-research',
+    })).rejects.toMatchObject({
+      status: 400,
+      message: 'This model is no longer available.',
+    })
+    expect(mocks.getDecryptedProviderKey).not.toHaveBeenCalled()
+  })
+
   it('rejects with 401 when no API key is saved for the provider', async () => {
     mocks.getDecryptedProviderKey.mockResolvedValue(null)
 
