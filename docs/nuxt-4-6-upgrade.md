@@ -194,3 +194,18 @@ to evlog's (`status` and `message`, with technical detail in `why`).
   mismatch is contained inside `useRequestLogger`.
 - **Upstream issue to file** for `@nuxtjs/mdc` `viteMDCSlot` against the Vapor
   compiler context, so `guardMdcSlotTransformForVapor` can be deleted.
+- **Pre-existing low-severity findings** from the security audit of this
+  branch. None were introduced by the migration:
+  - `server/utils/auth.ts` (~line 128) falls back to `x-forwarded-for` after
+    `cf-connecting-ip` for the Better Auth rate-limit IP. It is spoofable only
+    when traffic reaches the Worker without passing through Cloudflare.
+  - `server/api/v1/internal/files/recompute-expiry.post.ts` (~line 25)
+    compares the maintenance token without a constant-time comparison.
+  - `?search=a&search=b` yields an array that is cast `as string`, so
+    `.trim()` throws a 500 in the history and projects list handlers.
+  - The portable `readBody` uses `JSON.parse` and does not filter `__proto__`
+    the way h3's `destr` does. Mitigated because every `readBody` result goes
+    through zod.
+- **`nuxt/server` parsing behavior**: `readValidatedBody` always JSON-parses
+  and throws a generic 400 on malformed JSON, and route params must go through
+  `getDecodedRouterParams`. Details in `docs/nuxt-server-imports.md`.

@@ -20,14 +20,24 @@ it, so the handlers do not change when the server runtime moves to h3 v2.
   `applyResponseHeaders(event, headers)` from
   `~~/server/utils/http/apply-response-headers` for several at once.
 - Request headers: `getRequestHeader(event, name)` from `nuxt/server`.
-- Route params: `getRouterParams(event, { decode: true })`. `nuxt/server` has
-  no `getValidatedRouterParams`; parse the params with the schema's
-  `safeParse` instead. `decode: true` matches what h3 v1 returned.
+- Route params: always call `getDecodedRouterParams(event)` from
+  `~~/server/utils/http/get-decoded-router-params`, never
+  `getRouterParams(event, { decode: true })` directly. `nuxt/server` has no
+  `getValidatedRouterParams`; parse the returned params with the schema's
+  `safeParse` instead. The `nuxt/server` decode calls `decodeURIComponent`
+  without a `try/catch`, so a malformed sequence such as `%zz` or `%E0%A4%A`
+  throws `URIError` and surfaces as a 500. The helper turns it into an evlog
+  400 (`Invalid route parameter`) and rethrows anything else.
 - Validators passed to `readValidatedBody` stay `schema.safeParse` functions.
   A validator function returns the `safeParse` result unchanged, so the
   `if (body.error) throw createError(...)` evlog branch keeps its error shape.
   Passing the schema itself would make `nuxt/server` throw its own generic 400
   (`Validation failed`) and skip the evlog `why`/`fix` fields.
+- `readValidatedBody` from `nuxt/server` always JSON-parses the body and
+  ignores `Content-Type`. Malformed JSON throws a generic 400
+  `Invalid JSON body` with no evlog `why`/`fix`; the `body.error` evlog branch
+  only runs after a successful parse. Plain `readBody` sites keep h3's more
+  lenient parser.
 
 ## Logger
 
@@ -43,8 +53,12 @@ the helper once evlog accepts the portable event type.
 - Utilities that take the request event type it as `RequestEvent` from
   `nuxt/server`.
 - Utilities that default `event` to `useEvent()` (`server/utils/chats/share.ts`,
-  `server/utils/files/*`, `attachCloudflareMeta`) are called without the event
-  from handlers; they resolve the raw event themselves.
+  `server/utils/files/*`, `attachCloudflareMeta`) may be called without the
+  event from the synchronous part of a handler; they resolve the raw event
+  themselves. In detached or stream-completion code (`waitUntil`, stream
+  `onFinish`/`onEnd`, `Promise.all` fan-out, timers, scheduled paths) pass the
+  captured event explicitly. The `chats/share.ts` helpers accept
+  `Pick<RequestEvent, 'context'>` so the portable handler event can be passed.
 - `useRuntimeConfig(event)` became `useRuntimeConfig()`, matching the rest of
   `server/utils`.
 
