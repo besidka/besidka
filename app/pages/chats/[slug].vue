@@ -513,9 +513,7 @@ const projectMemoryText = computed(() => {
 })
 
 async function fetchProjectContext(nextProjectId: string) {
-  return import.meta.server
-    ? await useRequestFetch()(`/api/v1/projects/${nextProjectId}`)
-    : await $fetch(`/api/v1/projects/${nextProjectId}`)
+  return await useRequestFetch()(`/api/v1/projects/${nextProjectId}`)
 }
 
 async function syncProjectContext(

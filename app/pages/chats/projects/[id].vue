@@ -251,9 +251,7 @@ async function fetchProjectDetails(nextProjectId: string | undefined) {
     return null
   }
 
-  return import.meta.server
-    ? await useRequestFetch()(`/api/v1/projects/${resolvedProjectId}`)
-    : await $fetch(`/api/v1/projects/${resolvedProjectId}`)
+  return await useRequestFetch()(`/api/v1/projects/${resolvedProjectId}`)
 }
 
 async function syncProjectDetails(nextProjectId: string | undefined) {
