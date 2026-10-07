@@ -314,17 +314,25 @@ key is set):
       not Invisible. See "Turnstile: verified against Cloudflare's
       official docs" below for why Invisible mode is the wrong choice
       here.
-- [ ] Set the real secret key: `wrangler secret put NUXT_TURNSTILE_SECRET_KEY
-      --env production` (never commit it to `wrangler.jsonc`).
+- [x] Set the real secret key: `wrangler secret put NUXT_TURNSTILE_SECRET_KEY
+      --env production` (never commit it to `wrangler.jsonc`). Done
+      2026-10-07: the widget secret was rotated through the Cloudflare
+      API (`POST /accounts/{account_id}/challenges/widgets/{sitekey}/
+      rotate_secret`; Wrangler's OAuth token needs the
+      `challenge-widgets.write` scope, so run `wrangler login` to refresh
+      it first) and the new value was piped into `wrangler secret put`.
+      The local copy lives in the gitignored `.dev.vars.production`.
 - [x] Set the real sitekey in `wrangler.jsonc`'s production `vars` as
       `NUXT_PUBLIC_TURNSTILE_SITE_KEY` (safe to commit — it's
       client-visible by design).
-- [ ] Confirm the widget's configured hostnames include
+- [x] Confirm the widget's configured hostnames include
       `besidka.com` — a mismatch here is exactly the failure mode
       `allowedHostnames` exists to prevent, so it will 403 real users if
       the widget's dashboard hostname list drifts from this. Registering
       `www.besidka.com` too is harmless but, per the
-      verification note below, not required.
+      verification note below, not required. Verified 2026-10-07 with
+      `wrangler turnstile widget get 0x4AAAAAAEFMAZiwbUuiy0qi`: mode
+      `managed`, domains `[besidka.com]`.
 - [ ] Any preview/staging environment that ever gets its own
       `turnstileSecretKey`/`turnstileSiteKey` for testing must NOT also
       get `turnstileEnforced: true` (already the default in this repo:
@@ -338,6 +346,16 @@ key is set):
       (`VERIFICATION_FAILED`/`MISSING_RESPONSE`) in the first days after
       enabling — that signals either a hostname mismatch or a client
       bundling issue where the widget script failed to load.
+
+**Production ran unprotected until 2026-10-07.** Until the secret was
+set, production had `turnstileEnforced: true` but no
+`turnstileSecretKey`, so `captchaEnabled` was false and the Better Auth
+`captcha` plugin was never registered — the endpoints failed open, with
+no captcha check at all. `logCaptchaMisconfigured` in
+`server/utils/auth-captcha.ts` reported it by emitting a status-500
+"captcha misconfigured" wide event on every isolate boot (about 1.5k a
+week in `besidka-prod`). That event is the signal to alert on: it must
+be absent whenever enforcement is on and the secret is present.
 
 ## Turnstile: verified against Cloudflare's official docs
 
@@ -398,6 +416,41 @@ widget itself is therefore never served from `www` — every real
 as an allowed hostname in the Cloudflare dashboard anyway is harmless
 (hostname allowlisting only widens acceptance, never narrows it) but
 not required for challenges to validate.
+
+## Widget layout and client failure path
+
+The widget (`app/components/Auth/Turnstile.client.vue`) sits **above**
+the submit button on sign-in, sign-up and reset-password, so a
+challenge that appears on submit pushes the button down instead of
+rendering below it.
+
+- **Size.** `renderWidget` passes `size: 'flexible'` (full width, 300px
+  minimum). If the container is measurably narrower than 300px at render
+  time it falls back to `'compact'`; the width is read once, so a later
+  resize does not re-render the widget.
+- **Collapsed until needed.** With `appearance: 'interaction-only'` the
+  widget is invisible for most visitors. The wrapper stays collapsed
+  (inert, `aria-hidden`, no gap) and expands only while Turnstile's
+  `before-interactive-callback` has fired and its
+  `after-interactive-callback` has not, so a normal visit shows no empty
+  space.
+- **Blocking tokenless requests.** `useCaptcha().requestToken()`
+  (`app/composables/captcha.ts`) derives enablement from
+  `runtimeConfig.public.turnstileSiteKey`. When a sitekey is configured
+  and the token is empty, the widget is missing, or the Turnstile script
+  failed to load (typically a content blocker), it toasts and returns
+  `null`; the page then does not send the auth request. Sending it
+  without a token would only reach the server's 400 `MISSING_RESPONSE`
+  with a less useful message. The script-load failure gets its own
+  "Verification unavailable" toast pointing at content blockers.
+- **Single-use tokens.** The widget is reset after every request, failed
+  or not, because a token verifies once. `reset` and `remove` also
+  settle any pending `execute()` with an empty token so a submit cannot
+  hang on a dead widget.
+- **Testing the interactive path locally.** Cloudflare's dummy sitekey
+  `3x00000000000000000000FF` always forces the interactive checkbox,
+  which exercises the expand/collapse behaviour above. The other test
+  keys never leave the invisible path.
 
 ## Changing an account's email address cannot lose any account data
 
