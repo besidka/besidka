@@ -289,16 +289,16 @@ logged even when the continuation answers), `heldStepError`
 chunk's, which is the main loop's when the continuation wrote nothing). The
 continuation's own `timeout.totalMs` is 90s.
 `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on the loop path
-only: the KV generation-in-progress guard this route writes expires after
-`TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS` (loop timeout + continuation
-timeout + a 30s persistence margin), so it must outlive both —
-otherwise a client retry arriving after the guard expired would start a
-second concurrent generation for the same turn. A tool call the model itself gets wrong (input that fails the tool's schema,
-or a call to a tool that is not declared) also ends as a tool part with
-`state: 'output-error'`, never as a held stream `error`; it counts as a
-follow-up output, so the forced step and, if still needed, the continuation
-run as usual. Its `errorText` is labelled `invalid-provider-output` (422) by
-`normalizeModelToolCallError()` rather than an `unknown` 500, see
+only. The KV generation-in-progress guard this route writes is a short
+heartbeat-renewed lease, not sized from these timeouts, so it lives exactly as
+long as the invocation does — see "Generation-in-progress guard" in
+`docs/chats/error-handling.md`. A tool call the model itself gets wrong
+(input that fails the tool's schema, or a call to a tool that is not
+declared) also ends as a tool part with `state: 'output-error'`, never as a
+held stream `error`; it counts as a follow-up output, so the forced step
+and, if still needed, the continuation run as usual. Its `errorText` is
+labelled `invalid-provider-output` (422) by `normalizeModelToolCallError()`
+rather than an `unknown` 500, see
 `gateways.md` ("`gpt-oss` tool-call quirks"). A tool `execute()` that
 throws produces a `tool-error` output, which the model sees and answers
 from, so a failing tool terminates the loop rather than retrying it.

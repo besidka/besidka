@@ -497,6 +497,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^server\/utils\/ai\/generation-guard\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/generation-guard.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
       pattern: /^(server\/utils\/ai\/tool-loop\.ts|tests\/fixtures\/follow-up-turn-tool\.ts)$/,
       tests: [
         'tests/unit/utils/ai/tool-loop.spec.ts',

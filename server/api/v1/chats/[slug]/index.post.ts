@@ -101,12 +101,15 @@ import {
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import {
+  putGenerationGuard,
+  startGenerationGuardHeartbeat,
+} from '~~/server/utils/ai/generation-guard'
+import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
 import {
   resolveToolLoopOptions,
   TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
-  TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
   TOOL_LOOP_MAX_STEPS,
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
@@ -1061,30 +1064,21 @@ export default defineEventHandler(async (event) => {
       // Mirrors the guard above: hold this flag for the lifetime of the
       // generation so a client retry of the same user message id (issue
       // #275 auto-recovery on visibilitychange) sees "still working" instead
-      // of triggering a second concurrent streamText() call. The ttl is a
-      // safety bound, not the expected lifetime — a clean exit always
-      // deletes it in the finally block below. Awaited: a client that
-      // disconnects and reconnects fast enough could otherwise run the guard
-      // check above before this put() landed in KV, see no flag, and start a
-      // second concurrent generation — double-billing the provider for one
-      // user turn (caught by Codex's automated review). Awaiting here
-      // guarantees the flag is visible before any provider work begins.
-      try {
-        await kv.put(generatingKey, '1', {
-          expirationTtl: TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
-        })
-      } catch (exception) {
-        logger.set({
-          generationGuard: {
-            operation: 'put',
-          },
-          attributes: {
-            generationGuard: {
-              error: exceptionMessage(exception),
-            },
-          },
-        })
-      }
+      // of triggering a second concurrent streamText() call. It is a short
+      // heartbeat-renewed lease, deleted in the finally block below.
+      // Awaited: a client that disconnects and reconnects fast enough could
+      // otherwise run the guard check above before this put() landed in KV,
+      // see no flag, and start a second concurrent generation —
+      // double-billing the provider for one user turn (caught by Codex's
+      // automated review). Awaiting here guarantees the flag is visible
+      // before any provider work begins.
+      await putGenerationGuard(kv, generatingKey, 'put', logger)
+
+      const generationGuardHeartbeat = startGenerationGuardHeartbeat(
+        kv,
+        generatingKey,
+        logger,
+      )
 
       try {
         if (missingFiles.length > 0) {
@@ -1609,6 +1603,14 @@ export default defineEventHandler(async (event) => {
         // push the built wide event to the same Axiom drains used by the
         // Nitro hook, registered via waitUntil so the Worker stays alive
         // until the fetch resolves.
+        aiLogger.set({
+          attributes: {
+            generationGuard: {
+              heartbeats: generationGuardHeartbeat.getRenewalCount(),
+            },
+          },
+        })
+
         const aiWideEvent = aiLogger.emit({
           message: 'AI stream completed',
           status: 200,
@@ -1618,6 +1620,8 @@ export default defineEventHandler(async (event) => {
           cfCtx.waitUntil(shipWideEventToAxiom(aiWideEvent))
         }
       } finally {
+        await generationGuardHeartbeat.stop()
+
         try {
           await kv.delete(generatingKey)
         } catch (exception) {
