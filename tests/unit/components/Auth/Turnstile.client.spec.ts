@@ -5,7 +5,7 @@ import AuthTurnstile from '../../../../app/components/Auth/Turnstile.client.vue'
 
 const mocks = vi.hoisted(() => ({
   isEnabled: true,
-  renderWidget: vi.fn(async () => 'widget-1'),
+  renderWidget: vi.fn(async (_el: HTMLElement, _options: any) => 'widget-1'),
   execute: vi.fn(async () => 'token-123'),
   reset: vi.fn(),
   remove: vi.fn(),
@@ -77,5 +77,79 @@ describe('Auth/Turnstile.client', () => {
 
     expect(token).toBe('')
     expect(mocks.execute).not.toHaveBeenCalled()
+  })
+
+  it('keeps the container mounted but visually collapsed until interaction is required', async () => {
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+
+    const widgetWrapper = wrapper.get('[data-testid="turnstile-wrapper"]')
+
+    expect(wrapper.find('[data-testid="turnstile-container"]').exists())
+      .toBe(true)
+    expect(widgetWrapper.attributes('data-interactive')).toBe('false')
+    expect(widgetWrapper.classes()).toContain('grid-rows-[0fr]')
+    expect(widgetWrapper.classes()).toContain('opacity-0')
+    expect(widgetWrapper.attributes('aria-hidden')).toBe('true')
+  })
+
+  it('reveals and hides the wrapper through the interactive callbacks', async () => {
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+
+    const { onInteractiveChange } = mocks.renderWidget.mock.calls[0]![1]
+    const widgetWrapper = wrapper.get('[data-testid="turnstile-wrapper"]')
+
+    onInteractiveChange(true)
+    await nextTick()
+
+    expect(widgetWrapper.attributes('data-interactive')).toBe('true')
+    expect(widgetWrapper.classes()).toContain('grid-rows-[1fr]')
+    expect(widgetWrapper.classes()).not.toContain('opacity-0')
+    expect(widgetWrapper.attributes('aria-hidden')).toBe('false')
+
+    onInteractiveChange(false)
+    await nextTick()
+
+    expect(widgetWrapper.attributes('data-interactive')).toBe('false')
+    expect(widgetWrapper.classes()).toContain('grid-rows-[0fr]')
+  })
+
+  it('collapses the wrapper again when the widget is reset', async () => {
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+    mocks.renderWidget.mock.calls[0]![1].onInteractiveChange(true)
+    await nextTick()
+    ;(wrapper.vm as any).reset()
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="turnstile-wrapper"]')
+      .attributes('data-interactive')).toBe('false')
+  })
+
+  it('makes the collapsed wrapper inert so the hidden iframe is not tabbable', async () => {
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+
+    const widgetWrapper = wrapper.get('[data-testid="turnstile-wrapper"]')
+
+    expect(widgetWrapper.attributes('inert')).toBeDefined()
+
+    mocks.renderWidget.mock.calls[0]![1].onInteractiveChange(true)
+    await nextTick()
+
+    expect(widgetWrapper.attributes('inert')).toBeUndefined()
   })
 })

@@ -406,6 +406,10 @@ export function getAffectedTests(changedFiles) {
   const turnstileTests = [
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
+    'tests/unit/composables/captcha.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/pages/(auth)/signup.spec.ts',
+    'tests/unit/pages/(auth)/reset-password.spec.ts',
   ]
 
   const seoTests = [
@@ -700,6 +704,14 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/types\/turnstile\.d\.ts$/,
+      tests: turnstileTests,
+    },
+    {
+      pattern: /^app\/composables\/captcha\.ts$/,
+      tests: turnstileTests,
+    },
+    {
+      pattern: /^app\/pages\/\(auth\)\/(signin|signup|reset-password)\.vue$/,
       tests: turnstileTests,
     },
     {

@@ -30,6 +30,7 @@
           </template>
         </UiFormInput>
       </UiFormFieldset>
+      <AuthTurnstile ref="turnstile" action="auth" />
       <UiFormFieldset class="flex justify-center mt-4">
         <UiButton
           type="submit"
@@ -39,7 +40,6 @@
           :disabled="pending"
         />
       </UiFormFieldset>
-      <AuthTurnstile ref="turnstile" action="auth" />
     </UiForm>
     <p class="flex items-center justify-center gap-2 py-2 text-center">
       <Icon
@@ -75,6 +75,7 @@ const { requestPasswordReset } = useAuth()
 
 const form = ref<InstanceType<typeof UiForm> | null>()
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
+const { requestToken } = useCaptcha(() => turnstile.value)
 
 const data = shallowReactive<Data>({
   email: '',
@@ -83,12 +84,20 @@ const data = shallowReactive<Data>({
 const pending = shallowRef<boolean>(false)
 
 async function onSubmit() {
+  if (pending.value) {
+    return
+  }
+
   pending.value = true
 
   try {
-    const token = await turnstile.value?.execute()
+    const token = await requestToken()
 
-    await requestPasswordReset({
+    if (token === null) {
+      return
+    }
+
+    const { error } = await requestPasswordReset({
       email: data.email,
       redirectTo: '/new-password',
       fetchOptions: {
@@ -101,6 +110,12 @@ async function onSubmit() {
         },
       },
     })
+
+    if (error) {
+      useErrorMessage(error.message)
+    }
+
+    turnstile.value?.reset()
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     turnstile.value?.reset()

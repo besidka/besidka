@@ -210,6 +210,7 @@
           Agree to the <NuxtLink to="/terms-of-use" class="underline hover:no-underline">Terms of Use</NuxtLink> and <NuxtLink to="/privacy-policy" class="underline hover:no-underline">Privacy Policy</NuxtLink>
         </UiFormCheckbox>
       </UiFormFieldset>
+      <AuthTurnstile ref="turnstile" action="auth" />
       <UiFormFieldset :inputs="false" class="flex justify-center mt-4">
         <UiButton
           type="submit"
@@ -219,7 +220,6 @@
           :disabled="pending"
         />
       </UiFormFieldset>
-      <AuthTurnstile ref="turnstile" action="auth" />
     </UiForm>
     <p class="py-2 text-center">
       Already have an account? <NuxtLink to="/signin" class="underline hover:no-underline">Sign in</NuxtLink>
@@ -355,6 +355,7 @@ const timeToCrackHighlight = computed(() => {
 const { signUp } = useAuth()
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
+const { requestToken } = useCaptcha(() => turnstile.value)
 const pending = shallowRef<boolean>(false)
 const isSocialOAuthDisabled = computed<boolean>(() => {
   if (!import.meta.client) {
@@ -378,12 +379,20 @@ async function socialSignIn(provider: 'google' | 'github') {
 }
 
 async function onSubmit() {
+  if (pending.value) {
+    return
+  }
+
   pending.value = true
 
   try {
-    const token = await turnstile.value?.execute()
+    const token = await requestToken()
 
-    await signUp.email({
+    if (token === null) {
+      return
+    }
+
+    const { error } = await signUp.email({
       name: data.name,
       email: data.email,
       password: data.password,
@@ -395,6 +404,12 @@ async function onSubmit() {
         },
       },
     })
+
+    if (error) {
+      useErrorMessage(error.message)
+    }
+
+    turnstile.value?.reset()
   } catch (exception: any) {
     useErrorMessage(exception.statusMessage)
     turnstile.value?.reset()

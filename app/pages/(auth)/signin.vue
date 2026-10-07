@@ -145,6 +145,7 @@
           </NuxtLink>
         </div>
       </UiFormFieldset>
+      <AuthTurnstile ref="turnstile" action="auth" />
       <UiFormFieldset class="flex justify-center mt-4">
         <AuthLastUsedContainer>
           <Transition name="slide-fade">
@@ -160,7 +161,6 @@
           />
         </AuthLastUsedContainer>
       </UiFormFieldset>
-      <AuthTurnstile ref="turnstile" action="auth" />
     </UiForm>
     <p class="py-2 text-center">
       Don't have an account? <NuxtLink to="/signup" class="underline hover:no-underline">Sign up</NuxtLink>
@@ -168,6 +168,7 @@
   </UiBubble>
 </template>
 <script setup lang="ts">
+import { parseError } from 'evlog'
 import UiForm from '~/components/ui/Form.vue'
 import type TurnstileComponent from '~/components/Auth/Turnstile.client.vue'
 
@@ -228,6 +229,7 @@ const {
 } = useAuth()
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
+const { requestToken } = useCaptcha(() => turnstile.value)
 const pending = shallowRef<boolean>(false)
 
 const isSocialOAuthDisabled = computed<boolean>(() => {
@@ -314,42 +316,59 @@ async function signInWithPasskey() {
 }
 
 async function onSubmit() {
+  if (pending.value) {
+    return
+  }
+
   pending.value = true
 
-  const token = await turnstile.value?.execute()
+  try {
+    const token = await requestToken()
 
-  const { data: result, error } = await signIn.email({
-    email: data.email,
-    password: data.password,
-    rememberMe: data.rememberMe,
-    callbackURL: '/chats/new',
-    fetchOptions: {
-      headers: token ? { 'x-captcha-response': token } : {},
-    },
-  })
+    if (token === null) {
+      return
+    }
 
-  if (error) {
-    useErrorMessage(error.message)
-    // if (error.code === errorCodes.EMAIL_NOT_VERIFIED) {
-    //   useErrorMessage('Please verify your email before signing in.')
-    // } else {
-    //   useErrorMessage(error.message)
-    // }
+    const { data: result, error } = await signIn.email({
+      email: data.email,
+      password: data.password,
+      rememberMe: data.rememberMe,
+      callbackURL: '/chats/new',
+      fetchOptions: {
+        headers: token ? { 'x-captcha-response': token } : {},
+      },
+    })
+
+    if (error) {
+      useErrorMessage(error.message)
+      // if (error.code === errorCodes.EMAIL_NOT_VERIFIED) {
+      //   useErrorMessage('Please verify your email before signing in.')
+      // } else {
+      //   useErrorMessage(error.message)
+      // }
+      turnstile.value?.reset()
+
+      return
+    }
+
+    if (result && 'twoFactorRedirect' in result && result.twoFactorRedirect) {
+      await navigateTo('/2fa')
+
+      return
+    }
+
+    useSuccessMessage('Successfully signed in')
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Something went wrong',
+      parsedException.why,
+    )
     turnstile.value?.reset()
+  } finally {
     pending.value = false
-
-    return
   }
-
-  if (result && 'twoFactorRedirect' in result && result.twoFactorRedirect) {
-    pending.value = false
-    await navigateTo('/2fa')
-
-    return
-  }
-
-  useSuccessMessage('Successfully signed in')
-  pending.value = false
 }
 </script>
 <style scoped>
