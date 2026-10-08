@@ -1,6 +1,7 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  isNarrowTurnstileWidth,
   useTurnstile,
   useTurnstileLoadFailed,
 } from '../../../app/composables/turnstile'
@@ -303,6 +304,46 @@ describe('useTurnstile', () => {
       container,
       expect.objectContaining({ size: 'compact' }),
     )
+  })
+
+  it('uses the explicit size option over the container width measurement', async () => {
+    const fakeTurnstile = createFakeTurnstileApi()
+
+    window.turnstile = fakeTurnstile as any
+    mockScriptResolvingTo(fakeTurnstile)
+
+    const turnstile = useTurnstile()
+    const container = document.createElement('div')
+
+    Object.defineProperty(container, 'clientWidth', { value: 238 })
+
+    await turnstile.renderWidget(container, {
+      action: 'auth',
+      size: 'flexible',
+    })
+
+    expect(fakeTurnstile.render).toHaveBeenLastCalledWith(
+      container,
+      expect.objectContaining({ size: 'flexible' }),
+    )
+
+    await turnstile.renderWidget(document.createElement('div'), {
+      action: 'auth',
+      size: 'compact',
+    })
+
+    expect(fakeTurnstile.render).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ size: 'compact' }),
+    )
+  })
+
+  it('classifies only positive widths below the flexible minimum as narrow', () => {
+    expect(isNarrowTurnstileWidth(0)).toBe(false)
+    expect(isNarrowTurnstileWidth(238)).toBe(true)
+    expect(isNarrowTurnstileWidth(299)).toBe(true)
+    expect(isNarrowTurnstileWidth(300)).toBe(false)
+    expect(isNarrowTurnstileWidth(480)).toBe(false)
   })
 
   it('records a load failure and resolves null when the script load rejects', async () => {

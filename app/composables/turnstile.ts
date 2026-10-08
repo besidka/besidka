@@ -3,12 +3,19 @@ const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0'
 
 const FLEXIBLE_WIDGET_MIN_WIDTH = 300
 
+export type TurnstileWidgetSize = 'flexible' | 'compact'
+
 interface TurnstileRenderWidgetOptions {
   action: string
+  size?: TurnstileWidgetSize
   onInteractiveChange?: (isInteractive: boolean) => void
 }
 
 const pendingExecutions = new Map<string, (token: string) => void>()
+
+export function isNarrowTurnstileWidth(containerWidth: number): boolean {
+  return containerWidth > 0 && containerWidth < FLEXIBLE_WIDGET_MIN_WIDTH
+}
 
 export function useTurnstileLoadFailed() {
   return useState<boolean>('turnstile:load-failed', () => false)
@@ -53,10 +60,12 @@ export function useTurnstile() {
 
     loadFailed.value = false
 
-    const containerWidth = el.clientWidth
-    const isNarrowContainer = containerWidth > 0
-      && containerWidth < FLEXIBLE_WIDGET_MIN_WIDTH
-    const size = isNarrowContainer ? 'compact' : 'flexible'
+    const fallbackSize: TurnstileWidgetSize = isNarrowTurnstileWidth(
+      el.clientWidth,
+    )
+      ? 'compact'
+      : 'flexible'
+    const size = opts.size ?? fallbackSize
 
     function settleWithEmptyToken() {
       settlePendingExecution(widgetId)

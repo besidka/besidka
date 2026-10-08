@@ -1,6 +1,6 @@
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AuthTurnstile from '../../../../app/components/Auth/Turnstile.client.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,15 @@ describe('Auth/Turnstile.client', () => {
     mocks.reset.mockClear()
     mocks.remove.mockClear()
   })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function stubContainerWidth(width: number) {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockReturnValue(width)
+  }
 
   it('renders no DOM when disabled', async () => {
     mocks.isEnabled = false
@@ -151,5 +160,40 @@ describe('Auth/Turnstile.client', () => {
     await nextTick()
 
     expect(widgetWrapper.attributes('inert')).toBeUndefined()
+  })
+
+  it('passes the flexible size and keeps the frame full width when the container is wide', async () => {
+    stubContainerWidth(400)
+
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+
+    const frame = wrapper.get('[data-testid="turnstile-container"]')
+      .element.parentElement!
+
+    expect(mocks.renderWidget.mock.calls[0]![1].size).toBe('flexible')
+    expect(frame.classList.contains('w-full')).toBe(true)
+    expect(frame.classList.contains('w-fit')).toBe(false)
+  })
+
+  it('passes the compact size and shrinks the frame when the container is narrow', async () => {
+    stubContainerWidth(238)
+
+    const wrapper = await mountSuspended(AuthTurnstile, {
+      props: { action: 'auth' },
+    })
+
+    await flushPromises()
+
+    const frame = wrapper.get('[data-testid="turnstile-container"]')
+      .element.parentElement!
+
+    expect(mocks.renderWidget.mock.calls[0]![1].size).toBe('compact')
+    expect(frame.classList.contains('w-fit')).toBe(true)
+    expect(frame.classList.contains('mx-auto')).toBe(true)
+    expect(frame.classList.contains('w-full')).toBe(false)
   })
 })
