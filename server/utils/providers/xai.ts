@@ -13,6 +13,7 @@ export async function useXai(
   model: string,
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
+  cacheKey?: string,
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -33,6 +34,7 @@ export async function useXai(
 
   const xai = createXai({
     apiKey: await useDecryptText(data.apiKey),
+    ...(cacheKey ? { headers: { 'x-grok-conv-id': cacheKey } } : {}),
   })
   const { model: modelData } = getModel(model)
 

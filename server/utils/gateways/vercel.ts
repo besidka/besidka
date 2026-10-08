@@ -95,7 +95,9 @@ export async function useVercelGateway(
     instance: getInstance(),
     generateChatTitle,
     tools: getTools(),
-    providerOptions: {},
+    providerOptions: isImageGenerationRequested
+      ? {}
+      : { gateway: { caching: 'auto' } },
     client,
     maxOutputTokens: catalogModel?.maxOutputTokens,
     toolCall: catalogModel?.toolCall,

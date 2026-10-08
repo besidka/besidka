@@ -237,15 +237,16 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - `docs/providers/` - Direct LLM providers (xAI, DeepSeek, Moonshot AI,
   Qwen), split by provider: `general.md` for the shared architecture and
   cross-cutting patterns (curated-vs-fetched model catalog split, the
-  multi-step tool loop), `anthropic.md` (automatic prompt caching and the
-  cache-aware cost formula), `xai.md`, `deepseek.md`, `moonshotai.md`,
+  multi-step tool loop, per-provider prompt caching and its cost limits),
+  `anthropic.md` (automatic prompt caching and the cache-aware cost
+  formula), `xai.md`, `deepseek.md`, `moonshotai.md`,
   `alibaba.md` for per-provider capability decisions and wiring (Qwen
   DashScope search, Moonshot Formula-API search, direct-provider reasoning
   controls), and `gateways.md` for the restored gateway half (Vercel AI
   Gateway, Cloudflare AI Gateway, OpenRouter): the three-id-space naming
   trap, per-gateway cost capture and the blended-vs-search double-count
-  guard, gateway reasoning/web-search/image-generation mechanisms, and the
-  `GatewayModel.toolCall` Brave/Exa gate
+  guard, gateway reasoning/web-search/image-generation/prompt-caching
+  mechanisms, and the `GatewayModel.toolCall` Brave/Exa gate
 - `docs/ci-runner-blacksmith-to-github.md` - Why CI runners moved from
   Blacksmith to GitHub-hosted `ubuntu-24.04`: kept as a reasonable
   default, but this was a dead end for the CI-only failure it was meant

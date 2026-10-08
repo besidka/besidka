@@ -5,7 +5,7 @@ import {
   buildSearchResultsContext,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
-  omitAnthropicCacheControl,
+  omitPromptCacheControl,
   SEARCH_ANSWER_AUXILIARY_TEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_RESULTS,
@@ -559,7 +559,7 @@ describe('capContinuationReasoningEffort', () => {
   })
 })
 
-describe('omitAnthropicCacheControl', () => {
+describe('omitPromptCacheControl', () => {
   it('drops only the Anthropic cacheControl key', () => {
     const providerOptions = {
       anthropic: {
@@ -569,21 +569,72 @@ describe('omitAnthropicCacheControl', () => {
       openai: { store: false },
     }
 
-    expect(omitAnthropicCacheControl(providerOptions)).toEqual({
+    expect(omitPromptCacheControl(providerOptions)).toEqual({
       anthropic: { sendReasoning: true },
       openai: { store: false },
     })
   })
 
+  it('drops only the Vercel AI Gateway caching key', () => {
+    const providerOptions = {
+      gateway: { caching: 'auto', order: ['anthropic'] },
+      openai: { store: false },
+    }
+
+    expect(omitPromptCacheControl(providerOptions)).toEqual({
+      gateway: { order: ['anthropic'] },
+      openai: { store: false },
+    })
+  })
+
+  it('drops only the OpenRouter cacheControl key', () => {
+    const providerOptions = {
+      openrouter: {
+        cacheControl: { type: 'ephemeral' },
+        extraBody: { user: 'abc' },
+      },
+    }
+
+    expect(omitPromptCacheControl(providerOptions)).toEqual({
+      openrouter: { extraBody: { user: 'abc' } },
+    })
+  })
+
+  it('drops every cache-write switch present in one call', () => {
+    const providerOptions = {
+      anthropic: { cacheControl: { type: 'ephemeral' } },
+      gateway: { caching: 'auto' },
+      openrouter: { cacheControl: { type: 'ephemeral' } },
+    }
+
+    expect(omitPromptCacheControl(providerOptions)).toEqual({
+      anthropic: {},
+      gateway: {},
+      openrouter: {},
+    })
+  })
+
+  it('keeps the OpenAI promptCacheKey routing key', () => {
+    const providerOptions = {
+      openai: { promptCacheKey: 'chat-slug', reasoningSummary: 'detailed' },
+    }
+
+    expect(omitPromptCacheControl(providerOptions)).toBe(providerOptions)
+  })
+
   it('does not mutate the shared provider options', () => {
     const providerOptions = {
       anthropic: { cacheControl: { type: 'ephemeral' } },
+      gateway: { caching: 'auto' },
+      openrouter: { cacheControl: { type: 'ephemeral' } },
     }
 
-    omitAnthropicCacheControl(providerOptions)
+    omitPromptCacheControl(providerOptions)
 
     expect(providerOptions).toEqual({
       anthropic: { cacheControl: { type: 'ephemeral' } },
+      gateway: { caching: 'auto' },
+      openrouter: { cacheControl: { type: 'ephemeral' } },
     })
   })
 
@@ -591,11 +642,11 @@ describe('omitAnthropicCacheControl', () => {
     const withoutAnthropic = { google: { thinkingConfig: {} } }
     const withoutCacheControl = { anthropic: { sendReasoning: true } }
 
-    expect(omitAnthropicCacheControl(withoutAnthropic)).toBe(withoutAnthropic)
-    expect(omitAnthropicCacheControl(withoutCacheControl)).toBe(
+    expect(omitPromptCacheControl(withoutAnthropic)).toBe(withoutAnthropic)
+    expect(omitPromptCacheControl(withoutCacheControl)).toBe(
       withoutCacheControl,
     )
-    expect(omitAnthropicCacheControl({})).toEqual({})
+    expect(omitPromptCacheControl({})).toEqual({})
   })
 })
 

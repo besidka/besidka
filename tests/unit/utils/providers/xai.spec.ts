@@ -2,6 +2,7 @@ import type { Model, Provider } from '#shared/types/providers.d'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  createXai: vi.fn(),
   getModel: vi.fn(),
   getControllerModelId: vi.fn((model: Model) => model.id),
   getImageGenerationModelId: vi.fn(
@@ -10,6 +11,19 @@ const mocks = vi.hoisted(() => ({
     },
   ),
 }))
+
+vi.mock('@ai-sdk/xai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ai-sdk/xai')>()
+
+  return {
+    ...actual,
+    createXai: (...args: Parameters<typeof actual.createXai>) => {
+      mocks.createXai(...args)
+
+      return actual.createXai(...args)
+    },
+  }
+})
 
 vi.mock('#shared/utils/model', () => ({
   getModel: mocks.getModel,
@@ -299,5 +313,54 @@ describe('useXai controller model resolution for image-only models', () => {
     expect(mocks.getControllerModelId).toHaveBeenCalledWith(imageOnlyModel)
     expect(result.instance.modelId).toBe(controllerModelId)
     expect(result.instance.modelId).not.toBe('grok-imagine-image-2.0')
+  })
+})
+
+describe('useXai conversation cache routing', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+    stubModel(createModel())
+  })
+
+  it('sends the x-grok-conv-id header when a cache key is given', async () => {
+    const useXai = await importUseXai()
+
+    await useXai(
+      '1',
+      'grok-4.5',
+      [],
+      'off',
+      '01JABCDEFGHJKMNPQRSTVWXYZ0',
+    )
+
+    expect(mocks.createXai).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: { 'x-grok-conv-id': '01JABCDEFGHJKMNPQRSTVWXYZ0' },
+      }),
+    )
+  })
+
+  it('sends no custom headers when no cache key is given', async () => {
+    const useXai = await importUseXai()
+
+    await useXai('1', 'grok-4.5', [], 'off')
+
+    expect(mocks.createXai).toHaveBeenCalledTimes(1)
+    expect(mocks.createXai.mock.calls[0]?.[0]).not.toHaveProperty('headers')
+  })
+
+  it('leaves providerOptions untouched by the cache key', async () => {
+    const useXai = await importUseXai()
+    const result = await useXai(
+      '1',
+      'grok-4.5',
+      [],
+      'off',
+      '01JABCDEFGHJKMNPQRSTVWXYZ0',
+    )
+
+    expect(result.providerOptions).toEqual({})
   })
 })

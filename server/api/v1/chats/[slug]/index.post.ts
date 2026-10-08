@@ -129,7 +129,7 @@ import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
-  omitAnthropicCacheControl,
+  omitPromptCacheControl,
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
@@ -709,6 +709,7 @@ export default defineEventHandler(async (event) => {
             model.id,
             requestedTools,
             reasoningLevel,
+            params.data.slug,
           )
 
           instance = openAiInstance
@@ -839,6 +840,7 @@ export default defineEventHandler(async (event) => {
             model.id,
             requestedTools,
             reasoningLevel,
+            params.data.slug,
           )
 
           instance = xaiInstance
@@ -1432,7 +1434,7 @@ export default defineEventHandler(async (event) => {
             experimental_transform: smoothStream(),
             maxOutputTokens: gatewayMaxOutputTokens,
             timeout: { totalMs: TOOL_LOOP_CONTINUATION_TIMEOUT_MS },
-            providerOptions: omitAnthropicCacheControl(providerOptions),
+            providerOptions: omitPromptCacheControl(providerOptions),
           })
 
           return {

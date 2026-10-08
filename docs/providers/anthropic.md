@@ -83,16 +83,18 @@ main call and the next turn run with tools. Because dropping or adding web
 search invalidates at least the system and messages caches, a cache write made
 by the continuation can never be read: it would be a pure 1.25x write
 premium. The continuation therefore
-passes its provider options through `omitAnthropicCacheControl()`
-(`server/utils/ai/search-answer-continuation.ts`), which drops only the
-`anthropic.cacheControl` key and leaves every other option untouched. The
-shared options object is never mutated.
+passes its provider options through `omitPromptCacheControl()`
+(`server/utils/ai/search-answer-continuation.ts`), which drops
+`anthropic.cacheControl` (and the gateway equivalents, see
+[`general.md`](./general.md#prompt-caching)) and leaves every other option
+untouched. The shared options object is never mutated.
 
 ### Not covered
 
-- **Gateways.** Vercel AI Gateway, OpenRouter and Cloudflare AI Gateway sends
-  do not go through `getProviderOptions()` and get no `cache_control`. See
-  [`gateways.md`](./gateways.md).
+- **Gateways.** Direct Anthropic is the only path through
+  `getProviderOptions()`. Vercel AI Gateway and OpenRouter (`anthropic/`
+  models) have their own switches and Cloudflare AI Gateway gets none. See
+  [`gateways.md`](./gateways.md#gateway-prompt-caching).
 - **Title and project-memory `generateText` calls.** They are small,
   one-shot prompts: usually below the minimum length and never repeated, so a
   cache write would only cost more.

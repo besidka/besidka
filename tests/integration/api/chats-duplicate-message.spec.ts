@@ -890,6 +890,7 @@ describe('chat tool selection for single-message chats', () => {
         'gpt-5-mini',
         ['web_search'],
         'off',
+        '01ARZ3NDEKTSV4RRFFQ69G5FAV',
       )
 
       const userInserts = insertValues.mock.calls.filter(
@@ -950,6 +951,7 @@ describe('chat tool selection for single-message chats', () => {
         'gpt-5-mini',
         ['web_search'],
         'off',
+        '01ARZ3NDEKTSV4RRFFQ69G5FAV',
       )
     },
   )

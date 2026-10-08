@@ -312,6 +312,33 @@ package versions, not assumed from a prior investigation:
   exposes a `reasoning` capability flag for badge purposes only, with no
   working control behind it.
 
+## Gateway prompt caching
+
+Direct providers are covered in
+[`general.md`](./general.md#prompt-caching); this section is the gateway half.
+The gateway builders return the switch in `GatewayChatResult.providerOptions`,
+which `index.post.ts` merges into the shared options with `Object.assign`.
+
+- **Vercel AI Gateway.** `providerOptions: { gateway: { caching: 'auto' } }`
+  (`GatewayProviderOptions.caching`, "Enables automatic caching behavior when
+  supported by the Gateway", in `@ai-sdk/gateway`'s
+  `gateway-provider-options.ts`). Set for every model except when image
+  generation is requested. The package only forwards it; Vercel's backend
+  interprets it, so its effect cannot be checked locally.
+- **OpenRouter.** `providerOptions: { openrouter: { cacheControl:
+  { type: 'ephemeral' } } }`, only when the routed model id starts with
+  `anthropic/` and image generation is not requested. The installed
+  `@openrouter/ai-sdk-provider` reads `providerOptions.openrouter.cacheControl`
+  in `doStream`/`doGenerate` and emits it as a top-level `cache_control`
+  request field; Besidka only wires it for Anthropic models. The chat-settings
+  `cache_control` is deliberately not used: it is baked into the instance and
+  could not be removed for the continuation call. Other routed models cache
+  implicitly where their upstream does.
+- **Cloudflare AI Gateway.** Nothing is set.
+- **Continuation.** `omitPromptCacheControl()` strips `gateway.caching` and
+  `openrouter.cacheControl` for the tool-less continuation call, for the
+  same reason as for direct Anthropic.
+
 ## Web search resolution
 
 `GatewayModel.supportsWebSearch: 'native' | 'universal' | undefined`
