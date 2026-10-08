@@ -163,6 +163,12 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
 - `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
   installed PWA (push handoff + cold-start tap navigation)
+- `docs/chats/stuck-generation-guard.md` - Stuck "generation pending" chat: a
+  client disconnect mid-stream kills the Worker invocation, and the
+  generation-in-progress KV guard (once a fixed 660s TTL) held the chat ~11
+  min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
+  Axiom investigation runbook, and unresolved options (waitUntil,
+  Queues/Workflows, Durable Objects) for surviving the disconnect itself
 - `docs/pwa-safari-dock-app-launch.md` - Two macOS Safari Dock app launch
   bugs: WebKit not applying SW-`respondWith` stylesheet responses on a Web
   App process's first document load (fixed, push-only service worker), and

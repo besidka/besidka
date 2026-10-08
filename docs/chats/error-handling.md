@@ -256,14 +256,17 @@ billed `streamText()` call.
 ### Failure mode
 
 When the client drops the connection mid-generation (observed on an iOS PWA
-about 20s in), the invocation died mid-generation (most likely canceled after
-the client disconnected; the Workers Logs outcome was not retrieved at the
-time). Neither the persist step nor the `finally { kv.delete }` runs. The flag was originally written with
-a fixed 660s TTL sized as the worst-case generation time, so it outlived the
-dead invocation by about 11 minutes: every client retry (roughly every 4s) got
-`generation-pending`, showing an endless loader and a retry button until the
-key expired. A fixed TTL conflated "maximum generation duration" with
-"liveness".
+about 20s in), the invocation dies mid-generation. Closing the tab while a
+response is streaming deterministically kills the invocation (reproduced
+2026-10-08). Neither the persist step nor the `finally { kv.delete }` runs.
+The flag was originally written with a fixed 660s TTL sized as the worst-case
+generation time, so it outlived the dead invocation by about 11 minutes: every
+client retry (roughly every 4s) got `generation-pending`, showing an endless
+loader and a retry button until the key expired. A fixed TTL conflated
+"maximum generation duration" with "liveness".
+
+Full incident write-up, repro, investigation runbook and options in
+`docs/chats/stuck-generation-guard.md`.
 
 ### Lease and heartbeat
 
