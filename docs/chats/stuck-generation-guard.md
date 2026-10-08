@@ -43,9 +43,11 @@ Two things combined.
    the worst-case generation time. That conflated maximum duration with
    liveness, so a dead invocation held the chat for 11 minutes.
 
-The client auto-resends the same user message id when the chat opens and
-roughly every 5s afterwards (on desktop too, not only the iOS
-`visibilitychange` recovery). Each resend that finds the flag receives a
+The client auto-resends the same user message id when the chat opens and then
+again a fixed 4s after each pending response (`GENERATION_RETRY_DELAY_MS` in
+`app/composables/chat.ts`, no backoff), which is about every 5s with the
+round trip. This happens on desktop too, not only in the iOS
+`visibilitychange` recovery. Each resend that finds the flag receives a
 transient `data-generation-pending` response, which renders as the loader.
 
 ## Why it was rare before
