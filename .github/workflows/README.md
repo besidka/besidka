@@ -151,7 +151,10 @@ Cost controls:
 
 - `concurrency` cancels a stale review when a newer push arrives
 - Draft PRs are skipped; the review starts at `ready_for_review`
-- `timeout-minutes: 20`, `--model claude-sonnet-5-5`, `--max-turns 40`
+- `timeout-minutes: 20`, `--max-turns 40`
+- No `--model` override: the review stays on Claude Code's default
+  model (Opus 5.5 at time of writing). A PR review is open-ended bug
+  finding, and the code-review plugin picks its own sub-agent models
 
 Fork PRs are not excluded; their behavior is unchanged.
 
