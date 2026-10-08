@@ -77,7 +77,9 @@ describe('useOpenRouterGateway', () => {
     )
 
     expect(result.tools).toEqual({})
-    expect(result.providerOptions).toEqual({})
+    expect(result.providerOptions).toEqual({
+      openrouter: { cacheControl: { type: 'ephemeral' } },
+    })
     expect(typeof result.generateChatTitle).toBe('function')
 
     const instance = readInstanceSettings(result.instance)
@@ -425,6 +427,54 @@ describe('useOpenRouterGateway', () => {
 
       expect(findGatewayCatalogModel).not.toHaveBeenCalled()
       expect(result.toolCall).toBeUndefined()
+    })
+  })
+
+  describe('prompt caching', () => {
+    it('sends top-level Anthropic cache control for anthropic/ models',
+      async () => {
+        stubKeyLookup()
+
+        const useOpenRouterGateway = await importUseOpenRouterGateway()
+        const result = await useOpenRouterGateway(
+          '1',
+          'anthropic/claude-sonnet-5-5',
+          ['web_search'],
+          'medium',
+        )
+
+        expect(result.providerOptions).toEqual({
+          openrouter: { cacheControl: { type: 'ephemeral' } },
+        })
+      })
+
+    it.each([
+      'openai/gpt-5.4',
+      'google/gemini-3.1-pro',
+      'deepseek/deepseek-v4',
+      'notanthropic/claude-like',
+    ])('sends no cache control for %s', async (modelId) => {
+      stubKeyLookup()
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway('1', modelId, [], 'off')
+
+      expect(result.providerOptions).toEqual({})
+    })
+
+    it('sends no cache control for an anthropic/ model when image '
+      + 'generation is requested', async () => {
+      stubKeyLookup()
+
+      const useOpenRouterGateway = await importUseOpenRouterGateway()
+      const result = await useOpenRouterGateway(
+        '1',
+        'anthropic/claude-sonnet-5-5',
+        ['image_generation'],
+        'off',
+      )
+
+      expect(result.providerOptions).toEqual({})
     })
   })
 })

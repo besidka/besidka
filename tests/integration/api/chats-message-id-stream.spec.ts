@@ -474,6 +474,7 @@ describe('chat stream message ids', () => {
       'gpt-image-2',
       ['image_generation'],
       'off',
+      '01ARZ3NDEKTSV4RRFFQ69G5FAV',
     )
     expect(insertValues.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       role: 'user',

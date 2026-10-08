@@ -81,30 +81,47 @@ export function capContinuationReasoningEffort(
   return 'low'
 }
 
+const PROMPT_CACHE_CONTROL_KEYS: ReadonlyArray<{
+  namespace: string
+  key: string
+}> = [
+  { namespace: 'anthropic', key: 'cacheControl' },
+  { namespace: 'gateway', key: 'caching' },
+  { namespace: 'openrouter', key: 'cacheControl' },
+]
+
 /**
  * The continuation runs without tools while the main call and the next turn
  * run with them, and a tool-definition change invalidates the whole
  * Anthropic prompt cache. A cache write made by the continuation could
- * therefore never be read, so only that one key is dropped and every other
- * provider option is kept. The input is never mutated.
+ * therefore never be read, so only the explicit cache-write switches
+ * (direct Anthropic, Vercel AI Gateway, OpenRouter) are dropped and every
+ * other provider option is kept, including routing keys such as OpenAI's
+ * `promptCacheKey`. The input is never mutated.
  */
-export function omitAnthropicCacheControl(
+export function omitPromptCacheControl(
   providerOptions: SharedV2ProviderOptions,
 ): SharedV2ProviderOptions {
-  const anthropicOptions = providerOptions.anthropic
+  let result = providerOptions
 
-  if (!anthropicOptions || !('cacheControl' in anthropicOptions)) {
-    return providerOptions
+  for (const { namespace, key } of PROMPT_CACHE_CONTROL_KEYS) {
+    const namespaceOptions = result[namespace]
+
+    if (!namespaceOptions || !(key in namespaceOptions)) {
+      continue
+    }
+
+    result = {
+      ...result,
+      [namespace]: Object.fromEntries(
+        Object.entries(namespaceOptions).filter(([optionKey]) => {
+          return optionKey !== key
+        }),
+      ),
+    }
   }
 
-  return {
-    ...providerOptions,
-    anthropic: Object.fromEntries(
-      Object.entries(anthropicOptions).filter(([key]) => {
-        return key !== 'cacheControl'
-      }),
-    ),
-  }
+  return result
 }
 
 /**

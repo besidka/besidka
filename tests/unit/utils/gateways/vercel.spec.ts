@@ -66,7 +66,7 @@ describe('useVercelGateway', () => {
     const result = await useVercelGateway('1', 'openai/gpt-4o', [], 'off')
 
     expect(result.tools).toEqual({})
-    expect(result.providerOptions).toEqual({})
+    expect(result.providerOptions).toEqual({ gateway: { caching: 'auto' } })
     expect(typeof result.generateChatTitle).toBe('function')
     expect(typeof result.client?.getGenerationInfo).toBe('function')
     expect(result.reasoning).toBeUndefined()
@@ -242,7 +242,7 @@ describe('useVercelGateway', () => {
       )
 
       expect(result.reasoning).toBe('medium')
-      expect(result.providerOptions).toEqual({})
+      expect(result.providerOptions).toEqual({ gateway: { caching: 'auto' } })
     })
 
     it('returns undefined for an off request', async () => {
@@ -275,6 +275,54 @@ describe('useVercelGateway', () => {
 
       expect(result.reasoning).toBeUndefined()
     })
+  })
+})
+
+describe('useVercelGateway prompt caching', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  it.each([
+    'anthropic/claude-opus-5',
+    'openai/gpt-5.4',
+    'google/gemini-3.1-pro',
+  ])('enables automatic gateway caching for %s', async (modelId) => {
+    stubKeyLookup()
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway('1', modelId, [], 'off')
+
+    expect(result.providerOptions).toEqual({ gateway: { caching: 'auto' } })
+  })
+
+  it('keeps gateway caching on when web search is requested', async () => {
+    stubKeyLookup()
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway(
+      '1',
+      'anthropic/claude-opus-5',
+      ['web_search'],
+      'off',
+    )
+
+    expect(result.providerOptions).toEqual({ gateway: { caching: 'auto' } })
+  })
+
+  it('never enables gateway caching for image generation', async () => {
+    stubKeyLookup()
+
+    const { useVercelGateway } = await importVercelGatewayModule()
+    const result = await useVercelGateway(
+      '1',
+      'google/gemini-3.1-flash-image-preview',
+      ['image_generation'],
+      'off',
+    )
+
+    expect(result.providerOptions).toEqual({})
   })
 })
 
