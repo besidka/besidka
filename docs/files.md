@@ -52,6 +52,56 @@ storage and image transforms.
   `storages` rows.
 - `filesHardMaxStorageBytes` is the only server-side hard cap in file quotas.
 
+### Files from earlier messages in model context
+
+`sanitizeMessagesForModelContext()` (`server/utils/files/assistant-files.ts`)
+builds the model-facing copy of the chat. File parts on the latest user message
+are always kept. File parts on earlier user messages are kept only inside a
+strict, deterministic budget; everything else is replaced with the text
+`Previously attached file omitted from model context: <filename>.`
+
+Rules, applied newest first:
+
+1. Only the last `CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES` (3) user messages
+   before the latest one are eligible. Text-only user messages count toward
+   the window.
+2. Files are walked from the newest eligible message to the oldest, in
+   original part order. A file is kept only if its size is known, fewer than
+   `CARRIED_FILES_MAX_COUNT` (8) files are carried so far, and the carried
+   bytes plus its size stay within the carried byte budget. A file that does
+   not fit is omitted and the walk continues, so a smaller older file can
+   still be kept.
+3. Carried byte budget =
+   `min(CARRIED_FILES_MAX_BYTES, max(0, REQUEST_FILES_MAX_BYTES - latestBytes))`
+   with `CARRIED_FILES_MAX_BYTES` = 5 MB, `REQUEST_FILES_MAX_BYTES` = 10 MB and
+   `latestBytes` = size of the latest user message's files with a known size.
+   A heavy new message leaves less (possibly zero) room for older files.
+4. Sizes come from `getOwnedFilesByStorageKeys(userId, keys)` in
+   `server/api/v1/chats/[slug]/index.post.ts`, so only the user's own `/files/`
+   attachments have a size. `data:` URLs, unparsable URLs, missing rows and
+   other users' files have no size and are never carried.
+
+`getModelContextFileStorageKeys()` returns the deduplicated storage keys the
+caller must look up (latest message plus the eligible window), which keeps the
+D1 lookup bounded well under the ~100 bound-parameter limit. Without a sizes
+map the function behaves exactly as before (no carry-over). Carried parts then
+flow through `convertFilesForAI()` unchanged, which re-checks ownership and
+uses the 5-minute KV data-URL cache. The `chats` wide event records
+`carriedFilesCount`. The limits are code constants in
+`server/utils/files/file-governance.ts`, not per-user policy.
+
+Why a byte budget: `convertFilesForAI()` base64-encodes every kept file into
+the request. Base64 is about 1.33x the raw size, and several copies (R2 bytes,
+encoded string, serialized provider request body) are in flight at once, so
+re-sending every historical file blew the 128 MB Worker memory limit on long
+chats (issue #221, commit 9c79d6ab). Bytes are the quantity that threatens the
+Worker, so they are capped.
+
+Why a count and a window: a re-sent file is billed as input tokens on every
+turn. One past chat re-sent 29 images (17 MB) per turn. Prompt caching does not
+remove the re-send bytes from the Worker, and it only discounts the cached
+prefix within its TTL, so it is not a substitute for bounding what is sent.
+
 ## Data Model Reference
 
 ### `files`

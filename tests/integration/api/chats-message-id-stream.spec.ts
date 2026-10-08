@@ -145,6 +145,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => mocks.generatedFileIds),
   sanitizeMessagesForModelContext: vi.fn(messages => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {

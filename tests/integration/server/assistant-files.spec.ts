@@ -3,11 +3,18 @@ import type { UIMessage } from 'ai'
 import { convertToModelMessages } from 'ai'
 import {
   getGeneratedImageFileIds,
+  getModelContextFileStorageKeys,
   normalizeAssistantMessagePartsForPersistence,
   persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
   stripUndeliveredInlineDataParts,
 } from '../../../server/utils/files/assistant-files'
+import {
+  CARRIED_FILES_MAX_BYTES,
+  CARRIED_FILES_MAX_COUNT,
+  CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES,
+  REQUEST_FILES_MAX_BYTES,
+} from '../../../server/utils/files/file-governance'
 
 const mocks = vi.hoisted(() => ({
   persistFile: vi.fn(),
@@ -1759,5 +1766,480 @@ describe('stripUndeliveredInlineDataParts', () => {
         },
       },
     }))
+  })
+})
+
+describe('sanitizeMessagesForModelContext file carry-over', () => {
+  const oneKilobyte = 1024
+  const omittedFileTextPrefix
+    = 'Previously attached file omitted from model context: '
+
+  function createUserMessage(id: string, fileNames: string[]): UIMessage {
+    return {
+      id,
+      role: 'user',
+      parts: [
+        { type: 'text', text: `message ${id}` },
+        ...fileNames.map((fileName) => {
+          return {
+            type: 'file',
+            mediaType: 'application/pdf',
+            filename: fileName,
+            url: `/files/${fileName}`,
+          }
+        }),
+      ],
+    } as UIMessage
+  }
+
+  function createAssistantMessage(id: string): UIMessage {
+    return {
+      id,
+      role: 'assistant',
+      parts: [{ type: 'text', text: `answer ${id}` }],
+    } as UIMessage
+  }
+
+  function createConversation(userMessages: UIMessage[]): UIMessage[] {
+    return userMessages.flatMap((message, index) => {
+      if (index === userMessages.length - 1) {
+        return [message]
+      }
+
+      return [message, createAssistantMessage(`assistant-${index}`)]
+    })
+  }
+
+  function createSizes(
+    entries: Record<string, number>,
+  ): ReadonlyMap<string, number> {
+    return new Map(Object.entries(entries))
+  }
+
+  function getKeptFileNames(message: UIMessage | undefined): string[] {
+    return (message?.parts ?? []).flatMap((part) => {
+      return part.type === 'file' && part.filename ? [part.filename] : []
+    })
+  }
+
+  function getOmittedFileNames(message: UIMessage | undefined): string[] {
+    return (message?.parts ?? []).flatMap((part) => {
+      if (
+        part.type !== 'text'
+        || !part.text.startsWith(omittedFileTextPrefix)
+      ) {
+        return []
+      }
+
+      return [part.text.slice(omittedFileTextPrefix.length, -1)]
+    })
+  }
+
+  function findMessage(
+    messages: UIMessage[],
+    id: string,
+  ): UIMessage | undefined {
+    return messages.find(message => message.id === id)
+  }
+
+  it('omits earlier user files when no sizes map is provided', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', ['old.pdf']),
+      createUserMessage('user-2', ['latest.pdf']),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages)
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'user-1')))
+      .toEqual([])
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'user-1')))
+      .toEqual(['old.pdf'])
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'user-2')))
+      .toEqual(['latest.pdf'])
+  })
+
+  it('omits earlier user files when the sizes map is empty', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', ['old.pdf']),
+      createUserMessage('user-2', ['latest.pdf']),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: new Map(),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'user-1')))
+      .toEqual(['old.pdf'])
+  })
+
+  it('keeps a file from the previous user message within the budget', () => {
+    const messages = createConversation([
+      createUserMessage('user-1', ['old.pdf']),
+      createUserMessage('user-2', ['latest.pdf']),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({
+        'old.pdf': oneKilobyte,
+        'latest.pdf': oneKilobyte,
+      }),
+    })
+    const previousUserMessage = findMessage(sanitizedMessages, 'user-1')
+
+    expect(previousUserMessage?.parts).toEqual([
+      { type: 'text', text: 'message user-1' },
+      {
+        type: 'file',
+        mediaType: 'application/pdf',
+        filename: 'old.pdf',
+        url: '/files/old.pdf',
+      },
+    ])
+  })
+
+  it('omits a file older than the carry-over window even when it fits', () => {
+    const windowSize = CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES
+    const earlierMessages = Array.from(
+      { length: windowSize + 1 },
+      (_unused, index) => {
+        return createUserMessage(`user-${index}`, [`file-${index}.pdf`])
+      },
+    )
+    const messages = createConversation([
+      ...earlierMessages,
+      createUserMessage('latest', []),
+    ])
+    const fileSizesByStorageKey = createSizes(
+      Object.fromEntries(
+        earlierMessages.map((_message, index) => {
+          return [`file-${index}.pdf`, oneKilobyte]
+        }),
+      ),
+    )
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey,
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'user-0')))
+      .toEqual(['file-0.pdf'])
+
+    for (let index = 1; index <= windowSize; index += 1) {
+      expect(
+        getKeptFileNames(findMessage(sanitizedMessages, `user-${index}`)),
+      ).toEqual([`file-${index}.pdf`])
+    }
+  })
+
+  it('counts earlier user messages without files toward the window', () => {
+    const windowSize = CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES
+    const textOnlyMessages = Array.from(
+      { length: windowSize },
+      (_unused, index) => createUserMessage(`text-${index}`, []),
+    )
+    const messages = createConversation([
+      createUserMessage('with-file', ['old.pdf']),
+      ...textOnlyMessages,
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({ 'old.pdf': oneKilobyte }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'with-file')))
+      .toEqual(['old.pdf'])
+  })
+
+  it('stops carrying files once the cumulative byte budget is spent, '
+    + 'newest first, while a smaller older file that still fits is kept', () => {
+    const messages = createConversation([
+      createUserMessage('oldest', ['small.pdf']),
+      createUserMessage('middle', ['medium.pdf']),
+      createUserMessage('newest', ['large.pdf']),
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({
+        'large.pdf': CARRIED_FILES_MAX_BYTES - oneKilobyte,
+        'medium.pdf': 2 * oneKilobyte,
+        'small.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'newest')))
+      .toEqual(['large.pdf'])
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'middle')))
+      .toEqual(['medium.pdf'])
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'oldest')))
+      .toEqual(['small.pdf'])
+  })
+
+  it('omits a single earlier file larger than the carried byte budget', () => {
+    const messages = createConversation([
+      createUserMessage('earlier', ['huge.pdf']),
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({
+        'huge.pdf': CARRIED_FILES_MAX_BYTES + 1,
+      }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['huge.pdf'])
+  })
+
+  it('carries only the newest files up to the count cap', () => {
+    const filesPerMessage = CARRIED_FILES_MAX_COUNT / 2
+    const createFileNames = (prefix: string) => {
+      return Array.from({ length: filesPerMessage }, (_unused, index) => {
+        return `${prefix}-${index}.png`
+      })
+    }
+    const oldestFileNames = createFileNames('oldest')
+    const middleFileNames = createFileNames('middle')
+    const newestFileNames = createFileNames('newest')
+    const messages = createConversation([
+      createUserMessage('oldest', oldestFileNames),
+      createUserMessage('middle', middleFileNames),
+      createUserMessage('newest', newestFileNames),
+      createUserMessage('latest', []),
+    ])
+    const fileSizesByStorageKey = createSizes(
+      Object.fromEntries(
+        [...oldestFileNames, ...middleFileNames, ...newestFileNames].map(
+          fileName => [fileName, oneKilobyte],
+        ),
+      ),
+    )
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey,
+    })
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'newest')))
+      .toEqual(newestFileNames)
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'middle')))
+      .toEqual(middleFileNames)
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'oldest')))
+      .toEqual(oldestFileNames)
+  })
+
+  it('shrinks the carried budget by the size of the latest message files',
+    () => {
+      const remainingBytes = oneKilobyte * oneKilobyte
+      const messages = createConversation([
+        createUserMessage('earlier', ['fits.pdf', 'overflows.pdf']),
+        createUserMessage('latest', ['heavy.pdf']),
+      ])
+
+      const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+        fileSizesByStorageKey: createSizes({
+          'heavy.pdf': REQUEST_FILES_MAX_BYTES - remainingBytes,
+          'fits.pdf': remainingBytes,
+          'overflows.pdf': 1,
+        }),
+      })
+
+      expect(getKeptFileNames(findMessage(sanitizedMessages, 'earlier')))
+        .toEqual(['fits.pdf'])
+      expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+        .toEqual(['overflows.pdf'])
+      expect(getKeptFileNames(findMessage(sanitizedMessages, 'latest')))
+        .toEqual(['heavy.pdf'])
+    })
+
+  it('carries nothing when the latest message files use the whole request '
+    + 'budget', () => {
+    const messages = createConversation([
+      createUserMessage('earlier', ['small.pdf']),
+      createUserMessage('latest', ['heavy.pdf']),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({
+        'small.pdf': 1,
+        'heavy.pdf': REQUEST_FILES_MAX_BYTES + oneKilobyte,
+      }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['small.pdf'])
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'latest')))
+      .toEqual(['heavy.pdf'])
+  })
+
+  it('omits an earlier file whose size is unknown', () => {
+    const messages = createConversation([
+      createUserMessage('earlier', ['known.pdf', 'unknown.pdf']),
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({ 'known.pdf': oneKilobyte }),
+    })
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['known.pdf'])
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['unknown.pdf'])
+  })
+
+  it('omits earlier data: URL and non-local file parts', () => {
+    const messages = createConversation([
+      {
+        id: 'earlier',
+        role: 'user',
+        parts: [
+          {
+            type: 'file',
+            mediaType: 'text/plain',
+            filename: 'inline.txt',
+            url: 'data:text/plain;base64,SGVsbG8=',
+          },
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'remote.png',
+            url: 'https://example.com/files/remote.png',
+          },
+        ],
+      } as UIMessage,
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({ 'remote.png': oneKilobyte }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['inline.txt', 'remote.png'])
+  })
+
+  it('always keeps latest user message files regardless of size', () => {
+    const messages = createConversation([
+      createUserMessage('latest', ['known.pdf', 'unknown.pdf']),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({
+        'known.pdf': REQUEST_FILES_MAX_BYTES * 4,
+      }),
+    })
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'latest')))
+      .toEqual(['known.pdf', 'unknown.pdf'])
+  })
+
+  it('keeps carrying text and assistant handling unchanged', () => {
+    const messages: UIMessage[] = [
+      createUserMessage('earlier', ['old.pdf']),
+      {
+        id: 'assistant-file',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'chart.png',
+            url: '/files/chart.png',
+          },
+        ],
+      } as UIMessage,
+      createUserMessage('latest', []),
+    ]
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({
+        'old.pdf': oneKilobyte,
+        'chart.png': oneKilobyte,
+      }),
+    })
+
+    expect(findMessage(sanitizedMessages, 'assistant-file')?.parts).toEqual([
+      {
+        type: 'text',
+        text: 'Generated file saved in the user file library: chart.png (image/png).',
+      },
+    ])
+  })
+
+  describe('getModelContextFileStorageKeys', () => {
+    it('returns latest and windowed earlier keys without duplicates', () => {
+      const windowSize = CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES
+      const earlierMessages = Array.from(
+        { length: windowSize + 2 },
+        (_unused, index) => {
+          return createUserMessage(`user-${index}`, [`file-${index}.pdf`])
+        },
+      )
+      const messages = createConversation([
+        ...earlierMessages,
+        createUserMessage('latest', ['latest.pdf', 'file-4.pdf']),
+      ])
+
+      const storageKeys = getModelContextFileStorageKeys(messages)
+
+      expect(storageKeys).toHaveLength(windowSize + 1)
+      expect(new Set(storageKeys)).toEqual(new Set([
+        'latest.pdf',
+        'file-4.pdf',
+        'file-3.pdf',
+        'file-2.pdf',
+      ]))
+    })
+
+    it('skips assistant files, data: URLs and non-local URLs', () => {
+      const messages: UIMessage[] = [
+        {
+          id: 'assistant-file',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              filename: 'chart.png',
+              url: '/files/chart.png',
+            },
+          ],
+        } as UIMessage,
+        {
+          id: 'earlier',
+          role: 'user',
+          parts: [
+            {
+              type: 'file',
+              mediaType: 'text/plain',
+              filename: 'inline.txt',
+              url: 'data:text/plain;base64,SGVsbG8=',
+            },
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              filename: 'remote.png',
+              url: 'https://example.com/files/remote.png',
+            },
+            {
+              type: 'file',
+              mediaType: 'application/pdf',
+              filename: 'owned.pdf',
+              url: '/files/owned.pdf?download=1',
+            },
+          ],
+        } as UIMessage,
+        createUserMessage('latest', []),
+      ]
+
+      expect(getModelContextFileStorageKeys(messages)).toEqual(['owned.pdf'])
+    })
+
+    it('returns no keys without a user message', () => {
+      expect(getModelContextFileStorageKeys([
+        createAssistantMessage('assistant-only'),
+      ])).toEqual([])
+    })
   })
 })

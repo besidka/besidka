@@ -1245,6 +1245,7 @@ export function getAffectedTests(changedFiles) {
         /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
       tests: [
         'tests/integration/api/chats-detail.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
         'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
       ],
     },
