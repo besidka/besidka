@@ -126,6 +126,7 @@ import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
+  omitAnthropicCacheControl,
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
@@ -1437,7 +1438,7 @@ export default defineEventHandler(async (event) => {
             experimental_transform: smoothStream(),
             maxOutputTokens: gatewayMaxOutputTokens,
             timeout: { totalMs: TOOL_LOOP_CONTINUATION_TIMEOUT_MS },
-            providerOptions,
+            providerOptions: omitAnthropicCacheControl(providerOptions),
           })
 
           return {

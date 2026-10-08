@@ -3,6 +3,8 @@ import { providers } from '~~/providers'
 interface ModelCost {
   input: number
   output: number
+  cacheRead?: number
+  cacheWrite?: number
 }
 
 /**
@@ -90,7 +92,16 @@ export function getModelCostMap(): Record<string, ModelCost> {
         continue
       }
 
-      result[model.id] = { input, output }
+      result[model.id] = {
+        input,
+        output,
+        ...(model.price.cacheRead === undefined
+          ? {}
+          : { cacheRead: model.price.cacheRead }),
+        ...(model.price.cacheWrite === undefined
+          ? {}
+          : { cacheWrite: model.price.cacheWrite }),
+      }
     }
   }
 

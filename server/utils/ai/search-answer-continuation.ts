@@ -4,6 +4,7 @@ import type {
   ModelMessage,
   UIMessageChunk,
 } from 'ai'
+import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import {
   MODEL_TOOL_CALL_ERROR_CODE,
   UNAVAILABLE_TOOL_ERROR_KIND,
@@ -78,6 +79,32 @@ export function capContinuationReasoningEffort(
   }
 
   return 'low'
+}
+
+/**
+ * The continuation runs without tools while the main call and the next turn
+ * run with them, and a tool-definition change invalidates the whole
+ * Anthropic prompt cache. A cache write made by the continuation could
+ * therefore never be read, so only that one key is dropped and every other
+ * provider option is kept. The input is never mutated.
+ */
+export function omitAnthropicCacheControl(
+  providerOptions: SharedV2ProviderOptions,
+): SharedV2ProviderOptions {
+  const anthropicOptions = providerOptions.anthropic
+
+  if (!anthropicOptions || !('cacheControl' in anthropicOptions)) {
+    return providerOptions
+  }
+
+  return {
+    ...providerOptions,
+    anthropic: Object.fromEntries(
+      Object.entries(anthropicOptions).filter(([key]) => {
+        return key !== 'cacheControl'
+      }),
+    ),
+  }
 }
 
 /**

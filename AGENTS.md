@@ -231,7 +231,8 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - `docs/providers/` - Direct LLM providers (xAI, DeepSeek, Moonshot AI,
   Qwen), split by provider: `general.md` for the shared architecture and
   cross-cutting patterns (curated-vs-fetched model catalog split, the
-  multi-step tool loop), `xai.md`, `deepseek.md`, `moonshotai.md`,
+  multi-step tool loop), `anthropic.md` (automatic prompt caching and the
+  cache-aware cost formula), `xai.md`, `deepseek.md`, `moonshotai.md`,
   `alibaba.md` for per-provider capability decisions and wiring (Qwen
   DashScope search, Moonshot Formula-API search, direct-provider reasoning
   controls), and `gateways.md` for the restored gateway half (Vercel AI

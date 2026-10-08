@@ -104,3 +104,54 @@ describe('useAnthropic web search tool choice', () => {
     expect(result.tools).toEqual({})
   })
 })
+
+describe('useAnthropic provider options', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+  })
+
+  it.each(['off', 'high'] as const)(
+    'enables automatic prompt caching at reasoning %s',
+    async (level) => {
+      stubModel(createModel())
+
+      const useAnthropic = await importUseAnthropic()
+      const result = await useAnthropic(
+        '1',
+        'claude-sonnet-5-5',
+        [],
+        level,
+      )
+
+      expect(result.providerOptions).toEqual({
+        cacheControl: { type: 'ephemeral' },
+      })
+    },
+  )
+
+  it('never writes thinking or effort, which the SDK derives itself', async () => {
+    stubModel(createModel())
+
+    const useAnthropic = await importUseAnthropic()
+    const result = await useAnthropic(
+      '1',
+      'claude-sonnet-5-5',
+      ['web_search'],
+      'high',
+    )
+
+    expect(result.providerOptions).not.toHaveProperty('thinking')
+    expect(result.providerOptions).not.toHaveProperty('effort')
+  })
+
+  it('keeps the default five minute cache lifetime', async () => {
+    stubModel(createModel())
+
+    const useAnthropic = await importUseAnthropic()
+    const result = await useAnthropic('1', 'claude-sonnet-5-5', [], 'off')
+
+    expect(result.providerOptions.cacheControl).not.toHaveProperty('ttl')
+  })
+})

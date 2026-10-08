@@ -5,6 +5,7 @@ import {
   buildSearchResultsContext,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
+  omitAnthropicCacheControl,
   SEARCH_ANSWER_AUXILIARY_TEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_CHARS,
   SEARCH_ANSWER_CONTEXT_MAX_RESULTS,
@@ -555,6 +556,46 @@ describe('capContinuationReasoningEffort', () => {
     expect(capContinuationReasoningEffort('medium')).toBe('low')
     expect(capContinuationReasoningEffort('low')).toBe('low')
     expect(capContinuationReasoningEffort(undefined)).toBeUndefined()
+  })
+})
+
+describe('omitAnthropicCacheControl', () => {
+  it('drops only the Anthropic cacheControl key', () => {
+    const providerOptions = {
+      anthropic: {
+        cacheControl: { type: 'ephemeral' },
+        sendReasoning: true,
+      },
+      openai: { store: false },
+    }
+
+    expect(omitAnthropicCacheControl(providerOptions)).toEqual({
+      anthropic: { sendReasoning: true },
+      openai: { store: false },
+    })
+  })
+
+  it('does not mutate the shared provider options', () => {
+    const providerOptions = {
+      anthropic: { cacheControl: { type: 'ephemeral' } },
+    }
+
+    omitAnthropicCacheControl(providerOptions)
+
+    expect(providerOptions).toEqual({
+      anthropic: { cacheControl: { type: 'ephemeral' } },
+    })
+  })
+
+  it('returns the options untouched when there is nothing to drop', () => {
+    const withoutAnthropic = { google: { thinkingConfig: {} } }
+    const withoutCacheControl = { anthropic: { sendReasoning: true } }
+
+    expect(omitAnthropicCacheControl(withoutAnthropic)).toBe(withoutAnthropic)
+    expect(omitAnthropicCacheControl(withoutCacheControl)).toBe(
+      withoutCacheControl,
+    )
+    expect(omitAnthropicCacheControl({})).toEqual({})
   })
 })
 

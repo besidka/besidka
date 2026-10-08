@@ -57,6 +57,23 @@ describe('mergeModelMetadata', () => {
     expect(model.price.output).toBe('$10.00')
   })
 
+  it('carries fetched cache prices as numbers at full precision', () => {
+    const model = mergeModelMetadata(chatModel, {
+      ...snapshotEntry,
+      cost: { ...snapshotEntry.cost, cacheRead: 0.003, cacheWrite: 1.5625 },
+    })
+
+    expect(model.price.cacheRead).toBe(0.003)
+    expect(model.price.cacheWrite).toBe(1.5625)
+  })
+
+  it('omits the cache price keys when the snapshot has none', () => {
+    const model = mergeModelMetadata(chatModel, snapshotEntry)
+
+    expect('cacheRead' in model.price).toBe(false)
+    expect('cacheWrite' in model.price).toBe(false)
+  })
+
   it('takes the release date from the snapshot', () => {
     const model = mergeModelMetadata(chatModel, {
       ...snapshotEntry,
@@ -610,12 +627,14 @@ describe('formatPrice', () => {
 })
 
 describe('merged catalog', () => {
-  const snapshotEntries: Record<string, { input: number, output: number }>
-    = Object.fromEntries(
-      Object.entries(snapshot).map(([id, entry]) => {
-        return [id, entry.cost]
-      }),
-    )
+  const snapshotEntries: Record<
+    string,
+    ModelSnapshotEntry['cost']
+  > = Object.fromEntries(
+    Object.entries(snapshot).map(([id, entry]) => {
+      return [id, entry.cost]
+    }),
+  )
 
   it('bills every per-token model at its exact fetched cost', () => {
     const costMap = getModelCostMap()
