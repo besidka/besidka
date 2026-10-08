@@ -244,6 +244,62 @@ requestId = "9e826a92fa133452" AND ai.calls >= 1
 - Production traces are sampled at `0.1`, so a request may exist in logs without having a trace.
 - Bot traffic such as `/admin` or `/wp-admin` will also appear in logs if it reaches the Worker.
 
+## Generation-in-progress guard (stuck "generation pending" chat)
+
+`POST /api/v1/chats/[slug]` sets a KV flag
+(`chat-generating:<chatId>:<userMessageId>`) for the duration of a generation.
+A client retry of the same user message id (issue #275: iOS auto-recovery on
+`visibilitychange`) that finds the flag gets a transient
+`data-generation-pending` response instead of starting a duplicate, double
+billed `streamText()` call.
+
+### Failure mode
+
+When the client drops the connection mid-generation (observed on an iOS PWA
+about 20s in), the invocation died mid-generation (most likely canceled after
+the client disconnected; the Workers Logs outcome was not retrieved at the
+time). Neither the persist step nor the `finally { kv.delete }` runs. The flag was originally written with
+a fixed 660s TTL sized as the worst-case generation time, so it outlived the
+dead invocation by about 11 minutes: every client retry (roughly every 4s) got
+`generation-pending`, showing an endless loader and a retry button until the
+key expired. A fixed TTL conflated "maximum generation duration" with
+"liveness".
+
+### Lease and heartbeat
+
+The flag is now a short lease renewed by a timer while the invocation is alive
+(`server/utils/ai/generation-guard.ts`):
+
+- `GENERATION_GUARD_LEASE_TTL_SECONDS = 120`: the TTL of every put.
+- `GENERATION_GUARD_HEARTBEAT_INTERVAL_MS = 30_000`: how often
+  `startGenerationGuardHeartbeat()` re-puts the key.
+
+A live invocation keeps the flag indefinitely, so fast reconnects still see
+"still working" and never trigger a duplicate generation. A canceled
+invocation stops renewing it and the flag disappears after the 120s lease
+plus up to about 60s of KV edge read caching (the guard check's
+`useKV().get` uses the default `cacheTtl`), so about 2-3 minutes in the worst
+case.
+`execute()` awaits the first put, starts the heartbeat, and the `finally`
+awaits the heartbeat's stop function (which also waits for an in-flight
+renewal) before `kv.delete`, so a late tick cannot resurrect a deleted flag.
+Heartbeat put failures are swallowed and recorded as
+`attributes.generationGuard.operation = 'heartbeat'`.
+
+To verify the lease is actually renewed in production, the `AI stream
+completed` wide event carries `attributes.generationGuard.heartbeats`, the
+count of successful renewals. A generation lasting longer than 30s should show
+`heartbeats >= 1`; a long generation reporting `0` means the timer is not
+firing and the lease will lapse after 120s.
+
+The numbers follow Cloudflare KV limits: the minimum `expirationTtl` is 60s, a
+key can be written at most once per second, and a write can take up to about
+60s to become visible in other colos. 120s leaves the 30s interval plus
+propagation lag inside the lease, so a healthy invocation's flag never lapses.
+The timer is interval-driven, not chunk-driven, because a single provider step
+can stream nothing for 60-90s. The tool-loop timeouts no longer size the
+guard.
+
 ## `/chats/test` support
 
 The `/chats/test` harness now supports an extra query parameter:

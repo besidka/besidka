@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS } from '../../../server/utils/ai/tool-loop'
+import {
+  GENERATION_GUARD_HEARTBEAT_INTERVAL_MS,
+  GENERATION_GUARD_LEASE_TTL_SECONDS,
+} from '../../../server/utils/ai/generation-guard'
 
 const mocks = vi.hoisted(() => ({
   failConvertToModelMessages: false,
@@ -13,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   syncChatShareFiles: vi.fn(),
   persistedResponseParts: null as Array<Record<string, any>> | null,
   loggerSet: vi.fn(),
+  aiLoggerSet: vi.fn(),
   stripUndeliveredInlineDataParts: vi.fn((parts: unknown) => parts),
 }))
 
@@ -114,7 +118,7 @@ vi.mock('evlog', () => ({
     getContext: () => ({ requestId: 'test-request-id' }),
   }),
   createRequestLogger: () => ({
-    set: vi.fn(),
+    set: mocks.aiLoggerSet,
     emit: vi.fn(() => null),
     getContext: () => ({}),
   }),
@@ -714,9 +718,54 @@ describe('chat stream message ids', () => {
     expect(put).toHaveBeenCalledWith(
       'chat-generating:chat-1:message-1',
       '1',
-      { expirationTtl: TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS },
+      { expirationTtl: GENERATION_GUARD_LEASE_TTL_SECONDS },
     )
     expect(remove).toHaveBeenCalledWith('chat-generating:chat-1:message-1')
+  })
+
+  it('starts the guard heartbeat and stops it before deleting the flag', async () => {
+    const handler = await getHandler()
+    const { db } = createDb()
+    const { kv, delete: remove } = createKv()
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval')
+
+    vi.stubGlobal('useDb', () => db)
+    vi.stubGlobal('useKV', () => kv)
+
+    const response = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'off',
+        messages: [createMessage('Hello')],
+      },
+    } as any)
+
+    await response.ready
+
+    const heartbeatCallIndex = setIntervalSpy.mock.calls.findIndex((call) => {
+      return call[1] === GENERATION_GUARD_HEARTBEAT_INTERVAL_MS
+    })
+    const heartbeatTimer
+      = setIntervalSpy.mock.results[heartbeatCallIndex]?.value
+    const clearCallIndex = clearIntervalSpy.mock.calls.findIndex((call) => {
+      return call[0] === heartbeatTimer
+    })
+
+    expect(heartbeatCallIndex).toBeGreaterThanOrEqual(0)
+    expect(clearCallIndex).toBeGreaterThanOrEqual(0)
+    expect(
+      clearIntervalSpy.mock.invocationCallOrder[clearCallIndex],
+    ).toBeLessThan(remove.mock.invocationCallOrder[0])
+
+    expect(mocks.aiLoggerSet).toHaveBeenCalledWith({
+      attributes: { generationGuard: { heartbeats: 0 } },
+    })
+
+    setIntervalSpy.mockRestore()
+    clearIntervalSpy.mockRestore()
   })
 
   it('returns a pending signal instead of starting a duplicate generation', async () => {

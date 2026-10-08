@@ -8,14 +8,6 @@ export const TOOL_LOOP_MAX_STEPS = TOOL_LOOP_MAX_TOOL_STEPS + 1
 export const TOOL_LOOP_TOTAL_TIMEOUT_MS = 540_000
 export const TOOL_LOOP_TOOL_TIMEOUT_MS = 60_000
 export const TOOL_LOOP_CONTINUATION_TIMEOUT_MS = 90_000
-export const TOOL_LOOP_PERSISTENCE_MARGIN_MS = 30_000
-export const TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS = Math.ceil(
-  (
-    TOOL_LOOP_TOTAL_TIMEOUT_MS
-    + TOOL_LOOP_CONTINUATION_TIMEOUT_MS
-    + TOOL_LOOP_PERSISTENCE_MARGIN_MS
-  ) / 1000,
-)
 
 const TOOL_LOOP_FINAL_STEP_INSTRUCTIONS = [
   'Your search budget is used up. Answer the user\'s question now using',
@@ -151,11 +143,9 @@ const toolLoopPrepareStep: PrepareStepFunction<ToolSet> = ({
  * `TOOL_LOOP_MAX_TOOL_STEPS` search rounds are allowed, then one guaranteed
  * final step (`TOOL_LOOP_MAX_STEPS`) forces an answer — see
  * `toolLoopPrepareStep()` above for how. Each step is a full provider
- * round-trip, and the KV generation-in-progress guard this route sets
- * expires after `TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS`, which is derived
- * from this loop's total timeout plus the continuation timeout and a
- * persistence margin, otherwise a client retry arriving after the guard
- * expired would start a second concurrent generation for the same turn.
+ * round-trip, and the KV generation-in-progress guard this route sets is a
+ * short heartbeat-renewed lease (see `generation-guard.ts`), so it stays
+ * alive for as long as the loop runs without being sized from these timeouts.
  */
 export function resolveToolLoopOptions(
   tools: FormattedTools['tools'],

@@ -47,7 +47,8 @@ vi.mock('ai', async (importOriginal) => {
   return {
     ...actual,
     createUIMessageStream: ({ execute }: { execute: Function }) => {
-      return new ReadableStream({
+      let ready: Promise<void> = Promise.resolve()
+      const stream = new ReadableStream({
         start(controller) {
           const pendingMerges: Array<Promise<void>> = []
           const writer = {
@@ -77,7 +78,7 @@ vi.mock('ai', async (importOriginal) => {
             }),
           }
 
-          Promise.resolve(execute({ writer }))
+          ready = Promise.resolve(execute({ writer }))
             .then(async () => {
               await Promise.all(pendingMerges)
               controller.close()
@@ -87,6 +88,8 @@ vi.mock('ai', async (importOriginal) => {
             })
         },
       })
+
+      return Object.assign(stream, { ready })
     },
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
     streamText: vi.fn((input) => {
