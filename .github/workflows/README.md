@@ -159,6 +159,11 @@ Cost controls:
 - No `--model` override: the review stays on Claude Code's default
   model (Opus 5.5 at time of writing). A PR review is open-ended bug
   finding, and the code-review plugin picks its own sub-agent models
+- The "Summarize review run" step prints the tool calls, failed tool
+  results, permission denials and final review summary from the action's
+  execution file. The action hides its transcript by default
+  (`show_full_output: false`), so without it a run can report success while
+  posting nothing
 
 Fork PRs are not excluded; their behavior is unchanged.
 
