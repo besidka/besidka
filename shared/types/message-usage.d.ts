@@ -15,6 +15,7 @@ export type MessageUsage = {
   outputTokens: number
   reasoningTokens?: number
   cachedInputTokens?: number
+  cacheWriteTokens?: number
   totalTokens: number
   inputCost?: number
   outputCost?: number

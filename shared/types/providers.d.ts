@@ -39,6 +39,8 @@ export interface Model {
     input: string
     output: string
     display?: string
+    cacheRead?: number
+    cacheWrite?: number
   }
   priceTier: ModelPriceTier
   modalities: {

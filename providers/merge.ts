@@ -66,6 +66,8 @@ export interface ModelSnapshotEntry {
   cost: {
     input: number
     output: number
+    cacheRead?: number
+    cacheWrite?: number
   }
   tieredPricing?: boolean
 }
@@ -213,12 +215,19 @@ function mergedPrice(
   curated: CuratedModelPrice,
   input: string,
   output: string,
+  cache: { cacheRead?: number, cacheWrite?: number } = {},
 ) {
   return {
     tokens: curated.tokens,
     input,
     output,
     ...(curated.display ? { display: curated.display } : {}),
+    ...(cache.cacheRead === undefined
+      ? {}
+      : { cacheRead: cache.cacheRead }),
+    ...(cache.cacheWrite === undefined
+      ? {}
+      : { cacheWrite: cache.cacheWrite }),
   }
 }
 
@@ -320,6 +329,7 @@ export function mergeModelMetadata(
       keepCuratedPrice
         ? curated.price.output ?? ''
         : formatPrice(snapshot.cost.output, snapshot.tieredPricing),
+      keepCuratedPrice ? {} : snapshot.cost,
     ),
     priceTier: resolvePriceTier(curated, snapshot),
     modalities: snapshot.modalities,

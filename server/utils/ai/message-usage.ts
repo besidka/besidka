@@ -13,7 +13,10 @@ import type { SearchUsage } from '~~/server/utils/ai/search-usage'
  * token field as `undefined` (never `0`) in that case, so a `0` here would
  * misrepresent an unknown cost as a free one. Cost fields are likewise
  * omitted (never fabricated as `0`) when the model has no known price in
- * `getModelCostMap()`.
+ * `getModelCostMap()`. `inputTokens` is the total prompt size (uncached +
+ * cache reads + cache writes); the input cost prices each bucket at its own
+ * rate, falling back to the plain input price for a bucket whose cache rate
+ * the catalog does not publish.
  *
  * `totalCost` is an optional, separately-sourced override for gateway sends
  * (OpenRouter/Vercel AI Gateway report their own billed cost; gateway model
@@ -39,9 +42,20 @@ export function buildMessageUsage(
   const totalTokens = usage.totalTokens ?? inputTokens + outputTokens
   const reasoningTokens = usage.outputTokenDetails?.reasoningTokens
   const cachedInputTokens = usage.inputTokenDetails?.cacheReadTokens
+  const cacheWriteTokens = usage.inputTokenDetails?.cacheWriteTokens
+  const cacheReadBilledTokens = cachedInputTokens ?? 0
+  const cacheWriteBilledTokens = cacheWriteTokens ?? 0
+  const uncachedInputTokens = Math.max(
+    0,
+    inputTokens - cacheReadBilledTokens - cacheWriteBilledTokens,
+  )
   const cost = getModelCostMap()[modelId]
   const inputCost = cost
-    ? (inputTokens * cost.input) / 1_000_000
+    ? (
+      uncachedInputTokens * cost.input
+      + cacheReadBilledTokens * (cost.cacheRead ?? cost.input)
+      + cacheWriteBilledTokens * (cost.cacheWrite ?? cost.input)
+    ) / 1_000_000
     : undefined
   const outputCost = cost
     ? (outputTokens * cost.output) / 1_000_000
@@ -55,6 +69,7 @@ export function buildMessageUsage(
     totalTokens,
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
     ...(inputCost === undefined ? {} : { inputCost }),
     ...(outputCost === undefined ? {} : { outputCost }),
     ...(totalCost === undefined ? {} : { totalCost }),

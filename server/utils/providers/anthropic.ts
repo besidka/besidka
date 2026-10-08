@@ -8,6 +8,10 @@ import {
   toReasoningEffort,
 } from './reasoning'
 
+export const ANTHROPIC_AUTOMATIC_CACHE_CONTROL = {
+  type: 'ephemeral',
+} as const
+
 export async function useAnthropic(
   userId: string,
   model: string,
@@ -85,15 +89,18 @@ export async function useAnthropic(
   )
 
   /**
-   * Deliberately empty. Unlike OpenAI and Google, the Anthropic provider
-   * derives `thinking`/`effort` (or `thinking.budgetTokens` for models
-   * without adaptive thinking) itself from the top-level `reasoning`
-   * option, and explicit providerOptions take precedence over that
-   * derived value. Writing a `thinking` or `effort` block here would
-   * clobber the SDK's per-model mapping rather than add to it.
+   * Enables Anthropic's automatic prompt caching through one top-level
+   * `cache_control` marker, which the API keeps on the last cacheable block
+   * as the conversation grows. Unlike OpenAI and Google, the Anthropic
+   * provider derives `thinking`/`effort` (or `thinking.budgetTokens` for
+   * models without adaptive thinking) itself from the top-level `reasoning`
+   * option, and explicit providerOptions take precedence over that derived
+   * value, so a `thinking` or `effort` block must NOT be written here.
    */
   function getProviderOptions(): SharedV2ProviderOptions {
-    return {}
+    return {
+      cacheControl: ANTHROPIC_AUTOMATIC_CACHE_CONTROL,
+    }
   }
 
   return {

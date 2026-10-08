@@ -52,6 +52,15 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 Research agents are recognised by their curated `research` block, so the
 policy never hardcodes model ids.
 
+`price.cacheRead` and `price.cacheWrite` are fetched too, from models.dev
+`cost.cache_read` / `cost.cache_write`. They are carried as plain numbers
+(USD per million tokens), not price strings, so they never reach UI copy and
+sub-cent values such as `0.003` keep full precision. Both keys are omitted
+when models.dev publishes none, and neither is part of the required fields
+that fail the fetch. `getModelCostMap()` exposes them and
+`buildMessageUsage()` bills cache reads and writes with them; see
+`docs/providers/anthropic.md`.
+
 Prices are rendered as strings with full precision, because
 `getModelCostMap()` in `server/utils/ai/cost-map.ts` parses them back into
 billing numbers. `providers/merge.ts` is covered by
