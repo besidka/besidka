@@ -152,6 +152,10 @@ Cost controls:
 - `concurrency` cancels a stale review when a newer push arrives
 - Draft PRs are skipped; the review starts at `ready_for_review`
 - `timeout-minutes: 20`, `--max-turns 40`
+- `--allowedTools` lists the `gh` Bash commands the code-review plugin
+  declares (`gh pr view|diff|list|comment`, `gh issue view|list`,
+  `gh search`) next to the inline-comment tool. Without them every `gh` call
+  is permission-denied in CI and the review silently posts nothing
 - No `--model` override: the review stays on Claude Code's default
   model (Opus 5.5 at time of writing). A PR review is open-ended bug
   finding, and the code-review plugin picks its own sub-agent models
