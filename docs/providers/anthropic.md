@@ -46,7 +46,7 @@ skip caching, with no error and no cache fields in usage.
 
 | Models | Minimum tokens |
 |---|---|
-| Opus 5.5, Sonnet 5.5, Fable 5.x, Haiku 5.5 | 512 |
+| Opus 5.5, Opus 5, Sonnet 5.5, Fable 5.x, Haiku 5.5 | 512 |
 | Sonnet 5, Sonnet 4.x, Opus 4.8, Opus 4.1, Opus 4 | 1024 |
 | Opus 4.7 | 2048 |
 | Opus 4.6, Opus 4.5, Haiku 4.5 | 4096 |
@@ -56,8 +56,11 @@ skip caching, with no error and no cache fields in usage.
 A cache entry is only read when everything before the breakpoint is
 byte-identical, in the order tools, system, messages. These changes break it:
 
-- **Tool set changes.** Toggling web search adds or removes the
-  `web_search_preview` tool definition, which invalidates the whole cache.
+- **Tool set changes.** Anthropic's table says modifying tool definitions
+  invalidates the entire cache (tools, system and messages). Toggling web
+  search is listed separately: the tools cache stays valid, but the system
+  and messages caches are invalidated ("Enabling/disabling web search
+  modifies the system prompt").
 - **The tool-loop final-step instruction.** `prepareStep` edits the
   instructions on the last allowed step, so that step does not reuse the
   entry written by earlier steps.
@@ -66,16 +69,20 @@ byte-identical, in the order tools, system, messages. These changes break it:
 - **Project memory and instruction edits.** They live in the system prompt.
 - **Search and image mode toggles.** They change the tools and the system
   prompt.
-- **Thinking or effort changes.** Changing the reasoning level invalidates
-  cached messages (the system and tools prefix stays valid).
+- **Thinking or effort changes.** Changing the reasoning level always
+  invalidates cached messages. Whether the tools and system caches survive is
+  model-specific: they are also invalidated on models that render the
+  thinking configuration ahead of them, so do not assume the prefix stays
+  valid.
 
 ### The search-answer continuation is excluded
 
 The search-answer continuation `streamText` in
 `server/api/v1/chats/[slug]/index.post.ts` runs with **no tools**, while the
-main call and the next turn run with tools. Because a tool-definition change
-invalidates the entire cache, a cache write made by the continuation can never
-be read: it would be a pure 1.25x write premium. The continuation therefore
+main call and the next turn run with tools. Because dropping or adding web
+search invalidates at least the system and messages caches, a cache write made
+by the continuation can never be read: it would be a pure 1.25x write
+premium. The continuation therefore
 passes its provider options through `omitAnthropicCacheControl()`
 (`server/utils/ai/search-answer-continuation.ts`), which drops only the
 `anthropic.cacheControl` key and leaves every other option untouched. The
