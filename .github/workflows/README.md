@@ -164,6 +164,13 @@ Cost controls:
   execution file. The action hides its transcript by default
   (`show_full_output: false`), so without it a run can report success while
   posting nothing
+- The review step sets `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` because the
+  code-review plugin launches its review subagents in the background by
+  default. Under `claude-code-action`, which drives the Agent SDK rather than
+  `claude -p`, the session then ended with "Three review agents are still
+  running." and never posted, while the job still reported success. See
+  [sub-agents](https://code.claude.com/docs/en/sub-agents) and
+  [environment variables](https://code.claude.com/docs/en/env-vars)
 
 Fork PRs are not excluded; their behavior is unchanged.
 
