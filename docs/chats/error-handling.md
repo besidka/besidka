@@ -284,7 +284,7 @@ case.
 awaits the heartbeat's stop function (which also waits for an in-flight
 renewal) before `kv.delete`, so a late tick cannot resurrect a deleted flag.
 Heartbeat put failures are swallowed and recorded as
-`generationGuard.operation = 'heartbeat'`.
+`attributes.generationGuard.operation = 'heartbeat'`.
 
 To verify the lease is actually renewed in production, the `AI stream
 completed` wide event carries `attributes.generationGuard.heartbeats`, the

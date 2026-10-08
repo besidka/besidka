@@ -28,11 +28,9 @@ export async function putGenerationGuard(
     return true
   } catch (exception) {
     logger.set({
-      generationGuard: {
-        operation,
-      },
       attributes: {
         generationGuard: {
+          operation,
           error: exceptionMessage(exception),
         },
       },

@@ -104,8 +104,12 @@ describe('generation guard lease', () => {
     )
 
     expect(set).toHaveBeenCalledExactlyOnceWith({
-      generationGuard: { operation: 'heartbeat' },
-      attributes: { generationGuard: { error: 'kv unavailable' } },
+      attributes: {
+        generationGuard: {
+          operation: 'heartbeat',
+          error: 'kv unavailable',
+        },
+      },
     })
     expect(put).toHaveBeenCalledTimes(2)
   })

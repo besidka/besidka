@@ -1626,11 +1626,9 @@ export default defineEventHandler(async (event) => {
           await kv.delete(generatingKey)
         } catch (exception) {
           logger.set({
-            generationGuard: {
-              operation: 'delete',
-            },
             attributes: {
               generationGuard: {
+                operation: 'delete',
                 error: exceptionMessage(exception),
               },
             },
