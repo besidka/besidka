@@ -325,7 +325,11 @@ describe('chat stream message ids', () => {
     })))
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
+      model: {
+        id: 'gpt-5-mini',
+        tools: ['web_search', 'image_generation'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
       modelName: 'GPT-5 mini',
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({
@@ -450,6 +454,7 @@ describe('chat stream message ids', () => {
         id: 'gpt-image-2',
         name: 'GPT Image 2',
         tools: [],
+        modalities: { input: ['text'], output: ['image'] },
         imageGeneration: {
           controllerModel: 'gpt-5-nano',
         },
@@ -572,6 +577,7 @@ describe('chat stream message ids', () => {
       model: {
         id: 'o3-deep-research',
         tools: [],
+        modalities: { input: ['text'], output: ['text'] },
         research: {
           tier: 'thorough',
           assistModel: 'gpt-5.4-nano',

@@ -13,8 +13,10 @@ import {
   CARRIED_FILES_MAX_BYTES,
   CARRIED_FILES_MAX_COUNT,
   CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES,
+  CARRIED_TEXT_FILE_MAX_BYTES,
   REQUEST_FILES_MAX_BYTES,
 } from '../../../server/utils/files/file-governance'
+import { createCarriedMediaTypePredicate } from '../../../server/utils/files/carried-media-types'
 
 const mocks = vi.hoisted(() => ({
   persistFile: vi.fn(),
@@ -1771,6 +1773,7 @@ describe('stripUndeliveredInlineDataParts', () => {
 
 describe('sanitizeMessagesForModelContext file carry-over', () => {
   const oneKilobyte = 1024
+  const allowAnyMediaType = () => true
   const omittedFileTextPrefix
     = 'Previously attached file omitted from model context: '
 
@@ -1865,6 +1868,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: new Map(),
     })
 
@@ -1879,6 +1883,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({
         'old.pdf': oneKilobyte,
         'latest.pdf': oneKilobyte,
@@ -1918,6 +1923,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     )
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey,
     })
 
@@ -1944,6 +1950,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({ 'old.pdf': oneKilobyte }),
     })
 
@@ -1961,6 +1968,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({
         'large.pdf': CARRIED_FILES_MAX_BYTES - oneKilobyte,
         'medium.pdf': 2 * oneKilobyte,
@@ -1983,6 +1991,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({
         'huge.pdf': CARRIED_FILES_MAX_BYTES + 1,
       }),
@@ -2017,6 +2026,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     )
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey,
     })
 
@@ -2037,6 +2047,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
       ])
 
       const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+        canCarryMediaType: allowAnyMediaType,
         fileSizesByStorageKey: createSizes({
           'heavy.pdf': REQUEST_FILES_MAX_BYTES - remainingBytes,
           'fits.pdf': remainingBytes,
@@ -2060,6 +2071,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({
         'small.pdf': 1,
         'heavy.pdf': REQUEST_FILES_MAX_BYTES + oneKilobyte,
@@ -2079,6 +2091,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({ 'known.pdf': oneKilobyte }),
     })
 
@@ -2112,6 +2125,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({ 'remote.png': oneKilobyte }),
     })
 
@@ -2125,6 +2139,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ])
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({
         'known.pdf': REQUEST_FILES_MAX_BYTES * 4,
       }),
@@ -2153,6 +2168,7 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
     ]
 
     const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
       fileSizesByStorageKey: createSizes({
         'old.pdf': oneKilobyte,
         'chart.png': oneKilobyte,
@@ -2165,6 +2181,195 @@ describe('sanitizeMessagesForModelContext file carry-over', () => {
         text: 'Generated file saved in the user file library: chart.png (image/png).',
       },
     ])
+  })
+
+  it('omits earlier files whose media type the predicate rejects while '
+    + 'carrying the ones it accepts', () => {
+    const messages = createConversation([
+      {
+        id: 'earlier',
+        role: 'user',
+        parts: [
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'picture.png',
+            url: '/files/picture.png',
+          },
+          {
+            type: 'file',
+            mediaType: 'application/pdf',
+            filename: 'report.pdf',
+            url: '/files/report.pdf',
+          },
+        ],
+      } as UIMessage,
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: createCarriedMediaTypePredicate(['text', 'pdf']),
+      fileSizesByStorageKey: createSizes({
+        'picture.png': oneKilobyte,
+        'report.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['picture.png'])
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['report.pdf'])
+  })
+
+  it('carries nothing without a media type predicate even when sizes are '
+    + 'known', () => {
+    const messages = createConversation([
+      createUserMessage('earlier', ['old.pdf']),
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      fileSizesByStorageKey: createSizes({ 'old.pdf': oneKilobyte }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['old.pdf'])
+  })
+
+  it('omits a carried text file above the text size cap and keeps one at '
+    + 'or below it', () => {
+    const createTextMessage = (id: string, fileName: string) => ({
+      id,
+      role: 'user',
+      parts: [{
+        type: 'file',
+        mediaType: 'text/plain; charset=utf-8',
+        filename: fileName,
+        url: `/files/${fileName}`,
+      }],
+    }) as UIMessage
+    const messages = createConversation([
+      createTextMessage('large', 'large.txt'),
+      createTextMessage('small', 'small.txt'),
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'large.txt': CARRIED_TEXT_FILE_MAX_BYTES + 1,
+        'small.txt': CARRIED_TEXT_FILE_MAX_BYTES,
+      }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'large')))
+      .toEqual(['large.txt'])
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'small')))
+      .toEqual(['small.txt'])
+  })
+
+  it('does not spend carried budget on a skipped oversized text file', () => {
+    const messages = createConversation([
+      createUserMessage('earlier', ['next.pdf']),
+      {
+        id: 'text',
+        role: 'user',
+        parts: [{
+          type: 'file',
+          mediaType: 'text/plain',
+          filename: 'huge.txt',
+          url: '/files/huge.txt',
+        }],
+      } as UIMessage,
+      createUserMessage('latest', []),
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'huge.txt': CARRIED_FILES_MAX_BYTES,
+        'next.pdf': CARRIED_FILES_MAX_BYTES,
+      }),
+    })
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['next.pdf'])
+  })
+
+  it('counts a latest-message data: URL against the request budget', () => {
+    const remainingBytes = oneKilobyte
+    const payloadBytes = REQUEST_FILES_MAX_BYTES - remainingBytes
+    const base64Payload = 'A'.repeat(Math.ceil(payloadBytes * 4 / 3))
+    const messages = createConversation([
+      createUserMessage('earlier', ['fits.pdf', 'overflows.pdf']),
+      {
+        id: 'latest',
+        role: 'user',
+        parts: [{
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'pasted.png',
+          url: `data:image/png;base64,${base64Payload}`,
+        }],
+      } as UIMessage,
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({
+        'fits.pdf': remainingBytes - 4,
+        'overflows.pdf': oneKilobyte,
+      }),
+    })
+
+    expect(getKeptFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['fits.pdf'])
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['overflows.pdf'])
+  })
+
+  it('estimates a non-base64 latest-message data: URL from its payload '
+    + 'length', () => {
+    const payload = 'x'.repeat(REQUEST_FILES_MAX_BYTES)
+    const messages = createConversation([
+      createUserMessage('earlier', ['old.pdf']),
+      {
+        id: 'latest',
+        role: 'user',
+        parts: [{
+          type: 'file',
+          mediaType: 'text/plain',
+          filename: 'inline.txt',
+          url: `data:text/plain,${payload}`,
+        }],
+      } as UIMessage,
+    ])
+
+    const sanitizedMessages = sanitizeMessagesForModelContext(messages, {
+      canCarryMediaType: allowAnyMediaType,
+      fileSizesByStorageKey: createSizes({ 'old.pdf': 1 }),
+    })
+
+    expect(getOmittedFileNames(findMessage(sanitizedMessages, 'earlier')))
+      .toEqual(['old.pdf'])
+  })
+
+  describe('createCarriedMediaTypePredicate', () => {
+    it.each([
+      ['text/plain', ['text'], true],
+      ['text/markdown; charset=utf-8', ['text'], true],
+      ['image/png', ['text', 'image'], true],
+      ['image/png', ['text'], false],
+      ['application/pdf', ['text', 'pdf'], true],
+      ['application/pdf', ['text', 'image'], false],
+      ['audio/mpeg', ['text', 'audio'], false],
+      ['video/mp4', ['text', 'video'], false],
+      ['application/zip', ['text', 'image', 'pdf'], false],
+    ])('for %s with input %j returns %s', (mediaType, modalities, expected) => {
+      const canCarry = createCarriedMediaTypePredicate(modalities)
+
+      expect(canCarry(mediaType)).toBe(expected)
+    })
   })
 
   describe('getModelContextFileStorageKeys', () => {

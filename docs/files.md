@@ -66,27 +66,52 @@ Rules, applied newest first:
    before the latest one are eligible. Text-only user messages count toward
    the window.
 2. Files are walked from the newest eligible message to the oldest, in
-   original part order. A file is kept only if its size is known, fewer than
-   `CARRIED_FILES_MAX_COUNT` (8) files are carried so far, and the carried
-   bytes plus its size stay within the carried byte budget. A file that does
-   not fit is omitted and the walk continues, so a smaller older file can
-   still be kept.
+   original part order. A file is kept only if its size is known, the model
+   can accept its media type (rule 5), fewer than `CARRIED_FILES_MAX_COUNT`
+   (8) files are carried so far, and the carried bytes plus its size stay
+   within the carried byte budget. A file that does not fit is omitted (and
+   spends nothing) and the walk continues, so a smaller older file can still
+   be kept.
 3. Carried byte budget =
    `min(CARRIED_FILES_MAX_BYTES, max(0, REQUEST_FILES_MAX_BYTES - latestBytes))`
    with `CARRIED_FILES_MAX_BYTES` = 5 MB, `REQUEST_FILES_MAX_BYTES` = 10 MB and
-   `latestBytes` = size of the latest user message's files with a known size.
-   A heavy new message leaves less (possibly zero) room for older files.
-4. Sizes come from `getOwnedFilesByStorageKeys(userId, keys)` in
+   `latestBytes` = size of the latest user message's files. Owned `/files/`
+   attachments use their stored size; an inline `data:` URL has no stored
+   size, so its bytes are estimated from the payload (`ceil(base64Length * 3 /
+   4)` for base64, the payload length otherwise). A heavy new message leaves
+   less (possibly zero) room for older files.
+4. A carried `text/*` file larger than `CARRIED_TEXT_FILE_MAX_BYTES` (64 KB) is
+   omitted. `convertFilesForAI()` inlines text files as prompt text, so a
+   multi-megabyte text file would otherwise cost on the order of a million
+   input tokens on every turn.
+5. Modality gate: carried files are checked against the selected model, which
+   only the request's own attachments were checked against before.
+   `createCarriedMediaTypePredicate()`
+   (`server/utils/files/carried-media-types.ts`) allows `text/*` always,
+   `image/*` only if `model.modalities.input` includes `image`, and
+   `application/pdf` only if it includes `pdf`; everything else (audio, video,
+   archives, ...) is never carried. Without this, an image sent to a vision
+   model and carried after switching to a text-only model would make the
+   provider reject every following turn.
+6. Gateway sends carry nothing: this handler does not resolve gateway model
+   capabilities, so `sanitizeMessagesForModelContext()` gets no predicate
+   there and its safe default (no predicate, no carry-over) applies. Only
+   direct-provider sends pass a predicate.
+7. Sizes come from `getOwnedFilesByStorageKeys(userId, keys)` in
    `server/api/v1/chats/[slug]/index.post.ts`, so only the user's own `/files/`
    attachments have a size. `data:` URLs, unparsable URLs, missing rows and
-   other users' files have no size and are never carried.
+   other users' files have no stored size and are never carried.
 
 `getModelContextFileStorageKeys()` returns the deduplicated storage keys the
-caller must look up (latest message plus the eligible window), which keeps the
-D1 lookup bounded well under the ~100 bound-parameter limit. Without a sizes
-map the function behaves exactly as before (no carry-over). Carried parts then
-flow through `convertFilesForAI()` unchanged, which re-checks ownership and
-uses the 5-minute KV data-URL cache. The `chats` wide event records
+caller must look up (latest message plus the eligible window).
+`getOwnedFilesByStorageKeys()` queries them in sequential chunks of 90 keys
+and merges the rows into one map, so no single statement approaches D1's ~100
+bound-parameter limit however large the per-user `maxFilesPerMessage` policy
+is; `convertFilesForAI()` uses the same function and gets the same
+protection. Without a sizes map or without a predicate the function behaves
+exactly as before (no carry-over). Carried parts then flow through
+`convertFilesForAI()` unchanged, which re-checks ownership and uses the
+5-minute KV data-URL cache. The `chats` wide event records
 `carriedFilesCount`. The limits are code constants in
 `server/utils/files/file-governance.ts`, not per-user policy.
 

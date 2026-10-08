@@ -1254,6 +1254,13 @@ export function getAffectedTests(changedFiles) {
       tests: gatewayChatTests,
     },
     {
+      pattern: /^server\/utils\/files\/carried-media-types\.ts$/,
+      tests: [
+        'tests/integration/server/assistant-files.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+      ],
+    },
+    {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,
       tests: [...historyProjectsTests, ...messageSearchTests],
     },

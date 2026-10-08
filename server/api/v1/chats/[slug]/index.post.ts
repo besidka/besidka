@@ -90,6 +90,7 @@ import {
   getActiveShareForChat,
   syncChatShareFiles,
 } from '~~/server/utils/chats/share'
+import { createCarriedMediaTypePredicate } from '~~/server/utils/files/carried-media-types'
 import {
   getOwnedFilesByStorageKeys,
   validateMessageFilePolicy,
@@ -544,6 +545,9 @@ export default defineEventHandler(async (event) => {
 
   const modelContextMessages = sanitizeMessagesForModelContext(allMessages, {
     fileSizesByStorageKey,
+    canCarryMediaType: model
+      ? createCarriedMediaTypePredicate(model.modalities.input)
+      : undefined,
   })
 
   const {
