@@ -758,7 +758,7 @@ describe('server/utils/auth.ts security notification wiring', () => {
 })
 
 describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
-  const sessionTokenName = '__Secure-better-auth.session_token'
+  const sessionTokenName = 'better-auth.session_token'
   const lastLoginCookieName = 'better-auth.last_used_login_method'
 
   function encodeConsentCookie(value: unknown): string {

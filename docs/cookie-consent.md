@@ -435,11 +435,28 @@ oversight.
   is declared). The cookies are read from the installed `better-auth` 1.6.26
   source; re-verify names and lifetimes on a Better Auth upgrade, because the
   manifest and `content/legal/cookie-policy.md` repeat them.
-  The `__Secure-` prefix in those names comes from `createCookieGetter`: with
-  `advanced.useSecureCookies` unset and `baseURL` configured as the dynamic
-  object (`protocol: 'auto'`), it falls through to the production-environment
-  check rather than the request protocol, so production names carry the prefix
-  and a local development copy does not.
+  The names carry no `__Secure-` prefix, in production or locally. The prefix
+  comes from `createCookieGetter`: with `advanced.useSecureCookies` unset and
+  `baseURL` configured as the dynamic object (`protocol: 'auto'`), it falls
+  through to `isProduction`, which is `process.env.NODE_ENV === 'production'`
+  read once at module load. The Worker runtime has no `NODE_ENV`, so the check
+  is false. `getCookies()` (session cookies) and `createAuthCookie()` (state,
+  two-factor, trust-device, passkey challenge) share that one decision, and
+  `resolveRequestContext` only rebuilds them per request when
+  `crossSubDomainCookies` is enabled, which it is not. Verified on
+  2026-10-09 against https://besidka.com: `POST /api/auth/sign-in/social`
+  returns `better-auth.state` and `GET /api/auth/passkey/generate-authenticate-options`
+  returns `better-auth.better-auth-passkey`, both `Max-Age=300`, `HttpOnly`,
+  `SameSite=Lax`, with neither the prefix nor `Secure`. The other names follow
+  from the shared source path; they were not each observed. Setting
+  `advanced.useSecureCookies: true` would add the prefix and `Secure`, but it
+  renames every cookie and signs every user out, so it is a deliberate
+  migration, not a docs fix.
+- **The passkey challenge cookie is set on page load of `/signin`.** Passkey
+  conditional UI (autofill) requests authentication options when the page opens,
+  so `better-auth.better-auth-passkey` exists before any consent decision. It
+  stays in `necessary`: it is a 5 minute, `HttpOnly` authentication-security
+  challenge (CNIL ld ¶49 exempts authentication security).
 - **Receipts do not record the source of a decision.** A decision made from the
   banner and one made from the "Remember your preferences?" prompt look
   identical in `consent_receipts`. Recording the source needs a migration of the
@@ -992,7 +1009,7 @@ enrichers — these are aggregate/infrastructure metadata, not personal data.
 before anything is stored:
 
 - **Rate limit.** `enforceConsentsRateLimit()` (`server/utils/consents-rate-limit.ts`)
-  allows 20 requests per 60 s per `cf-connecting-ip` and answers
+  allows 60 requests per 60 s per `cf-connecting-ip` and answers
   `429` (evlog `createError`, `Retry-After` set) beyond that. It reuses the
   KV-backed `createAuthRateLimitStorage()` used by the auth and key-management
   limiters, with the window index folded into the storage key so each bucket is

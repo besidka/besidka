@@ -30,7 +30,7 @@ get `null`, and throw `useUnauthorizedError()`.
 How `getSession` resolves (better-auth 1.6.11,
 `node_modules/better-auth/dist/api/routes/session.mjs`):
 
-1. It first reads the signed `__Secure-better-auth.session_token` cookie. If
+1. It first reads the signed `better-auth.session_token` cookie. If
    that cookie is missing/invalid it returns `null` immediately
    (`session.mjs:41-42`). The short-lived `session_data` cache cookie can never
    sustain — or alone defeat — a session; the token cookie is the gate.

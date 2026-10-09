@@ -80,8 +80,9 @@ export default defineI18nLocale(() => ({
       },
       'passkey-challenge': {
         description:
-          'One-time challenge used while you register or sign in '
-          + 'with a passkey (set by Better Auth).',
+          'One-time challenge set when you open the sign-in page, so passkey '
+          + 'autofill can work, and while you register or sign in with a '
+          + 'passkey (set by Better Auth).',
         duration: '5 minutes',
       },
       'chat-input-backup': {

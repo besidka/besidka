@@ -42,13 +42,13 @@ These are needed to run the service you asked for. They are not consent-gated un
 | Name | Type | Set by | Purpose | Duration |
 | --- | --- | --- | --- | --- |
 | `cookies_consent` | Cookie | Besidka | Remembers the cookie choice you made, so I do not ask again and can honour it | 180 days |
-| `__Secure-better-auth.session_token` | Cookie | Besidka (Better Auth) | Keeps you signed in. `HttpOnly` | 7 days |
-| `__Secure-better-auth.session_data` | Cookie | Besidka (Better Auth) | Short-lived cache of your session so every page load does not have to hit the database | 5 minutes |
-| `__Secure-better-auth.dont_remember` | Cookie | Besidka (Better Auth) | Set only if you untick "Remember me" when signing in. Records that you did not ask to be remembered, so the session ends when you close the browser | Until you close the browser |
-| `__Secure-better-auth.state` | Cookie | Besidka (Better Auth) | One-time value that ties a Google or GitHub sign-in redirect back to the request that started it. This is what stops a sign-in from being hijacked | 5 minutes |
-| `__Secure-better-auth.two_factor` | Cookie | Besidka (Better Auth) | Set only if you have two-factor authentication. Holds the pending sign-in step between your password and your verification code | 10 minutes |
-| `__Secure-better-auth.trust_device` | Cookie | Besidka (Better Auth) | Set only if you tick "Trust this device for 30 days" on the two-factor screen. Lets you skip the verification code on this device | 30 days |
-| `__Secure-better-auth.better-auth-passkey` | Cookie | Besidka (Better Auth) | Set only while you register or sign in with a passkey. A one-time challenge that the passkey check has to answer | 5 minutes |
+| `better-auth.session_token` | Cookie | Besidka (Better Auth) | Keeps you signed in. `HttpOnly` | 7 days |
+| `better-auth.session_data` | Cookie | Besidka (Better Auth) | Short-lived cache of your session so every page load does not have to hit the database | 5 minutes |
+| `better-auth.dont_remember` | Cookie | Besidka (Better Auth) | Set only if you untick "Remember me" when signing in. Records that you did not ask to be remembered, so the session ends when you close the browser | Until you close the browser |
+| `better-auth.state` | Cookie | Besidka (Better Auth) | One-time value that ties a Google or GitHub sign-in redirect back to the request that started it. This is what stops a sign-in from being hijacked | 5 minutes |
+| `better-auth.two_factor` | Cookie | Besidka (Better Auth) | Set only if you have two-factor authentication. Holds the pending sign-in step between your password and your verification code | 10 minutes |
+| `better-auth.trust_device` | Cookie | Besidka (Better Auth) | Set only if you tick "Trust this device for 30 days" on the two-factor screen. Lets you skip the verification code on this device | 30 days |
+| `better-auth.better-auth-passkey` | Cookie | Besidka (Better Auth) | Set when you open the sign-in page, so passkey autofill can work, and again while you register or sign in with a passkey. A one-time challenge that the passkey check has to answer | 5 minutes |
 | `chat_input_backup` | localStorage | Besidka | **Holds the text of a message you typed but have not sent yet**, so a failed send, a session that expires mid-message, a re-login or a reinstalled app does not lose what you wrote. It holds your words verbatim, in your browser only — it is never sent to me. It is discarded when the message is sent, and it expires about **24 hours** after it was saved | About 24 hours |
 | `besidka:push-endpoint` | localStorage | Besidka | Written only after you turn on push notifications. Holds the address of this browser's push subscription, so I can refresh or remove it when it changes. Removed when you turn notifications off | Until you turn notifications off |
 | `besidka-push` | IndexedDB | Besidka | A small database that hands a tapped push notification to the open app. It is created only after you turn on push notifications and tap one, and only by the app's background worker; the page itself never creates it, and only looks for it when notifications are allowed. If you never enable push, it does not exist on your device. It briefly holds the page the notification should open and a timestamp, which are deleted as soon as they are read and ignored after 5 minutes | Until you clear site data (its content is deleted as soon as it is read) |
@@ -57,7 +57,7 @@ These are needed to run the service you asked for. They are not consent-gated un
 
 I treat `chat_input_backup` as necessary because it exists solely to protect your own input in the service you asked for, and because losing a long message is exactly the kind of failure the storage prevents. It stays in your browser. If you would rather it did not exist at all, clear your site data — the app works without it, you just lose the safety net.
 
-All the `__Secure-better-auth.*` cookies are `HttpOnly`, so the page cannot read them. The `__Secure-` prefix is added to their names in the production build that serves besidka.com, which is HTTPS only; the sign-in library decides it from its environment, not per request, so a local development copy uses the same names without the prefix. The cookies marked "set only if" do not exist unless you use the feature they belong to.
+All the `better-auth.*` cookies are `HttpOnly`, so the page cannot read them. The sign-in library names them without a `__Secure-` prefix on besidka.com, because it decides the prefix from its runtime environment and not from the HTTPS connection. The cookies marked "set only if" do not exist unless you use the feature they belong to.
 
 ## Preferences
 
