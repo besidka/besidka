@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getOwnedFilesByStorageKeys,
   getOwnedGeneratedImageFilesByStorageKeys,
   validateMessageFilePolicy,
 } from '../../../server/utils/files/file-governance'
@@ -192,5 +193,52 @@ describe('getOwnedGeneratedImageFilesByStorageKeys', () => {
       originProvider: null,
       originModel: null,
     })
+  })
+})
+
+describe('getOwnedFilesByStorageKeys', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    vi.stubGlobal('useDb', () => ({
+      query: {
+        files: {
+          findMany: mocks.filesFindMany,
+        },
+      },
+    }))
+  })
+
+  it('returns an empty map without querying when given no storage keys', async () => {
+    const result = await getOwnedFilesByStorageKeys(1, [])
+
+    expect(result.size).toBe(0)
+    expect(mocks.filesFindMany).not.toHaveBeenCalled()
+  })
+
+  it('splits a large lookup into sequential chunks and merges the rows', async () => {
+    const storageKeys = Array.from({ length: 200 }, (_unused, index) => {
+      return `file-${index}.png`
+    })
+
+    mocks.filesFindMany.mockImplementation(async (query: any) => {
+      return query.where.storageKey.in.map((storageKey: string) => ({
+        id: `id-${storageKey}`,
+        storageKey,
+        size: 1,
+      }))
+    })
+
+    const result = await getOwnedFilesByStorageKeys(1, [
+      ...storageKeys,
+      storageKeys[0]!,
+    ])
+    const chunkSizes = mocks.filesFindMany.mock.calls.map(([query]) => {
+      return query.where.storageKey.in.length
+    })
+
+    expect(result.size).toBe(200)
+    expect(chunkSizes).toEqual([90, 90, 20])
+    expect(mocks.filesFindMany.mock.calls[0]?.[0].where.userId).toBe(1)
   })
 })

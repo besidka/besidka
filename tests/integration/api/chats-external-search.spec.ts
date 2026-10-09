@@ -63,6 +63,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => []),
   isKnownImageGenerationModel: vi.fn(() => false),
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),

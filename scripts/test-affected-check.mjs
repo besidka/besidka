@@ -1245,12 +1245,20 @@ export function getAffectedTests(changedFiles) {
         /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
       tests: [
         'tests/integration/api/chats-detail.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
         'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
       ],
     },
     {
       pattern: /^server\/utils\/files\/(assistant-files|persist-file)\.ts$/,
       tests: gatewayChatTests,
+    },
+    {
+      pattern: /^server\/utils\/files\/carried-media-types\.ts$/,
+      tests: [
+        'tests/integration/server/assistant-files.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,

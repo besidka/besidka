@@ -90,10 +90,15 @@ import {
   getActiveShareForChat,
   syncChatShareFiles,
 } from '~~/server/utils/chats/share'
-import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
+import { createCarriedMediaTypePredicate } from '~~/server/utils/files/carried-media-types'
+import {
+  getOwnedFilesByStorageKeys,
+  validateMessageFilePolicy,
+} from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   getGeneratedImageFileIds,
+  getModelContextFileStorageKeys,
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
@@ -507,7 +512,6 @@ export default defineEventHandler(async (event) => {
     }),
     newMessage,
   ]
-  const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
   const projectSystemPrompt = buildProjectSystemPrompt(chat.project
     ? {
       name: chat.project.name,
@@ -529,6 +533,23 @@ export default defineEventHandler(async (event) => {
     newMessage.parts as UIMessage['parts'],
   )
 
+  const ownedContextFiles = await getOwnedFilesByStorageKeys(
+    userId,
+    getModelContextFileStorageKeys(allMessages),
+  )
+  const fileSizesByStorageKey = new Map<string, number>()
+
+  for (const [storageKey, file] of ownedContextFiles) {
+    fileSizesByStorageKey.set(storageKey, file.size)
+  }
+
+  const modelContextMessages = sanitizeMessagesForModelContext(allMessages, {
+    fileSizesByStorageKey,
+    canCarryMediaType: model
+      ? createCarriedMediaTypePredicate(model.modalities.input)
+      : undefined,
+  })
+
   const {
     messages: messagesForAI,
     missingFiles,
@@ -536,6 +557,7 @@ export default defineEventHandler(async (event) => {
 
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
+    carriedFilesCount: countCarriedFileParts(modelContextMessages),
     missingFilesCount: missingFiles.length,
   })
 
@@ -1645,6 +1667,16 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
+
+function countCarriedFileParts(modelContextMessages: UIMessage[]): number {
+  const userMessages = modelContextMessages.filter((message) => {
+    return message.role === 'user'
+  })
+
+  return userMessages.slice(0, -1).reduce((total, message) => {
+    return total + message.parts.filter(part => part.type === 'file').length
+  }, 0)
+}
 
 /**
  * `web_search_brave` and `web_search_exa` are resolved by this route itself,
