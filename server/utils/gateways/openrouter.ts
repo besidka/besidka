@@ -11,6 +11,8 @@ import {
 import type { GatewayChatResult } from './index'
 import { keyProviderIdForGateway } from './index'
 
+const ANTHROPIC_MODEL_ID_PREFIX = 'anthropic/'
+
 export async function useOpenRouterGateway(
   userId: string,
   model: string,
@@ -44,6 +46,8 @@ export async function useOpenRouterGateway(
   const isImageGenerationRequested = requestedTools.includes(
     'image_generation',
   )
+  const isPromptCachingEnabled = !isImageGenerationRequested
+    && model.startsWith(ANTHROPIC_MODEL_ID_PREFIX)
   /**
    * Never sent alongside image generation. Live incident: Gemini via Vercel
    * AI Gateway with `reasoning: high` narrated its image generation through
@@ -147,7 +151,9 @@ export async function useOpenRouterGateway(
     instance: getInstance(),
     generateChatTitle,
     tools: {},
-    providerOptions: {},
+    providerOptions: isPromptCachingEnabled
+      ? { openrouter: { cacheControl: { type: 'ephemeral' } } }
+      : {},
     toolCall: catalogModel?.toolCall,
     reasoning: reasoningEffort,
   }

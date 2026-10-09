@@ -47,7 +47,8 @@ vi.mock('ai', async (importOriginal) => {
   return {
     ...actual,
     createUIMessageStream: ({ execute }: { execute: Function }) => {
-      return new ReadableStream({
+      let ready: Promise<void> = Promise.resolve()
+      const stream = new ReadableStream({
         start(controller) {
           const pendingMerges: Array<Promise<void>> = []
           const writer = {
@@ -77,7 +78,7 @@ vi.mock('ai', async (importOriginal) => {
             }),
           }
 
-          Promise.resolve(execute({ writer }))
+          ready = Promise.resolve(execute({ writer }))
             .then(async () => {
               await Promise.all(pendingMerges)
               controller.close()
@@ -87,6 +88,8 @@ vi.mock('ai', async (importOriginal) => {
             })
         },
       })
+
+      return Object.assign(stream, { ready })
     },
     createUIMessageStreamResponse: ({ stream }: { stream: unknown }) => stream,
     streamText: vi.fn((input) => {
@@ -140,6 +143,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => []),
   sanitizeMessagesForModelContext: vi.fn(messages => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(async (input) => {
@@ -282,7 +286,11 @@ describe('chat project instructions', () => {
     }))
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
+      model: {
+        id: 'gpt-5-mini',
+        tools: ['web_search', 'image_generation'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
       modelName: 'GPT-5 mini',
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({

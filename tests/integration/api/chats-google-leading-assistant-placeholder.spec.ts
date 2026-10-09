@@ -86,6 +86,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => []),
   sanitizeMessagesForModelContext: vi.fn((messages: unknown) => messages),
   normalizeAssistantMessagePartsForPersistence: vi.fn(
@@ -239,6 +240,7 @@ describe('google leading-assistant placeholder', () => {
         id: 'gemini-2.5-flash-lite',
         name: 'Gemini 2.5 Flash Lite',
         tools: [],
+        modalities: { input: ['text'], output: ['text'] },
       },
     })))
     vi.stubGlobal('useGoogle', vi.fn(async () => ({
@@ -251,7 +253,11 @@ describe('google leading-assistant placeholder', () => {
   function stubOpenAiProvider() {
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini', tools: [] },
+      model: {
+        id: 'gpt-5-mini',
+        tools: [],
+        modalities: { input: ['text'], output: ['text'] },
+      },
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({
       instance: {},

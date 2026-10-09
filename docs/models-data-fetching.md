@@ -52,6 +52,15 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 Research agents are recognised by their curated `research` block, so the
 policy never hardcodes model ids.
 
+`price.cacheRead` and `price.cacheWrite` are fetched too, from models.dev
+`cost.cache_read` / `cost.cache_write`. They are carried as plain numbers
+(USD per million tokens), not price strings, so they never reach UI copy and
+sub-cent values such as `0.003` keep full precision. Both keys are omitted
+when models.dev publishes none, and neither is part of the required fields
+that fail the fetch. `getModelCostMap()` exposes them and
+`buildMessageUsage()` bills cache reads and writes with them; see
+`docs/providers/anthropic.md`.
+
 Prices are rendered as strings with full precision, because
 `getModelCostMap()` in `server/utils/ai/cost-map.ts` parses them back into
 billing numbers. `providers/merge.ts` is covered by
@@ -273,6 +282,20 @@ for the same reason `audit-curated-models.mjs` is — a unit test can import
 it directly. `scripts/propose-model-successors.mjs` itself has top-level
 side effects (the network fetch, the conditional file writes), the same as
 `scripts/fetch-models-metadata.mjs`, so it is not unit tested directly.
+
+**Curated ordering convention.** The model picker renders models in the file
+order of `providers/*.ts`, so curated models are ordered by version group,
+newest first, and inside a group from the largest tier to the smallest (for
+Anthropic: opus, then sonnet, then haiku), the same way the OpenAI and Google
+files are laid out. Anthropic was once grouped by tier (every opus, then
+every sonnet, then every haiku), which buried a new release of a smaller tier
+far below older versions of a bigger one. `tests/unit/providers/ordering.spec.ts`
+only checks the order within each family, so it cannot enforce this
+cross-family grouping; it is a review-time convention. The successor proposer
+splices a new id immediately before its same-family template, so a proposed
+Sonnet, Haiku or Opus lands inside the previous version's group rather than in
+a group of its own. A human must move it into its own version group when
+reviewing the drift PR.
 
 ## Catalog size and client payload growth
 

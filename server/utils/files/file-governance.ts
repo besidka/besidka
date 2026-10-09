@@ -16,6 +16,12 @@ const DEFAULT_FILE_RETENTION_DAYS = 30
 const DEFAULT_RETENTION_TIGHTENING_GRACE_DAYS = 7
 const DEFAULT_IMAGE_TRANSFORM_LIMIT_TOTAL = 0
 const DEFAULT_GLOBAL_TRANSFORM_LIMIT_MONTHLY = 1000
+const STORAGE_KEY_LOOKUP_CHUNK_SIZE = 90
+export const CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES = 3
+export const CARRIED_FILES_MAX_COUNT = 8
+export const CARRIED_FILES_MAX_BYTES = 5 * 1024 * 1024
+export const CARRIED_TEXT_FILE_MAX_BYTES = 64 * 1024
+export const REQUEST_FILES_MAX_BYTES = 10 * 1024 * 1024
 
 export interface GlobalTransformStats {
   monthKey: string
@@ -495,27 +501,40 @@ export async function getOwnedFilesByStorageKeys(
   userId: number,
   storageKeys: string[],
 ) {
+  const map = new Map<string, OwnedFile>()
+
   if (storageKeys.length === 0) {
-    return new Map<string, OwnedFile>()
+    return map
   }
 
   const uniqueStorageKeys = Array.from(new Set(storageKeys))
-  const files = await useDb().query.files.findMany({
-    where: {
-      userId,
-      storageKey: { in: uniqueStorageKeys },
-    },
-    columns: {
-      id: true,
-      storageKey: true,
-      size: true,
-    },
-  })
+  const db = useDb()
 
-  const map = new Map<string, OwnedFile>()
+  for (
+    let offset = 0;
+    offset < uniqueStorageKeys.length;
+    offset += STORAGE_KEY_LOOKUP_CHUNK_SIZE
+  ) {
+    const files = await db.query.files.findMany({
+      where: {
+        userId,
+        storageKey: {
+          in: uniqueStorageKeys.slice(
+            offset,
+            offset + STORAGE_KEY_LOOKUP_CHUNK_SIZE,
+          ),
+        },
+      },
+      columns: {
+        id: true,
+        storageKey: true,
+        size: true,
+      },
+    })
 
-  for (const file of files) {
-    map.set(file.storageKey, file)
+    for (const file of files) {
+      map.set(file.storageKey, file)
+    }
   }
 
   return map

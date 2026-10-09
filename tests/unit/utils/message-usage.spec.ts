@@ -13,6 +13,15 @@ const PRICED_MODEL_ID = 'gpt-5.4'
 const PRICED_PROVIDER_ID = 'openai'
 const PRICED_MODEL_INPUT_PER_MILLION = 2.5
 const PRICED_MODEL_OUTPUT_PER_MILLION = 15
+const PRICED_MODEL_CACHE_READ_PER_MILLION = 0.25
+const ANTHROPIC_MODEL_ID = 'claude-sonnet-5-5'
+const ANTHROPIC_PROVIDER_ID = 'anthropic'
+const ANTHROPIC_INPUT_PER_MILLION = 2
+const ANTHROPIC_OUTPUT_PER_MILLION = 10
+const ANTHROPIC_CACHE_READ_PER_MILLION = 0.1
+const ANTHROPIC_CACHE_WRITE_PER_MILLION = 2.5
+const UNCACHED_MODEL_ID = 'gpt-4'
+const UNCACHED_MODEL_INPUT_PER_MILLION = 30
 
 function createUsage(
   overrides: Partial<LanguageModelUsage> = {},
@@ -77,9 +86,194 @@ describe('buildMessageUsage', () => {
       totalTokens: 1500,
       reasoningTokens: 120,
       cachedInputTokens: 200,
-      inputCost: (1000 * PRICED_MODEL_INPUT_PER_MILLION) / 1_000_000,
+      inputCost: (
+        800 * PRICED_MODEL_INPUT_PER_MILLION
+        + 200 * PRICED_MODEL_CACHE_READ_PER_MILLION
+      ) / 1_000_000,
       outputCost: (500 * PRICED_MODEL_OUTPUT_PER_MILLION) / 1_000_000,
     })
+  })
+
+  it('prices cache reads and writes at their own rates', () => {
+    const usage = createUsage({
+      inputTokens: 10_000,
+      inputTokenDetails: {
+        noCacheTokens: 1_000,
+        cacheReadTokens: 7_000,
+        cacheWriteTokens: 2_000,
+      },
+      outputTokens: 400,
+      totalTokens: 10_400,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      ANTHROPIC_MODEL_ID,
+      ANTHROPIC_PROVIDER_ID,
+    )
+
+    expect(result?.inputTokens).toBe(10_000)
+    expect(result?.cachedInputTokens).toBe(7_000)
+    expect(result?.cacheWriteTokens).toBe(2_000)
+    expect(result?.inputCost).toBeCloseTo(
+      (
+        1_000 * ANTHROPIC_INPUT_PER_MILLION
+        + 7_000 * ANTHROPIC_CACHE_READ_PER_MILLION
+        + 2_000 * ANTHROPIC_CACHE_WRITE_PER_MILLION
+      ) / 1_000_000,
+      12,
+    )
+    expect(result?.outputCost).toBeCloseTo(
+      (400 * ANTHROPIC_OUTPUT_PER_MILLION) / 1_000_000,
+      12,
+    )
+  })
+
+  it('derives the uncached tokens when the SDK leaves them unknown', () => {
+    const usage = createUsage({
+      inputTokens: 10_000,
+      inputTokenDetails: {
+        noCacheTokens: undefined,
+        cacheReadTokens: 7_000,
+        cacheWriteTokens: 2_000,
+      },
+      outputTokens: 0,
+      totalTokens: 10_000,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      ANTHROPIC_MODEL_ID,
+      ANTHROPIC_PROVIDER_ID,
+    )
+
+    expect(result?.inputCost).toBeCloseTo(
+      (
+        1_000 * ANTHROPIC_INPUT_PER_MILLION
+        + 7_000 * ANTHROPIC_CACHE_READ_PER_MILLION
+        + 2_000 * ANTHROPIC_CACHE_WRITE_PER_MILLION
+      ) / 1_000_000,
+      12,
+    )
+  })
+
+  it('ignores a partial noCacheTokens and derives it from the total', () => {
+    const usage = createUsage({
+      inputTokens: 10_000,
+      inputTokenDetails: {
+        noCacheTokens: 300,
+        cacheReadTokens: 7_000,
+        cacheWriteTokens: 2_000,
+      },
+      outputTokens: 0,
+      totalTokens: 10_000,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      ANTHROPIC_MODEL_ID,
+      ANTHROPIC_PROVIDER_ID,
+    )
+
+    expect(result?.inputCost).toBeCloseTo(
+      (
+        1_000 * ANTHROPIC_INPUT_PER_MILLION
+        + 7_000 * ANTHROPIC_CACHE_READ_PER_MILLION
+        + 2_000 * ANTHROPIC_CACHE_WRITE_PER_MILLION
+      ) / 1_000_000,
+      12,
+    )
+  })
+
+  it('never derives a negative uncached token count', () => {
+    const usage = createUsage({
+      inputTokens: 100,
+      inputTokenDetails: {
+        noCacheTokens: undefined,
+        cacheReadTokens: 400,
+        cacheWriteTokens: undefined,
+      },
+      outputTokens: 0,
+      totalTokens: 100,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      ANTHROPIC_MODEL_ID,
+      ANTHROPIC_PROVIDER_ID,
+    )
+
+    expect(result?.inputCost).toBeCloseTo(
+      (400 * ANTHROPIC_CACHE_READ_PER_MILLION) / 1_000_000,
+      12,
+    )
+  })
+
+  it('bills cache writes at the input price when no write rate exists', () => {
+    const usage = createUsage({
+      inputTokens: 1_000,
+      inputTokenDetails: {
+        noCacheTokens: 400,
+        cacheReadTokens: 200,
+        cacheWriteTokens: 400,
+      },
+      outputTokens: 0,
+      totalTokens: 1_000,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    expect(result?.inputCost).toBeCloseTo(
+      (
+        800 * PRICED_MODEL_INPUT_PER_MILLION
+        + 200 * PRICED_MODEL_CACHE_READ_PER_MILLION
+      ) / 1_000_000,
+      12,
+    )
+  })
+
+  it('bills the whole prompt at the input price for a model with no cache rates', () => {
+    const usage = createUsage({
+      inputTokens: 1_000,
+      inputTokenDetails: {
+        noCacheTokens: 600,
+        cacheReadTokens: 400,
+        cacheWriteTokens: undefined,
+      },
+      outputTokens: 0,
+      totalTokens: 1_000,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      UNCACHED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    expect(result?.inputCost).toBeCloseTo(
+      (1_000 * UNCACHED_MODEL_INPUT_PER_MILLION) / 1_000_000,
+      12,
+    )
+  })
+
+  it('omits cacheWriteTokens when the provider reports none', () => {
+    const usage = createUsage({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    })
+
+    const result = buildMessageUsage(
+      usage,
+      PRICED_MODEL_ID,
+      PRICED_PROVIDER_ID,
+    )
+
+    expect(result).not.toHaveProperty('cacheWriteTokens')
   })
 
   it('omits cost fields for an unpriced model', () => {
@@ -133,6 +327,7 @@ describe('buildMessageUsage', () => {
 
     expect(result).not.toHaveProperty('reasoningTokens')
     expect(result).not.toHaveProperty('cachedInputTokens')
+    expect(result).not.toHaveProperty('cacheWriteTokens')
   })
 
   it('never sets totalCost, which only a gateway send path writes', () => {

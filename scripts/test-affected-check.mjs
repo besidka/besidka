@@ -154,6 +154,7 @@ export function getAffectedTests(changedFiles) {
   const providerReasoningWiringTests = [
     'tests/unit/utils/providers/deepseek.spec.ts',
     'tests/unit/utils/providers/moonshotai.spec.ts',
+    'tests/unit/utils/providers/openai.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
     'tests/unit/utils/providers/anthropic.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
@@ -501,6 +502,13 @@ export function getAffectedTests(changedFiles) {
       ],
     },
     {
+      pattern: /^server\/utils\/ai\/generation-guard\.ts$/,
+      tests: [
+        'tests/unit/utils/ai/generation-guard.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+      ],
+    },
+    {
       pattern: /^(server\/utils\/ai\/tool-loop\.ts|tests\/fixtures\/follow-up-turn-tool\.ts)$/,
       tests: [
         'tests/unit/utils/ai/tool-loop.spec.ts',
@@ -549,7 +557,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/providers\/(anthropic|deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
+        /^(server\/utils\/providers\/(openai|anthropic|deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
     },
     {
@@ -1249,12 +1257,20 @@ export function getAffectedTests(changedFiles) {
         /^server\/utils\/files\/(reconstruct-generated-image-parts|file-governance)\.ts$/,
       tests: [
         'tests/integration/api/chats-detail.spec.ts',
+        'tests/integration/server/assistant-files.spec.ts',
         'tests/integration/server/reconstruct-generated-image-parts.spec.ts',
       ],
     },
     {
       pattern: /^server\/utils\/files\/(assistant-files|persist-file)\.ts$/,
       tests: gatewayChatTests,
+    },
+    {
+      pattern: /^server\/utils\/files\/carried-media-types\.ts$/,
+      tests: [
+        'tests/integration/server/assistant-files.spec.ts',
+        'tests/integration/api/chats-carried-files.spec.ts',
+      ],
     },
     {
       pattern: /^server\/utils\/chats\/history\/.*\.ts$/,

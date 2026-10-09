@@ -4,8 +4,6 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import {
   resolveToolLoopOptions,
-  TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
-  TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
   TOOL_LOOP_MAX_STEPS,
   TOOL_LOOP_MAX_TOOL_STEPS,
   TOOL_LOOP_TOOL_TIMEOUT_MS,
@@ -109,13 +107,9 @@ describe('tool loop trigger', () => {
     expect(options).toBeDefined()
   })
 
-  it('derives the generation-in-progress guard from the loop and the '
-    + 'continuation timeouts', () => {
+  it('keeps the step and timeout budgets consistent', () => {
     expect(TOOL_LOOP_MAX_TOOL_STEPS).toBe(3)
     expect(TOOL_LOOP_MAX_STEPS).toBe(TOOL_LOOP_MAX_TOOL_STEPS + 1)
-    expect(TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS * 1000).toBeGreaterThan(
-      TOOL_LOOP_TOTAL_TIMEOUT_MS + TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
-    )
     expect(TOOL_LOOP_TOOL_TIMEOUT_MS).toBeLessThan(TOOL_LOOP_TOTAL_TIMEOUT_MS)
   })
 

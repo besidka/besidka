@@ -223,6 +223,12 @@ function toSnapshotEntry(model) {
     cost: {
       input: model.cost.input,
       output: model.cost.output,
+      ...(typeof model.cost.cache_read === 'number'
+        ? { cacheRead: model.cost.cache_read }
+        : {}),
+      ...(typeof model.cost.cache_write === 'number'
+        ? { cacheWrite: model.cost.cache_write }
+        : {}),
     },
   }
 

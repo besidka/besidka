@@ -52,6 +52,81 @@ storage and image transforms.
   `storages` rows.
 - `filesHardMaxStorageBytes` is the only server-side hard cap in file quotas.
 
+### Files from earlier messages in model context
+
+`sanitizeMessagesForModelContext()` (`server/utils/files/assistant-files.ts`)
+builds the model-facing copy of the chat. File parts on the latest user message
+are always kept. File parts on earlier user messages are kept only inside a
+strict, deterministic budget; everything else is replaced with the text
+`Previously attached file omitted from model context: <filename>.`
+
+Rules, applied newest first:
+
+1. Only the last `CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES` (3) user messages
+   before the latest one are eligible. Text-only user messages count toward
+   the window.
+2. Files are walked from the newest eligible message to the oldest, in
+   original part order. A file is kept only if its size is known, the model
+   can accept its media type (rule 5), fewer than `CARRIED_FILES_MAX_COUNT`
+   (8) files are carried so far, and the carried bytes plus its size stay
+   within the carried byte budget. A file that does not fit is omitted (and
+   spends nothing) and the walk continues, so a smaller older file can still
+   be kept.
+3. Carried byte budget =
+   `min(CARRIED_FILES_MAX_BYTES, max(0, REQUEST_FILES_MAX_BYTES - latestBytes))`
+   with `CARRIED_FILES_MAX_BYTES` = 5 MB, `REQUEST_FILES_MAX_BYTES` = 10 MB and
+   `latestBytes` = size of the latest user message's files. Owned `/files/`
+   attachments use their stored size; an inline `data:` URL has no stored
+   size, so its bytes are estimated from the payload (`ceil(base64Length * 3 /
+   4)` for base64, the payload length otherwise). A heavy new message leaves
+   less (possibly zero) room for older files.
+4. A carried `text/*` file larger than `CARRIED_TEXT_FILE_MAX_BYTES` (64 KB) is
+   omitted. `convertFilesForAI()` inlines text files as prompt text, so a
+   multi-megabyte text file would otherwise cost on the order of a million
+   input tokens on every turn.
+5. Modality gate: carried files are checked against the selected model, which
+   only the request's own attachments were checked against before.
+   `createCarriedMediaTypePredicate()`
+   (`server/utils/files/carried-media-types.ts`) allows `text/*` always,
+   `image/*` only if `model.modalities.input` includes `image`, and
+   `application/pdf` only if it includes `pdf`; everything else (audio, video,
+   archives, ...) is never carried. Without this, an image sent to a vision
+   model and carried after switching to a text-only model would make the
+   provider reject every following turn.
+6. Gateway sends carry nothing: this handler does not resolve gateway model
+   capabilities, so `sanitizeMessagesForModelContext()` gets no predicate
+   there and its safe default (no predicate, no carry-over) applies. Only
+   direct-provider sends pass a predicate.
+7. Sizes come from `getOwnedFilesByStorageKeys(userId, keys)` in
+   `server/api/v1/chats/[slug]/index.post.ts`, so only the user's own `/files/`
+   attachments have a size. `data:` URLs, unparsable URLs, missing rows and
+   other users' files have no stored size and are never carried.
+
+`getModelContextFileStorageKeys()` returns the deduplicated storage keys the
+caller must look up (latest message plus the eligible window).
+`getOwnedFilesByStorageKeys()` queries them in sequential chunks of 90 keys
+and merges the rows into one map, so no single statement approaches D1's ~100
+bound-parameter limit however large the per-user `maxFilesPerMessage` policy
+is; `convertFilesForAI()` uses the same function and gets the same
+protection. Without a sizes map or without a predicate the function behaves
+exactly as before (no carry-over). Carried parts then flow through
+`convertFilesForAI()` unchanged, which re-checks ownership and uses the
+5-minute KV data-URL cache. The `chats` wide event records
+`carriedFilesCount`. The limits are code constants in
+`server/utils/files/file-governance.ts`, not per-user policy.
+
+Why a byte budget: `convertFilesForAI()` base64-encodes every kept file into
+the request. Base64 is about 1.33x the raw size, and several copies (R2 bytes,
+encoded string, serialized provider request body) are in flight at once, so
+re-sending every historical file blew the 128 MB Worker memory limit on long
+chats (issue #221, commit 9c79d6ab). Bytes are the quantity that threatens the
+Worker, so they are capped.
+
+Why a count and a window: a re-sent file is billed as input tokens on every
+turn. One past chat re-sent 29 images (17 MB) per turn. Prompt caching does not
+remove the re-send bytes from the Worker, and it only discounts the cached
+prefix within its TTL, so it is not a substitute for bounding what is sent.
+
 ## Data Model Reference
 
 ### `files`

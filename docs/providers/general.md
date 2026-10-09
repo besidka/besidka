@@ -108,6 +108,75 @@ is a live-key error, not a picker cosmetic).
   this pattern yet; DeepSeek and Moonshot AI don't offer image generation at
   all.
 
+## Prompt caching
+
+Cached input tokens bill at a fraction of the base input price, so every
+direct provider is wired for the cheapest caching its API offers. Only
+Anthropic needs an explicit switch to cache at all; everywhere else the
+provider caches a repeated prompt prefix on its own and the work is routing
+or nothing.
+
+| Provider | Mechanism | Besidka sets |
+|---|---|---|
+| OpenAI | Implicit, 1,024+ tokens | `promptCacheKey` = slug |
+| Google Gemini | Implicit, 2.5+ | Nothing |
+| xAI | Implicit | `x-grok-conv-id` = slug (effect unverified) |
+| DeepSeek, Moonshot, Qwen | Implicit | Nothing |
+| Anthropic | Explicit `cache_control` | [`anthropic.md`](./anthropic.md) |
+
+Gemini's implicit minimum is 2,048 tokens on 2.5 and 4,096 on 3.x.
+
+- **OpenAI.** `useOpenAI()` takes an optional trailing `cacheKey` and, when
+  given, adds `promptCacheKey` to the provider options (read as
+  `prompt_cache_key` by the Responses model in `@ai-sdk/openai`). The key
+  improves routing: requests sharing a key and prefix land on the same cache
+  machine more often. `promptCacheRetention` and `promptCacheOptions` are
+  deliberately not set, because a longer TTL costs extra.
+- **xAI.** `useXai()` takes the same optional `cacheKey` and passes it as the
+  `x-grok-conv-id` header to `createXai({ headers })`. xAI documents that
+  header for Chat Completions; for the Responses API, which `@ai-sdk/xai`
+  uses by default, it documents `prompt_cache_key` instead, and the
+  installed SDK's Responses options have no such field (unknown keys are
+  stripped). The header is harmless, but whether it improves Responses
+  routing is unverified: confirm with `cachedInputTokens` on a live xAI chat
+  before counting on it. Implicit caching works either way.
+- **Google Gemini.** Implicit caching is on by default for Gemini 2.5 and
+  newer. Explicit `cachedContent` is deliberately not used: it is a separate
+  cache object with an hourly storage charge, which does not fit
+  per-conversation chats that go idle.
+- **DeepSeek, Moonshot AI, Qwen.** They cache implicitly and already report
+  cache reads in usage. Nothing to set.
+- **Cache key privacy.** The chat endpoint passes the chat **slug** (an
+  opaque ULID) as the cache key, never `chat.id`, a user id or an email,
+  because the value leaves the app. Only the chat-send switch in
+  `server/api/v1/chats/[slug]/index.post.ts` passes it; title generation and
+  project memory pass nothing.
+- **Gateways.** Vercel AI Gateway and OpenRouter have their own switches, see
+  [`gateways.md`](./gateways.md#gateway-prompt-caching).
+
+### The continuation never writes to the cache
+
+The tool-less search-answer continuation runs with different tool
+definitions than the main call and the next turn, so a cache write made
+there is never read. It passes its provider options through
+`omitPromptCacheControl()` (`server/utils/ai/search-answer-continuation.ts`),
+which drops `anthropic.cacheControl`, `gateway.caching` and
+`openrouter.cacheControl` and keeps every other key. `openai.promptCacheKey`
+stays: it is a routing key with no write cost of its own. The input object is
+never mutated.
+
+### Known cost limits
+
+Cache reads are priced from models.dev `cost.cache_read`. Cache writes are
+priced from `cost.cache_write` where models.dev has it, and fall back to the
+input price otherwise. That makes some costs understated:
+
+- models.dev has no `cache_write` for OpenAI, so GPT-5.6+ cache writes
+  (reported by OpenAI, billed at 1.25x) are priced at 1x.
+- DeepSeek, Moonshot AI, Qwen, xAI and Google never report write tokens, so
+  no write cost is recorded. Kimi does charge for writes, so Moonshot AI costs
+  can be understated.
+
 ## Vision vs image generation in the picker
 
 The two capabilities are deliberately never conflated and never share a
@@ -289,16 +358,16 @@ logged even when the continuation answers), `heldStepError`
 chunk's, which is the main loop's when the continuation wrote nothing). The
 continuation's own `timeout.totalMs` is 90s.
 `timeout: { totalMs: 540_000, toolMs: 60_000 }` is set on the loop path
-only: the KV generation-in-progress guard this route writes expires after
-`TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS` (loop timeout + continuation
-timeout + a 30s persistence margin), so it must outlive both —
-otherwise a client retry arriving after the guard expired would start a
-second concurrent generation for the same turn. A tool call the model itself gets wrong (input that fails the tool's schema,
-or a call to a tool that is not declared) also ends as a tool part with
-`state: 'output-error'`, never as a held stream `error`; it counts as a
-follow-up output, so the forced step and, if still needed, the continuation
-run as usual. Its `errorText` is labelled `invalid-provider-output` (422) by
-`normalizeModelToolCallError()` rather than an `unknown` 500, see
+only. The KV generation-in-progress guard this route writes is a short
+heartbeat-renewed lease, not sized from these timeouts, so it lives exactly as
+long as the invocation does — see "Generation-in-progress guard" in
+`docs/chats/error-handling.md`. A tool call the model itself gets wrong
+(input that fails the tool's schema, or a call to a tool that is not
+declared) also ends as a tool part with `state: 'output-error'`, never as a
+held stream `error`; it counts as a follow-up output, so the forced step
+and, if still needed, the continuation run as usual. Its `errorText` is
+labelled `invalid-provider-output` (422) by `normalizeModelToolCallError()`
+rather than an `unknown` 500, see
 `gateways.md` ("`gpt-oss` tool-call quirks"). A tool `execute()` that
 throws produces a `tool-error` output, which the model sees and answers
 from, so a failing tool terminates the loop rather than retrying it.

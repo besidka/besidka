@@ -14,6 +14,7 @@ export async function useOpenAI(
   model: string,
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
+  cacheKey?: string,
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -113,6 +114,12 @@ export async function useOpenAI(
        */
       Object.assign(result, {
         reasoningSummary: 'detailed',
+      })
+    }
+
+    if (cacheKey) {
+      Object.assign(result, {
+        promptCacheKey: cacheKey,
       })
     }
 

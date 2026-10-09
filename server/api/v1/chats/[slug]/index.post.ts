@@ -89,10 +89,15 @@ import {
   getActiveShareForChat,
   syncChatShareFiles,
 } from '~~/server/utils/chats/share'
-import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
+import { createCarriedMediaTypePredicate } from '~~/server/utils/files/carried-media-types'
+import {
+  getOwnedFilesByStorageKeys,
+  validateMessageFilePolicy,
+} from '~~/server/utils/files/file-governance'
 import {
   normalizeAssistantMessagePartsForPersistence as normalizeAssistantParts,
   getGeneratedImageFileIds,
+  getModelContextFileStorageKeys,
   isKnownImageGenerationModel,
   persistGatewayGeneratedImageParts,
   sanitizeMessagesForModelContext,
@@ -100,12 +105,15 @@ import {
 } from '~~/server/utils/files/assistant-files'
 import { createImageGenerationTool } from '~~/server/utils/ai/image-generation'
 import {
+  putGenerationGuard,
+  startGenerationGuardHeartbeat,
+} from '~~/server/utils/ai/generation-guard'
+import {
   isPersistedImageGenerationFailureText,
 } from '~~/server/utils/ai/image-generation-errors'
 import {
   resolveToolLoopOptions,
   TOOL_LOOP_CONTINUATION_TIMEOUT_MS,
-  TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
   TOOL_LOOP_MAX_STEPS,
   toolRequiresFollowUpTurn,
 } from '~~/server/utils/ai/tool-loop'
@@ -125,6 +133,7 @@ import {
   buildSearchAnswerContinuationMessages,
   capContinuationReasoningEffort,
   hasVisibleTextAfterLastFollowUpTool,
+  omitPromptCacheControl,
   withSearchAnswerGuarantee,
 } from '~~/server/utils/ai/search-answer-continuation'
 import { buildProjectSystemPrompt } from '~~/server/utils/projects/instructions'
@@ -509,7 +518,6 @@ export default defineEventHandler(async (event) => {
     }),
     newMessage,
   ]
-  const modelContextMessages = sanitizeMessagesForModelContext(allMessages)
   const projectSystemPrompt = buildProjectSystemPrompt(chat.project
     ? {
       name: chat.project.name,
@@ -531,6 +539,23 @@ export default defineEventHandler(async (event) => {
     newMessage.parts as UIMessage['parts'],
   )
 
+  const ownedContextFiles = await getOwnedFilesByStorageKeys(
+    userId,
+    getModelContextFileStorageKeys(allMessages),
+  )
+  const fileSizesByStorageKey = new Map<string, number>()
+
+  for (const [storageKey, file] of ownedContextFiles) {
+    fileSizesByStorageKey.set(storageKey, file.size)
+  }
+
+  const modelContextMessages = sanitizeMessagesForModelContext(allMessages, {
+    fileSizesByStorageKey,
+    canCarryMediaType: model
+      ? createCarriedMediaTypePredicate(model.modalities.input)
+      : undefined,
+  })
+
   const {
     messages: messagesForAI,
     missingFiles,
@@ -538,6 +563,7 @@ export default defineEventHandler(async (event) => {
 
   logger.set({
     filesCount: newMessage.parts.filter(part => part.type === 'file').length,
+    carriedFilesCount: countCarriedFileParts(modelContextMessages),
     missingFilesCount: missingFiles.length,
   })
 
@@ -711,6 +737,7 @@ export default defineEventHandler(async (event) => {
             model.id,
             requestedTools,
             reasoningLevel,
+            params.data.slug,
           )
 
           instance = openAiInstance
@@ -841,6 +868,7 @@ export default defineEventHandler(async (event) => {
             model.id,
             requestedTools,
             reasoningLevel,
+            params.data.slug,
           )
 
           instance = xaiInstance
@@ -1067,30 +1095,21 @@ export default defineEventHandler(async (event) => {
       // Mirrors the guard above: hold this flag for the lifetime of the
       // generation so a client retry of the same user message id (issue
       // #275 auto-recovery on visibilitychange) sees "still working" instead
-      // of triggering a second concurrent streamText() call. The ttl is a
-      // safety bound, not the expected lifetime — a clean exit always
-      // deletes it in the finally block below. Awaited: a client that
-      // disconnects and reconnects fast enough could otherwise run the guard
-      // check above before this put() landed in KV, see no flag, and start a
-      // second concurrent generation — double-billing the provider for one
-      // user turn (caught by Codex's automated review). Awaiting here
-      // guarantees the flag is visible before any provider work begins.
-      try {
-        await kv.put(generatingKey, '1', {
-          expirationTtl: TOOL_LOOP_GENERATION_GUARD_TTL_SECONDS,
-        })
-      } catch (exception) {
-        logger.set({
-          generationGuard: {
-            operation: 'put',
-          },
-          attributes: {
-            generationGuard: {
-              error: exceptionMessage(exception),
-            },
-          },
-        })
-      }
+      // of triggering a second concurrent streamText() call. It is a short
+      // heartbeat-renewed lease, deleted in the finally block below.
+      // Awaited: a client that disconnects and reconnects fast enough could
+      // otherwise run the guard check above before this put() landed in KV,
+      // see no flag, and start a second concurrent generation —
+      // double-billing the provider for one user turn (caught by Codex's
+      // automated review). Awaiting here guarantees the flag is visible
+      // before any provider work begins.
+      await putGenerationGuard(kv, generatingKey, 'put', logger)
+
+      const generationGuardHeartbeat = startGenerationGuardHeartbeat(
+        kv,
+        generatingKey,
+        logger,
+      )
 
       try {
         if (missingFiles.length > 0) {
@@ -1443,7 +1462,7 @@ export default defineEventHandler(async (event) => {
             experimental_transform: smoothStream(),
             maxOutputTokens: gatewayMaxOutputTokens,
             timeout: { totalMs: TOOL_LOOP_CONTINUATION_TIMEOUT_MS },
-            providerOptions,
+            providerOptions: omitPromptCacheControl(providerOptions),
           })
 
           return {
@@ -1615,6 +1634,14 @@ export default defineEventHandler(async (event) => {
         // push the built wide event to the same Axiom drains used by the
         // Nitro hook, registered via waitUntil so the Worker stays alive
         // until the fetch resolves.
+        aiLogger.set({
+          attributes: {
+            generationGuard: {
+              heartbeats: generationGuardHeartbeat.getRenewalCount(),
+            },
+          },
+        })
+
         const aiWideEvent = aiLogger.emit({
           message: 'AI stream completed',
           status: 200,
@@ -1624,15 +1651,15 @@ export default defineEventHandler(async (event) => {
           cfCtx.waitUntil(shipWideEventToAxiom(aiWideEvent))
         }
       } finally {
+        await generationGuardHeartbeat.stop()
+
         try {
           await kv.delete(generatingKey)
         } catch (exception) {
           logger.set({
-            generationGuard: {
-              operation: 'delete',
-            },
             attributes: {
               generationGuard: {
+                operation: 'delete',
                 error: exceptionMessage(exception),
               },
             },
@@ -1646,6 +1673,16 @@ export default defineEventHandler(async (event) => {
     stream,
   })
 })
+
+function countCarriedFileParts(modelContextMessages: UIMessage[]): number {
+  const userMessages = modelContextMessages.filter((message) => {
+    return message.role === 'user'
+  })
+
+  return userMessages.slice(0, -1).reduce((total, message) => {
+    return total + message.parts.filter(part => part.type === 'file').length
+  }, 0)
+}
 
 /**
  * `web_search_brave` and `web_search_exa` are resolved by this route itself,

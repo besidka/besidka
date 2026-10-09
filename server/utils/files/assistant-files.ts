@@ -6,6 +6,7 @@ import {
   getPreferredFileExtension,
   isSafeFileStorageKey,
   markUrlAsGeneratedFile,
+  normalizeMediaType,
 } from '#shared/utils/files'
 import { validateGeneratedImage } from '~~/server/utils/ai/image-generation'
 import {
@@ -19,6 +20,13 @@ import {
   isPersistedOversizedResponseFailureText,
 } from '#shared/utils/chat-failure-text'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  CARRIED_FILES_MAX_BYTES,
+  CARRIED_FILES_MAX_COUNT,
+  CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES,
+  CARRIED_TEXT_FILE_MAX_BYTES,
+  REQUEST_FILES_MAX_BYTES,
+} from '~~/server/utils/files/file-governance'
 import { persistFile } from '~~/server/utils/files/persist-file'
 
 export interface NormalizeAssistantMessagePartsInput {
@@ -30,6 +38,14 @@ export interface NormalizeAssistantMessagePartsInput {
   requestedTools?: string[]
   streamErrorText?: string
 }
+
+export interface ModelContextFileOptions {
+  fileSizesByStorageKey?: ReadonlyMap<string, number>
+  canCarryMediaType?: (mediaType: string) => boolean
+}
+
+type MessagePart = UIMessage['parts'][number]
+type FileMessagePart = Extract<MessagePart, { type: 'file' }>
 
 const omittedFilePrefix = 'Previously attached file omitted from model context'
 const generatedFilePrefix = 'Generated file saved in the user file library'
@@ -44,9 +60,14 @@ const generatedImageMediaTypes = new Set([
 
 export function sanitizeMessagesForModelContext(
   messages: UIMessage[],
+  options: ModelContextFileOptions = {},
 ): UIMessage[] {
   const sanitizedMessages: UIMessage[] = []
   const latestUserMessage = findLatestUserMessage(messages)
+  const carriedFileParts = selectCarriedFileParts(
+    messages,
+    options,
+  )
 
   for (const message of messages) {
     if (!Array.isArray(message.parts)) {
@@ -57,6 +78,7 @@ export function sanitizeMessagesForModelContext(
     const sanitizedParts = sanitizeMessageParts(
       message,
       message === latestUserMessage,
+      carriedFileParts,
     )
 
     if (sanitizedParts.length === 0) {
@@ -71,6 +93,158 @@ export function sanitizeMessagesForModelContext(
   }
 
   return sanitizedMessages
+}
+
+/**
+ * Storage keys whose sizes the caller must look up before calling
+ * `sanitizeMessagesForModelContext`: the latest user message's files plus the
+ * files of the earlier user messages inside the carry-over window.
+ */
+export function getModelContextFileStorageKeys(
+  messages: UIMessage[],
+): string[] {
+  const storageKeys = new Set<string>()
+  const latestUserMessage = findLatestUserMessage(messages)
+  const candidateMessages = latestUserMessage
+    ? [latestUserMessage, ...getCarryOverWindowMessages(messages)]
+    : []
+
+  for (const message of candidateMessages) {
+    for (const part of getUserFileParts(message)) {
+      const storageKey = extractLocalFileStorageKey(part.url)
+
+      if (storageKey) {
+        storageKeys.add(storageKey)
+      }
+    }
+  }
+
+  return [...storageKeys]
+}
+
+function getUserFileParts(message: UIMessage): FileMessagePart[] {
+  if (message.role !== 'user' || !Array.isArray(message.parts)) {
+    return []
+  }
+
+  return message.parts.filter((part): part is FileMessagePart => {
+    return part.type === 'file'
+  })
+}
+
+function getCarryOverWindowMessages(messages: UIMessage[]): UIMessage[] {
+  const latestUserMessage = findLatestUserMessage(messages)
+  const windowMessages: UIMessage[] = []
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+
+    if (
+      windowMessages.length >= CARRIED_FILES_MAX_PREVIOUS_USER_MESSAGES
+    ) {
+      break
+    }
+
+    if (message?.role === 'user' && message !== latestUserMessage) {
+      windowMessages.push(message)
+    }
+  }
+
+  return windowMessages
+}
+
+function selectCarriedFileParts(
+  messages: UIMessage[],
+  options: ModelContextFileOptions,
+): ReadonlySet<MessagePart> {
+  const carriedFileParts = new Set<MessagePart>()
+  const latestUserMessage = findLatestUserMessage(messages)
+  const { fileSizesByStorageKey, canCarryMediaType } = options
+
+  if (
+    !fileSizesByStorageKey
+    || fileSizesByStorageKey.size === 0
+    || !canCarryMediaType
+  ) {
+    return carriedFileParts
+  }
+
+  if (!latestUserMessage) {
+    return carriedFileParts
+  }
+
+  let remainingCount = CARRIED_FILES_MAX_COUNT
+  let remainingBytes = Math.min(
+    CARRIED_FILES_MAX_BYTES,
+    Math.max(
+      0,
+      REQUEST_FILES_MAX_BYTES - sumKnownFileBytes(
+        getUserFileParts(latestUserMessage),
+        fileSizesByStorageKey,
+      ),
+    ),
+  )
+
+  for (const message of getCarryOverWindowMessages(messages)) {
+    for (const part of getUserFileParts(message)) {
+      const storageKey = extractLocalFileStorageKey(part.url)
+      const size = storageKey
+        ? fileSizesByStorageKey.get(storageKey)
+        : undefined
+
+      if (
+        size === undefined
+        || remainingCount < 1
+        || size > remainingBytes
+        || !canCarryMediaType(part.mediaType)
+        || (isTextMediaType(part.mediaType)
+          && size > CARRIED_TEXT_FILE_MAX_BYTES)
+      ) {
+        continue
+      }
+
+      carriedFileParts.add(part)
+      remainingCount -= 1
+      remainingBytes -= size
+    }
+  }
+
+  return carriedFileParts
+}
+
+function sumKnownFileBytes(
+  fileParts: FileMessagePart[],
+  fileSizesByStorageKey: ReadonlyMap<string, number>,
+): number {
+  let totalBytes = 0
+
+  for (const part of fileParts) {
+    const storageKey = extractLocalFileStorageKey(part.url)
+    const knownSize = storageKey
+      ? fileSizesByStorageKey.get(storageKey)
+      : undefined
+
+    totalBytes += knownSize ?? estimateDataUrlBytes(part.url)
+  }
+
+  return totalBytes
+}
+
+function estimateDataUrlBytes(url: string): number {
+  const commaIndex = url.indexOf(',')
+
+  if (!url.startsWith('data:') || commaIndex === -1) {
+    return 0
+  }
+
+  const payloadLength = url.length - commaIndex - 1
+  const isBase64 = url.slice(0, commaIndex).endsWith(';base64')
+
+  return isBase64 ? Math.ceil(payloadLength * 3 / 4) : payloadLength
+}
+
+function isTextMediaType(mediaType: string): boolean {
+  return normalizeMediaType(mediaType).startsWith('text/')
 }
 
 function findLatestUserMessage(messages: UIMessage[]): UIMessage | null {
@@ -95,6 +269,7 @@ function findLatestUserMessage(messages: UIMessage[]): UIMessage | null {
 function sanitizeMessageParts(
   message: UIMessage,
   isLatestUserMessage: boolean,
+  carriedFileParts: ReadonlySet<MessagePart>,
 ): UIMessage['parts'] {
   const sanitizedParts: UIMessage['parts'] = []
 
@@ -130,7 +305,7 @@ function sanitizeMessageParts(
       continue
     }
 
-    if (isLatestUserMessage) {
+    if (isLatestUserMessage || carriedFileParts.has(part)) {
       sanitizedParts.push({
         type: 'file',
         mediaType: part.mediaType,

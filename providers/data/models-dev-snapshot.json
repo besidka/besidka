@@ -20,127 +20,9 @@
     },
     "cost": {
       "input": 4,
-      "output": 20
-    }
-  },
-  "claude-opus-5": {
-    "name": "Claude Opus 5",
-    "description": "Strongest Claude Opus model for coding, agents, and professional work",
-    "releaseDate": "2026-07-24",
-    "toolCall": true,
-    "limit": {
-      "context": 1000000,
-      "output": 128000
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 5,
-      "output": 25
-    }
-  },
-  "claude-opus-4-8": {
-    "name": "Claude Opus 4.8",
-    "description": "Top Claude Opus tier for the hardest reasoning, coding, and long-horizon agents",
-    "releaseDate": "2026-05-28",
-    "toolCall": true,
-    "limit": {
-      "context": 1000000,
-      "output": 128000
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 5,
-      "output": 25
-    }
-  },
-  "claude-opus-4-7": {
-    "name": "Claude Opus 4.7",
-    "description": "Stronger Opus tier for advanced software work and high-stakes reasoning",
-    "releaseDate": "2026-04-14",
-    "toolCall": true,
-    "limit": {
-      "context": 1000000,
-      "output": 128000
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 5,
-      "output": 25
-    }
-  },
-  "claude-opus-4-6": {
-    "name": "Claude Opus 4.6",
-    "description": "High-end Claude for difficult coding, planning, and slower expert reasoning",
-    "releaseDate": "2026-02-04",
-    "toolCall": true,
-    "limit": {
-      "context": 1000000,
-      "output": 128000
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 5,
-      "output": 25
-    }
-  },
-  "claude-opus-4-5": {
-    "name": "Claude Opus 4.5 (latest)",
-    "description": "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
-    "releaseDate": "2025-11-24",
-    "toolCall": true,
-    "limit": {
-      "context": 200000,
-      "output": 64000
-    },
-    "modalities": {
-      "input": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "cost": {
-      "input": 5,
-      "output": 25
+      "output": 20,
+      "cacheRead": 0.2,
+      "cacheWrite": 5
     }
   },
   "claude-sonnet-5-5": {
@@ -164,7 +46,62 @@
     },
     "cost": {
       "input": 2,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.1,
+      "cacheWrite": 2.5
+    }
+  },
+  "claude-haiku-5-5": {
+    "name": "Claude Haiku 5.5",
+    "description": "Fast Claude model for responsive assistance, classification, and lightweight agents",
+    "releaseDate": "2026-10-07",
+    "toolCall": true,
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 0.1,
+      "output": 0.5,
+      "cacheRead": 0.01,
+      "cacheWrite": 0.125
+    },
+    "tieredPricing": true
+  },
+  "claude-opus-5": {
+    "name": "Claude Opus 5",
+    "description": "Strongest Claude Opus model for coding, agents, and professional work",
+    "releaseDate": "2026-07-24",
+    "toolCall": true,
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25
     }
   },
   "claude-sonnet-5": {
@@ -188,7 +125,87 @@
     },
     "cost": {
       "input": 2,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.2,
+      "cacheWrite": 2.5
+    }
+  },
+  "claude-opus-4-8": {
+    "name": "Claude Opus 4.8",
+    "description": "Top Claude Opus tier for the hardest reasoning, coding, and long-horizon agents",
+    "releaseDate": "2026-05-28",
+    "toolCall": true,
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25
+    }
+  },
+  "claude-opus-4-7": {
+    "name": "Claude Opus 4.7",
+    "description": "Stronger Opus tier for advanced software work and high-stakes reasoning",
+    "releaseDate": "2026-04-14",
+    "toolCall": true,
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25
+    }
+  },
+  "claude-opus-4-6": {
+    "name": "Claude Opus 4.6",
+    "description": "High-end Claude for difficult coding, planning, and slower expert reasoning",
+    "releaseDate": "2026-02-04",
+    "toolCall": true,
+    "limit": {
+      "context": 1000000,
+      "output": 128000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25
     }
   },
   "claude-sonnet-4-6": {
@@ -212,7 +229,35 @@
     },
     "cost": {
       "input": 3,
-      "output": 15
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheWrite": 3.75
+    }
+  },
+  "claude-opus-4-5": {
+    "name": "Claude Opus 4.5 (latest)",
+    "description": "Flagship Claude model for deep reasoning, coding, and long-horizon agents",
+    "releaseDate": "2025-11-24",
+    "toolCall": true,
+    "limit": {
+      "context": 200000,
+      "output": 64000
+    },
+    "modalities": {
+      "input": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output": [
+        "text"
+      ]
+    },
+    "cost": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheWrite": 6.25
     }
   },
   "claude-sonnet-4-5": {
@@ -221,7 +266,7 @@
     "releaseDate": "2025-09-29",
     "toolCall": true,
     "limit": {
-      "context": 1000000,
+      "context": 200000,
       "output": 64000
     },
     "modalities": {
@@ -236,7 +281,9 @@
     },
     "cost": {
       "input": 3,
-      "output": 15
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheWrite": 3.75
     }
   },
   "claude-haiku-4-5": {
@@ -260,7 +307,9 @@
     },
     "cost": {
       "input": 1,
-      "output": 5
+      "output": 5,
+      "cacheRead": 0.1,
+      "cacheWrite": 1.25
     }
   },
   "deep-research-max-preview-04-2026": {
@@ -287,7 +336,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 12
+      "output": 12,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -315,7 +365,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 12
+      "output": 12,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -342,7 +393,8 @@
     },
     "cost": {
       "input": 0.75,
-      "output": 3.75
+      "output": 3.75,
+      "cacheRead": 0.075
     }
   },
   "gemini-3.7-flash": {
@@ -368,7 +420,8 @@
     },
     "cost": {
       "input": 0.75,
-      "output": 3.75
+      "output": 3.75,
+      "cacheRead": 0.075
     }
   },
   "gemini-3.6-flash": {
@@ -394,7 +447,8 @@
     },
     "cost": {
       "input": 0.75,
-      "output": 3.75
+      "output": 3.75,
+      "cacheRead": 0.075
     }
   },
   "gemini-3.5-flash": {
@@ -420,7 +474,8 @@
     },
     "cost": {
       "input": 1.5,
-      "output": 9
+      "output": 9,
+      "cacheRead": 0.15
     }
   },
   "gemini-3.5-flash-lite": {
@@ -446,7 +501,8 @@
     },
     "cost": {
       "input": 0.3,
-      "output": 2.5
+      "output": 2.5,
+      "cacheRead": 0.03
     }
   },
   "gemini-3.1-pro-preview": {
@@ -472,7 +528,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 12
+      "output": 12,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -499,7 +556,8 @@
     },
     "cost": {
       "input": 0.25,
-      "output": 1.5
+      "output": 1.5,
+      "cacheRead": 0.025
     }
   },
   "gemini-3-flash-preview": {
@@ -525,7 +583,8 @@
     },
     "cost": {
       "input": 0.5,
-      "output": 3
+      "output": 3,
+      "cacheRead": 0.05
     }
   },
   "gemini-2.5-pro": {
@@ -551,7 +610,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.125
     },
     "tieredPricing": true
   },
@@ -578,7 +638,8 @@
     },
     "cost": {
       "input": 0.3,
-      "output": 2.5
+      "output": 2.5,
+      "cacheRead": 0.03
     }
   },
   "gemini-2.5-flash-lite": {
@@ -604,7 +665,8 @@
     },
     "cost": {
       "input": 0.1,
-      "output": 0.4
+      "output": 0.4,
+      "cacheRead": 0.01
     }
   },
   "gemini-3.1-flash-image": {
@@ -702,7 +764,8 @@
     },
     "cost": {
       "input": 0.3,
-      "output": 30
+      "output": 30,
+      "cacheRead": 0.075
     }
   },
   "gpt-6.1-sol": {
@@ -726,7 +789,9 @@
     },
     "cost": {
       "input": 2,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.1,
+      "cacheWrite": 2.5
     },
     "tieredPricing": true
   },
@@ -751,7 +816,9 @@
     },
     "cost": {
       "input": 2,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.2,
+      "cacheWrite": 2.5
     },
     "tieredPricing": true
   },
@@ -776,7 +843,9 @@
     },
     "cost": {
       "input": 0.1,
-      "output": 0.5
+      "output": 0.5,
+      "cacheRead": 0.01,
+      "cacheWrite": 0.125
     },
     "tieredPricing": true
   },
@@ -801,7 +870,9 @@
     },
     "cost": {
       "input": 4,
-      "output": 20
+      "output": 20,
+      "cacheRead": 0.4,
+      "cacheWrite": 5
     },
     "tieredPricing": true
   },
@@ -826,7 +897,9 @@
     },
     "cost": {
       "input": 2,
-      "output": 12
+      "output": 12,
+      "cacheRead": 0.2,
+      "cacheWrite": 2.5
     },
     "tieredPricing": true
   },
@@ -851,7 +924,9 @@
     },
     "cost": {
       "input": 0.2,
-      "output": 1.2
+      "output": 1.2,
+      "cacheRead": 0.02,
+      "cacheWrite": 0.25
     },
     "tieredPricing": true
   },
@@ -876,7 +951,8 @@
     },
     "cost": {
       "input": 5,
-      "output": 30
+      "output": 30,
+      "cacheRead": 0.5
     },
     "tieredPricing": true
   },
@@ -901,7 +977,8 @@
     },
     "cost": {
       "input": 2.5,
-      "output": 15
+      "output": 15,
+      "cacheRead": 0.25
     },
     "tieredPricing": true
   },
@@ -925,7 +1002,8 @@
     },
     "cost": {
       "input": 0.75,
-      "output": 4.5
+      "output": 4.5,
+      "cacheRead": 0.075
     }
   },
   "gpt-5.4-nano": {
@@ -948,7 +1026,8 @@
     },
     "cost": {
       "input": 0.2,
-      "output": 1.25
+      "output": 1.25,
+      "cacheRead": 0.02
     }
   },
   "gpt-5.2": {
@@ -971,7 +1050,8 @@
     },
     "cost": {
       "input": 1.75,
-      "output": 14
+      "output": 14,
+      "cacheRead": 0.175
     }
   },
   "gpt-5.1": {
@@ -994,7 +1074,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.125
     }
   },
   "gpt-5": {
@@ -1017,7 +1098,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 10
+      "output": 10,
+      "cacheRead": 0.125
     }
   },
   "gpt-5-mini": {
@@ -1040,7 +1122,8 @@
     },
     "cost": {
       "input": 0.25,
-      "output": 2
+      "output": 2,
+      "cacheRead": 0.025
     }
   },
   "gpt-5-nano": {
@@ -1063,7 +1146,8 @@
     },
     "cost": {
       "input": 0.05,
-      "output": 0.4
+      "output": 0.4,
+      "cacheRead": 0.005
     }
   },
   "o3": {
@@ -1087,7 +1171,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 8
+      "output": 8,
+      "cacheRead": 0.5
     }
   },
   "gpt-4.1": {
@@ -1111,7 +1196,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 8
+      "output": 8,
+      "cacheRead": 0.5
     }
   },
   "gpt-4.1-mini": {
@@ -1135,7 +1221,8 @@
     },
     "cost": {
       "input": 0.4,
-      "output": 1.6
+      "output": 1.6,
+      "cacheRead": 0.1
     }
   },
   "gpt-4o": {
@@ -1159,7 +1246,8 @@
     },
     "cost": {
       "input": 2.5,
-      "output": 10
+      "output": 10,
+      "cacheRead": 1.25
     }
   },
   "gpt-4o-mini": {
@@ -1183,7 +1271,8 @@
     },
     "cost": {
       "input": 0.15,
-      "output": 0.6
+      "output": 0.6,
+      "cacheRead": 0.075
     }
   },
   "o4-mini": {
@@ -1207,7 +1296,8 @@
     },
     "cost": {
       "input": 1.1,
-      "output": 4.4
+      "output": 4.4,
+      "cacheRead": 0.275
     }
   },
   "gpt-4.1-nano": {
@@ -1231,7 +1321,8 @@
     },
     "cost": {
       "input": 0.1,
-      "output": 0.4
+      "output": 0.4,
+      "cacheRead": 0.025
     }
   },
   "o3-mini": {
@@ -1254,7 +1345,8 @@
     },
     "cost": {
       "input": 1.1,
-      "output": 4.4
+      "output": 4.4,
+      "cacheRead": 0.55
     }
   },
   "o1": {
@@ -1279,7 +1371,8 @@
     },
     "cost": {
       "input": 15,
-      "output": 60
+      "output": 60,
+      "cacheRead": 7.5
     }
   },
   "gpt-4-turbo": {
@@ -1349,7 +1442,8 @@
     },
     "cost": {
       "input": 0.5,
-      "output": 1.5
+      "output": 1.5,
+      "cacheRead": 0
     }
   },
   "gpt-image-2": {
@@ -1372,7 +1466,8 @@
     },
     "cost": {
       "input": 5,
-      "output": 30
+      "output": 30,
+      "cacheRead": 1.25
     }
   },
   "grok-4.20-0309-non-reasoning": {
@@ -1396,7 +1491,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 2.5
+      "output": 2.5,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -1421,7 +1517,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 2.5
+      "output": 2.5,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -1446,7 +1543,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 2.5
+      "output": 2.5,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -1471,7 +1569,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 6
+      "output": 6,
+      "cacheRead": 0.5
     },
     "tieredPricing": true
   },
@@ -1496,7 +1595,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 6
+      "output": 6,
+      "cacheRead": 0.5
     },
     "tieredPricing": true
   },
@@ -1521,7 +1621,8 @@
     },
     "cost": {
       "input": 2,
-      "output": 6
+      "output": 6,
+      "cacheRead": 0.3
     },
     "tieredPricing": true
   },
@@ -1546,7 +1647,8 @@
     },
     "cost": {
       "input": 1.25,
-      "output": 2.5
+      "output": 2.5,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -1571,7 +1673,8 @@
     },
     "cost": {
       "input": 1,
-      "output": 2
+      "output": 2,
+      "cacheRead": 0.2
     },
     "tieredPricing": true
   },
@@ -1595,7 +1698,8 @@
     },
     "cost": {
       "input": 0.15,
-      "output": 0.6
+      "output": 0.6,
+      "cacheRead": 0.003
     }
   },
   "deepseek-v4-pro": {
@@ -1617,7 +1721,8 @@
     },
     "cost": {
       "input": 0.66,
-      "output": 1.98
+      "output": 1.98,
+      "cacheRead": 0.022
     }
   },
   "kimi-k2.6": {
@@ -1641,7 +1746,8 @@
     },
     "cost": {
       "input": 0.95,
-      "output": 4
+      "output": 4,
+      "cacheRead": 0.16
     }
   },
   "kimi-k3": {
@@ -1665,7 +1771,9 @@
     },
     "cost": {
       "input": 3,
-      "output": 15
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheWrite": 3
     }
   },
   "kimi-k2.7-code": {
@@ -1689,7 +1797,8 @@
     },
     "cost": {
       "input": 0.95,
-      "output": 4
+      "output": 4,
+      "cacheRead": 0.19
     }
   },
   "kimi-k2.7-code-highspeed": {
@@ -1713,7 +1822,8 @@
     },
     "cost": {
       "input": 1.9,
-      "output": 8
+      "output": 8,
+      "cacheRead": 0.38
     }
   },
   "qwen3.7-plus": {
@@ -1737,7 +1847,9 @@
     },
     "cost": {
       "input": 0.4,
-      "output": 1.6
+      "output": 1.6,
+      "cacheRead": 0.04,
+      "cacheWrite": 0.5
     },
     "tieredPricing": true
   },
@@ -1760,7 +1872,9 @@
     },
     "cost": {
       "input": 2.5,
-      "output": 7.5
+      "output": 7.5,
+      "cacheRead": 0.5,
+      "cacheWrite": 3.125
     }
   },
   "qwen3.6-flash": {
@@ -1784,7 +1898,8 @@
     },
     "cost": {
       "input": 0.1875,
-      "output": 1.125
+      "output": 1.125,
+      "cacheWrite": 0.234375
     }
   },
   "qwen3.8-max": {
@@ -1809,7 +1924,9 @@
     },
     "cost": {
       "input": 2,
-      "output": 6
+      "output": 6,
+      "cacheRead": 0.25,
+      "cacheWrite": 2.5
     }
   },
   "qwen3.8-flash": {
@@ -1833,7 +1950,9 @@
     },
     "cost": {
       "input": 0.15,
-      "output": 0.47
+      "output": 0.47,
+      "cacheRead": 0.016,
+      "cacheWrite": 0.2
     }
   },
   "qwen3.8-omni-flash": {
@@ -1858,7 +1977,8 @@
     },
     "cost": {
       "input": 0.15,
-      "output": 0.47
+      "output": 0.47,
+      "cacheRead": 0.016
     }
   },
   "qwen3.6-max-preview": {
@@ -1880,7 +2000,9 @@
     },
     "cost": {
       "input": 1.3,
-      "output": 7.8
+      "output": 7.8,
+      "cacheRead": 0.13,
+      "cacheWrite": 1.625
     }
   },
   "qwen3.6-plus": {
@@ -1904,7 +2026,9 @@
     },
     "cost": {
       "input": 0.5,
-      "output": 3
+      "output": 3,
+      "cacheRead": 0.05,
+      "cacheWrite": 0.625
     },
     "tieredPricing": true
   },
@@ -2619,8 +2743,8 @@
       ]
     },
     "cost": {
-      "input": 0.72,
-      "output": 0.72
+      "input": 0.07,
+      "output": 0.16
     }
   },
   "qwen-plus-character-ja": {

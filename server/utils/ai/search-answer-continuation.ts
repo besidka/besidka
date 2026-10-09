@@ -4,6 +4,7 @@ import type {
   ModelMessage,
   UIMessageChunk,
 } from 'ai'
+import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import {
   MODEL_TOOL_CALL_ERROR_CODE,
   UNAVAILABLE_TOOL_ERROR_KIND,
@@ -78,6 +79,49 @@ export function capContinuationReasoningEffort(
   }
 
   return 'low'
+}
+
+const PROMPT_CACHE_CONTROL_KEYS: ReadonlyArray<{
+  namespace: string
+  key: string
+}> = [
+  { namespace: 'anthropic', key: 'cacheControl' },
+  { namespace: 'gateway', key: 'caching' },
+  { namespace: 'openrouter', key: 'cacheControl' },
+]
+
+/**
+ * The continuation runs without tools while the main call and the next turn
+ * run with them, and a tool-definition change invalidates the whole
+ * Anthropic prompt cache. A cache write made by the continuation could
+ * therefore never be read, so only the explicit cache-write switches
+ * (direct Anthropic, Vercel AI Gateway, OpenRouter) are dropped and every
+ * other provider option is kept, including routing keys such as OpenAI's
+ * `promptCacheKey`. The input is never mutated.
+ */
+export function omitPromptCacheControl(
+  providerOptions: SharedV2ProviderOptions,
+): SharedV2ProviderOptions {
+  let result = providerOptions
+
+  for (const { namespace, key } of PROMPT_CACHE_CONTROL_KEYS) {
+    const namespaceOptions = result[namespace]
+
+    if (!namespaceOptions || !(key in namespaceOptions)) {
+      continue
+    }
+
+    result = {
+      ...result,
+      [namespace]: Object.fromEntries(
+        Object.entries(namespaceOptions).filter(([optionKey]) => {
+          return optionKey !== key
+        }),
+      ),
+    }
+  }
+
+  return result
 }
 
 /**

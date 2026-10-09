@@ -135,6 +135,7 @@ vi.mock('evlog', () => ({
 }))
 
 vi.mock('~~/server/utils/files/assistant-files', () => ({
+  getModelContextFileStorageKeys: vi.fn(() => []),
   getGeneratedImageFileIds: vi.fn(() => []),
   sanitizeMessagesForModelContext: vi.fn(
     (messages: unknown) => messages,
@@ -276,7 +277,11 @@ describe('chat duplicate message detection', () => {
     )
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
+      model: {
+        id: 'gpt-5-mini',
+        tools: ['web_search', 'image_generation'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
     })))
     vi.stubGlobal('useOpenAI', vi.fn(async () => ({
       instance: {},
@@ -835,7 +840,11 @@ describe('chat tool selection for single-message chats', () => {
     )
     vi.stubGlobal('useChatProvider', vi.fn(() => ({
       provider: { id: 'openai' },
-      model: { id: 'gpt-5-mini', tools: ['web_search', 'image_generation'] },
+      model: {
+        id: 'gpt-5-mini',
+        tools: ['web_search', 'image_generation'],
+        modalities: { input: ['text'], output: ['text'] },
+      },
     })))
     vi.stubGlobal('attachCloudflareMeta', vi.fn())
     vi.stubGlobal('getModelCostMap', vi.fn(() => ({})))
@@ -894,6 +903,7 @@ describe('chat tool selection for single-message chats', () => {
         'gpt-5-mini',
         ['web_search'],
         'off',
+        '01ARZ3NDEKTSV4RRFFQ69G5FAV',
       )
 
       const userInserts = insertValues.mock.calls.filter(
@@ -954,6 +964,7 @@ describe('chat tool selection for single-message chats', () => {
         'gpt-5-mini',
         ['web_search'],
         'off',
+        '01ARZ3NDEKTSV4RRFFQ69G5FAV',
       )
     },
   )

@@ -140,6 +140,65 @@ is idempotent — it only runs migrations not yet recorded in each database's
 `d1_migrations` table, so applying both every time (even when neither
 changed) is a harmless no-op.
 
+### `claude-code-review.yml` - Claude Code Review
+
+Triggers on `pull_request` events `opened`, `synchronize`,
+`ready_for_review` and `reopened`. Runs the `/code-review:code-review
+--comment` plugin through `anthropics/claude-code-action@v1` and posts inline
+review comments on the PR. Requires the `ANTHROPIC_API_KEY` secret.
+
+Cost controls:
+
+- `concurrency` cancels a stale review when a newer push arrives
+- Draft PRs are skipped; the review starts at `ready_for_review`
+- `timeout-minutes: 20`, `--max-turns 40`
+- `--allowedTools` lists the `gh` Bash commands the code-review plugin
+  declares (`gh pr view|diff|list|comment`, `gh issue view|list`,
+  `gh search`) next to the inline-comment tool. Without them every `gh` call
+  is permission-denied in CI and the review silently posts nothing
+- No `--model` override: the review stays on Claude Code's default
+  model (Opus 5.5 at time of writing). A PR review is open-ended bug
+  finding, and the code-review plugin picks its own sub-agent models
+- The "Summarize review run" step prints the tool calls, failed tool
+  results, permission denials and final review summary from the action's
+  execution file. The action hides its transcript by default
+  (`show_full_output: false`), so without it a run can report success while
+  posting nothing
+- The review step sets `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` because the
+  code-review plugin launches its review subagents in the background by
+  default. Under `claude-code-action`, which drives the Agent SDK rather than
+  `claude -p`, the session then ended with "Three review agents are still
+  running." and never posted, while the job still reported success. See
+  [sub-agents](https://code.claude.com/docs/en/sub-agents) and
+  [environment variables](https://code.claude.com/docs/en/env-vars)
+
+Fork PRs are not excluded; their behavior is unchanged.
+
+### `claude.yml` - Claude Code Mentions
+
+Triggers when `@claude` appears in an issue or PR comment, a PR review, a PR
+review comment, or an issue body or title. Claude performs the request in the
+comment through `anthropics/claude-code-action@v1`. Requires the
+`ANTHROPIC_API_KEY` secret.
+
+Cost controls: `timeout-minutes: 30` and `--max-turns 60`, with the default
+model because mentions are open-ended. There is deliberately no
+`cancel-in-progress`: each mention is a distinct request.
+
+Notes for both Claude workflows:
+
+- **Prompt caching is automatic.** Claude Code applies Anthropic prompt
+  caching with no configuration, and `DISABLE_PROMPT_CACHING` would turn it
+  off. `CLAUDE_CODE_PROMPT_CACHE_TTL=1h` exists, but 1h cache writes cost 2x
+  versus 1.25x for 5m, and runs are rarely less than an hour apart on the
+  same prefix, so the 5m default is kept.
+- **Workflow-file PRs are skipped.** The action skips itself with
+  "Workflow validation failed" on any PR that modifies these workflow files,
+  so changes only take effect after merge to `main`.
+- **Usage is hidden in default logs.** Only `total_cost_usd` is printed.
+  `show_full_output: true` exposes raw token and cache usage, but may leak
+  secrets in public logs.
+
 ### `cleanup-runs.yml` - Workflow Run Cleanup
 
 Triggers once per day (`cron: 23 3 * * *`) and manually via
@@ -215,6 +274,14 @@ group: production
 cancel-in-progress: true
 ```
 One production deployment at a time.
+
+### `claude-code-review.yml`
+```yaml
+group: claude-code-review-{pr_number}
+cancel-in-progress: true
+```
+One review per PR. New pushes cancel the in-progress review instead of paying
+for parallel full reviews.
 
 ## Versioned PR Deployments
 

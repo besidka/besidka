@@ -163,6 +163,12 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   worker behavior, platform quirks (iOS/desktop), delivery troubleshooting
 - `docs/chats/shared-pwa-handoff.md` - Opening shared chats inside the
   installed PWA (push handoff + cold-start tap navigation)
+- `docs/chats/stuck-generation-guard.md` - Stuck "generation pending" chat: a
+  client disconnect mid-stream kills the Worker invocation, and the
+  generation-in-progress KV guard (once a fixed 660s TTL) held the chat ~11
+  min; the 120s lease + heartbeat fix, the deterministic tab-close repro, the
+  Axiom investigation runbook, and unresolved options (waitUntil,
+  Queues/Workflows, Durable Objects) for surviving the disconnect itself
 - `docs/pwa-safari-dock-app-launch.md` - Two macOS Safari Dock app launch
   bugs: WebKit not applying SW-`respondWith` stylesheet responses on a Web
   App process's first document load (fixed, push-only service worker), and
@@ -231,14 +237,16 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - `docs/providers/` - Direct LLM providers (xAI, DeepSeek, Moonshot AI,
   Qwen), split by provider: `general.md` for the shared architecture and
   cross-cutting patterns (curated-vs-fetched model catalog split, the
-  multi-step tool loop), `xai.md`, `deepseek.md`, `moonshotai.md`,
+  multi-step tool loop, per-provider prompt caching and its cost limits),
+  `anthropic.md` (automatic prompt caching and the cache-aware cost
+  formula), `xai.md`, `deepseek.md`, `moonshotai.md`,
   `alibaba.md` for per-provider capability decisions and wiring (Qwen
   DashScope search, Moonshot Formula-API search, direct-provider reasoning
   controls), and `gateways.md` for the restored gateway half (Vercel AI
   Gateway, Cloudflare AI Gateway, OpenRouter): the three-id-space naming
   trap, per-gateway cost capture and the blended-vs-search double-count
-  guard, gateway reasoning/web-search/image-generation mechanisms, and the
-  `GatewayModel.toolCall` Brave/Exa gate
+  guard, gateway reasoning/web-search/image-generation/prompt-caching
+  mechanisms, and the `GatewayModel.toolCall` Brave/Exa gate
 - `docs/nuxt-4-6-upgrade.md` - Decision log for the Nuxt 4.5 -> 4.6 upgrade
   branch: the Vue 3.6 release candidate (twelve pnpm overrides, accepted RC
   risk), the one-shot `minimum_release_age=0` install and the

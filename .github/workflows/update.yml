@@ -10,34 +10,53 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
-      id-token: write
       pull-requests: write
+      issues: write
       contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
       - name: Get commit messages
         id: commits
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Get all commit messages in the PR
-          COMMIT_MESSAGES=$(git log --format="%s" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
-          echo "messages<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMIT_MESSAGES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          COMMIT_MESSAGES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits" --paginate --jq '.[].commit.message | split("\n")[0]')
+          DELIMITER="EOF_$(openssl rand -hex 8)"
+
+          {
+            echo "messages<<${DELIMITER}"
+            echo "$COMMIT_MESSAGES"
+            echo "${DELIMITER}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Automatically assign user to PR
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions-ecosystem/action-add-assignees@v1
-        with:
-          github_token: ${{ secrets.PROJECT_ACTIONS_GITHUB_TOKEN }}
-          assignees: ${{ github.actor }}
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') }}
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_ACTIONS_GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          ASSIGNEE: ${{ github.actor }}
+        run: |
+          retry() {
+            local delays=(5 15)
+            local attempt
+
+            for attempt in 1 2 3; do
+              if "$@"; then
+                return 0
+              fi
+
+              if [[ "$attempt" -lt 3 ]]; then
+                sleep "${delays[$((attempt - 1))]}"
+              fi
+            done
+
+            return 1
+          }
+
+          retry gh pr edit "$PR_URL" --add-assignee "$ASSIGNEE"
 
       - name: Add to MVP Milestone
-        if: github.event.pull_request.head.repo.full_name == github.repository
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
         uses: andrefcdias/add-to-milestone@v1.3.0
         continue-on-error: true
         with:
@@ -45,7 +64,7 @@ jobs:
           milestone: "MVP"
 
       - name: Add PR to Project
-        if: github.event.pull_request.head.repo.full_name == github.repository
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
         uses: actions/add-to-project@v2.0.0
         with:
           project-url: https://github.com/orgs/${{ github.repository_owner }}/projects/2
@@ -53,6 +72,7 @@ jobs:
 
       - name: Determine labels to add
         id: labels
+        if: ${{ !cancelled() }}
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           COMMIT_MESSAGES: ${{ steps.commits.outputs.messages }}
@@ -116,13 +136,51 @@ jobs:
             done
           fi
 
-          echo "labels<<EOF" >> $GITHUB_OUTPUT
-          echo "$labels_to_add" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          DELIMITER="EOF_$(openssl rand -hex 8)"
+
+          {
+            echo "labels<<${DELIMITER}"
+            echo "$labels_to_add"
+            echo "${DELIMITER}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Add labels
-        uses: actions-ecosystem/action-add-labels@v1
-        if: steps.labels.outputs.labels != ''
-        with:
-          github_token: ${{ github.token }}
-          labels: ${{ steps.labels.outputs.labels }}
+        if: ${{ !cancelled() && steps.labels.outputs.labels != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          LABELS: ${{ steps.labels.outputs.labels }}
+        run: |
+          retry() {
+            local delays=(5 15)
+            local attempt
+
+            for attempt in 1 2 3; do
+              if "$@"; then
+                return 0
+              fi
+
+              if [[ "$attempt" -lt 3 ]]; then
+                sleep "${delays[$((attempt - 1))]}"
+              fi
+            done
+
+            return 1
+          }
+
+          has_failure=false
+
+          while IFS= read -r label; do
+            if [[ -z "$label" ]]; then
+              continue
+            fi
+
+            if ! retry gh pr edit "$PR_URL" --add-label "$label"; then
+              echo "::error::Failed to add label: ${label}"
+              has_failure=true
+            fi
+          done <<< "$LABELS"
+
+          if [[ "$has_failure" == "true" ]]; then
+            exit 1
+          fi

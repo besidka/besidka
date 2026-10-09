@@ -1,0 +1,53 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: claude-code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)" --max-turns 40'
+
+      - name: Summarize review run
+        if: always() && steps.claude-review.outputs.execution_file != ''
+        env:
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+        run: |
+          echo '::group::Tool calls'
+          jq -r '.[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") | "\(.name): \((.input.command // .input.description // .input.subagent_type // "") | tostring | .[0:300])"' "$EXECUTION_FILE"
+          echo '::endgroup::'
+          echo '::group::Failed tool results'
+          jq -r '.[] | select(.type == "user") | .message.content[]? | select(.type == "tool_result" and .is_error == true) | (.content | tostring | .[0:400])' "$EXECUTION_FILE"
+          echo '::endgroup::'
+          echo '::group::Permission denials and result'
+          jq '.[] | select(.type == "result") | {permission_denials, result}' "$EXECUTION_FILE"
+          echo '::endgroup::'
