@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   loggerAudit: vi.fn(),
   getCookie: vi.fn<() => string | undefined>(() => undefined),
-  getRequestHeader: vi.fn<() => string | undefined>(() => undefined),
+  getRequestHeader: vi.fn<(event: unknown, name: string) => string | undefined>(
+    () => undefined,
+  ),
   deriveConsentDecision: vi.fn<
     (grantedIds: string[], categories: unknown[]) => string
   >(),
@@ -17,6 +19,9 @@ const mocks = vi.hoisted(() => ({
     } | null
   >(),
   insertConsentReceipt: vi.fn<() => Promise<void>>(
+    async () => undefined,
+  ),
+  enforceConsentsRateLimit: vi.fn<() => Promise<void>>(
     async () => undefined,
   ),
 }))
@@ -48,26 +53,13 @@ vi.mock('~~/server/utils/consents-db', () => ({
   insertConsentReceipt: mocks.insertConsentReceipt,
 }))
 
+vi.mock('~~/server/utils/consents-rate-limit', () => ({
+  enforceConsentsRateLimit: mocks.enforceConsentsRateLimit,
+}))
+
 vi.mock('~~/server/utils/consents', () => ({
   deriveConsentDecision: mocks.deriveConsentDecision,
   parseConsentCookieValue: mocks.parseConsentCookieValue,
-}))
-
-vi.mock('nitropack/runtime/internal/config', () => ({
-  useRuntimeConfig: () => ({
-    public: {
-      cookieConsent: {
-        cookieName: 'cookies_consent',
-        revision: 1,
-        categories: [
-          { id: 'necessary', required: true },
-          { id: 'preferences' },
-          { id: 'analytics' },
-          { id: 'marketing' },
-        ],
-      },
-    },
-  }),
 }))
 
 async function getConsentHandler() {
@@ -78,19 +70,28 @@ async function getConsentHandler() {
   return module.default
 }
 
+const SERVER_NOW = '2026-06-10T12:00:30.000Z'
+
 const validBody = {
-  id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890',
   date: '2026-06-10T12:00:00.000Z',
   revision: 1,
   granted: ['necessary', 'preferences'],
-  denied: ['analytics', 'marketing'],
+  denied: [],
   changed: ['preferences'],
 }
 
 describe('POST /api/v1/consents', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(SERVER_NOW))
+    mocks.enforceConsentsRateLimit.mockResolvedValue(undefined)
     mocks.getCookie.mockReturnValue(undefined)
     mocks.getRequestHeader.mockReturnValue(undefined)
     mocks.parseConsentCookieValue.mockReturnValue(null)
@@ -128,6 +129,142 @@ describe('POST /api/v1/consents', () => {
     } as any)).rejects.toMatchObject({ statusCode: 400 })
   })
 
+  it.each([
+    ['a non-UUID string', 'not-a-uuid'],
+    ['the legacy base36 fallback format', 'k3j9x0q2lq8f5n1a'],
+    ['a UUID with a bad version nibble', 'a1b2c3d4-e5f6-0890-abcd-ef1234567890'],
+    ['an empty string', ''],
+  ])('returns 400 with why and fix for an id that is %s', async (_label, id) => {
+    const handler = await getConsentHandler()
+
+    await expect(handler({ body: { ...validBody, id } } as any))
+      .rejects
+      .toMatchObject({
+        statusCode: 400,
+        why: expect.any(String),
+        fix: expect.any(String),
+      })
+
+    expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['more than a day in the past', '2026-06-09T11:59:00.000Z'],
+    ['more than a day in the future', '2026-06-11T12:01:00.000Z'],
+    ['years away', '2020-01-01T00:00:00.000Z'],
+  ])('returns 400 with why and fix for a date %s', async (_label, date) => {
+    const handler = await getConsentHandler()
+
+    await expect(handler({ body: { ...validBody, date } } as any))
+      .rejects
+      .toMatchObject({
+        statusCode: 400,
+        why: expect.stringContaining('24 hours'),
+        fix: expect.any(String),
+      })
+
+    expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['23 hours in the past', '2026-06-09T13:00:30.000Z'],
+    ['23 hours in the future', '2026-06-11T11:00:30.000Z'],
+    ['a few seconds in the future (clock skew)', '2026-06-10T12:00:35.000Z'],
+  ])('accepts a date %s', async (_label, date) => {
+    const handler = await getConsentHandler()
+
+    await handler({ body: { ...validBody, date } } as any)
+
+    expect(mocks.insertConsentReceipt).toHaveBeenCalledOnce()
+  })
+
+  it('accepts an uppercase UUID id', async () => {
+    const handler = await getConsentHandler()
+
+    await handler({
+      body: { ...validBody, id: validBody.id.toUpperCase() },
+    } as any)
+
+    expect(mocks.insertConsentReceipt).toHaveBeenCalledOnce()
+  })
+
+  it.each(['granted', 'denied', 'changed'] as const)(
+    'returns 400 for an unknown category id in %s',
+    async (field) => {
+      const handler = await getConsentHandler()
+
+      await expect(handler({
+        body: { ...validBody, [field]: ['necessary', 'telemetry'] },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        why: expect.stringContaining('Unknown consent category id'),
+        fix: expect.any(String),
+      })
+
+      expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+    },
+  )
+
+  it('returns 413 before reading the body when content-length is over 2 KB', async () => {
+    mocks.getRequestHeader.mockImplementation((_event, name) => {
+      return name === 'content-length' ? '4096' : undefined
+    })
+
+    const handler = await getConsentHandler()
+
+    await expect(handler({ body: validBody } as any))
+      .rejects
+      .toMatchObject({
+        statusCode: 413,
+        why: expect.any(String),
+        fix: expect.any(String),
+      })
+
+    expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+  })
+
+  it('accepts a body at the size limit', async () => {
+    mocks.getRequestHeader.mockImplementation((_event, name) => {
+      return name === 'content-length' ? '2048' : undefined
+    })
+
+    const handler = await getConsentHandler()
+
+    await handler({ body: validBody } as any)
+
+    expect(mocks.insertConsentReceipt).toHaveBeenCalledOnce()
+  })
+
+  it('returns 429 and stores nothing when the rate limit is exceeded', async () => {
+    mocks.enforceConsentsRateLimit.mockRejectedValue(
+      Object.assign(new Error('Too many consent receipts'), {
+        statusCode: 429,
+      }),
+    )
+
+    const handler = await getConsentHandler()
+
+    await expect(handler({ body: validBody } as any))
+      .rejects
+      .toMatchObject({ statusCode: 429 })
+
+    expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+  })
+
+  it('checks the rate limit before reading the body', async () => {
+    mocks.enforceConsentsRateLimit.mockRejectedValue(
+      Object.assign(new Error('Too many consent receipts'), {
+        statusCode: 429,
+      }),
+    )
+
+    const handler = await getConsentHandler()
+
+    await expect(handler({ body: { id: 'only-id' } } as any))
+      .rejects
+      .toMatchObject({ statusCode: 429 })
+  })
+
   it('accepts valid body, sets consent context with decision partial', async () => {
     mocks.deriveConsentDecision.mockReturnValue('partial')
 
@@ -141,7 +278,7 @@ describe('POST /api/v1/consents', () => {
         date: validBody.date,
         revision: 1,
         granted: ['necessary', 'preferences'],
-        denied: ['analytics', 'marketing'],
+        denied: [],
         changed: ['preferences'],
         decision: 'partial',
         cookiePresent: false,
@@ -158,7 +295,7 @@ describe('POST /api/v1/consents', () => {
     await handler({
       body: {
         ...validBody,
-        granted: ['necessary', 'preferences', 'analytics', 'marketing'],
+        granted: ['necessary', 'preferences'],
         denied: [],
       },
     } as any)
@@ -177,7 +314,7 @@ describe('POST /api/v1/consents', () => {
       body: {
         ...validBody,
         granted: ['necessary'],
-        denied: ['preferences', 'analytics', 'marketing'],
+        denied: ['preferences'],
       },
     } as any)
 

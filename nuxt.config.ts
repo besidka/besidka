@@ -530,37 +530,37 @@ export default defineNuxtConfig({
           },
           {
             id: 'session-token',
-            name: '__Secure-better-auth.session_token',
+            name: 'better-auth.session_token',
             type: 'cookie',
           },
           {
             id: 'session-data',
-            name: '__Secure-better-auth.session_data',
+            name: 'better-auth.session_data',
             type: 'cookie',
           },
           {
             id: 'dont-remember',
-            name: '__Secure-better-auth.dont_remember',
+            name: 'better-auth.dont_remember',
             type: 'cookie',
           },
           {
             id: 'oauth-state',
-            name: '__Secure-better-auth.state',
+            name: 'better-auth.state',
             type: 'cookie',
           },
           {
             id: 'two-factor',
-            name: '__Secure-better-auth.two_factor',
+            name: 'better-auth.two_factor',
             type: 'cookie',
           },
           {
             id: 'trust-device',
-            name: '__Secure-better-auth.trust_device',
+            name: 'better-auth.trust_device',
             type: 'cookie',
           },
           {
             id: 'passkey-challenge',
-            name: '__Secure-better-auth.better-auth-passkey',
+            name: 'better-auth.better-auth-passkey',
             type: 'cookie',
           },
           {

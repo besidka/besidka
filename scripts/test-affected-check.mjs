@@ -297,6 +297,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Cookies/RememberPrompt.client.spec.ts',
     'tests/unit/components/LandingFooter.spec.ts',
     'tests/unit/utils/consents.spec.ts',
+    'tests/unit/utils/consents-rate-limit.spec.ts',
+    'tests/unit/utils/consents-db.spec.ts',
+    'tests/unit/utils/auth.spec.ts',
     'tests/unit/config/cookie-consent.spec.ts',
     'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
@@ -377,6 +380,9 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/push-encryption.spec.ts',
     'tests/unit/service-worker/push.spec.ts',
     'tests/unit/service-worker/sw.spec.ts',
+    'tests/unit/plugins/push-navigation.client.spec.ts',
+    'tests/unit/service-worker/internal-navigation.spec.ts',
+    'tests/e2e/push/navigation-handoff.spec.ts',
     'tests/unit/utils/cross-site-guard.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/push-status.spec.ts',
@@ -946,7 +952,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^wrangler\.jsonc$/,
-      tests: ['tests/unit/config/wrangler-search-rates.spec.ts'],
+      tests: [
+        'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/utils/consents-rate-limit.spec.ts',
+      ],
     },
     {
       pattern: /^server\/plugins\/message-search-index-sweep\.ts$/,
@@ -967,7 +976,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db|-rate-limit)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {

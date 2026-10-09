@@ -10,6 +10,10 @@ import {
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
+import type {
+  ModuleOptions,
+} from '~~/modules/cookie-consent/src/runtime/types/module'
+import { isConsentCategoryGranted } from '~~/server/utils/consents'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
 import {
@@ -23,7 +27,11 @@ import {
   sendTwoFactorDisabledEmail,
   sendTwoFactorEnabledEmail,
 } from './account/security-emails'
-import { getAllowedHosts, getRelyingPartyId } from './auth-hosts'
+import {
+  getAllowedHosts,
+  getRelyingPartyId,
+  isSecureBaseUrl,
+} from './auth-hosts'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -35,6 +43,21 @@ export function useServerAuth(): ServerAuth {
   }
 
   return _auth
+}
+
+function isPreferencesConsentGranted(
+  options: ModuleOptions | undefined,
+  getCookie: (name: string) => string | null,
+): boolean {
+  if (!options) {
+    return false
+  }
+
+  return isConsentCategoryGranted(
+    getCookie(options.cookieName),
+    'preferences',
+    options.revision,
+  )
 }
 
 function createAuth() {
@@ -50,7 +73,15 @@ function createAuth() {
 
   const plugins: BetterAuthPlugin[] = [
     oAuthProxy({ productionURL: config.public.baseUrl }),
-    lastLoginMethod({ storeInDatabase: true }),
+    lastLoginMethod({
+      storeInDatabase: true,
+      beforeStoreCookie: (ctx) => {
+        return isPreferencesConsentGranted(
+          config.public.cookieConsent as ModuleOptions | undefined,
+          ctx.getCookie,
+        )
+      },
+    }),
     twoFactor({
       issuer: 'Besidka',
       totpOptions: {
@@ -126,6 +157,9 @@ function createAuth() {
       },
       ipAddress: {
         ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+      },
+      defaultCookieAttributes: {
+        secure: isSecureBaseUrl(config.public.baseUrl),
       },
     },
     emailAndPassword: {

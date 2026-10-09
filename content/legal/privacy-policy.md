@@ -1,7 +1,7 @@
 ---
 title: "Privacy Policy"
 description: "How Besidka handles your data — what is stored, who receives it, how long it is kept, and the rights you have under the GDPR."
-updatedAt: 2026-09-24
+updatedAt: 2026-10-09
 summary: "Besidka stores your account, chats, files, settings and your encrypted API keys on Cloudflare infrastructure. When you send a message, it goes to the AI provider whose key you supplied, or through the AI gateway whose account you chose to route it through, and if you turn on Brave or Exa web search for a message, the search query your model writes from it goes to that search provider as well. Each of them is a separate company with its own privacy terms, and if you use a free Google Gemini key, Google may use your content to improve its products and human reviewers may read it. I never train any model on your data, I never sell it, and there are no ads. Public share links are off by default and anyone who has the link can read the chat. You can delete your account and all its data from your settings at any time."
 ---
 
@@ -265,7 +265,7 @@ The full list, with names and durations, is in the [Cookie Policy](/cookie-polic
 ## Security
 
 - All traffic is served over HTTPS.
-- Session cookies are `HttpOnly` and, over HTTPS, carry the `__Secure-` prefix.
+- Session cookies are `HttpOnly`.
 - Your AI provider, AI gateway and search provider API keys are encrypted as described above.
 - Access to production data is limited to the controller.
 

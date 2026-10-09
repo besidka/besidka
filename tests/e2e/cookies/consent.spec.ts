@@ -9,6 +9,7 @@ const SHOW_DELAY_BUFFER = 4000
 const SHOW_DELAY = 1200
 const SHOW_DELAY_MARGIN = 1500
 const COLOR_MODE_KEY = 'nuxt-color-mode'
+const PUSH_DATABASE_NAME = 'besidka-push'
 const AUTH_STATE_PATH = '.playwright/auth-user.json'
 const PUBLIC_SSR_ROUTES = [
   '/',
@@ -54,6 +55,14 @@ async function readColorModeKey(page: Page) {
   return page.evaluate((key) => {
     return localStorage.getItem(key)
   }, COLOR_MODE_KEY)
+}
+
+async function readIndexedDatabaseNames(page: Page) {
+  return page.evaluate(async () => {
+    const databases = await indexedDB.databases()
+
+    return databases.map(database => database.name)
+  })
 }
 
 async function openPopupViaTrigger(page: Page) {
@@ -557,6 +566,62 @@ test.describe('Cookie consent banner', () => {
       })
 
       expect(await readColorModeKey(page)).toBeNull()
+    })
+
+  test('push handoff IndexedDB is not created for an undecided visitor',
+    async ({ page }) => {
+      await openLanding(page)
+      await expect(page.getByTestId('cookies-popup')).toBeVisible({
+        timeout: SHOW_DELAY_BUFFER,
+      })
+
+      expect(await readIndexedDatabaseNames(page))
+        .not.toContain(PUSH_DATABASE_NAME)
+
+      await page.reload()
+      await page.waitForTimeout(SHOW_DELAY + SHOW_DELAY_MARGIN)
+
+      expect(await readIndexedDatabaseNames(page))
+        .not.toContain(PUSH_DATABASE_NAME)
+    })
+
+  test('a push handoff IndexedDB left by an earlier version is removed',
+    async ({ page }) => {
+      await openLanding(page)
+      await page.evaluate((name) => {
+        return new Promise<void>((resolve) => {
+          const request = indexedDB.open(name, 1)
+
+          request.onsuccess = () => {
+            request.result.close()
+            resolve()
+          }
+        })
+      }, PUSH_DATABASE_NAME)
+
+      expect(await readIndexedDatabaseNames(page))
+        .toContain(PUSH_DATABASE_NAME)
+
+      await page.reload()
+
+      await expect.poll(() => readIndexedDatabaseNames(page))
+        .not.toContain(PUSH_DATABASE_NAME)
+    })
+
+  test('the consent receipt of a real decision is accepted by the server',
+    async ({ page }) => {
+      const popup = page.getByTestId('cookies-popup')
+
+      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+
+      const receiptResponse = page.waitForResponse((response) => {
+        return response.url().endsWith('/api/v1/consents')
+          && response.request().method() === 'POST'
+      })
+
+      await popup.getByTestId('cookies-reject-all').click()
+
+      expect((await receiptResponse).status()).toBe(204)
     })
 
   test('color-mode key stays absent after Reject all and a reload',

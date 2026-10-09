@@ -241,6 +241,11 @@ served from its cache).
   plugin consume the entry on boot/visibility/focus (5-minute TTL, internal
   paths only — iOS can drop the openWindow URL entirely when the app was
   killed, firebase-js-sdk#7698).
+  Only the SW creates the `besidka-push` database; the plugin reads it only
+  when `Notification.permission` is `granted` and the database already exists
+  (`indexedDB.databases()`, with an aborted-upgrade `open()` as the fallback),
+  so visitors who never enabled push get no database before any consent
+  decision (see [cookie-consent.md](cookie-consent.md#storage-the-page-must-never-create-the-push-handoff-database)).
 - `manifest.webmanifest` declares `launch_handler: { client_mode:
   "focus-existing" }`: with Chrome 139+ desktop navigation capturing,
   notification clicks and in-scope links open the installed PWA window

@@ -6,25 +6,98 @@
  * visibility, for the case where iOS refocuses the running standalone window
  * without a reload — to perform the navigation client-side.
  * DB/store/key names must stay in sync with app/service-worker/push.ts.
+ * The page only ever reads: the service worker is the sole creator of the
+ * database, so visitors who never enabled push never get one. The read is
+ * skipped unless notification permission is granted, then skipped again when
+ * indexedDB.databases() (where supported) shows no database, and an open that
+ * would create one is aborted. A failing or slow databases() call falls
+ * through to that guarded open, so the handoff is never dropped. While
+ * permission is not granted, a database left empty by an earlier version of
+ * this plugin is deleted, once per page load. Targets are resolved against the
+ * page origin before navigating, see service-worker/internal-navigation.ts.
  */
+import { resolveInternalNavigationTarget } from '~/service-worker/internal-navigation'
+
 const PENDING_NAVIGATION_DB = 'besidka-push'
 const PENDING_NAVIGATION_STORE = 'pending-navigation'
 const PENDING_NAVIGATION_KEY = 'latest'
 const PENDING_NAVIGATION_TTL_MS = 5 * 60 * 1000
+const DATABASE_LISTING_TIMEOUT_MS = 500
+
+let hasDiscardedLegacyDatabase = false
 
 interface PendingNavigation {
   url: string
   savedAt: number
 }
 
-function readAndClearPendingNavigation(): Promise<PendingNavigation | null> {
-  return new Promise((resolve) => {
-    if (!('indexedDB' in window)) {
-      resolve(null)
+function isPushNotificationGranted(): boolean {
+  return 'Notification' in window && Notification.permission === 'granted'
+}
 
-      return
+async function pendingNavigationDatabaseExists(): Promise<boolean> {
+  if (typeof window.indexedDB.databases !== 'function') {
+    return true
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    const databases = await Promise.race([
+      window.indexedDB.databases(),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), DATABASE_LISTING_TIMEOUT_MS)
+      }),
+    ])
+
+    if (databases === null) {
+      return true
     }
 
+    return databases.some((database) => {
+      return database.name === PENDING_NAVIGATION_DB
+    })
+  } catch (exception) {
+    void exception
+
+    return true
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+function discardPendingNavigationDatabase(): void {
+  if (hasDiscardedLegacyDatabase) {
+    return
+  }
+
+  hasDiscardedLegacyDatabase = true
+
+  try {
+    window.indexedDB.deleteDatabase(PENDING_NAVIGATION_DB)
+  } catch (exception) {
+    void exception
+  }
+}
+
+async function readAndClearPendingNavigation(): Promise<
+  PendingNavigation | null
+> {
+  if (!('indexedDB' in window)) {
+    return null
+  }
+
+  if (!isPushNotificationGranted()) {
+    discardPendingNavigationDatabase()
+
+    return null
+  }
+
+  if (!await pendingNavigationDatabaseExists()) {
+    return null
+  }
+
+  return new Promise((resolve) => {
     let openRequest: IDBOpenDBRequest
 
     try {
@@ -37,7 +110,7 @@ function readAndClearPendingNavigation(): Promise<PendingNavigation | null> {
     }
 
     openRequest.onupgradeneeded = () => {
-      openRequest.result.createObjectStore(PENDING_NAVIGATION_STORE)
+      openRequest.transaction?.abort()
     }
 
     openRequest.onsuccess = () => {
@@ -71,10 +144,8 @@ function readAndClearPendingNavigation(): Promise<PendingNavigation | null> {
   })
 }
 
-function isInternalPath(url: unknown): url is string {
-  return typeof url === 'string'
-    && url.startsWith('/')
-    && !url.startsWith('//')
+function resolvePushTarget(url: unknown): string | null {
+  return resolveInternalNavigationTarget(url, window.location.origin)
 }
 
 async function navigateToPushTarget(url: string): Promise<void> {
@@ -94,7 +165,9 @@ async function navigateToPushTarget(url: string): Promise<void> {
 async function consumePendingNavigation(): Promise<void> {
   const pending = await readAndClearPendingNavigation()
 
-  if (!pending || !isInternalPath(pending.url)) {
+  const target = pending ? resolvePushTarget(pending.url) : null
+
+  if (!pending || !target) {
     return
   }
 
@@ -102,7 +175,7 @@ async function consumePendingNavigation(): Promise<void> {
     return
   }
 
-  await navigateToPushTarget(pending.url)
+  await navigateToPushTarget(target)
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -147,13 +220,13 @@ export default defineNuxtPlugin((nuxtApp) => {
         return
       }
 
-      if (!isInternalPath(data.url)) {
+      const target = resolvePushTarget(data.url)
+
+      if (!target) {
         return
       }
 
-      const url = data.url
-
-      nuxtApp.runWithContext(() => navigateToPushTarget(url))
+      nuxtApp.runWithContext(() => navigateToPushTarget(target))
     })
   }
 })

@@ -1,3 +1,13 @@
+export function isSecureBaseUrl(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).protocol === 'https:'
+  } catch (exception) {
+    void exception
+
+    return false
+  }
+}
+
 export function getAllowedHosts(baseUrl: string): string[] {
   if (!baseUrl) {
     return []

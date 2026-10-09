@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   deriveConsentDecision,
+  isConsentCategoryGranted,
   parseConsentCookieValue,
 } from '../../../server/utils/consents'
 
@@ -88,5 +89,27 @@ describe('parseConsentCookieValue', () => {
     expect(result).toEqual({ v: 1, granted: ['necessary'] })
     expect(result?.id).toBeUndefined()
     expect(result?.date).toBeUndefined()
+  })
+})
+
+describe('isConsentCategoryGranted', () => {
+  const raw = JSON.stringify({ v: 2, granted: ['necessary', 'preferences'] })
+
+  it('is true when the category is granted at the current revision', () => {
+    expect(isConsentCategoryGranted(raw, 'preferences', 2)).toBe(true)
+  })
+
+  it('is false when the category is not granted', () => {
+    expect(isConsentCategoryGranted(raw, 'analytics', 2)).toBe(false)
+  })
+
+  it('is false when the revision differs', () => {
+    expect(isConsentCategoryGranted(raw, 'preferences', 3)).toBe(false)
+  })
+
+  it('is false for a missing or malformed cookie', () => {
+    expect(isConsentCategoryGranted(undefined, 'preferences', 2)).toBe(false)
+    expect(isConsentCategoryGranted(null, 'preferences', 2)).toBe(false)
+    expect(isConsentCategoryGranted('{nope', 'preferences', 2)).toBe(false)
   })
 })

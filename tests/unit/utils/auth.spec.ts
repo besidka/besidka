@@ -55,6 +55,7 @@ function stubBindings() {
     public: {
       baseUrl: 'https://example.com',
       turnstileSiteKey: '',
+      cookieConsent: { cookieName: 'cookies_consent', revision: 1 },
     },
     turnstileSecretKey: '',
     turnstileEnforced: false,
@@ -753,5 +754,189 @@ describe('server/utils/auth.ts security notification wiring', () => {
         })
       },
     )
+  })
+})
+
+describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
+  const sessionTokenName = 'better-auth.session_token'
+  const lastLoginCookieName = 'better-auth.last_used_login_method'
+
+  function encodeConsentCookie(value: unknown): string {
+    return `cookies_consent=${encodeURIComponent(JSON.stringify(value))}`
+  }
+
+  async function runLastLoginMethodHook(
+    cookieHeader: string | null,
+    overrides: { path?: string, params?: Record<string, string> } = {},
+  ): Promise<string[]> {
+    const options = await importAuthOptions()
+    const plugin = options.plugins!.find((candidate) => {
+      return candidate.id === 'last-login-method'
+    })!
+    const handler = plugin.hooks!.after![0]!.handler as (
+      ctx: Record<string, unknown>,
+    ) => Promise<{ headers: Headers }>
+    const responseHeaders = new Headers()
+
+    responseHeaders.append('set-cookie', `${sessionTokenName}=token; Path=/`)
+
+    const result = await handler({
+      path: overrides.path ?? '/sign-in/email',
+      params: overrides.params,
+      headers: new Headers(cookieHeader ? { cookie: cookieHeader } : {}),
+      returnHeaders: true,
+      context: {
+        responseHeaders,
+        authCookies: {
+          sessionToken: { name: sessionTokenName, attributes: {} },
+        },
+      },
+    })
+
+    return result.headers.getSetCookie()
+  }
+
+  it('sets no last-login cookie when no consent decision was made', async () => {
+    const setCookies = await runLastLoginMethodHook(null)
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets no last-login cookie when preferences were not granted', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+    )
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets no last-login cookie for a consent cookie from another revision', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 0, granted: ['necessary', 'preferences'] }),
+    )
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets no last-login cookie when the consent cookie is malformed', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      'cookies_consent=%7Bnope',
+    )
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets the last-login cookie when preferences were granted', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+    )
+
+    expect(setCookies).toHaveLength(1)
+    expect(setCookies[0]).toContain(`${lastLoginCookieName}=email`)
+    expect(setCookies[0]).toContain('Max-Age=2592000')
+  })
+
+  it('sets the last-login cookie on an OAuth callback with preferences', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+      { path: '/callback/:id', params: { id: 'google' } },
+    )
+
+    expect(setCookies[0]).toContain(`${lastLoginCookieName}=google`)
+  })
+
+  it('sets no last-login cookie on an OAuth callback without preferences', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+      { path: '/callback/:id', params: { id: 'google' } },
+    )
+
+    expect(setCookies).toEqual([])
+  })
+})
+
+describe('server/utils/auth.ts cookie attributes', () => {
+  afterEach(() => {
+    useRuntimeConfig().public.baseUrl = ''
+  })
+
+  async function importAuthContext(baseUrl: string) {
+    vi.resetModules()
+    stubBindings()
+    useRuntimeConfig().betterAuthSecret = betterAuthSecret
+    useRuntimeConfig().public.baseUrl = baseUrl
+
+    const { useServerAuth } = await import('../../../server/utils/auth')
+
+    return (useServerAuth() as unknown as {
+      $context: Promise<{
+        authCookies: {
+          sessionToken: {
+            name: string
+            attributes: Record<string, unknown>
+          }
+          sessionData: {
+            name: string
+            attributes: Record<string, unknown>
+          }
+        }
+        createAuthCookie: (name: string) => {
+          name: string
+          attributes: Record<string, unknown>
+        }
+      }>
+    }).$context
+  }
+
+  it.each([
+    ['https://besidka.com'],
+    ['https://besidka-preview.chernenko.workers.dev'],
+  ])('marks every auth cookie Secure for %s', async (baseUrl) => {
+    const context = await importAuthContext(baseUrl)
+
+    expect(context.authCookies.sessionToken.attributes.secure).toBe(true)
+    expect(context.authCookies.sessionData.attributes.secure).toBe(true)
+    expect(context.createAuthCookie('state').attributes.secure).toBe(true)
+    expect(context.createAuthCookie('two_factor').attributes.secure).toBe(true)
+    expect(
+      context.createAuthCookie('better-auth-passkey').attributes.secure,
+    ).toBe(true)
+  })
+
+  it.each([
+    ['http://localhost:3000'],
+    ['http://localhost:3905'],
+    ['http://127.0.0.1:8787'],
+  ])('leaves auth cookies non-Secure for %s', async (baseUrl) => {
+    const context = await importAuthContext(baseUrl)
+
+    expect(context.authCookies.sessionToken.attributes.secure).toBe(false)
+    expect(context.createAuthCookie('state').attributes.secure).toBe(false)
+  })
+
+  it('keeps the unprefixed cookie names when Secure is on', async () => {
+    const context = await importAuthContext('https://besidka.com')
+
+    expect(context.authCookies.sessionToken.name)
+      .toBe('better-auth.session_token')
+    expect(context.authCookies.sessionData.name)
+      .toBe('better-auth.session_data')
+    expect(context.createAuthCookie('state').name).toBe('better-auth.state')
+    expect(context.createAuthCookie('two_factor').name)
+      .toBe('better-auth.two_factor')
+    expect(context.createAuthCookie('trust_device').name)
+      .toBe('better-auth.trust_device')
+    expect(context.createAuthCookie('better-auth-passkey').name)
+      .toBe('better-auth.better-auth-passkey')
+  })
+
+  it('keeps the other default attributes', async () => {
+    const context = await importAuthContext('https://besidka.com')
+
+    expect(context.authCookies.sessionToken.attributes).toMatchObject({
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+    })
   })
 })

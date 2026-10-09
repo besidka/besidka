@@ -54,6 +54,8 @@ function createStorageShim() {
 
 vi.stubGlobal('localStorage', createStorageShim())
 
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
 describe('useCookieConsent (sequential lifecycle)', () => {
   it('immediate onConsentChange does not fire before any decision', () => {
     const received: unknown[] = []
@@ -226,5 +228,45 @@ describe('useCookieConsent (sequential lifecycle)', () => {
 
     expect(secondId).not.toBeNull()
     expect(secondId).not.toBe(firstId)
+  })
+
+  it('consent id is a UUID v4 when crypto.randomUUID is available', () => {
+    const { allow, consentId } = useCookieConsent()
+
+    allow(['analytics'])
+
+    expect(consentId.value).toMatch(UUID_V4_PATTERN)
+  })
+
+  it('consent id stays a UUID v4 without crypto.randomUUID', () => {
+    const originalCrypto = globalThis.crypto
+    const { allow, consentId } = useCookieConsent()
+
+    vi.stubGlobal('crypto', {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    })
+
+    try {
+      allow(['analytics'])
+
+      expect(consentId.value).toMatch(UUID_V4_PATTERN)
+    } finally {
+      vi.stubGlobal('crypto', originalCrypto)
+    }
+  })
+
+  it('consent id stays a UUID v4 without any crypto at all', () => {
+    const originalCrypto = globalThis.crypto
+    const { allow, consentId } = useCookieConsent()
+
+    vi.stubGlobal('crypto', undefined)
+
+    try {
+      allow(['analytics'])
+
+      expect(consentId.value).toMatch(UUID_V4_PATTERN)
+    } finally {
+      vi.stubGlobal('crypto', originalCrypto)
+    }
   })
 })

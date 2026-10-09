@@ -7,6 +7,7 @@ import {
   parseConsentCookieValue,
 } from '~~/server/utils/consents'
 import { insertConsentReceipt } from '~~/server/utils/consents-db'
+import { enforceConsentsRateLimit } from '~~/server/utils/consents-rate-limit'
 import {
   defineEventHandler,
   getCookie,
@@ -16,16 +17,43 @@ import {
 } from 'nuxt/server'
 import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
+const RECEIPT_DATE_TOLERANCE_MS = 24 * 60 * 60 * 1000
+const MAX_RECEIPT_BODY_BYTES = 2048
+
 export default defineEventHandler(async (event) => {
   const logger = useRequestLogger(event)
 
+  await enforceConsentsRateLimit(event, logger)
+
+  const declaredBodyBytes = Number(
+    getRequestHeader(event, 'content-length') ?? 0,
+  )
+
+  if (declaredBodyBytes > MAX_RECEIPT_BODY_BYTES) {
+    throw createError({
+      message: 'Consent receipt body too large',
+      status: 413,
+      why: `The request body exceeds ${MAX_RECEIPT_BODY_BYTES} bytes`,
+      fix: 'Send only id, date, revision, granted, denied and changed',
+    })
+  }
+
+  const config = useRuntimeConfig()
+  const cookieConsentOptions = config.public.cookieConsent as ModuleOptions
+  const categoryIds = new Set(
+    cookieConsentOptions.categories.map(category => category.id),
+  )
+  const categoryId = z.string().max(24).refine((value) => {
+    return categoryIds.has(value)
+  }, { message: 'Unknown consent category id' })
+
   const body = await readValidatedBody(event, z.object({
-    id: z.string().max(64),
+    id: z.uuid(),
     date: z.string().datetime(),
     revision: z.number().int().nonnegative(),
-    granted: z.array(z.string().max(24)).max(16),
-    denied: z.array(z.string().max(24)).max(16),
-    changed: z.array(z.string().max(24)).max(16),
+    granted: z.array(categoryId).max(16),
+    denied: z.array(categoryId).max(16),
+    changed: z.array(categoryId).max(16),
   }).safeParse)
 
   if (body.error) {
@@ -33,14 +61,23 @@ export default defineEventHandler(async (event) => {
       message: 'Invalid consent receipt body',
       status: 400,
       why: body.error.message,
-      fix: 'Provide id, date, revision, granted, denied, and changed fields',
+      fix: 'Provide a UUID id, an ISO date, revision, granted, denied, and '
+        + 'changed fields',
     })
   }
 
   const { id, date, revision, granted, denied, changed } = body.data
+  const dateSkewInMs = Math.abs(Date.parse(date) - Date.now())
 
-  const config = useRuntimeConfig()
-  const cookieConsentOptions = config.public.cookieConsent as ModuleOptions
+  if (dateSkewInMs > RECEIPT_DATE_TOLERANCE_MS) {
+    throw createError({
+      message: 'Invalid consent receipt date',
+      status: 400,
+      why: 'The receipt date is more than 24 hours away from server time',
+      fix: 'Send the receipt right after the decision, and check the device '
+        + 'clock',
+    })
+  }
 
   const rawCookie = getCookie(event, cookieConsentOptions.cookieName)
   const parsedCookie = parseConsentCookieValue(rawCookie)

@@ -5,6 +5,8 @@ import {
   isInternalNavigationUrl,
 } from '../../../app/service-worker/push'
 
+const APP_ORIGIN = 'https://besidka.com'
+
 interface FakePendingNavigationEntry {
   url: string
   savedAt: number
@@ -84,6 +86,10 @@ describe('isInternalNavigationUrl', () => {
     expect(isInternalNavigationUrl('//evil.example.com')).toBe(false)
   })
 
+  it('rejects a backslash url that parses as another origin', () => {
+    expect(isInternalNavigationUrl('/\\evil.example.com')).toBe(false)
+  })
+
   it('rejects a non-string value', () => {
     expect(isInternalNavigationUrl(undefined)).toBe(false)
   })
@@ -106,6 +112,7 @@ describe('handlePush', () => {
     vi.stubGlobal('self', {
       clients: { matchAll },
       registration: { showNotification },
+      location: { origin: APP_ORIGIN },
     })
   })
 
@@ -242,6 +249,21 @@ describe('handlePush', () => {
     })
   })
 
+  it('replaces a backslash url with the root path', async () => {
+    const event = createFakePushEvent({
+      title: 'x',
+      body: 'y',
+      url: '/\\evil.example.com',
+    })
+
+    handlePush(event as unknown as Parameters<typeof handlePush>[0])
+    await waitUntilPromise
+
+    expect(showNotification).toHaveBeenCalledWith('x', expect.objectContaining({
+      data: { url: '/' },
+    }))
+  })
+
   it('replaces an absolute external url with the root path', async () => {
     const event = createFakePushEvent({
       title: 'x',
@@ -327,6 +349,7 @@ describe('handleNotificationClick', () => {
 
     vi.stubGlobal('self', {
       clients: { matchAll, openWindow },
+      location: { origin: APP_ORIGIN },
     })
     vi.stubGlobal('indexedDB', fakeIndexedDb)
   })
@@ -401,6 +424,25 @@ describe('handleNotificationClick', () => {
     })
   })
 
+  it.each([
+    ['a backslash url', '/\\evil.example.com'],
+    ['a protocol-relative url', '//evil.example.com'],
+    ['an absolute external url', 'https://evil.example.com'],
+  ])('opens the root instead of %s', async (_label, url) => {
+    matchAll.mockResolvedValue([])
+
+    const event = createFakeNotificationClickEvent(url)
+
+    handleNotificationClick(
+      event as unknown as Parameters<typeof handleNotificationClick>[0],
+    )
+    await waitUntilPromise
+    await flushPromises()
+
+    expect(fakeIndexedDb.putCalls[0]?.url).toBe('/')
+    expect(openWindow).toHaveBeenCalledWith('/')
+  })
+
   it('persists the target to IndexedDB before opening a window on cold start', async () => {
     matchAll.mockResolvedValue([])
 
@@ -420,7 +462,10 @@ describe('handleNotificationClick', () => {
 
   it('does nothing when there is no client and no openWindow support', async () => {
     matchAll.mockResolvedValue([])
-    vi.stubGlobal('self', { clients: { matchAll } })
+    vi.stubGlobal('self', {
+      clients: { matchAll },
+      location: { origin: APP_ORIGIN },
+    })
 
     const event = createFakeNotificationClickEvent('/shared/abc')
 

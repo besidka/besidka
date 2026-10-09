@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getAllowedHosts,
   getRelyingPartyId,
+  isSecureBaseUrl,
 } from '../../../server/utils/auth-hosts'
 
 describe('getAllowedHosts', () => {
@@ -79,4 +80,26 @@ describe('getRelyingPartyId', () => {
       expect(rpId).not.toBe('workers.dev')
     },
   )
+})
+
+describe('isSecureBaseUrl', () => {
+  it('is true for https base URLs', () => {
+    expect(isSecureBaseUrl('https://besidka.com')).toBe(true)
+    expect(isSecureBaseUrl('https://x-pr-7.workers.dev')).toBe(true)
+  })
+
+  it('accepts a mixed-case scheme', () => {
+    expect(isSecureBaseUrl('HTTPS://besidka.com')).toBe(true)
+    expect(isSecureBaseUrl('Https://besidka.com')).toBe(true)
+  })
+
+  it('is false for an invalid URL', () => {
+    expect(isSecureBaseUrl('besidka.com')).toBe(false)
+    expect(isSecureBaseUrl('not a url')).toBe(false)
+  })
+
+  it('is false for http and empty base URLs', () => {
+    expect(isSecureBaseUrl('http://localhost:3000')).toBe(false)
+    expect(isSecureBaseUrl('')).toBe(false)
+  })
 })

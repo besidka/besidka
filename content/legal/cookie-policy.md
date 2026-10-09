@@ -2,7 +2,7 @@
 title: "Cookie Policy"
 description: "Every cookie and browser storage entry Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
 updatedAt: 2026-10-09
-summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, and hand a tapped push notification to the open app. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree (one sign-in cookie is set before you can choose and removed again if you have not agreed). The only third-party script is a security check on the sign-in forms. There is no analytics or marketing category: my page-view counting happens on the server with no cookie, no identifier and no stored IP address. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
+summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, and hand a tapped push notification to the open app. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. The only third-party script is a security check on the sign-in forms. There is no analytics or marketing category: my page-view counting happens on the server with no cookie, no identifier and no stored IP address. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
 ## What this policy covers
@@ -42,30 +42,30 @@ These are needed to run the service you asked for. They are not consent-gated un
 | Name | Type | Set by | Purpose | Duration |
 | --- | --- | --- | --- | --- |
 | `cookies_consent` | Cookie | Besidka | Remembers the cookie choice you made, so I do not ask again and can honour it | 180 days |
-| `__Secure-better-auth.session_token` | Cookie | Besidka (Better Auth) | Keeps you signed in. `HttpOnly` | 7 days |
-| `__Secure-better-auth.session_data` | Cookie | Besidka (Better Auth) | Short-lived cache of your session so every page load does not have to hit the database | 5 minutes |
-| `__Secure-better-auth.dont_remember` | Cookie | Besidka (Better Auth) | Set only if you untick "Remember me" when signing in. Records that you did not ask to be remembered, so the session ends when you close the browser | Until you close the browser |
-| `__Secure-better-auth.state` | Cookie | Besidka (Better Auth) | One-time value that ties a Google or GitHub sign-in redirect back to the request that started it. This is what stops a sign-in from being hijacked | 5 minutes |
-| `__Secure-better-auth.two_factor` | Cookie | Besidka (Better Auth) | Set only if you have two-factor authentication. Holds the pending sign-in step between your password and your verification code | 10 minutes |
-| `__Secure-better-auth.trust_device` | Cookie | Besidka (Better Auth) | Set only if you tick "Trust this device for 30 days" on the two-factor screen. Lets you skip the verification code on this device | 30 days |
-| `__Secure-better-auth.better-auth-passkey` | Cookie | Besidka (Better Auth) | Set only while you register or sign in with a passkey. A one-time challenge that the passkey check has to answer | 5 minutes |
+| `better-auth.session_token` | Cookie | Besidka (Better Auth) | Keeps you signed in. `HttpOnly` | 7 days |
+| `better-auth.session_data` | Cookie | Besidka (Better Auth) | Short-lived cache of your session so every page load does not have to hit the database | 5 minutes |
+| `better-auth.dont_remember` | Cookie | Besidka (Better Auth) | Set only if you untick "Remember me" when signing in. Records that you did not ask to be remembered, so the session ends when you close the browser | Until you close the browser |
+| `better-auth.state` | Cookie | Besidka (Better Auth) | One-time value that ties a Google or GitHub sign-in redirect back to the request that started it. This is what stops a sign-in from being hijacked | 5 minutes |
+| `better-auth.two_factor` | Cookie | Besidka (Better Auth) | Set only if you have two-factor authentication. Holds the pending sign-in step between your password and your verification code | 10 minutes |
+| `better-auth.trust_device` | Cookie | Besidka (Better Auth) | Set only if you tick "Trust this device for 30 days" on the two-factor screen. Lets you skip the verification code on this device | 30 days |
+| `better-auth.better-auth-passkey` | Cookie | Besidka (Better Auth) | Set when you open the sign-in page, so passkey autofill can work, and again while you register or sign in with a passkey. A one-time challenge that the passkey check has to answer | 5 minutes |
 | `chat_input_backup` | localStorage | Besidka | **Holds the text of a message you typed but have not sent yet**, so a failed send, a session that expires mid-message, a re-login or a reinstalled app does not lose what you wrote. It holds your words verbatim, in your browser only — it is never sent to me. It is discarded when the message is sent, and it expires about **24 hours** after it was saved | About 24 hours |
 | `besidka:push-endpoint` | localStorage | Besidka | Written only after you turn on push notifications. Holds the address of this browser's push subscription, so I can refresh or remove it when it changes. Removed when you turn notifications off | Until you turn notifications off |
-| `besidka-push` | IndexedDB | Besidka | A small database the app opens on every visit, including before you have made a cookie choice, to hand a tapped push notification to the open app. It is empty unless you turned on push notifications and tapped one; then it briefly holds the page the notification should open and a timestamp, which are deleted as soon as they are read and ignored after 5 minutes. I have not yet tied its creation to the notification setting, so it exists on your device even if you never enable push | Until you clear site data (its content is deleted as soon as it is read) |
+| `besidka-push` | IndexedDB | Besidka | A small database that hands a tapped push notification to the open app. It is created only after you turn on push notifications and tap one, and only by the app's background worker; the page itself never creates it, and only looks for it when notifications are allowed. If you never enable push, it does not exist on your device. It briefly holds the page the notification should open and a timestamp, which are deleted as soon as they are read and ignored after 5 minutes | Until you clear site data (its content is deleted as soon as it is read) |
 | `pwa:refresher-dismissed-until` | sessionStorage | Besidka | Remembers, for the current tab only, that you dismissed the "new version available" prompt, so it does not come straight back | 30 minutes, and gone when the tab closes |
 | `pwa:auto-refresh-applied-until` | sessionStorage | Besidka | Stops the installed app from reloading itself over and over while it applies an update in the background. Current tab only | 5 minutes, and gone when the tab closes |
 
 I treat `chat_input_backup` as necessary because it exists solely to protect your own input in the service you asked for, and because losing a long message is exactly the kind of failure the storage prevents. It stays in your browser. If you would rather it did not exist at all, clear your site data — the app works without it, you just lose the safety net.
 
-All the `__Secure-better-auth.*` cookies are `HttpOnly`, so the page cannot read them. The `__Secure-` prefix is added to their names in the production build that serves besidka.com, which is HTTPS only; the sign-in library decides it from its environment, not per request, so a local development copy uses the same names without the prefix. The cookies marked "set only if" do not exist unless you use the feature they belong to.
+All the `better-auth.*` cookies are `HttpOnly`, so the page cannot read them. The sign-in library names them without a `__Secure-` prefix on besidka.com, because it decides the prefix from its runtime environment and not from the HTTPS connection. The cookies marked "set only if" do not exist unless you use the feature they belong to.
 
 ## Preferences
 
-These only remember how you like the app set up. They are kept **only if you agree** to the preferences category. One exception in timing: `better-auth.last_used_login_method` is set by the server while you sign in, before the app can check your choice, so it can exist briefly. If you have not allowed preferences, the app removes it as soon as the page loads.
+These only remember how you like the app set up. They are kept **only if you agree** to the preferences category. The server checks your cookie choice before it sets `better-auth.last_used_login_method` while you sign in, so that cookie is only ever set if you have allowed preferences.
 
 | Name | Type | Set by | Purpose | Duration |
 | --- | --- | --- | --- | --- |
-| `better-auth.last_used_login_method` | Cookie | Besidka (Better Auth) | Remembers whether you last signed in with a password, Google or GitHub, so that option is offered first. Readable by the page, so the sign-in screen can highlight it | 30 days |
+| `better-auth.last_used_login_method` | Cookie | Besidka (Better Auth) | Remembers whether you last signed in with a password, Google, GitHub or a passkey, so that option is offered first. Readable by the page, so the sign-in screen can highlight it | 30 days |
 | `nuxt-color-mode` | localStorage | Besidka | Your colour theme (light, dark or system), so the app opens in the theme you chose | Until removed |
 | `nuxt-color-mode` | Cookie | Besidka | A cookie of the same name for the same purpose. In the current setup the theme is kept in localStorage and this cookie is not written; I list it because it is part of the theme setting, and I clear it if you deny preferences | Not set in the current setup |
 | `file-manager-view-mode` | localStorage | Besidka | Whether the file manager shows a grid or a list | Until removed |
@@ -122,7 +122,7 @@ Withdrawing is as easy as giving consent, and it is always available.
 - Once you have chosen, the settings popup offers **Withdraw consent** and **Change preferences** as two equal buttons, so withdrawing is exactly as easy as agreeing was.
 - **Reject all** or **Withdraw consent** removes the optional storage immediately, with no reload needed.
 - If you turn the **preferences** category off, I delete the localStorage keys and cookies listed in that table from your browser and stop writing them. You keep using Besidka exactly as before; the app simply stops remembering those preferences between visits.
-- The `better-auth.last_used_login_method` cookie is set by the sign-in library rather than by me, and it is deleted too when you deny the preferences category, or have not agreed to it. It holds nothing but the word `email`, `google` or `github`.
+- The `better-auth.last_used_login_method` cookie is written by the sign-in library rather than directly by me, but only when your cookie choice already allows preferences. It is deleted when you deny the preferences category. It holds nothing but the word `email`, `google`, `github` or `passkey`.
 - Withdrawing does not undo storage that was lawful while your consent was in place, and it does not affect the necessary items, which are not based on consent.
 
 You can also clear or block storage in your browser settings. Blocking the necessary items will sign you out and stop the app from remembering your cookie choice, so you will be asked again.

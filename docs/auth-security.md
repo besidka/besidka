@@ -540,6 +540,22 @@ previously issued code. Like every other security-sensitive action in
 this file, it notifies the account owner by email
 (`sendTwoFactorBackupCodesRegeneratedEmail`).
 
+## Why `defaultCookieAttributes` and not `useSecureCookies`
+
+With the dynamic `baseURL` (`protocol: 'auto'`), Better Auth derives its
+`__Secure-` cookie prefix and `secure` flag from `NODE_ENV === 'production'`,
+which is false in the Worker runtime, so production auth cookies shipped
+without `Secure`. `advanced.useSecureCookies: true` would fix the flag but also
+add the prefix, renaming every cookie and signing every user out. Instead
+`advanced.defaultCookieAttributes: { secure }` in `server/utils/auth.ts` is
+spread after the getter's own `secure`, so it overrides only the flag. It is
+true when `config.public.baseUrl` starts with `https://` (production
+`https://besidka.com`, preview `https://besidka-preview.chernenko.workers.dev`)
+and false for `http://localhost` in dev and CI, where browsers, WebKit in
+particular, may drop `Secure` cookies. `oAuthProxy` is unaffected: the preview
+host sets its own session cookie in its own https response. Cookie names are
+pinned unchanged by `tests/unit/utils/auth.spec.ts`.
+
 ## Passkeys (WebAuthn)
 
 Configured via `@better-auth/passkey` in `server/utils/auth.ts`, with

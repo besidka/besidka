@@ -75,7 +75,7 @@ export async function insertConsentReceipt(
     throw createError({
       message: 'Failed to store consent receipt',
       status: 500,
-      why: exception instanceof Error ? exception.message : String(exception),
+      why: 'The consent database rejected the insert.',
       fix: 'Verify CONSENT_DB binding and that consent migrations are applied.',
     })
   }
