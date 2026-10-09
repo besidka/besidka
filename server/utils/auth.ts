@@ -27,7 +27,11 @@ import {
   sendTwoFactorDisabledEmail,
   sendTwoFactorEnabledEmail,
 } from './account/security-emails'
-import { getAllowedHosts, getRelyingPartyId } from './auth-hosts'
+import {
+  getAllowedHosts,
+  getRelyingPartyId,
+  isSecureBaseUrl,
+} from './auth-hosts'
 
 type ServerAuth = ReturnType<typeof createAuth>
 
@@ -153,6 +157,9 @@ function createAuth() {
       },
       ipAddress: {
         ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+      },
+      defaultCookieAttributes: {
+        secure: isSecureBaseUrl(config.public.baseUrl),
       },
     },
     emailAndPassword: {

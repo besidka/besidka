@@ -1,3 +1,7 @@
+export function isSecureBaseUrl(baseUrl: string): boolean {
+  return baseUrl.startsWith('https://')
+}
+
 export function getAllowedHosts(baseUrl: string): string[] {
   if (!baseUrl) {
     return []

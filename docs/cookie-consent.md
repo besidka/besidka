@@ -448,10 +448,13 @@ oversight.
   returns `better-auth.state` and `GET /api/auth/passkey/generate-authenticate-options`
   returns `better-auth.better-auth-passkey`, both `Max-Age=300`, `HttpOnly`,
   `SameSite=Lax`, with neither the prefix nor `Secure`. The other names follow
-  from the shared source path; they were not each observed. Setting
-  `advanced.useSecureCookies: true` would add the prefix and `Secure`, but it
-  renames every cookie and signs every user out, so it is a deliberate
-  migration, not a docs fix.
+  from the shared source path; they were not each observed. `Secure` is now
+  added without renaming anything: `advanced.defaultCookieAttributes` in
+  `server/utils/auth.ts` sets `secure` from `isSecureBaseUrl(config.public.baseUrl)`,
+  and `createCookieGetter` spreads it after its own `secure: !!secureCookiePrefix`.
+  `advanced.useSecureCookies` stays unset because it would also add the
+  `__Secure-` prefix, renaming every cookie and signing every user out. See
+  [auth-security.md](auth-security.md#why-defaultcookieattributes-and-not-usesecurecookies).
 - **The passkey challenge cookie is set on page load of `/signin`.** Passkey
   conditional UI (autofill) requests authentication options when the page opens,
   so `better-auth.better-auth-passkey` exists before any consent decision. It

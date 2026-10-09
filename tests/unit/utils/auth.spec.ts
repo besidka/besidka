@@ -854,3 +854,89 @@ describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
     expect(setCookies).toEqual([])
   })
 })
+
+describe('server/utils/auth.ts cookie attributes', () => {
+  afterEach(() => {
+    useRuntimeConfig().public.baseUrl = ''
+  })
+
+  async function importAuthContext(baseUrl: string) {
+    vi.resetModules()
+    stubBindings()
+    useRuntimeConfig().betterAuthSecret = betterAuthSecret
+    useRuntimeConfig().public.baseUrl = baseUrl
+
+    const { useServerAuth } = await import('../../../server/utils/auth')
+
+    return (useServerAuth() as unknown as {
+      $context: Promise<{
+        authCookies: {
+          sessionToken: {
+            name: string
+            attributes: Record<string, unknown>
+          }
+          sessionData: {
+            name: string
+            attributes: Record<string, unknown>
+          }
+        }
+        createAuthCookie: (name: string) => {
+          name: string
+          attributes: Record<string, unknown>
+        }
+      }>
+    }).$context
+  }
+
+  it.each([
+    ['https://besidka.com'],
+    ['https://besidka-preview.chernenko.workers.dev'],
+  ])('marks every auth cookie Secure for %s', async (baseUrl) => {
+    const context = await importAuthContext(baseUrl)
+
+    expect(context.authCookies.sessionToken.attributes.secure).toBe(true)
+    expect(context.authCookies.sessionData.attributes.secure).toBe(true)
+    expect(context.createAuthCookie('state').attributes.secure).toBe(true)
+    expect(context.createAuthCookie('two_factor').attributes.secure).toBe(true)
+    expect(
+      context.createAuthCookie('better-auth-passkey').attributes.secure,
+    ).toBe(true)
+  })
+
+  it.each([
+    ['http://localhost:3000'],
+    ['http://localhost:3905'],
+    ['http://127.0.0.1:8787'],
+  ])('leaves auth cookies non-Secure for %s', async (baseUrl) => {
+    const context = await importAuthContext(baseUrl)
+
+    expect(context.authCookies.sessionToken.attributes.secure).toBe(false)
+    expect(context.createAuthCookie('state').attributes.secure).toBe(false)
+  })
+
+  it('keeps the unprefixed cookie names when Secure is on', async () => {
+    const context = await importAuthContext('https://besidka.com')
+
+    expect(context.authCookies.sessionToken.name)
+      .toBe('better-auth.session_token')
+    expect(context.authCookies.sessionData.name)
+      .toBe('better-auth.session_data')
+    expect(context.createAuthCookie('state').name).toBe('better-auth.state')
+    expect(context.createAuthCookie('two_factor').name)
+      .toBe('better-auth.two_factor')
+    expect(context.createAuthCookie('trust_device').name)
+      .toBe('better-auth.trust_device')
+    expect(context.createAuthCookie('better-auth-passkey').name)
+      .toBe('better-auth.better-auth-passkey')
+  })
+
+  it('keeps the other default attributes', async () => {
+    const context = await importAuthContext('https://besidka.com')
+
+    expect(context.authCookies.sessionToken.attributes).toMatchObject({
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+    })
+  })
+})
