@@ -116,6 +116,7 @@
               </NuxtLink>
               <NuxtLink
                 to="/privacy-policy"
+                data-testid="landing-footer-privacy-link"
                 class="link link-hover text-sm"
               >
                 Privacy Policy
@@ -126,6 +127,15 @@
               >
                 Cookie Policy
               </NuxtLink>
+              <button
+                type="button"
+                class="link link-hover text-sm"
+                aria-haspopup="dialog"
+                data-testid="footer-cookie-settings"
+                @click="openCookieSettings"
+              >
+                Cookie settings
+              </button>
             </nav>
           </div>
 
@@ -202,4 +212,11 @@ const sections = [
 const { track } = useLandingAnalytics()
 const route = useRoute()
 const isHomePage = computed<boolean>(() => route.path === '/')
+
+function openCookieSettings(event: MouseEvent): void {
+  useCookieConsentUi().expand({
+    userInitiated: true,
+    trigger: event.currentTarget as HTMLElement,
+  })
+}
 </script>

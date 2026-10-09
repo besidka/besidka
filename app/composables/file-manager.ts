@@ -44,6 +44,7 @@ export function useFileManager() {
     },
     set(value) {
       prefStorage.setItem('file-manager-view-mode', value)
+      requestPersistence()
       trigger()
     },
   }))

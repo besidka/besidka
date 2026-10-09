@@ -92,6 +92,64 @@ describe('useNotificationPrompt', () => {
     const { isVisible } = useNotificationPrompt()
 
     isVisible.value = false
+    useState<string | null>('cookie-consent:request', () => null)
+      .value = null
+  })
+
+  describe('while the cookie consent request is open', () => {
+    function openConsentRequest(): void {
+      useState<string | null>('cookie-consent:request', () => null)
+        .value = 'preferences'
+    }
+
+    it('does not show proactively', () => {
+      userSettingMocks.activeUserId.value = 'user-1'
+      userSettingMocks.notificationPromptState.value = null
+      openConsentRequest()
+
+      const prompt = useNotificationPrompt()
+
+      prompt.maybeShowProactively()
+
+      expect(prompt.isVisible.value).toBe(false)
+    })
+
+    it('does not show after a missed notification', async () => {
+      openConsentRequest()
+
+      const prompt = useNotificationPrompt()
+
+      await fireGenerationReadyHook()
+
+      expect(prompt.isVisible.value).toBe(false)
+    })
+
+    it('shows again once the consent request is closed', async () => {
+      openConsentRequest()
+
+      const prompt = useNotificationPrompt()
+
+      await fireGenerationReadyHook()
+      useState<string | null>('cookie-consent:request', () => null)
+        .value = null
+      await fireGenerationReadyHook()
+
+      expect(prompt.isVisible.value).toBe(true)
+    })
+
+    it('takes over from the consent request on an explicit enable', async () => {
+      mocks.permission = 'default'
+      openConsentRequest()
+
+      const prompt = useNotificationPrompt()
+
+      await prompt.requestEnable()
+
+      expect(prompt.isVisible.value).toBe(true)
+      expect(
+        useState<string | null>('cookie-consent:request', () => null).value,
+      ).toBeNull()
+    })
   })
 
   describe('maybeShowAfterMissedNotification (the generation-ready hook)', () => {

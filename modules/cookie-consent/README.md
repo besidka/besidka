@@ -151,12 +151,19 @@ const {
   commitDraft,    // () => void — "Allow selected"; closes immediately
   allowAll,       // () => void — commits all + closes immediately
   withdrawAll,    // () => void — withdraws to required only + closes immediately
+  rejectAll,      // () => void — alias of withdrawAll; the "Reject all" first-layer action
+  isCustomizing,  // Readonly<Ref<boolean>> — true once the user asked for the detailed view
   openPopup,      // (trigger?: HTMLElement) => void
-  expand,         // () => void — popup → modal, carries draft as-is
+  expand,         // (options?: { userInitiated?: boolean, trigger?: HTMLElement | null }) => void — popup → modal, carries draft as-is
+  customize,      // () => void — switches to the modal (if not there yet) and sets isCustomizing
   close,          // () => void — discards draft, restores focus
   isTriggerNode,  // (node: Node | null) => boolean — true when node is/contains the stored trigger
   scheduleAutoShow, // () => void — see auto-show policy
   switchProps,    // (categoryId: string) => { role, aria-checked, disabled }
+  consentRequest, // Readonly<Ref<string | null>> — category id of the open just-in-time request
+  requestConsent, // (categoryId: string) => boolean — see just-in-time consent
+  grantRequest,   // (expectedId: string) => void — allows the open request only if it is for expectedId; always clears it
+  dismissRequest, // () => void — clears the request, no decision
 } = useCookieConsentUi()
 ```
 
@@ -166,8 +173,19 @@ Transitioning from popup → modal (`expand()`) carries the draft as-is so
 toggles made in the popup are preserved. Closing without a CTA discards the
 draft — consent never changes without an explicit commit.
 
-`allowAll()` and `withdrawAll()` in `useCookieConsentUi()` are the UI-layer
-wrappers: they commit the decision and close the UI immediately (synchronously).
+`isCustomizing` is shared state (`cookie-consent:customizing`, default
+`false`). `expand()` sets it to `options.userInitiated ?? true`, so the
+unattended auto-show (`expand({ userInitiated: false })`) opens a modal that
+is still on its compact first layer, and a user action opens the detailed
+view. `customize()` switches a compact modal to the detailed view (opening the
+modal first when it is not the current view). `close()` and `openPopup()` reset
+it to `false`. Apps use it to render a compact first layer (benefit line,
+equal Reject all / Accept all, a Customize link) and reveal the category
+toggles only once `isCustomizing` is true. `expand({ trigger })` records the
+element that focus returns to on close.
+
+`allowAll()`, `withdrawAll()` and `rejectAll()` in `useCookieConsentUi()` are
+the UI-layer wrappers: they commit the decision and close the UI immediately (synchronously).
 The same-named functions on `useCookieConsent()` are raw commit primitives for
 programmatic use (no UI interaction).
 
@@ -178,13 +196,44 @@ stored, when the trigger is `document.body` / `document.documentElement`
 Used by `CookieConsentPopup`'s outside-click handler to prevent
 close-then-reopen on the same trigger click.
 
+### Just-in-time consent
+
+An undecided visitor can be asked for one category at the moment they use a
+feature that needs it. `requestConsent(categoryId)` sets the shared
+`consentRequest` state (`cookie-consent:request`) and returns `true` only when
+all of these hold:
+
+- it runs on the client;
+- the category exists and is not `required`;
+- the category is not already allowed;
+- the visitor is undecided (`isDecided` is `false`);
+- no consent view is open (`view === 'hidden'`) and no auto-show timer is
+  pending;
+- no request has been shown yet in this page load.
+
+Showing a request latches it for the rest of the page load, whatever the
+outcome (granted, dismissed, cleared by `openPopup()` / `expand()` or by the
+app on navigation). Decided visitors are never asked: a refusal is honoured
+until the consent cookie expires, after which the normal banner asks again.
+
+`grantRequest(expectedId)` commits the already granted ids plus the requested
+one through `allow()`, but only when the open request is for `expectedId`: the
+id the prompt's text actually describes. If the request was replaced or cleared
+in the meantime, nothing is granted and the request is cleared. It is a real
+decision, so the receipt and the `cookie-consent:changed` hook behave as for
+any other commit.
+`dismissRequest()` only clears the request. The module renders nothing for a
+request; the app shows its own non-blocking prompt while `consentRequest` is
+set.
+
 ## Components (headless primitives, client-only)
 
 All primitives accept attrs/classes pass-through and expose the full action
 surface as slot props (`categories`, `draft`, `toggleDraft`, `commitDraft`,
-`allowAll`, `withdrawAll`, `expand`, `close`, `isDecided`, `granted`,
-`isAllowed`, `consentId`, `consentDate`). The `allowAll` and `withdrawAll`
-slot props are the UI-layer wrappers that commit and then close the dialog
+`allowAll`, `withdrawAll`, `rejectAll`, `expand`, `customize`, `close`,
+`isCustomizing`, `isDecided`, `granted`, `isAllowed`, `consentId`,
+`consentDate`). The `allowAll`, `withdrawAll` and `rejectAll` slot props are
+the UI-layer wrappers that commit and then close the dialog
 immediately; they are not the raw `useCookieConsent()` primitives. `consentId`
 and `consentDate` reflect the current consent receipt — `null` while undecided
 or for legacy cookies without receipt fields.
@@ -250,7 +299,7 @@ Shipped locales: `en`, `uk`. All keys live under `cookieConsent.*`:
 cookieConsent.title / description / close
 cookieConsent.currentState
 cookieConsent.details.{show,hide,date,id}
-cookieConsent.actions.{allowAll,allowSelected,withdraw,customize,change}
+cookieConsent.actions.{allowAll,acceptAll,rejectAll,allowSelected,withdraw,customize,change}
 cookieConsent.categories.<id>.{title,description}
 cookieConsent.entries.<id>.{description,duration}
 ```
@@ -269,7 +318,8 @@ server-side gating (defense in depth for analytics endpoints).
 
 ```vue
 <CookieConsentPopup v-slot="{ categories, draft, toggleDraft, switchProps,
-  commitDraft, allowAll, withdrawAll, expand, close }"
+  commitDraft, allowAll, rejectAll, withdrawAll, expand, customize, close,
+  isCustomizing }"
 >
   <!-- app-owned markup, e.g. DaisyUI card + toggles -->
 </CookieConsentPopup>

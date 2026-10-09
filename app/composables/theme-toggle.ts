@@ -48,7 +48,7 @@ export const useThemeToggle = () => {
   }
 
   async function reloadStandaloneApp() {
-    if (!isIos) {
+    if (!isIos || !useCookieConsent().isAllowed('preferences')) {
       return
     }
 
@@ -72,6 +72,7 @@ export const useThemeToggle = () => {
 
     colorMode.preference = nextPreference
     setThemeColorMeta(resolvedTheme.value)
+    requestPersistence()
     reloadStandaloneApp()
   }
 

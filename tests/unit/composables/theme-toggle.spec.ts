@@ -7,6 +7,8 @@ import { useThemeToggle } from '../../../app/composables/theme-toggle'
 const mocks = vi.hoisted(() => ({
   isIos: false,
   reloadNuxtApp: vi.fn(),
+  requestPersistence: vi.fn(),
+  isPreferencesAllowed: true,
 }))
 
 const colorModeState = reactive<{
@@ -26,6 +28,15 @@ mockNuxtImport('useDevice', () => {
 })
 
 mockNuxtImport('reloadNuxtApp', () => mocks.reloadNuxtApp)
+mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
+
+mockNuxtImport('useCookieConsent', () => {
+  return () => ({
+    isAllowed: (categoryId: string) => {
+      return categoryId === 'preferences' && mocks.isPreferencesAllowed
+    },
+  })
+})
 
 function getThemeColorMeta() {
   return document.querySelector('meta[name="theme-color"]')
@@ -50,9 +61,11 @@ describe('useThemeToggle', () => {
   beforeEach(() => {
     vi.useRealTimers()
     mocks.isIos = false
+    mocks.isPreferencesAllowed = true
     colorModeState.preference = 'light'
     colorModeState.value = 'light'
     mocks.reloadNuxtApp.mockClear()
+    mocks.requestPersistence.mockClear()
 
     document.querySelectorAll('meta[name="theme-color"]').forEach((element) => {
       element.remove()
@@ -83,6 +96,14 @@ describe('useThemeToggle', () => {
 
     toggle()
     expect(currentPreference.value).toBe('light')
+  })
+
+  it('toggle() asks to remember preferences', () => {
+    const { toggle } = useThemeToggle()
+
+    toggle()
+
+    expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
   })
 
   it('writes the light theme color to a fresh meta tag', () => {
@@ -158,6 +179,40 @@ describe('useThemeToggle', () => {
 
     expect(pending.value).toBe(true)
     expect(mocks.reloadNuxtApp).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(mocks.reloadNuxtApp).toHaveBeenCalledWith({ force: true })
+  })
+
+  it('skips the iOS reload while preferences are not allowed', async () => {
+    vi.useFakeTimers()
+    mocks.isIos = true
+    mocks.isPreferencesAllowed = false
+
+    const { toggle, pending } = useThemeToggle()
+
+    toggle()
+
+    expect(pending.value).toBe(false)
+    expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(mocks.reloadNuxtApp).not.toHaveBeenCalled()
+  })
+
+  it('reads consent lazily at toggle time, not at composable setup', async () => {
+    vi.useFakeTimers()
+    mocks.isIos = true
+    mocks.isPreferencesAllowed = false
+
+    const { toggle, pending } = useThemeToggle()
+
+    mocks.isPreferencesAllowed = true
+    toggle()
+
+    expect(pending.value).toBe(true)
 
     await vi.advanceTimersByTimeAsync(500)
 

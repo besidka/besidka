@@ -18,6 +18,8 @@ import { execSync } from 'node:child_process'
 import { existsSync, appendFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+export const COOKIE_CONSENT_MODULE_TEST_DIR = 'modules/cookie-consent/test/'
+
 export function getChangedFiles(base = 'HEAD') {
   try {
     let gitCommand
@@ -290,11 +292,23 @@ export function getAffectedTests(changedFiles) {
 
   const cookieConsentTests = [
     'tests/unit/composables/preference-storage.spec.ts',
+    'tests/unit/components/Cookies/Banner.client.spec.ts',
+    'tests/unit/components/Cookies/Choices.spec.ts',
+    'tests/unit/components/Cookies/RememberPrompt.client.spec.ts',
+    'tests/unit/components/LandingFooter.spec.ts',
     'tests/unit/utils/consents.spec.ts',
     'tests/unit/config/cookie-consent.spec.ts',
     'tests/unit/composables/auth-last-login-method.spec.ts',
+    'tests/unit/composables/notification-prompt.spec.ts',
+    'tests/unit/composables/theme-toggle.spec.ts',
+    'modules/cookie-consent/test/cleanup.spec.ts',
+    'modules/cookie-consent/test/consent-plugin.spec.ts',
+    'modules/cookie-consent/test/consent.spec.ts',
+    'modules/cookie-consent/test/focus-trap.spec.ts',
+    'modules/cookie-consent/test/ui.spec.ts',
     'tests/integration/api/consents.spec.ts',
     'tests/e2e/cookies/consent.spec.ts',
+    'tests/e2e/settings/theme.spec.ts',
   ]
 
   const sessionRecoveryTests = [
@@ -735,6 +749,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
+      pattern: /^content\/legal\/cookie-policy\.md$/,
+      tests: cookieConsentTests,
+    },
+    {
       pattern: /^content\/index\.md$/,
       tests: [...landingTests, 'tests/unit/utils/landing-jsonld.spec.ts'],
     },
@@ -949,7 +967,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|i18n\/|app\/composables\/preference-storage\.ts$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {
@@ -1494,6 +1512,7 @@ export function filterTestsByType(tests, testType) {
   return tests.filter((test) => {
     if (testType === 'unit') {
       return test.startsWith('tests/unit/')
+        || test.startsWith(COOKIE_CONSENT_MODULE_TEST_DIR)
     }
     if (testType === 'integration') {
       return test.startsWith('tests/integration/')

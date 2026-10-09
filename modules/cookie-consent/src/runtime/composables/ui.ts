@@ -6,6 +6,7 @@ import { useCookieConsent } from './consent'
 // Browser-only module scope — resets per page load, never touched during SSR.
 let autoShowScheduled = false
 let autoShowTimer: ReturnType<typeof setTimeout> | null = null
+let consentRequestShown = false
 let triggerElement: HTMLElement | null = null
 // Whether the surface currently shown was opened by a user action (click,
 // keyboard activation) rather than the unattended auto-show timer — decides
@@ -25,6 +26,16 @@ export function useCookieConsentUi() {
   const draft = useState<Record<string, boolean>>(
     'cookie-consent:draft',
     () => ({}),
+  )
+
+  const customizing = useState<boolean>(
+    'cookie-consent:customizing',
+    () => false,
+  )
+
+  const consentRequest = useState<string | null>(
+    'cookie-consent:request',
+    () => null,
   )
 
   function initDraft(): void {
@@ -47,18 +58,38 @@ export function useCookieConsentUi() {
       triggerElement = trigger ?? (document.activeElement as HTMLElement | null)
     }
 
+    consentRequest.value = null
+    customizing.value = false
     initDraft()
     view.value = 'popup'
   }
 
-  function expand(options?: { userInitiated?: boolean }): void {
+  function expand(
+    options?: { userInitiated?: boolean, trigger?: HTMLElement | null },
+  ): void {
     userInitiatedOpen = options?.userInitiated ?? true
+    consentRequest.value = null
+    customizing.value = options?.userInitiated ?? true
+
+    if (import.meta.client && options?.trigger) {
+      triggerElement = options.trigger
+    }
 
     if (view.value === 'hidden') {
       initDraft()
     }
 
     view.value = 'modal'
+  }
+
+  function customize(): void {
+    if (view.value !== 'modal') {
+      expand({ userInitiated: true })
+
+      return
+    }
+
+    customizing.value = true
   }
 
   function shouldFocusOnShow(): boolean {
@@ -80,6 +111,7 @@ export function useCookieConsentUi() {
 
   function close(): void {
     view.value = 'hidden'
+    customizing.value = false
 
     const target = triggerElement
     const shouldRestoreFocus = userInitiatedOpen
@@ -102,6 +134,49 @@ export function useCookieConsentUi() {
 
       document.body.focus()
     }
+  }
+
+  function requestConsent(categoryId: string): boolean {
+    if (!import.meta.client || consentRequestShown) {
+      return false
+    }
+
+    const category = consent.categories.find(
+      cat => cat.id === categoryId,
+    )
+
+    if (!category || category.required) {
+      return false
+    }
+
+    if (consent.isAllowed(categoryId) || consent.isDecided.value) {
+      return false
+    }
+
+    if (view.value !== 'hidden' || autoShowTimer !== null) {
+      return false
+    }
+
+    consentRequestShown = true
+    consentRequest.value = categoryId
+
+    return true
+  }
+
+  function grantRequest(expectedId: string): void {
+    const requestedId = consentRequest.value
+
+    consentRequest.value = null
+
+    if (!requestedId || requestedId !== expectedId) {
+      return
+    }
+
+    consent.allow([...consent.granted.value, requestedId])
+  }
+
+  function dismissRequest(): void {
+    consentRequest.value = null
   }
 
   function toggleDraft(categoryId: string): void {
@@ -136,6 +211,10 @@ export function useCookieConsentUi() {
   function withdrawAll(): void {
     consent.withdrawAll()
     close()
+  }
+
+  function rejectAll(): void {
+    withdrawAll()
   }
 
   function scheduleAutoShow(view: 'popup' | 'modal' = 'popup'): void {
@@ -211,21 +290,30 @@ export function useCookieConsentUi() {
   }
 
   const readonlyView = computed(() => view.value)
+  const readonlyCustomizing = computed(() => customizing.value)
+  const readonlyConsentRequest = computed(() => consentRequest.value)
 
   return {
     view: readonlyView,
+    isCustomizing: readonlyCustomizing,
+    consentRequest: readonlyConsentRequest,
     draft,
     toggleDraft,
     commitDraft,
     allowAll,
     withdrawAll,
+    rejectAll,
     openPopup,
     expand,
+    customize,
     close,
     isTriggerNode,
     scheduleAutoShow,
     cancelAutoShow,
     shouldFocusOnShow,
     switchProps,
+    requestConsent,
+    grantRequest,
+    dismissRequest,
   }
 }

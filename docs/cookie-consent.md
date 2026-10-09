@@ -13,6 +13,429 @@ via `<LazyCookiesBanner />`.
 
 ---
 
+## Legal requirements (EU / Poland)
+
+This section is an engineering summary of primary sources, not legal advice.
+Research date: 2026-10-09. Citations give article and paragraph numbers so you
+can check each claim against the source. Items marked **[secondary]** come from
+reporting or commentary, not from the primary text. Items marked
+**[paraphrase]** are a paraphrase of a court ruling that was not re-read in the
+original. Re-check both kinds before relying on them for a legal decision.
+
+Use this section when you change the consent UI. It records what the law
+requires, what it forbids, and where the room to manoeuvre is.
+
+### Legal frame
+
+**ePrivacy Directive 2002/58, Art. 5(3)** (as amended by 2009/136). Storing
+information on a terminal, or accessing information already stored there,
+needs the user's consent. Two exceptions apply: storage or access for the sole
+purpose of transmission, and storage or access that is strictly necessary for a
+service the user explicitly requested.
+
+- The rule covers **any** information, not only personal data: CJEU Planet49
+  C-673/17 ¶¶61-65 [paraphrase]; EDPB Guidelines 2/2023 ¶¶9-12.
+- `localStorage` and `sessionStorage` count the same as cookies (EDPB 2/2023
+  ¶¶37-38; WP29 WP194 §1).
+- Purely browser-local processing that never leaves the device is outside
+  Art. 5(3) (EDPB 2/2023 ¶44). Reading that data or transmitting it brings it
+  back inside.
+
+**Consent standard.** The standard is GDPR Art. 4(11): freely given, specific,
+informed, unambiguous, expressed by a clear affirmative act. GDPR Art. 7 adds
+the conditions: 7(1) the controller must demonstrate consent, 7(3) withdrawal
+must be as easy as giving consent, 7(4) conditionality is taken into account.
+This standard applies to Art. 5(3) consent (EDPB Cookie Banner Taskforce
+report, Jan 2023, ¶33; EDPB Guidelines 05/2020 fn 27).
+
+**Which law applies to what.**
+
+- Placing or reading the cookie falls under national ePrivacy law. Later
+  processing falls under the GDPR (Taskforce ¶¶1-2).
+- The GDPR one-stop-shop does not apply to ePrivacy (Taskforce ¶4). Each
+  national authority applies its own rules. The Taskforce positions are a
+  minimum, not a safe harbour.
+
+**Poland.** The Prawo komunikacji elektronicznej (PKE, Dz.U. 2024 poz. 1221)
+has been in force since 10 Nov 2024 [secondary for the date].
+
+- **Art. 399** implements Art. 5(3). Ust. 1 requires prior clear information
+  plus consent. Ust. 3 pkt 2 is the "konieczne" exemption for a service the
+  user requested. The Polish text omits "strictly"; read it in line with the
+  Directive.
+- **Art. 399 ust. 2** allows consent through software or browser settings. This
+  is a Polish carry-over that is in tension with Planet49's active-behaviour
+  requirement. CNIL ld ¶¶43-45 says browser settings did not meet the standard
+  in France.
+- **Art. 400**: consent follows the data-protection rules "odpowiednio".
+- **Enforcer for cookies: Prezes UKE** (Art. 444 ust. 1 pkt 82, Art. 446
+  ust. 1, up to 3% of prior-year revenue). Art. 446 ust. 3 caps the fine at
+  15,000 zł when revenue is nil or at most 500,000 zł. That cap is the one
+  relevant to a sole trader.
+- The "3% or 1,000,000 zł" tier (Art. 446 ust. 5) applies only to Art. 398
+  direct marketing. Some Polish blogs wrongly apply it to cookies.
+- **UODO** covers the GDPR side (later processing). Its PKE fines under
+  Art. 445 cover Arts. 401, 402 and 405, not 399.
+- A UKE-versus-UODO jurisdiction debate exists [secondary: prawo.pl].
+- The amending acts 2025 poz. 637 and 820, and 2026 poz. 252, 815 and 1296,
+  were text-searched with no hits on Arts. 399, 444 or 446. That was a text
+  search, not a legal review.
+- No published UKE or UODO cookie-banner fine was found.
+
+### What is exempt from consent
+
+The exemption test has two limbs:
+
+1. The service was explicitly requested by the user.
+2. The storage is strictly necessary for that service, judged from the user's
+   point of view (WP194 §§2.2, 5).
+
+A multi-purpose cookie is exempt only if every purpose is exempt (WP194 §2.4).
+Lifespan must be tied to purpose (WP194 §2.3).
+
+| Item | EU / WP29 view | National view | Verdict for Besidka |
+|------|----------------|---------------|---------------------|
+| Auth session | Exempt for the session (WP194 §3.2). Persistent "remember me" cookies are not exempt without an explicit user choice. | CNIL ld ¶49: exempt, with no session/persistent split. Do not reuse for other purposes (¶48). | Exempt (Better Auth session, 7 days). A long default lifetime is a grey zone under the stricter WP29 reading. |
+| CSRF | Not named in any source. Fits "security of the requested service" (WP194 §3.3). | Fits CNIL ld ¶49. | Exempt by inference, single purpose. |
+| Consent-record cookie | No EU text. | CNIL ld ¶49 expressly exempts it. | Exempt (`cookies_consent`). Store no identifier beyond the choice (EDPB 05/2020 ¶106). |
+| Load balancing | Exempt (WP194 §3.5). | Exempt (CNIL ld ¶49). | Exempt. |
+| Security / bot protection | Exempt only for the security of the requested service (WP194 §3.3). | CNIL FAQ Q17: a CAPTCHA is consent-free only if solely for security or authentication. Provider reuse of the data needs consent. | Turnstile on sign-in, sign-up and reset-password is defensible as exempt. A site-wide `__cf_bm` is a grey zone: it serves the provider's bot management. No DPA decision was found on `__cf_bm` or Turnstile. Cloudflare's own "strictly necessary" label is vendor opinion. |
+| UI customisation (theme, language, layout) | Exempt only if set by an explicit user act AND session or short-lived (WP194 §3.6, §5 item 6). Longer lifespans need a prominent notice. | CNIL ld ¶49: exempt when intrinsic and expected, with no lifetime cap. | Besidka keeps these consent-gated under `preferences` (conservative choice). This is the WP29-versus-CNIL split. |
+| First-party audience analytics | WP194 §4.3: not exempt, but low-risk. | CNIL ld ¶¶49-51 exempts strictly limited measurement. | This is an EU split. Besidka's landing counter is cookieless and identifier-free. |
+
+### MUST
+
+- **No non-exempt storage or reads before a positive act.** Art. 5(3); PKE
+  Art. 399 ust. 1; Taskforce ¶7.
+- **Consent per purpose.** EDPB 05/2020 ¶¶42-44; PKE Art. 400.
+- **Reject on the first layer, in the same format as Accept.** Taskforce ¶8: a
+  "vast majority" of authorities hold that having no refuse option on a layer
+  with an accept button is an infringement. A few authorities dissent. CNIL
+  reco ¶¶30-32 is stricter: same screen, same ease, same format. One click to
+  accept against several to refuse biases the choice (¶31).
+- **Withdrawal as easy as consent, reachable at all times.** GDPR Art. 7(3);
+  EDPB 05/2020 ¶¶113-114; Taskforce ¶¶31-35; CNIL reco ¶¶40-41. A persistent
+  icon or footer link is acceptable (Taskforce ¶32). CNIL reco ¶¶42-43 suggests
+  a bottom-left cookie icon.
+- **Records that demonstrate consent.** GDPR Art. 7(1); EDPB 05/2020
+  ¶¶104-108. Keep proof while the processing lasts, then no longer than needed
+  (¶107). CNIL reco ¶48 lists proof methods. Besidka: consent receipts via
+  `/api/v1/consents`.
+
+### MUST NOT
+
+- **Pre-tick boxes.** Planet49 ¶¶52, 55 [paraphrase]; Taskforce ¶10; GDPR
+  Recital 32; Orange Romania C-61/19 [paraphrase].
+- **Treat scrolling, silence, continued browsing or X as consent.** EDPB 05/2020
+  ¶86; CNIL ld ¶27. X may count as refusal only if the banner says so (CNIL reco
+  ¶33). The Italian Garante uses X as "continue without consent" [secondary].
+- **Make Reject a faint link or low-contrast.** Taskforce ¶¶11-14, ¶18. Colour
+  asymmetry in general is judged case by case (Taskforce ¶¶17-19). Equal
+  styling is the safe default.
+- **Rely on legitimate interest to place cookies.** Taskforce ¶24.
+- **Run a cookie wall**, meaning access conditional on consent. EDPB 05/2020
+  ¶¶39-41. A blocking modal with an equal Reject is not a wall in itself (an
+  engineering reading of ¶40). Authorities diverge:
+  - CNIL ld ¶¶17-18 and FAQ Q32 judge walls case by case, after the Conseil
+    d'État ruling of 19 June 2020.
+  - CJEU C-252/21 ¶150 concerns a dominant platform.
+  - Taskforce ¶13: the design must not imply that consent is needed for access
+    or "clearly push" consent.
+- **Re-nag on every page.** CNIL reco ¶35.
+- **Degrade unrelated functionality on refusal.** EDPB 05/2020 ¶¶46-48.
+- **Reuse an exempt cookie for non-exempt purposes.** WP194 §2.4.
+
+### MAY: lawful ways to get a decision quickly
+
+- Show the banner immediately on first visit and keep it until the user
+  chooses.
+- Use neutral, informative copy that explains what consent enables (WP194
+  §2.6; CNIL reco ¶14). The line is "clearly pushes" (Taskforce ¶13).
+- Ask for just-in-time consent at the moment the user uses a feature that needs
+  the storage (CNIL reco ¶13). This fits per-purpose granularity.
+- Withhold only the specific feature that cannot work without the storage.
+- Re-ask after a refusal at an interval.
+  - CNIL good practice is to keep both consent and refusal for 6 months (reco
+    ¶¶37-39, FAQ Q21).
+  - The EDPB only says "at appropriate intervals" (05/2020 ¶111). The GDPR sets
+    no time limit (¶110).
+  - Besidka's consent cookie lives 180 days.
+- Watch the Commission's Digital Omnibus proposal (19 Nov 2025). It would add
+  GDPR Art. 88a (one-click reject, 6-month bar on re-asking). Per [secondary]
+  reports, the Council's June 2026 text dropped the cookie articles. It is not
+  law.
+
+### Enforcement reality
+
+- CNIL fined Google €150M and Facebook €60M (6 Jan 2022) because refusing was
+  harder than accepting [secondary summary]. It fined Google again €325M in
+  Sept 2025, partly for asymmetric consent during account creation, and Shein
+  €150M the same month.
+- CNIL sent about 20 formal notices in May 2021 over refusal not being as
+  simple as acceptance. noyb sent 500+ draft complaints in 2021 [secondary].
+- The Spanish AEPD fined a small online retailer about €30k in 2021
+  [secondary].
+- For a small site, realistic exposure is complaint-driven or scan-driven. The
+  practical rule: no non-exempt storage before consent, and an equal Reject.
+
+### Where authorities diverge
+
+- Persistent-login and UI-preference lifetime: WP29 is stricter than CNIL.
+- First-party analytics exemption: CNIL yes, WP29 no.
+- Cookie walls: EDPB flat, CNIL case by case.
+- First-layer Reject: Taskforce majority, a few dissent, CNIL stricter.
+- Re-prompt interval and "X means refusal": CNIL only.
+- PKE Art. 399 ust. 2 browser settings: Polish-specific, in tension with
+  Planet49.
+
+### Sources
+
+- [EUR-Lex 2002/58](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02002L0058-20091219)
+- [PKE promulgated text](https://eli.gov.pl/api/acts/DU/2024/1221/text/O/D20241221.pdf)
+- [CNIL, Google fined 325 million euros (2025)](https://www.cnil.fr/en/cookies-and-advertisements-inserted-between-emails-google-fined-325-million-euros-cnil)
+- [CNIL cookies FAQ](https://www.cnil.fr/fr/cookies-et-autres-traceurs/regles/cookies/FAQ)
+- [CNIL 2021 formal notices](https://www.cnil.fr/fr/refuser-les-cookies-doit-etre-aussi-simple-que-de-les-accepter-une-vingtaine-dorganismes-mis-en)
+- [Cloudflare cookies documentation](https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/)
+- [prawo.pl on consent through browser settings](https://www.prawo.pl/biznes/zgoda-na-cookies-udzielona-przez-ustawienie-przegladarki,512328.html)
+- EDPB Guidelines 05/2020 on consent.
+- EDPB Guidelines 2/2023 on the technical scope of Art. 5(3) ePrivacy.
+- EDPB Guidelines 03/2022 on deceptive design patterns in social-media
+  interfaces (outside this scope; applies only by analogy).
+- EDPB Cookie Banner Taskforce report (Jan 2023).
+- WP29 Opinion 04/2012 on cookie consent exemption (WP194).
+
+---
+
+## First layer, states and just-in-time prompt
+
+How the consent UI implements the MUST / MUST NOT lists above. Read this before
+changing `app/components/Cookies/`, `useCookieConsentUi()` or any call site of
+`requestPersistence()`.
+
+### State model
+
+Three states, derived from `isDecided` and the granted optional categories
+(`hasOptionalGrant` in `Banner.client.vue`):
+
+| State | `isDecided` | Optional grant | Meaning |
+|-------|-------------|----------------|---------|
+| Undecided | `false` | none | No cookie, a cookie from another `revision`, or the user closed the banner without choosing. Optional storage is purged. |
+| Decided with a grant | `true` | at least one | The user accepted preferences. Optional storage is allowed. |
+| Decided without | `true` | none | The user used Reject all. Same storage rules as undecided, but the first layer is not offered again until the cookie expires (180 days). |
+
+Closing the banner (X or Esc) never changes state, so an undecided visitor stays
+undecided and is asked again the next time the site is opened or reloaded, not
+on every route change (MUST NOT "treat X as consent", MUST NOT "re-nag on every
+page"). The just-in-time prompt's latch is a module-scope variable, so it
+resets on reload and is not persisted anywhere; adding a storage key to
+remember it would itself need a consent basis.
+
+### Which buttons show in each state
+
+| State | Popup (non-chat pages) | Modal (chat layout, or after Customize / footer opener) |
+|-------|------------------------|--------------------------------------------------------|
+| Undecided | Benefit text, policy link, **Reject all** and **Accept all** side by side, then **Customize** | First layer with the same content. **Customize** switches the modal to the per-category switches; there the footer offers **Reject all** and **Accept all** plus **Allow selected** |
+| Decided with a grant | Per-category state, details toggle, **Withdraw consent** and **Change preferences** as equal buttons | Switches, footer **Withdraw consent** and **Accept all**, plus **Allow selected** |
+| Decided without | Per-category state, details toggle, **Change preferences** only | Switches, footer **Reject all** and **Accept all**, plus **Allow selected** |
+
+**Withdraw consent** replaces **Reject all** only when there is something to
+withdraw, so the label always describes what the button does. Both call the same
+`withdrawAll()`, which clears optional storage immediately (GDPR Art. 7(3)).
+
+### Equal prominence rule
+
+`app/components/Cookies/Choices.vue` renders the Reject and Accept pair, and
+both buttons take the **same single class string** (`buttonClasses`: `btn btn-sm
+btn-accent btn-block hitslop`) in a two-column grid. Do not give one of them its
+own class, colour, size or order. This is the "same format as Accept" MUST and the
+"no faint Reject" MUST NOT. The component takes labels and test ids as props so
+the popup and the modal share it, and `Choices.spec.ts` asserts the classes are
+identical. Customize is deliberately a quieter `btn-ghost`: it is a third
+route, not a substitute for Reject.
+
+The decided popup follows the same rule for GDPR Art. 7(3) (withdrawal as easy
+as consent): **Withdraw consent** and **Change preferences** are rendered by
+`Choices.vue` too (stacked in one column through its `stacked` prop, because the
+labels are long for a 20rem popup), with the same class string and no `order`
+trick. When there is nothing to withdraw, **Change preferences** shows alone
+with that same class string.
+
+After **Customize** in the compact modal the first layer is swapped out, which
+would drop the focused button to `body`; `Banner.client.vue` moves focus to the
+modal heading (`tabindex="-1"`) on the next tick.
+
+### Just-in-time "Remember your preferences?" prompt
+
+`requestPersistence()` (`app/composables/preference-storage.ts`) is called at
+the moment a user changes a setting that would be persisted. It asks
+`useCookieConsentUi().requestConsent('preferences')`, which shows
+`Cookies/RememberPrompt.client.vue`: **Remember** grants `preferences`, **Not
+now** and the close button dismiss. This is the MAY item "ask for just-in-time
+consent at the moment the user uses a feature that needs the storage". Both
+buttons carry identical classes.
+
+The anti-nag rules and the legal items they satisfy:
+
+| Rule | Where it lives | Legal item |
+|------|----------------|------------|
+| Undecided users only (`isAllowed` or `isDecided` returns `false`) | `requestConsent()` in `ui.ts` | MUST NOT re-nag; a decided user, including a refusal, is not asked again for 180 days (MAY re-ask at an interval) |
+| Once per page load, through a module-level latch (`consentRequestShown`) that resets on reload and is never touched during SSR | `ui.ts` | MUST NOT re-nag on every page |
+| Not while a consent view is open (`view !== 'hidden'`) or the auto-show timer is pending | `requestConsent()` | Never stack two consent surfaces; the full banner takes precedence |
+| Not while the notification prompt is visible (`notification-prompt:is-visible` state) | `requestPersistence()` | Never stack two prompts; unrelated to consent but both are modal-like nags |
+| The reverse: the notification prompt does not show while `cookie-consent:request` is set | `showUnlessConsentRequestOpen()` in `notification-prompt.ts` (proactive and missed-notification triggers); an explicit "enable notifications" click takes over and clears the request | The two prompts never stack in either order |
+| `grantRequest(expectedId)` grants only when the open request is for `expectedId` (`'preferences'` from `RememberPrompt`), otherwise it clears the request and grants nothing | `ui.ts` | A grant must match the purpose the prompt's text describes |
+| Dismiss on route change (the listener is removed on unmount) | `router.afterEach` in `RememberPrompt.client.vue` | The question belongs to the action that triggered it |
+| **Never** from `usePreferenceStorage().setItem` | by design | A write is not a user act; background and restore paths write too |
+| **Never** from `useUserSetting().syncForUser` | by design | Sync runs on sign-in and is not user-initiated |
+| Neutral copy, Remember and Not now equally prominent, no pre-selection | `Cookies/RememberPrompt.client.vue`, locale files | "Clearly pushes" line (Taskforce ¶13); no pre-ticked choice |
+| Closing or ignoring it stores nothing | `dismissRequest()` | MUST NOT treat silence as consent |
+
+Hook sites (each calls `requestPersistence()` right after a user-initiated
+change):
+
+- `useThemeToggle` (`theme-toggle.ts`): theme change. On iOS standalone the
+  toggle reloads the app 500 ms later so the status bar picks up the new
+  `theme-color` meta (WebKit reads it only at load); that reload is skipped
+  while `preferences` is not allowed, because the theme key was never
+  persisted and the reload would revert the theme and drop the "Remember?"
+  prompt. The consent check runs inside the toggle, not at composable setup.
+- `ChatInput/ModelsTrigger.vue`: `selectModel` and `selectGatewayModel`.
+- `ChatInput.client.vue`: `selectReasoningLevel` and `selectWebSearchProvider`.
+- `useFileManager` (`file-manager.ts`): view-mode setter.
+- `useUserSetting` (`user-setting.ts`): the signed-out branch of the reasoning
+  expanded, reasoning auto-hide, sidebar pinned, favorite models and favorite
+  gateway models setters. A signed-in user's settings live in the account, not
+  in the browser, so nothing is asked.
+
+When you add a new preference that a user can change directly, call
+`requestPersistence()` from the handler of that change, not from the storage
+layer.
+
+### Pre-consent purge
+
+Preference keys must not be on the device before a decision (MUST "no
+non-exempt storage before a positive act"). Two mechanisms cover that:
+
+- **The module plugin** (`modules/cookie-consent/src/runtime/plugins/
+  consent.client.ts`) runs the cleanup for every category that is not granted on
+  every client boot. It used to return early when the user was undecided; it no
+  longer does, so an undecided visitor has all non-required entries from the
+  manifest removed, including keys left by an earlier version or a stale
+  revision.
+- **The gate plugin** (`app/plugins/cookie-consent-gate.client.ts`) removes
+  `nuxt-color-mode` (localStorage key and cookie) at startup while `preferences`
+  is not granted, and again after every `colorMode.preference` change. The
+  `@nuxtjs/color-mode` plugin runs first and writes the key synchronously, so
+  the write-then-purge happens in the same startup pass and is never persisted
+  across a reload. The theme keeps working in-session through the module's
+  reactive state.
+
+`usePreferenceStorage()` complements both: while `preferences` is not granted,
+writes go to an in-memory map instead of `localStorage`, so the app keeps
+working in-session.
+
+The manifest drives the purge. A key that is written but not declared is never
+purged, which is a GDPR Art. 7(3) problem (this is how
+`settings_favorite_models`, `settings_favorite_gateway_models` and
+`settings_web_search_tool` went undeclared). `tests/unit/config/
+cookie-consent.spec.ts` pins the manifest against the locale files.
+
+### Never call consent composables during SSR
+
+`useCookieConsent()` and `useCookieConsentUi()` read and write `useState` keys
+(`cookie-consent:granted`, `cookie-consent:view`, ...). Anything written to
+`useState` during SSR is serialized into the Nuxt payload. `/` is cached at the
+edge with SWR, so a payload built for the first requester would be served to
+other visitors, who would hydrate with that visitor's consent. That is a
+cross-user consent leak and breaks the "never branch cacheable HTML on consent"
+rule in [SSR and edge-cache constraints](#ssr-and-edge-cache-constraints).
+
+The rule for anything that renders on the server: **call the consent
+composables lazily, inside a client-side event handler, never in `<script
+setup>`.** `LandingFooter.vue` is the example. Its "Cookie settings" button is
+server-rendered, and its click handler calls `useCookieConsentUi().expand(...)`
+itself:
+
+```ts
+function openCookieSettings(event: MouseEvent): void {
+  useCookieConsentUi().expand({
+    userInitiated: true,
+    trigger: event.currentTarget as HTMLElement,
+  })
+}
+```
+
+Two tests guard this. `tests/unit/components/LandingFooter.spec.ts` asserts the
+composable is not called while mounting. The e2e tests "SSR HTML of <route>
+carries no consent state" assert that the HTML contains no `cookie-consent:` key
+for each public SSR route (`/`, `/privacy-policy`, `/terms-of-use`,
+`/cookie-policy`, `/signin`, `/signup`), once without a consent cookie and once
+with a valid `cookies_consent` cookie on the request.
+
+### Why the consent revision was not bumped
+
+`cookieConsent.revision` is `1`. A cookie whose `v` differs from the revision is
+ignored, so a bump makes every visitor undecided again. It was not bumped
+because nothing a past decision covered has changed:
+
+- The categories (`necessary`, `preferences`) and their purposes are unchanged.
+- The newly declared keys (`settings_favorite_models`,
+  `settings_favorite_gateway_models`, `settings_web_search_tool`) were already
+  written under the `preferences` purpose; they were only missing from the
+  manifest, so they were never purged. The manifest now matches what a user who
+  consented to preferences already agreed to.
+- The new `necessary` entries were already being set; they are now disclosed.
+- A bump would reset existing refusals early, which is the re-nagging the legal
+  section forbids, and would turn every existing decision into a new receipt.
+
+Bump the revision when a category is added or removed, or when a purpose
+changes so that a past "yes" would no longer cover it.
+
+---
+
+## Follow-ups
+
+Deliberately not part of the first-layer change. Each is a known gap, not an
+oversight.
+
+- **`besidka-push` IndexedDB is created for every visitor before any
+  decision.** `app/plugins/push-navigation.client.ts` opens the database on
+  `app:mounted` regardless of consent or notification state. A guard such as
+  `Notification.permission === 'granted'` would fix it, but the same database is
+  what carries the iOS cold-start push handoff, so the guard has to be verified
+  against `docs/chats/shared-pwa-handoff.md` first. Whether an empty database
+  counts as storage under Art. 5(3) is itself arguable; the purpose (opening a
+  pushed chat) is tied to a feature the user has to switch on. Until it is
+  fixed, `content/legal/cookie-policy.md` discloses it in the necessary table:
+  empty unless a notification is tapped, then only the target path and a
+  timestamp, deleted as soon as they are read.
+- **`better-auth.last_used_login_method` is set server-side at sign-in before
+  any decision** (the `lastLoginMethod` plugin uses a literal `setCookie`) and is
+  only cleared client-side after hydration, once the gate plugin sees
+  `preferences` is not granted. A server-side hook that drops the cookie when the
+  `cookies_consent` cookie does not grant `preferences` would close the window.
+  Until then the cookie policy says so: the cookie can exist briefly, and the
+  app removes it as soon as the page loads when `preferences` is not allowed.
+- **Better Auth cookies not declared.** `account_data` is not declared because
+  it is only written when `account.storeAccountCookie` is enabled, and this app
+  does not enable it; declare it if that option is ever turned on. `oauth_state`
+  is not declared because it is only written under the `cookie` OAuth state
+  strategy, and this app uses the `database` strategy (the plain `state` cookie
+  is declared). The cookies are read from the installed `better-auth` 1.6.26
+  source; re-verify names and lifetimes on a Better Auth upgrade, because the
+  manifest and `content/legal/cookie-policy.md` repeat them.
+  The `__Secure-` prefix in those names comes from `createCookieGetter`: with
+  `advanced.useSecureCookies` unset and `baseURL` configured as the dynamic
+  object (`protocol: 'auto'`), it falls through to the production-environment
+  check rather than the request protocol, so production names carry the prefix
+  and a local development copy does not.
+- **Receipts do not record the source of a decision.** A decision made from the
+  banner and one made from the "Remember your preferences?" prompt look
+  identical in `consent_receipts`. Recording the source needs a migration of the
+  consent database (`CONSENT_DB`), which is separate from the main schema.
+
+---
+
 ## Reading consent state (client-side)
 
 Use `useCookieConsent()` anywhere in client-side Vue code:
@@ -269,6 +692,11 @@ For personalisation that depends on consent (e.g. showing/hiding a
 preference-driven widget), gate it in client-side Vue
 (`v-if="isAllowed('preferences')"`) not in server-rendered layouts.
 
+The SWR cache on `/` is safe only because Nitro's cached handler does not vary
+on cookies: every visitor gets the same cached HTML regardless of their consent
+cookie, and that HTML carries no consent state. Never add `varies: ['cookie']`
+(or any cookie-keyed variation) to that route rule.
+
 ---
 
 ## Adding new cookies to the manifest
@@ -294,36 +722,48 @@ cookieConsent: {
 },
 ```
 
-2. **Add i18n descriptions** in `i18n/i18n.config.ts` for both `en` and `uk`:
+2. **Add i18n descriptions** in the app locale files
+   `i18n/locales/cookie-consent.en.ts` and `i18n/locales/cookie-consent.uk.ts`
+   (registered through the `i18n:registerModule` hook in `nuxt.config.ts`). Each
+   is a `defineI18nLocale(() => ({ ... }))` module; entries live under
+   `cookieConsent.entries`, keyed by the manifest `id`:
 
 ```ts
-// i18n/i18n.config.ts
-messages: {
-  en: {
-    cookieConsent: {
-      entries: {
-        'my-new-pref': {
-          description: 'What this cookie/key stores and who sets it.',
-          duration: 'Until deleted',
-        },
+// i18n/locales/cookie-consent.en.ts
+export default defineI18nLocale(() => ({
+  cookieConsent: {
+    entries: {
+      'my-new-pref': {
+        description: 'What this cookie/key stores and who sets it.',
+        duration: 'Until deleted',
       },
     },
   },
-  uk: {
-    cookieConsent: {
-      entries: {
-        'my-new-pref': {
-          description: 'Що зберігає цей ключ та хто його встановлює.',
-          duration: 'До видалення',
-        },
-      },
-    },
-  },
-},
+}))
 ```
 
-3. That is all. The banner's modal auto-renders all declared entries from the
-   manifest. No component changes required.
+```ts
+// i18n/locales/cookie-consent.uk.ts
+export default defineI18nLocale(() => ({
+  cookieConsent: {
+    entries: {
+      'my-new-pref': {
+        description: 'Що зберігає цей ключ та хто його встановлює.',
+        duration: 'До видалення',
+      },
+    },
+  },
+}))
+```
+
+   `tests/unit/config/cookie-consent.spec.ts` fails if a manifest entry lacks a
+   description or duration in either language, or if a locale has text for an id
+   that is not in the manifest.
+
+3. Update the tables in `content/legal/cookie-policy.md` and bump its
+   `updatedAt`. The policy is the user-facing copy of the manifest.
+4. That is all for the UI. The banner's modal auto-renders all declared entries
+   from the manifest. No component changes required.
 
 ---
 
@@ -390,12 +830,15 @@ Runs once per client boot and subscribes to consent changes.
 - The pending map is left intact so in-session values remain accessible.
 
 **Ongoing prevention — color mode:**
-`@nuxtjs/color-mode` writes `nuxt-color-mode` to localStorage on every theme
-change (inside its own plugin — cannot be intercepted at write time). The gate
-plugin watches `useColorMode().preference` with `{ flush: 'post' }` and, if
-`preferences` is denied, removes the `nuxt-color-mode` localStorage key and
-cookie right after the write. The theme keeps working in-session via the
-module's reactive state.
+`@nuxtjs/color-mode` writes `nuxt-color-mode` to localStorage inside its own
+plugin, which runs before this one, so the write itself cannot be intercepted.
+Instead the gate plugin purges the key (and the cookie of the same name) in the
+same synchronous startup pass whenever `preferences` is not granted, and again
+after every `colorMode.preference` change (a `watch` with `{ flush: 'post' }`).
+The head script only reads the key on the next load, by which time it is gone,
+so the write-then-purge window is never persisted. The theme keeps working
+in-session via the module's reactive state. See
+[Pre-consent purge](#pre-consent-purge).
 
 **Ongoing prevention — better-auth.last_used_login_method:**
 The better-auth client sets this cookie during sign-in (not interceptable). The
@@ -417,7 +860,11 @@ acceptable and documented here.
 1. Declare it in `nuxt.config.ts` under the `preferences` category.
 2. Use `usePreferenceStorage().setItem/getItem/removeItem` instead of
    `useLocalStorage` or raw `localStorage` in the composable that owns it.
-3. Add an i18n description per the manifest guide above.
+3. Add an i18n description per the manifest guide above, and a row in the
+   preferences table of `content/legal/cookie-policy.md`.
+4. If a user can change it directly, call `requestPersistence()` from that
+   change handler (see
+   [Just-in-time prompt](#just-in-time-remember-your-preferences-prompt)).
 
 ### Plyr VideoPlayer
 
@@ -460,15 +907,15 @@ Plyr's default `storageKey` is `'plyr'`, which is already declared in the
 
 | Category id | Required | Purpose |
 |-------------|----------|---------|
-| `necessary` | Yes | Auth session and consent cookie — always active |
+| `necessary` | Yes | Auth cookies, the consent cookie, the unsent-message backup and push/PWA bookkeeping keys — always active |
 | `preferences` | No | UI state persisted in cookies/localStorage |
-| `marketing` | No | Not currently in use — shown as "not used" in the banner |
 
 There is **no `analytics` category** today: the landing analytics is cookieless
 and anonymous and runs without consent (see
 [Analytics consent — when it is (and isn't) required](#analytics-consent--when-it-is-and-isnt-required)).
 Add an `analytics` category only when a consent-requiring analytics tool (e.g.
-GA4) is introduced.
+GA4) is introduced. Likewise there is **no `marketing` category**: it is
+commented out in `nuxt.config.ts` and does not appear in the banner.
 
 Check `nuxt.config.ts` → `cookieConsent.categories` for the full list of
 declared entries per category.

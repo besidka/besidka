@@ -2,9 +2,8 @@ export default defineI18nLocale(() => ({
   cookieConsent: {
     title: 'Cookie Consent',
     description:
-      'We use cookies and similar technologies to improve your experience, and '
-      + 'analyse traffic. You can choose which '
-      + 'categories to allow.',
+      'We use cookies and similar storage. Necessary ones keep the site '
+      + 'working; optional ones are used only if you allow them.',
     close: 'Close',
     currentState: 'Your current state',
     details: {
@@ -15,6 +14,8 @@ export default defineI18nLocale(() => ({
     },
     actions: {
       allowAll: 'Allow all',
+      acceptAll: 'Accept all',
+      rejectAll: 'Reject all',
       allowSelected: 'Allow selected',
       withdraw: 'Withdraw consent',
       customize: 'Customize',

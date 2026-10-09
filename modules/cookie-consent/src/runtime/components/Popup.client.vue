@@ -144,8 +144,13 @@ const slotProps = {
   commitDraft: ui.commitDraft,
   allowAll: ui.allowAll,
   withdrawAll: ui.withdrawAll,
+  rejectAll: ui.rejectAll,
   expand: ui.expand,
+  customize: ui.customize,
   close: ui.close,
+  get isCustomizing() {
+    return ui.isCustomizing.value
+  },
   get isDecided() {
     return consent.isDecided.value
   },
@@ -199,9 +204,15 @@ const slotProps = {
           <div>
             <button
               type="button"
+              @click="ui.rejectAll()"
+            >
+              {{ translate('cookieConsent.actions.rejectAll') }}
+            </button>
+            <button
+              type="button"
               @click="ui.allowAll()"
             >
-              {{ translate('cookieConsent.actions.allowAll') }}
+              {{ translate('cookieConsent.actions.acceptAll') }}
             </button>
             <button
               type="button"
