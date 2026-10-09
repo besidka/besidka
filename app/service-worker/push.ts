@@ -1,3 +1,5 @@
+import { resolveInternalNavigationTarget } from './internal-navigation'
+
 declare const self: ServiceWorkerGlobalScope & typeof globalThis
 
 interface PushNotificationPayload {
@@ -23,9 +25,7 @@ const FALLBACK_NOTIFICATION: PushNotificationPayload = {
 }
 
 export function isInternalNavigationUrl(url: unknown): url is string {
-  return typeof url === 'string'
-    && url.startsWith('/')
-    && !url.startsWith('//')
+  return resolveInternalNavigationTarget(url, self.location.origin) !== null
 }
 
 function savePendingNavigation(url: string): Promise<void> {
@@ -97,9 +97,10 @@ function parsePushPayload(event: PushEvent): PushNotificationPayload {
       body: typeof parsedPayload.body === 'string'
         ? parsedPayload.body
         : FALLBACK_NOTIFICATION.body,
-      url: isInternalNavigationUrl(parsedPayload.url)
-        ? parsedPayload.url
-        : FALLBACK_NOTIFICATION.url,
+      url: resolveInternalNavigationTarget(
+        parsedPayload.url,
+        self.location.origin,
+      ) ?? FALLBACK_NOTIFICATION.url,
       tag: typeof parsedPayload.tag === 'string'
         ? parsedPayload.tag
         : undefined,
@@ -132,9 +133,10 @@ export function handleNotificationClick(event: NotificationEvent): void {
 
   const notificationData = event.notification.data as
     { url?: string } | undefined
-  const targetUrl = notificationData?.url
-    ? notificationData.url
-    : '/'
+  const targetUrl = resolveInternalNavigationTarget(
+    notificationData?.url,
+    self.location.origin,
+  ) ?? '/'
 
   event.waitUntil(
     self.clients

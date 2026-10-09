@@ -10,13 +10,21 @@
  * database, so visitors who never enabled push never get one. The read is
  * skipped unless notification permission is granted, then skipped again when
  * indexedDB.databases() (where supported) shows no database, and an open that
- * would create one is aborted. While permission is not granted, a database
- * left empty by an earlier version of this plugin is deleted.
+ * would create one is aborted. A failing or slow databases() call falls
+ * through to that guarded open, so the handoff is never dropped. While
+ * permission is not granted, a database left empty by an earlier version of
+ * this plugin is deleted, once per page load. Targets are resolved against the
+ * page origin before navigating, see service-worker/internal-navigation.ts.
  */
+import { resolveInternalNavigationTarget } from '~/service-worker/internal-navigation'
+
 const PENDING_NAVIGATION_DB = 'besidka-push'
 const PENDING_NAVIGATION_STORE = 'pending-navigation'
 const PENDING_NAVIGATION_KEY = 'latest'
 const PENDING_NAVIGATION_TTL_MS = 5 * 60 * 1000
+const DATABASE_LISTING_TIMEOUT_MS = 500
+
+let hasDiscardedLegacyDatabase = false
 
 interface PendingNavigation {
   url: string
@@ -32,8 +40,19 @@ async function pendingNavigationDatabaseExists(): Promise<boolean> {
     return true
   }
 
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
   try {
-    const databases = await window.indexedDB.databases()
+    const databases = await Promise.race([
+      window.indexedDB.databases(),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), DATABASE_LISTING_TIMEOUT_MS)
+      }),
+    ])
+
+    if (databases === null) {
+      return true
+    }
 
     return databases.some((database) => {
       return database.name === PENDING_NAVIGATION_DB
@@ -41,11 +60,19 @@ async function pendingNavigationDatabaseExists(): Promise<boolean> {
   } catch (exception) {
     void exception
 
-    return false
+    return true
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
 function discardPendingNavigationDatabase(): void {
+  if (hasDiscardedLegacyDatabase) {
+    return
+  }
+
+  hasDiscardedLegacyDatabase = true
+
   try {
     window.indexedDB.deleteDatabase(PENDING_NAVIGATION_DB)
   } catch (exception) {
@@ -117,10 +144,8 @@ async function readAndClearPendingNavigation(): Promise<
   })
 }
 
-function isInternalPath(url: unknown): url is string {
-  return typeof url === 'string'
-    && url.startsWith('/')
-    && !url.startsWith('//')
+function resolvePushTarget(url: unknown): string | null {
+  return resolveInternalNavigationTarget(url, window.location.origin)
 }
 
 async function navigateToPushTarget(url: string): Promise<void> {
@@ -140,7 +165,9 @@ async function navigateToPushTarget(url: string): Promise<void> {
 async function consumePendingNavigation(): Promise<void> {
   const pending = await readAndClearPendingNavigation()
 
-  if (!pending || !isInternalPath(pending.url)) {
+  const target = pending ? resolvePushTarget(pending.url) : null
+
+  if (!pending || !target) {
     return
   }
 
@@ -148,7 +175,7 @@ async function consumePendingNavigation(): Promise<void> {
     return
   }
 
-  await navigateToPushTarget(pending.url)
+  await navigateToPushTarget(target)
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
@@ -193,13 +220,13 @@ export default defineNuxtPlugin((nuxtApp) => {
         return
       }
 
-      if (!isInternalPath(data.url)) {
+      const target = resolvePushTarget(data.url)
+
+      if (!target) {
         return
       }
 
-      const url = data.url
-
-      nuxtApp.runWithContext(() => navigateToPushTarget(url))
+      nuxtApp.runWithContext(() => navigateToPushTarget(target))
     })
   }
 })

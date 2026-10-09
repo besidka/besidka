@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
-import plugin from '../../../app/plugins/push-navigation.client'
 
 const mocks = vi.hoisted(() => ({
   navigateTo: vi.fn(),
@@ -14,6 +13,7 @@ interface FakeIndexedDbOptions {
   entry?: { url: string, savedAt: number } | null
   existingDatabases?: string[] | null
   isNewDatabase?: boolean
+  databasesBehavior?: 'resolve' | 'throw' | 'hang'
 }
 
 function createFakeIndexedDb(options: FakeIndexedDbOptions = {}) {
@@ -21,6 +21,14 @@ function createFakeIndexedDb(options: FakeIndexedDbOptions = {}) {
   const deleteDatabase = vi.fn()
   const deleteEntry = vi.fn()
   const databases = vi.fn(async () => {
+    if (options.databasesBehavior === 'throw') {
+      throw new Error('databases() is not allowed')
+    }
+
+    if (options.databasesBehavior === 'hang') {
+      return new Promise<never>(() => {})
+    }
+
     return (options.existingDatabases ?? []).map((name) => {
       return { name, version: 1 }
     })
@@ -118,8 +126,16 @@ async function flushPromises() {
   }
 }
 
+let visibilityHandler: (() => void) | null = null
+
 async function mountApp() {
   const hooks: Record<string, () => Promise<void>> = {}
+
+  vi.resetModules()
+
+  const { default: plugin } = await import(
+    '../../../app/plugins/push-navigation.client'
+  )
 
   plugin({
     runWithContext: (callback: () => unknown) => callback(),
@@ -144,7 +160,12 @@ describe('push-navigation plugin', () => {
 
   beforeEach(() => {
     mocks.navigateTo.mockReset()
-    vi.spyOn(document, 'addEventListener').mockImplementation(() => {})
+    visibilityHandler = null
+    vi.spyOn(document, 'addEventListener').mockImplementation((type, handler) => {
+      if (type === 'visibilitychange') {
+        visibilityHandler = handler as () => void
+      }
+    })
     vi.spyOn(window, 'addEventListener').mockImplementation(() => {})
   })
 
@@ -159,6 +180,107 @@ describe('push-navigation plugin', () => {
       Object.defineProperty(window, 'Notification', originalNotification)
     } else {
       Reflect.deleteProperty(window, 'Notification')
+    }
+  })
+
+  it('deletes the legacy database at most once per page load', async () => {
+    const fake = createFakeIndexedDb({ existingDatabases: [DATABASE_NAME] })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('default')
+
+    await mountApp()
+    visibilityHandler?.()
+    visibilityHandler?.()
+    await flushPromises()
+
+    expect(fake.deleteDatabase).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['a backslash url', '/\\evil.example.com'],
+    ['a protocol-relative url', '//evil.example.com'],
+    ['an absolute external url', 'https://evil.example.com'],
+  ])('does not navigate to %s from a pending entry', async (_label, url) => {
+    const fake = createFakeIndexedDb({
+      existingDatabases: [DATABASE_NAME],
+      entry: { url, savedAt: Date.now() },
+    })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('granted')
+
+    await mountApp()
+
+    expect(mocks.navigateTo).not.toHaveBeenCalled()
+  })
+
+  it('navigates to the path of a valid pending entry', async () => {
+    const fake = createFakeIndexedDb({
+      existingDatabases: [DATABASE_NAME],
+      entry: { url: '/chats/abc?x=1', savedAt: Date.now() },
+    })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('granted')
+
+    await mountApp()
+
+    expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/abc?x=1')
+  })
+
+  it('falls through to the guarded open when databases() throws', async () => {
+    const fake = createFakeIndexedDb({
+      existingDatabases: [DATABASE_NAME],
+      databasesBehavior: 'throw',
+      entry: { url: '/chats/abc', savedAt: Date.now() },
+    })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('granted')
+
+    await mountApp()
+
+    expect(fake.open).toHaveBeenCalledWith(DATABASE_NAME, 1)
+    expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/abc')
+  })
+
+  it('still never creates the database when databases() throws', async () => {
+    const fake = createFakeIndexedDb({
+      databasesBehavior: 'throw',
+      isNewDatabase: true,
+    })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('granted')
+
+    await mountApp()
+
+    expect(fake.abort).toHaveBeenCalledOnce()
+    expect(mocks.navigateTo).not.toHaveBeenCalled()
+  })
+
+  it('falls through to the guarded open when databases() hangs', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+    try {
+      const fake = createFakeIndexedDb({
+        databasesBehavior: 'hang',
+        entry: { url: '/chats/abc', savedAt: Date.now() },
+      })
+
+      installFakeIndexedDb(fake)
+      setNotificationPermission('granted')
+
+      const mounting = mountApp()
+
+      await vi.advanceTimersByTimeAsync(500)
+      await mounting
+
+      expect(fake.open).toHaveBeenCalledWith(DATABASE_NAME, 1)
+      expect(mocks.navigateTo).toHaveBeenCalledWith('/chats/abc')
+    } finally {
+      vi.useRealTimers()
     }
   })
 
