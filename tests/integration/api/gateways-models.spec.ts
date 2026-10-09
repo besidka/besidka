@@ -115,13 +115,11 @@ describe('gateway models API', () => {
     const fakeKv = createFakeKv()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
-    vi.stubGlobal('setResponseHeader', vi.fn())
     vi.stubGlobal('useKV', () => fakeKv)
     vi.stubGlobal('useStorage', () => createFakeCache())
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
-    ) => parser(event.params))
+    ) => event.params)
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
     }))
@@ -469,10 +467,9 @@ describe('gateway models API', () => {
       ok: true,
       json: async () => vercelCatalogPayload,
     })
-    const setResponseHeaderMock = vi.fn()
+    const responseHeaders = new Headers()
 
     vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('setResponseHeader', setResponseHeaderMock)
 
     const handler = await getHandler()
 
@@ -482,14 +479,11 @@ describe('gateway models API', () => {
 
     await expect(handler({
       params: { gateway: 'vercel' },
+      res: { headers: responseHeaders },
     } as never)).rejects.toMatchObject({
       message: 'Too many requests',
       status: 429,
     })
-    expect(setResponseHeaderMock).toHaveBeenCalledWith(
-      expect.anything(),
-      'Retry-After',
-      expect.any(Number),
-    )
+    expect(Number(responseHeaders.get('Retry-After'))).toBeGreaterThan(0)
   })
 })

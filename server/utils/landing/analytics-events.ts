@@ -1,5 +1,6 @@
-import { useLogger } from 'evlog'
-import type { H3Event } from 'h3'
+import { getRequestHeader } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
+import type { RequestEvent } from 'nuxt/server'
 import type { LandingEventName, LandingEventData } from '#shared/types/analytics.d'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 
@@ -34,7 +35,7 @@ function truncate(value: string | undefined, maxLength: number): string {
 export function trackLandingEvent(
   name: LandingEventName,
   data: LandingEventData | undefined,
-  h3Event: H3Event,
+  requestEvent: RequestEvent,
 ): void {
   try {
     const analytics = useAnalytics()
@@ -43,17 +44,17 @@ export function trackLandingEvent(
       return
     }
 
-    const userAgent = getHeader(h3Event, 'user-agent') ?? ''
+    const userAgent = getRequestHeader(requestEvent, 'user-agent') ?? ''
 
     if (BOT_PATTERN.test(userAgent)) {
       return
     }
 
-    const path = data?.path ?? h3Event.path ?? '/'
+    const path = data?.path ?? requestEvent.url.pathname
     const target = truncate(data?.target, 100)
     const country = (
-      (h3Event.context.cf as Record<string, unknown> | undefined)?.country
-      ?? getHeader(h3Event, 'cf-ipcountry')
+      (requestEvent.context.cf as Record<string, unknown> | undefined)?.country
+      ?? getRequestHeader(requestEvent, 'cf-ipcountry')
       ?? ''
     ) as string
     const deviceClass = getDeviceClass(userAgent)
@@ -65,7 +66,7 @@ export function trackLandingEvent(
       indexes: [name],
     })
   } catch (exception) {
-    const logger = useLogger(h3Event)
+    const logger = useRequestLogger(requestEvent)
 
     logger.set({
       analytics: {

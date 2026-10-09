@@ -1,9 +1,9 @@
-import { useLogger } from 'evlog'
+import { createError, useLogger } from 'evlog'
 
 export function useUnauthorizedError() {
   throw createError({
-    statusCode: 401,
-    statusMessage: `You don't have access to this resource. Try to sign out and sign in again.`,
+    message: `You don't have access to this resource. Try to sign out and sign in again.`,
+    status: 401,
   })
 }
 

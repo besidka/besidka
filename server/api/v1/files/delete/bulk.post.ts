@@ -1,16 +1,18 @@
-import { useLogger } from 'evlog'
+import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler, readBody, setResponseStatus } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const bodySchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100),
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {
@@ -22,9 +24,9 @@ export default defineEventHandler(async (event) => {
 
   if (!body.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error.flatten(),
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -99,10 +101,10 @@ export default defineEventHandler(async (event) => {
 
   if (deletedCount === 0) {
     throw createError({
-      statusCode: failedCount > 0 ? 409 : 404,
-      statusMessage: failedCount > 0
+      message: failedCount > 0
         ? 'Failed to delete files from storage. Please try again.'
         : 'No files found',
+      status: failedCount > 0 ? 409 : 404,
     })
   }
 
@@ -110,8 +112,8 @@ export default defineEventHandler(async (event) => {
 
   if (failedCount > 0) {
     throw createError({
-      statusCode: 409,
-      statusMessage: `Failed to delete ${failedCount} file(s) from storage`,
+      message: `Failed to delete ${failedCount} file(s) from storage`,
+      status: 409,
     })
   }
 

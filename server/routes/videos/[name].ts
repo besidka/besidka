@@ -1,8 +1,16 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { parseRangeHeader } from '~~/server/utils/landing/video'
 
 // @ts-ignore
 import { env } from 'cloudflare:workers'
+import {
+  defineEventHandler,
+  getRequestHeader,
+  setResponseStatus,
+} from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const ALLOWED_FILES = new Set([
   'demo.mp4',
@@ -20,7 +28,7 @@ function resolveContentType(name: string): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const { name } = getRouterParams(event) as { name: string }
+  const { name } = getDecodedRouterParams(event) as { name: string }
 
   if (!ALLOWED_FILES.has(name)) {
     throw createError({
@@ -40,7 +48,7 @@ export default defineEventHandler(async (event) => {
 
   const ifNoneMatch = getRequestHeader(event, 'if-none-match')
   const rangeHeader = getRequestHeader(event, 'range')
-  const method = event.method
+  const method = event.req.method
 
   const headObject = await CMS_BUCKET.head(name)
 
@@ -63,7 +71,7 @@ export default defineEventHandler(async (event) => {
   const rangeResult = parseRangeHeader(rangeHeader, size)
 
   if (rangeResult === 'invalid') {
-    setResponseHeaders(event, {
+    applyResponseHeaders(event, {
       'Content-Range': `bytes */${size}`,
     })
     throw createError({
@@ -87,7 +95,7 @@ export default defineEventHandler(async (event) => {
     commonHeaders['Content-Length'] = String(length)
     commonHeaders['Content-Range'] = `bytes ${offset}-${end}/${size}`
 
-    setResponseHeaders(event, commonHeaders)
+    applyResponseHeaders(event, commonHeaders)
     setResponseStatus(event, 206)
 
     if (method === 'HEAD') {
@@ -99,7 +107,7 @@ export default defineEventHandler(async (event) => {
     })
 
     if (!object) {
-      const logger = useLogger(event)
+      const logger = useRequestLogger(event)
 
       logger.set({
         video: {
@@ -118,7 +126,7 @@ export default defineEventHandler(async (event) => {
 
   commonHeaders['Content-Length'] = String(size)
 
-  setResponseHeaders(event, commonHeaders)
+  applyResponseHeaders(event, commonHeaders)
   setResponseStatus(event, 200)
 
   if (method === 'HEAD') {
@@ -128,7 +136,7 @@ export default defineEventHandler(async (event) => {
   const object = await CMS_BUCKET.get(name)
 
   if (!object) {
-    const logger = useLogger(event)
+    const logger = useRequestLogger(event)
 
     logger.set({
       video: {

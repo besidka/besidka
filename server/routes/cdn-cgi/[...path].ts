@@ -1,3 +1,5 @@
+import { defineEventHandler, setResponseStatus } from 'nuxt/server'
+
 /**
  * Silence Cloudflare's local-dev worker probes for /cdn-cgi/ProxyWorker/*.
  * These never reach the worker in production (handled at the edge) but

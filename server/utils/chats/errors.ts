@@ -6,8 +6,8 @@ import type {
 import type { GatewayId } from '#shared/types/gateways.d'
 import type { SupportedProviderId } from '#shared/types/providers.d'
 import type { ResearchProviderId } from '#shared/types/research.d'
-import type { H3Event } from 'h3'
-import { getRequestHeader } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
+import { getRequestHeader } from 'nuxt/server'
 import { InvalidToolInputError, NoSuchToolError } from 'ai'
 import { ResearchAdapterError } from '~~/server/utils/research/adapter-error'
 
@@ -37,7 +37,7 @@ const chatErrorCodes: ChatErrorCode[] = [
 
 interface NormalizeChatErrorInput {
   error: unknown
-  event?: H3Event
+  event?: RequestEvent
   providerId?: SupportedProviderId | GatewayId
   code?: ChatErrorCode
   message?: string
@@ -178,7 +178,7 @@ function readModelToolCallError(
  */
 export function normalizeModelToolCallError(input: {
   error: unknown
-  event?: H3Event
+  event?: RequestEvent
   providerId?: SupportedProviderId | GatewayId
 }): ChatErrorPayload | undefined {
   const details = readModelToolCallError(input.error)
@@ -334,7 +334,7 @@ export function serializeChatError(
 interface MapResearchProviderErrorInput {
   error: unknown
   providerId: ResearchProviderId
-  event?: H3Event
+  event?: RequestEvent
   code?: ChatErrorCode
   message?: string
 }
@@ -589,7 +589,7 @@ function getDefaultChatFix(
   }
 }
 
-export function getRequestId(event: H3Event): string | undefined {
+export function getRequestId(event: RequestEvent): string | undefined {
   try {
     return getRequestHeader(event, 'cf-ray')
       || getRequestHeader(event, 'x-request-id')

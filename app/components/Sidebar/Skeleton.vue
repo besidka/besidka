@@ -7,7 +7,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 interface Props {
   size?: 'xs' | 'sm' | 'md' | 'lg'
 }

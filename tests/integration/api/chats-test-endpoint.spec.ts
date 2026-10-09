@@ -212,12 +212,8 @@ describe('test chat endpoints', () => {
         effort: 'off',
         error: 'provider-auth',
       },
-      node: {
-        req: {
-          headers: {
-            'cf-ray': 'cf-ray-test-123',
-          },
-        },
+      req: {
+        headers: new Headers({ 'cf-ray': 'cf-ray-test-123' }),
       },
     } as any)
 
@@ -295,12 +291,8 @@ describe('test chat endpoints', () => {
         effort: 'off',
         error: 'provider-unavailable',
       },
-      node: {
-        req: {
-          headers: {
-            'cf-ray': 'cf-ray-test-456',
-          },
-        },
+      req: {
+        headers: new Headers({ 'cf-ray': 'cf-ray-test-456' }),
       },
     } as any)
 

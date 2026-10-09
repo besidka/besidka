@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, setResponseStatus } from 'nuxt/server'
 
 const RATE_LIMIT_RULE = { window: 60, max: 10 }
 const RATE_LIMIT_KEY_PREFIX = 'keys-rate-limit:exa:delete'

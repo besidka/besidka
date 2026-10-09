@@ -1,5 +1,5 @@
+import { createError } from 'evlog'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   buildBranchTitle,
@@ -7,6 +7,8 @@ import {
 } from '~~/server/utils/chats/branch'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import { markProjectsMemoryStale } from '~~/server/utils/projects/memory'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const rules = z.object({
   chatSlug: z.string().ulid(),
@@ -14,14 +16,14 @@ const rules = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const body = await readValidatedBody(event, rules.safeParse)
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -63,8 +65,8 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found.',
+      status: 404,
     })
   }
 
@@ -82,8 +84,8 @@ export default defineEventHandler(async (event) => {
 
     if (branchIndex === -1) {
       throw createError({
-        statusCode: 400,
-        statusMessage: 'Message not found in this chat.',
+        message: 'Message not found in this chat.',
+        status: 400,
       })
     }
 

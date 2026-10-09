@@ -163,11 +163,11 @@ describe('public shared chat view API', () => {
     vi.clearAllMocks()
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('useEvent', () => ({ context: {} }))
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
   })
 

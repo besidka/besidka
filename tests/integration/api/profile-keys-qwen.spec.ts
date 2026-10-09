@@ -113,7 +113,6 @@ describe('qwen key API', () => {
     vi.stubGlobal('setResponseStatus', vi.fn())
     vi.stubGlobal('enforceKeysRateLimit', enforceKeysRateLimit)
     vi.stubGlobal('useKV', () => fakeKv)
-    vi.stubGlobal('setResponseHeader', vi.fn())
     vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
       return `encrypted:${plain}`
     }))
@@ -176,8 +175,8 @@ describe('qwen key API', () => {
     await expect(postHandler({
       body: { apiKey: '' },
     } as any)).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
+      status: 400,
+      message: 'Invalid request body',
     })
   })
 
@@ -256,7 +255,9 @@ describe('qwen key API', () => {
       await getHandler({} as any)
     }
 
-    await expect(getHandler({} as any)).rejects.toMatchObject({
+    await expect(getHandler({
+      res: { headers: new Headers() },
+    } as any)).rejects.toMatchObject({
       message: 'Too many requests',
       status: 429,
     })

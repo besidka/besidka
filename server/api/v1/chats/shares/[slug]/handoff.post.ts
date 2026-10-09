@@ -1,5 +1,8 @@
-import { createError, useLogger } from 'evlog'
+import { createError } from 'evlog'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsRules = z.object({
   slug: z.string().nonempty(),
@@ -19,14 +22,11 @@ const HANDOFF_COOLDOWN_MS = 10_000
  * | 'delivery-failed' } so the UI can explain what to do.
  */
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   assertNotCrossSiteRequest(event)
 
-  const params = await getValidatedRouterParams(
-    event,
-    paramsRules.safeParse,
-  )
+  const params = paramsRules.safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({
@@ -64,7 +64,6 @@ export default defineEventHandler(async (event) => {
 
   const share = await resolveActiveShareBySlug(
     params.data.slug,
-    event,
   )
 
   if (!share) {

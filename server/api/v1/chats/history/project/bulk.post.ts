@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { refreshProjectActivityAt } from '~~/server/utils/projects/activity'
 import {
@@ -7,9 +7,11 @@ import {
   refreshProjectMemory,
 } from '~~/server/utils/projects/memory'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   const body = await readValidatedBody(event, z.object({
     chatIds: z.array(z.string().nonempty()).min(1).max(100),

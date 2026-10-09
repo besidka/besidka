@@ -60,7 +60,7 @@ describe('events ingest API', () => {
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
 
-    vi.stubGlobal('getHeader', (
+    vi.stubGlobal('getRequestHeader', (
       event: { headers: Record<string, string> },
       key: string,
     ) => event.headers[key.toLowerCase()])

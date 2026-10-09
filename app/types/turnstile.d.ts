@@ -1,6 +1,7 @@
 interface TurnstileRenderOptions {
   'sitekey': string
   'action'?: string
+  'size'?: 'normal' | 'flexible' | 'compact'
   'appearance'?: 'always' | 'execute' | 'interaction-only'
   'execution'?: 'render' | 'execute'
   'callback'?: (token: string) => void
@@ -8,6 +9,8 @@ interface TurnstileRenderOptions {
   'timeout-callback'?: () => void
   'expired-callback'?: () => void
   'unsupported-callback'?: () => void
+  'before-interactive-callback'?: () => void
+  'after-interactive-callback'?: () => void
 }
 
 interface TurnstileApi {

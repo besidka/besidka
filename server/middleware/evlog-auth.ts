@@ -1,7 +1,8 @@
-import { useLogger } from 'evlog'
 import { createAuthMiddleware } from 'evlog/better-auth'
 import type { BetterAuthInstance } from 'evlog/better-auth'
 import type { AuthSession } from '~~/server/types/h3-context'
+import { defineEventHandler } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 type Identify = ReturnType<typeof createAuthMiddleware>
 
@@ -39,7 +40,9 @@ function getIdentify(): Identify {
 }
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
-  await getIdentify()(logger, event.headers, event.path)
+  const { pathname, search } = event.url
+
+  await getIdentify()(logger, event.req.headers, `${pathname}${search}`)
 })

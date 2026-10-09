@@ -5,7 +5,7 @@ import type { ValidationRule } from '~/types/validation.d'
 const defaultParentComponentName = 'UiForm'
 
 const checkParent = (
-  instance: Field | null,
+  instance: Field | Field['parent'],
   parentComponentName: string,
 ): boolean => {
   if (!instance) {

@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { TextUIPart } from 'ai'
 import {
   buildTestHiddenFilePart,
@@ -5,6 +6,7 @@ import {
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
+import { defineEventHandler } from 'nuxt/server'
 
 export default defineEventHandler(() => {
   const isCiEnvironment: boolean = process.env.CI === 'true'
@@ -13,8 +15,8 @@ export default defineEventHandler(() => {
 
   if (!isTestSharedEndpointEnabled) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Not found',
+      message: 'Not found',
+      status: 404,
     })
   }
 

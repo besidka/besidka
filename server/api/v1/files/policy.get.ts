@@ -1,10 +1,11 @@
 import type { FilePolicyResponse } from '#shared/types/files.d'
-import { useLogger } from 'evlog'
 import {
   getEffectiveUserFilePolicy,
   getGlobalMonthlyTransformStats,
 } from '~~/server/utils/files/file-governance'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -15,7 +16,7 @@ export function getFilePolicyCacheKey(userId: number): string {
 export default defineEventHandler(async (
   event,
 ): Promise<FilePolicyResponse> => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {

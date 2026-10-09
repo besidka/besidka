@@ -247,6 +247,18 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   trap, per-gateway cost capture and the blended-vs-search double-count
   guard, gateway reasoning/web-search/image-generation/prompt-caching
   mechanisms, and the `GatewayModel.toolCall` Brave/Exa gate
+- `docs/nuxt-4-6-upgrade.md` - Decision log for the Nuxt 4.5 -> 4.6 upgrade
+  branch: the Vue 3.6 release candidate (twelve pnpm overrides, accepted RC
+  risk), the one-shot `minimum_release_age=0` install and the
+  frozen-lockfile CI simulation, compat-5 flips applied automatically,
+  the experimental-flag table (enabled, removed, kept, skipped and why),
+  Vapor mode (converted components, eligibility rules, the `@nuxtjs/mdc`
+  `viteMDCSlot` guard, vitest compiling Vapor SFCs as VDOM), and known
+  follow-ups
+- `docs/nuxt-server-imports.md` - Server handlers on the portable
+  `nuxt/server` API (Nuxt 5 / Nitro v3 / h3 v2 readiness): importing
+  `defineEventHandler` and request helpers together, the `NUXT_E8012`
+  failure mode, and test conventions
 - `docs/ci-runner-blacksmith-to-github.md` - Why CI runners moved from
   Blacksmith to GitHub-hosted `ubuntu-24.04`: kept as a reasonable
   default, but this was a dead end for the CI-only failure it was meant

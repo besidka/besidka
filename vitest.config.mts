@@ -1,8 +1,25 @@
 import { fileURLToPath } from 'node:url'
 import { defineVitestConfig } from '@nuxt/test-utils/config'
 
+const VAPOR_BLOCK_ATTRIBUTE = /(<(?:script|template)\b[^>]*?)\svapor(?=[\s>])/g
+
+const stripVaporAttributePlugin = {
+  name: 'besidka:strip-vapor-attribute',
+  enforce: 'pre' as const,
+  transform(code: string, id: string) {
+    if (!id.endsWith('.vue')) {
+      return null
+    }
+
+    const stripped = code.replace(VAPOR_BLOCK_ATTRIBUTE, '$1')
+
+    return stripped === code ? null : { code: stripped, map: null }
+  },
+}
+
 // https://nuxt.com/docs/getting-started/testing
 export default defineVitestConfig({
+  plugins: [stripVaporAttributePlugin],
   // Suite-wide: modules importing `cloudflare:workers` resolve to the stub
   // (env = {}). That specifier only exists in workerd/Nitro, not Vite, so
   // tests must inject bindings explicitly rather than read from env.

@@ -21,7 +21,7 @@ function makeEvent(headers: Record<string, string> = {}) {
 
 describe('assertNotCrossSiteRequest', () => {
   beforeEach(() => {
-    vi.stubGlobal('getHeader', (
+    vi.stubGlobal('getRequestHeader', (
       event: { headers: Record<string, string> },
       key: string,
     ) => event.headers[key.toLowerCase()])

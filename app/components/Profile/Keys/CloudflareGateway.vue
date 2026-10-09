@@ -112,7 +112,6 @@
               <NuxtLink
                 :to="meta.dashboardUrl"
                 class="link"
-                external
                 target="_blank"
               >
                 {{ meta.dashboardLabel || meta.dashboardUrl }}

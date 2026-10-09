@@ -1,4 +1,5 @@
-import { useLogger } from 'evlog'
+import { defineEventHandler } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 /**
  * GET /push/status
@@ -8,7 +9,7 @@ import { useLogger } from 'evlog'
  * (like sending a shared chat handoff notification to the installed app).
  */
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {

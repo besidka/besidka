@@ -20,7 +20,7 @@
     </div>
   </section>
 </template>
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 withDefaults(defineProps<{
   heading: string
   description?: string

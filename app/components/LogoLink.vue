@@ -12,7 +12,7 @@
   </NuxtLink>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 withDefaults(defineProps<{
   short?: boolean
   asLink?: boolean

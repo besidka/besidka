@@ -1,15 +1,21 @@
 import type { UIMessage } from 'ai'
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { persistUserMessage } from '~~/server/utils/chats/persist-user-message'
 import { validateMessageFilePolicy } from '~~/server/utils/files/file-governance'
 import { startResearchJobForChat } from '~~/server/utils/research/start'
+import {
+  defineEventHandler,
+  readValidatedBody,
+} from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
-  const params = await getValidatedRouterParams(event, z.object({
+  const logger = useRequestLogger(event)
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

@@ -1,5 +1,6 @@
 import { and, desc, eq, gt } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler } from 'nuxt/server'
 
 export default defineEventHandler(async () => {
   const session = await useUserSession()

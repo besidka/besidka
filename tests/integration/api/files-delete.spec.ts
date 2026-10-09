@@ -7,6 +7,18 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('evlog', () => ({
+  createError: (input: {
+    message: string
+    status?: number
+    why?: string
+    fix?: string
+  }) => {
+    const exception = new Error(input.message)
+
+    Object.assign(exception, input)
+
+    return exception
+  },
   useLogger: () => ({
     set: mocks.loggerSet,
   }),
@@ -81,7 +93,7 @@ describe('files delete API', () => {
         params: { id: 'file-1' },
       },
     } as any)).rejects.toMatchObject({
-      statusCode: 409,
+      status: 409,
     })
 
     expect(deleteQuery).not.toHaveBeenCalled()

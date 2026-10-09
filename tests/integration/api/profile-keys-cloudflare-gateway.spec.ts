@@ -117,7 +117,6 @@ describe('cloudflare-gateway key API', () => {
       getCloudflareGatewayCredentials,
     )
     vi.stubGlobal('useKV', () => fakeKv)
-    vi.stubGlobal('setResponseHeader', vi.fn())
     vi.stubGlobal('setResponseStatus', vi.fn())
     vi.stubGlobal('useEncryptText', vi.fn(async (plain: string) => {
       return `encrypted:${plain}`
@@ -184,15 +183,15 @@ describe('cloudflare-gateway key API', () => {
     await expect(postHandler({
       body: { accountId: '', apiKey: 'cf_test' },
     } as any)).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
+      status: 400,
+      message: 'Invalid request body',
     })
 
     await expect(postHandler({
       body: { accountId: 'account-1', apiKey: '' },
     } as any)).rejects.toMatchObject({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
+      status: 400,
+      message: 'Invalid request body',
     })
   })
 
@@ -207,15 +206,15 @@ describe('cloudflare-gateway key API', () => {
       await expect(postHandler({
         body: { accountId: 'account-1', apiKey: 'cf_te\rst_key' },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
 
       await expect(postHandler({
         body: { accountId: 'account-1', apiKey: 'cf_te\nst_key' },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
     })
 
@@ -230,15 +229,15 @@ describe('cloudflare-gateway key API', () => {
       await expect(postHandler({
         body: { accountId: 'account 1', apiKey: 'cf_test' },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
 
       await expect(postHandler({
         body: { accountId: 'account/1', apiKey: 'cf_test' },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
 
       await expect(postHandler({
@@ -248,8 +247,8 @@ describe('cloudflare-gateway key API', () => {
           apiKey: 'cf_test',
         },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
 
       await expect(postHandler({
@@ -259,8 +258,8 @@ describe('cloudflare-gateway key API', () => {
           apiKey: 'cf_test',
         },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
     })
 
@@ -275,8 +274,8 @@ describe('cloudflare-gateway key API', () => {
       await expect(postHandler({
         body: { accountId: 'a'.repeat(129), apiKey: 'cf_test' },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
 
       await expect(postHandler({
@@ -286,15 +285,15 @@ describe('cloudflare-gateway key API', () => {
           apiKey: 'cf_test',
         },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
 
       await expect(postHandler({
         body: { accountId: 'account-1', apiKey: 'a'.repeat(2049) },
       } as any)).rejects.toMatchObject({
-        statusCode: 400,
-        statusMessage: 'Invalid request body',
+        status: 400,
+        message: 'Invalid request body',
       })
     })
 
@@ -423,6 +422,7 @@ describe('cloudflare-gateway key API', () => {
     }
 
     await expect(postHandler({
+      res: { headers: new Headers() },
       body: { accountId: 'account-1', apiKey: 'cf_over_limit' },
     } as any)).rejects.toMatchObject({
       message: 'Too many requests',

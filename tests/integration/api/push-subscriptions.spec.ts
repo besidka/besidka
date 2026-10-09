@@ -67,7 +67,7 @@ describe('push subscription API', () => {
     mocks.loggerSet.mockClear()
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
-    vi.stubGlobal('getHeader', (
+    vi.stubGlobal('getRequestHeader', (
       event: { headers?: Record<string, string> },
       key: string,
     ) => event.headers?.[key.toLowerCase()])
@@ -307,15 +307,10 @@ describe('push subscription API', () => {
       const handler = await getHandler()
 
       await handler({
-        node: {
-          req: {
-            headers: {
-              'host': 'pr-292.besidka-preview.chernenko.workers.dev',
-              'x-forwarded-proto': 'https',
-            },
-            originalUrl: '/api/v1/push/subscribe',
-          },
-        },
+        url: new URL(
+          'https://pr-292.besidka-preview.chernenko.workers.dev'
+          + '/api/v1/push/subscribe',
+        ),
         body: {
           endpoint: 'https://push.example.com/sub-1',
           keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
@@ -355,12 +350,7 @@ describe('push subscription API', () => {
       const handler = await getHandler()
 
       await handler({
-        node: {
-          req: {
-            headers: { 'host': 'app.besidka.com', 'x-forwarded-proto': 'https' },
-            originalUrl: '/api/v1/push/subscribe',
-          },
-        },
+        url: new URL('https://app.besidka.com/api/v1/push/subscribe'),
         body: {
           endpoint: 'https://push.example.com/sub-1',
           keys: { p256dh: 'new-p256dh', auth: 'new-auth' },

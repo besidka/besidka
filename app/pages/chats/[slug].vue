@@ -273,7 +273,7 @@ useSeoMeta({
   robots: 'noindex, nofollow',
 })
 
-const route = useRoute()
+const route = useRoute('chats-slug')
 const isE2eTestHooksEnabled = useRuntimeConfig().public.e2eTestHooksEnabled
 
 const isTestChat = computed<boolean>(() => {
@@ -513,9 +513,7 @@ const projectMemoryText = computed(() => {
 })
 
 async function fetchProjectContext(nextProjectId: string) {
-  return import.meta.server
-    ? await useRequestFetch()(`/api/v1/projects/${nextProjectId}`)
-    : await $fetch(`/api/v1/projects/${nextProjectId}`)
+  return await useRequestFetch()(`/api/v1/projects/${nextProjectId}`)
 }
 
 async function syncProjectContext(

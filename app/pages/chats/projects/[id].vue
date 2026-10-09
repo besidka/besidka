@@ -123,9 +123,9 @@ definePageMeta({
   },
 })
 
-const route = useRoute()
+const route = useRoute('chats-projects-id')
 const nuxtApp = useNuxtApp()
-const projectId = computed(() => route.params.id as string)
+const projectId = computed(() => route.params.id)
 const groupedAt = useState<string>('project-chats:grouped-at', () => {
   return new Date().toISOString()
 })
@@ -251,9 +251,7 @@ async function fetchProjectDetails(nextProjectId: string | undefined) {
     return null
   }
 
-  return import.meta.server
-    ? await useRequestFetch()(`/api/v1/projects/${resolvedProjectId}`)
-    : await $fetch(`/api/v1/projects/${resolvedProjectId}`)
+  return await useRequestFetch()(`/api/v1/projects/${resolvedProjectId}`)
 }
 
 async function syncProjectDetails(nextProjectId: string | undefined) {

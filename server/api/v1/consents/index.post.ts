@@ -1,5 +1,4 @@
-import { useLogger, createError } from 'evlog'
-import { getCookie, getRequestHeader } from 'h3'
+import { createError } from 'evlog'
 import type {
   ModuleOptions,
 } from '~~/modules/cookie-consent/src/runtime/types/module'
@@ -8,9 +7,17 @@ import {
   parseConsentCookieValue,
 } from '~~/server/utils/consents'
 import { insertConsentReceipt } from '~~/server/utils/consents-db'
+import {
+  defineEventHandler,
+  getCookie,
+  getRequestHeader,
+  readValidatedBody,
+  setResponseStatus,
+} from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   const body = await readValidatedBody(event, z.object({
     id: z.string().max(64),

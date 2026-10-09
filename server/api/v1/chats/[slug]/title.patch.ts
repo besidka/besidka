@@ -1,8 +1,8 @@
+import { createError } from 'evlog'
 import { gatewayIds } from '#shared/utils/gateways'
 import { getModelResearch } from '#shared/utils/research'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
-import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { normalizeChatError } from '~~/server/utils/chats/errors'
 import {
@@ -10,17 +10,23 @@ import {
   CHAT_TITLE_DEFAULT,
 } from '~~/server/utils/chats/title'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import {
+  defineEventHandler,
+  readValidatedBody,
+} from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 export default defineEventHandler(async (event) => {
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     slug: z.ulid(),
-  }).safeParse)
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error,
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -31,9 +37,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -71,8 +77,8 @@ export default defineEventHandler(async (event) => {
 
   if (!chat) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Chat not found.',
+      message: 'Chat not found.',
+      status: 404,
     })
   }
 
@@ -199,7 +205,7 @@ export default defineEventHandler(async (event) => {
   } catch (exception) {
     const chatError = normalizeChatError({ error: exception })
 
-    useLogger(event).set({
+    useRequestLogger(event).set({
       attributes: {
         titleGeneration: {
           fallback: true,

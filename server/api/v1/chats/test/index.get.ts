@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import type { ReasoningUIPart, TextUIPart } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import {
@@ -10,6 +11,7 @@ import {
   TEST_IMAGE_PROMPT,
   TEST_IMAGE_USAGE,
 } from '~~/server/utils/chats/test/image-fixture'
+import { defineEventHandler, getValidatedQuery } from 'nuxt/server'
 
 const shortMessage = 'Test message'
 const longMessage = `Here is text with three paragraphs:
@@ -24,8 +26,8 @@ export default defineEventHandler(async (event) => {
 
   if (!isTestChatEndpointEnabled) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Not found',
+      message: 'Not found',
+      status: 404,
     })
   }
 
@@ -40,9 +42,9 @@ export default defineEventHandler(async (event) => {
 
   if (query.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request query',
-      data: query.error,
+      message: 'Invalid request query',
+      status: 400,
+      why: query.error.message,
     })
   }
 

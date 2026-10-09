@@ -407,6 +407,10 @@ export function getAffectedTests(changedFiles) {
   const turnstileTests = [
     'tests/unit/composables/turnstile.spec.ts',
     'tests/unit/components/Auth/Turnstile.client.spec.ts',
+    'tests/unit/composables/captcha.spec.ts',
+    'tests/unit/pages/(auth)/signin.spec.ts',
+    'tests/unit/pages/(auth)/signup.spec.ts',
+    'tests/unit/pages/(auth)/reset-password.spec.ts',
   ]
 
   const seoTests = [
@@ -708,6 +712,14 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^app\/types\/turnstile\.d\.ts$/,
+      tests: turnstileTests,
+    },
+    {
+      pattern: /^app\/composables\/captcha\.ts$/,
+      tests: turnstileTests,
+    },
+    {
+      pattern: /^app\/pages\/\(auth\)\/(signin|signup|reset-password)\.vue$/,
       tests: turnstileTests,
     },
     {
@@ -1414,6 +1426,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern:
         /^(nuxt\.config\.ts|vitest\.config\.mts|playwright\.config\.ts|package\.json|pnpm-lock\.yaml)$/,
+      tests: 'all',
+    },
+    {
+      pattern:
+        /^(tests\/setup\/(vitest\.setup|mocks\/nuxt-server)\.ts|server\/utils\/(logging\/request-logger|http\/(apply-response-headers|get-decoded-router-params))\.ts)$/,
       tests: 'all',
     },
     {

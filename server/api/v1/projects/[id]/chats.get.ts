@@ -1,5 +1,5 @@
 import { and, desc, eq, isNotNull, isNull, lt, or } from 'drizzle-orm'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { buildChatSharedColumn } from '~~/server/utils/chats/share'
 import {
@@ -7,17 +7,20 @@ import {
   parseHistoryCursor,
 } from '~~/server/utils/chats/history/cursor'
 import { parsePaginationLimit } from '~~/server/utils/pagination/limit'
+import { defineEventHandler, getQuery } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const DEFAULT_LIMIT = 30
 const MAX_LIMIT = 100
 const MAX_PINNED = 50
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     id: z.string().nonempty(),
-  }).safeParse)
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({

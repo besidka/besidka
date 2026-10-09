@@ -1,5 +1,6 @@
+import { createError } from 'evlog'
 import type { UIMessageChunk } from 'ai'
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -12,8 +13,12 @@ import {
   chatTestScenarios,
   toChatTestErrorPayload,
 } from '#shared/utils/chat-test-errors'
-import { getRequestHeader } from 'h3'
 import { getReasoningStepsCount } from '~~/server/utils/chats/test/steps-count'
+import {
+  defineEventHandler,
+  getRequestHeader,
+  getValidatedQuery,
+} from 'nuxt/server'
 
 type Scenario = ChatTestScenario
 
@@ -320,8 +325,8 @@ export default defineEventHandler(async (event) => {
 
   if (!isTestChatEndpointEnabled) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Not found',
+      message: 'Not found',
+      status: 404,
     })
   }
 
@@ -345,9 +350,9 @@ export default defineEventHandler(async (event) => {
 
   if (query.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request query',
-      data: query.error,
+      message: 'Invalid request query',
+      status: 400,
+      why: query.error.message,
     })
   }
 
@@ -421,10 +426,10 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function getRequestId(event: H3Event): string {
+function getRequestId(event: RequestEvent): string {
   try {
-    return getRequestHeader(event as any, 'cf-ray')
-      || getRequestHeader(event as any, 'x-request-id')
+    return getRequestHeader(event, 'cf-ray')
+      || getRequestHeader(event, 'x-request-id')
       || 'test-request-id'
   } catch (exception) {
     void exception

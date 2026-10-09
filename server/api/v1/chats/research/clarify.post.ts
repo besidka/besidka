@@ -1,11 +1,13 @@
 import type { LanguageModel } from 'ai'
 import type { ResearchClarificationResponse } from '#shared/types/research.d'
 import { getModelResearch } from '#shared/utils/research'
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import { mapResearchProviderError } from '~~/server/utils/chats/errors'
 import { useChatProvider } from '~~/server/utils/chats/provider'
 import { buildResearchAssistModelInstance } from '~~/server/utils/research/assist-model'
 import { generateResearchClarifications } from '~~/server/utils/research/clarify'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const MOCK_RESEARCH_CLARIFICATIONS: ResearchClarificationResponse = {
   questions: [
@@ -25,7 +27,7 @@ const MOCK_RESEARCH_CLARIFICATIONS: ResearchClarificationResponse = {
 }
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const body = await readValidatedBody(event, z.object({
     model: z.string().nonempty(),
     topic: z.string().min(1).max(2000),

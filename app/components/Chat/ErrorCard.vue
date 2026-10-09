@@ -12,7 +12,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
 
 defineProps<{

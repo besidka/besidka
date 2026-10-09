@@ -1,6 +1,8 @@
+import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, readBody } from 'nuxt/server'
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -21,9 +23,9 @@ export default defineEventHandler(async (event) => {
 
   if (!params.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error.flatten(),
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -32,9 +34,9 @@ export default defineEventHandler(async (event) => {
 
   if (!body.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error.flatten(),
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -58,8 +60,8 @@ export default defineEventHandler(async (event) => {
 
   if (!result) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found',
+      message: 'File not found',
+      status: 404,
     })
   }
 

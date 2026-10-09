@@ -4,6 +4,7 @@ import * as messagesComposable from '../../../../app/composables/messages'
 import SigninPage from '../../../../app/pages/(auth)/signin.vue'
 
 const mocks = vi.hoisted(() => ({
+  turnstileSiteKey: '',
   signInEmail: vi.fn(async () => ({
     data: { redirect: false, token: 'session-token', user: {} },
     error: null,
@@ -40,13 +41,30 @@ mockNuxtImport('useAuth', () => {
 mockNuxtImport('navigateTo', () => mocks.navigateTo)
 mockNuxtImport('reloadNuxtApp', () => mocks.reloadNuxtApp)
 
-function stubs() {
+mockNuxtImport('useRuntimeConfig', (original) => {
+  return () => {
+    const config = original()
+
+    return {
+      ...config,
+      public: { ...config.public, turnstileSiteKey: mocks.turnstileSiteKey },
+    }
+  }
+})
+
+function stubs(options: {
+  isEnabled?: boolean
+  token?: string
+  reset?: () => void
+} = {}) {
+  mocks.turnstileSiteKey = options.isEnabled ? 'test-sitekey' : ''
+
   return {
     AuthTurnstile: {
       template: '<div />',
       methods: {
-        execute: () => Promise.resolve(''),
-        reset: () => {},
+        execute: () => Promise.resolve(options.token ?? ''),
+        reset: options.reset ?? (() => {}),
       },
     },
   }
@@ -156,6 +174,111 @@ describe('signin page', () => {
 
     expect(useErrorMessage).toHaveBeenCalledWith('Invalid email or password')
     expect(mocks.navigateTo).not.toHaveBeenCalled()
+  })
+
+  it('sends the captcha token header when verification succeeds', async () => {
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs({ isEnabled: true, token: 'captcha-token' }) },
+    })
+
+    await fillValidForm(wrapper)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.signInEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fetchOptions: {
+          headers: { 'x-captcha-response': 'captcha-token' },
+        },
+      }),
+    )
+  })
+
+  it('does not send the request and shows a verification error when the '
+    + 'enabled challenge yields no token', async () => {
+    const reset = vi.fn()
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs({ isEnabled: true, token: '', reset }) },
+    })
+
+    await fillValidForm(wrapper)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.signInEmail).not.toHaveBeenCalled()
+    expect(useErrorMessage).toHaveBeenCalledWith(
+      'Verification failed',
+      'Please complete the human verification and try again.',
+    )
+    expect(reset).toHaveBeenCalled()
+    expect(wrapper.get('button[type="submit"]').attributes('disabled'))
+      .toBeUndefined()
+  })
+
+  it('still sends the request without a token header when the challenge is '
+    + 'disabled', async () => {
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs({ isEnabled: false, token: '' }) },
+    })
+
+    await fillValidForm(wrapper)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.signInEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ fetchOptions: { headers: {} } }),
+    )
+    expect(useErrorMessage).not.toHaveBeenCalled()
+  })
+
+  it('ignores a second submit while the first is still pending', async () => {
+    let resolveSignIn: (value: any) => void = () => {}
+
+    mocks.signInEmail.mockImplementationOnce(() => {
+      return new Promise((resolve) => {
+        resolveSignIn = resolve
+      })
+    })
+
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs() },
+    })
+
+    await fillValidForm(wrapper)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.signInEmail).toHaveBeenCalledTimes(1)
+
+    resolveSignIn({ data: { redirect: false, user: {} }, error: null })
+    await flushPromises()
+  })
+
+  it('restores the submit button, shows an error and resets the widget '
+    + 'when the request throws', async () => {
+    mocks.signInEmail.mockRejectedValueOnce(new Error('Network down'))
+
+    const reset = vi.fn()
+    const useErrorMessage = vi.spyOn(messagesComposable, 'useErrorMessage')
+
+    const wrapper = await mountSuspended(SigninPage, {
+      global: { stubs: stubs({ reset }) },
+    })
+
+    await fillValidForm(wrapper)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(useErrorMessage).toHaveBeenCalled()
+    expect(reset).toHaveBeenCalled()
+    expect(wrapper.get('button[type="submit"]').attributes('disabled'))
+      .toBeUndefined()
   })
 
   it('sets the webauthn-enabled autocomplete value on the email field',

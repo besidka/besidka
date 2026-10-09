@@ -1,14 +1,34 @@
 const TURNSTILE_SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0'
   + '/api.js?render=explicit'
 
+const FLEXIBLE_WIDGET_MIN_WIDTH = 300
+
+export type TurnstileWidgetSize = 'flexible' | 'compact'
+
 interface TurnstileRenderWidgetOptions {
   action: string
+  size?: TurnstileWidgetSize
+  onInteractiveChange?: (isInteractive: boolean) => void
 }
 
 const pendingExecutions = new Map<string, (token: string) => void>()
 
+export function isNarrowTurnstileWidth(containerWidth: number): boolean {
+  return containerWidth > 0 && containerWidth < FLEXIBLE_WIDGET_MIN_WIDTH
+}
+
+export function useTurnstileLoadFailed() {
+  return useState<boolean>('turnstile:load-failed', () => false)
+}
+
+function settlePendingExecution(widgetId: string): void {
+  pendingExecutions.get(widgetId)?.('')
+  pendingExecutions.delete(widgetId)
+}
+
 export function useTurnstile() {
   const config = useRuntimeConfig()
+  const loadFailed = useTurnstileLoadFailed()
   const siteKey = config.public.turnstileSiteKey
 
   const isEnabled = computed<boolean>(() => Boolean(siteKey))
@@ -22,20 +42,39 @@ export function useTurnstile() {
     el: HTMLElement,
     opts: TurnstileRenderWidgetOptions,
   ): Promise<string | null> {
-    const turnstile = await turnstileScript.load()
+    let turnstile: Awaited<ReturnType<typeof turnstileScript.load>>
 
-    if (!turnstile) {
+    try {
+      turnstile = await turnstileScript.load()
+    } catch {
+      loadFailed.value = true
+
       return null
     }
 
+    if (!turnstile) {
+      loadFailed.value = true
+
+      return null
+    }
+
+    loadFailed.value = false
+
+    const fallbackSize: TurnstileWidgetSize = isNarrowTurnstileWidth(
+      el.clientWidth,
+    )
+      ? 'compact'
+      : 'flexible'
+    const size = opts.size ?? fallbackSize
+
     function settleWithEmptyToken() {
-      pendingExecutions.get(widgetId)?.('')
-      pendingExecutions.delete(widgetId)
+      settlePendingExecution(widgetId)
     }
 
     const widgetId = turnstile.render(el, {
       'sitekey': siteKey,
       'action': opts.action,
+      'size': size,
       'appearance': 'interaction-only',
       'execution': 'execute',
       'callback': (token: string) => {
@@ -46,6 +85,12 @@ export function useTurnstile() {
       'timeout-callback': settleWithEmptyToken,
       'expired-callback': settleWithEmptyToken,
       'unsupported-callback': settleWithEmptyToken,
+      'before-interactive-callback': () => {
+        opts.onInteractiveChange?.(true)
+      },
+      'after-interactive-callback': () => {
+        opts.onInteractiveChange?.(false)
+      },
     })
 
     return widgetId
@@ -63,17 +108,18 @@ export function useTurnstile() {
   }
 
   function reset(widgetId: string): void {
-    pendingExecutions.delete(widgetId)
+    settlePendingExecution(widgetId)
     window.turnstile?.reset(widgetId)
   }
 
   function remove(widgetId: string): void {
-    pendingExecutions.delete(widgetId)
+    settlePendingExecution(widgetId)
     window.turnstile?.remove(widgetId)
   }
 
   return {
     isEnabled,
+    loadFailed,
     renderWidget,
     execute,
     reset,

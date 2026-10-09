@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 // @ts-ignore
 import { env } from 'cloudflare:workers'
 

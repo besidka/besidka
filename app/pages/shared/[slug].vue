@@ -304,9 +304,9 @@ definePageMeta({
   layout: 'shared',
 })
 
-const route = useRoute()
+const route = useRoute('shared-slug')
 
-const shareSlug = computed<string>(() => route.params.slug as string)
+const shareSlug = computed<string>(() => route.params.slug)
 
 const key = computed<string>(() => {
   return `shared-${shareSlug.value}`

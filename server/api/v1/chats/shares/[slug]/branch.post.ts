@@ -1,5 +1,5 @@
 import { isPersistedMessageRole } from '#shared/utils/chat-message-role'
-import { createError, useLogger } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   buildBranchTitle,
@@ -7,6 +7,12 @@ import {
 } from '~~/server/utils/chats/branch'
 import { resolveActiveShareBySlug } from '~~/server/utils/chats/share'
 import { stripFileParts } from '~~/server/utils/files/rewrite-share-file-urls'
+import {
+  defineEventHandler,
+  readValidatedBody,
+} from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsRules = z.object({
   slug: z.string().nonempty(),
@@ -19,14 +25,11 @@ const bodyRules = z.object({
 const BRANCH_COOLDOWN_MS = 30_000
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   assertNotCrossSiteRequest(event)
 
-  const params = await getValidatedRouterParams(
-    event,
-    paramsRules.safeParse,
-  )
+  const params = paramsRules.safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({
@@ -74,7 +77,6 @@ export default defineEventHandler(async (event) => {
 
   const share = await resolveActiveShareBySlug(
     params.data.slug,
-    event,
   )
 
   if (!share) {

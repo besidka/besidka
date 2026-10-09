@@ -1,16 +1,18 @@
-import { useLogger } from 'evlog'
+import { createError } from 'evlog'
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler, setResponseStatus } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsSchema = z.object({
   id: z.string().min(1),
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {
@@ -21,9 +23,9 @@ export default defineEventHandler(async (event) => {
 
   if (!params.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request parameters',
-      data: params.error.flatten(),
+      message: 'Invalid request parameters',
+      status: 400,
+      why: params.error.message,
     })
   }
 
@@ -43,8 +45,8 @@ export default defineEventHandler(async (event) => {
 
   if (!file) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found',
+      message: 'File not found',
+      status: 404,
     })
   }
 
@@ -65,8 +67,8 @@ export default defineEventHandler(async (event) => {
     })
 
     throw createError({
-      statusCode: 409,
-      statusMessage: 'Failed to delete file from storage. Please try again.',
+      message: 'Failed to delete file from storage. Please try again.',
+      status: 409,
     })
   }
 

@@ -1,8 +1,8 @@
-import type { H3Event } from 'h3'
+import type { RequestEvent } from 'nuxt/server'
 import type { BatchItem } from 'drizzle-orm/batch'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 import {
   extractStorageKeyFromFileUrl,
   getOwnedFilesByStorageKeys,
@@ -71,7 +71,7 @@ export function durationToExpiresAt(
 
 export async function resolveActiveShareBySlug(
   slug: string,
-  event: H3Event = useEvent(),
+  event: Pick<RequestEvent, 'context'> = useEvent(),
 ) {
   const now = new Date()
 
@@ -87,7 +87,7 @@ export async function resolveActiveShareBySlug(
     columns: ACTIVE_SHARE_COLUMNS,
   })
 
-  useLogger(event).set({
+  useRequestLogger(event).set({
     chatShareResolve: { slug, found: !!share },
   })
 
@@ -96,7 +96,7 @@ export async function resolveActiveShareBySlug(
 
 export async function getActiveShareForChat(
   chatId: string,
-  event: H3Event = useEvent(),
+  event: Pick<RequestEvent, 'context'> = useEvent(),
 ) {
   const now = new Date()
 
@@ -112,7 +112,7 @@ export async function getActiveShareForChat(
     columns: ACTIVE_SHARE_COLUMNS,
   })
 
-  useLogger(event).set({
+  useRequestLogger(event).set({
     chatShareLookup: { chatId, found: !!share },
   })
 
@@ -122,7 +122,7 @@ export async function getActiveShareForChat(
 export async function enumerateChatFileIds(
   chatId: string,
   ownerUserId: number,
-  event: H3Event = useEvent(),
+  event: Pick<RequestEvent, 'context'> = useEvent(),
 ): Promise<ChatFileReference[]> {
   const messages = await useDb().query.messages.findMany({
     where: { chatId },
@@ -159,7 +159,7 @@ export async function enumerateChatFileIds(
     }
   })
 
-  useLogger(event).set({
+  useRequestLogger(event).set({
     chatShareFileEnumeration: {
       chatId,
       fileCount: references.length,
@@ -199,7 +199,7 @@ export async function syncChatShareFiles(
   chatId: string,
   ownerUserId: number,
   showFiles: boolean,
-  event: H3Event = useEvent(),
+  event: Pick<RequestEvent, 'context'> = useEvent(),
 ): Promise<void> {
   const db = useDb()
 
@@ -207,7 +207,7 @@ export async function syncChatShareFiles(
     await db.delete(schema.chatShareFiles)
       .where(eq(schema.chatShareFiles.chatShareId, chatShareId))
 
-    useLogger(event).set({
+    useRequestLogger(event).set({
       chatShareFileSync: {
         chatShareId,
         fileCount: 0,
@@ -246,7 +246,7 @@ export async function syncChatShareFiles(
       ))
   }
 
-  useLogger(event).set({
+  useRequestLogger(event).set({
     chatShareFileSync: {
       chatShareId,
       fileCount: fileReferences.length,

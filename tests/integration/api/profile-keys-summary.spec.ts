@@ -79,7 +79,6 @@ describe('keys summary API', () => {
     vi.stubGlobal('defineEventHandler', (handler: any) => handler)
     vi.stubGlobal('enforceKeysRateLimit', enforceKeysRateLimit)
     vi.stubGlobal('useKV', () => fakeKv)
-    vi.stubGlobal('setResponseHeader', vi.fn())
     vi.stubGlobal('createError', (input: any) => {
       const exception = new Error(input.statusMessage || input.message)
 
@@ -200,7 +199,9 @@ describe('keys summary API', () => {
       await handler({} as any)
     }
 
-    await expect(handler({} as any)).rejects.toMatchObject({
+    await expect(handler({
+      res: { headers: new Headers() },
+    } as any)).rejects.toMatchObject({
       message: 'Too many requests',
       status: 429,
     })

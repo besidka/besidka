@@ -1,4 +1,3 @@
-import { useLogger } from 'evlog'
 import type { StorageStats } from '#shared/types/files.d'
 import {
   getEffectiveUserFilePolicy,
@@ -11,6 +10,8 @@ import {
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { getFilePolicyCacheKey } from '~~/server/api/v1/files/policy.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
+import { defineEventHandler } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const CACHE_TTL_SECONDS = 60
 
@@ -19,7 +20,7 @@ function getStorageCacheKey(userId: number): string {
 }
 
 export default defineEventHandler(async (event): Promise<StorageStats> => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const session = await useUserSession()
 
   if (!session) {

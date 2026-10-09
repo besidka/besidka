@@ -133,13 +133,11 @@ describe('profile sessions API', () => {
         statusMessage: 'Unauthorized',
       })
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
-    vi.stubGlobal('getHeaders', vi.fn(() => ({ cookie: 'session=abc' })))
     vi.stubGlobal('setResponseStatus', (
       _event: unknown,
       code: number,
@@ -313,6 +311,7 @@ describe('profile sessions API', () => {
 
     await handler({
       params: { id: '2' },
+      req: { headers: new Headers({ cookie: 'session=abc' }) },
     } as any)
 
     expect(mocks.revokeSession).toHaveBeenCalledWith(expect.objectContaining({
@@ -339,6 +338,7 @@ describe('profile sessions API', () => {
 
     await expect(handler({
       params: { id: '2' },
+      req: { headers: new Headers({ cookie: 'session=abc' }) },
     } as any)).rejects.toMatchObject({
       message: 'Failed to end session',
       status: 500,

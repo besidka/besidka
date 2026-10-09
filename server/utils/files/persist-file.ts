@@ -5,7 +5,7 @@ import {
   getPreferredFileExtension,
   normalizeMediaType,
 } from '#shared/utils/files'
-import { useLogger } from 'evlog'
+import { createError, useLogger } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import { invalidateStorageCache } from '~~/server/api/v1/storage/index.get'
 import { exceptionMessage } from '~~/server/utils/evlog-attributes'
@@ -56,8 +56,8 @@ export async function persistFile(
 
   if (!normalizedMediaType) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid file media type',
+      message: 'Invalid file media type',
+      status: 400,
     })
   }
 
@@ -70,8 +70,8 @@ export async function persistFile(
 
   if (wouldExceed) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Not enough storage space. Please delete some files.',
+      message: 'Not enough storage space. Please delete some files.',
+      status: 400,
     })
   }
 
@@ -109,15 +109,15 @@ export async function persistFile(
     })
 
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to upload file',
+      message: 'Failed to upload file',
+      status: 500,
     })
   }
 
   if (!response.key) {
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to upload file',
+      message: 'Failed to upload file',
+      status: 500,
     })
   }
 
@@ -186,15 +186,15 @@ export async function persistFile(
     }
 
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to upload file',
+      message: 'Failed to upload file',
+      status: 500,
     })
   }
 
   if (!storedFile) {
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to upload file',
+      message: 'Failed to upload file',
+      status: 500,
     })
   }
 
@@ -217,8 +217,8 @@ export async function persistFile(
     })
 
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Not enough storage space. Please delete some files.',
+      message: 'Not enough storage space. Please delete some files.',
+      status: 400,
     })
   }
 
@@ -267,8 +267,8 @@ async function rollbackPersistedFile(
     })
 
     throw createError({
-      statusCode: 500,
-      statusMessage: 'Failed to upload file',
+      message: 'Failed to upload file',
+      status: 500,
     })
   }
 

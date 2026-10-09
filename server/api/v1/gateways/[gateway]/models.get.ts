@@ -1,18 +1,21 @@
 import { gatewayIds } from '#shared/utils/gateways'
-import { createError, useLogger } from 'evlog'
-import type { H3Event } from 'h3'
+import { createError } from 'evlog'
+import type { RequestEvent } from 'nuxt/server'
 import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
 import {
   getCachedCloudflareGatewayCatalog,
   getCachedGatewayCatalog,
 } from '~~/server/utils/gateways/catalog'
 import { getCloudflareGatewayCredentials } from '~~/server/utils/gateways/cloudflare'
+import { defineEventHandler } from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const GATEWAY_MODELS_RATE_LIMIT = { window: 60, max: 20 }
 const GATEWAY_MODELS_RATE_LIMIT_KEY_PREFIX = 'gateway-catalog:rate-limit'
 
 async function enforceGatewayModelsRateLimit(
-  event: H3Event,
+  event: RequestEvent,
   userId: string,
 ): Promise<void> {
   const storage = createAuthRateLimitStorage(
@@ -26,7 +29,7 @@ async function enforceGatewayModelsRateLimit(
   }
 
   if (result.retryAfter !== null) {
-    setResponseHeader(event, 'Retry-After', result.retryAfter)
+    event.res.headers.set('Retry-After', String(result.retryAfter))
   }
 
   throw createError({
@@ -38,9 +41,9 @@ async function enforceGatewayModelsRateLimit(
 }
 
 export default defineEventHandler(async (event) => {
-  const params = await getValidatedRouterParams(event, z.object({
+  const params = z.object({
     gateway: z.enum(gatewayIds),
-  }).safeParse)
+  }).safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({
@@ -58,7 +61,7 @@ export default defineEventHandler(async (event) => {
 
   await enforceGatewayModelsRateLimit(event, session.user.id)
 
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
   if (params.data.gateway === 'cloudflare') {
     const credentials = await getCloudflareGatewayCredentials(

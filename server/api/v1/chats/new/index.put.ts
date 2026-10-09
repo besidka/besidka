@@ -1,4 +1,4 @@
-import { useLogger, createError } from 'evlog'
+import { createError } from 'evlog'
 import type { FileUIPart, TextUIPart } from 'ai'
 import { and, eq } from 'drizzle-orm'
 import { ulid } from 'ulid'
@@ -15,6 +15,8 @@ import {
   resolveResearchStartContext,
   startResearchJobForChat,
 } from '~~/server/utils/research/start'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const rules = z.object({
   parts: userMessagePartsSchema,
@@ -32,7 +34,7 @@ const rules = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const body = await readValidatedBody(event, rules.safeParse)
 
   if (body.error) {

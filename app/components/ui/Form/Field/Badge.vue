@@ -39,7 +39,7 @@
   </span>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" vapor>
 import type { FieldSize } from '~/types/field.d'
 
 withDefaults(defineProps<{

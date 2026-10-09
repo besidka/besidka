@@ -1,6 +1,8 @@
+import { createError } from 'evlog'
 import type { GatewayId } from '#shared/types/gateways.d'
 import { eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { defineEventHandler, readValidatedBody } from 'nuxt/server'
 
 const favoriteGatewayModelIds = z.array(z.string().max(100)).max(50)
 
@@ -27,9 +29,9 @@ export default defineEventHandler(async (event) => {
 
   if (body.error) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error,
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 
@@ -97,8 +99,8 @@ export default defineEventHandler(async (event) => {
 
   if (Object.keys(fieldUpdates).length === 0) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'No fields to update',
+      message: 'No fields to update',
+      status: 400,
     })
   }
 

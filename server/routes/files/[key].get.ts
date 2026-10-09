@@ -1,3 +1,4 @@
+import { createError } from 'evlog'
 import { hasShareTokenFileAccess } from '~~/server/utils/files/file-share-access'
 import {
   getTestImageFixtureBytes,
@@ -5,17 +6,24 @@ import {
 } from '~~/server/utils/chats/test/image-fixture-bytes'
 import { isTestImageFixtureStorageKey } from '~~/server/utils/chats/test/image-fixture'
 import { getPreferredFileExtension } from '#shared/utils/files'
+import {
+  defineEventHandler,
+  getQuery,
+  getRequestHeader,
+} from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { applyResponseHeaders } from '~~/server/utils/http/apply-response-headers'
 
 const unsafeBidiControlPattern
   = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u
 
 export default defineEventHandler(async (event) => {
-  const { key: storageKey } = getRouterParams(event)
+  const { key: storageKey } = getDecodedRouterParams(event)
 
   if (!storageKey) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing file Storage Key',
+      message: 'Missing file Storage Key',
+      status: 400,
     })
   }
 
@@ -31,7 +39,7 @@ export default defineEventHandler(async (event) => {
       )
       : 'inline'
 
-    setResponseHeaders(event, {
+    applyResponseHeaders(event, {
       'Content-Type': TEST_IMAGE_FIXTURE_MEDIA_TYPE,
       'Content-Length': bytes.byteLength.toString(),
       'Cache-Control': 'private, no-store, max-age=0',
@@ -58,8 +66,8 @@ export default defineEventHandler(async (event) => {
 
   if (!file) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found',
+      message: 'File not found',
+      status: 404,
     })
   }
 
@@ -76,14 +84,14 @@ export default defineEventHandler(async (event) => {
     const token = tokenFromHeader || tokenFromQuery
 
     if (token) {
-      hasAccess = await hasShareTokenFileAccess(token, file.id, event)
+      hasAccess = await hasShareTokenFileAccess(token, file.id)
     }
   }
 
   if (!hasAccess) {
     throw createError({
-      statusCode: 403,
-      statusMessage: 'You do not have access to this file',
+      message: 'You do not have access to this file',
+      status: 403,
     })
   }
 
@@ -91,8 +99,8 @@ export default defineEventHandler(async (event) => {
 
   if (!storageObject) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'File not found in storage',
+      message: 'File not found in storage',
+      status: 404,
     })
   }
 
@@ -101,7 +109,7 @@ export default defineEventHandler(async (event) => {
     ? buildAttachmentContentDisposition(file.name, file.type)
     : 'inline'
 
-  setResponseHeaders(event, {
+  applyResponseHeaders(event, {
     'Content-Type': file.type,
     'Content-Length': file.size.toString(),
     'Cache-Control': 'private, no-store, max-age=0',

@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { defineNuxtModule } from '@nuxt/kit'
 import tailwindcss from '@tailwindcss/vite'
-import { providers, defaultModel } from './providers'
+import { providers, defaultModel } from './providers/index.ts'
 
 const enableFonts = process.env.CI !== 'true'
 
@@ -48,6 +48,46 @@ const forceInlineVueI18nForEmailRenderer = defineNuxtModule({
   },
 })
 
+const guardMdcSlotTransformForVapor = defineNuxtModule({
+  meta: { name: 'guard-mdc-slot-transform-for-vapor' },
+  setup(_options, nuxt) {
+    nuxt.hook('vite:extendConfig', (viteConfig) => {
+      const compilerOptions = viteConfig.vue?.template?.compilerOptions
+
+      if (!compilerOptions?.nodeTransforms) {
+        return
+      }
+
+      compilerOptions.nodeTransforms = compilerOptions.nodeTransforms.map(
+        (nodeTransform) => {
+          if (nodeTransform.name !== 'viteMDCSlot') {
+            return nodeTransform
+          }
+
+          return function viteMDCSlot(node, context) {
+            if (!context.nodeTransforms) {
+              return
+            }
+
+            return nodeTransform(node, context)
+          }
+        },
+      )
+    })
+  },
+})
+
+const externalizeComponentsImportInDependencyScan = {
+  name: 'externalize-components-import-in-dependency-scan',
+  resolveId(id: string) {
+    if (id !== '#components') {
+      return
+    }
+
+    return { id, external: true }
+  },
+}
+
 // Stable per-build identifier, shared by Nuxt's app manifest
 // (runtimeConfig.app.buildId) and the '/' SWR cache key. In CI this is the
 // commit SHA; locally it is a fresh UUID per build. Binding the cache key to
@@ -72,6 +112,7 @@ const modules = [
   '@nuxtjs/color-mode',
   '@nuxtjs/device',
   '@nuxtjs/mdc',
+  guardMdcSlotTransformForVapor,
   '@nuxtjs/robots',
   '@nuxtjs/sitemap',
   'nuxt-svgo',
@@ -100,9 +141,6 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'cloudflare_module',
-    experimental: {
-      asyncContext: true,
-    },
     moduleSideEffects: [
       'reflect-metadata/',
     ],
@@ -365,6 +403,9 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 5,
   },
+  vue: {
+    vapor: true,
+  },
   typescript: {
     typeCheck: process.env.CI !== 'true',
   },
@@ -392,12 +433,15 @@ export default defineNuxtConfig({
       // pre-bundler breaks the worker's `new URL(..., import.meta.url)`
       // resolution, so it must be served unbundled.
       exclude: ['mediabunny'],
+      rolldownOptions: {
+        plugins: [externalizeComponentsImportInDependencyScan],
+      },
     },
     plugins: [
       tailwindcss(),
     ],
   },
-  css: ['./assets/css/main.css'],
+  css: ['~/assets/css/main.css'],
   app: {
     head: {
       htmlAttrs: {
@@ -427,12 +471,14 @@ export default defineNuxtConfig({
   },
   experimental: {
     componentIslands: true,
-    viteEnvironmentApi: true,
+    asyncContext: true,
+    early404: true,
+    stripNeverHydratedData: true,
+    strictRouteTypes: true,
     extractAsyncDataHandlers: true,
     typescriptPlugin: true,
     // https://github.com/nuxt/nuxt/issues/34142#issuecomment-3791192527
     nitroAutoImports: true,
-    watcher: 'builder',
     prefetchPreloadTags: true,
   },
   hooks: {

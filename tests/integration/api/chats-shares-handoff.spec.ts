@@ -74,7 +74,7 @@ describe('shared chat handoff API', () => {
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
     vi.stubGlobal('assertNotCrossSiteRequest', assertNotCrossSiteRequest)
-    vi.stubGlobal('getHeader', vi.fn(() => 'same-origin'))
+    vi.stubGlobal('getRequestHeader', vi.fn(() => 'same-origin'))
 
     kvGetMock = vi.fn(async () => null)
     kvPutMock = vi.fn(async () => undefined)
@@ -82,11 +82,10 @@ describe('shared chat handoff API', () => {
       get: kvGetMock,
       put: kvPutMock,
     }))
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('useUserSession', vi.fn().mockResolvedValue({
       user: { id: '1' },
@@ -208,7 +207,7 @@ describe('shared chat handoff API', () => {
   })
 
   it('rejects cross-site requests', async () => {
-    vi.stubGlobal('getHeader', vi.fn(() => 'cross-site'))
+    vi.stubGlobal('getRequestHeader', vi.fn(() => 'cross-site'))
 
     const handler = await getHandler()
     const db = createDb()

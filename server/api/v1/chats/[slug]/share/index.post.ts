@@ -1,10 +1,16 @@
 import { eq } from 'drizzle-orm'
-import { createError, useLogger } from 'evlog'
+import { createError } from 'evlog'
 import * as schema from '~~/server/db/schema'
 import {
   durationToExpiresAt,
   syncChatShareFiles,
 } from '~~/server/utils/chats/share'
+import {
+  defineEventHandler,
+  readValidatedBody,
+} from 'nuxt/server'
+import { getDecodedRouterParams } from '~~/server/utils/http/get-decoded-router-params'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const paramsRules = z.object({
   slug: z.ulid(),
@@ -20,12 +26,9 @@ const bodyRules = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
 
-  const params = await getValidatedRouterParams(
-    event,
-    paramsRules.safeParse,
-  )
+  const params = paramsRules.safeParse(getDecodedRouterParams(event))
 
   if (params.error) {
     throw createError({
@@ -125,7 +128,6 @@ export default defineEventHandler(async (event) => {
     chat.id,
     userId,
     body.data.showFiles,
-    event,
   )
 
   await db.update(schema.chats)

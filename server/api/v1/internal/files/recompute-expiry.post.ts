@@ -1,8 +1,10 @@
-import { useLogger } from 'evlog'
+import { createError } from 'evlog'
 import { z } from 'zod'
 import {
   recomputeUserFileExpiry,
 } from '~~/server/utils/files/file-governance'
+import { defineEventHandler, getRequestHeader, readBody } from 'nuxt/server'
+import { useRequestLogger } from '~~/server/utils/logging/request-logger'
 
 const bodySchema = z.object({
   userId: z.coerce.number().int().positive(),
@@ -10,13 +12,13 @@ const bodySchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const logger = useLogger(event)
+  const logger = useRequestLogger(event)
   const maintenanceToken = useRuntimeConfig().filesMaintenanceToken
 
   if (!maintenanceToken) {
     throw createError({
-      statusCode: 404,
-      statusMessage: 'Not found',
+      message: 'Not found',
+      status: 404,
     })
   }
 
@@ -24,8 +26,8 @@ export default defineEventHandler(async (event) => {
 
   if (headerToken !== maintenanceToken) {
     throw createError({
-      statusCode: 403,
-      statusMessage: 'Forbidden',
+      message: 'Forbidden',
+      status: 403,
     })
   }
 
@@ -34,9 +36,9 @@ export default defineEventHandler(async (event) => {
 
   if (!body.success) {
     throw createError({
-      statusCode: 400,
-      statusMessage: 'Invalid request body',
-      data: body.error.flatten(),
+      message: 'Invalid request body',
+      status: 400,
+      why: body.error.message,
     })
   }
 

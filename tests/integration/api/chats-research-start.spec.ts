@@ -127,11 +127,10 @@ describe('research start API', () => {
         statusMessage: 'Unauthorized',
       })
     })
-    vi.stubGlobal('getValidatedRouterParams', async (
+    vi.stubGlobal('getRouterParams', (
       event: { params: unknown },
-      parser: (params: unknown) => unknown,
     ) => {
-      return parser(event.params)
+      return event.params
     })
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },

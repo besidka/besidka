@@ -44,16 +44,6 @@ vi.mock('evlog', () => ({
   },
 }))
 
-vi.mock('h3', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('h3')>()
-
-  return {
-    ...actual,
-    getCookie: mocks.getCookie,
-    getRequestHeader: mocks.getRequestHeader,
-  }
-})
-
 vi.mock('~~/server/utils/consents-db', () => ({
   insertConsentReceipt: mocks.insertConsentReceipt,
 }))
@@ -108,6 +98,8 @@ describe('POST /api/v1/consents', () => {
     mocks.insertConsentReceipt.mockResolvedValue(undefined)
 
     vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+    vi.stubGlobal('getCookie', mocks.getCookie)
+    vi.stubGlobal('getRequestHeader', mocks.getRequestHeader)
     vi.stubGlobal('setResponseStatus', vi.fn())
     vi.stubGlobal('readValidatedBody', async (
       event: { body: unknown },
