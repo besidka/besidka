@@ -585,6 +585,29 @@ test.describe('Cookie consent banner', () => {
         .not.toContain(PUSH_DATABASE_NAME)
     })
 
+  test('a push handoff IndexedDB left by an earlier version is removed',
+    async ({ page }) => {
+      await openLanding(page)
+      await page.evaluate((name) => {
+        return new Promise<void>((resolve) => {
+          const request = indexedDB.open(name, 1)
+
+          request.onsuccess = () => {
+            request.result.close()
+            resolve()
+          }
+        })
+      }, PUSH_DATABASE_NAME)
+
+      expect(await readIndexedDatabaseNames(page))
+        .toContain(PUSH_DATABASE_NAME)
+
+      await page.reload()
+
+      await expect.poll(() => readIndexedDatabaseNames(page))
+        .not.toContain(PUSH_DATABASE_NAME)
+    })
+
   test('the consent receipt of a real decision is accepted by the server',
     async ({ page }) => {
       const popup = page.getByTestId('cookies-popup')

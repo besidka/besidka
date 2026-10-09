@@ -18,6 +18,7 @@ interface FakeIndexedDbOptions {
 
 function createFakeIndexedDb(options: FakeIndexedDbOptions = {}) {
   const abort = vi.fn()
+  const deleteDatabase = vi.fn()
   const deleteEntry = vi.fn()
   const databases = vi.fn(async () => {
     return (options.existingDatabases ?? []).map((name) => {
@@ -80,13 +81,13 @@ function createFakeIndexedDb(options: FakeIndexedDbOptions = {}) {
     return request
   })
 
-  const indexedDb: Record<string, unknown> = { open }
+  const indexedDb: Record<string, unknown> = { open, deleteDatabase }
 
   if (options.existingDatabases !== null) {
     indexedDb.databases = databases
   }
 
-  return { indexedDb, open, databases, abort, deleteEntry }
+  return { indexedDb, open, databases, abort, deleteEntry, deleteDatabase }
 }
 
 function setNotificationPermission(
@@ -161,7 +162,7 @@ describe('push-navigation plugin', () => {
     }
   })
 
-  it('never touches IndexedDB while notification permission is default', async () => {
+  it('never opens or lists IndexedDB while notification permission is default', async () => {
     const fake = createFakeIndexedDb({ existingDatabases: [DATABASE_NAME] })
 
     installFakeIndexedDb(fake)
@@ -173,7 +174,33 @@ describe('push-navigation plugin', () => {
     expect(fake.open).not.toHaveBeenCalled()
   })
 
-  it('never touches IndexedDB while notification permission is denied', async () => {
+  it('deletes a database left by an earlier version while permission is default', async () => {
+    const fake = createFakeIndexedDb({ existingDatabases: [DATABASE_NAME] })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('default')
+
+    await mountApp()
+
+    expect(fake.deleteDatabase).toHaveBeenCalledWith(DATABASE_NAME)
+    expect(fake.open).not.toHaveBeenCalled()
+  })
+
+  it('does not delete the database while permission is granted', async () => {
+    const fake = createFakeIndexedDb({
+      existingDatabases: [DATABASE_NAME],
+      entry: { url: '/chats/abc', savedAt: Date.now() },
+    })
+
+    installFakeIndexedDb(fake)
+    setNotificationPermission('granted')
+
+    await mountApp()
+
+    expect(fake.deleteDatabase).not.toHaveBeenCalled()
+  })
+
+  it('never opens IndexedDB while notification permission is denied', async () => {
     const fake = createFakeIndexedDb({ existingDatabases: [DATABASE_NAME] })
 
     installFakeIndexedDb(fake)
@@ -184,7 +211,7 @@ describe('push-navigation plugin', () => {
     expect(fake.open).not.toHaveBeenCalled()
   })
 
-  it('never touches IndexedDB when the Notification API is missing', async () => {
+  it('never opens or lists IndexedDB when the Notification API is missing', async () => {
     const fake = createFakeIndexedDb({ existingDatabases: [DATABASE_NAME] })
 
     installFakeIndexedDb(fake)

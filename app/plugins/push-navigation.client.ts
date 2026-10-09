@@ -10,7 +10,8 @@
  * database, so visitors who never enabled push never get one. The read is
  * skipped unless notification permission is granted, then skipped again when
  * indexedDB.databases() (where supported) shows no database, and an open that
- * would create one is aborted.
+ * would create one is aborted. While permission is not granted, a database
+ * left empty by an earlier version of this plugin is deleted.
  */
 const PENDING_NAVIGATION_DB = 'besidka-push'
 const PENDING_NAVIGATION_STORE = 'pending-navigation'
@@ -44,10 +45,24 @@ async function pendingNavigationDatabaseExists(): Promise<boolean> {
   }
 }
 
+function discardPendingNavigationDatabase(): void {
+  try {
+    window.indexedDB.deleteDatabase(PENDING_NAVIGATION_DB)
+  } catch (exception) {
+    void exception
+  }
+}
+
 async function readAndClearPendingNavigation(): Promise<
   PendingNavigation | null
 > {
-  if (!('indexedDB' in window) || !isPushNotificationGranted()) {
+  if (!('indexedDB' in window)) {
+    return null
+  }
+
+  if (!isPushNotificationGranted()) {
+    discardPendingNavigationDatabase()
+
     return null
   }
 

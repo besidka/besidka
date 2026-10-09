@@ -343,7 +343,12 @@ after the user switched push on. The page side
 (`app/plugins/push-navigation.client.ts`) therefore only ever reads it, and
 never opens it in a way that can create it:
 
-1. It does nothing unless `Notification.permission === 'granted'`.
+1. It does nothing unless `Notification.permission === 'granted'`. While
+   permission is not granted it also calls `indexedDB.deleteDatabase()` for
+   `besidka-push`, which removes the empty database that earlier versions of the
+   plugin created for every visitor (deleting a database that does not exist is
+   a no-op and never creates one). The e2e test "a push handoff IndexedDB left
+   by an earlier version is removed" covers it.
 2. Where `indexedDB.databases()` exists it returns early when no `besidka-push`
    database is listed.
 3. Where it does not (older Firefox), the `open()` request aborts its upgrade
