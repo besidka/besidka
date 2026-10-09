@@ -88,6 +88,16 @@ describe('isSecureBaseUrl', () => {
     expect(isSecureBaseUrl('https://x-pr-7.workers.dev')).toBe(true)
   })
 
+  it('accepts a mixed-case scheme', () => {
+    expect(isSecureBaseUrl('HTTPS://besidka.com')).toBe(true)
+    expect(isSecureBaseUrl('Https://besidka.com')).toBe(true)
+  })
+
+  it('is false for an invalid URL', () => {
+    expect(isSecureBaseUrl('besidka.com')).toBe(false)
+    expect(isSecureBaseUrl('not a url')).toBe(false)
+  })
+
   it('is false for http and empty base URLs', () => {
     expect(isSecureBaseUrl('http://localhost:3000')).toBe(false)
     expect(isSecureBaseUrl('')).toBe(false)
