@@ -78,3 +78,22 @@ export function parseConsentCookieValue(
     date: typeof record.date === 'string' ? record.date : undefined,
   }
 }
+
+/**
+ * Mirrors the revision and category rules of the module's server-side
+ * `getCookieConsent()` for code that only has the raw cookie value, such as
+ * Better Auth hooks that receive no H3 event.
+ */
+export function isConsentCategoryGranted(
+  raw: string | null | undefined,
+  categoryId: string,
+  revision: number,
+): boolean {
+  const parsed = parseConsentCookieValue(raw)
+
+  if (!parsed || parsed.v !== revision) {
+    return false
+  }
+
+  return parsed.granted.includes(categoryId)
+}

@@ -55,6 +55,7 @@ function stubBindings() {
     public: {
       baseUrl: 'https://example.com',
       turnstileSiteKey: '',
+      cookieConsent: { cookieName: 'cookies_consent', revision: 1 },
     },
     turnstileSecretKey: '',
     turnstileEnforced: false,
@@ -753,5 +754,103 @@ describe('server/utils/auth.ts security notification wiring', () => {
         })
       },
     )
+  })
+})
+
+describe('server/utils/auth.ts last-login-method cookie consent gate', () => {
+  const sessionTokenName = '__Secure-better-auth.session_token'
+  const lastLoginCookieName = 'better-auth.last_used_login_method'
+
+  function encodeConsentCookie(value: unknown): string {
+    return `cookies_consent=${encodeURIComponent(JSON.stringify(value))}`
+  }
+
+  async function runLastLoginMethodHook(
+    cookieHeader: string | null,
+    overrides: { path?: string, params?: Record<string, string> } = {},
+  ): Promise<string[]> {
+    const options = await importAuthOptions()
+    const plugin = options.plugins!.find((candidate) => {
+      return candidate.id === 'last-login-method'
+    })!
+    const handler = plugin.hooks!.after![0]!.handler as (
+      ctx: Record<string, unknown>,
+    ) => Promise<{ headers: Headers }>
+    const responseHeaders = new Headers()
+
+    responseHeaders.append('set-cookie', `${sessionTokenName}=token; Path=/`)
+
+    const result = await handler({
+      path: overrides.path ?? '/sign-in/email',
+      params: overrides.params,
+      headers: new Headers(cookieHeader ? { cookie: cookieHeader } : {}),
+      returnHeaders: true,
+      context: {
+        responseHeaders,
+        authCookies: {
+          sessionToken: { name: sessionTokenName, attributes: {} },
+        },
+      },
+    })
+
+    return result.headers.getSetCookie()
+  }
+
+  it('sets no last-login cookie when no consent decision was made', async () => {
+    const setCookies = await runLastLoginMethodHook(null)
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets no last-login cookie when preferences were not granted', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+    )
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets no last-login cookie for a consent cookie from another revision', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 0, granted: ['necessary', 'preferences'] }),
+    )
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets no last-login cookie when the consent cookie is malformed', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      'cookies_consent=%7Bnope',
+    )
+
+    expect(setCookies).toEqual([])
+  })
+
+  it('sets the last-login cookie when preferences were granted', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+    )
+
+    expect(setCookies).toHaveLength(1)
+    expect(setCookies[0]).toContain(`${lastLoginCookieName}=email`)
+    expect(setCookies[0]).toContain('Max-Age=2592000')
+  })
+
+  it('sets the last-login cookie on an OAuth callback with preferences', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary', 'preferences'] }),
+      { path: '/callback/:id', params: { id: 'google' } },
+    )
+
+    expect(setCookies[0]).toContain(`${lastLoginCookieName}=google`)
+  })
+
+  it('sets no last-login cookie on an OAuth callback without preferences', async () => {
+    const setCookies = await runLastLoginMethodHook(
+      encodeConsentCookie({ v: 1, granted: ['necessary'] }),
+      { path: '/callback/:id', params: { id: 'google' } },
+    )
+
+    expect(setCookies).toEqual([])
   })
 })

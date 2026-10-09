@@ -10,6 +10,10 @@ import {
 import { createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { passkey } from '@better-auth/passkey'
 import { jwtVerify } from 'jose'
+import type {
+  ModuleOptions,
+} from '~~/modules/cookie-consent/src/runtime/types/module'
+import { isConsentCategoryGranted } from '~~/server/utils/consents'
 import * as schema from '../db/schema'
 import { purgeUserData } from './account/purge-user-data'
 import {
@@ -37,6 +41,21 @@ export function useServerAuth(): ServerAuth {
   return _auth
 }
 
+function isPreferencesConsentGranted(
+  options: ModuleOptions | undefined,
+  getCookie: (name: string) => string | null,
+): boolean {
+  if (!options) {
+    return false
+  }
+
+  return isConsentCategoryGranted(
+    getCookie(options.cookieName),
+    'preferences',
+    options.revision,
+  )
+}
+
 function createAuth() {
   const config = useRuntimeConfig()
   const db = useDb()
@@ -50,7 +69,15 @@ function createAuth() {
 
   const plugins: BetterAuthPlugin[] = [
     oAuthProxy({ productionURL: config.public.baseUrl }),
-    lastLoginMethod({ storeInDatabase: true }),
+    lastLoginMethod({
+      storeInDatabase: true,
+      beforeStoreCookie: (ctx) => {
+        return isPreferencesConsentGranted(
+          config.public.cookieConsent as ModuleOptions | undefined,
+          ctx.getCookie,
+        )
+      },
+    }),
     twoFactor({
       issuer: 'Besidka',
       totpOptions: {
