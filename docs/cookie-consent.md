@@ -13,6 +13,199 @@ via `<LazyCookiesBanner />`.
 
 ---
 
+## Legal requirements (EU / Poland)
+
+This section is an engineering summary of primary sources, not legal advice.
+Research date: 2026-10-09. Citations give article and paragraph numbers so you
+can check each claim against the source. Items marked **[secondary]** come from
+reporting or commentary, not from the primary text. Items marked
+**[paraphrase]** are a paraphrase of a court ruling that was not re-read in the
+original. Re-check both kinds before relying on them for a legal decision.
+
+Use this section when you change the consent UI. It records what the law
+requires, what it forbids, and where the room to manoeuvre is.
+
+### Legal frame
+
+**ePrivacy Directive 2002/58, Art. 5(3)** (as amended by 2009/136). Storing
+information on a terminal, or accessing information already stored there,
+needs the user's consent. Two exceptions apply: storage or access for the sole
+purpose of transmission, and storage or access that is strictly necessary for a
+service the user explicitly requested.
+
+- The rule covers **any** information, not only personal data: CJEU Planet49
+  C-673/17 ¶¶61-65 [paraphrase]; EDPB Guidelines 2/2023 ¶¶9-12.
+- `localStorage` and `sessionStorage` count the same as cookies (EDPB 2/2023
+  ¶¶37-38; WP29 WP194 §1).
+- Purely browser-local processing that never leaves the device is outside
+  Art. 5(3) (EDPB 2/2023 ¶44). Reading that data or transmitting it brings it
+  back inside.
+
+**Consent standard.** The standard is GDPR Art. 4(11): freely given, specific,
+informed, unambiguous, expressed by a clear affirmative act. GDPR Art. 7 adds
+the conditions: 7(1) the controller must demonstrate consent, 7(3) withdrawal
+must be as easy as giving consent, 7(4) conditionality is taken into account.
+This standard applies to Art. 5(3) consent (EDPB Cookie Banner Taskforce
+report, Jan 2023, ¶33; EDPB Guidelines 05/2020 fn 27).
+
+**Which law applies to what.**
+
+- Placing or reading the cookie falls under national ePrivacy law. Later
+  processing falls under the GDPR (Taskforce ¶¶1-2).
+- The GDPR one-stop-shop does not apply to ePrivacy (Taskforce ¶4). Each
+  national authority applies its own rules. The Taskforce positions are a
+  minimum, not a safe harbour.
+
+**Poland.** The Prawo komunikacji elektronicznej (PKE, Dz.U. 2024 poz. 1221)
+has been in force since 10 Nov 2024 [secondary for the date].
+
+- **Art. 399** implements Art. 5(3). Ust. 1 requires prior clear information
+  plus consent. Ust. 3 pkt 2 is the "konieczne" exemption for a service the
+  user requested. The Polish text omits "strictly"; read it in line with the
+  Directive.
+- **Art. 399 ust. 2** allows consent through software or browser settings. This
+  is a Polish carry-over that is in tension with Planet49's active-behaviour
+  requirement. CNIL ld ¶¶43-45 says browser settings did not meet the standard
+  in France.
+- **Art. 400**: consent follows the data-protection rules "odpowiednio".
+- **Enforcer for cookies: Prezes UKE** (Art. 444 ust. 1 pkt 82, Art. 446
+  ust. 1, up to 3% of prior-year revenue). Art. 446 ust. 3 caps the fine at
+  15,000 zł when revenue is nil or at most 500,000 zł. That cap is the one
+  relevant to a sole trader.
+- The "3% or 1,000,000 zł" tier (Art. 446 ust. 5) applies only to Art. 398
+  direct marketing. Some Polish blogs wrongly apply it to cookies.
+- **UODO** covers the GDPR side (later processing). Its PKE fines under
+  Art. 445 cover Arts. 401, 402 and 405, not 399.
+- A UKE-versus-UODO jurisdiction debate exists [secondary: prawo.pl].
+- The amending acts 2025 poz. 637 and 820, and 2026 poz. 252, 815 and 1296,
+  were text-searched with no hits on Arts. 399, 444 or 446. That was a text
+  search, not a legal review.
+- No published UKE or UODO cookie-banner fine was found.
+
+### What is exempt from consent
+
+The exemption test has two limbs:
+
+1. The service was explicitly requested by the user.
+2. The storage is strictly necessary for that service, judged from the user's
+   point of view (WP194 §§2.2, 5).
+
+A multi-purpose cookie is exempt only if every purpose is exempt (WP194 §2.4).
+Lifespan must be tied to purpose (WP194 §2.3).
+
+| Item | EU / WP29 view | National view | Verdict for Besidka |
+|------|----------------|---------------|---------------------|
+| Auth session | Exempt for the session (WP194 §3.2). Persistent "remember me" cookies are not exempt without an explicit user choice. | CNIL ld ¶49: exempt, with no session/persistent split. Do not reuse for other purposes (¶48). | Exempt (Better Auth session, 7 days). A long default lifetime is a grey zone under the stricter WP29 reading. |
+| CSRF | Not named in any source. Fits "security of the requested service" (WP194 §3.3). | Fits CNIL ld ¶49. | Exempt by inference, single purpose. |
+| Consent-record cookie | No EU text. | CNIL ld ¶49 expressly exempts it. | Exempt (`cookies_consent`). Store no identifier beyond the choice (EDPB 05/2020 ¶106). |
+| Load balancing | Exempt (WP194 §3.5). | Exempt (CNIL ld ¶49). | Exempt. |
+| Security / bot protection | Exempt only for the security of the requested service (WP194 §3.3). | CNIL FAQ Q17: a CAPTCHA is consent-free only if solely for security or authentication. Provider reuse of the data needs consent. | Turnstile on sign-in, sign-up and reset-password is defensible as exempt. A site-wide `__cf_bm` is a grey zone: it serves the provider's bot management. No DPA decision was found on `__cf_bm` or Turnstile. Cloudflare's own "strictly necessary" label is vendor opinion. |
+| UI customisation (theme, language, layout) | Exempt only if set by an explicit user act AND session or short-lived (WP194 §3.6, §5 item 6). Longer lifespans need a prominent notice. | CNIL ld ¶49: exempt when intrinsic and expected, with no lifetime cap. | Besidka keeps these consent-gated under `preferences` (conservative choice). This is the WP29-versus-CNIL split. |
+| First-party audience analytics | WP194 §4.3: not exempt, but low-risk. | CNIL ld ¶¶49-51 exempts strictly limited measurement. | This is an EU split. Besidka's landing counter is cookieless and identifier-free. |
+
+### MUST
+
+- **No non-exempt storage or reads before a positive act.** Art. 5(3); PKE
+  Art. 399 ust. 1; Taskforce ¶7.
+- **Consent per purpose.** EDPB 05/2020 ¶¶42-44; PKE Art. 400.
+- **Reject on the first layer, in the same format as Accept.** Taskforce ¶8: a
+  "vast majority" of authorities hold that having no refuse option on a layer
+  with an accept button is an infringement. A few authorities dissent. CNIL
+  reco ¶¶30-32 is stricter: same screen, same ease, same format. One click to
+  accept against several to refuse biases the choice (¶31).
+- **Withdrawal as easy as consent, reachable at all times.** GDPR Art. 7(3);
+  EDPB 05/2020 ¶¶113-114; Taskforce ¶¶31-35; CNIL reco ¶¶40-41. A persistent
+  icon or footer link is acceptable (Taskforce ¶32). CNIL reco ¶¶42-43 suggests
+  a bottom-left cookie icon.
+- **Records that demonstrate consent.** GDPR Art. 7(1); EDPB 05/2020
+  ¶¶104-108. Keep proof while the processing lasts, then no longer than needed
+  (¶107). CNIL reco ¶48 lists proof methods. Besidka: consent receipts via
+  `/api/v1/consents`.
+
+### MUST NOT
+
+- **Pre-tick boxes.** Planet49 ¶¶52, 55 [paraphrase]; Taskforce ¶10; GDPR
+  Recital 32; Orange Romania C-61/19 [paraphrase].
+- **Treat scrolling, silence, continued browsing or X as consent.** EDPB 05/2020
+  ¶86; CNIL ld ¶27. X may count as refusal only if the banner says so (CNIL reco
+  ¶33). The Italian Garante uses X as "continue without consent" [secondary].
+- **Make Reject a faint link or low-contrast.** Taskforce ¶¶11-14, ¶18. Colour
+  asymmetry in general is judged case by case (Taskforce ¶¶17-19). Equal
+  styling is the safe default.
+- **Rely on legitimate interest to place cookies.** Taskforce ¶24.
+- **Run a cookie wall**, meaning access conditional on consent. EDPB 05/2020
+  ¶¶39-41. A blocking modal with an equal Reject is not a wall in itself (an
+  engineering reading of ¶40). Authorities diverge:
+  - CNIL ld ¶¶17-18 and FAQ Q32 judge walls case by case, after the Conseil
+    d'État ruling of 19 June 2020.
+  - CJEU C-252/21 ¶150 concerns a dominant platform.
+  - Taskforce ¶13: the design must not imply that consent is needed for access
+    or "clearly push" consent.
+- **Re-nag on every page.** CNIL reco ¶35.
+- **Degrade unrelated functionality on refusal.** EDPB 05/2020 ¶¶46-48.
+- **Reuse an exempt cookie for non-exempt purposes.** WP194 §2.4.
+
+### MAY: lawful ways to get a decision quickly
+
+- Show the banner immediately on first visit and keep it until the user
+  chooses.
+- Use neutral, informative copy that explains what consent enables (WP194
+  §2.6; CNIL reco ¶14). The line is "clearly pushes" (Taskforce ¶13).
+- Ask for just-in-time consent at the moment the user uses a feature that needs
+  the storage (CNIL reco ¶13). This fits per-purpose granularity.
+- Withhold only the specific feature that cannot work without the storage.
+- Re-ask after a refusal at an interval.
+  - CNIL good practice is to keep both consent and refusal for 6 months (reco
+    ¶¶37-39, FAQ Q21).
+  - The EDPB only says "at appropriate intervals" (05/2020 ¶111). The GDPR sets
+    no time limit (¶110).
+  - Besidka's consent cookie lives 180 days.
+- Watch the Commission's Digital Omnibus proposal (19 Nov 2025). It would add
+  GDPR Art. 88a (one-click reject, 6-month bar on re-asking). Per [secondary]
+  reports, the Council's June 2026 text dropped the cookie articles. It is not
+  law.
+
+### Enforcement reality
+
+- CNIL fined Google €150M and Facebook €60M (6 Jan 2022) because refusing was
+  harder than accepting [secondary summary]. It fined Google again €325M in
+  Sept 2025, partly for asymmetric consent during account creation, and Shein
+  €150M the same month.
+- CNIL sent about 20 formal notices in May 2021 over refusal not being as
+  simple as acceptance. noyb sent 500+ draft complaints in 2021 [secondary].
+- The Spanish AEPD fined a small online retailer about €30k in 2021
+  [secondary].
+- For a small site, realistic exposure is complaint-driven or scan-driven. The
+  practical rule: no non-exempt storage before consent, and an equal Reject.
+
+### Where authorities diverge
+
+- Persistent-login and UI-preference lifetime: WP29 is stricter than CNIL.
+- First-party analytics exemption: CNIL yes, WP29 no.
+- Cookie walls: EDPB flat, CNIL case by case.
+- First-layer Reject: Taskforce majority, a few dissent, CNIL stricter.
+- Re-prompt interval and "X means refusal": CNIL only.
+- PKE Art. 399 ust. 2 browser settings: Polish-specific, in tension with
+  Planet49.
+
+### Sources
+
+- [EUR-Lex 2002/58](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02002L0058-20091219)
+- [PKE promulgated text](https://eli.gov.pl/api/acts/DU/2024/1221/text/O/D20241221.pdf)
+- [CNIL, Google fined 325 million euros (2025)](https://www.cnil.fr/en/cookies-and-advertisements-inserted-between-emails-google-fined-325-million-euros-cnil)
+- [CNIL cookies FAQ](https://www.cnil.fr/fr/cookies-et-autres-traceurs/regles/cookies/FAQ)
+- [CNIL 2021 formal notices](https://www.cnil.fr/fr/refuser-les-cookies-doit-etre-aussi-simple-que-de-les-accepter-une-vingtaine-dorganismes-mis-en)
+- [Cloudflare cookies documentation](https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/)
+- [prawo.pl on consent through browser settings](https://www.prawo.pl/biznes/zgoda-na-cookies-udzielona-przez-ustawienie-przegladarki,512328.html)
+- EDPB Guidelines 05/2020 on consent.
+- EDPB Guidelines 2/2023 on the technical scope of Art. 5(3) ePrivacy.
+- EDPB Guidelines 03/2022 on deceptive design patterns in social-media
+  interfaces (outside this scope; applies only by analogy).
+- EDPB Cookie Banner Taskforce report (Jan 2023).
+- WP29 Opinion 04/2012 on cookie consent exemption (WP194).
+
+---
+
 ## Reading consent state (client-side)
 
 Use `useCookieConsent()` anywhere in client-side Vue code:
