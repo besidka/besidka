@@ -360,8 +360,27 @@ test "push handoff IndexedDB is not created for an undecided visitor" asserts in
 Chromium. The handoff itself is unchanged: a user who tapped a notification
 necessarily has permission `granted` and a database written by the worker.
 Permission can in theory be revoked after a tap and before the next launch, in
-which case the pending target is simply not consumed and expires with the
-5 minute TTL.
+which case the database is deleted on that launch and the pending target is
+discarded with it.
+
+Two robustness rules keep the handoff from being dropped. A `databases()` call
+that throws or takes longer than 500 ms falls through to the guarded `open()`
+(the upgrade-abort path above, which cannot create the database) instead of
+being treated as "no database". And the legacy `deleteDatabase()` cleanup runs
+at most once per page load, not on every visibility, focus or recheck event.
+The e2e test in `tests/e2e/push/navigation-handoff.spec.ts` writes a pending
+entry the way the service worker does and asserts the app navigates to it.
+Headless Chromium reports `Notification.permission` as `denied` even after
+`grantPermissions`, so that test also pins the property to `granted` with an
+init script.
+
+Navigation targets from the database, from `postMessage` and from the push
+payload are resolved with `resolveInternalNavigationTarget()`
+(`app/service-worker/internal-navigation.ts`), shared by the plugin and the
+service worker. `startsWith('/') && !startsWith('//')` accepted `/\evil.com`,
+which `clients.openWindow` parses as `https://evil.com/`. The helper rejects
+backslashes, whitespace and control characters, resolves against the origin,
+requires the same origin and returns path, search and hash only.
 
 The manifest drives the purge. A key that is written but not declared is never
 purged, which is a GDPR Art. 7(3) problem (this is how
@@ -1011,22 +1030,31 @@ enrichers — these are aggregate/infrastructure metadata, not personal data.
 `POST /api/v1/consents` is unauthenticated, so it is validated and throttled
 before anything is stored:
 
-- **Rate limit.** `enforceConsentsRateLimit()` (`server/utils/consents-rate-limit.ts`)
-  allows 60 requests per 60 s per `cf-connecting-ip` and answers
-  `429` (evlog `createError`, `Retry-After` set) beyond that. It reuses the
-  KV-backed `createAuthRateLimitStorage()` used by the auth and key-management
-  limiters, with the window index folded into the storage key so each bucket is
-  a true fixed window (the shared storage alone only resets after a full idle
-  window). It runs before the body is read. No Workers Rate Limiting binding is
-  used, so there is nothing to create in Cloudflare. A real person produces at
-  most a receipt or two per minute; the limit is for floods, and a 429 only
-  costs the audit receipt, never the user's choice (the client ignores the
-  response). The KV counter key contains the client IP and expires within 15
-  minutes; it is not part of the receipt record, which stays IP-free.
-- **Fail open.** If `cf-connecting-ip` is absent (local dev) or KV throws, the
-  request is let through and the logger gets `consentRateLimit.skipped`
-  (`no-client-ip` or `storage-unavailable`), so dev, unit, integration and e2e
-  runs keep working without the binding.
+- **Rate limit.** `enforceConsentsRateLimit()`
+  (`server/utils/consents-rate-limit.ts`) calls the Workers Rate Limiting
+  binding `CONSENTS_RATE_LIMITER` (`ratelimits` in `wrangler.jsonc`, 60
+  requests per 60 s) keyed by `cf-connecting-ip`, with an IPv6 address
+  collapsed to its /64 prefix so one client cannot rotate addresses inside its
+  own prefix. Beyond the limit it answers `429` (evlog `createError`, `Retry-After:
+  60`). It runs before the body is read. The binding is declared in the
+  top-level (preview) config and in `env.production`, with namespace ids
+  `730101` and `730102`; namespaces are created implicitly, so nothing needs
+  creating in Cloudflare, but ids must stay unique per account. The limit is
+  per Cloudflare location and eventually consistent, so it is a flood guard,
+  not exact accounting. A real person produces at most a receipt or two per
+  minute, and a 429 only costs the audit receipt, never the user's choice (the
+  client ignores the response).
+- **Why not KV.** An earlier version used the KV-backed auth limiter. KV allows
+  about one write per second to the same key and `consume` is a non-atomic
+  read-then-write, so under a fast single-IP flood puts were rejected, the
+  error was swallowed and requests went through: the limiter did not limit. It
+  also stored the client IP in plaintext in KV for up to 15 minutes. The
+  binding keeps no readable IP.
+- **Fail open.** If `cf-connecting-ip` is absent (local dev), the binding is
+  absent (unit and integration tests, non-Cloudflare self-hosts) or the binding
+  throws, the request is let through and the logger gets
+  `consentRateLimit.skipped` (`no-client-ip`, `binding-unavailable` or
+  `limiter-error`; the error text goes under `attributes.consentRateLimit`).
 - **`id` must be a UUID.** `crypto.randomUUID()` produces one; the module's
   fallback for browsers without it now builds a UUID v4 from
   `crypto.getRandomValues()` (and `Math.random()` only if there is no crypto at
@@ -1039,7 +1067,23 @@ before anything is stored:
   receipts for those users, a looser one would let an arbitrary backdated
   `createdAt` into the audit trail.
 
-Both rejections are evlog `createError` 400s with `why` and `fix`.
+- **`granted`, `denied` and `changed` must be configured category ids.** They
+  are checked against `cookieConsent.categories` from runtime config, the same
+  source as the module, instead of any string up to 24 characters, so the
+  receipt dataset stays bounded and cannot be filled with arbitrary text.
+- **Bodies over 2 KB are rejected with a 413** from the `content-length` header
+  before `readValidatedBody` runs. A chunked request without the header is not
+  caught by this check; the schema still bounds what is stored.
+
+The id and date rejections are evlog `createError` 400s with `why` and `fix`.
+
+`consistent` in the logged event is a heuristic, not proof: it only says the
+`cookies_consent` cookie on the request carried the same id and granted set as
+the body. A client controls both, so it cannot authenticate a receipt.
+
+On a storage failure the endpoint returns a generic `why` ("The consent
+database rejected the insert."); the D1 message is logged under
+`attributes.consentDb.error` (see `docs/axiom-map-fields.md`).
 
 No raw IP address, no user-agent string, and no user account identifier are
 logged. The consent `id` is a random UUID created at decision time and is

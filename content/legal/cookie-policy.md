@@ -65,7 +65,7 @@ These only remember how you like the app set up. They are kept **only if you agr
 
 | Name | Type | Set by | Purpose | Duration |
 | --- | --- | --- | --- | --- |
-| `better-auth.last_used_login_method` | Cookie | Besidka (Better Auth) | Remembers whether you last signed in with a password, Google or GitHub, so that option is offered first. Readable by the page, so the sign-in screen can highlight it | 30 days |
+| `better-auth.last_used_login_method` | Cookie | Besidka (Better Auth) | Remembers whether you last signed in with a password, Google, GitHub or a passkey, so that option is offered first. Readable by the page, so the sign-in screen can highlight it | 30 days |
 | `nuxt-color-mode` | localStorage | Besidka | Your colour theme (light, dark or system), so the app opens in the theme you chose | Until removed |
 | `nuxt-color-mode` | Cookie | Besidka | A cookie of the same name for the same purpose. In the current setup the theme is kept in localStorage and this cookie is not written; I list it because it is part of the theme setting, and I clear it if you deny preferences | Not set in the current setup |
 | `file-manager-view-mode` | localStorage | Besidka | Whether the file manager shows a grid or a list | Until removed |
@@ -122,7 +122,7 @@ Withdrawing is as easy as giving consent, and it is always available.
 - Once you have chosen, the settings popup offers **Withdraw consent** and **Change preferences** as two equal buttons, so withdrawing is exactly as easy as agreeing was.
 - **Reject all** or **Withdraw consent** removes the optional storage immediately, with no reload needed.
 - If you turn the **preferences** category off, I delete the localStorage keys and cookies listed in that table from your browser and stop writing them. You keep using Besidka exactly as before; the app simply stops remembering those preferences between visits.
-- The `better-auth.last_used_login_method` cookie is written by the sign-in library rather than directly by me, but only when your cookie choice already allows preferences. It is deleted when you deny the preferences category. It holds nothing but the word `email`, `google` or `github`.
+- The `better-auth.last_used_login_method` cookie is written by the sign-in library rather than directly by me, but only when your cookie choice already allows preferences. It is deleted when you deny the preferences category. It holds nothing but the word `email`, `google`, `github` or `passkey`.
 - Withdrawing does not undo storage that was lawful while your consent was in place, and it does not affect the necessary items, which are not based on consent.
 
 You can also clear or block storage in your browser settings. Blocking the necessary items will sign you out and stop the app from remembering your cookie choice, so you will be asked again.
