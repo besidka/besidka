@@ -585,6 +585,22 @@ test.describe('Cookie consent banner', () => {
         .not.toContain(PUSH_DATABASE_NAME)
     })
 
+  test('the consent receipt of a real decision is accepted by the server',
+    async ({ page }) => {
+      const popup = page.getByTestId('cookies-popup')
+
+      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+
+      const receiptResponse = page.waitForResponse((response) => {
+        return response.url().endsWith('/api/v1/consents')
+          && response.request().method() === 'POST'
+      })
+
+      await popup.getByTestId('cookies-reject-all').click()
+
+      expect((await receiptResponse).status()).toBe(204)
+    })
+
   test('color-mode key stays absent after Reject all and a reload',
     async ({ page }) => {
       const popup = page.getByTestId('cookies-popup')

@@ -297,6 +297,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Cookies/RememberPrompt.client.spec.ts',
     'tests/unit/components/LandingFooter.spec.ts',
     'tests/unit/utils/consents.spec.ts',
+    'tests/unit/utils/consents-rate-limit.spec.ts',
     'tests/unit/config/cookie-consent.spec.ts',
     'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
@@ -968,7 +969,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting|notification-prompt)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db|-rate-limit)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {
