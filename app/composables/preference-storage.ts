@@ -19,6 +19,23 @@ function getStorage(): Storage | null {
   }
 }
 
+export function requestPersistence(): void {
+  if (!import.meta.client) {
+    return
+  }
+
+  const isNotificationPromptVisible = useState<boolean>(
+    'notification-prompt:is-visible',
+    () => false,
+  )
+
+  if (isNotificationPromptVisible.value) {
+    return
+  }
+
+  useCookieConsentUi().requestConsent('preferences')
+}
+
 export function usePreferenceStorage() {
   function setItem(key: string, value: string): void {
     if (!import.meta.client) {

@@ -13,12 +13,14 @@ const mocks = vi.hoisted(() => ({
   useDevice: vi.fn(),
   uploadFiles: vi.fn(),
   useWarningMessage: vi.fn(),
+  requestPersistence: vi.fn(),
 }))
 
 mockNuxtImport('useChatInput', () => mocks.useChatInput)
 mockNuxtImport('useChatFiles', () => mocks.useChatFiles)
 mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useWarningMessage', () => mocks.useWarningMessage)
+mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
 
 const mockRoute = reactive<{ path: string }>({ path: '/chats/abc123' })
 
@@ -639,6 +641,20 @@ describe('ChatInput.client', () => {
       expect(levelButtonTexts).toEqual(['off', 'low', 'medium', 'high'])
     })
 
+    it('asks to remember preferences only on an explicit level pick',
+      async () => {
+        useLevelsModeSelection()
+
+        const wrapper = await mountChatInput()
+
+        expect(mocks.requestPersistence).not.toHaveBeenCalled()
+
+        clickReasoningLevel(wrapper, 'high')
+        await nextTick()
+
+        expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
+      })
+
     it('persists an explicitly chosen reasoning level as the saved '
       + 'default', async () => {
       useLevelsModeSelection()
@@ -885,6 +901,20 @@ describe('ChatInput.client', () => {
 
       expect(trigger.classes()).toContain('btn-circle')
     })
+
+    it('asks to remember preferences only on an explicit provider pick',
+      async () => {
+        useWebSearchSelection()
+
+        const wrapper = await mountChatInput()
+
+        expect(mocks.requestPersistence).not.toHaveBeenCalled()
+
+        clickWebSearchOption(wrapper, 'Brave Search')
+        await nextTick()
+
+        expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
+      })
 
     it('persists an explicitly chosen search provider as the new-chat '
       + 'default', async () => {

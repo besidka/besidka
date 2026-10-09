@@ -38,6 +38,7 @@
     <Sidebar v-if="hasSidebar" />
     <LazyUiCursorGlow v-if="$device.isDesktop" />
     <LazyCookiesBanner />
+    <LazyCookiesRememberPrompt />
   </ClientOnly>
 </template>
 

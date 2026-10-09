@@ -719,6 +719,7 @@ function selectWebSearchProvider(option: WebSearchSelection) {
   }
 
   prefStorage.setItem('settings_web_search_tool', option)
+  requestPersistence()
 
   const withoutSearch = tools.value.filter((tool) => {
     return !isWebSearchTool(tool)
@@ -741,6 +742,7 @@ function selectWebSearchProvider(option: WebSearchSelection) {
 function selectReasoningLevel(level: ReasoningLevel) {
   reasoning.value = level
   prefStorage.setItem('settings_reasoning_level', level)
+  requestPersistence()
 }
 
 /**

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   toggleFavoriteGatewayModel: vi.fn(),
   getFavoriteGatewayModels: vi.fn(),
   refreshGatewayCatalog: vi.fn(),
+  requestPersistence: vi.fn(),
 }))
 
 mockNuxtImport('getModel', () => mocks.getModel)
@@ -27,6 +28,7 @@ mockNuxtImport('useDevice', () => mocks.useDevice)
 mockNuxtImport('useUserModel', () => mocks.useUserModel)
 mockNuxtImport('useUserSetting', () => mocks.useUserSetting)
 mockNuxtImport('useGatewayCatalog', () => mocks.useGatewayCatalog)
+mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
 
 /**
  * Mirrors the real composable's writable-computed bridge so assertions can
@@ -218,6 +220,7 @@ describe('ChatInput/ModelsTrigger', () => {
       .trigger('click')
 
     expect(userModel.value).toBe('image-model')
+    expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
     await vi.waitFor(() => {
       const panel = wrapper.find('[data-testid="models-picker-panel"]')
 
@@ -730,6 +733,7 @@ describe('ChatInput/ModelsTrigger', () => {
         gatewayId: 'vercel',
         modelId: 'anthropic/claude-opus-5',
       })
+      expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
     })
 
     it('routes favorites to the active gateway, not the curated list', async () => {

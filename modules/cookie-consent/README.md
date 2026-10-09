@@ -160,6 +160,10 @@ const {
   isTriggerNode,  // (node: Node | null) => boolean — true when node is/contains the stored trigger
   scheduleAutoShow, // () => void — see auto-show policy
   switchProps,    // (categoryId: string) => { role, aria-checked, disabled }
+  consentRequest, // Readonly<Ref<string | null>> — category id of the open just-in-time request
+  requestConsent, // (categoryId: string) => boolean — see just-in-time consent
+  grantRequest,   // () => void — allows the requested category and clears the request
+  dismissRequest, // () => void — clears the request, no decision
 } = useCookieConsentUi()
 ```
 
@@ -191,6 +195,33 @@ stored, when the trigger is `document.body` / `document.documentElement`
 (guards against spurious full-document matches), or when `node` is `null`.
 Used by `CookieConsentPopup`'s outside-click handler to prevent
 close-then-reopen on the same trigger click.
+
+### Just-in-time consent
+
+An undecided visitor can be asked for one category at the moment they use a
+feature that needs it. `requestConsent(categoryId)` sets the shared
+`consentRequest` state (`cookie-consent:request`) and returns `true` only when
+all of these hold:
+
+- it runs on the client;
+- the category exists and is not `required`;
+- the category is not already allowed;
+- the visitor is undecided (`isDecided` is `false`);
+- no consent view is open (`view === 'hidden'`) and no auto-show timer is
+  pending;
+- no request has been shown yet in this page load.
+
+Showing a request latches it for the rest of the page load, whatever the
+outcome (granted, dismissed, cleared by `openPopup()` / `expand()` or by the
+app on navigation). Decided visitors are never asked: a refusal is honoured
+until the consent cookie expires, after which the normal banner asks again.
+
+`grantRequest()` commits the already granted ids plus the requested one through
+`allow()`. It is a real decision, so the receipt and the
+`cookie-consent:changed` hook behave as for any other commit.
+`dismissRequest()` only clears the request. The module renders nothing for a
+request; the app shows its own non-blocking prompt while `consentRequest` is
+set.
 
 ## Components (headless primitives, client-only)
 

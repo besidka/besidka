@@ -920,6 +920,7 @@ function selectModel(modelId: string) {
   }
 
   selection.value = { source: 'provider', modelId }
+  requestPersistence()
   closeAndRestoreFocus()
 }
 
@@ -931,6 +932,7 @@ function selectGatewayModel(modelId: string) {
   }
 
   selection.value = { source: 'gateway', gatewayId: gateway.id, modelId }
+  requestPersistence()
   closeAndRestoreFocus()
 }
 

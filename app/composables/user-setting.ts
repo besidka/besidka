@@ -389,6 +389,8 @@ export function useUserSetting() {
     fallbackReasoningExpanded.value = reasoningExpanded
 
     if (!activeUserId.value) {
+      requestPersistence()
+
       return
     }
 
@@ -439,6 +441,8 @@ export function useUserSetting() {
     fallbackReasoningAutoHide.value = value
 
     if (!activeUserId.value) {
+      requestPersistence()
+
       return
     }
 
@@ -577,6 +581,8 @@ export function useUserSetting() {
     fallbackSidebarPinned.value = sidebarPinned
 
     if (!activeUserId.value) {
+      requestPersistence()
+
       return
     }
 
@@ -627,6 +633,8 @@ export function useUserSetting() {
     fallbackFavoriteModels.value = favoriteModels
 
     if (!activeUserId.value) {
+      requestPersistence()
+
       return
     }
 
@@ -701,6 +709,8 @@ export function useUserSetting() {
     fallbackFavoriteGatewayModels.value = favoriteGatewayModels
 
     if (!activeUserId.value) {
+      requestPersistence()
+
       return
     }
 

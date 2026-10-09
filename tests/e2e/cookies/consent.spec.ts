@@ -67,6 +67,29 @@ async function commitViaModal(
   await expect(modal).toBeHidden()
 }
 
+async function toggleTheme(page: Page) {
+  await page
+    .locator('[data-testid="theme-switcher"]:visible')
+    .first()
+    .click()
+}
+
+async function openLanding(page: Page) {
+  await page.goto('/')
+  await page.waitForLoadState('domcontentloaded')
+  await expect(
+    page.locator('[data-testid="theme-switcher"]:visible').first(),
+  ).toBeVisible()
+}
+
+async function dismissPopupWithEscape(page: Page) {
+  await expect(page.getByTestId('cookies-popup')).toBeVisible({
+    timeout: SHOW_DELAY_BUFFER,
+  })
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('cookies-popup')).toBeHidden()
+}
+
 test.describe('Cookie consent banner', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/signin')
@@ -550,6 +573,97 @@ test.describe('Cookie consent banner', () => {
       const html = await response.text()
 
       expect(html).not.toContain('cookie-consent:')
+    })
+
+  test('asks to remember preferences when an undecided visitor changes '
+    + 'the theme, and Remember grants preferences', async ({ page }) => {
+    const prompt = page.getByTestId('cookies-remember-prompt')
+
+    await openLanding(page)
+
+    await dismissPopupWithEscape(page)
+    await expect(prompt).toBeHidden()
+
+    await toggleTheme(page)
+
+    await expect(prompt).toBeVisible()
+    await expect(prompt).toContainText('Remember your preferences')
+    expect(await getConsentCookie(page)).toBeNull()
+    expect(await readColorModeKey(page)).toBeNull()
+
+    await page.getByTestId('cookies-remember').click()
+    await expect(prompt).toBeHidden()
+
+    const consent = await getConsentCookie(page)
+
+    expect(consent.granted).toEqual(
+      expect.arrayContaining(['necessary', 'preferences']),
+    )
+    expect(consent.granted).not.toContain('analytics')
+    expect(await readColorModeKey(page)).not.toBeNull()
+  })
+
+  test('Not now hides the prompt for the rest of the page load and records '
+    + 'no decision', async ({ page }) => {
+    const prompt = page.getByTestId('cookies-remember-prompt')
+
+    await openLanding(page)
+
+    await dismissPopupWithEscape(page)
+    await toggleTheme(page)
+    await expect(prompt).toBeVisible()
+
+    await page.getByTestId('cookies-remember-dismiss').click()
+    await expect(prompt).toBeHidden()
+
+    await toggleTheme(page)
+    await page.waitForTimeout(500)
+
+    await expect(prompt).toBeHidden()
+    expect(await getConsentCookie(page)).toBeNull()
+  })
+
+  test('the prompt may ask again after a reload, once the popup is '
+    + 'dismissed', async ({ page }) => {
+    const prompt = page.getByTestId('cookies-remember-prompt')
+
+    await openLanding(page)
+
+    await dismissPopupWithEscape(page)
+    await toggleTheme(page)
+    await expect(prompt).toBeVisible()
+    await page.getByTestId('cookies-remember-dismiss').click()
+    await expect(prompt).toBeHidden()
+
+    await page.reload()
+    await dismissPopupWithEscape(page)
+    await toggleTheme(page)
+
+    await expect(prompt).toBeVisible()
+  })
+
+  test('a visitor who chose Reject all is never asked to remember',
+    async ({ page }) => {
+      const popup = page.getByTestId('cookies-popup')
+      const prompt = page.getByTestId('cookies-remember-prompt')
+
+      await openLanding(page)
+      await expect(popup).toBeVisible({ timeout: SHOW_DELAY_BUFFER })
+      await popup.getByTestId('cookies-reject-all').click()
+      await expect(popup).toBeHidden()
+
+      await toggleTheme(page)
+      await page.waitForTimeout(500)
+
+      await expect(prompt).toBeHidden()
+      expect((await getConsentCookie(page)).granted).toEqual(['necessary'])
+
+      await page.reload()
+      await page.waitForLoadState('domcontentloaded')
+      await toggleTheme(page)
+      await page.waitForTimeout(500)
+
+      await expect(prompt).toBeHidden()
     })
 })
 

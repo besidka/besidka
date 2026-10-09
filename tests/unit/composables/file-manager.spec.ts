@@ -2,11 +2,13 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useFileManager } from '../../../app/composables/file-manager'
 
-const { fetchMock } = vi.hoisted(() => ({
+const { fetchMock, requestPersistenceMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
+  requestPersistenceMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
+mockNuxtImport('requestPersistence', () => requestPersistenceMock)
 
 const smallFileSet = [
   {
@@ -141,6 +143,17 @@ describe('useFileManager', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.useRealTimers()
+  })
+
+  it('asks to remember preferences only when the view mode is set', () => {
+    const { viewMode } = useFileManager()
+
+    expect(viewMode.value).toBeDefined()
+    expect(requestPersistenceMock).not.toHaveBeenCalled()
+
+    viewMode.value = 'list'
+
+    expect(requestPersistenceMock).toHaveBeenCalledTimes(1)
   })
 
   it('fetches files with pagination', async () => {

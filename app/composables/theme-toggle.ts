@@ -72,6 +72,7 @@ export const useThemeToggle = () => {
 
     colorMode.preference = nextPreference
     setThemeColorMeta(resolvedTheme.value)
+    requestPersistence()
     reloadStandaloneApp()
   }
 

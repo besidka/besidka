@@ -2,13 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { useUserSetting } from '../../../app/composables/user-setting'
 
-const { fetchMock, getProvidersMock } = vi.hoisted(() => ({
+const {
+  fetchMock,
+  getProvidersMock,
+  requestPersistenceMock,
+} = vi.hoisted(() => ({
   fetchMock: vi.fn(),
   getProvidersMock: vi.fn(),
+  requestPersistenceMock: vi.fn(),
 }))
 
 mockNuxtImport('$fetch', () => fetchMock)
 mockNuxtImport('getProviders', () => getProvidersMock)
+mockNuxtImport('requestPersistence', () => requestPersistenceMock)
 
 describe('useUserSetting', () => {
   beforeEach(() => {
@@ -996,5 +1002,69 @@ describe('useUserSetting', () => {
     localStorage.clear()
 
     expect(getFavoriteGatewayModels('vercel')).toEqual([])
+  })
+})
+
+describe('useUserSetting just-in-time consent request', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+
+    getProvidersMock.mockReturnValue({
+      providers: [{ id: 'openai', name: 'OpenAI', models: [{ id: 'gpt-5.4' }] }],
+    })
+
+    useUserSetting().clearUserContext()
+  })
+
+  it('asks for every explicit guest change', async () => {
+    const settings = useUserSetting()
+
+    await settings.setReasoningExpanded(true)
+    await settings.setReasoningAutoHide(false)
+    await settings.setSidebarPinned(true)
+    await settings.setFavoriteModels(['gpt-5.4'])
+    await settings.setFavoriteGatewayModels({ vercel: ['openai/gpt-5.4'] })
+    await settings.toggleFavoriteModel('gpt-5.4')
+    await settings.toggleFavoriteGatewayModel('vercel', 'openai/gpt-5.4')
+
+    expect(requestPersistenceMock).toHaveBeenCalledTimes(7)
+  })
+
+  it('does not ask for signed-in users, whose settings live on the account',
+    async () => {
+      fetchMock.mockResolvedValue({
+        reasoningExpanded: false,
+        reasoningAutoHide: true,
+        sidebarPinned: false,
+        favoriteModels: [],
+        favoriteGatewayModels: {},
+      })
+
+      const settings = useUserSetting()
+
+      await settings.syncForUser('user-1')
+      await settings.setReasoningExpanded(true)
+      await settings.setReasoningAutoHide(false)
+      await settings.setSidebarPinned(true)
+      await settings.setFavoriteModels(['gpt-5.4'])
+      await settings.setFavoriteGatewayModels({ vercel: ['openai/gpt-5.4'] })
+
+      expect(requestPersistenceMock).not.toHaveBeenCalled()
+    })
+
+  it('never asks while syncing server values after sign-in', async () => {
+    localStorage.setItem('settings_reasoning_expanded', 'true')
+    fetchMock.mockResolvedValue({
+      reasoningExpanded: false,
+      reasoningAutoHide: false,
+      sidebarPinned: true,
+      favoriteModels: ['gpt-5.4'],
+      favoriteGatewayModels: { vercel: ['openai/gpt-5.4'] },
+    })
+
+    await useUserSetting().syncForUser('user-1')
+
+    expect(requestPersistenceMock).not.toHaveBeenCalled()
   })
 })

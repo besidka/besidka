@@ -10,6 +10,13 @@ export default defineI18nLocale(() => ({
         + 'and settings between visits on this device. Necessary cookies '
         + 'are always on.',
     },
+    prompt: {
+      message:
+      'Remember your preferences on this device? Besidka will keep your '
+      + 'theme, model, drafts and settings between visits.',
+      remember: 'Remember',
+      notNow: 'Not now',
+    },
     policyLink: 'Cookie Policy',
     currentState: 'Your current state',
     details: {

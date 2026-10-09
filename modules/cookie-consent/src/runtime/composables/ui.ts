@@ -6,6 +6,7 @@ import { useCookieConsent } from './consent'
 // Browser-only module scope — resets per page load, never touched during SSR.
 let autoShowScheduled = false
 let autoShowTimer: ReturnType<typeof setTimeout> | null = null
+let consentRequestShown = false
 let triggerElement: HTMLElement | null = null
 // Whether the surface currently shown was opened by a user action (click,
 // keyboard activation) rather than the unattended auto-show timer — decides
@@ -32,6 +33,11 @@ export function useCookieConsentUi() {
     () => false,
   )
 
+  const consentRequest = useState<string | null>(
+    'cookie-consent:request',
+    () => null,
+  )
+
   function initDraft(): void {
     const next: Record<string, boolean> = {}
 
@@ -52,6 +58,7 @@ export function useCookieConsentUi() {
       triggerElement = trigger ?? (document.activeElement as HTMLElement | null)
     }
 
+    consentRequest.value = null
     customizing.value = false
     initDraft()
     view.value = 'popup'
@@ -61,6 +68,7 @@ export function useCookieConsentUi() {
     options?: { userInitiated?: boolean, trigger?: HTMLElement | null },
   ): void {
     userInitiatedOpen = options?.userInitiated ?? true
+    consentRequest.value = null
     customizing.value = options?.userInitiated ?? true
 
     if (import.meta.client && options?.trigger) {
@@ -126,6 +134,48 @@ export function useCookieConsentUi() {
 
       document.body.focus()
     }
+  }
+
+  function requestConsent(categoryId: string): boolean {
+    if (!import.meta.client || consentRequestShown) {
+      return false
+    }
+
+    const category = consent.categories.find(
+      cat => cat.id === categoryId,
+    )
+
+    if (!category || category.required) {
+      return false
+    }
+
+    if (consent.isAllowed(categoryId) || consent.isDecided.value) {
+      return false
+    }
+
+    if (view.value !== 'hidden' || autoShowTimer !== null) {
+      return false
+    }
+
+    consentRequestShown = true
+    consentRequest.value = categoryId
+
+    return true
+  }
+
+  function grantRequest(): void {
+    const requestedId = consentRequest.value
+
+    if (!requestedId) {
+      return
+    }
+
+    consent.allow([...consent.granted.value, requestedId])
+    consentRequest.value = null
+  }
+
+  function dismissRequest(): void {
+    consentRequest.value = null
   }
 
   function toggleDraft(categoryId: string): void {
@@ -240,10 +290,12 @@ export function useCookieConsentUi() {
 
   const readonlyView = computed(() => view.value)
   const readonlyCustomizing = computed(() => customizing.value)
+  const readonlyConsentRequest = computed(() => consentRequest.value)
 
   return {
     view: readonlyView,
     isCustomizing: readonlyCustomizing,
+    consentRequest: readonlyConsentRequest,
     draft,
     toggleDraft,
     commitDraft,
@@ -259,5 +311,8 @@ export function useCookieConsentUi() {
     cancelAutoShow,
     shouldFocusOnShow,
     switchProps,
+    requestConsent,
+    grantRequest,
+    dismissRequest,
   }
 }

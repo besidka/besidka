@@ -18,6 +18,21 @@ describe('useCookieConsentUi (sequential session)', () => {
     vi.useRealTimers()
   })
 
+  describe('requestConsent() while an auto-show is pending', () => {
+    it('refuses and does not consume the once-per-load latch', () => {
+      vi.useFakeTimers()
+
+      const { scheduleAutoShow, cancelAutoShow, requestConsent }
+        = useCookieConsentUi()
+
+      scheduleAutoShow()
+
+      expect(requestConsent('preferences')).toBe(false)
+
+      cancelAutoShow()
+    })
+  })
+
   describe('scheduleAutoShow()', () => {
     it('opens the popup after the configured delay when undecided', () => {
       vi.useFakeTimers()
@@ -504,6 +519,165 @@ describe('useCookieConsentUi (sequential session)', () => {
       expect(document.activeElement).toBe(trigger)
 
       document.body.removeChild(trigger)
+    })
+  })
+
+  describe('requestConsent()', () => {
+    function resetToUndecided(): void {
+      useState<boolean>('cookie-consent:decided').value = false
+      useState<string[]>('cookie-consent:granted').value = ['necessary']
+      useState<string | null>('cookie-consent:request').value = null
+    }
+
+    it('refuses a required category', () => {
+      resetToUndecided()
+
+      const { requestConsent, consentRequest } = useCookieConsentUi()
+
+      expect(requestConsent('necessary')).toBe(false)
+      expect(consentRequest.value).toBeNull()
+    })
+
+    it('refuses an unknown category', () => {
+      resetToUndecided()
+
+      const { requestConsent, consentRequest } = useCookieConsentUi()
+
+      expect(requestConsent('does-not-exist')).toBe(false)
+      expect(consentRequest.value).toBeNull()
+    })
+
+    it('refuses a category that is already allowed', () => {
+      resetToUndecided()
+      useState<string[]>('cookie-consent:granted').value
+        = ['necessary', 'preferences']
+
+      const { requestConsent, consentRequest } = useCookieConsentUi()
+
+      expect(requestConsent('preferences')).toBe(false)
+      expect(consentRequest.value).toBeNull()
+    })
+
+    it('refuses a decided visitor who rejected everything', () => {
+      resetToUndecided()
+      useCookieConsent().withdrawAll()
+
+      const { requestConsent, consentRequest } = useCookieConsentUi()
+
+      expect(requestConsent('preferences')).toBe(false)
+      expect(consentRequest.value).toBeNull()
+    })
+
+    it('refuses while a consent view is open', () => {
+      resetToUndecided()
+
+      const { openPopup, expand, close, requestConsent, consentRequest }
+        = useCookieConsentUi()
+
+      openPopup()
+
+      expect(requestConsent('preferences')).toBe(false)
+
+      close()
+      expand()
+
+      expect(requestConsent('preferences')).toBe(false)
+      expect(consentRequest.value).toBeNull()
+
+      close()
+    })
+
+    it('opens a request for an undecided visitor and latches it', () => {
+      resetToUndecided()
+
+      const { requestConsent, consentRequest, dismissRequest }
+        = useCookieConsentUi()
+
+      expect(requestConsent('preferences')).toBe(true)
+      expect(consentRequest.value).toBe('preferences')
+
+      dismissRequest()
+
+      expect(consentRequest.value).toBeNull()
+      expect(requestConsent('preferences')).toBe(false)
+      expect(consentRequest.value).toBeNull()
+    })
+
+    it('openPopup() and expand() clear an open request', () => {
+      resetToUndecided()
+
+      const request = useState<string | null>('cookie-consent:request')
+      const { openPopup, expand, close } = useCookieConsentUi()
+
+      request.value = 'preferences'
+      openPopup()
+
+      expect(request.value).toBeNull()
+
+      close()
+      request.value = 'preferences'
+      expand()
+
+      expect(request.value).toBeNull()
+
+      close()
+    })
+
+    it('dismissRequest() clears the request without deciding', () => {
+      resetToUndecided()
+
+      const request = useState<string | null>('cookie-consent:request')
+      const { isDecided } = useCookieConsent()
+      const { dismissRequest } = useCookieConsentUi()
+
+      request.value = 'preferences'
+      dismissRequest()
+
+      expect(request.value).toBeNull()
+      expect(isDecided.value).toBe(false)
+    })
+
+    it('grantRequest() allows the category, keeps others, and decides', () => {
+      resetToUndecided()
+      useState<string[]>('cookie-consent:granted').value
+        = ['necessary', 'analytics']
+
+      const received: Array<{ granted: string[], changed: string[] }> = []
+      const { onConsentChange, granted, isDecided } = useCookieConsent()
+      const request = useState<string | null>('cookie-consent:request')
+      const { grantRequest } = useCookieConsentUi()
+      const stop = onConsentChange((payload) => {
+        received.push(payload)
+      })
+
+      request.value = 'preferences'
+      grantRequest()
+      stop()
+
+      expect([...granted.value].sort()).toEqual(
+        ['analytics', 'necessary', 'preferences'],
+      )
+      expect(isDecided.value).toBe(true)
+      expect(request.value).toBeNull()
+      expect(received).toHaveLength(1)
+      expect(received[0]?.changed).toEqual(['preferences'])
+    })
+
+    it('grantRequest() without an open request commits nothing', () => {
+      resetToUndecided()
+
+      const received: unknown[] = []
+      const { onConsentChange, isDecided } = useCookieConsent()
+      const { grantRequest } = useCookieConsentUi()
+      const stop = onConsentChange((payload) => {
+        received.push(payload)
+      })
+
+      grantRequest()
+      stop()
+
+      expect(received).toHaveLength(0)
+      expect(isDecided.value).toBe(false)
     })
   })
 })

@@ -7,6 +7,7 @@ import { useThemeToggle } from '../../../app/composables/theme-toggle'
 const mocks = vi.hoisted(() => ({
   isIos: false,
   reloadNuxtApp: vi.fn(),
+  requestPersistence: vi.fn(),
 }))
 
 const colorModeState = reactive<{
@@ -26,6 +27,7 @@ mockNuxtImport('useDevice', () => {
 })
 
 mockNuxtImport('reloadNuxtApp', () => mocks.reloadNuxtApp)
+mockNuxtImport('requestPersistence', () => mocks.requestPersistence)
 
 function getThemeColorMeta() {
   return document.querySelector('meta[name="theme-color"]')
@@ -53,6 +55,7 @@ describe('useThemeToggle', () => {
     colorModeState.preference = 'light'
     colorModeState.value = 'light'
     mocks.reloadNuxtApp.mockClear()
+    mocks.requestPersistence.mockClear()
 
     document.querySelectorAll('meta[name="theme-color"]').forEach((element) => {
       element.remove()
@@ -83,6 +86,14 @@ describe('useThemeToggle', () => {
 
     toggle()
     expect(currentPreference.value).toBe('light')
+  })
+
+  it('toggle() asks to remember preferences', () => {
+    const { toggle } = useThemeToggle()
+
+    toggle()
+
+    expect(mocks.requestPersistence).toHaveBeenCalledTimes(1)
   })
 
   it('writes the light theme color to a fresh meta tag', () => {
