@@ -380,4 +380,130 @@ describe('useCookieConsentUi (sequential session)', () => {
       close()
     })
   })
+
+  describe('rejectAll()', () => {
+    it('commits required categories only and closes immediately', () => {
+      const { granted, allowAll: allowEverything } = useCookieConsent()
+
+      allowEverything()
+
+      const { openPopup, rejectAll, view } = useCookieConsentUi()
+
+      openPopup()
+      rejectAll()
+
+      expect(granted.value).toEqual(['necessary'])
+      expect(view.value).toBe('hidden')
+    })
+  })
+
+  describe('isCustomizing', () => {
+    it('is false by default and shared across instances', () => {
+      const first = useCookieConsentUi()
+      const second = useCookieConsentUi()
+
+      expect(first.isCustomizing.value).toBe(false)
+
+      first.expand()
+
+      expect(second.isCustomizing.value).toBe(true)
+
+      first.close()
+    })
+
+    it('expand() defaults to customizing when user-initiated', () => {
+      const { expand, isCustomizing, close } = useCookieConsentUi()
+
+      expand()
+
+      expect(isCustomizing.value).toBe(true)
+
+      close()
+    })
+
+    it('expand({ userInitiated: false }) keeps the compact first layer', () => {
+      const { expand, isCustomizing, view, close } = useCookieConsentUi()
+
+      expand({ userInitiated: false })
+
+      expect(view.value).toBe('modal')
+      expect(isCustomizing.value).toBe(false)
+
+      close()
+    })
+
+    it('close() and openPopup() reset it to false', () => {
+      const { expand, openPopup, close, isCustomizing } = useCookieConsentUi()
+
+      expand()
+      close()
+
+      expect(isCustomizing.value).toBe(false)
+
+      expand()
+      openPopup()
+
+      expect(isCustomizing.value).toBe(false)
+
+      close()
+    })
+  })
+
+  describe('customize()', () => {
+    it('reveals the detailed view of a compact modal', () => {
+      const { expand, customize, isCustomizing, view, close }
+        = useCookieConsentUi()
+
+      expand({ userInitiated: false })
+      customize()
+
+      expect(view.value).toBe('modal')
+      expect(isCustomizing.value).toBe(true)
+
+      close()
+    })
+
+    it('switches the popup to the modal and starts customizing', () => {
+      const { openPopup, customize, isCustomizing, view, close }
+        = useCookieConsentUi()
+
+      openPopup()
+      customize()
+
+      expect(view.value).toBe('modal')
+      expect(isCustomizing.value).toBe(true)
+
+      close()
+    })
+
+    it('opens the modal from hidden and initializes the draft', () => {
+      const { customize, draft, isCustomizing, view, close }
+        = useCookieConsentUi()
+
+      customize()
+
+      expect(view.value).toBe('modal')
+      expect(isCustomizing.value).toBe(true)
+      expect(draft.value).toHaveProperty('analytics')
+
+      close()
+    })
+  })
+
+  describe('expand({ trigger })', () => {
+    it('restores focus to the provided trigger on close', () => {
+      const trigger = document.createElement('button')
+
+      document.body.appendChild(trigger)
+
+      const { expand, close } = useCookieConsentUi()
+
+      expand({ trigger })
+      close()
+
+      expect(document.activeElement).toBe(trigger)
+
+      document.body.removeChild(trigger)
+    })
+  })
 })

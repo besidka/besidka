@@ -290,6 +290,8 @@ export function getAffectedTests(changedFiles) {
 
   const cookieConsentTests = [
     'tests/unit/composables/preference-storage.spec.ts',
+    'tests/unit/components/Cookies/Banner.client.spec.ts',
+    'tests/unit/components/Cookies/Choices.spec.ts',
     'tests/unit/utils/consents.spec.ts',
     'tests/unit/config/cookie-consent.spec.ts',
     'tests/unit/composables/auth-last-login-method.spec.ts',

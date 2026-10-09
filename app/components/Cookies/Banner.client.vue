@@ -2,6 +2,16 @@
 const layout = useLayout()
 const isDetailsOpen = shallowRef<boolean>(false)
 const ui = useCookieConsentUi()
+const consent = useCookieConsent()
+const hasOptionalGrant = computed<boolean>(() => {
+  if (!consent.isDecided.value) {
+    return false
+  }
+
+  return consent.categories.some((category) => {
+    return !category.required && consent.isAllowed(category.id)
+  })
+})
 const isCookieUiOpen = computed(() => ui.view.value !== 'hidden')
 const isChatLayout = computed<boolean>(() => layout.value === 'chat')
 const hasSidebar = useHasSidebar()
@@ -57,6 +67,8 @@ const isSharedChatMessageSelected = useState<boolean>(
         categories,
         isDecided,
         isAllowed,
+        allowAll,
+        rejectAll,
         withdrawAll,
         expand,
         close,
@@ -99,51 +111,86 @@ const isSharedChatMessageSelected = useState<boolean>(
             </button>
           </div>
 
-          <p class="text-xs text-base-content/60 font-medium">
-            {{ $t('cookieConsent.currentState') }}
-          </p>
-
-          <ul class="flex flex-col gap-2">
-            <li
-              v-for="category in categories"
-              :key="category.id"
-              :data-testid="`cookies-state-${category.id}`"
-              :data-allowed="
-                category.required || isAllowed(category.id)
-                  ? 'true'
-                  : 'false'
-              "
-              class="flex items-center justify-between gap-2"
+          <template v-if="!isDecided">
+            <p
+              data-testid="cookies-benefit"
+              class="text-xs text-base-content/70"
             >
-              <span class="text-xs">
-                {{ $t(`cookieConsent.categories.${category.id}.title`) }}
-              </span>
-              <template v-if="category.required">
-                <Icon
-                  name="lucide:lock"
-                  size="14"
-                  class="shrink-0 text-base-content/40"
-                  :aria-label="$t('cookieConsent.required')"
-                />
-              </template>
-              <template v-else-if="isAllowed(category.id)">
-                <Icon
-                  name="lucide:check"
-                  size="14"
-                  class="shrink-0 text-accent"
-                />
-              </template>
-              <template v-else>
-                <Icon
-                  name="lucide:x"
-                  size="14"
-                  class="shrink-0 text-base-content/40"
-                />
-              </template>
-            </li>
-          </ul>
+              {{ $t('cookieConsent.firstLayer.benefit') }}
+            </p>
 
-          <template v-if="isDecided">
+            <NuxtLink
+              to="/cookie-policy"
+              data-testid="cookies-policy-link"
+              class="link link-accent text-xs self-start"
+            >
+              {{ $t('cookieConsent.policyLink') }}
+            </NuxtLink>
+
+            <CookiesChoices
+              :reject-label="$t('cookieConsent.actions.rejectAll')"
+              :accept-label="$t('cookieConsent.actions.acceptAll')"
+              reject-test-id="cookies-reject-all"
+              accept-test-id="cookies-allow-all"
+              @reject="rejectAll()"
+              @accept="allowAll()"
+            />
+
+            <button
+              type="button"
+              data-testid="cookies-change"
+              class="btn btn-sm btn-ghost btn-block hitslop"
+              @click="expand()"
+            >
+              {{ $t('cookieConsent.actions.customize') }}
+            </button>
+          </template>
+
+          <template v-else>
+            <p class="text-xs text-base-content/60 font-medium">
+              {{ $t('cookieConsent.currentState') }}
+            </p>
+
+            <ul class="flex flex-col gap-2">
+              <li
+                v-for="category in categories"
+                :key="category.id"
+                :data-testid="`cookies-state-${category.id}`"
+                :data-allowed="
+                  category.required || isAllowed(category.id)
+                    ? 'true'
+                    : 'false'
+                "
+                class="flex items-center justify-between gap-2"
+              >
+                <span class="text-xs">
+                  {{ $t(`cookieConsent.categories.${category.id}.title`) }}
+                </span>
+                <template v-if="category.required">
+                  <Icon
+                    name="lucide:lock"
+                    size="14"
+                    class="shrink-0 text-base-content/40"
+                    :aria-label="$t('cookieConsent.required')"
+                  />
+                </template>
+                <template v-else-if="isAllowed(category.id)">
+                  <Icon
+                    name="lucide:check"
+                    size="14"
+                    class="shrink-0 text-accent"
+                  />
+                </template>
+                <template v-else>
+                  <Icon
+                    name="lucide:x"
+                    size="14"
+                    class="shrink-0 text-base-content/40"
+                  />
+                </template>
+              </li>
+            </ul>
+
             <button
               type="button"
               data-testid="cookies-details-toggle"
@@ -201,26 +248,33 @@ const isSharedChatMessageSelected = useState<boolean>(
                 </span>
               </div>
             </div>
-          </template>
 
-          <div class="grid xxs:grid-cols-2 items-center gap-1.5">
-            <button
-              type="button"
-              data-testid="cookies-withdraw"
-              class="btn btn-sm btn-ghost btn-block hitslop"
-              @click="withdrawAll()"
+            <div
+              class="grid items-center gap-1.5"
+              :class="hasOptionalGrant ? 'xxs:grid-cols-2' : ''"
             >
-              {{ $t('cookieConsent.actions.withdraw') }}
-            </button>
-            <button
-              type="button"
-              data-testid="cookies-change"
-              class="btn btn-sm btn-accent btn-block max-xxs:-order-1 hitslop"
-              @click="expand()"
-            >
-              {{ $t('cookieConsent.actions.change') }}
-            </button>
-          </div>
+              <button
+                v-if="hasOptionalGrant"
+                type="button"
+                data-testid="cookies-withdraw"
+                class="btn btn-sm btn-ghost btn-block hitslop"
+                @click="withdrawAll()"
+              >
+                {{ $t('cookieConsent.actions.withdraw') }}
+              </button>
+              <button
+                type="button"
+                data-testid="cookies-change"
+                class="
+                  btn btn-sm btn-accent btn-block hitslop
+                  max-xxs:-order-1
+                "
+                @click="expand()"
+              >
+                {{ $t('cookieConsent.actions.change') }}
+              </button>
+            </div>
+          </template>
         </div>
       </div>
     </CookieConsentPopup>
@@ -234,7 +288,11 @@ const isSharedChatMessageSelected = useState<boolean>(
         switchProps,
         commitDraft,
         allowAll,
+        rejectAll,
         withdrawAll,
+        customize,
+        isDecided,
+        isCustomizing,
         close,
       }"
       :auto-show="isChatLayout"
@@ -274,7 +332,50 @@ const isSharedChatMessageSelected = useState<boolean>(
           </button>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-2">
+        <div
+          v-if="!isDecided && !isCustomizing"
+          data-testid="cookies-first-layer"
+          class="flex flex-col gap-3 px-4 pb-4"
+        >
+          <p
+            data-testid="cookies-benefit"
+            class="text-sm text-base-content/70"
+          >
+            {{ $t('cookieConsent.firstLayer.benefit') }}
+          </p>
+
+          <NuxtLink
+            to="/cookie-policy"
+            data-testid="cookies-policy-link"
+            class="link link-accent text-sm self-start"
+            @click="close()"
+          >
+            {{ $t('cookieConsent.policyLink') }}
+          </NuxtLink>
+
+          <CookiesChoices
+            :reject-label="$t('cookieConsent.actions.rejectAll')"
+            :accept-label="$t('cookieConsent.actions.acceptAll')"
+            reject-test-id="cookies-reject-all"
+            accept-test-id="cookies-allow-all"
+            @reject="rejectAll()"
+            @accept="allowAll()"
+          />
+
+          <button
+            type="button"
+            data-testid="cookies-change"
+            class="btn btn-sm btn-ghost btn-block hitslop"
+            @click="customize()"
+          >
+            {{ $t('cookieConsent.actions.customize') }}
+          </button>
+        </div>
+
+        <div
+          v-else
+          class="flex-1 min-h-0 overflow-y-auto px-4 pb-2"
+        >
           <p class="text-sm text-base-content/70 mb-4">
             {{ $t('cookieConsent.description') }}
           </p>
@@ -423,36 +524,34 @@ const isSharedChatMessageSelected = useState<boolean>(
         </div>
 
         <div
+          v-if="isDecided || isCustomizing"
           class="
-            shrink-0 flex flex-wrap gap-2 justify-end
-            max-sm:grid max-sm:grid-cols-1 max-sm:justify-items-center
+            shrink-0 flex flex-col gap-2
             p-4 pt-3
             border-t border-base-content/10
           "
         >
-          <button
-            type="button"
-            data-testid="cookies-withdraw"
-            class="btn btn-sm btn-ghost max-sm:btn-block"
-            @click="withdrawAll()"
-          >
-            {{ $t('cookieConsent.actions.withdraw') }}
-          </button>
+          <CookiesChoices
+            :reject-label="
+              hasOptionalGrant
+                ? $t('cookieConsent.actions.withdraw')
+                : $t('cookieConsent.actions.rejectAll')
+            "
+            :accept-label="$t('cookieConsent.actions.allowAll')"
+            :reject-test-id="
+              hasOptionalGrant ? 'cookies-withdraw' : 'cookies-reject-all'
+            "
+            accept-test-id="cookies-allow-all"
+            @reject="hasOptionalGrant ? withdrawAll() : rejectAll()"
+            @accept="allowAll()"
+          />
           <button
             type="button"
             data-testid="cookies-allow-selected"
-            class="btn btn-sm btn-primary btn-outline max-sm:btn-block"
+            class="btn btn-sm btn-ghost btn-block hitslop"
             @click="commitDraft()"
           >
             {{ $t('cookieConsent.actions.allowSelected') }}
-          </button>
-          <button
-            type="button"
-            data-testid="cookies-allow-all"
-            class="btn btn-sm btn-accent max-sm:btn-block"
-            @click="allowAll()"
-          >
-            {{ $t('cookieConsent.actions.allowAll') }}
           </button>
         </div>
       </div>

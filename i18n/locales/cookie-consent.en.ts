@@ -1,5 +1,16 @@
 export default defineI18nLocale(() => ({
   cookieConsent: {
+    description:
+      'Besidka stores only what it needs to run and, with your permission, '
+      + 'your preferences on this device. No analytics or advertising '
+      + 'cookies.',
+    firstLayer: {
+      benefit:
+        'Allow preferences so Besidka remembers your theme, model, drafts '
+        + 'and settings between visits on this device. Necessary cookies '
+        + 'are always on.',
+    },
+    policyLink: 'Cookie Policy',
     currentState: 'Your current state',
     details: {
       show: 'Show details',

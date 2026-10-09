@@ -27,6 +27,11 @@ export function useCookieConsentUi() {
     () => ({}),
   )
 
+  const customizing = useState<boolean>(
+    'cookie-consent:customizing',
+    () => false,
+  )
+
   function initDraft(): void {
     const next: Record<string, boolean> = {}
 
@@ -47,18 +52,36 @@ export function useCookieConsentUi() {
       triggerElement = trigger ?? (document.activeElement as HTMLElement | null)
     }
 
+    customizing.value = false
     initDraft()
     view.value = 'popup'
   }
 
-  function expand(options?: { userInitiated?: boolean }): void {
+  function expand(
+    options?: { userInitiated?: boolean, trigger?: HTMLElement | null },
+  ): void {
     userInitiatedOpen = options?.userInitiated ?? true
+    customizing.value = options?.userInitiated ?? true
+
+    if (import.meta.client && options?.trigger) {
+      triggerElement = options.trigger
+    }
 
     if (view.value === 'hidden') {
       initDraft()
     }
 
     view.value = 'modal'
+  }
+
+  function customize(): void {
+    if (view.value !== 'modal') {
+      expand({ userInitiated: true })
+
+      return
+    }
+
+    customizing.value = true
   }
 
   function shouldFocusOnShow(): boolean {
@@ -80,6 +103,7 @@ export function useCookieConsentUi() {
 
   function close(): void {
     view.value = 'hidden'
+    customizing.value = false
 
     const target = triggerElement
     const shouldRestoreFocus = userInitiatedOpen
@@ -136,6 +160,10 @@ export function useCookieConsentUi() {
   function withdrawAll(): void {
     consent.withdrawAll()
     close()
+  }
+
+  function rejectAll(): void {
+    withdrawAll()
   }
 
   function scheduleAutoShow(view: 'popup' | 'modal' = 'popup'): void {
@@ -211,16 +239,20 @@ export function useCookieConsentUi() {
   }
 
   const readonlyView = computed(() => view.value)
+  const readonlyCustomizing = computed(() => customizing.value)
 
   return {
     view: readonlyView,
+    isCustomizing: readonlyCustomizing,
     draft,
     toggleDraft,
     commitDraft,
     allowAll,
     withdrawAll,
+    rejectAll,
     openPopup,
     expand,
+    customize,
     close,
     isTriggerNode,
     scheduleAutoShow,
