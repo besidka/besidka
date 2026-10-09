@@ -57,5 +57,7 @@ IndexedDB (`besidka-push` / `pending-navigation`, internal paths only,
 written only on the `openWindow` branch) before opening the window, and
 `app/plugins/push-navigation.client.ts` reads-and-clears the entry on
 `app:mounted` and on return-to-visibility to complete the navigation
-client-side. Entries expire after 5 minutes and are ignored when the app
-already sits on the target route.
+client-side. The plugin never creates the database: it reads only when
+notification permission is `granted` and the database exists, because the
+service worker is the sole creator. Entries expire after 5 minutes and are
+ignored when the app already sits on the target route.

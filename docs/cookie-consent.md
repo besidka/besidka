@@ -334,6 +334,30 @@ non-exempt storage before a positive act"). Two mechanisms cover that:
 writes go to an in-memory map instead of `localStorage`, so the app keeps
 working in-session.
 
+### Storage the page must never create: the push handoff database
+
+`besidka-push` (IndexedDB) carries the iOS cold-start push handoff. Only the
+service worker creates it, when a notification is tapped
+(`app/service-worker/push.ts`); a notification can only be shown, and so tapped,
+after the user switched push on. The page side
+(`app/plugins/push-navigation.client.ts`) therefore only ever reads it, and
+never opens it in a way that can create it:
+
+1. It does nothing unless `Notification.permission === 'granted'`.
+2. Where `indexedDB.databases()` exists it returns early when no `besidka-push`
+   database is listed.
+3. Where it does not (older Firefox), the `open()` request aborts its upgrade
+   transaction on `onupgradeneeded`, which cancels the creation of a database
+   that did not exist.
+
+A visitor who never enabled push has no `besidka-push` database, which the e2e
+test "push handoff IndexedDB is not created for an undecided visitor" asserts in
+Chromium. The handoff itself is unchanged: a user who tapped a notification
+necessarily has permission `granted` and a database written by the worker.
+Permission can in theory be revoked after a tap and before the next launch, in
+which case the pending target is simply not consumed and expires with the
+5 minute TTL.
+
 The manifest drives the purge. A key that is written but not declared is never
 purged, which is a GDPR Art. 7(3) problem (this is how
 `settings_favorite_models`, `settings_favorite_gateway_models` and
@@ -398,24 +422,6 @@ changes so that a past "yes" would no longer cover it.
 Deliberately not part of the first-layer change. Each is a known gap, not an
 oversight.
 
-- **`besidka-push` IndexedDB is created for every visitor before any
-  decision.** `app/plugins/push-navigation.client.ts` opens the database on
-  `app:mounted` regardless of consent or notification state. A guard such as
-  `Notification.permission === 'granted'` would fix it, but the same database is
-  what carries the iOS cold-start push handoff, so the guard has to be verified
-  against `docs/chats/shared-pwa-handoff.md` first. Whether an empty database
-  counts as storage under Art. 5(3) is itself arguable; the purpose (opening a
-  pushed chat) is tied to a feature the user has to switch on. Until it is
-  fixed, `content/legal/cookie-policy.md` discloses it in the necessary table:
-  empty unless a notification is tapped, then only the target path and a
-  timestamp, deleted as soon as they are read.
-- **`better-auth.last_used_login_method` is set server-side at sign-in before
-  any decision** (the `lastLoginMethod` plugin uses a literal `setCookie`) and is
-  only cleared client-side after hydration, once the gate plugin sees
-  `preferences` is not granted. A server-side hook that drops the cookie when the
-  `cookies_consent` cookie does not grant `preferences` would close the window.
-  Until then the cookie policy says so: the cookie can exist briefly, and the
-  app removes it as soon as the page loads when `preferences` is not allowed.
 - **Better Auth cookies not declared.** `account_data` is not declared because
   it is only written when `account.storeAccountCookie` is enabled, and this app
   does not enable it; declare it if that option is ever turned on. `oauth_state`
@@ -585,6 +591,19 @@ Note: server-side gating is defense-in-depth. The primary enforcement happens
 client-side by not firing events in the first place. HttpOnly cookies set by
 the server (e.g. `better_auth.session_token`) cannot be cleared by the client
 cleanup routine — server-side logic must handle revocation of those entries.
+
+### Server-written consent-gated cookies
+
+A cookie that the server writes at a request the client cannot intercept cannot
+be gated client-side, so the server must read `cookies_consent` itself before it
+writes. The one case today is `better-auth.last_used_login_method`, gated by the
+`lastLoginMethod` plugin's `beforeStoreCookie` callback in
+`server/utils/auth.ts`, which uses `isConsentCategoryGranted()` from
+`server/utils/consents.ts` (no H3 event needed inside Better Auth hooks, it
+reads the raw cookie from the hook context). See
+[Ongoing prevention — better-auth.last_used_login_method](#gating-preference-writes).
+Any future server-set preference cookie needs the same check; the client-side
+clear is only a fallback.
 
 ---
 
@@ -841,19 +860,34 @@ in-session via the module's reactive state. See
 [Pre-consent purge](#pre-consent-purge).
 
 **Ongoing prevention — better-auth.last_used_login_method:**
-The better-auth client sets this cookie during sign-in (not interceptable). The
-manifest entry's `name` must match the real cookie set by the
-`lastLoginMethod` server plugin — its default is
-`better-auth.last_used_login_method` (hyphenated `better-auth` prefix, and
-`last_used_login_method`, not `last_login_method`), never a `__Secure-`
-prefixed variant, since the plugin sets it via a literal `ctx.setCookie()`
-call rather than the framework's prefix-aware `createCookie()` helper. The
-gate plugin watches `useAuth().lastLoginMethod` and, while `preferences` is
-denied, clears the cookie via the better-auth client's own
-`clearLastUsedLoginMethod()` action (from the `last-login-method` client
-plugin) rather than hand-writing the cookie name again. On a grant-flush,
-this cookie is **not** regenerated (it is only set at login time) — this is
-acceptable and documented here.
+The `lastLoginMethod` server plugin writes this cookie at sign-in, so the server
+is where it is gated: `server/utils/auth.ts` passes the plugin a
+`beforeStoreCookie` callback that reads the request's `cookies_consent` cookie
+(through `isConsentCategoryGranted()` in `server/utils/consents.ts`, which
+applies the same revision and category rules as `getCookieConsent()`) and
+returns `false` unless `preferences` is granted at the current revision. With no
+decision, a malformed cookie, a stale revision or a denied `preferences`, no
+`Set-Cookie` is emitted at all, for both password and OAuth callback sign-ins.
+The `users.lastLoginMethod` database column is unaffected: it is server-side
+state, not terminal storage.
+
+The manifest entry's `name` must still match the real cookie name — the
+plugin's default is `better-auth.last_used_login_method` (hyphenated
+`better-auth` prefix, and `last_used_login_method`, not `last_login_method`),
+never a `__Secure-` prefixed variant, since the plugin sets it via a literal
+`ctx.setCookie()` call rather than the framework's prefix-aware
+`createCookie()` helper. The client-side clear stays as a fallback for a cookie
+left by an earlier version or by a decision withdrawn later: the gate plugin
+watches `useAuth().lastLoginMethod` and, while `preferences` is denied, clears
+the cookie via the better-auth client's own `clearLastUsedLoginMethod()` action
+rather than hand-writing the cookie name again. On a grant-flush this cookie is
+**not** regenerated (it is only set at login time) — this is acceptable and
+documented here.
+
+Two limits of the server gate. A cross-host preview sign-in through
+`oAuthProxy` finishes on the production host, which does not see the preview
+host's consent cookie, so it fails closed (no cookie). And the consent cookie
+is `SameSite=Lax`, so it is sent on the top-level OAuth callback navigation.
 
 ### Adding a new preference key
 
@@ -932,7 +966,7 @@ The server logs a wide event to Axiom containing the following fields — all
 **pseudonymous**, no personal data:
 
 ```
-consent.id          — UUID generated client-side at decision time (no user link)
+consent.id          — UUID v4 generated client-side at decision time (no user link)
 consent.date        — ISO 8601 timestamp of the decision
 consent.revision    — banner revision number from cookieConsent.revision
 consent.granted     — array of granted category ids
@@ -946,6 +980,41 @@ consent.consistent  — whether cookie id + granted set matched the POST body
 
 Country and colo fields are attached automatically by evlog wide-event
 enrichers — these are aggregate/infrastructure metadata, not personal data.
+
+### Validation and rate limiting
+
+`POST /api/v1/consents` is unauthenticated, so it is validated and throttled
+before anything is stored:
+
+- **Rate limit.** `enforceConsentsRateLimit()` (`server/utils/consents-rate-limit.ts`)
+  allows 20 requests per 60 s per `cf-connecting-ip` and answers
+  `429` (evlog `createError`, `Retry-After` set) beyond that. It reuses the
+  KV-backed `createAuthRateLimitStorage()` used by the auth and key-management
+  limiters, with the window index folded into the storage key so each bucket is
+  a true fixed window (the shared storage alone only resets after a full idle
+  window). It runs before the body is read. No Workers Rate Limiting binding is
+  used, so there is nothing to create in Cloudflare. A real person produces at
+  most a receipt or two per minute; the limit is for floods, and a 429 only
+  costs the audit receipt, never the user's choice (the client ignores the
+  response). The KV counter key contains the client IP and expires within 15
+  minutes; it is not part of the receipt record, which stays IP-free.
+- **Fail open.** If `cf-connecting-ip` is absent (local dev) or KV throws, the
+  request is let through and the logger gets `consentRateLimit.skipped`
+  (`no-client-ip` or `storage-unavailable`), so dev, unit, integration and e2e
+  runs keep working without the binding.
+- **`id` must be a UUID.** `crypto.randomUUID()` produces one; the module's
+  fallback for browsers without it now builds a UUID v4 from
+  `crypto.getRandomValues()` (and `Math.random()` only if there is no crypto at
+  all) instead of the old base36 string, so every client produces ids the schema
+  accepts.
+- **`date` must be within 24 hours of server time**, in either direction. The
+  client posts the receipt about 150 ms after the decision, so honest traffic
+  is nearly exact; the window exists for devices with a wrong clock or time
+  zone set by hand (up to about 14 hours off). A tighter bound would lose
+  receipts for those users, a looser one would let an arbitrary backdated
+  `createdAt` into the audit trail.
+
+Both rejections are evlog `createError` 400s with `why` and `fix`.
 
 No raw IP address, no user-agent string, and no user account identifier are
 logged. The consent `id` is a random UUID created at decision time and is
