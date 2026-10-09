@@ -14,8 +14,32 @@ const storageVersion = shallowRef<number>(0)
 function getStorage(): Storage | null {
   try {
     return window.localStorage ?? null
-  } catch {
+  } catch (exception) {
+    void exception
+
     return null
+  }
+}
+
+function writePersistently(
+  storage: Storage,
+  key: string,
+  value: string,
+): void {
+  try {
+    storage.setItem(key, value)
+    pendingStorage.delete(key)
+  } catch (exception) {
+    void exception
+    pendingStorage.set(key, value)
+  }
+}
+
+function removeQuietly(storage: Storage | null, key: string): void {
+  try {
+    storage?.removeItem(key)
+  } catch (exception) {
+    void exception
   }
 }
 
@@ -45,11 +69,10 @@ export function usePreferenceStorage() {
     const storage = getStorage()
 
     if (storage && useCookieConsent().isAllowed('preferences')) {
-      storage.setItem(key, value)
-      pendingStorage.delete(key)
+      writePersistently(storage, key, value)
     } else {
       pendingStorage.set(key, value)
-      storage?.removeItem(key)
+      removeQuietly(storage, key)
     }
 
     storageVersion.value++
@@ -83,7 +106,7 @@ export function usePreferenceStorage() {
     }
 
     pendingStorage.delete(key)
-    getStorage()?.removeItem(key)
+    removeQuietly(getStorage(), key)
     storageVersion.value++
   }
 
@@ -99,10 +122,9 @@ export function usePreferenceStorage() {
     }
 
     for (const [key, value] of pendingStorage) {
-      storage.setItem(key, value)
+      writePersistently(storage, key, value)
     }
 
-    pendingStorage.clear()
     storageVersion.value++
   }
 

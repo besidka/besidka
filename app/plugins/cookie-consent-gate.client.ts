@@ -1,11 +1,32 @@
 const COLOR_MODE_STORAGE_KEY = 'nuxt-color-mode'
+const RECEIPT_DELAY_MS = 150
 
-function purgeColorModeStorage() {
+interface ConsentReceipt {
+  id: string
+  date: string
+  revision: number
+  granted: string[]
+  denied: string[]
+  changed: string[]
+}
+
+function purgeColorModeStorage(): void {
   try {
     window.localStorage.removeItem(COLOR_MODE_STORAGE_KEY)
     document.cookie = `${COLOR_MODE_STORAGE_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
-  } catch {
-    return
+  } catch (exception) {
+    void exception
+  }
+}
+
+async function sendConsentReceipt(receipt: ConsentReceipt): Promise<void> {
+  try {
+    await $fetch('/api/v1/consents', {
+      method: 'POST',
+      body: receipt,
+    })
+  } catch (exception) {
+    void exception
   }
 }
 
@@ -17,7 +38,7 @@ function purgeColorModeStorage() {
  * window is never persisted across a reload; the head script only reads the
  * key on the next load, by which time it is gone.
  */
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin((): void => {
   const {
     isAllowed,
     onConsentChange,
@@ -28,18 +49,30 @@ export default defineNuxtPlugin(() => {
   const colorMode = useColorMode()
   const config = useRuntimeConfig()
 
+  function persistPreferences(): void {
+    try {
+      flushPending()
+    } catch (exception) {
+      void exception
+    }
+
+    try {
+      window.localStorage.setItem(
+        COLOR_MODE_STORAGE_KEY,
+        colorMode.preference,
+      )
+    } catch (exception) {
+      void exception
+    }
+  }
+
   if (!isAllowed('preferences')) {
     purgeColorModeStorage()
   }
 
-  onConsentChange(({ granted, denied, changed }) => {
+  onConsentChange(({ granted, denied, changed }): void => {
     if (granted.includes('preferences')) {
-      flushPending()
-
-      window.localStorage.setItem(
-        'nuxt-color-mode',
-        colorMode.preference,
-      )
+      persistPreferences()
     }
 
     if (denied.includes('preferences')) {
@@ -58,25 +91,22 @@ export default defineNuxtPlugin(() => {
       // Deferred: useCookie flushes document.cookie on the next tick;
       // sending immediately would race ahead of the consent cookie and
       // break the server-side corroboration (consistent flag).
-      setTimeout(() => {
-        $fetch('/api/v1/consents', {
-          method: 'POST',
-          body: {
-            id,
-            date,
-            revision: cookieConsent.revision,
-            granted,
-            denied,
-            changed,
-          },
-        }).catch(() => {})
-      }, 150)
+      setTimeout((): void => {
+        sendConsentReceipt({
+          id,
+          date,
+          revision: cookieConsent.revision,
+          granted,
+          denied,
+          changed,
+        })
+      }, RECEIPT_DELAY_MS)
     }
   })
 
   watch(
     () => colorMode.preference,
-    () => {
+    (): void => {
       if (!isAllowed('preferences')) {
         purgeColorModeStorage()
       }
@@ -86,7 +116,7 @@ export default defineNuxtPlugin(() => {
 
   const { lastLoginMethod, client } = useAuth()
 
-  watch(lastLoginMethod, () => {
+  watch(lastLoginMethod, (): void => {
     if (!isAllowed('preferences')) {
       client.clearLastUsedLoginMethod?.()
     }

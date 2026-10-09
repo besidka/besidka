@@ -224,16 +224,19 @@ Three states, derived from `isDecided` and the granted optional categories
 | Decided without | `true` | none | The user used Reject all. Same storage rules as undecided, but the first layer is not offered again until the cookie expires (180 days). |
 
 Closing the banner (X or Esc) never changes state, so an undecided visitor stays
-undecided and is asked again on the next page load, not on every route change
-(MUST NOT "treat X as consent", MUST NOT "re-nag on every page").
+undecided and is asked again the next time the site is opened or reloaded, not
+on every route change (MUST NOT "treat X as consent", MUST NOT "re-nag on every
+page"). The just-in-time prompt's latch is a module-scope variable, so it
+resets on reload and is not persisted anywhere; adding a storage key to
+remember it would itself need a consent basis.
 
 ### Which buttons show in each state
 
 | State | Popup (non-chat pages) | Modal (chat layout, or after Customize / footer opener) |
 |-------|------------------------|--------------------------------------------------------|
 | Undecided | Benefit text, policy link, **Reject all** and **Accept all** side by side, then **Customize** | First layer with the same content. **Customize** switches the modal to the per-category switches; there the footer offers **Reject all** and **Accept all** plus **Allow selected** |
-| Decided with a grant | Per-category state, details toggle, **Withdraw consent** and **Change** | Switches, footer **Withdraw consent** and **Accept all**, plus **Allow selected** |
-| Decided without | Per-category state, details toggle, **Change** only | Switches, footer **Reject all** and **Accept all**, plus **Allow selected** |
+| Decided with a grant | Per-category state, details toggle, **Withdraw consent** and **Change preferences** as equal buttons | Switches, footer **Withdraw consent** and **Accept all**, plus **Allow selected** |
+| Decided without | Per-category state, details toggle, **Change preferences** only | Switches, footer **Reject all** and **Accept all**, plus **Allow selected** |
 
 **Withdraw consent** replaces **Reject all** only when there is something to
 withdraw, so the label always describes what the button does. Both call the same
@@ -249,6 +252,17 @@ own class, colour, size or order. This is the "same format as Accept" MUST and t
 the popup and the modal share it, and `Choices.spec.ts` asserts the classes are
 identical. Customize is deliberately a quieter `btn-ghost`: it is a third
 route, not a substitute for Reject.
+
+The decided popup follows the same rule for GDPR Art. 7(3) (withdrawal as easy
+as consent): **Withdraw consent** and **Change preferences** are rendered by
+`Choices.vue` too (stacked in one column through its `stacked` prop, because the
+labels are long for a 20rem popup), with the same class string and no `order`
+trick. When there is nothing to withdraw, **Change preferences** shows alone
+with that same class string.
+
+After **Customize** in the compact modal the first layer is swapped out, which
+would drop the focused button to `body`; `Banner.client.vue` moves focus to the
+modal heading (`tabindex="-1"`) on the next tick.
 
 ### Just-in-time "Remember your preferences?" prompt
 
@@ -268,7 +282,9 @@ The anti-nag rules and the legal items they satisfy:
 | Once per page load, through a module-level latch (`consentRequestShown`) that resets on reload and is never touched during SSR | `ui.ts` | MUST NOT re-nag on every page |
 | Not while a consent view is open (`view !== 'hidden'`) or the auto-show timer is pending | `requestConsent()` | Never stack two consent surfaces; the full banner takes precedence |
 | Not while the notification prompt is visible (`notification-prompt:is-visible` state) | `requestPersistence()` | Never stack two prompts; unrelated to consent but both are modal-like nags |
-| Dismiss on route change | `router.afterEach` in `RememberPrompt.client.vue` | The question belongs to the action that triggered it |
+| The reverse: the notification prompt does not show while `cookie-consent:request` is set | `showUnlessConsentRequestOpen()` in `notification-prompt.ts` (proactive and missed-notification triggers); an explicit "enable notifications" click takes over and clears the request | The two prompts never stack in either order |
+| `grantRequest(expectedId)` grants only when the open request is for `expectedId` (`'preferences'` from `RememberPrompt`), otherwise it clears the request and grants nothing | `ui.ts` | A grant must match the purpose the prompt's text describes |
+| Dismiss on route change (the listener is removed on unmount) | `router.afterEach` in `RememberPrompt.client.vue` | The question belongs to the action that triggered it |
 | **Never** from `usePreferenceStorage().setItem` | by design | A write is not a user act; background and restore paths write too |
 | **Never** from `useUserSetting().syncForUser` | by design | Sync runs on sign-in and is not user-initiated |
 | Neutral copy, Remember and Not now equally prominent, no pre-selection | `Cookies/RememberPrompt.client.vue`, locale files | "Clearly pushes" line (Taskforce ¶13); no pre-ticked choice |
@@ -277,7 +293,12 @@ The anti-nag rules and the legal items they satisfy:
 Hook sites (each calls `requestPersistence()` right after a user-initiated
 change):
 
-- `useThemeToggle` (`theme-toggle.ts`): theme change.
+- `useThemeToggle` (`theme-toggle.ts`): theme change. On iOS standalone the
+  toggle reloads the app 500 ms later so the status bar picks up the new
+  `theme-color` meta (WebKit reads it only at load); that reload is skipped
+  while `preferences` is not allowed, because the theme key was never
+  persisted and the reload would revert the theme and drop the "Remember?"
+  prompt. The consent check runs inside the toggle, not at composable setup.
 - `ChatInput/ModelsTrigger.vue`: `selectModel` and `selectGatewayModel`.
 - `ChatInput.client.vue`: `selectReasoningLevel` and `selectWebSearchProvider`.
 - `useFileManager` (`file-manager.ts`): view-mode setter.
@@ -345,9 +366,11 @@ function openCookieSettings(event: MouseEvent): void {
 ```
 
 Two tests guard this. `tests/unit/components/LandingFooter.spec.ts` asserts the
-composable is not called while mounting. The e2e test "SSR HTML of the landing
-page carries no consent state" asserts the HTML of `/` contains no
-`cookie-consent:` key.
+composable is not called while mounting. The e2e tests "SSR HTML of <route>
+carries no consent state" assert that the HTML contains no `cookie-consent:` key
+for each public SSR route (`/`, `/privacy-policy`, `/terms-of-use`,
+`/cookie-policy`, `/signin`, `/signup`), once without a consent cookie and once
+with a valid `cookies_consent` cookie on the request.
 
 ### Why the consent revision was not bumped
 
@@ -382,12 +405,17 @@ oversight.
   what carries the iOS cold-start push handoff, so the guard has to be verified
   against `docs/chats/shared-pwa-handoff.md` first. Whether an empty database
   counts as storage under Art. 5(3) is itself arguable; the purpose (opening a
-  pushed chat) is tied to a feature the user has to switch on.
+  pushed chat) is tied to a feature the user has to switch on. Until it is
+  fixed, `content/legal/cookie-policy.md` discloses it in the necessary table:
+  empty unless a notification is tapped, then only the target path and a
+  timestamp, deleted as soon as they are read.
 - **`better-auth.last_used_login_method` is set server-side at sign-in before
   any decision** (the `lastLoginMethod` plugin uses a literal `setCookie`) and is
   only cleared client-side after hydration, once the gate plugin sees
   `preferences` is not granted. A server-side hook that drops the cookie when the
   `cookies_consent` cookie does not grant `preferences` would close the window.
+  Until then the cookie policy says so: the cookie can exist briefly, and the
+  app removes it as soon as the page loads when `preferences` is not allowed.
 - **Better Auth cookies not declared.** `account_data` is not declared because
   it is only written when `account.storeAccountCookie` is enabled, and this app
   does not enable it; declare it if that option is ever turned on. `oauth_state`
@@ -396,6 +424,11 @@ oversight.
   is declared). The cookies are read from the installed `better-auth` 1.6.26
   source; re-verify names and lifetimes on a Better Auth upgrade, because the
   manifest and `content/legal/cookie-policy.md` repeat them.
+  The `__Secure-` prefix in those names comes from `createCookieGetter`: with
+  `advanced.useSecureCookies` unset and `baseURL` configured as the dynamic
+  object (`protocol: 'auto'`), it falls through to the production-environment
+  check rather than the request protocol, so production names carry the prefix
+  and a local development copy does not.
 - **Receipts do not record the source of a decision.** A decision made from the
   banner and one made from the "Remember your preferences?" prompt look
   identical in `consent_receipts`. Recording the source needs a migration of the
@@ -658,6 +691,11 @@ renders on the server.
 For personalisation that depends on consent (e.g. showing/hiding a
 preference-driven widget), gate it in client-side Vue
 (`v-if="isAllowed('preferences')"`) not in server-rendered layouts.
+
+The SWR cache on `/` is safe only because Nitro's cached handler does not vary
+on cookies: every visitor gets the same cached HTML regardless of their consent
+cookie, and that HTML carries no consent state. Never add `varies: ['cookie']`
+(or any cookie-keyed variation) to that route rule.
 
 ---
 

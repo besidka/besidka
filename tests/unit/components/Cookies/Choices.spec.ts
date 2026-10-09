@@ -22,6 +22,20 @@ describe('Cookies/Choices', () => {
     expect(buttons[1]?.text()).toBe('Accept all')
   })
 
+  it('stacks the buttons in one column with identical classes when asked', async () => {
+    const wrapper = await mountSuspended(Choices, {
+      props: { ...props, stacked: true },
+    })
+
+    expect(wrapper.classes()).toContain('grid-cols-1')
+    expect(wrapper.classes()).not.toContain('grid-cols-2')
+    expect(
+      wrapper.get('[data-testid="choices-reject"]').attributes('class'),
+    ).toBe(
+      wrapper.get('[data-testid="choices-accept"]').attributes('class'),
+    )
+  })
+
   it('applies the provided test ids', async () => {
     const wrapper = await mountSuspended(Choices, { props })
 

@@ -65,6 +65,20 @@ describe('consent.client plugin (sequential lifecycle)', () => {
     expect(localStorage.getItem('model')).toBeNull()
   })
 
+  it('keeps required entries while the visitor is undecided', () => {
+    const { isDecided } = useCookieConsent()
+
+    expect(isDecided.value).toBe(false)
+
+    localStorage.setItem('chat_input_backup', 'unsent message')
+    document.cookie = 'session_token=abc123; path=/'
+
+    runPlugin()
+
+    expect(localStorage.getItem('chat_input_backup')).toBe('unsent message')
+    expect(document.cookie).toContain('session_token=abc123')
+  })
+
   it('keeps optional entries once their category is granted', () => {
     const { allowAll, isDecided } = useCookieConsent()
 

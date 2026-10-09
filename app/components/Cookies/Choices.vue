@@ -4,6 +4,7 @@ defineProps<{
   acceptLabel: string
   rejectTestId: string
   acceptTestId: string
+  stacked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +16,10 @@ const buttonClasses = 'btn btn-sm btn-accent btn-block hitslop'
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-1.5">
+  <div
+    class="grid gap-1.5"
+    :class="stacked ? 'grid-cols-1' : 'grid-cols-2'"
+  >
     <button
       type="button"
       :data-testid="rejectTestId"

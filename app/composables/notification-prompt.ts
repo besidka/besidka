@@ -39,6 +39,10 @@ export function useNotificationPrompt() {
     'notification-prompt:is-visible',
     () => false,
   )
+  const consentRequest = useState<string | null>(
+    'cookie-consent:request',
+    () => null,
+  )
   const hasRegisteredMissedNotificationHook = useState<boolean>(
     'notification-prompt:hook-registered',
     () => false,
@@ -48,6 +52,14 @@ export function useNotificationPrompt() {
     () => false,
   )
   const nuxtApp = useNuxtApp()
+
+  function showUnlessConsentRequestOpen(): void {
+    if (consentRequest.value !== null) {
+      return
+    }
+
+    isVisible.value = true
+  }
 
   function canShow(): boolean {
     return pushNotifications.isSupported.value
@@ -134,7 +146,7 @@ export function useNotificationPrompt() {
           return
         }
 
-        isVisible.value = true
+        showUnlessConsentRequestOpen()
       },
       {
         immediate: true,
@@ -153,7 +165,7 @@ export function useNotificationPrompt() {
       return
     }
 
-    isVisible.value = true
+    showUnlessConsentRequestOpen()
   }
 
   function dismiss(): void {
@@ -193,6 +205,7 @@ export function useNotificationPrompt() {
     }
 
     if (pushNotifications.permission.value !== 'granted') {
+      consentRequest.value = null
       isVisible.value = true
 
       return

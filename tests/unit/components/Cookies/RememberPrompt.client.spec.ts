@@ -130,4 +130,18 @@ describe('Cookies/RememberPrompt.client', () => {
 
     wrapper.unmount()
   })
+
+  it('stops listening to route changes after unmount', async () => {
+    const wrapper = await mountSuspended(RememberPrompt)
+    const router = useRouter()
+
+    wrapper.unmount()
+    openRequest()
+
+    await router.push('/signup')
+    await nextTick()
+
+    expect(useState<string | null>('cookie-consent:request').value)
+      .toBe('preferences')
+  })
 })

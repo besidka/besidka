@@ -651,7 +651,7 @@ describe('useCookieConsentUi (sequential session)', () => {
       })
 
       request.value = 'preferences'
-      grantRequest()
+      grantRequest('preferences')
       stop()
 
       expect([...granted.value].sort()).toEqual(
@@ -673,11 +673,33 @@ describe('useCookieConsentUi (sequential session)', () => {
         received.push(payload)
       })
 
-      grantRequest()
+      grantRequest('preferences')
       stop()
 
       expect(received).toHaveLength(0)
       expect(isDecided.value).toBe(false)
+    })
+
+    it('grantRequest() for a different id commits nothing and clears the request', () => {
+      resetToUndecided()
+
+      const received: unknown[] = []
+      const { onConsentChange, granted, isDecided } = useCookieConsent()
+      const request = useState<string | null>('cookie-consent:request')
+      const { grantRequest } = useCookieConsentUi()
+      const stop = onConsentChange((payload) => {
+        received.push(payload)
+      })
+
+      request.value = 'analytics'
+      grantRequest('preferences')
+      stop()
+
+      expect(received).toHaveLength(0)
+      expect(granted.value).not.toContain('analytics')
+      expect(granted.value).not.toContain('preferences')
+      expect(isDecided.value).toBe(false)
+      expect(request.value).toBeNull()
     })
   })
 })

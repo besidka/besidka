@@ -19,6 +19,13 @@ const isSharedChatMessageSelected = useState<boolean>(
   'shared-chat-message-selected',
   () => false,
 )
+const modalHeading = useTemplateRef<HTMLElement>('modalHeading')
+
+async function showCategories(customize: () => void): Promise<void> {
+  customize()
+  await nextTick()
+  modalHeading.value?.focus()
+}
 </script>
 
 <template>
@@ -249,31 +256,25 @@ const isSharedChatMessageSelected = useState<boolean>(
               </div>
             </div>
 
-            <div
-              class="grid items-center gap-1.5"
-              :class="hasOptionalGrant ? 'xxs:grid-cols-2' : ''"
+            <CookiesChoices
+              v-if="hasOptionalGrant"
+              stacked
+              :reject-label="$t('cookieConsent.actions.withdraw')"
+              :accept-label="$t('cookieConsent.actions.change')"
+              reject-test-id="cookies-withdraw"
+              accept-test-id="cookies-change"
+              @reject="withdrawAll()"
+              @accept="expand()"
+            />
+            <button
+              v-else
+              type="button"
+              data-testid="cookies-change"
+              class="btn btn-sm btn-accent btn-block hitslop"
+              @click="expand()"
             >
-              <button
-                v-if="hasOptionalGrant"
-                type="button"
-                data-testid="cookies-withdraw"
-                class="btn btn-sm btn-ghost btn-block hitslop"
-                @click="withdrawAll()"
-              >
-                {{ $t('cookieConsent.actions.withdraw') }}
-              </button>
-              <button
-                type="button"
-                data-testid="cookies-change"
-                class="
-                  btn btn-sm btn-accent btn-block hitslop
-                  max-xxs:-order-1
-                "
-                @click="expand()"
-              >
-                {{ $t('cookieConsent.actions.change') }}
-              </button>
-            </div>
+              {{ $t('cookieConsent.actions.change') }}
+            </button>
           </template>
         </div>
       </div>
@@ -317,7 +318,9 @@ const isSharedChatMessageSelected = useState<boolean>(
         <div class="shrink-0 flex items-center justify-between gap-3 p-4 pb-3">
           <h2
             :id="titleId"
-            class="text-lg font-bold"
+            ref="modalHeading"
+            tabindex="-1"
+            class="text-lg font-bold focus:outline-none"
           >
             {{ $t('cookieConsent.title') }}
           </h2>
@@ -366,7 +369,7 @@ const isSharedChatMessageSelected = useState<boolean>(
             type="button"
             data-testid="cookies-change"
             class="btn btn-sm btn-ghost btn-block hitslop"
-            @click="customize()"
+            @click="showCategories(customize)"
           >
             {{ $t('cookieConsent.actions.customize') }}
           </button>
@@ -537,12 +540,12 @@ const isSharedChatMessageSelected = useState<boolean>(
                 ? $t('cookieConsent.actions.withdraw')
                 : $t('cookieConsent.actions.rejectAll')
             "
-            :accept-label="$t('cookieConsent.actions.allowAll')"
+            :accept-label="$t('cookieConsent.actions.acceptAll')"
             :reject-test-id="
               hasOptionalGrant ? 'cookies-withdraw' : 'cookies-reject-all'
             "
             accept-test-id="cookies-allow-all"
-            @reject="hasOptionalGrant ? withdrawAll() : rejectAll()"
+            @reject="withdrawAll()"
             @accept="allowAll()"
           />
           <button

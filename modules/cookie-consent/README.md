@@ -162,7 +162,7 @@ const {
   switchProps,    // (categoryId: string) => { role, aria-checked, disabled }
   consentRequest, // Readonly<Ref<string | null>> — category id of the open just-in-time request
   requestConsent, // (categoryId: string) => boolean — see just-in-time consent
-  grantRequest,   // () => void — allows the requested category and clears the request
+  grantRequest,   // (expectedId: string) => void — allows the open request only if it is for expectedId; always clears it
   dismissRequest, // () => void — clears the request, no decision
 } = useCookieConsentUi()
 ```
@@ -216,9 +216,12 @@ outcome (granted, dismissed, cleared by `openPopup()` / `expand()` or by the
 app on navigation). Decided visitors are never asked: a refusal is honoured
 until the consent cookie expires, after which the normal banner asks again.
 
-`grantRequest()` commits the already granted ids plus the requested one through
-`allow()`. It is a real decision, so the receipt and the
-`cookie-consent:changed` hook behave as for any other commit.
+`grantRequest(expectedId)` commits the already granted ids plus the requested
+one through `allow()`, but only when the open request is for `expectedId`: the
+id the prompt's text actually describes. If the request was replaced or cleared
+in the meantime, nothing is granted and the request is cleared. It is a real
+decision, so the receipt and the `cookie-consent:changed` hook behave as for
+any other commit.
 `dismissRequest()` only clears the request. The module renders nothing for a
 request; the app shows its own non-blocking prompt while `consentRequest` is
 set.

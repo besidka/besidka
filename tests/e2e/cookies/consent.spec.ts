@@ -10,6 +10,14 @@ const SHOW_DELAY = 1200
 const SHOW_DELAY_MARGIN = 1500
 const COLOR_MODE_KEY = 'nuxt-color-mode'
 const AUTH_STATE_PATH = '.playwright/auth-user.json'
+const PUBLIC_SSR_ROUTES = [
+  '/',
+  '/privacy-policy',
+  '/terms-of-use',
+  '/cookie-policy',
+  '/signin',
+  '/signup',
+]
 
 test.use({
   storageState: {
@@ -29,6 +37,17 @@ async function getConsentCookie(page: Page) {
   }
 
   return JSON.parse(decodeURIComponent(consent.value))
+}
+
+function buildConsentCookieHeader(): string {
+  const value = encodeURIComponent(JSON.stringify({
+    v: 1,
+    granted: ['necessary', 'preferences'],
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    date: '2026-06-11T12:00:00.000Z',
+  }))
+
+  return `${CONSENT_COOKIE}=${value}`
 }
 
 async function readColorModeKey(page: Page) {
@@ -567,13 +586,29 @@ test.describe('Cookie consent banner', () => {
       }).not.toBeNull()
     })
 
-  test('SSR HTML of the landing page carries no consent state',
+  for (const route of PUBLIC_SSR_ROUTES) {
+    test(`SSR HTML of ${route} carries no consent state`,
+      async ({ page }) => {
+        const response = await page.request.get(route)
+        const html = await response.text()
+
+        expect(response.ok()).toBe(true)
+        expect(html).not.toContain('cookie-consent:')
+      })
+
+    test(`SSR HTML of ${route} carries no consent state for a visitor `
+      + 'with a consent cookie',
     async ({ page }) => {
-      const response = await page.request.get('/')
+      const response = await page.request.get(route, {
+        headers: { cookie: buildConsentCookieHeader() },
+      })
       const html = await response.text()
 
+      expect(response.ok()).toBe(true)
       expect(html).not.toContain('cookie-consent:')
+      expect(html).not.toContain('cookies-popup')
     })
+  }
 
   test('footer Cookie settings opens the settings dialog',
     async ({ page }) => {

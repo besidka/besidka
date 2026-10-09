@@ -19,7 +19,7 @@
         mode="accent"
         size="xs"
         :text="$t('cookieConsent.prompt.remember')"
-        @click="grantRequest"
+        @click="grantRequest('preferences')"
       />
       <UiButton
         data-testid="cookies-remember-dismiss"
@@ -41,7 +41,9 @@ const isVisible = computed<boolean>(() => {
   return consentRequest.value === 'preferences'
 })
 
-router.afterEach(() => {
+const removeAfterEachHook = router.afterEach(() => {
   dismissRequest()
 })
+
+onBeforeUnmount(removeAfterEachHook)
 </script>

@@ -163,15 +163,16 @@ export function useCookieConsentUi() {
     return true
   }
 
-  function grantRequest(): void {
+  function grantRequest(expectedId: string): void {
     const requestedId = consentRequest.value
 
-    if (!requestedId) {
+    consentRequest.value = null
+
+    if (!requestedId || requestedId !== expectedId) {
       return
     }
 
     consent.allow([...consent.granted.value, requestedId])
-    consentRequest.value = null
   }
 
   function dismissRequest(): void {

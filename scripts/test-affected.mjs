@@ -12,6 +12,7 @@
 import { execSync } from 'node:child_process'
 
 import {
+  COOKIE_CONSENT_MODULE_TEST_DIR,
   filterTestsByType,
   getAffectedTests,
   getChangedFiles,
@@ -32,6 +33,7 @@ function runTests(tests, testType) {
     console.log('🔄 Running ALL tests (core files changed)...\n')
     if (testType === 'unit' || testType === 'all') {
       execSync('pnpm run test:unit', { stdio: 'inherit' })
+      execSync('pnpm run test:cookie-consent', { stdio: 'inherit' })
     }
     if (testType === 'integration' || testType === 'all') {
       execSync('pnpm run test:integration', { stdio: 'inherit' })
@@ -47,6 +49,9 @@ function runTests(tests, testType) {
   console.log()
 
   const unitTests = tests.filter(t => t.startsWith('tests/unit/'))
+  const cookieConsentModuleTests = tests.filter((t) => {
+    return t.startsWith(COOKIE_CONSENT_MODULE_TEST_DIR)
+  })
   const integrationTests = tests.filter(t => t.startsWith('tests/integration/'))
   const e2eTests = tests.filter(t => t.startsWith('tests/e2e/'))
 
@@ -57,6 +62,14 @@ function runTests(tests, testType) {
       stdio: 'inherit',
       shell: true,
     })
+  }
+
+  if (
+    cookieConsentModuleTests.length > 0
+    && (testType === 'unit' || testType === 'all')
+  ) {
+    console.log('🍪 Running cookie-consent module tests...\n')
+    execSync('pnpm run test:cookie-consent', { stdio: 'inherit' })
   }
 
   if (integrationTests.length > 0 && (testType === 'integration' || testType === 'all')) {

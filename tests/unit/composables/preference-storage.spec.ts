@@ -179,6 +179,60 @@ describe('usePreferenceStorage (sequential lifecycle)', () => {
   })
 })
 
+function stubThrowingSetItem(): () => void {
+  const original = window.localStorage
+
+  vi.stubGlobal('localStorage', new Proxy(original, {
+    get: (target, key) => {
+      if (key === 'setItem') {
+        return () => {
+          throw new Error('QuotaExceededError')
+        }
+      }
+
+      return Reflect.get(target, key)
+    },
+  }))
+
+  return () => {
+    vi.stubGlobal('localStorage', original)
+  }
+}
+
+describe('usePreferenceStorage when localStorage throws', () => {
+  it('granted: setItem falls back to the pending map without throwing', () => {
+    useCookieConsent().allowAll()
+
+    const restore = stubThrowingSetItem()
+    const { setItem, getItem } = usePreferenceStorage()
+
+    expect(() => setItem('model', 'quota-model')).not.toThrow()
+    expect(getItem('model')).toBe('quota-model')
+
+    restore()
+  })
+
+  it('flushPending keeps failed entries pending and does not throw', () => {
+    useCookieConsent().withdrawAll()
+
+    const { setItem, flushPending, getItem } = usePreferenceStorage()
+
+    setItem('settings_reasoning_level', 'high')
+    useCookieConsent().allowAll()
+
+    const restore = stubThrowingSetItem()
+
+    expect(() => flushPending()).not.toThrow()
+    expect(getItem('settings_reasoning_level')).toBe('high')
+
+    restore()
+    flushPending()
+
+    expect(window.localStorage.getItem('settings_reasoning_level'))
+      .toBe('high')
+  })
+})
+
 /**
  * Sequential lifecycle tests for the just-in-time prompt. The once-per-load
  * latch is module-scope, so only one request can ever be shown in this file:
@@ -270,7 +324,7 @@ describe('requestPersistence (sequential lifecycle)', () => {
     expect(window.localStorage.getItem('model')).toBeNull()
 
     useState<string | null>('cookie-consent:request').value = 'preferences'
-    grantRequest()
+    grantRequest('preferences')
 
     expect(granted.value).toContain('preferences')
     expect(isDecided.value).toBe(true)

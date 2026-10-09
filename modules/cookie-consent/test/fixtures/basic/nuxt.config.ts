@@ -10,6 +10,12 @@ export default defineNuxtConfig({
         required: true,
         entries: [
           { id: 'consent', name: 'cookies_consent', type: 'cookie' },
+          { id: 'session', name: 'session_token', type: 'cookie' },
+          {
+            id: 'chatInputBackup',
+            name: 'chat_input_backup',
+            type: 'localStorage',
+          },
         ],
       },
       {
