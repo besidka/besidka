@@ -1,26 +1,87 @@
 import { createError } from 'evlog'
 import type { RequestEvent } from 'nuxt/server'
 import { getRequestHeader } from 'nuxt/server'
-import { createAuthRateLimitStorage } from '~~/server/utils/auth-rate-limit'
+// @ts-ignore
+import { env } from 'cloudflare:workers'
+import { exceptionMessage } from '~~/server/utils/evlog-attributes'
 import type {
   useRequestLogger,
 } from '~~/server/utils/logging/request-logger'
 
-export const consentsRateLimitRule = { window: 60, max: 60 }
+export const CONSENTS_RATE_LIMIT_PERIOD_SECONDS = 60
 
-const CONSENTS_RATE_LIMIT_PREFIX = 'consents:rate-limit'
+const MAX_RATE_LIMIT_KEY_LENGTH = 64
+const IPV6_GROUP_PATTERN = /^[0-9a-f]{1,4}$/i
+const IPV4_MAPPED_IPV6_PATTERN = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i
+
+interface RateLimitBinding {
+  limit: (options: { key: string }) => Promise<{ success: boolean }>
+}
+
+function expandIpv6Groups(address: string): string[] | null {
+  const halves = address.split('::')
+
+  if (halves.length > 2) {
+    return null
+  }
+
+  const head = halves[0] ? halves[0].split(':') : []
+  const tail = halves[1] ? halves[1].split(':') : []
+  const hasCompression = halves.length === 2
+  const missingGroups = 8 - head.length - tail.length
+
+  if (hasCompression ? missingGroups < 1 : missingGroups !== 0) {
+    return null
+  }
+
+  const groups = [...head, ...Array(missingGroups).fill('0'), ...tail]
+
+  if (!groups.every(group => IPV6_GROUP_PATTERN.test(group))) {
+    return null
+  }
+
+  return groups.map(group => Number.parseInt(group, 16).toString(16))
+}
 
 /**
- * Fixed-window limiter for `POST /api/v1/consents`, keyed by client IP and
- * built on the same KV-backed storage as the auth and key-management limiters.
- * The window index is part of the storage key because that storage only
- * resets a bucket after a full idle window; with the index in the key each
- * bucket lives for exactly one window.
+ * Collapses an IPv6 address to its /64 prefix so a client that owns a whole
+ * /64 cannot dodge the limit by rotating addresses. IPv4 and IPv4-mapped
+ * IPv6 addresses are keyed as-is; anything unparseable is keyed verbatim,
+ * truncated.
+ */
+export function resolveRateLimitKey(clientIp: string): string {
+  const address = clientIp.trim().replace(/^\[|\]$/g, '').split('%')[0] ?? ''
+
+  if (!address.includes(':')) {
+    return address.slice(0, MAX_RATE_LIMIT_KEY_LENGTH)
+  }
+
+  const mappedIpv4 = address.match(IPV4_MAPPED_IPV6_PATTERN)
+
+  if (mappedIpv4) {
+    return mappedIpv4[1]!
+  }
+
+  const groups = expandIpv6Groups(address)
+
+  if (!groups) {
+    return address.slice(0, MAX_RATE_LIMIT_KEY_LENGTH)
+  }
+
+  return `${groups.slice(0, 4).join(':')}::/64`
+}
+
+/**
+ * Throttles `POST /api/v1/consents` with the Workers Rate Limiting binding
+ * (`CONSENTS_RATE_LIMITER`, 60 requests per 60 s), keyed by client IP (IPv6 by
+ * /64). The binding counts per Cloudflare location and is eventually
+ * consistent, so it is a flood guard rather than exact accounting. A KV
+ * counter cannot do this job: KV allows about one write per second to a key
+ * and the read-then-write is not atomic.
  *
- * Fails open (and records why on the logger) when the client IP is unknown or
- * KV is unavailable: a missing receipt is a smaller harm than a consent
- * decision that cannot be logged, and local development has no
- * `cf-connecting-ip`.
+ * Fails open (and records why on the logger) when the binding is missing, as
+ * in unit tests and non-Cloudflare self-hosts, when the client IP is unknown,
+ * or when the binding throws.
  */
 export async function enforceConsentsRateLimit(
   event: RequestEvent,
@@ -34,40 +95,42 @@ export async function enforceConsentsRateLimit(
     return
   }
 
-  const windowInMs = consentsRateLimitRule.window * 1000
-  const now = Date.now()
-  const windowIndex = Math.floor(now / windowInMs)
-  let allowed: boolean
+  const { CONSENTS_RATE_LIMITER } = env
+  const limiter = CONSENTS_RATE_LIMITER as RateLimitBinding | undefined
+
+  if (!limiter) {
+    logger.set({ consentRateLimit: { skipped: 'binding-unavailable' } })
+
+    return
+  }
+
+  let success: boolean
 
   try {
-    const storage = createAuthRateLimitStorage(
-      useKV(),
-      CONSENTS_RATE_LIMIT_PREFIX,
-    )
-    const result = await storage.consume(
-      `${clientIp}:${windowIndex}`,
-      consentsRateLimitRule,
-    )
+    const outcome = await limiter.limit({
+      key: resolveRateLimitKey(clientIp),
+    })
 
-    allowed = result.allowed
+    success = outcome.success
   } catch (exception) {
     logger.set({
-      consentRateLimit: {
-        skipped: 'storage-unavailable',
-        error: exceptionMessage(exception),
+      consentRateLimit: { skipped: 'limiter-error' },
+      attributes: {
+        consentRateLimit: { error: exceptionMessage(exception) },
       },
     })
 
     return
   }
 
-  if (allowed) {
+  if (success) {
     return
   }
 
-  const retryAfter = Math.ceil(((windowIndex + 1) * windowInMs - now) / 1000)
-
-  event.res.headers.set('Retry-After', String(retryAfter))
+  event.res.headers.set(
+    'Retry-After',
+    String(CONSENTS_RATE_LIMIT_PERIOD_SECONDS),
+  )
 
   throw createError({
     message: 'Too many consent receipts',

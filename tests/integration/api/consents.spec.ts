@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({
   loggerSet: vi.fn(),
   loggerAudit: vi.fn(),
   getCookie: vi.fn<() => string | undefined>(() => undefined),
-  getRequestHeader: vi.fn<() => string | undefined>(() => undefined),
+  getRequestHeader: vi.fn<(event: unknown, name: string) => string | undefined>(
+    () => undefined,
+  ),
   deriveConsentDecision: vi.fn<
     (grantedIds: string[], categories: unknown[]) => string
   >(),
@@ -60,23 +62,6 @@ vi.mock('~~/server/utils/consents', () => ({
   parseConsentCookieValue: mocks.parseConsentCookieValue,
 }))
 
-vi.mock('nitropack/runtime/internal/config', () => ({
-  useRuntimeConfig: () => ({
-    public: {
-      cookieConsent: {
-        cookieName: 'cookies_consent',
-        revision: 1,
-        categories: [
-          { id: 'necessary', required: true },
-          { id: 'preferences' },
-          { id: 'analytics' },
-          { id: 'marketing' },
-        ],
-      },
-    },
-  }),
-}))
-
 async function getConsentHandler() {
   const module = await import(
     '../../../server/api/v1/consents/index.post'
@@ -92,7 +77,7 @@ const validBody = {
   date: '2026-06-10T12:00:00.000Z',
   revision: 1,
   granted: ['necessary', 'preferences'],
-  denied: ['analytics', 'marketing'],
+  denied: [],
   changed: ['preferences'],
 }
 
@@ -203,6 +188,53 @@ describe('POST /api/v1/consents', () => {
     expect(mocks.insertConsentReceipt).toHaveBeenCalledOnce()
   })
 
+  it.each(['granted', 'denied', 'changed'] as const)(
+    'returns 400 for an unknown category id in %s',
+    async (field) => {
+      const handler = await getConsentHandler()
+
+      await expect(handler({
+        body: { ...validBody, [field]: ['necessary', 'telemetry'] },
+      } as any)).rejects.toMatchObject({
+        statusCode: 400,
+        why: expect.stringContaining('Unknown consent category id'),
+        fix: expect.any(String),
+      })
+
+      expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+    },
+  )
+
+  it('returns 413 before reading the body when content-length is over 2 KB', async () => {
+    mocks.getRequestHeader.mockImplementation((_event, name) => {
+      return name === 'content-length' ? '4096' : undefined
+    })
+
+    const handler = await getConsentHandler()
+
+    await expect(handler({ body: validBody } as any))
+      .rejects
+      .toMatchObject({
+        statusCode: 413,
+        why: expect.any(String),
+        fix: expect.any(String),
+      })
+
+    expect(mocks.insertConsentReceipt).not.toHaveBeenCalled()
+  })
+
+  it('accepts a body at the size limit', async () => {
+    mocks.getRequestHeader.mockImplementation((_event, name) => {
+      return name === 'content-length' ? '2048' : undefined
+    })
+
+    const handler = await getConsentHandler()
+
+    await handler({ body: validBody } as any)
+
+    expect(mocks.insertConsentReceipt).toHaveBeenCalledOnce()
+  })
+
   it('returns 429 and stores nothing when the rate limit is exceeded', async () => {
     mocks.enforceConsentsRateLimit.mockRejectedValue(
       Object.assign(new Error('Too many consent receipts'), {
@@ -246,7 +278,7 @@ describe('POST /api/v1/consents', () => {
         date: validBody.date,
         revision: 1,
         granted: ['necessary', 'preferences'],
-        denied: ['analytics', 'marketing'],
+        denied: [],
         changed: ['preferences'],
         decision: 'partial',
         cookiePresent: false,
@@ -263,7 +295,7 @@ describe('POST /api/v1/consents', () => {
     await handler({
       body: {
         ...validBody,
-        granted: ['necessary', 'preferences', 'analytics', 'marketing'],
+        granted: ['necessary', 'preferences'],
         denied: [],
       },
     } as any)
@@ -282,7 +314,7 @@ describe('POST /api/v1/consents', () => {
       body: {
         ...validBody,
         granted: ['necessary'],
-        denied: ['preferences', 'analytics', 'marketing'],
+        denied: ['preferences'],
       },
     } as any)
 
