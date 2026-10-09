@@ -1,3 +1,22 @@
+const COLOR_MODE_STORAGE_KEY = 'nuxt-color-mode'
+
+function purgeColorModeStorage() {
+  try {
+    window.localStorage.removeItem(COLOR_MODE_STORAGE_KEY)
+    document.cookie = `${COLOR_MODE_STORAGE_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+  } catch {
+    return
+  }
+}
+
+/**
+ * Keeps the color-mode preference out of storage until the user consents
+ * to the preferences category. `@nuxtjs/color-mode` writes its preference
+ * synchronously when its own plugin runs, which precedes this plugin, so the
+ * key is removed in the same synchronous startup pass. The write-then-purge
+ * window is never persisted across a reload; the head script only reads the
+ * key on the next load, by which time it is gone.
+ */
 export default defineNuxtPlugin(() => {
   const {
     isAllowed,
@@ -8,6 +27,10 @@ export default defineNuxtPlugin(() => {
   const { flushPending } = usePreferenceStorage()
   const colorMode = useColorMode()
   const config = useRuntimeConfig()
+
+  if (!isAllowed('preferences')) {
+    purgeColorModeStorage()
+  }
 
   onConsentChange(({ granted, denied, changed }) => {
     if (granted.includes('preferences')) {
@@ -55,8 +78,7 @@ export default defineNuxtPlugin(() => {
     () => colorMode.preference,
     () => {
       if (!isAllowed('preferences')) {
-        window.localStorage.removeItem('nuxt-color-mode')
-        document.cookie = 'nuxt-color-mode=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+        purgeColorModeStorage()
       }
     },
     { flush: 'post' },

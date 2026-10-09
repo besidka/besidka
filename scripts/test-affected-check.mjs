@@ -297,6 +297,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/integration/api/consents.spec.ts',
     'tests/e2e/cookies/consent.spec.ts',
+    'tests/e2e/settings/theme.spec.ts',
   ]
 
   const sessionRecoveryTests = [

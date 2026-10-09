@@ -5,10 +5,6 @@ import { cleanupEntry } from '../utils/cleanup'
 export default defineNuxtPlugin(() => {
   const consent = useCookieConsent()
 
-  if (!consent.isDecided.value) {
-    return
-  }
-
   for (const category of consent.categories) {
     if (consent.isAllowed(category.id)) {
       continue

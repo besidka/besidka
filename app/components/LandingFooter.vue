@@ -116,6 +116,7 @@
               </NuxtLink>
               <NuxtLink
                 to="/privacy-policy"
+                data-testid="landing-footer-privacy-link"
                 class="link link-hover text-sm"
               >
                 Privacy Policy
