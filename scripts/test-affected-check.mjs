@@ -298,6 +298,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/LandingFooter.spec.ts',
     'tests/unit/utils/consents.spec.ts',
     'tests/unit/utils/consents-rate-limit.spec.ts',
+    'tests/unit/utils/consents-db.spec.ts',
+    'tests/unit/utils/auth.spec.ts',
     'tests/unit/config/cookie-consent.spec.ts',
     'tests/unit/composables/auth-last-login-method.spec.ts',
     'tests/unit/composables/notification-prompt.spec.ts',
@@ -379,6 +381,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/service-worker/push.spec.ts',
     'tests/unit/service-worker/sw.spec.ts',
     'tests/unit/plugins/push-navigation.client.spec.ts',
+    'tests/unit/service-worker/internal-navigation.spec.ts',
+    'tests/e2e/push/navigation-handoff.spec.ts',
     'tests/unit/utils/cross-site-guard.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/push-status.spec.ts',
@@ -948,7 +952,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^wrangler\.jsonc$/,
-      tests: ['tests/unit/config/wrangler-search-rates.spec.ts'],
+      tests: [
+        'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/utils/consents-rate-limit.spec.ts',
+      ],
     },
     {
       pattern: /^server\/plugins\/message-search-index-sweep\.ts$/,
