@@ -6,6 +6,11 @@
  * visibility, for the case where iOS refocuses the running standalone window
  * without a reload — to perform the navigation client-side.
  * DB/store/key names must stay in sync with app/service-worker/push.ts.
+ * The page only ever reads: the service worker is the sole creator of the
+ * database, so visitors who never enabled push never get one. The read is
+ * skipped unless notification permission is granted, then skipped again when
+ * indexedDB.databases() (where supported) shows no database, and an open that
+ * would create one is aborted.
  */
 const PENDING_NAVIGATION_DB = 'besidka-push'
 const PENDING_NAVIGATION_STORE = 'pending-navigation'
@@ -17,14 +22,40 @@ interface PendingNavigation {
   savedAt: number
 }
 
-function readAndClearPendingNavigation(): Promise<PendingNavigation | null> {
+function isPushNotificationGranted(): boolean {
+  return 'Notification' in window && Notification.permission === 'granted'
+}
+
+async function pendingNavigationDatabaseExists(): Promise<boolean> {
+  if (typeof window.indexedDB.databases !== 'function') {
+    return true
+  }
+
+  try {
+    const databases = await window.indexedDB.databases()
+
+    return databases.some((database) => {
+      return database.name === PENDING_NAVIGATION_DB
+    })
+  } catch (exception) {
+    void exception
+
+    return false
+  }
+}
+
+async function readAndClearPendingNavigation(): Promise<
+  PendingNavigation | null
+> {
+  if (!('indexedDB' in window) || !isPushNotificationGranted()) {
+    return null
+  }
+
+  if (!await pendingNavigationDatabaseExists()) {
+    return null
+  }
+
   return new Promise((resolve) => {
-    if (!('indexedDB' in window)) {
-      resolve(null)
-
-      return
-    }
-
     let openRequest: IDBOpenDBRequest
 
     try {
@@ -37,7 +68,7 @@ function readAndClearPendingNavigation(): Promise<PendingNavigation | null> {
     }
 
     openRequest.onupgradeneeded = () => {
-      openRequest.result.createObjectStore(PENDING_NAVIGATION_STORE)
+      openRequest.transaction?.abort()
     }
 
     openRequest.onsuccess = () => {

@@ -377,6 +377,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/push-encryption.spec.ts',
     'tests/unit/service-worker/push.spec.ts',
     'tests/unit/service-worker/sw.spec.ts',
+    'tests/unit/plugins/push-navigation.client.spec.ts',
     'tests/unit/utils/cross-site-guard.spec.ts',
     'tests/integration/api/push-subscriptions.spec.ts',
     'tests/integration/api/push-status.spec.ts',
