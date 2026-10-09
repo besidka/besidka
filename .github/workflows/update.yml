@@ -32,8 +32,9 @@ jobs:
       - name: Automatically assign user to PR
         if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.actor, '[bot]') }}
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_ACTIONS_GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           ASSIGNEE: ${{ github.actor }}
         run: |
           retry() {
@@ -53,7 +54,7 @@ jobs:
             return 1
           }
 
-          retry gh pr edit "$PR_URL" --add-assignee "$ASSIGNEE"
+          retry gh api --method POST "repos/${REPOSITORY}/issues/${PR_NUMBER}/assignees" -f "assignees[]=${ASSIGNEE}" --silent
 
       - name: Add to MVP Milestone
         if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
