@@ -575,6 +575,20 @@ test.describe('Cookie consent banner', () => {
       expect(html).not.toContain('cookie-consent:')
     })
 
+  test('footer Cookie settings opens the settings dialog',
+    async ({ page }) => {
+      await openLanding(page)
+      await dismissPopupWithEscape(page)
+
+      const opener = page.getByTestId('footer-cookie-settings')
+
+      await opener.scrollIntoViewIfNeeded()
+      await expect(opener).toBeVisible()
+      await opener.click()
+
+      await expect(page.getByTestId('cookies-modal')).toBeVisible()
+    })
+
   test('asks to remember preferences when an undecided visitor changes '
     + 'the theme, and Remember grants preferences', async ({ page }) => {
     const prompt = page.getByTestId('cookies-remember-prompt')

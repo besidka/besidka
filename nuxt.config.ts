@@ -534,9 +534,54 @@ export default defineNuxtConfig({
             type: 'cookie',
           },
           {
+            id: 'session-data',
+            name: '__Secure-better-auth.session_data',
+            type: 'cookie',
+          },
+          {
+            id: 'dont-remember',
+            name: '__Secure-better-auth.dont_remember',
+            type: 'cookie',
+          },
+          {
+            id: 'oauth-state',
+            name: '__Secure-better-auth.state',
+            type: 'cookie',
+          },
+          {
+            id: 'two-factor',
+            name: '__Secure-better-auth.two_factor',
+            type: 'cookie',
+          },
+          {
+            id: 'trust-device',
+            name: '__Secure-better-auth.trust_device',
+            type: 'cookie',
+          },
+          {
+            id: 'passkey-challenge',
+            name: '__Secure-better-auth.better-auth-passkey',
+            type: 'cookie',
+          },
+          {
             id: 'chat-input-backup',
             name: 'chat_input_backup',
             type: 'localStorage',
+          },
+          {
+            id: 'push-endpoint',
+            name: 'besidka:push-endpoint',
+            type: 'localStorage',
+          },
+          {
+            id: 'pwa-refresher-dismissed',
+            name: 'pwa:refresher-dismissed-until',
+            type: 'sessionStorage',
+          },
+          {
+            id: 'pwa-auto-refresh-applied',
+            name: 'pwa:auto-refresh-applied-until',
+            type: 'sessionStorage',
           },
         ],
       },
@@ -600,6 +645,21 @@ export default defineNuxtConfig({
           {
             id: 'sidebar-pinned',
             name: 'settings_sidebar_pinned',
+            type: 'localStorage',
+          },
+          {
+            id: 'favorite-models',
+            name: 'settings_favorite_models',
+            type: 'localStorage',
+          },
+          {
+            id: 'favorite-gateway-models',
+            name: 'settings_favorite_gateway_models',
+            type: 'localStorage',
+          },
+          {
+            id: 'web-search-tool',
+            name: 'settings_web_search_tool',
             type: 'localStorage',
           },
         ],

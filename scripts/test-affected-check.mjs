@@ -293,6 +293,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/components/Cookies/Banner.client.spec.ts',
     'tests/unit/components/Cookies/Choices.spec.ts',
     'tests/unit/components/Cookies/RememberPrompt.client.spec.ts',
+    'tests/unit/components/LandingFooter.spec.ts',
     'tests/unit/utils/consents.spec.ts',
     'tests/unit/config/cookie-consent.spec.ts',
     'tests/unit/composables/auth-last-login-method.spec.ts',
@@ -739,6 +740,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
+      pattern: /^content\/legal\/cookie-policy\.md$/,
+      tests: cookieConsentTests,
+    },
+    {
       pattern: /^content\/index\.md$/,
       tests: [...landingTests, 'tests/unit/utils/landing-jsonld.spec.ts'],
     },
@@ -953,7 +958,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
+        /^(modules\/cookie-consent\/|app\/components\/Cookies\/|app\/components\/Sidebar\/Development\.vue$|app\/components\/LandingFooter\.vue$|i18n\/|app\/composables\/(preference-storage|theme-toggle|file-manager|user-setting)\.ts$|app\/components\/ChatInput(\.client\.vue|\/ModelsTrigger\.vue)$|app\/plugins\/cookie-consent-gate\.client\.ts$|server\/api\/v1\/consents\/|server\/utils\/consents(-db)?\.ts$|server\/db\/consent\/)/,
       tests: cookieConsentTests,
     },
     {

@@ -48,6 +48,68 @@ export default defineI18nLocale(() => ({
           + '(set by Better Auth).',
         duration: '7 days (session)',
       },
+      'session-data': {
+        description:
+          'Short-lived cache of your session so each page load '
+          + 'does not have to query the database (set by Better Auth).',
+        duration: '5 minutes',
+      },
+      'dont-remember': {
+        description:
+          'Records that you chose not to be remembered, so the '
+          + 'session ends when you close the browser (set by Better Auth).',
+        duration: 'Until you close the browser',
+      },
+      'oauth-state': {
+        description:
+          'One-time value that ties a Google or GitHub sign-in '
+          + 'redirect back to the request that started it (set by Better Auth).',
+        duration: '5 minutes',
+      },
+      'two-factor': {
+        description:
+          'Holds the pending two-factor sign-in step between your '
+          + 'password and your verification code (set by Better Auth).',
+        duration: '10 minutes',
+      },
+      'trust-device': {
+        description:
+          'Lets you skip the two-factor code on this device. Set '
+          + 'only if you tick the trust-this-device option (set by Better Auth).',
+        duration: '30 days',
+      },
+      'passkey-challenge': {
+        description:
+          'One-time challenge used while you register or sign in '
+          + 'with a passkey (set by Better Auth).',
+        duration: '5 minutes',
+      },
+      'chat-input-backup': {
+        description:
+          'Holds the text of a message you typed but have not '
+          + 'sent yet, so a failed send or an expired session does not lose it. '
+          + 'It stays in your browser and is discarded once the message is sent.',
+        duration: 'About 24 hours',
+      },
+      'push-endpoint': {
+        description:
+          'Remembers the push-notification subscription of this '
+          + 'browser so it can be refreshed or removed. Written only after you '
+          + 'turn notifications on.',
+        duration: 'Until deleted',
+      },
+      'pwa-refresher-dismissed': {
+        description:
+          'Remembers for this tab that you dismissed the '
+          + '"new version available" prompt, so it does not reappear at once.',
+        duration: '30 minutes (this tab)',
+      },
+      'pwa-auto-refresh-applied': {
+        description:
+          'Stops the app from reloading itself repeatedly while '
+          + 'applying an update in the background.',
+        duration: '5 minutes (this tab)',
+      },
       'last-login-method': {
         description:
           'Remembers which sign-in method (email, Google, GitHub) '
@@ -113,6 +175,24 @@ export default defineI18nLocale(() => ({
         description:
           'Remembers whether you pinned the sidebar open '
           + 'so it stays visible instead of revealing on hover.',
+        duration: 'Until deleted',
+      },
+      'favorite-models': {
+        description:
+          'Keeps your favourite models in the model picker for '
+          + 'visits when you are not signed in.',
+        duration: 'Until deleted',
+      },
+      'favorite-gateway-models': {
+        description:
+          'Keeps your favourite gateway models in the model '
+          + 'picker for visits when you are not signed in.',
+        duration: 'Until deleted',
+      },
+      'web-search-tool': {
+        description:
+          'Remembers which web search tool you last chose for '
+          + 'new chats.',
         duration: 'Until deleted',
       },
     },
