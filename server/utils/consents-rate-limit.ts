@@ -6,7 +6,7 @@ import type {
   useRequestLogger,
 } from '~~/server/utils/logging/request-logger'
 
-export const consentsRateLimitRule = { window: 60, max: 20 }
+export const consentsRateLimitRule = { window: 60, max: 60 }
 
 const CONSENTS_RATE_LIMIT_PREFIX = 'consents:rate-limit'
 
