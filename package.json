@@ -1,7 +1,7 @@
 {
 	"name": "besidka",
 	"type": "module",
-	"packageManager": "pnpm@12.0.0-rc.1",
+	"packageManager": "pnpm@12.10.1",
 	"engines": {
 		"node": ">=24"
 	},
