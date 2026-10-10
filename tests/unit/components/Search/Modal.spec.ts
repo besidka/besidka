@@ -28,7 +28,11 @@ mockNuxtImport('$fetch', () => mocks.fetchMock)
 mockNuxtImport('navigateTo', () => mocks.navigateToMock)
 
 mockNuxtImport('useAuth', () => {
-  return () => ({ loggedIn })
+  return () => ({
+    loggedIn,
+    user: ref(null),
+    fetchSession: async () => {},
+  })
 })
 
 mockNuxtImport('useRoute', () => {

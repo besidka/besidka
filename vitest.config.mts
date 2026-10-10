@@ -32,6 +32,15 @@ export default defineVitestConfig({
   },
   test: {
     environment: 'nuxt',
+    environmentOptions: {
+      nuxt: {
+        overrides: {
+          vue: {
+            vapor: false,
+          },
+        },
+      },
+    },
     globals: true,
     setupFiles: ['./tests/setup/vitest.setup.ts'],
     include: [

@@ -322,18 +322,26 @@ vi.stubGlobal('useErrorMessage', vi.fn())
 vi.stubGlobal('useSuccessMessage', vi.fn())
 vi.stubGlobal('useWarningMessage', vi.fn())
 
+const SUPPRESSED_WARNING_FRAGMENTS = [
+  'is called when there is no active component instance',
+  '[Icon] failed to load icon',
+]
+
 /**
- * Suppress Vue lifecycle hook warnings in tests
- * when composables are called outside component context
+ * Suppress warnings that are expected in the unit-test environment:
+ * Vue lifecycle hooks called by composables outside a component, and
+ * @nuxt/icon failing to fetch icon data because no Nitro server runs
  */
 // eslint-disable-next-line no-console
 const originalWarn = console.warn
 // eslint-disable-next-line no-console
 console.warn = (...args: unknown[]) => {
   const message = String(args[0])
+  const isSuppressed = SUPPRESSED_WARNING_FRAGMENTS.some((fragment) => {
+    return message.includes(fragment)
+  })
 
-  if (message.includes('is called when there is no active'
-    + ' component instance')) {
+  if (isSuppressed) {
     return
   }
 

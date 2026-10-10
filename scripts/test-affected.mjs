@@ -58,7 +58,7 @@ function runTests(tests, testType) {
   if (unitTests.length > 0 && (testType === 'unit' || testType === 'all')) {
     console.log('📝 Running unit tests...\n')
     const quotedTests = unitTests.map(test => `'${test}'`).join(' ')
-    execSync(`pnpm exec vitest run --reporter=verbose --run ${quotedTests}`, {
+    execSync(`pnpm exec vitest run --reporter=verbose --silent=passed-only --run ${quotedTests}`, {
       stdio: 'inherit',
       shell: true,
     })
@@ -75,7 +75,7 @@ function runTests(tests, testType) {
   if (integrationTests.length > 0 && (testType === 'integration' || testType === 'all')) {
     console.log('🔗 Running integration tests...\n')
     const quotedTests = integrationTests.map(test => `'${test}'`).join(' ')
-    execSync(`pnpm exec vitest run --reporter=verbose --run ${quotedTests}`, {
+    execSync(`pnpm exec vitest run --reporter=verbose --silent=passed-only --run ${quotedTests}`, {
       stdio: 'inherit',
       shell: true,
     })
