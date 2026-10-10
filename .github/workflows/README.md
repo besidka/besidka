@@ -208,6 +208,23 @@ Triggers once per day (`cron: 23 3 * * *`) and manually via
 2. Runs `./scripts/clean-gh-runs.sh --yes --limit 500`
 3. Deletes skipped runs and runs matching cleanup title patterns
 
+### `linear-docs-sync.yml` - Sync Docs to Linear
+
+Triggers on pushes to `main` that touch `docs/**` (or the sync script), and
+manually via `workflow_dispatch` (tick **full** to re-sync every document).
+
+1. Runs `scripts/linear-docs-sync.mjs`, which mirrors `docs/**/*.md` into
+   Linear team documents (team BES) and rebuilds the "Docs index" document.
+   Only files changed since `github.event.before` are synced; renames keep
+   the same Linear document, deletions get a `[removed]` title.
+2. Commits `docs/.linear-docs.json` (path → Linear document id) back to
+   `main` when a document was created or a file was removed, with
+   `[skip ci]`.
+
+The repo is the source of truth: edits made in Linear are overwritten on
+the next sync. Without the `LINEAR_API_KEY` secret the job exits with a
+warning and changes nothing.
+
 ## Security Model
 
 ### The Split Workflow Pattern
@@ -335,6 +352,7 @@ back to a standard `wrangler deploy` for preview.
 |--------|---------|-------|
 | `CLOUDFLARE_ACCOUNT_ID` | preview-deploy, preview-fork-deploy, production | Deploy |
 | `CLOUDFLARE_API_TOKEN` | preview-deploy, preview-fork-deploy, production | Deploy |
+| `LINEAR_API_KEY` | linear-docs-sync | Docs sync (Linear personal API key, write access to team BES) |
 | `github.token` | All workflows | Build + Deploy |
 
 Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows use the `preview` or `production` GitHub Environment.
