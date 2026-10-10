@@ -15,7 +15,7 @@
 /* eslint-disable no-console */
 
 import { execSync } from 'node:child_process'
-import { existsSync, appendFileSync } from 'node:fs'
+import { existsSync, appendFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 export const COOKIE_CONSENT_MODULE_TEST_DIR = 'modules/cookie-consent/test/'
@@ -46,6 +46,23 @@ export function getChangedFiles(base = 'HEAD') {
 
     return []
   }
+}
+
+export function listE2ESpecFiles() {
+  const e2eDirectory = 'tests/e2e'
+
+  if (!existsSync(e2eDirectory)) {
+    return []
+  }
+
+  return readdirSync(e2eDirectory, { recursive: true })
+    .map(entry => entry.split('\\').join('/'))
+    .filter((entry) => {
+      return entry.endsWith('.spec.ts')
+        && !entry.split('/').includes('todo')
+    })
+    .map(entry => `${e2eDirectory}/${entry}`)
+    .sort()
 }
 
 export function getAffectedTests(changedFiles) {
@@ -1463,6 +1480,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^app\.config\.ts$/,
       tests: ['tests/e2e/settings/theme.spec.ts'],
+    },
+    {
+      pattern: /^tests\/e2e\/(auth\.setup|helpers\/[^/]+)\.ts$/,
+      tests: () => listE2ESpecFiles(),
     },
     {
       pattern: /^tests\/.*\.spec\.ts$/,
