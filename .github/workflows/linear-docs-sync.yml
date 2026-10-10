@@ -30,9 +30,13 @@ jobs:
       HUSKY: 0
 
     steps:
+      # Always sync the latest main, not the triggering commit: a queued run
+      # then sees the document map the previous run committed, and the
+      # changes of any run cancelled in the concurrency queue.
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Install Node.js
@@ -43,7 +47,6 @@ jobs:
       - name: Sync documents
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
           FULL_SYNC: ${{ inputs.full && 'true' || '' }}
         run: node scripts/linear-docs-sync.mjs
 

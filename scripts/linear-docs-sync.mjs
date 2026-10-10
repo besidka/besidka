@@ -12,14 +12,17 @@
  * "Recently deleted" for 30 days). The "Docs index" document is rebuilt on
  * every run.
  *
+ * The last fully synced commit is recorded in the Docs index document. Each
+ * run syncs every docs change between that commit and HEAD, so runs that
+ * were skipped or cancelled are caught up; with no recorded commit (or one
+ * that is not an ancestor of HEAD) it syncs everything.
+ *
  * Runs from .github/workflows/linear-docs-sync.yml on pushes to main that
  * touch docs/**, or by hand:
  *   LINEAR_API_KEY=lin_api_... node scripts/linear-docs-sync.mjs --all
  *
  * Env:
  *   LINEAR_API_KEY  personal API key with write access (required)
- *   BEFORE_SHA      previous commit of the push; only files changed since
- *                   then are synced. Missing or unknown → full sync.
  *   FULL_SYNC=true  same as --all
  */
 
@@ -67,7 +70,15 @@ const fullSync = process.argv.includes('--all')
 const failures = []
 
 async function main() {
-  const changes = fullSync ? null : changedDocs(process.env.BEFORE_SHA)
+  const syncedSha = fullSync ? null : await lastSyncedSha()
+
+  if (syncedSha === commitSha) {
+    console.log(`Already synced at ${shortSha}`)
+
+    return
+  }
+
+  const changes = syncedSha ? changedDocs(syncedSha) : null
 
   if (changes === null) {
     console.log('Full sync of docs/')
@@ -96,7 +107,7 @@ async function main() {
   )
   writeFileSync(MAP_FILE, `${JSON.stringify(map, null, 2)}\n`)
 
-  await rebuildIndex()
+  await rebuildIndex(failures.length ? syncedSha : commitSha)
 
   if (failures.length) {
     console.log(
@@ -151,13 +162,10 @@ function listDocs(directory = DOCS_DIR) {
  * since `before`, or null when a full sync is needed.
  */
 function changedDocs(before) {
-  if (!before || /^0+$/.test(before)) {
-    return null
-  }
-
   let output
 
   try {
+    git('merge-base', '--is-ancestor', before, commitSha)
     output = git('diff', '--name-status', '-M', before, commitSha, '--', 'docs')
   } catch {
     return null
@@ -259,14 +267,13 @@ async function upsert(path) {
 async function removeDocument(path) {
   const documentId = map.documents[path]
 
-  delete map.documents[path]
-
   if (!documentId) {
     return
   }
 
   try {
     await request(DELETE_MUTATION, { id: documentId })
+    delete map.documents[path]
     console.log(`deleted  ${path}`)
   } catch (exception) {
     failures.push(path)
@@ -293,7 +300,25 @@ async function fetchDocumentUrls() {
   return urls
 }
 
-async function rebuildIndex() {
+async function lastSyncedSha() {
+  try {
+    const data = await request(
+      'query($id: String!) { document(id: $id) { content } }',
+      { id: map.indexDocumentId },
+    )
+    const match = data.document?.content?.match(
+      /besidka\/commit\/([0-9a-f]{40})/,
+    )
+
+    return match?.[1] ?? null
+  } catch (exception) {
+    console.log(`::warning::Could not read the docs index: ${exception.message}`)
+
+    return null
+  }
+}
+
+async function rebuildIndex(syncedSha) {
   try {
     const urls = await fetchDocumentUrls()
     const groups = new Map()
@@ -308,9 +333,13 @@ async function rebuildIndex() {
 
     const lines = [
       'Index of the engineering docs in the repo\'s `docs/` folder, synced '
-      + 'automatically on every push to main (last sync: '
-      + `besidka/besidka@${shortSha}). The repo is the source of truth; `
-      + 'edit docs there.',
+      + 'automatically on every push to main. The repo is the source of '
+      + 'truth; edit docs there.',
+      '',
+      syncedSha
+        ? `Last sync: [${syncedSha.slice(0, 8)}]`
+        + `(${REPO_URL}/commit/${syncedSha})`
+        : 'Last sync had failures; the next run re-syncs everything.',
     ]
 
     for (const folder of [...groups.keys()].sort()) {

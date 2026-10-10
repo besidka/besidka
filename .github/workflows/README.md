@@ -215,12 +215,14 @@ manually via `workflow_dispatch` (tick **full** to re-sync every document).
 
 1. Runs `scripts/linear-docs-sync.mjs`, which mirrors `docs/**/*.md` into
    Linear team documents (team BES) and rebuilds the "Docs index" document.
-   Only files changed since `github.event.before` are synced; renames keep
+   Only files changed since the last synced commit (recorded in the Docs
+   index) are synced, so cancelled or skipped runs are caught up; renames keep
    the same Linear document, deleted files delete their Linear document
    (restorable from Linear's "Recently deleted" for 30 days).
 2. Commits `docs/.linear-docs.json` (path → Linear document id) back to
-   `main` when a document was created or a file was removed, with
-   `[skip ci]`.
+   `main` when a document was created or deleted, with `[skip ci]`. The job
+   always checks out the latest `main`, so a queued run never works from a
+   stale map.
 
 The repo is the source of truth: edits made in Linear are overwritten on
 the next sync. Without the `LINEAR_API_KEY` secret the job exits with a
