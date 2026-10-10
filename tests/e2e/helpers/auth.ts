@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
 const DEFAULT_PASSWORD = 'Password123!'
 const BODY_SNIPPET_MAX_LENGTH = 400
@@ -95,17 +95,35 @@ export async function waitForHydration(page: Page): Promise<void> {
   })
 }
 
+function getAuthRequestOrigin(): string | undefined {
+  const baseUrl = test.info().project.use.baseURL
+
+  if (!baseUrl) {
+    return undefined
+  }
+
+  return new URL(baseUrl).origin
+}
+
 export async function postAuthRequest(
   page: Page,
   endpoints: string[],
   payload: Record<string, unknown>,
 ): Promise<AuthRequestResult> {
   const results: AuthRequestResult[] = []
+  const origin = getAuthRequestOrigin()
+  const requestHeaders: Record<string, string> = {
+    'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX',
+  }
+
+  if (origin) {
+    requestHeaders.Origin = origin
+  }
 
   for (const endpoint of endpoints) {
     const response = await page.request.post(endpoint, {
       data: payload,
-      headers: { 'x-captcha-response': 'XXXX.DUMMY.TOKEN.XXXX' },
+      headers: requestHeaders,
       failOnStatusCode: false,
     })
     const headers = response.headers()
