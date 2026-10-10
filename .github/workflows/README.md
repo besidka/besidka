@@ -216,7 +216,8 @@ manually via `workflow_dispatch` (tick **full** to re-sync every document).
 1. Runs `scripts/linear-docs-sync.mjs`, which mirrors `docs/**/*.md` into
    Linear team documents (team BES) and rebuilds the "Docs index" document.
    Only files changed since `github.event.before` are synced; renames keep
-   the same Linear document, deletions get a `[removed]` title.
+   the same Linear document, deleted files delete their Linear document
+   (restorable from Linear's "Recently deleted" for 30 days).
 2. Commits `docs/.linear-docs.json` (path → Linear document id) back to
    `main` when a document was created or a file was removed, with
    `[skip ci]`.

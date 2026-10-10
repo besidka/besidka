@@ -8,8 +8,9 @@
  *
  * docs/.linear-docs.json maps each docs path to its Linear document id. New
  * files get a new document and a new entry; renamed files keep their
- * document; deleted files keep their document but get a "[removed]" title
- * so nothing is lost. The "Docs index" document is rebuilt on every run.
+ * document; deleted files delete their document (Linear keeps it in
+ * "Recently deleted" for 30 days). The "Docs index" document is rebuilt on
+ * every run.
  *
  * Runs from .github/workflows/linear-docs-sync.yml on pushes to main that
  * touch docs/**, or by hand:
@@ -23,7 +24,13 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, relative } from 'node:path'
 import process from 'node:process'
 
@@ -33,12 +40,14 @@ const MAP_FILE = join(DOCS_DIR, '.linear-docs.json')
 const REPO_URL = 'https://github.com/besidka/besidka'
 const API_URL = process.env.LINEAR_API_URL
   || 'https://api.linear.app/graphql'
-const REMOVED_PREFIX = '[removed] '
 const UPDATE_MUTATION = `mutation($id: String!, $input: DocumentUpdateInput!) {
   documentUpdate(id: $id, input: $input) { success }
 }`
 const CREATE_MUTATION = `mutation($input: DocumentCreateInput!) {
   documentCreate(input: $input) { success document { id } }
+}`
+const DELETE_MUTATION = `mutation($id: String!) {
+  documentDelete(id: $id) { success }
 }`
 
 const apiKey = process.env.LINEAR_API_KEY
@@ -62,6 +71,12 @@ async function main() {
 
   if (changes === null) {
     console.log('Full sync of docs/')
+
+    for (const path of Object.keys(map.documents)) {
+      if (!existsSync(join(DOCS_DIR, path))) {
+        await removeDocument(path)
+      }
+    }
 
     for (const path of listDocs()) {
       await upsert(path)
@@ -93,7 +108,7 @@ async function main() {
 
 async function applyChange(change) {
   if (change.status === 'D') {
-    await markRemoved(change.path)
+    await removeDocument(change.path)
 
     return
   }
@@ -241,7 +256,7 @@ async function upsert(path) {
   }
 }
 
-async function markRemoved(path) {
+async function removeDocument(path) {
   const documentId = map.documents[path]
 
   delete map.documents[path]
@@ -251,17 +266,8 @@ async function markRemoved(path) {
   }
 
   try {
-    const data = await request(
-      'query($id: String!) { document(id: $id) { title } }',
-      { id: documentId },
-    )
-    const currentTitle = data.document.title
-    const title = currentTitle.startsWith(REMOVED_PREFIX)
-      ? currentTitle
-      : `${REMOVED_PREFIX}${currentTitle}`
-
-    await request(UPDATE_MUTATION, { id: documentId, input: { title } })
-    console.log(`removed  ${path}`)
+    await request(DELETE_MUTATION, { id: documentId })
+    console.log(`deleted  ${path}`)
   } catch (exception) {
     failures.push(path)
     console.log(`::error::${path}: ${exception.message}`)
