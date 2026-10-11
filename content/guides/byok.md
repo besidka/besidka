@@ -36,7 +36,7 @@ Create a key in the provider's developer console. Treat it like a password: anyo
 | Grok | xAI | [console.x.ai](https://console.x.ai/team/default/api-keys) |
 | DeepSeek | DeepSeek | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
 | Kimi | Moonshot AI | [platform.kimi.ai](https://platform.kimi.ai/console/api-keys) |
-| Qwen | Alibaba Cloud Model Studio | the Model Studio console, API keys page |
+| Qwen | Qwen Cloud | [home.qwencloud.com/api-keys](https://home.qwencloud.com/api-keys) |
 
 You only need one provider to start. Add others later if you want to switch between them.
 

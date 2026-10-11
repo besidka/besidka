@@ -89,8 +89,8 @@ export const providerMeta: Record<string, ProviderMeta> = {
     kind: 'provider',
     label: 'Qwen',
     keyProviderId: 'qwen',
-    dashboardUrl: 'https://bailian.console.alibabacloud.com/cn-beijing?tab=model#/api-key',
-    dashboardLabel: 'Alibaba Cloud Model Studio → API-KEY (this app uses the international endpoint — switch to a non-China region in the console before creating your key, or it will fail)',
+    dashboardUrl: 'https://home.qwencloud.com/api-keys',
+    dashboardLabel: 'Qwen Cloud → API Keys',
     keyFields: [apiKeyField],
   },
   brave: {
