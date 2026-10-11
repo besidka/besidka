@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFaqPageLd,
+  buildGuidePageLd,
   buildLandingGraphLd,
   buildLandingLdIds,
   buildOrganizationLd,
@@ -196,5 +197,48 @@ describe('buildLandingGraphLd', () => {
     referencedIds.forEach((referencedId) => {
       expect(presentIds).toContain(referencedId)
     })
+  })
+})
+
+describe('buildGuidePageLd', () => {
+  const GUIDE_INPUT = {
+    baseUrl: BASE_URL,
+    url: 'https://besidka.com/byok',
+    headline: 'Bring your own API key',
+    description: 'How BYOK works in Besidka.',
+    dateModified: '2026-10-11',
+  }
+
+  it('emits a TechArticle anchored on the page URL', () => {
+    const articleLd = buildGuidePageLd(GUIDE_INPUT)
+
+    expect(articleLd['@context']).toBe('https://schema.org')
+    expect(articleLd['@type']).toBe('TechArticle')
+    expect(articleLd['@id']).toBe('https://besidka.com/byok#article')
+    expect(articleLd.url).toBe('https://besidka.com/byok')
+    expect(articleLd.dateModified).toBe('2026-10-11')
+  })
+
+  it('references the same website, organization and software @ids the '
+    + 'home page graph declares, so no second Organization is emitted', () => {
+    const articleLd = buildGuidePageLd(GUIDE_INPUT)
+    const graphLd = buildLandingGraphLd(INPUT)
+
+    const homeIds = new Set(graphLd['@graph'].map((node) => {
+      return node['@id']
+    }))
+
+    expect(homeIds).toContain(articleLd.isPartOf['@id'])
+    expect(homeIds).toContain(articleLd.publisher['@id'])
+    expect(homeIds).toContain(articleLd.about['@id'])
+  })
+
+  it('omits dateModified when no date is given', () => {
+    const articleLd = buildGuidePageLd({
+      ...GUIDE_INPUT,
+      dateModified: undefined,
+    })
+
+    expect(articleLd).not.toHaveProperty('dateModified')
   })
 })

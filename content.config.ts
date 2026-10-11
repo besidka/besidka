@@ -289,5 +289,27 @@ export default defineContentConfig({
           ),
       }),
     }),
+    // Indexable explainer pages (content/guides/*.md), one route each in
+    // app/pages. Capped at two or three routes — see docs/seo.md.
+    guides: defineCollection({
+      type: 'page',
+      source: 'guides/*.md',
+      schema: z.object({
+        description: z
+          .string()
+          .describe('SEO meta description and social share text'),
+        updatedAt: z
+          .string()
+          .describe(
+            'ISO date this guide last changed, e.g. 2026-10-11. Shown to'
+            + ' users and emitted as the JSON-LD dateModified — bump it'
+            + ' whenever the substance changes.',
+          ),
+        summary: z
+          .string()
+          .optional()
+          .describe('Short plain-language answer shown above the guide'),
+      }),
+    }),
   },
 })

@@ -230,7 +230,7 @@ describe('Profile/Keys/ProviderKeyCard', () => {
       summaryFor([{ provider: 'qwen', hasKey: false }])
 
       const wrapper = await mountCard('qwen')
-      const link = dashboardLink(wrapper, 'bailian.console.alibabacloud.com')
+      const link = dashboardLink(wrapper, 'home.qwencloud.com/api-keys')
 
       expect(link).toBeDefined()
       expect(link?.classes()).toContain('link')

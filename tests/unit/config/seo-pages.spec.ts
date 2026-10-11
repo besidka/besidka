@@ -156,3 +156,63 @@ describe.each(LEGAL_DOCUMENTS)(
     )
   },
 )
+
+describe('BYOK guide page', () => {
+  function readGuideFrontmatterValue(key: string): string {
+    const source = readPageSource('content/guides/byok.md')
+    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
+    const valueMatch = frontmatter.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
+
+    return (valueMatch?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
+  }
+
+  it(
+    'is content-driven from the guides collection and sources title and '
+    + 'description from it, so the frontmatter stays the single source of '
+    + 'truth for the page meta',
+    () => {
+      const source = readPageSource('app/pages/byok.vue')
+
+      expect(source).toContain('queryCollection(\'guides\')')
+      expect(source).toContain('.path(\'/guides/byok\')')
+      expect(source).toMatch(/description\s*:\s*\(\)\s*=>\s*description\.value/)
+    },
+  )
+
+  it(
+    'stays indexable: it must not set its own noindex and must not be '
+    + 'excluded from the sitemap or disallowed in robots',
+    () => {
+      const source = readPageSource('app/pages/byok.vue')
+
+      expect(source).not.toMatch(/noindex/)
+
+      const nuxtConfigSource = readPageSource('nuxt.config.ts')
+
+      expect(nuxtConfigSource).not.toMatch(/['"]\/byok/)
+    },
+  )
+
+  it(
+    'emits TechArticle JSON-LD through the shared landing graph helper '
+    + 'instead of declaring its own Organization',
+    () => {
+      const source = readPageSource('app/pages/byok.vue')
+
+      expect(source).toContain('buildGuidePageLd(')
+      expect(source).not.toContain('Organization')
+    },
+  )
+
+  it('has a title, description and ISO updatedAt in its frontmatter', () => {
+    expect(readGuideFrontmatterValue('title')).toBeTruthy()
+    expect(readGuideFrontmatterValue('description')).toBeTruthy()
+    expect(readGuideFrontmatterValue('updatedAt')).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    )
+  })
+
+  it('is linked from the home page body', () => {
+    expect(readPageSource('content/index.md')).toContain('](/byok)')
+  })
+})

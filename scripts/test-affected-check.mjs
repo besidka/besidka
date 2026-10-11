@@ -772,12 +772,27 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/config/seo-pages.spec.ts'],
     },
     {
+      pattern: /^(content\/guides\/.*\.md|app\/pages\/byok\.vue|content\.config\.ts|app\/components\/LegalDocument\.vue)$/,
+      tests: [
+        'tests/unit/config/seo-pages.spec.ts',
+        'tests/unit/utils/landing-jsonld.spec.ts',
+      ],
+    },
+    {
+      pattern: /^(scripts\/indexnow-submit\.mjs|server\/routes\/indexnow-key\.txt\.ts)$/,
+      tests: ['tests/unit/scripts/indexnow-submit.spec.ts'],
+    },
+    {
       pattern: /^content\/legal\/cookie-policy\.md$/,
       tests: cookieConsentTests,
     },
     {
       pattern: /^content\/index\.md$/,
-      tests: [...landingTests, 'tests/unit/utils/landing-jsonld.spec.ts'],
+      tests: [
+        ...landingTests,
+        'tests/unit/utils/landing-jsonld.spec.ts',
+        'tests/unit/config/seo-pages.spec.ts',
+      ],
     },
     {
       pattern: /^app\/components\/landing\/.*\.vue$/,

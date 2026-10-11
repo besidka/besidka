@@ -364,6 +364,53 @@ jobs:
           echo "╚════════════════════════════════════════════════════════════╝"
           echo ""
 
+  indexnow:
+    name: Notify IndexNow
+    needs: build-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    # No-op until the owner creates the INDEXNOW_KEY secret and sets
+    # NUXT_INDEXNOW_KEY on the production Worker to the same value — see
+    # docs/seo.md → "IndexNow".
+    env:
+      INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+
+    steps:
+      - name: Skip when INDEXNOW_KEY is not configured
+        if: env.INDEXNOW_KEY == ''
+        run: echo "INDEXNOW_KEY secret is not set; skipping IndexNow."
+
+      - name: Checkout
+        if: env.INDEXNOW_KEY != ''
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        if: env.INDEXNOW_KEY != ''
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Submit changed public pages to IndexNow
+        if: env.INDEXNOW_KEY != ''
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          SITE_URL: https://besidka.com
+        run: |
+          if [ "$EVENT_NAME" != "push" ] \
+            || [ -z "$BEFORE_SHA" ] \
+            || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] \
+            || ! git fetch --depth=1 origin "$BEFORE_SHA"; then
+            node scripts/indexnow-submit.mjs --all
+            exit $?
+          fi
+
+          git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" > changed-files.txt
+          node scripts/indexnow-submit.mjs --changed-files=changed-files.txt
+
   update-preview:
     name: Promote PR to Preview
     needs:

@@ -40,6 +40,9 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      │   ├─ Build application                                    │
 │      │   └─ Deploy to production                                 │
 │      │                                                           │
+│      ├─ indexnow job (after build-production)                    │
+│      │   No-op without INDEXNOW_KEY; else submits changed pages  │
+│      │                                                           │
 │      ├─ update-preview job (parallel)                            │
 │      │   ├─ Get merged PR number                                 │
 │      │   └─ Promote PR version to preview (if alias found)       │
@@ -104,6 +107,12 @@ Triggers on push to `main`. Two parallel jobs:
 **build-production**: Full test suite, build, deploy to production. Applies
 remote migrations to both production databases (`DB`, then `CONSENT_DB`)
 before deploy, unconditionally on every run (see below).
+
+**indexnow**: Runs after `build-production`. A no-op unless the
+`INDEXNOW_KEY` secret exists. When it does, and the push changed a public
+page (`content/`, public `app/pages/`, landing components), it reads the live
+sitemap, checks `https://besidka.com/indexnow-key.txt` serves the same key,
+and submits the sitemap URLs to IndexNow. See `docs/seo.md` → "IndexNow".
 
 **update-preview**: Finds the PR version by alias (`pr-{number}`) and, when
 found, promotes it to the preview environment — reusing the exact build that

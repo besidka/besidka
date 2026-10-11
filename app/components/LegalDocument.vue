@@ -39,9 +39,15 @@
 </template>
 
 <script setup lang="ts">
-import type { LegalCollectionItem } from '@nuxt/content'
+import type {
+  GuidesCollectionItem,
+  LegalCollectionItem,
+} from '@nuxt/content'
 
-const { doc } = defineProps<{ doc?: LegalCollectionItem | null }>()
+// Also renders the guides collection: both share title, updatedAt, summary.
+const { doc } = defineProps<{
+  doc?: LegalCollectionItem | GuidesCollectionItem | null
+}>()
 
 // Reaches the markdown as {{ privacyEmail }} via ContentRenderer's `data`.
 const { privacyEmail } = useRuntimeConfig().public

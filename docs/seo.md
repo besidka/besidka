@@ -55,8 +55,10 @@ canonical too.
 
 ## Indexable surface
 
-Indexable: `/`, `/privacy`, `/terms`, and any `/shared/<publicId>` whose share
-row has `indexable = true`.
+Indexable: `/`, `/byok`, `/privacy-policy`, `/terms-of-use`, `/cookie-policy`,
+and any `/shared/<publicId>` whose share row has `indexable = true`. The old
+`/privacy` and `/terms` URLs 301 to the `-policy`/`-of-use` routes
+(`routeRules` in `nuxt.config.ts`).
 
 `noindex, nofollow`: all authenticated routes (`/chats/**`, `/profile/**`),
 `/signin`, `/signup`, `/reset-password`, `/new-password`, and shared chats with
@@ -221,10 +223,11 @@ actions, roughly in leverage order:
    AIN.ua). A Ukrainian document about the product will itself rank for
    `бесідка ai`, and builds the Cyrillic association in a corpus that also feeds
    LLM training data. This is the real lever for the Cyrillic goal.
-5. **Bing + IndexNow.** Bing's index feeds ChatGPT browsing. IndexNow is a
-   single `POST https://api.indexnow.org/indexnow`; the right home is a
-   post-deploy CI step gated on an `INDEXNOW_KEY` secret, not a Nuxt module.
-   Not implemented — it needs a key the owner generates.
+5. **Bing + IndexNow.** Bing's index feeds ChatGPT browsing. IndexNow is
+   implemented as a post-deploy CI step (see [IndexNow](#indexnow)); it stays
+   a no-op until the owner creates the key. Import the Search Console property
+   into Bing Webmaster Tools as well — IndexNow tells Bing *when* to crawl,
+   Webmaster Tools is where you see what it did.
 
 ## Content roadmap
 
@@ -238,35 +241,223 @@ two or three.
   cluster demonstrably ranks for non-authority domains because a working
   calculator is a functional-utility page, and calculators attract links. Also
   the closest match to an existing product feature (per-message cost breakdown).
-- **A BYOK explainer** — `byok ai chat`, `bring your own api key chat app`. The
-  only competitor page confirmed to surface in a real BYOK SERP is a *docs*
-  page (`chatboxai.app/en/guide/byok`), not a homepage. Natural landing target
-  once the directory listings above exist.
+- **A BYOK explainer** — **built** as `/byok`, see
+  [The BYOK guide](#the-byok-guide-byok). It is the first of the two or three
+  new routes the cap allows.
 - **Comparison pages** (`/vs/...`) rank for this category — Open WebUI maintains
   its own `/alternatives/` page — but they multiply factual claims about named
   third parties, which is the highest-risk content type here. Only with
   sourced, dated, verifiable figures.
 
-Two known accuracy debts in `content/index.md` that matter for trust and should
-be fixed by someone who can verify current vendor pricing: `priceDate` is stale,
-and the comparison table contains at least one unverified competitor claim.
+### The comparison table is a dated factual claim
 
-### Blocker: `/privacy` and `/terms` are empty stubs
+The `comparison` block in `content/index.md` names four third-party products
+and states their prices and features. Every cell was re-checked against the
+vendors' own pricing pages and help-centre articles in October 2026 and
+`priceDate` moved to `October 2026` (sources are listed in the PR that made the
+change). Rules for the next refresh:
 
-Both pages are literally a single `<h1>` and nothing else — measured at 18 and 20
-characters of body text respectively. **They are two of the three indexable URLs
-on the site.**
+- Re-verify **every** competitor cell, not only the prices, and bump
+  `priceDate` in the same commit. A stale date on a pricing table is a trust
+  problem for readers and for anything that quotes the page.
+- A claim that can only be sourced from forum posts, feedback boards or a
+  founder's social posts is softened to what those sources actually show
+  (e.g. T3 Chat's sharing is just "Share links"), never stated more strongly.
+- Use exact list prices (`$19.99/mo`), and a range when monthly and annual
+  billing differ (`$17–20/mo`), instead of a rounded "from $20" that is
+  wrong in both directions.
+- Besidka's own cost example (`note`) names the model and its per-token rates
+  so the arithmetic can be re-checked; "a flagship model" was unfalsifiable and,
+  on Opus-class pricing, wrong.
 
-They were deliberately left indexable rather than switched to `noindex`, because
-a reachable privacy policy is required by Google OAuth verification and by the
-cookie-consent flow, and hiding them from search does not make them less empty.
-Their meta descriptions are written to describe the content those pages *will*
-carry, so they become accurate as soon as the pages are filled in.
+### Legal pages are no longer stubs
 
-Until then this is the single largest content problem on the site: an empty page
-ranking for a brand query looks broken, and two of three indexable URLs carrying
-no content is a poor sitewide quality signal. Writing them is an owner action —
-it is legal copy, not something to generate.
+`/privacy-policy`, `/terms-of-use` and `/cookie-policy` were once empty `<h1>`
+stubs (then at `/privacy` and `/terms`). They are now full documents in
+`content/legal/` — see `docs/legal.md`. The blocker that used to sit here is
+resolved.
+
+## Homepage title and meta description (BYOK demand)
+
+Search Console showed the homepage already on page 1 for `chatgpt byok` and
+`byok chatgpt` with zero clicks, and on page 2 for `byok chat app`,
+`byok chat` and `byok ai chat`. The page ranked; the snippet did not answer
+the query. Before → after:
+
+| Field | Before | After |
+| --- | --- | --- |
+| `<title>` | `Besidka — Open-source, self-hostable AI chat (BYOK)` | `Besidka — BYOK AI chat app for GPT, Claude and Gemini` |
+| Meta description | `Besidka is an open-source, self-hostable AI chat app. Bring your own key for Anthropic, OpenAI, Google, xAI and more, or an AI gateway. No subscriptions, no markup, no lock-in.` (176 chars, truncated) | `Open-source BYOK AI chat app. Use GPT, Claude, Gemini, Grok and more with your own API key. Pay the provider directly: no subscription, no markup.` (146 chars) |
+| `<h1>` | `Besidka — open-source AI chat. Your keys, your costs.` | `Besidka — open-source BYOK AI chat. Your keys, your costs.` |
+
+Decisions:
+
+- **Brand first, then the category phrase searchers type.** "BYOK AI chat
+  app" contains `byok ai chat`, `byok chat app` and (loosely) `byok chat`;
+  "GPT, Claude and Gemini" names the three model families people search for.
+  The title is 53 characters, inside the ~60 that render without truncation.
+- **"GPT", not "ChatGPT", in the title and description.** ChatGPT is OpenAI's
+  product name and Besidka does not run it — Besidka calls OpenAI's GPT
+  models through the API. Using the trademark as a headline claim would
+  misdescribe the product. "ChatGPT" appears only in factual body copy, e.g.
+  "an alternative to a ChatGPT Plus subscription" on `/byok` and the existing
+  pricing comparison. Google still matches `chatgpt byok` to "GPT" plus
+  "BYOK" plus "API key" in the snippet.
+- **"Self-hostable" and "gateway" left the snippet.** Both are true and stay in
+  the hero eyebrow and body, but neither answers the BYOK query, and the old
+  description truncated mid-sentence. Gateways are never the default path, so
+  they do not belong in the one-line pitch either.
+- **No gazebo metaphor** anywhere in title, H1 or description (unchanged rule,
+  see [The brand-entity problem](#the-brand-entity-problem)).
+- The H1 gains "BYOK" so the visible headline and the title agree.
+
+Options considered and not chosen:
+
+- `Besidka — Use GPT, Claude and Gemini with your own API key` (58 chars).
+  Answers the "use GPT with my own key" phrasing literally, but drops "AI
+  chat app" — the category phrase for three of the five queries — and does
+  not contain "BYOK" at all, which is the token in every query.
+- `Besidka — BYOK AI chat: GPT, Claude, Gemini on your own key` (59 chars).
+  Covers both intents but is at the truncation edge, and the colon-plus-list
+  shape reads as keyword stuffing next to the brand.
+
+Measure in Search Console: CTR on the five BYOK queries above, and whether
+the page-2 queries move. Titles shown in SERPs can lag deploys by weeks.
+
+## The BYOK guide (`/byok`)
+
+`/byok` is a Nuxt Content page in the `guides` collection
+(`content/guides/byok.md`, rendered by `app/pages/byok.vue` through
+`LegalDocument.vue` in the `legal` layout). English only. It answers what BYOK
+is, how to get a key and add it, how cost works (direct billing, per-message
+cost breakdown, prompt caching), where keys are stored, and gateways as an
+optional layer. Every product claim was checked against the code:
+
+- Key storage: `useEncryptText()` (`server/utils/encryption.ts`) uses
+  `crypto-shield` defaults — AES-256-GCM, a key derived with PBKDF2-SHA512
+  (5,000 iterations) from `NUXT_ENCRYPTION_KEY`, random salt and IV per
+  value. The key-status endpoints return only `hasKey`.
+- Cost UI: the message menu (`app/components/Chat/ContextMenu.client.vue`)
+  shows tokens, current-message cost, search cost, cost up to the message and
+  chat total, with `~` marking estimates.
+- Prompt caching: `docs/providers/general.md` → "Prompt caching".
+
+Wiring:
+
+- **Indexable and canonical by default.** It sets no robots meta (inherits
+  `index, follow` from `app/app.vue`), inherits the per-route canonical, is
+  not in `robots.disallow` or `sitemap.exclude`, and `@nuxtjs/sitemap` picks
+  it up from `app/pages/`. `tests/unit/config/seo-pages.spec.ts` guards this.
+- **Linked from the homepage body** (the BYOK summary bubble) **and the footer**
+  ("Guides → BYOK guide" in `LandingFooter.vue`, on every landing-layout page).
+- **JSON-LD**: a single `TechArticle` from `buildGuidePageLd()` in
+  `app/utils/landing-jsonld.ts`. It references the homepage graph's
+  `#website`, `#organization` and `#software` ids instead of declaring its own
+  nodes, so there is still exactly one `Organization` across the site.
+- `updatedAt` in the frontmatter is shown to readers and emitted as
+  `dateModified` — bump it only when the substance changes.
+- New explainer routes go in the same `guides` collection. The cap of two or
+  three new routes stands; `/byok` is the first.
+
+## Asset-path 404s on `www` (`/_nuxt/`, `/_scripts`)
+
+Search Console's only "Not found (404)" URLs were
+`https://www.besidka.com/_nuxt/` and `https://www.besidka.com/_scripts`.
+
+Finding: **no change needed.** The `www` → apex rule (see
+`docs/domain-migration-www-to-apex.md`) matches on `Hostname equals
+www.besidka.com` and redirects to `concat("https://besidka.com",
+http.request.uri.path)` with the query string preserved, so it covers every
+path, these two included. The 404 is what the apex correctly returns at the
+end of that redirect: `/_nuxt/` is Vite's build-asset *directory* (the hashed
+files under it exist; the bare directory has no index) and `/_scripts` is the
+`@nuxt/scripts` asset prefix, likewise not a page. Googlebot discovers these
+prefixes from asset references in the HTML and JS and probes them; a 404 for a
+non-page URL is the right answer and does not hurt the site. Search Console
+reports it against the URL it started from, which is why the `www` form
+appears.
+
+Do **not** add `/_nuxt/` or `/_scripts` to `robots.disallow` to silence the
+report: Google needs those assets to render the pages.
+
+Caveat: the redirect could not be curled from the environment that wrote this
+(its network policy blocks `besidka.com`), so this was confirmed from the
+documented rule, not a live request. To confirm live:
+
+```bash
+curl -sI https://www.besidka.com/_nuxt/   # expect 301 → https://besidka.com/_nuxt/
+curl -sI https://www.besidka.com/_scripts # expect 301 → https://besidka.com/_scripts
+curl -sI https://besidka.com/_nuxt/       # expect 404
+```
+
+## IndexNow
+
+A post-deploy job, `indexnow` in `.github/workflows/production.yml`, runs
+`scripts/indexnow-submit.mjs` after `build-production`:
+
+1. **Gate.** No `INDEXNOW_KEY` secret → the job logs a skip and passes. Forks
+   and unconfigured deploys are unaffected.
+2. **Only when a public page changed.** On a push it diffs
+   `github.event.before..github.sha` and submits only if `content/`, a public
+   `app/pages/` file, or a landing/prose component changed. IndexNow asks
+   for changed URLs only, and most deploys change no public page. A
+   `workflow_dispatch` run (or an unresolvable `before` SHA) submits
+   everything.
+3. **Key check.** It fetches `https://besidka.com/indexnow-key.txt` and fails
+   if the body is not the same key. That route
+   (`server/routes/indexnow-key.txt.ts`) serves runtime config
+   `indexnowKey` (`NUXT_INDEXNOW_KEY`) as `text/plain`, and 404s when it is
+   unset or not a valid key (8–128 of `a-zA-Z0-9-`).
+4. **Submit.** It reads the live `sitemap.xml` (following a sitemap index if
+   there is one), keeps same-host URLs and POSTs them to
+   `https://api.indexnow.org/indexnow` with `keyLocation` set to the key file.
+   The spec allows a key file at any path on the host when `keyLocation` is
+   given, which is what lets the key live in runtime config instead of a
+   committed `public/<key>.txt`.
+5. **Failure policy.** 400/403/422 (bad request or key) fail the job; 429 and
+   5xx only warn, so an IndexNow outage never turns a good deploy red. The
+   deploy itself has already finished either way.
+
+The key is public by design: IndexNow verifies ownership by fetching it from
+the site. It is stored as a secret only so it is not committed before the
+owner chooses one.
+
+Known gap: `production.yml` has `cancel-in-progress: true`, so a run cancelled
+by a newer push never submits; the next run diffs from its own `before` SHA
+and can miss the cancelled push's page changes. Re-run with
+`workflow_dispatch` if that matters.
+
+## Owner action checklist
+
+None of these can be done from the repository.
+
+- [ ] **Bing Webmaster Tools.** Sign in at `bing.com/webmasters` and use
+      "Import from Google Search Console" to bring over the `besidka.com`
+      property and sitemap.
+- [ ] **IndexNow key.** Generate a key (e.g. `uuidgen` or
+      `openssl rand -hex 16`, 8–128 chars of `a-zA-Z0-9-`). Then:
+  - set it on the production Worker:
+    `pnpm exec wrangler secret put NUXT_INDEXNOW_KEY --env production`
+    (or as a plain `vars` entry under `env.production` in `wrangler.jsonc` —
+    the value is public by design);
+  - deploy, and check `curl https://besidka.com/indexnow-key.txt` returns it;
+  - add the same value as the GitHub Actions secret `INDEXNOW_KEY`
+    (Settings → Secrets and variables → Actions);
+  - run `production.yml` once via `workflow_dispatch` and check the
+    `indexnow` job log for `IndexNow accepted N URL(s)`.
+- [ ] **Wikidata item** — see item 1 under
+      [Off-page](#off-page-where-the-ceiling-actually-is).
+- [ ] **Directory listings** — `github.com/yatsyk/awesome-byok-apps`,
+      `byokhub.com`, `byoklist.com`, AlternativeTo, and a PR to
+      `awesome-selfhosted`. Link `https://besidka.com/byok` where a listing
+      allows a docs/guide URL, and reuse one positioning sentence verbatim
+      across all of them.
+- [ ] **`sameAs`.** Once the Wikidata QID and profiles exist, add them to the
+      `Organization` node in `app/utils/landing-jsonld.ts`.
+- [ ] **Search Console.** After the deploy, use URL Inspection → Request
+      Indexing on `/` and `/byok`, and watch CTR on the five BYOK queries.
+- [ ] **Confirm the `www` asset-path redirects** with the curl commands in
+      [Asset-path 404s](#asset-path-404s-on-www-_nuxt-_scripts).
 
 ## Verification runbook
 
@@ -280,7 +471,7 @@ curl http://localhost:3000/sitemap.xml
 Per-route head check (expect exactly one canonical, and `og:url` equal to it):
 
 ```bash
-for p in / /privacy /terms /signin; do
+for p in / /byok /privacy-policy /terms-of-use /signin; do
   echo "### $p"
   curl -sS "http://localhost:3000$p" | grep -oE \
     '<title>[^<]*</title>|<link rel="canonical" href="[^"]*"|<meta property="og:url" content="[^"]*"|<meta name="robots" content="[^"]*"'
