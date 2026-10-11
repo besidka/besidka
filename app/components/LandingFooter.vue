@@ -97,46 +97,70 @@
             </nav>
           </div>
 
-          <div class="flex flex-col gap-3 max-sm:items-center">
-            <h3
-              class="text-sm font-black text-base-content uppercase
-                tracking-wide"
-            >
-              Legal
-            </h3>
-            <nav
-              aria-label="Legal links"
-              class="flex flex-col gap-2 max-sm:items-center"
-            >
-              <NuxtLink
-                to="/terms-of-use"
-                class="link link-hover text-sm"
+          <div class="flex flex-col gap-8">
+            <div class="flex flex-col gap-3 max-sm:items-center">
+              <h3
+                class="text-sm font-black text-base-content uppercase
+                  tracking-wide"
               >
-                Terms of Use
-              </NuxtLink>
-              <NuxtLink
-                to="/privacy-policy"
-                data-testid="landing-footer-privacy-link"
-                class="link link-hover text-sm"
+                Guides
+              </h3>
+              <nav
+                aria-label="Guides"
+                class="flex flex-col gap-2 max-sm:items-center"
               >
-                Privacy Policy
-              </NuxtLink>
-              <NuxtLink
-                to="/cookie-policy"
-                class="link link-hover text-sm"
+                <NuxtLink
+                  to="/byok"
+                  data-testid="landing-footer-byok-link"
+                  class="link link-hover text-sm"
+                  @click="track('footer_link_click', { target: 'byok' })"
+                >
+                  BYOK guide
+                </NuxtLink>
+              </nav>
+            </div>
+
+            <div class="flex flex-col gap-3 max-sm:items-center">
+              <h3
+                class="text-sm font-black text-base-content uppercase
+                  tracking-wide"
               >
-                Cookie Policy
-              </NuxtLink>
-              <button
-                type="button"
-                class="link link-hover text-sm"
-                aria-haspopup="dialog"
-                data-testid="footer-cookie-settings"
-                @click="openCookieSettings"
+                Legal
+              </h3>
+              <nav
+                aria-label="Legal links"
+                class="flex flex-col gap-2 max-sm:items-center"
               >
-                Cookie settings
-              </button>
-            </nav>
+                <NuxtLink
+                  to="/terms-of-use"
+                  class="link link-hover text-sm"
+                >
+                  Terms of Use
+                </NuxtLink>
+                <NuxtLink
+                  to="/privacy-policy"
+                  data-testid="landing-footer-privacy-link"
+                  class="link link-hover text-sm"
+                >
+                  Privacy Policy
+                </NuxtLink>
+                <NuxtLink
+                  to="/cookie-policy"
+                  class="link link-hover text-sm"
+                >
+                  Cookie Policy
+                </NuxtLink>
+                <button
+                  type="button"
+                  class="link link-hover text-sm"
+                  aria-haspopup="dialog"
+                  data-testid="footer-cookie-settings"
+                  @click="openCookieSettings"
+                >
+                  Cookie settings
+                </button>
+              </nav>
+            </div>
           </div>
 
           <div class="flex flex-col gap-3 max-sm:items-center">

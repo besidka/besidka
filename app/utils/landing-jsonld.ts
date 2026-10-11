@@ -141,6 +141,35 @@ export function buildFaqPageLd(
   }
 }
 
+export type GuidePageLdInput = {
+  baseUrl: string
+  url: string
+  headline: string
+  description: string
+  dateModified?: string
+}
+
+// A standalone guide page reuses the home page's node ids, so its
+// `isPartOf`/`publisher`/`about` resolve to the same site-wide entities
+// instead of declaring a second Organization.
+export function buildGuidePageLd(input: GuidePageLdInput) {
+  const ids = buildLandingLdIds(input.baseUrl)
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    '@id': `${input.url}#article`,
+    'headline': input.headline,
+    'description': input.description,
+    'url': input.url,
+    'inLanguage': 'en',
+    ...(input.dateModified ? { dateModified: input.dateModified } : {}),
+    'isPartOf': { '@id': ids.websiteId },
+    'publisher': { '@id': ids.organizationId },
+    'about': { '@id': ids.applicationId },
+  }
+}
+
 export function buildLandingGraphLd(input: LandingLdInput) {
   const ids = buildLandingLdIds(input.baseUrl)
   const faqs = input.faqs ?? []

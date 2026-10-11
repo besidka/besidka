@@ -54,4 +54,23 @@ describe('LandingFooter.vue', () => {
 
       wrapper.unmount()
     })
+
+  it('links the BYOK guide from every landing-layout page', async () => {
+    const wrapper = await mountSuspended(LandingFooter, {
+      global: {
+        stubs: {
+          NuxtLink: {
+            props: ['to'],
+            template: '<a :href="to"><slot /></a>',
+          },
+        },
+      },
+    })
+    const link = wrapper.get('[data-testid="landing-footer-byok-link"]')
+
+    expect(link.attributes('href')).toBe('/byok')
+    expect(link.text()).toBe('BYOK guide')
+
+    wrapper.unmount()
+  })
 })
