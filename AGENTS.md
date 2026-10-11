@@ -315,8 +315,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   per-page `canonical` or `ogUrl`; the global one is already correct and a second
   tag risks a duplicate. `new URL()` normalises `/` to a trailing slash so the
   canonical matches the `<loc>` the sitemap emits.
-- Indexable: `/`, `/privacy`, `/terms`, and `/shared/<publicId>` when that
-  share's `indexable` flag is set. Everything else is `noindex, nofollow`.
+- Indexable: `/`, `/byok`, `/privacy-policy`, `/terms-of-use`,
+  `/cookie-policy`, and `/shared/<publicId>` when that share's `indexable`
+  flag is set. Everything else is `noindex, nofollow`. `/byok` is the first
+  `guides` collection page (`content/guides/`); new explainer routes go there
+  and count toward the two-or-three-route cap in `docs/seo.md`.
   `/api/`, `/chats/`, `/files/`, `/profile/`, `/_studio`, `/__nuxt_studio` and
   `/__nuxt_content/` are also disallowed in robots.
 - **`/signin`, `/signup` and `/reset-password` are `noindex` but deliberately
