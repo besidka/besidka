@@ -73,4 +73,16 @@ describe('LandingFooter.vue', () => {
 
     wrapper.unmount()
   })
+
+  it('keeps footer link lists left-aligned on desktop, so the Cookie '
+    + 'settings button does not stretch to the column width and center its '
+    + 'text away from the links above it', async () => {
+    const wrapper = await mountSuspended(LandingFooter)
+    const legalNav = wrapper.get('nav[aria-label="Legal links"]')
+
+    expect(legalNav.classes()).toContain('items-start')
+    expect(legalNav.classes()).toContain('max-sm:items-center')
+
+    wrapper.unmount()
+  })
 })

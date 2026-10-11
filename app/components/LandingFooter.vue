@@ -74,7 +74,7 @@
             ? 'grid-cols-1 sm:grid-cols-3'
             : 'grid-cols-1 sm:grid-cols-2'"
         >
-          <div v-if="isHomePage" class="flex flex-col gap-3 max-sm:items-center">
+          <div v-if="isHomePage" class="flex flex-col gap-3 items-start max-sm:items-center">
             <h3
               class="text-sm font-black text-base-content uppercase
                 tracking-wide"
@@ -82,7 +82,7 @@
               On this page
             </h3>
             <nav
-              class="flex flex-col gap-2 max-sm:items-center"
+              class="flex flex-col gap-2 items-start max-sm:items-center"
               aria-label="Sections on this page"
             >
               <a
@@ -98,7 +98,7 @@
           </div>
 
           <div class="flex flex-col gap-8">
-            <div class="flex flex-col gap-3 max-sm:items-center">
+            <div class="flex flex-col gap-3 items-start max-sm:items-center">
               <h3
                 class="text-sm font-black text-base-content uppercase
                   tracking-wide"
@@ -107,7 +107,7 @@
               </h3>
               <nav
                 aria-label="Guides"
-                class="flex flex-col gap-2 max-sm:items-center"
+                class="flex flex-col gap-2 items-start max-sm:items-center"
               >
                 <NuxtLink
                   to="/byok"
@@ -120,7 +120,7 @@
               </nav>
             </div>
 
-            <div class="flex flex-col gap-3 max-sm:items-center">
+            <div class="flex flex-col gap-3 items-start max-sm:items-center">
               <h3
                 class="text-sm font-black text-base-content uppercase
                   tracking-wide"
@@ -129,7 +129,7 @@
               </h3>
               <nav
                 aria-label="Legal links"
-                class="flex flex-col gap-2 max-sm:items-center"
+                class="flex flex-col gap-2 items-start max-sm:items-center"
               >
                 <NuxtLink
                   to="/terms-of-use"
@@ -163,14 +163,14 @@
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 max-sm:items-center">
+          <div class="flex flex-col gap-3 items-start max-sm:items-center">
             <h3
               class="text-sm font-black text-base-content uppercase
                 tracking-wide"
             >
               Open Source
             </h3>
-            <div class="flex flex-col gap-2 max-sm:items-center">
+            <div class="flex flex-col gap-2 items-start max-sm:items-center">
               <address class="not-italic">
                 <a
                   href="https://github.com/besidka/besidka"
