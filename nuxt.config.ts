@@ -244,6 +244,8 @@ export default defineNuxtConfig({
     axiomConsentToken: '',
     vapidPrivateKey: '',
     vapidSubject: '',
+    // Public by design (served at /indexnow-key.txt); see docs/seo.md.
+    indexnowKey: '',
     public: {
       baseUrl: '',
       privacyEmail: '',
