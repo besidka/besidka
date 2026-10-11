@@ -1,5 +1,5 @@
 ---
-title: Open-source, self-hostable AI chat (BYOK)
+title: BYOK AI chat app for GPT, Claude and Gemini
 benefits:
   - icon: lucide:piggy-bank
     title: Stop paying for days you don't chat
@@ -32,9 +32,9 @@ comparison:
     - label: Monthly fee
       values:
         - Free
-        - from $20/mo
-        - from $20/mo
-        - from $20/mo
+        - $20/mo
+        - $19.99/mo
+        - $17–20/mo
         - from $8/mo
     - label: Pay only for what you use
       values:
@@ -42,7 +42,7 @@ comparison:
         - no
         - no
         - no
-        - Only for the most expensive models like Gpt 5.5 Pro ($30/$180)
+        - Only with your own key
     - label: Open source
       values:
         - yes
@@ -74,10 +74,10 @@ comparison:
     - label: Shareable chat links
       values:
         - yes
-        - Link only, no branching
-        - Link + branch, no privacy controls
-        - Link only, no branching
-        - Basic sharing only
+        - Link + branch, no access controls
+        - Link + branch, no access controls
+        - Link or email invite, view-only
+        - Share links
     - label: Message caps from the app
       values:
         - None
@@ -91,7 +91,7 @@ comparison:
         - no
         - no
         - no
-        - Only for the most expensive models like Gpt 5.5 Pro ($30/$180)
+        - For some models
     - label: Bring your own search key (Brave / Exa)
       values:
         - yes
@@ -120,9 +120,9 @@ comparison:
         - no
         - no
         - no
-  note: A typical casual user sends around 100 messages per month — roughly 50 k input tokens and 50 k output tokens. On a flagship model that works out to well under $1/mo. A heavy user sending 1,000 messages stays in the $5–7/mo range, paying the provider directly with no Besidka markup. Image generation is billed separately at the provider's published image rates.
-  priceDate: June 2026
-description: Besidka is an open-source, self-hostable AI chat app. Bring your own key for Anthropic, OpenAI, Google, xAI and more, or an AI gateway. No subscriptions, no markup, no lock-in.
+  note: A casual user sending around 100 messages a month uses roughly 50 k input and 50 k output tokens. At Claude Sonnet 5.5's API rates ($2 input / $10 output per million tokens) that is about $0.60; on Claude Opus 5.5 ($4 / $20) about $1.20. A heavy user sending 1,000 messages lands near $6 on Sonnet 5.5 or $12 on Opus 5.5. Long chats resend earlier messages as input, so real input counts run higher, and prompt caching bills those repeated tokens at a discount. You pay the provider directly with no Besidka markup; image generation is billed separately at the provider's published image rates.
+  priceDate: October 2026
+description: "Open-source BYOK AI chat app. Use GPT, Claude, Gemini, Grok and more with your own API key. Pay the provider directly: no subscription, no markup."
 faqs:
   - question: What does BYOK mean?
     answer: BYOK stands for "Bring Your Own Key." Instead of paying Besidka a monthly subscription, you connect your own API key from an AI provider — Anthropic, OpenAI, Google AI Studio, xAI, DeepSeek, Moonshot AI or Qwen — or from an AI gateway such as Vercel AI Gateway, Cloudflare AI Gateway or OpenRouter. You pay the provider or gateway at its published rates — Besidka adds no markup.
@@ -179,7 +179,7 @@ features:
     body: Kick off an autonomous agent that browses the web, cross-checks sources, and writes a cited report while you do something else. Runs on your own key for roughly $1 to $10 per task, with a push notification when it's done.
 hero:
   eyebrow: OPEN SOURCE · BYOK · SELF-HOSTABLE
-  headline: Besidka — open-source AI chat. Your keys, your costs.
+  headline: Besidka — open-source BYOK AI chat. Your keys, your costs.
   subheadline: Self-host it or use besidka.com. Switch between Claude, GPT, Gemini, Grok, DeepSeek, Kimi and Qwen models on your own API keys — pay per use, no subscriptions, no markup, no lock-in.
   primaryCta:
     label: Start chatting
@@ -287,6 +287,8 @@ sr-label: BYOK solution summary and call to action
 Your keys, your costs, your data.
 
 Connect your own key from any of seven AI providers, or route through your own AI gateway, and pay only for what you use — no monthly fee, no per-seat charge, no Besidka markup. Switch between the latest Claude, GPT, Gemini, Grok, DeepSeek, Kimi and Qwen models in one place. Add or remove keys any time from your profile. Because Besidka is open-source and self-hostable, you are never locked in.
+
+New to BYOK? The [BYOK guide](/byok) walks through getting a key, adding it, how cost works and where keys are stored.
 
   :::home-cta
   ---
