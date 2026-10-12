@@ -986,6 +986,7 @@ export function getAffectedTests(changedFiles) {
       pattern: /^wrangler\.jsonc$/,
       tests: [
         'tests/unit/config/wrangler-search-rates.spec.ts',
+        'tests/unit/config/wrangler-previews.spec.ts',
         'tests/unit/utils/consents-rate-limit.spec.ts',
       ],
     },

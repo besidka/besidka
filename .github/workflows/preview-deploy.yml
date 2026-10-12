@@ -177,14 +177,14 @@ jobs:
             exit 1
           fi
 
-          PR_URL=$(jq -r '.preview.urls[0] // empty' "$CLEAN_JSON")
+          PREVIEW_URL=$(jq -r '.preview.urls[0] // empty' "$CLEAN_JSON")
           DEPLOYMENT_URL=$(jq -r '.deployment.urls[0] // empty' "$CLEAN_JSON")
 
           if [ -z "$DEPLOYMENT_URL" ]; then
             echo "::warning::wrangler preview returned no workers.dev URL (previews_enabled may be off on the besidka Worker)"
           fi
 
-          echo "pr-url=${PR_URL:-$FALLBACK_URL}" >> $GITHUB_OUTPUT
+          echo "preview-url=${PREVIEW_URL:-$FALLBACK_URL}" >> $GITHUB_OUTPUT
           echo "deployment-url=${DEPLOYMENT_URL:-n/a}" >> $GITHUB_OUTPUT
 
       - name: Comment preview URL on PR
@@ -202,12 +202,12 @@ jobs:
             | **Deploy** | ${{ steps.deploy-time.outputs.duration }} |
             | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}/commits/${{ steps.pr.outputs.sha }}) |
             | **Preview URL (deployment)** | ${{ steps.urls.outputs.deployment-url }} |
-            | **Preview URL (PR)** | ${{ steps.urls.outputs.pr-url }} |
+            | **Preview URL (PR)** | ${{ steps.urls.outputs.preview-url }} |
 
             ---
             _**Note**:
             Each deployment gets a unique preview URL.
-            The PR preview URL ${{ steps.urls.outputs.pr-url }} always points at the latest deployment._
+            The PR preview URL ${{ steps.urls.outputs.preview-url }} always points at the latest deployment._
 
       - name: Set deploy status success
         if: steps.fork-check.outputs.is-fork == 'false' && success()
@@ -216,7 +216,7 @@ jobs:
             -f state=success \
             -f context="Preview Deploy" \
             -f description="Deployed to preview" \
-            -f target_url="${{ steps.urls.outputs.pr-url }}"
+            -f target_url="${{ steps.urls.outputs.preview-url }}"
         env:
           GH_TOKEN: ${{ github.token }}
 

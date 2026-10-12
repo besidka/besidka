@@ -52,6 +52,11 @@ Rules for the `previews` block:
 - **No crons, queues or routes.** See the trade-offs below.
 - Do not point a Preview at production data. The block deliberately lists the
   preview D1 databases, bucket and KV namespace.
+- **The top-level `besidka-local` block is never deployed.** A bare
+  `wrangler deploy` (no `--env`) would create a stray `besidka-local` Worker,
+  so deploy with `pnpm run deploy` (long-lived preview) or
+  `pnpm run deploy:prod`. The top-level `triggers.crons` remain only for local
+  `wrangler dev --test-scheduled`.
 
 ## URL scheme
 
@@ -167,6 +172,10 @@ Local equivalents: `pnpm run deploy` builds and updates the long-lived
   migration merges, the first production deploy enables it. Until then CI
   falls back to the deterministic `pr-<n>-besidka` URL for the PR URL, emits a
   `::warning::`, and renders the deployment URL as `n/a` in the PR comment.
+- **wrangler 4.149 moved esbuild 0.28.1 -> 0.28.2 transitively** (an optional
+  vite peer). This is relevant to the pinned `vite.build.cssMinify: 'esbuild'`
+  (see [`vite-css-minify.md`](./vite-css-minify.md)); the production build was
+  verified locally after the bump.
 
 ## Accepted trade-offs
 

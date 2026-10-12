@@ -6,8 +6,8 @@ on:
     types: [closed]
 
 concurrency:
-  group: preview-cleanup-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: preview-deploy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   delete-preview:
@@ -56,7 +56,7 @@ jobs:
 
           cat "$RUNNER_TEMP/delete.log"
 
-          if grep -qiE "not found|does not exist|no preview" "$RUNNER_TEMP/delete.log"; then
+          if grep -qiE "code: 10025|preview not found" "$RUNNER_TEMP/delete.log"; then
             echo "Preview ${PREVIEW_NAME} does not exist; nothing to delete"
             exit 0
           fi
