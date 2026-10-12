@@ -280,7 +280,7 @@ jobs:
             -f target_url="$PREVIEW_URL"
 
       - name: Set deploy status failure
-        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open == 'true' && failure()
+        if: steps.fork-check.outputs.is-fork == 'false' && steps.pr-state.outputs.is-open != 'false' && failure()
         env:
           GH_TOKEN: ${{ github.token }}
           PR_SHA: ${{ steps.pr.outputs.sha }}

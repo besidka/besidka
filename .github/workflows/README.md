@@ -309,6 +309,13 @@ closed meanwhile, it runs `wrangler preview delete` itself (a missing Preview
 counts as success) and skips the PR comment and success status.
 `preview-fork-deploy.yml` applies the same pre- and post-deploy checks.
 
+Remaining window: a run cancelled (`cancel-in-progress` by a newer build) after
+`wrangler preview` finished but before its post-deploy PR state check ran,
+while the PR closed and cleanup already ran in between, can leave an orphaned
+Preview. Delete it by hand with
+`pnpm exec wrangler preview delete --name pr-<n> --env production --skip-confirmation`;
+Previews also auto-expire at the 500-per-Worker limit.
+
 ### `production.yml`
 ```yaml
 group: production
@@ -395,7 +402,7 @@ main (long-lived):
 | `LINEAR_API_KEY` | linear-docs-sync | Docs sync (Linear personal API key, write access to team BES) |
 | `github.token` | All workflows | Build + Deploy |
 
-Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows use the `preview` or `production` GitHub Environment. CI never handles runtime secret values for Previews; those are set out-of-band (see [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)).
+Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows do not declare a GitHub `environment:`; they use Actions secrets (`CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` are inherited from the `besidka` organization, not set on the repository) and `github.token`. CI never handles runtime secret values for Previews; those are set out-of-band (see [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)).
 
 No repository variables are required. The Wrangler CLI version is pinned as a `devDependency` in `pnpm-lock.yaml` and installed via `pnpm install --frozen-lockfile`; deploy steps use that pinned binary directly, so no `wranglerVersion` input or `WRANGLER_VERSION` variable is needed.
 

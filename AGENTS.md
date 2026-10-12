@@ -319,7 +319,7 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - Robots indexing is blocked in dev (the module's default); verify production
   rules locally with `curl 'http://localhost:3000/robots.txt?mockProductionEnv'`.
 - Studio OAuth callback URL must also use the apex host
-  (`https://besidka.com/_studio`).
+  (`https://besidka.com/__nuxt_studio/auth/github`).
 - **Canonical and `og:url` are derived per route in `app/app.vue`** from
   `useRoute()` — a single source of truth that every page inherits. Do NOT add a
   per-page `canonical` or `ogUrl`; the global one is already correct and a second

@@ -16,10 +16,16 @@ type BindingKey
 
 type BindingBlock = Record<BindingKey, Array<Record<string, unknown>>>
 
+type Vars = Record<string, unknown>
+
 interface WranglerConfig extends BindingBlock {
+  vars: Vars
   env: {
     production: BindingBlock & {
-      previews: BindingBlock
+      vars: Vars
+      previews: BindingBlock & {
+        vars: Vars
+      }
     }
   }
 }
@@ -83,6 +89,40 @@ describe('wrangler.jsonc previews block', () => {
       expect(pickFields(previews.ratelimits, fields))
         .toEqual(pickFields(config.ratelimits, fields))
     })
+
+  it('keeps previews vars in parity with top-level vars except overrides',
+    () => {
+      const previewOnlyKeys = ['NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS']
+      const overriddenKeys = ['NUXT_PUBLIC_BASE_URL']
+      const excludedKeys = [...previewOnlyKeys, ...overriddenKeys]
+
+      function withoutKeys(vars: Vars): Vars {
+        return Object.fromEntries(
+          Object.entries(vars).filter(([key]) => {
+            return !excludedKeys.includes(key)
+          }),
+        )
+      }
+
+      expect(withoutKeys(previews.vars)).toEqual(withoutKeys(config.vars))
+      expect(previews.vars.NUXT_PUBLIC_BASE_URL)
+        .toBe('https://preview-besidka.chernenko.workers.dev')
+      expect(previews.vars.NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS)
+        .toBeTypeOf('string')
+      expect(config.vars.NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS).toBeUndefined()
+    })
+
+  it('uses preview-specific public keys instead of production ones', () => {
+    const publicKeys = [
+      'NUXT_PUBLIC_VAPID_PUBLIC_KEY',
+      'NUXT_PUBLIC_TURNSTILE_SITE_KEY',
+    ]
+
+    for (const key of publicKeys) {
+      expect(typeof previews.vars[key]).toBe('string')
+      expect(previews.vars[key]).not.toBe(production.vars[key])
+    }
+  })
 
   it('never references a production resource id or name', () => {
     const serializedPreviews = JSON.stringify(previews)

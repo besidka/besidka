@@ -159,7 +159,14 @@ the PR closes cannot cancel a delete mid-flight. `preview-deploy.yml` and
 status steps when the PR is not `open`. After `wrangler preview` succeeds they
 check again; if the PR closed during the deploy, they run the same
 `wrangler preview delete` (missing Preview counts as success) and skip the PR
-comment and success status, so no Preview is orphaned.
+comment and success status.
+
+Remaining window: a preview-deploy run cancelled (`cancel-in-progress` by a
+newer build) after `wrangler preview` finished but before its post-deploy PR
+state check ran, while the PR closed and cleanup already ran in between, can
+leave an orphaned Preview. Delete it by hand with
+`pnpm exec wrangler preview delete --name pr-<n> --env production --skip-confirmation`.
+Previews also auto-expire at the 500-per-Worker limit.
 
 Local equivalents: `pnpm run deploy` builds and updates the long-lived
 `preview`; `pnpm run deploy:prod` deploys production.
@@ -177,11 +184,14 @@ Local equivalents: `pnpm run deploy` builds and updates the long-lived
   `$RUNNER_TEMP` and only read individual fields with `jq`.
 - **`.preview.urls` and `.deployment.urls` are empty arrays until the
   Worker-level `previews_enabled` (workers.dev previews) subdomain flag is
-  on.** `wrangler deploy --env production` sets that flag from
-  `preview_urls: true`; `wrangler preview` alone does not. After this
-  migration merges, the first production deploy enables it. Until then CI
-  falls back to the deterministic `pr-<n>-besidka` URL for the PR URL, emits a
-  `::warning::`, and renders the deployment URL as `n/a` in the PR comment.
+  on.** `wrangler preview` alone does not toggle it. On 2026-10-12 the flag
+  was turned on for the `besidka` Worker through the script subdomain API
+  (`POST /accounts/<id>/workers/scripts/besidka/subdomain
+  {"enabled":false,"previews_enabled":true}`), and
+  `wrangler deploy --env production` keeps it on via `preview_urls: true`.
+  If the flag is ever off, CI falls back to the deterministic
+  `pr-<n>-besidka` URL for the PR URL, emits a `::warning::`, and renders the
+  deployment URL as `n/a` in the PR comment.
 - **wrangler 4.149 moved esbuild 0.28.1 -> 0.28.2 transitively** (an optional
   vite peer). This is relevant to the pinned `vite.build.cssMinify: 'esbuild'`
   (see [`vite-css-minify.md`](./vite-css-minify.md)); the production build was
@@ -206,8 +216,11 @@ Local equivalents: `pnpm run deploy` builds and updates the long-lived
   Worker-level flag behind this is the script subdomain setting
   `previews_enabled` (`GET/POST /accounts/<id>/workers/scripts/besidka/subdomain`);
   turning it off disables every Preview URL as well.
-- **`wrangler tail` is not supported for Previews.** Use Axiom (evlog) and the
-  dashboard for preview diagnostics.
+- **`wrangler tail` is not supported for Previews.** Previews do not drain to
+  Axiom by design: they carry no `NUXT_AXIOM_*` vars or secrets (same as the
+  old `besidka-preview` Worker), so evlog ships nothing there. Use Workers
+  Observability logs in the Cloudflare dashboard (observability is enabled in
+  `previews`).
 - **All Previews share one set of preview resources** (`besidka-preview` D1,
   `besidka-consent-preview`, KV, R2). Concurrent PRs see each other's data and
   a destructive migration on one PR affects every Preview. Same as before the
@@ -223,6 +236,11 @@ therefore still runs `main`'s old `versions upload --preview-alias` flow, so its
 behavior. The first PR opened after merge is the real test. The same applies
 to `preview-cleanup.yml`: it does nothing for PRs closed before it exists on
 `main`.
+
+After PR #430's runs it was checked on 2026-10-12 that no stray
+`besidka-local` Worker exists (`wrangler deployments list --name
+besidka-local` returns code 10007 "This Worker does not exist"). Re-check that
+way if any old-style run executes.
 
 ## Owner manual steps
 
