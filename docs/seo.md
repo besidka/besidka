@@ -380,9 +380,17 @@ appears.
 Do **not** add `/_nuxt/` or `/_scripts` to `robots.disallow` to silence the
 report: Google needs those assets to render the pages.
 
-Caveat: the redirect could not be curled from the environment that wrote this
-(its network policy blocks `besidka.com`), so this was confirmed from the
-documented rule, not a live request. To confirm live:
+Confirmed live on 2026-10-12 with `curl -sI`:
+
+| Request | Result |
+| --- | --- |
+| `https://www.besidka.com/_nuxt/` | 301 → `https://besidka.com/_nuxt/` |
+| `https://www.besidka.com/_scripts` | 301 → `https://besidka.com/_scripts` |
+| `https://www.besidka.com/byok?x=1` | 301 → `https://besidka.com/byok?x=1` (path and query kept) |
+| `https://besidka.com/_nuxt/` | 404 |
+| `https://besidka.com/_scripts` | 404 |
+
+To re-check:
 
 ```bash
 curl -sI https://www.besidka.com/_nuxt/   # expect 301 → https://besidka.com/_nuxt/
@@ -431,20 +439,32 @@ and can miss the cancelled push's page changes. Re-run with
 
 None of these can be done from the repository.
 
-- [ ] **Bing Webmaster Tools.** Sign in at `bing.com/webmasters` and use
+- [x] **Bing Webmaster Tools.** Sign in at `bing.com/webmasters` and use
       "Import from Google Search Console" to bring over the `besidka.com`
-      property and sitemap.
-- [ ] **IndexNow key.** Generate a key (e.g. `uuidgen` or
-      `openssl rand -hex 16`, 8–128 chars of `a-zA-Z0-9-`). Then:
+      property and sitemap. Imported; the `besidka.com/` site is present as
+      of 2026-10-12, but its Sitemaps list was still empty that day (Bing
+      notes imported data can take up to 48 hours to appear). If
+      `https://besidka.com/sitemap.xml` still does not show up there, submit
+      it in Bing's Sitemaps page.
+- [x] **IndexNow key.** Done 2026-10-12. Recipe, also for a future key
+      rotation:
+  - generate a key with `openssl rand -hex 16` (8–128 chars of
+    `a-zA-Z0-9-`);
   - set it on the production Worker:
     `pnpm exec wrangler secret put NUXT_INDEXNOW_KEY --env production`
     (or as a plain `vars` entry under `env.production` in `wrangler.jsonc` —
-    the value is public by design);
-  - deploy, and check `curl https://besidka.com/indexnow-key.txt` returns it;
-  - add the same value as the GitHub Actions secret `INDEXNOW_KEY`
-    (Settings → Secrets and variables → Actions);
-  - run `production.yml` once via `workflow_dispatch` and check the
-    `indexnow` job log for `IndexNow accepted N URL(s)`.
+    the value is public by design). Writing a secret creates a new Worker
+    version from the already-deployed code, so no redeploy is needed;
+  - check `curl https://besidka.com/indexnow-key.txt` returns exactly the key
+    as `text/plain`;
+  - set the same value as the GitHub Actions secret `INDEXNOW_KEY`
+    (`gh secret set INDEXNOW_KEY --repo besidka/besidka`);
+  - run the first submission locally, not via `workflow_dispatch` of
+    `production.yml` (that redeploys and applies migrations):
+    `INDEXNOW_KEY=<key> SITE_URL=https://besidka.com node scripts/indexnow-submit.mjs --all`
+    printed `IndexNow accepted 5 URL(s) (HTTP 202)`. HTTP 202 means received
+    with key verification pending. Later deploys that change a public page
+    submit through the `indexnow` CI job.
 - [ ] **Wikidata item** — see item 1 under
       [Off-page](#off-page-where-the-ceiling-actually-is).
 - [ ] **Directory listings** — `github.com/yatsyk/awesome-byok-apps`,
@@ -454,9 +474,14 @@ None of these can be done from the repository.
       across all of them.
 - [ ] **`sameAs`.** Once the Wikidata QID and profiles exist, add them to the
       `Organization` node in `app/utils/landing-jsonld.ts`.
-- [ ] **Search Console.** After the deploy, use URL Inspection → Request
-      Indexing on `/` and `/byok`, and watch CTR on the five BYOK queries.
-- [ ] **Confirm the `www` asset-path redirects** with the curl commands in
+- [x] **Search Console.** URL Inspection → Request Indexing done for `/` and
+      `/byok` on 2026-10-12 (`/` was already indexed; `/byok` was "URL is
+      unknown to Google" before the request).
+      `https://besidka.com/sitemap.xml` is submitted and last read
+      successfully (Sep 20, 2026, before `/byok` existed). Watching CTR on
+      the five BYOK queries is ongoing.
+- [x] **Confirm the `www` asset-path redirects.** Confirmed live on
+      2026-10-12; results in
       [Asset-path 404s](#asset-path-404s-on-www-_nuxt-_scripts).
 
 ## Verification runbook
