@@ -459,6 +459,9 @@ None of these can be done from the repository.
     as `text/plain`;
   - set the same value as the GitHub Actions secret `INDEXNOW_KEY`
     (`gh secret set INDEXNOW_KEY --repo besidka/besidka`);
+  - keep the same value in the gitignored local `.dev.vars`,
+    `.dev.vars.preview` and `.dev.vars.production` so it is not lost (done
+    2026-10-12); `.dev.vars.example` carries an empty `NUXT_INDEXNOW_KEY=`;
   - run the first submission locally, not via `workflow_dispatch` of
     `production.yml` (that redeploys and applies migrations):
     `INDEXNOW_KEY=<key> SITE_URL=https://besidka.com node scripts/indexnow-submit.mjs --all`
