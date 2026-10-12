@@ -1,5 +1,6 @@
 # Canonical site origin — see docs/seo.md
 NUXT_PUBLIC_BASE_URL=http://localhost:3000
+NUXT_INDEXNOW_KEY=
 
 # Contact address published in the legal pages — see docs/legal.md
 NUXT_PUBLIC_PRIVACY_EMAIL=privacy@besidka.com
