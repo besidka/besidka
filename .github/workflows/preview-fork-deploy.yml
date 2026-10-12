@@ -47,7 +47,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+      - name: Check PR is still open
+        id: pr-state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          PR_STATE=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .state)
+
+          if [ "$PR_STATE" = "open" ]; then
+            echo "is-open=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "is-open=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::PR #${PR_NUMBER} is ${PR_STATE}; skipping preview deploy"
+
       - name: Find latest successful build run
+        if: steps.pr-state.outputs.is-open == 'true'
         id: find-run
         run: |
           RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/preview-build.yml/runs?head_sha=${{ steps.pr.outputs.sha }}&status=success&per_page=1" \
@@ -62,9 +79,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Checkout base branch
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/checkout@v7
 
       - name: Download build artifact
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/download-artifact@v8
         with:
           run-id: ${{ steps.find-run.outputs.run-id }}
@@ -73,23 +92,28 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Setup PNPM
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: pnpm/action-setup@v6
         with:
           run_install: false
 
       - name: Install Node.js
+        if: steps.pr-state.outputs.is-open == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.pr-state.outputs.is-open == 'true'
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Record deploy start time
+        if: steps.pr-state.outputs.is-open == 'true'
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
       - name: Deploy PR preview to Cloudflare
+        if: steps.pr-state.outputs.is-open == 'true'
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -103,16 +127,58 @@ jobs:
             --message "$PR_URL" \
             --json > "$RUNNER_TEMP/preview.json"
 
-      - name: Calculate deploy time
-        id: deploy-time
+      - name: Delete preview if PR closed during deploy
+        id: post-deploy-state
+        if: steps.pr-state.outputs.is-open == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
-          START=${{ steps.deploy-start.outputs.start-time }}
+          PR_STATE=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq .state)
+
+          if [ "$PR_STATE" = "open" ]; then
+            echo "closed-during-deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "closed-during-deploy=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::PR #${PR_NUMBER} was ${PR_STATE} during deploy; deleting the preview"
+
+          PREVIEW_NAME="pr-${PR_NUMBER}"
+
+          if pnpm exec wrangler preview delete \
+            --name "$PREVIEW_NAME" \
+            --env production \
+            --skip-confirmation > "$RUNNER_TEMP/delete.log" 2>&1; then
+            cat "$RUNNER_TEMP/delete.log"
+            echo "Deleted preview ${PREVIEW_NAME}"
+            exit 0
+          fi
+
+          cat "$RUNNER_TEMP/delete.log"
+
+          if grep -qiE "code: 10025|preview not found" "$RUNNER_TEMP/delete.log"; then
+            echo "Preview ${PREVIEW_NAME} does not exist; nothing to delete"
+            exit 0
+          fi
+
+          exit 1
+
+      - name: Calculate deploy time
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
+        id: deploy-time
+        env:
+          START: ${{ steps.deploy-start.outputs.start-time }}
+        run: |
           END=$(date +%s)
           DURATION=$((END - START))
           echo "duration=${DURATION}s" >> $GITHUB_OUTPUT
           echo "Deploy completed in ${DURATION}s"
 
       - name: Extract preview URLs
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
         id: urls
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -138,6 +204,7 @@ jobs:
           echo "deployment-url=${DEPLOYMENT_URL:-n/a}" >> $GITHUB_OUTPUT
 
       - name: Comment preview URL on PR
+        if: steps.pr-state.outputs.is-open == 'true' && steps.post-deploy-state.outputs.closed-during-deploy != 'true'
         uses: mshick/add-pr-comment@v3
         with:
           issue: ${{ steps.pr.outputs.number }}

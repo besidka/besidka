@@ -151,6 +151,16 @@ Rules:
 fork PRs too. This is safe because it checks out only the default branch and
 never PR code.
 
+Deploy/cleanup race: `preview-cleanup.yml` runs in its own concurrency group
+(`preview-cleanup-<n>`, `cancel-in-progress: false`), so a deploy queued after
+the PR closes cannot cancel a delete mid-flight. `preview-deploy.yml` and
+`preview-fork-deploy.yml` read the PR state (`gh api repos/<repo>/pulls/<n>
+--jq .state`) before migrating/deploying and skip all deploy, comment and
+status steps when the PR is not `open`. After `wrangler preview` succeeds they
+check again; if the PR closed during the deploy, they run the same
+`wrangler preview delete` (missing Preview counts as success) and skip the PR
+comment and success status, so no Preview is orphaned.
+
 Local equivalents: `pnpm run deploy` builds and updates the long-lived
 `preview`; `pnpm run deploy:prod` deploys production.
 

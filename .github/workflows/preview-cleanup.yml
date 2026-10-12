@@ -6,8 +6,8 @@ on:
     types: [closed]
 
 concurrency:
-  group: preview-deploy-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: preview-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   delete-preview:

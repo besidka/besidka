@@ -300,7 +300,14 @@ One build per PR. New commits cancel in-progress builds.
 group: preview-deploy-{pr_number || run_id}
 cancel-in-progress: true
 ```
-One deploy per PR. Falls back to run ID if PR number unavailable.
+One deploy per PR. Falls back to run ID if PR number unavailable. This group
+is separate from the cleanup group, so a deploy never cancels a cleanup (and
+vice versa). To avoid orphaning a Preview, the deploy checks the PR state via
+the GitHub API before migrating/deploying and skips everything if the PR is no
+longer open. After `wrangler preview` succeeds it checks again; if the PR was
+closed meanwhile, it runs `wrangler preview delete` itself (a missing Preview
+counts as success) and skips the PR comment and success status.
+`preview-fork-deploy.yml` applies the same pre- and post-deploy checks.
 
 ### `production.yml`
 ```yaml
@@ -314,7 +321,8 @@ One production deployment at a time.
 group: preview-cleanup-{pr_number}
 cancel-in-progress: false
 ```
-One cleanup per PR; never cancelled mid-delete.
+One cleanup per PR, in its own group (not shared with `preview-deploy`); a
+queued deploy can no longer cancel a delete in progress.
 
 ### `claude-code-review.yml`
 ```yaml
