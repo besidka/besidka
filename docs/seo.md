@@ -206,15 +206,65 @@ tuning. Everything above makes the site *ready* to receive entity status; the
 items below are what earn it. These require accounts/outreach and are owner
 actions, roughly in leverage order:
 
-1. **Create a Wikidata item.** Instance of *free software*, official website,
-   GitHub repo, license, and a Ukrainian native label (`Бесідка`). This is the
-   machine-readable entity anchor Google reconciles against, and it turns the
-   Cyrillic alias into a third-party entity fact rather than a self-assertion.
-2. **Get listed where the category is already indexed.** Besidka is absent from
-   all three properties that currently rank for BYOK queries:
-   `github.com/yatsyk/awesome-byok-apps`, `byokhub.com`, `byoklist.com`. Also
-   AlternativeTo and a PR to `awesome-selfhosted`. Triple duty: backlink, entity
-   corroboration, and presence in the corpus LLM answer engines cite.
+1. **Create a Wikidata item — but not yet.** Instance of *free software*,
+   official website, GitHub repo, license, and a Ukrainian native label
+   (`Бесідка`). This is the machine-readable entity anchor Google reconciles
+   against, and it turns the Cyrillic alias into a third-party entity fact
+   rather than a self-assertion.
+   - **State (2026-10-12):** no Besidka item exists. Per
+     [Wikidata:Notability](https://www.wikidata.org/wiki/Wikidata:Notability)
+     the only route is criterion 2, "serious and publicly available
+     references". The project's own site and repo are self-published, so an
+     item created now would likely be deleted. Create it only once
+     independent references exist: directory listings (item 2), the
+     Ukrainian article (item 4), press.
+   - **Name collisions** the description must disambiguate: Q112017868 (hotel
+     in Slavonice), Q4085573 (village in Kyiv Oblast), Q961082 (gazebo).
+   - **Draft statements** for then:
+     - P31 Q341 (free software) and Q189210 (web application);
+     - P856 `https://besidka.com`;
+     - P1324 `https://github.com/besidka/besidka`;
+     - P275 Q334661 (MIT License);
+     - P277 Q978185 (TypeScript);
+     - P400 Q6368 (web browser);
+     - P571 2025-06-16 (GitHub repo creation);
+     - P2037 `besidka`;
+     - labels: en `Besidka`, uk `Бесідка`; alias `Besidka AI`.
+     - Omit P348 (software version): there are no releases.
+2. **Get listed where the category is already indexed.** Triple duty:
+   backlink, entity corroboration, and presence in the corpus LLM answer
+   engines cite. Positioning sentence, to reuse verbatim where length allows:
+   "Open-source BYOK AI chat app. Use GPT, Claude, Gemini, Grok and more with
+   your own API key. Pay the provider directly: no subscription, no markup."
+   Status per target as of 2026-10-12:
+   - `github.com/yatsyk/awesome-byok-apps`: PR opened 2026-10-12,
+     <https://github.com/yatsyk/awesome-byok-apps/pull/25> (Chat UIs). The
+     list caps descriptions under 100 chars, so the entry reads "Open-source
+     chat app for GPT, Claude, Gemini and more; pay providers directly, no
+     markup." The maintainer merges rarely (1 PR merged ever, ~17 open), so
+     it may sit.
+   - `byokhub.com`: already listed
+     (<https://www.byokhub.com/products/besidka>, submitted 2026-07-26) but
+     the copy is wrong: it calls Besidka a "desktop and mobile" client and
+     says "no API key or subscription needed" / "usage-based app charges".
+     Needs an edit while signed in as the original submitter. Corrected copy:
+     tagline "Open-source BYOK AI chat app. Use GPT, Claude, Gemini, Grok and
+     more with your own API key."; pricing "Free / open source (MIT), AI
+     usage billed directly by the provider"; platform "Web app + PWA".
+   - `byoklist.com`: already listed at
+     <https://byoklist.com/tool/www.besidka.com> on the old `www` host, with
+     only OpenAI/Google named. There is no edit flow and re-submission is a
+     $4.99 non-refundable fee. Decision: keep as is. `www` 301s to the apex,
+     so the link still counts, and the copy is incomplete rather than false.
+   - AlternativeTo: not listed as far as could be checked. Needs an account
+     with a verified email; descriptions cannot contain URLs. Use the
+     positioning sentence and "alternative to" ChatGPT, Claude, Google Gemini,
+     LibreChat, Open WebUI, TypingMind.
+   - `awesome-selfhosted`: **not eligible.** awesome-selfhosted-data requires
+     a first tagged release older than 4 months (Besidka has none) and
+     excludes "software that depends on a specific cloud provider"
+     (Workers/D1/KV/R2). Their CONTRIBUTING also bans machine/LLM-generated
+     submissions, so if it ever qualifies a human writes the entry.
 3. **Close the `sameAs` loop.** Once the Wikidata QID and directory profiles
    exist, add them to the `Organization` node's `sameAs`, and make every profile
    bio agree *verbatim* on the positioning sentence. Entity reconciliation is
@@ -442,10 +492,8 @@ None of these can be done from the repository.
 - [x] **Bing Webmaster Tools.** Sign in at `bing.com/webmasters` and use
       "Import from Google Search Console" to bring over the `besidka.com`
       property and sitemap. Imported; the `besidka.com/` site is present as
-      of 2026-10-12, but its Sitemaps list was still empty that day (Bing
-      notes imported data can take up to 48 hours to appear). If
-      `https://besidka.com/sitemap.xml` still does not show up there, submit
-      it in Bing's Sitemaps page.
+      of 2026-10-12. `https://besidka.com/sitemap.xml` was submitted in Bing
+      on 2026-10-12 (status Processing).
 - [x] **IndexNow key.** Done 2026-10-12. Recipe, also for a future key
       rotation:
   - generate a key with `openssl rand -hex 16` (8–128 chars of
@@ -468,21 +516,26 @@ None of these can be done from the repository.
     printed `IndexNow accepted 5 URL(s) (HTTP 202)`. HTTP 202 means received
     with key verification pending. Later deploys that change a public page
     submit through the `indexnow` CI job.
-- [ ] **Wikidata item** — see item 1 under
+- [ ] **Wikidata item** — deferred until independent references exist; see
+      the notability note in item 1 under
       [Off-page](#off-page-where-the-ceiling-actually-is).
-- [ ] **Directory listings** — `github.com/yatsyk/awesome-byok-apps`,
-      `byokhub.com`, `byoklist.com`, AlternativeTo, and a PR to
-      `awesome-selfhosted`. Link `https://besidka.com/byok` where a listing
-      allows a docs/guide URL, and reuse one positioning sentence verbatim
-      across all of them.
+- [ ] **Directory listings** — per-target status is in item 2 under
+      [Off-page](#off-page-where-the-ceiling-actually-is): the
+      `awesome-byok-apps` PR is open, the `byokhub.com` copy fix is pending
+      owner sign-in, AlternativeTo is pending, `byoklist.com` is kept as is,
+      and `awesome-selfhosted` is not eligible. Link
+      `https://besidka.com/byok` where a listing allows a docs/guide URL, and
+      reuse the positioning sentence verbatim where length allows.
 - [ ] **`sameAs`.** Once the Wikidata QID and profiles exist, add them to the
       `Organization` node in `app/utils/landing-jsonld.ts`.
 - [x] **Search Console.** URL Inspection → Request Indexing done for `/` and
       `/byok` on 2026-10-12 (`/` was already indexed; `/byok` was "URL is
       unknown to Google" before the request).
       `https://besidka.com/sitemap.xml` is submitted and last read
-      successfully (Sep 20, 2026, before `/byok` existed). Watching CTR on
-      the five BYOK queries is ongoing.
+      successfully (Sep 20, 2026, before `/byok` existed). On 2026-10-12 the
+      stale `https://www.besidka.com/sitemap.xml` entry was removed and
+      `https://besidka.com/sitemap.xml` resubmitted so Google re-reads it
+      with `/byok`. Watching CTR on the five BYOK queries is ongoing.
 - [x] **Confirm the `www` asset-path redirects.** Confirmed live on
       2026-10-12; results in
       [Asset-path 404s](#asset-path-404s-on-www-_nuxt-_scripts).
@@ -542,7 +595,7 @@ confirming manually:
   all subdomains; a URL-prefix property covers only the exact host. If only a
   URL-prefix property for one host exists, data is partial.
 - `https://besidka.com/sitemap.xml` is submitted and last read without
-  errors.
+  errors. It should be the only sitemap listed: no `www` one.
 - `www` reporting "Page with redirect" is **expected and correct** — it is
   the 301 to the apex working as designed, not an indexing failure.
 - Watch the `besidka` and `besidka ai` queries specifically for impressions and
