@@ -81,7 +81,7 @@ completion, stacked sub-PRs get no build or deploy — only the PR targeting
 
 Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's context with access to secrets.
 
-1. Extract PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR by head SHA; if none is open, emit a notice, mark the pending `Preview Deploy` status as skipped, and end the run successfully without deploying
+1. Extract PR number and SHA from `workflow_run` event context (not from artifacts). When `pull_requests` is empty (GitHub clears it once the PR is closed or merged), look up the open PR whose own head is that SHA in the head repository (so stacked PRs whose history merely contains the commit are never matched); if none is open, emit a notice, set the pending `Preview Deploy` status to `success` with a "Skipped" description, and end the run successfully without deploying
 2. Check if PR is from a fork - skip deploy if so
 3. Download build and `.drizzle` artifacts from the same build run
 4. Apply preview D1 migrations from the downloaded `.drizzle` artifact
