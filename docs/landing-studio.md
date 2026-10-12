@@ -72,10 +72,10 @@ The `/_studio` GitHub sign-in requires a **GitHub OAuth App**. Dev has no
 Worker:
 
 1. GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**.
-2. **Authorization callback URL**: `https://besidka.com/_studio`
+2. **Authorization callback URL**: `https://besidka.com/__nuxt_studio/auth/github`
    (production — use the apex host, since a Cloudflare redirect sends
    `www.besidka.com` to the apex) or the long-lived preview host
-   `https://preview-besidka.chernenko.workers.dev/_studio` (Studio sign-in
+   `https://preview-besidka.chernenko.workers.dev/__nuxt_studio/auth/github` (Studio sign-in
    does not go through `oAuthProxy`, so it works only on that host, not on
    `pr-<n>` preview hosts; see `docs/cloudflare-previews.md`).
    `http://localhost:3000/_studio` is **not** needed — dev has no `/_studio`

@@ -99,8 +99,8 @@ Consequences:
   registered on the old `besidka-preview.chernenko.workers.dev` host stop
   working because the RP ID changed.
 - **Nuxt Studio sign-in works only on the long-lived host.** Its GitHub
-  OAuth callback is `/_studio` on a single host and does not go through
-  `oAuthProxy`.
+  OAuth callback is `/__nuxt_studio/auth/github` on a single host and does
+  not go through `oAuthProxy`.
 
 ## Secrets runbook
 
@@ -218,13 +218,17 @@ to `preview-cleanup.yml`: it does nothing for PRs closed before it exists on
 
 These cannot be automated from the repo.
 
-1. Move OAuth callback URLs to the long-lived host
-   `https://preview-besidka.chernenko.workers.dev`:
-   - Preview GitHub OAuth app: `/api/auth/callback/github`
-   - Google OAuth client (add alongside existing entries): `/api/auth/callback/google`
-   - Studio GitHub OAuth app: `/_studio` (see `docs/landing-studio.md`)
-2. Set the preview secrets (runbook above) before the first Preview deploy,
-   otherwise Previews boot without them.
+1. Done 2026-10-12. OAuth apps moved to the long-lived host
+   `https://preview-besidka.chernenko.workers.dev` (homepage URL, origin and
+   callback):
+   - GitHub OAuth app "Besidka (preview)" (org `besidka`):
+     `/api/auth/callback/github`
+   - Google OAuth client "Preview" (project `chernenko-chat`):
+     `/api/auth/callback/google`; the stale `files-besidka-preview` entries
+     were left in place
+   - GitHub OAuth app "Besidka Nuxt Studio (Preview)" (personal account):
+     `/__nuxt_studio/auth/github`
+2. Done 2026-10-12. Preview secrets set via the base-config runbook above.
 3. After a few PRs and a `main` deploy verify sign-in (password and OAuth),
    chat streaming and file upload on a PR Preview, then delete the old
    `besidka-preview` Worker in the Cloudflare dashboard. D1/KV/R2 resources are
