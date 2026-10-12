@@ -216,6 +216,7 @@ export default defineNuxtConfig({
     emailSenderNoreply: '',
     emailSenderPersonalized: '',
     betterAuthSecret: '',
+    authAdditionalAllowedHosts: '',
     googleClientId: '',
     googleClientSecret: '',
     githubClientId: '',

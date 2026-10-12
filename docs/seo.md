@@ -508,9 +508,11 @@ done
 
 ### Preview deployments are already protected
 
-A preview Worker (`pr-<n>-besidka-preview.chernenko.workers.dev`) serves
+A Cloudflare Preview (`pr-<n>-besidka.chernenko.workers.dev`, or the
+long-lived `preview-besidka.chernenko.workers.dev`; see
+`docs/cloudflare-previews.md`) serves
 `robots: index, follow` in the page **and** `x-robots-tag: noindex` as an HTTP
-header. The header is the more restrictive signal and wins, so previews are not
+header (added by Cloudflare on `workers.dev` Preview URLs). The header is the more restrictive signal and wins, so previews are not
 indexable — this is not a bug to fix. Previews also self-canonicalise to the
 preview host rather than to production, which is harmless precisely because the
 header keeps them out of the index.

@@ -425,12 +425,12 @@ describe('push utils', () => {
       createSubscription({
         id: 1,
         endpoint: 'https://fcm.googleapis.com/fcm/send/a',
-        origin: 'https://pr-291.besidka-preview.chernenko.workers.dev',
+        origin: 'https://pr-291-besidka.chernenko.workers.dev',
       }),
       createSubscription({
         id: 2,
         endpoint: 'https://fcm.googleapis.com/fcm/send/b',
-        origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+        origin: 'https://pr-292-besidka.chernenko.workers.dev',
       }),
     ]
     const { db } = createDb(subscriptions)
@@ -441,7 +441,7 @@ describe('push utils', () => {
       { title: 't', body: 'b', url: '/chats/1' },
       configuredVapid,
       waitUntilMock,
-      'https://pr-292.besidka-preview.chernenko.workers.dev',
+      'https://pr-292-besidka.chernenko.workers.dev',
     )
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -463,7 +463,7 @@ describe('push utils', () => {
       createSubscription({
         id: 1,
         endpoint: 'https://fcm.googleapis.com/fcm/send/a',
-        origin: 'https://pr-291.besidka-preview.chernenko.workers.dev',
+        origin: 'https://pr-291-besidka.chernenko.workers.dev',
       }),
       createSubscription({
         id: 2,
@@ -479,7 +479,7 @@ describe('push utils', () => {
       { title: 't', body: 'b', url: '/chats/1' },
       configuredVapid,
       waitUntilMock,
-      'https://pr-999.besidka-preview.chernenko.workers.dev',
+      'https://pr-999-besidka.chernenko.workers.dev',
     )
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -497,12 +497,12 @@ describe('push utils', () => {
       createSubscription({
         id: 1,
         endpoint: 'https://fcm.googleapis.com/fcm/send/a',
-        origin: 'https://pr-291.besidka-preview.chernenko.workers.dev',
+        origin: 'https://pr-291-besidka.chernenko.workers.dev',
       }),
       createSubscription({
         id: 2,
         endpoint: 'https://fcm.googleapis.com/fcm/send/b',
-        origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+        origin: 'https://pr-292-besidka.chernenko.workers.dev',
       }),
     ]
     const { db } = createDb(subscriptions)

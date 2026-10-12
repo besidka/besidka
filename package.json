@@ -12,7 +12,8 @@
 		"preview": "pnpm run build && wrangler dev --port 3000",
 		"remote:preview": "pnpm run build && wrangler dev --port 3000 --remote",
 		"prod:preview": "pnpm run build && wrangler dev --port 3000 --env production --remote",
-		"deploy": "pnpm run build && wrangler deploy",
+		"deploy": "pnpm run deploy:preview",
+		"deploy:preview": "pnpm run build && wrangler preview --env production --name preview",
 		"deploy:prod": "pnpm run build && wrangler deploy --env production",
 		"generate": "nuxt generate",
 		"dev:prepare": "nuxt prepare",
@@ -149,7 +150,7 @@
 		"vitest-environment-nuxt": "^2.0.0",
 		"vue-tsc": "^3.3.9",
 		"whatwg-fetch": "^3.6.20",
-		"wrangler": "^4.120.0"
+		"wrangler": "^4.149.0"
 	},
 	"peerDependencies": {
 		"@react-email/render": "^2.0.4"

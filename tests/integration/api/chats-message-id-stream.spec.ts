@@ -644,7 +644,7 @@ describe('chat stream message ids', () => {
     const { event, waitUntil } = createWaitUntilEvent({
       params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
       url: new URL(
-        'https://pr-304.besidka-preview.chernenko.workers.dev'
+        'https://pr-304-besidka.chernenko.workers.dev'
         + '/api/v1/chats/01ARZ3NDEKTSV4RRFFQ69G5FAV',
       ),
       body: {
@@ -672,7 +672,7 @@ describe('chat stream message ids', () => {
       },
       expect.anything(),
       expect.anything(),
-      'https://pr-304.besidka-preview.chernenko.workers.dev',
+      'https://pr-304-besidka.chernenko.workers.dev',
     )
   })
 

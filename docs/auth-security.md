@@ -550,10 +550,13 @@ add the prefix, renaming every cookie and signing every user out. Instead
 `advanced.defaultCookieAttributes: { secure }` in `server/utils/auth.ts` is
 spread after the getter's own `secure`, so it overrides only the flag. It is
 true when `config.public.baseUrl` starts with `https://` (production
-`https://besidka.com`, preview `https://besidka-preview.chernenko.workers.dev`)
+`https://besidka.com`, preview `https://preview-besidka.chernenko.workers.dev`)
 and false for `http://localhost` in dev and CI, where browsers, WebKit in
 particular, may drop `Secure` cookies. `oAuthProxy` is unaffected: the preview
-host sets its own session cookie in its own https response. Cookie names are
+host sets its own session cookie in its own https response. PR previews
+(`pr-<n>-besidka.chernenko.workers.dev`) proxy OAuth through the long-lived
+preview host; `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS` lets Better Auth accept
+every preview host. See `docs/cloudflare-previews.md`. Cookie names are
 pinned unchanged by `tests/unit/utils/auth.spec.ts`.
 
 ## Passkeys (WebAuthn)
@@ -565,6 +568,12 @@ handle registration and sign-in; `Profile/Security` surfaces add,
 list, and remove.
 
 ### Known limitation: passkeys don't work on versioned preview URLs
+
+Preview hosts changed with the move to Cloudflare Workers Previews (see
+`docs/cloudflare-previews.md`): the stable host is now
+`preview-besidka.chernenko.workers.dev`, and `pr-<n>-besidka...` and
+`<deployment-id>-besidka...` hosts are the "other" hosts below. The reasoning
+that follows still holds with those names substituted.
 
 `server/utils/auth-hosts.ts` has two functions that both derive a trust
 decision from the same `baseUrl`, for two different purposes, and they

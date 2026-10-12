@@ -3,6 +3,7 @@ import {
   getAllowedHosts,
   getRelyingPartyId,
   isSecureBaseUrl,
+  parseAdditionalHosts,
 } from '../../../server/utils/auth-hosts'
 
 describe('getAllowedHosts', () => {
@@ -45,6 +46,94 @@ describe('getAllowedHosts', () => {
   })
 })
 
+function matchesHostPattern(host: string, pattern: string): boolean {
+  const escapedPattern = pattern
+    .split('*')
+    .map(segment => segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*')
+
+  return new RegExp(`^${escapedPattern}$`).test(host)
+}
+
+describe('getAllowedHosts additional hosts', () => {
+  const previewBaseUrl = 'https://preview-besidka.chernenko.workers.dev'
+  const additionalPattern = '*-besidka.chernenko.workers.dev'
+
+  it('keeps the derived hosts unchanged when additional hosts are empty', () => {
+    expect(getAllowedHosts(previewBaseUrl, '')).toEqual(
+      getAllowedHosts(previewBaseUrl),
+    )
+    expect(getAllowedHosts(previewBaseUrl)).toEqual([
+      'preview-besidka.chernenko.workers.dev',
+      '*-preview-besidka.chernenko.workers.dev',
+    ])
+  })
+
+  it('merges additional patterns after the derived hosts', () => {
+    expect(getAllowedHosts(previewBaseUrl, additionalPattern)).toEqual([
+      'preview-besidka.chernenko.workers.dev',
+      '*-preview-besidka.chernenko.workers.dev',
+      additionalPattern,
+    ])
+  })
+
+  it('trims, drops empty entries and deduplicates additional hosts', () => {
+    expect(getAllowedHosts(
+      'https://besidka.com',
+      ` extra.example.com , ,www.besidka.com,extra.example.com,`,
+    )).toEqual([
+      'besidka.com',
+      'www.besidka.com',
+      'extra.example.com',
+    ])
+  })
+
+  it('does not allow any host when no base URL is configured', () => {
+    expect(getAllowedHosts('', additionalPattern)).toEqual([])
+  })
+
+  it(
+    'covers the named preview, PR previews and deployment-id previews '
+    + 'with one wildcard pattern',
+    () => {
+      const allowedHosts = getAllowedHosts(previewBaseUrl, additionalPattern)
+      const previewHosts = [
+        'preview-besidka.chernenko.workers.dev',
+        'pr-123-besidka.chernenko.workers.dev',
+        '1a2b3c4d-besidka.chernenko.workers.dev',
+      ]
+
+      for (const previewHost of previewHosts) {
+        expect(allowedHosts.some((pattern) => {
+          return matchesHostPattern(previewHost, pattern)
+        })).toBe(true)
+      }
+    },
+  )
+
+  it('does not cover unrelated workers.dev hosts', () => {
+    const allowedHosts = getAllowedHosts(previewBaseUrl, additionalPattern)
+
+    expect(allowedHosts.some((pattern) => {
+      return matchesHostPattern('pr-123-other.chernenko.workers.dev', pattern)
+    })).toBe(false)
+  })
+})
+
+describe('parseAdditionalHosts', () => {
+  it('returns an empty array for an empty value', () => {
+    expect(parseAdditionalHosts('')).toEqual([])
+    expect(parseAdditionalHosts(' , ')).toEqual([])
+  })
+
+  it('splits on commas, trims and deduplicates', () => {
+    expect(parseAdditionalHosts('a.com, b.com ,a.com')).toEqual([
+      'a.com',
+      'b.com',
+    ])
+  })
+})
+
 describe('getRelyingPartyId', () => {
   it('returns localhost when no base URL is configured', () => {
     expect(getRelyingPartyId('')).toBe('localhost')
@@ -73,10 +162,10 @@ describe('getRelyingPartyId', () => {
     + 'instead of collapsing to the bare public suffix',
     () => {
       const rpId = getRelyingPartyId(
-        'https://besidka-preview.chernenko.workers.dev',
+        'https://preview-besidka.chernenko.workers.dev',
       )
 
-      expect(rpId).toBe('besidka-preview.chernenko.workers.dev')
+      expect(rpId).toBe('preview-besidka.chernenko.workers.dev')
       expect(rpId).not.toBe('workers.dev')
     },
   )

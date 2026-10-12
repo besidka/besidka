@@ -3,8 +3,9 @@
 CI auto-deploys the landing page in two phases:
 
 - **Preview on PR open** — when a pull request is opened, Preview Build →
-  Preview Deploy ships the branch to the **preview** Worker (the top-level
-  block in `wrangler.jsonc`).
+  Preview Deploy ships the branch to a Cloudflare **Preview** (`pr-<n>`) of the
+  `besidka` Worker, configured by `env.production.previews` in
+  `wrangler.jsonc`; see `docs/cloudflare-previews.md`.
 - **Production on merge to main** — when the PR merges, `production.yml`
   rebuilds and ships the **production** Worker (`env.production` in
   `wrangler.jsonc`).
@@ -33,7 +34,9 @@ For how Studio editing works across environments, see
 
 ## Phase 1 — Make the PREVIEW deploy succeed (before opening the PR)
 
-The preview environment is the **top-level** block in `wrangler.jsonc`.
+Preview resources are bound in `env.production.previews` in `wrangler.jsonc`
+(the top-level block is local-dev only but still names the same resources for
+migrations).
 
 - [x] Create the preview content D1 database (or reuse `besidka-content` if you
   prefer to share one):
@@ -61,12 +64,11 @@ The preview environment is the **top-level** block in `wrangler.jsonc`.
   This uploads each asset to the remote preview `CMS_BUCKET` (resolved from
   `wrangler.jsonc`), skipping any object that already exists. Without
   `--remote` it seeds the local persisted R2 instead.
-- [ ] _(Optional)_ Enable Studio editing on the preview Worker:
-
-  ```bash
-  pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_ID
-  pnpm exec wrangler secret put STUDIO_GITHUB_CLIENT_SECRET
-  ```
+- [ ] _(Optional)_ Enable Studio editing on previews: put
+  `STUDIO_GITHUB_CLIENT_ID` and `STUDIO_GITHUB_CLIENT_SECRET` in
+  `.dev.vars.preview` and push them with
+  `pnpm exec wrangler preview base-config secret bulk .dev.vars.preview --env production`
+  (existing previews need `wrangler preview secret bulk` per preview).
 
 ---
 

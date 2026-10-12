@@ -44,11 +44,12 @@ pnpm run db:reset         # Reset local D1 database and regenerate
 npx wrangler d1 time-travel info <db-name>
 npx wrangler d1 time-travel info <db-name> --timestamp=<ISO8601>
 npx wrangler d1 time-travel restore <db-name> --bookmark=<bookmark>
-# Production DB: besidka (needs --env production)  |  Preview DB: besidka-preview
+# Production DB: besidka (needs --env production)  |  Preview DB: besidka-preview (shared by all Cloudflare Previews)
 
 # Cloudflare
 pnpm run cf-typegen       # Generate Cloudflare env types
-pnpm run deploy           # Build and deploy to Cloudflare Workers
+pnpm run deploy           # Build and update the long-lived preview (wrangler preview --env production --name preview)
+pnpm run deploy:prod      # Build and deploy to production (wrangler deploy --env production)
 ```
 
 ## 🚨 SUPER IMPORTANT — HIGH RISK: D1 Migration Safety 🚨
@@ -275,6 +276,15 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `ERR_CONNECTION_REFUSED`): the signature, why the exit reason was
   invisible, the stdout piping and `wrangler-logs` artifact diagnostics, and
   what to do on the next occurrence
+- `docs/cloudflare-previews.md` - PR and `main` previews on Cloudflare
+  Workers Previews (one Worker, `env.production.previews`) instead of the
+  separate `besidka-preview` Worker: `wrangler preview --env production`
+  flow and URL scheme, why `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS` exists,
+  the secrets runbook (not inherited; set via `preview base-config secret
+  bulk`), CI deploy/cleanup flow, accepted trade-offs (no crons on
+  previews, shared preview resources, passkeys only on the long-lived
+  host), the bootstrap-PR hazard, owner OAuth-callback steps, and revert
+  criteria
 
 ### Tech Stack
 
@@ -309,7 +319,7 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
 - Robots indexing is blocked in dev (the module's default); verify production
   rules locally with `curl 'http://localhost:3000/robots.txt?mockProductionEnv'`.
 - Studio OAuth callback URL must also use the apex host
-  (`https://besidka.com/_studio`).
+  (`https://besidka.com/__nuxt_studio/auth/github`).
 - **Canonical and `og:url` are derived per route in `app/app.vue`** from
   `useRoute()` — a single source of truth that every page inherits. Do NOT add a
   per-page `canonical` or `ogUrl`; the global one is already correct and a second

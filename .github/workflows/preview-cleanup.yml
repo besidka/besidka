@@ -1,0 +1,64 @@
+name: Preview Cleanup
+run-name: "Preview Cleanup · PR #${{ github.event.pull_request.number }}"
+
+on:
+  pull_request_target:
+    types: [closed]
+
+concurrency:
+  group: preview-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  delete-preview:
+    name: Delete PR Preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Delete preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PREVIEW_NAME="pr-${PR_NUMBER}"
+
+          if pnpm exec wrangler preview delete \
+            --name "$PREVIEW_NAME" \
+            --env production \
+            --skip-confirmation > "$RUNNER_TEMP/delete.log" 2>&1; then
+            cat "$RUNNER_TEMP/delete.log"
+            echo "Deleted preview ${PREVIEW_NAME}"
+            exit 0
+          fi
+
+          cat "$RUNNER_TEMP/delete.log"
+
+          if grep -qiE "code: 10025|preview not found" "$RUNNER_TEMP/delete.log"; then
+            echo "Preview ${PREVIEW_NAME} does not exist; nothing to delete"
+            exit 0
+          fi
+
+          exit 1

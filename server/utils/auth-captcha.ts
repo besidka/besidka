@@ -39,7 +39,10 @@ export function getCaptchaOptions(
     endpoints: authCaptchaEndpoints,
     expectedAction: enforced ? authCaptchaExpectedAction : undefined,
     allowedHostnames: enforced
-      ? toTurnstileHostnames(getAllowedHosts(config.public.baseUrl))
+      ? toTurnstileHostnames(getAllowedHosts(
+        config.public.baseUrl,
+        config.authAdditionalAllowedHosts,
+      ))
       : undefined,
   }
 }
