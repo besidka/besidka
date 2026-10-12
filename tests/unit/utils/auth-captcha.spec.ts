@@ -24,17 +24,20 @@ function createConfig(overrides: Partial<{
   turnstileEnforced: boolean
   turnstileSiteKey: string
   baseUrl: string
+  authAdditionalAllowedHosts: string
 }> = {}) {
   const {
     turnstileSecretKey = 'test-secret',
     turnstileEnforced = false,
     turnstileSiteKey = 'test-sitekey',
     baseUrl = 'https://besidka.com',
+    authAdditionalAllowedHosts = '',
   } = overrides
 
   return {
     turnstileSecretKey,
     turnstileEnforced,
+    authAdditionalAllowedHosts,
     public: {
       turnstileSiteKey,
       baseUrl,
@@ -149,6 +152,22 @@ describe('getCaptchaOptions', () => {
     expect(options?.allowedHostnames?.some((host: string) => {
       return host.includes(':')
     })).toBe(false)
+  })
+})
+
+describe('getCaptchaOptions additional allowed hosts', () => {
+  it('drops wildcard additional hosts and keeps literal ones', () => {
+    const options = getCaptchaOptions(createConfig({
+      turnstileEnforced: true,
+      baseUrl: 'https://preview-besidka.chernenko.workers.dev',
+      authAdditionalAllowedHosts:
+        '*-besidka.chernenko.workers.dev,extra.example.com:8443',
+    }))
+
+    expect(options?.allowedHostnames).toEqual([
+      'preview-besidka.chernenko.workers.dev',
+      'extra.example.com',
+    ])
   })
 })
 

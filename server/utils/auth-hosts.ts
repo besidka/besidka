@@ -8,7 +8,16 @@ export function isSecureBaseUrl(baseUrl: string): boolean {
   }
 }
 
-export function getAllowedHosts(baseUrl: string): string[] {
+export function parseAdditionalHosts(additionalHosts: string): string[] {
+  const hosts = additionalHosts
+    .split(',')
+    .map(host => host.trim())
+    .filter(Boolean)
+
+  return [...new Set(hosts)]
+}
+
+function getBaseAllowedHosts(baseUrl: string): string[] {
   if (!baseUrl) {
     return []
   }
@@ -36,6 +45,21 @@ export function getAllowedHosts(baseUrl: string): string[] {
   const rest = parts.slice(1).join('.')
 
   return [host, `*-${subdomain}.${rest}`]
+}
+
+export function getAllowedHosts(
+  baseUrl: string,
+  additionalHosts: string = '',
+): string[] {
+  const baseHosts = getBaseAllowedHosts(baseUrl)
+
+  if (!baseHosts.length) {
+    return baseHosts
+  }
+
+  return [
+    ...new Set([...baseHosts, ...parseAdditionalHosts(additionalHosts)]),
+  ]
 }
 
 /**

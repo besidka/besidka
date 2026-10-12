@@ -308,7 +308,7 @@ describe('push subscription API', () => {
 
       await handler({
         url: new URL(
-          'https://pr-292.besidka-preview.chernenko.workers.dev'
+          'https://pr-292-besidka.chernenko.workers.dev'
           + '/api/v1/push/subscribe',
         ),
         body: {
@@ -319,7 +319,7 @@ describe('push subscription API', () => {
       } as any)
 
       expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({
-        origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+        origin: 'https://pr-292-besidka.chernenko.workers.dev',
       }))
     })
 

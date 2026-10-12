@@ -890,7 +890,7 @@ describe('server/utils/auth.ts cookie attributes', () => {
 
   it.each([
     ['https://besidka.com'],
-    ['https://besidka-preview.chernenko.workers.dev'],
+    ['https://preview-besidka.chernenko.workers.dev'],
   ])('marks every auth cookie Secure for %s', async (baseUrl) => {
     const context = await importAuthContext(baseUrl)
 

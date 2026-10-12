@@ -541,7 +541,7 @@ describe('finalizeResearchJob', () => {
       chatSlug: 'chat-slug-1',
     })
     const job = createJob({
-      origin: 'https://pr-292.besidka-preview.chernenko.workers.dev',
+      origin: 'https://pr-292-besidka.chernenko.workers.dev',
     })
 
     const { outcome } = await finalizeResearchJob({
@@ -597,7 +597,7 @@ describe('finalizeResearchJob', () => {
       }),
       expect.anything(),
       waitUntil,
-      'https://pr-292.besidka-preview.chernenko.workers.dev',
+      'https://pr-292-besidka.chernenko.workers.dev',
     )
   })
 

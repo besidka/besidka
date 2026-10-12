@@ -21,8 +21,12 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      ├─ Apply DB migrations from PR .drizzle artifact            │
 │      │   ├─ DB          (.drizzle/migrations)                    │
 │      │   └─ CONSENT_DB  (.drizzle/migrations-consent)            │
-│      ├─ Deploy to Cloudflare Workers (version with PR alias)     │
+│      ├─ wrangler preview --env production --name pr-{number}    │
 │      └─ Comment preview URLs + metrics on PR                     │
+│                                                                  │
+│  Pull Request closed (merged or not)                             │
+│  └─ preview-cleanup.yml (pull_request_target, base branch only)  │
+│      └─ wrangler preview delete --name pr-{number}               │
 │                                                                  │
 │  Pull Request (fork)                                             │
 │  ├─ preview-build.yml (same as above, no secrets)                │
@@ -43,17 +47,15 @@ CI/CD workflows for building, testing, and deploying Besidka to Cloudflare Worke
 │      ├─ indexnow job (after build-production)                    │
 │      │   No-op without INDEXNOW_KEY; else submits changed pages  │
 │      │                                                           │
-│      ├─ update-preview job (parallel)                            │
-│      │   ├─ Get merged PR number                                 │
-│      │   └─ Promote PR version to preview (if alias found)       │
-│      │                                                           │
-│      └─ deploy-preview-fallback job (after update-preview)        │
-│          Direct push OR no PR-alias version found: build+deploy  │
-│          the fallback build fresh instead of silently skipping   │
+│      └─ deploy-preview job (after build-production)             │
+│          ├─ Apply DB + CONSENT_DB migrations to the preview DBs  │
+│          └─ wrangler preview --env production --name preview     │
+│              (long-lived Preview, rebuilt from main)             │
 │                                                                  │
-│  Preview URLs:                                                   │
-│    https://{hash}-besidka-preview.chernenko.workers.dev          │
-│    https://pr-{number}-besidka-preview.chernenko.workers.dev     │
+│  Preview URLs (Cloudflare Workers Previews, one Worker):         │
+│    https://{deployment-id}-besidka.chernenko.workers.dev         │
+│    https://pr-{number}-besidka.chernenko.workers.dev             │
+│    https://preview-besidka.chernenko.workers.dev (main)          │
 │  Production:                                                     │
 │    https://besidka.com                                           │
 │                                                                  │
@@ -87,8 +89,19 @@ Triggers on `workflow_run` completion of Preview Build. Runs in the base repo's 
 4. Apply preview D1 migrations from the downloaded `.drizzle` artifact
    - `DB` from `.drizzle/migrations`
    - `CONSENT_DB` from `.drizzle/migrations-consent`
-5. Deploy to Cloudflare Workers with PR alias
+5. Create or update the Cloudflare Preview named `pr-{number}` with
+   `wrangler preview --env production --name pr-{number} --json`; the
+   per-deployment URL and the stable PR URL are read from the JSON output
+   (falling back to the deterministic `pr-{number}-besidka` URL)
 6. Comment preview URLs and metrics on PR
+
+### `preview-cleanup.yml` - PR Preview Cleanup
+
+Triggers on `pull_request_target` `closed` (merged or abandoned). It runs with
+secrets, which is safe here because the job checks out only the default branch
+and never PR code. It runs `wrangler preview delete --name pr-{number} --env
+production --skip-confirmation`; a preview that no longer exists is treated as
+success. Concurrency is per PR.
 
 ### `preview-fork-deploy.yml` - Fork PR Deploy (Maintainer-Triggered)
 
@@ -97,12 +110,12 @@ Triggers when a maintainer comments `/deploy-preview` on a fork PR.
 1. Verify commenter has write/maintain/admin access
 2. Get PR HEAD SHA
 3. Find the latest successful Preview Build run for that SHA
-4. Download and deploy the build artifact
+4. Download the build artifact and create or update the `pr-{number}` Preview
 5. Comment preview URLs on PR
 
 ### `production.yml` - Production Deploy
 
-Triggers on push to `main`. Two parallel jobs:
+Triggers on push to `main`. Three jobs:
 
 **build-production**: Full test suite, build, deploy to production. Applies
 remote migrations to both production databases (`DB`, then `CONSENT_DB`)
@@ -114,33 +127,21 @@ page (`content/`, public `app/pages/`, landing components), it reads the live
 sitemap, checks `https://besidka.com/indexnow-key.txt` serves the same key,
 and submits the sitemap URLs to IndexNow. See `docs/seo.md` → "IndexNow".
 
-**update-preview**: Finds the PR version by alias (`pr-{number}`) and, when
-found, promotes it to the preview environment — reusing the exact build that
-was already deployed and reviewed on the PR, instead of rebuilding.
-
-**deploy-preview-fallback**: Runs after `update-preview` when either (a) the
-push was direct to `main` with no associated PR, or (b) a PR was found but no
-`pr-{number}` alias exists for it. Case (b) is not just a theoretical edge
-case: `resolve-preview-context` resolves `github.sha` — the HEAD commit of
-the push — to find "the" merged PR. When several squash-merge commits land
-on `main` in one push (e.g. a stack of PRs merged back-to-back), only the
-*last* commit's PR is ever consulted, even though earlier commits' PRs may
-have their own valid, unrelated aliases. That last PR can easily have no
-alias of its own: restack churn on a stacked branch can get its preview
-build cancelled outright, or get a successful build's deploy cancelled
-mid-upload by `preview-deploy.yml`'s own concurrency group when a later
-restack push supersedes it before the upload finishes. Either way, this job
-builds+deploys the `preview-build` artifact from `build-production` fresh —
-the same artifact already validated by the full test suite for this exact
-`main` HEAD — rather than silently leaving `besidka-preview` on stale code.
-It regenerates and applies remote migrations to both preview databases
-(`DB`, then `CONSENT_DB`) unconditionally, same as `build-production`. This
-job installs dependencies with a plain `pnpm install --frozen-lockfile` (not
-`--ignore-scripts`) specifically so `postinstall`'s `nuxt prepare` runs and
+**deploy-preview**: Runs after `build-production`. Downloads the
+`preview-build` artifact (the build already validated by the full test suite
+for this exact `main` HEAD), applies remote migrations to both preview
+databases (`DB`, then `CONSENT_DB`) and updates the long-lived Preview named
+`preview` with `wrangler preview --env production --name preview`. There is
+no version lookup or PR-alias promotion any more: the previous
+`resolve-preview-context`, `update-preview` and `deploy-preview-fallback`
+jobs (and the stacked-merge edge case they handled) are gone because every
+push to `main` redeploys the same Preview from its own build. The job
+installs dependencies with a plain `pnpm install --frozen-lockfile` (not
+`--ignore-scripts`) so `postinstall`'s `nuxt prepare` runs and
 `.nuxt/tsconfig.json` exists — `drizzle-kit generate` loads the root
 `tsconfig.json`, which `extends` that file, and hard-fails without it.
 
-Both `build-production` and `deploy-preview-fallback` apply migrations to
+Both `build-production` and `deploy-preview` apply migrations to
 `DB` and `CONSENT_DB` unconditionally on every run — an earlier git-diff-based
 `drizzle-changed` gate was removed because a diff of only the current push's
 before/after SHAs could permanently miss a migration if an unrelated prior
@@ -248,6 +249,10 @@ The solution is a two-phase approach:
 1. **`preview-build.yml`** runs on `pull_request` - executes the fork's code without secrets
 2. **`preview-deploy.yml`** runs on `workflow_run` - deploys with secrets after build succeeds
 
+`preview-cleanup.yml` is the one workflow that uses `pull_request_target`. It
+is safe because it only checks out the default branch, never PR code, and the
+only thing it does with the PR is read its number.
+
 ### Key Security Properties
 
 **PR metadata from event context, not artifacts**: The PR number, SHA, and fork status are extracted from `github.event.workflow_run` properties. This prevents command injection via tampered artifact files (e.g., a malicious `pr_number.txt` containing shell commands).
@@ -304,6 +309,13 @@ cancel-in-progress: true
 ```
 One production deployment at a time.
 
+### `preview-cleanup.yml`
+```yaml
+group: preview-cleanup-{pr_number}
+cancel-in-progress: false
+```
+One cleanup per PR; never cancelled mid-delete.
+
 ### `claude-code-review.yml`
 ```yaml
 group: claude-code-review-{pr_number}
@@ -312,39 +324,40 @@ cancel-in-progress: true
 One review per PR. New pushes cancel the in-progress review instead of paying
 for parallel full reviews.
 
-## Versioned PR Deployments
+## Cloudflare Previews
 
-Each PR commit creates a Worker version with two preview URLs:
+Previews use Cloudflare's [Workers Previews](https://developers.cloudflare.com/workers/previews/)
+(open beta). There is one Worker, `besidka`; every Preview is a named,
+independently updatable copy of it, configured by `env.production.previews`
+in `wrangler.jsonc`. See [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)
+for the decision log and runbook.
 
 ```
-PR #123 with 3 commits:
+PR #123 with 3 commits (one Preview, three deployments):
 
 Commit 1 (abc1234):
-├─ Auto hash: https://10a5f53f-besidka-preview.chernenko.workers.dev (permanent)
-└─ PR alias:  https://pr-123-besidka-preview.chernenko.workers.dev (updated)
+├─ Deployment: https://3f9c1d2e-besidka.chernenko.workers.dev (permanent)
+└─ PR Preview: https://pr-123-besidka.chernenko.workers.dev (updated)
 
 Commit 2 (def5678):
-├─ Auto hash: https://2b7e4a9c-besidka-preview.chernenko.workers.dev (permanent)
-└─ PR alias:  https://pr-123-besidka-preview.chernenko.workers.dev (updated)
+├─ Deployment: https://8a47b6c0-besidka.chernenko.workers.dev (permanent)
+└─ PR Preview: https://pr-123-besidka.chernenko.workers.dev (updated)
+
+main (long-lived):
+└─ https://preview-besidka.chernenko.workers.dev (Preview named `preview`)
 ```
 
-- **Auto-hash URL**: Unique per commit, permanent
-- **PR alias URL**: Stable per PR, updates with each commit
-- All versions belong to the same `besidka-preview` worker
-- Cloudflare automatically cleans up oldest aliases at 1,000 versions
-
-## Alias-Based Version Promotion
-
-When a PR merges to main, `production.yml` promotes the existing PR version
-to the preview environment instead of rebuilding:
-
-1. PR creates version with alias `pr-{number}` via `wrangler versions upload`
-2. On merge, `wrangler versions deploy` promotes that version
-3. No rebuild needed - exact same code from PR
-4. Fast: API call only (~10-20 seconds)
-
-For direct pushes to `main` without an associated PR, `production.yml` falls
-back to a standard `wrangler deploy` for preview.
+- **Deployment URL**: unique per deployment, permanent while the deployment exists
+- **PR Preview URL**: stable per PR, always points at the latest deployment
+- **`preview-besidka` URL**: stable, rebuilt from `main` on every merge
+- Every call with the same `--name` updates that Preview with a new deployment
+- Limits: 500 Previews per Worker and 100 deployments per Preview on the Paid
+  plan; the oldest are deleted automatically
+- `--env production` is required on every `wrangler preview` command
+  (deploy, delete, secret); without it wrangler targets the local-only
+  top-level config
+- PR Previews are deleted by `preview-cleanup.yml` when the PR closes
+- Previews do not run cron triggers or queue consumers and get no routes
 
 ## Cloudflare Environments
 
@@ -353,21 +366,28 @@ back to a standard `wrangler deploy` for preview.
 - Bindings: Production D1, KV, R2
 - Triggered by: Push to `main`
 
-**Preview** (default environment):
-- Domain: `besidka-preview.workers.dev`
-- Bindings: Preview D1, KV, R2 (shared by all PR versions)
-- Triggered by: PR commits + production merges
+**Previews** (`env.production.previews`):
+- Hosts: `*-besidka.chernenko.workers.dev`
+- Bindings: Preview D1, KV, R2 (shared by all Previews)
+- Triggered by: PR commits (`pr-{number}`) and merges to `main` (`preview`)
+- Secrets are not inherited from production; they are set once with
+  `wrangler preview base-config secret bulk` (see the runbook)
+
+**Top-level config** (`besidka-local`):
+- Local development only, never deployed
+- Still points at the preview D1 databases so `wrangler d1 migrations apply
+  DB --remote` (no `--env`) keeps migrating the preview databases
 
 ## Secrets & Environments
 
 | Secret | Used In | Phase |
 |--------|---------|-------|
-| `CLOUDFLARE_ACCOUNT_ID` | preview-deploy, preview-fork-deploy, production | Deploy |
-| `CLOUDFLARE_API_TOKEN` | preview-deploy, preview-fork-deploy, production | Deploy |
+| `CLOUDFLARE_ACCOUNT_ID` | preview-deploy, preview-fork-deploy, preview-cleanup, production | Deploy |
+| `CLOUDFLARE_API_TOKEN` | preview-deploy, preview-fork-deploy, preview-cleanup, production | Deploy |
 | `LINEAR_API_KEY` | linear-docs-sync | Docs sync (Linear personal API key, write access to team BES) |
 | `github.token` | All workflows | Build + Deploy |
 
-Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows use the `preview` or `production` GitHub Environment.
+Build-time workflows (`preview-build.yml`) require no secrets. Deploy-time workflows use the `preview` or `production` GitHub Environment. CI never handles runtime secret values for Previews; those are set out-of-band (see [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)).
 
 No repository variables are required. The Wrangler CLI version is pinned as a `devDependency` in `pnpm-lock.yaml` and installed via `pnpm install --frozen-lockfile`; deploy steps use that pinned binary directly, so no `wranglerVersion` input or `WRANGLER_VERSION` variable is needed.
 
@@ -380,7 +400,7 @@ No repository variables are required. The Wrangler CLI version is pinned as a `d
    > A maintainer can comment `/deploy-preview` to trigger deployment.
 4. Maintainer reviews PR code
 5. Maintainer comments `/deploy-preview`
-6. `preview-fork-deploy.yml` verifies permissions, deploys, comments preview URL
+6. `preview-fork-deploy.yml` verifies permissions, deploys the `pr-{number}` Preview, comments preview URL
 
 ## Path Filters
 
@@ -394,14 +414,15 @@ Markdown-only changes skip CI.
 ## Local Testing
 
 ```bash
-# Preview environment (default)
+# Long-lived preview (build + wrangler preview --env production --name preview)
 pnpm run deploy
 
 # Production environment
-pnpm run deploy --env production
+pnpm run deploy:prod
 
-# Versioned deployment with alias (PR simulation)
-wrangler versions upload --preview-alias pr-test
+# Throwaway Preview (PR simulation); delete it afterwards
+pnpm exec wrangler preview --env production --name pr-test
+pnpm exec wrangler preview delete --name pr-test --env production --skip-confirmation
 ```
 
 ## Database Migrations
@@ -421,7 +442,7 @@ migrated with a separate step so a failure is attributable to one database:
 |----------------|---------|---------|-----------------|--------|
 | `preview-deploy.yml` → `deploy` | Same-repo PR build success | `wrangler d1 migrations apply DB --remote` | `wrangler d1 migrations apply CONSENT_DB --remote` | Downloaded `preview-drizzle` artifact (committed migrations) |
 | `production.yml` → `build-production` | Merge / push to `main` | `… apply DB --remote --env production` | `… apply CONSENT_DB --remote --env production` | Regenerated in-step via `preCommands` |
-| `production.yml` → `deploy-preview-fallback` | Direct push, or PR merge with no preview alias found | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
+| `production.yml` → `deploy-preview` | Merge / push to `main` (after `build-production`) | `… apply DB --remote` | `… apply CONSENT_DB --remote` | Regenerated in-step via `preCommands` |
 
 **Regeneration source.** Preview-deploy applies the exact migration files from
 the uploaded `.drizzle` artifact (no regeneration). The production jobs
@@ -430,7 +451,7 @@ and `pnpm run db:consents:generate` for `CONSENT_DB`.
 
 **Gating.** Both DB and CONSENT_DB apply steps in `production.yml` run
 unconditionally on every push, in both `build-production` and
-`deploy-preview-fallback` — there is no `.drizzle/`-change gate. An earlier
+`deploy-preview` — there is no `.drizzle/`-change gate. An earlier
 git-diff-based gate (comparing only the current push's before/after SHAs)
 was removed because it could permanently miss a migration if an unrelated
 prior run failed before reaching the migration step. Because
@@ -464,4 +485,5 @@ pnpm run db:consents:migrate:prod     # apply to remote production
 
 - Project setup: [`/CLAUDE.md`](/CLAUDE.md)
 - Cloudflare configuration: [`/wrangler.jsonc`](/wrangler.jsonc)
+- Previews decision log and runbook: [`/docs/cloudflare-previews.md`](/docs/cloudflare-previews.md)
 - Cookie-consent / `CONSENT_DB` details: [`/docs/cookie-consent.md`](/docs/cookie-consent.md)

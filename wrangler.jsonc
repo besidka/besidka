@@ -1,8 +1,8 @@
 {
-	"name": "besidka-preview",
+	"name": "besidka-local",
 	"compatibility_date": "2026-01-28",
-	"workers_dev": true,
-	"preview_urls": true,
+	"workers_dev": false,
+	"preview_urls": false,
 	"main": ".output/server/index.mjs",
 	"assets": {
 		"binding": "ASSETS",
@@ -25,7 +25,7 @@
 		"mode": "smart"
 	},
 	"vars": {
-		"NUXT_PUBLIC_BASE_URL": "https://besidka-preview.chernenko.workers.dev",
+		"NUXT_PUBLIC_BASE_URL": "http://localhost:3000",
 		"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
 		"NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE": "https://github.com/serhii-chernenko",
 		"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
@@ -163,7 +163,7 @@
 		"production": {
 			"name": "besidka",
 			"workers_dev": false,
-			"preview_urls": false,
+			"preview_urls": true,
 			"main": ".output/server/index.mjs",
 			"assets": {
 				"binding": "ASSETS",
@@ -324,7 +324,109 @@
 						"serhii@besidka.com"
 					]
 				}
-			]
+			],
+			"previews": {
+				"vars": {
+					"NUXT_PUBLIC_BASE_URL": "https://preview-besidka.chernenko.workers.dev",
+					"NUXT_PUBLIC_PRIVACY_EMAIL": "privacy@besidka.com",
+					"NUXT_PUBLIC_AUTHOR_GITHUB_PROFILE": "https://github.com/serhii-chernenko",
+					"NUXT_EMAIL_SENDER_NOREPLY": "noreply@besidka.com",
+					"NUXT_EMAIL_SENDER_PERSONALIZED": "serhii@besidka.com",
+					"NUXT_VAPID_SUBJECT": "abuse@besidka.com",
+					"NUXT_PUBLIC_VAPID_PUBLIC_KEY": "BDHR5LHg7XCwXVhDv6YAJGDVen7Q1l6xbRBh1C_D2SAIVOnKcOfwzqOn5i7OSviC4Kb2gVd0ideWh-BeJFiaAbQ",
+					"NUXT_FILES_RETENTION_CLEANUP_ENABLED": true,
+					"NUXT_FILES_RETENTION_CLEANUP_BATCH_SIZE": 100,
+					"NUXT_FILES_RETENTION_CLEANUP_MAX_RUNTIME_MS": 20000,
+					"NUXT_RESEARCH_SWEEP_ENABLED": true,
+					"NUXT_RESEARCH_SWEEP_BATCH_SIZE": 20,
+					"NUXT_RESEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
+					"NUXT_RESEARCH_MOCK_ENABLED": true,
+					"NUXT_MESSAGE_SEARCH_SWEEP_ENABLED": true,
+					"NUXT_MESSAGE_SEARCH_SWEEP_BATCH_SIZE": 1000,
+					"NUXT_MESSAGE_SEARCH_SWEEP_MAX_RUNTIME_MS": 20000,
+					"NUXT_PUBLIC_TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+					"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD": "14",
+					"NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD": "35",
+					"NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD": "10",
+					"NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
+					"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
+					"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+					"NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS": "*-besidka.chernenko.workers.dev"
+				},
+				"d1_databases": [
+					{
+						"binding": "DB",
+						"database_name": "besidka-preview",
+						"database_id": "d30ca34f-9b29-4846-a77b-fcbda41cb598",
+						"migrations_dir": ".drizzle/migrations",
+						"migrations_pattern": ".drizzle/migrations/*/migration.sql"
+					},
+					{
+						"binding": "CONSENT_DB",
+						"database_name": "besidka-consent-preview",
+						"database_id": "d110f034-1e7a-4512-b4c0-bc1e881b6d02",
+						"migrations_dir": ".drizzle/migrations-consent",
+						"migrations_pattern": ".drizzle/migrations-consent/*/migration.sql"
+					},
+					{
+						"binding": "CONTENT_DB",
+						"database_name": "besidka-content-preview",
+						"database_id": "32796d2a-29cc-45f7-99c9-37c6f171f754"
+					}
+				],
+				"kv_namespaces": [
+					{
+						"binding": "KV",
+						"id": "6ee10a2a05034ba092a9fb815f633e06"
+					}
+				],
+				"r2_buckets": [
+					{
+						"bucket_name": "besidka-preview",
+						"binding": "DATA_BUCKET"
+					},
+					{
+						"bucket_name": "besidka-cms-preview",
+						"binding": "CMS_BUCKET"
+					}
+				],
+				"analytics_engine_datasets": [
+					{
+						"binding": "ANALYTICS",
+						"dataset": "besidka_cms_events_preview"
+					}
+				],
+				"images": {
+					"binding": "IMAGES"
+				},
+				"ratelimits": [
+					{
+						"name": "CONSENTS_RATE_LIMITER",
+						"namespace_id": "730101",
+						"simple": {
+							"limit": 60,
+							"period": 60
+						}
+					}
+				],
+				"send_email": [
+					{
+						"name": "EMAIL",
+						"allowed_sender_addresses": [
+							"noreply@besidka.com",
+							"serhii@besidka.com"
+						]
+					}
+				],
+				"observability": {
+					"enabled": true,
+					"head_sampling_rate": 1,
+					"traces": {
+						"enabled": true,
+						"head_sampling_rate": 1
+					}
+				}
+			}
 		}
 	}
 }

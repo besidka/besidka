@@ -64,6 +64,25 @@ describe('wrangler.jsonc search-cost rates', () => {
       expect(productionRates).toEqual(previewRates)
     })
 
+  it('agree between the production and production previews vars blocks',
+    () => {
+      const config = parseWranglerConfig()
+      const env = config.env as Record<
+        string,
+        {
+          vars: Record<string, unknown>
+          previews: { vars: Record<string, unknown> }
+        }
+      >
+      const productionRates = extractSearchCostRates(env.production.vars)
+      const previewsRates = extractSearchCostRates(
+        env.production.previews.vars,
+      )
+
+      expect(Object.keys(previewsRates).length).toBeGreaterThan(0)
+      expect(previewsRates).toEqual(productionRates)
+    })
+
   it('includes the Brave and Exa external-search rates alongside the '
     + 'four pre-existing native rates', () => {
     const config = parseWranglerConfig()

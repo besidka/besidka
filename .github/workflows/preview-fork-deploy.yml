@@ -89,14 +89,19 @@ jobs:
         id: deploy-start
         run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
 
-      - name: Deploy to Cloudflare Workers
+      - name: Deploy PR preview to Cloudflare
         id: deploy
-        uses: cloudflare/wrangler-action@v4
-        with:
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          packageManager: pnpm
-          command: versions upload --preview-alias pr-${{ steps.pr.outputs.number }} --message "https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_URL: https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}
+        run: |
+          pnpm exec wrangler preview \
+            --env production \
+            --name "pr-${PR_NUMBER}" \
+            --message "$PR_URL" \
+            --json > "$RUNNER_TEMP/preview.json"
 
       - name: Calculate deploy time
         id: deploy-time
@@ -109,12 +114,15 @@ jobs:
 
       - name: Extract preview URLs
         id: urls
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
-          HASH_URL="${{ steps.deploy.outputs.deployment-url }}"
-          ALIAS_URL="https://pr-${{ steps.pr.outputs.number }}-besidka-preview.chernenko.workers.dev"
+          FALLBACK_URL="https://pr-${PR_NUMBER}-besidka.chernenko.workers.dev"
+          PR_URL=$(jq -r '.preview.urls[0] // empty' "$RUNNER_TEMP/preview.json" 2>/dev/null || true)
+          DEPLOYMENT_URL=$(jq -r '.deployment.urls[0] // empty' "$RUNNER_TEMP/preview.json" 2>/dev/null || true)
 
-          echo "hash-url=${HASH_URL}" >> $GITHUB_OUTPUT
-          echo "alias-url=${ALIAS_URL}" >> $GITHUB_OUTPUT
+          echo "pr-url=${PR_URL:-$FALLBACK_URL}" >> $GITHUB_OUTPUT
+          echo "deployment-url=${DEPLOYMENT_URL:-${PR_URL:-$FALLBACK_URL}}" >> $GITHUB_OUTPUT
 
       - name: Comment preview URL on PR
         uses: mshick/add-pr-comment@v3
@@ -131,8 +139,8 @@ jobs:
             | **Author** | [@${{ steps.pr.outputs.author }}](https://github.com/${{ steps.pr.outputs.author }}) |
             | **Deploy** | ${{ steps.deploy-time.outputs.duration }} |
             | **Latest commit** | [`${{ steps.pr.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ steps.pr.outputs.number }}/commits/${{ steps.pr.outputs.sha }}) |
-            | **Preview URL (commit)** | ${{ steps.urls.outputs.hash-url }} |
-            | **Preview URL (PR)** | ${{ steps.urls.outputs.alias-url }} |
+            | **Preview URL (deployment)** | ${{ steps.urls.outputs.deployment-url }} |
+            | **Preview URL (PR)** | ${{ steps.urls.outputs.pr-url }} |
 
             ---
             _Deployed from fork PR after maintainer approval._

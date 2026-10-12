@@ -68,7 +68,10 @@ function createAuth() {
   const deleteAccountTokenTtl = 60 * 60
   const isCiEnvironment: boolean = process.env.CI === 'true'
 
-  const allowedHosts = getAllowedHosts(config.public.baseUrl)
+  const allowedHosts = getAllowedHosts(
+    config.public.baseUrl,
+    config.authAdditionalAllowedHosts,
+  )
   const captchaOptions = getCaptchaOptions(config)
 
   const plugins: BetterAuthPlugin[] = [
