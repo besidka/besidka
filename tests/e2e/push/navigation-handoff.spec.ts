@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test'
 const PUSH_DATABASE_NAME = 'besidka-push'
 const PENDING_STORE_NAME = 'pending-navigation'
 const PENDING_KEY = 'latest'
+const APP_FREE_DOCUMENT_PATH = '/ai.txt'
 
 test.use({
   storageState: {
@@ -41,6 +42,12 @@ async function writePendingNavigation(page: Page, url: string) {
     key: PENDING_KEY,
     target: url,
   })
+}
+
+async function seedPendingNavigationOutsideApp(page: Page, url: string) {
+  await page.goto(APP_FREE_DOCUMENT_PATH)
+  await writePendingNavigation(page, url)
+  await page.goto('/signin')
 }
 
 async function readPendingNavigation(page: Page) {
@@ -99,8 +106,7 @@ test.describe('Push cold-start handoff', () => {
       expect(await page.evaluate(() => Notification.permission))
         .toBe('granted')
 
-      await writePendingNavigation(page, '/privacy-policy')
-      await page.reload()
+      await seedPendingNavigationOutsideApp(page, '/privacy-policy')
 
       await expect(page).toHaveURL(/\/privacy-policy$/, { timeout: 8000 })
 
@@ -109,8 +115,7 @@ test.describe('Push cold-start handoff', () => {
 
   test('the app ignores a persisted target that leaves the origin',
     async ({ page }) => {
-      await writePendingNavigation(page, '/\\evil.example.com')
-      await page.reload()
+      await seedPendingNavigationOutsideApp(page, '/\\evil.example.com')
       await page.waitForTimeout(3000)
 
       expect(new URL(page.url()).origin).toBe(new URL('/', page.url()).origin)
