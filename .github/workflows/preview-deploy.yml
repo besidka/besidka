@@ -168,11 +168,24 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           FALLBACK_URL="https://pr-${PR_NUMBER}-besidka.chernenko.workers.dev"
-          PR_URL=$(jq -r '.preview.urls[0] // empty' "$RUNNER_TEMP/preview.json" 2>/dev/null || true)
-          DEPLOYMENT_URL=$(jq -r '.deployment.urls[0] // empty' "$RUNNER_TEMP/preview.json" 2>/dev/null || true)
+          CLEAN_JSON="$RUNNER_TEMP/preview-clean.json"
+
+          sed -n '/^{/,$p' "$RUNNER_TEMP/preview.json" > "$CLEAN_JSON"
+
+          if ! jq -e '.preview.id' "$CLEAN_JSON" > /dev/null 2>&1; then
+            echo "::error::wrangler preview output did not contain valid JSON with .preview.id"
+            exit 1
+          fi
+
+          PR_URL=$(jq -r '.preview.urls[0] // empty' "$CLEAN_JSON")
+          DEPLOYMENT_URL=$(jq -r '.deployment.urls[0] // empty' "$CLEAN_JSON")
+
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            echo "::warning::wrangler preview returned no workers.dev URL (previews_enabled may be off on the besidka Worker)"
+          fi
 
           echo "pr-url=${PR_URL:-$FALLBACK_URL}" >> $GITHUB_OUTPUT
-          echo "deployment-url=${DEPLOYMENT_URL:-${PR_URL:-$FALLBACK_URL}}" >> $GITHUB_OUTPUT
+          echo "deployment-url=${DEPLOYMENT_URL:-n/a}" >> $GITHUB_OUTPUT
 
       - name: Comment preview URL on PR
         if: steps.fork-check.outputs.is-fork == 'false'

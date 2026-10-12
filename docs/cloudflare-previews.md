@@ -149,6 +149,25 @@ never PR code.
 Local equivalents: `pnpm run deploy` builds and updates the long-lived
 `preview`; `pnpm run deploy:prod` deploys production.
 
+## Gotchas
+
+- **`wrangler preview --json` stdout is not pure JSON.** Wrangler first prints
+  asset-upload progress lines (`Building list of assets...`, `+ /_nuxt/...`,
+  `Uploaded 15 of 45 assets`), then a blank line, then the pretty-printed JSON
+  object starting at a line that is exactly `{`. CI extracts it with
+  `sed -n '/^{/,$p'` into `preview-clean.json` before running `jq`, and fails
+  with `::error::` if `.preview.id` is missing.
+- **Never print the preview JSON to logs.** It contains `author_email` and
+  every var under `.deployment.env`. The workflows redirect it to a file in
+  `$RUNNER_TEMP` and only read individual fields with `jq`.
+- **`.preview.urls` and `.deployment.urls` are empty arrays until the
+  Worker-level `previews_enabled` (workers.dev previews) subdomain flag is
+  on.** `wrangler deploy --env production` sets that flag from
+  `preview_urls: true`; `wrangler preview` alone does not. After this
+  migration merges, the first production deploy enables it. Until then CI
+  falls back to the deterministic `pr-<n>-besidka` URL for the PR URL, emits a
+  `::warning::`, and renders the deployment URL as `n/a` in the PR comment.
+
 ## Accepted trade-offs
 
 - **Cron triggers do not run on Previews.** The sweeps in `server/plugins/*`
