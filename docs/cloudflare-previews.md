@@ -187,9 +187,15 @@ Local equivalents: `pnpm run deploy` builds and updates the long-lived
   maintenance endpoints by hand. Queue consumers do not run on Previews either.
 - **`preview_urls: true` also applies to production.** Production versions
   now get `workers.dev` version-preview URLs. They serve production
-  bindings, so treat them as production-grade access. This is accepted for
-  now and is under verification (whether the URLs can be restricted without
-  disabling Previews).
+  bindings, so treat them as production-grade access. Verified 2026-10-12:
+  `https://<version-id-prefix>-besidka.chernenko.workers.dev/` answers 200
+  only for a real version id (a random prefix returns 404), sends
+  `X-Robots-Tag: noindex`, and canonicalizes to `https://besidka.com/`.
+  Better Auth rejects the host (production sets no additional allowed hosts)
+  and falls back to the apex base URL. Accepted, matching princess. The
+  Worker-level flag behind this is the script subdomain setting
+  `previews_enabled` (`GET/POST /accounts/<id>/workers/scripts/besidka/subdomain`);
+  turning it off disables every Preview URL as well.
 - **`wrangler tail` is not supported for Previews.** Use Axiom (evlog) and the
   dashboard for preview diagnostics.
 - **All Previews share one set of preview resources** (`besidka-preview` D1,
