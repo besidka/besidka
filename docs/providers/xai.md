@@ -49,6 +49,33 @@ Server-side wiring lives in `server/utils/providers/xai.ts`, matching the
 existing `use<Provider>()` contract described in
 [`general.md`](./general.md#server-side-wiring).
 
+## Reasoning summaries are no longer returned (2026-10-13)
+
+`grok-4.20-0309-reasoning` and `grok-4.5` (at `low`) report reasoning
+tokens but return no reasoning part, so no trace renders. This is xAI's
+behavior, not a regression from the `@ai-sdk/xai` 4 to 5 upgrade:
+
+- **Production** (`besidka.com`, `@ai-sdk/xai@4.0.33`, which still sends
+  `reasoning.summary`): `grok-4.20-0309-reasoning` returned 1029 reasoning
+  tokens and parts `step-start`, `text` only.
+- **PR preview** (`@ai-sdk/xai@5.0.20`, request-body shim injecting
+  `reasoning: { summary: 'detailed' }`): `grok-4.20-0309-reasoning` returned
+  1217 reasoning tokens and no reasoning part; `grok-4.5` at `low` returned
+  264 reasoning tokens and none either.
+- **Why 5.x sends no summary.** `@ai-sdk/xai` 5.0.8 stopped sending
+  `reasoning.summary` and deprecated `reasoningSummary`
+  ([vercel/ai#21410](https://github.com/vercel/ai/pull/21410), commit
+  `0a5dd0f`). xAI's Responses docs call the field "only included for
+  compatibility". `useXai()` still passes the deprecated
+  `reasoningSummary: 'detailed'`; it is harmless and does nothing on 5.x.
+- **Tried and removed.** A fetch wrapper that rewrote `/responses` bodies to
+  restore the 4.0.33 wire shape had no effect on the preview, so it was
+  dropped.
+- **Open UX question for the owner.** The picker still shows the brain icon
+  for these models (`reasoningAlwaysOn` / `levels`) even though no trace
+  renders. Whether to keep, relabel, or hide it is undecided; no UI was
+  changed.
+
 ## Image generation
 
 `grok-imagine-image-2.0` is xAI's first image model in this catalog, wired
@@ -68,14 +95,13 @@ parameter, and none is sent: the xAI path sends only `aspectRatio`.
 2026-11-02.
 
 - **`xai.image(modelId)`, not `xai.tools.imageGeneration()`.** The installed
-  `@ai-sdk/xai@4.0.33` exposes both `xai.image`/`xai.imageModel` (confirmed
+  `@ai-sdk/xai@5.0.20` exposes both `xai.image`/`xai.imageModel` (confirmed
   via `require()` — no SDK bump needed) and a conversational
   `xai.tools.imageGeneration()` tool the chat model can call mid-turn. Only
   the former fits this app's controller-model pattern: a dedicated image
   model invoked once, outside the chat loop, the same shape
   `server/utils/providers/xai.ts`'s `getImageModel()` already uses for
-  OpenAI/Google. `xai.tools.imageGeneration()` is also absent from the
-  installed SDK version regardless.
+  OpenAI/Google.
 - **`grok-imagine-image-2.0` (and `grok-imagine-image`) are in
   `EXEMPT_IDS`.** models.dev lists the id,
   but its entry carries **no `cost` object at all** — `toSnapshotEntry()` in

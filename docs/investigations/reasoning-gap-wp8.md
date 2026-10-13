@@ -132,6 +132,23 @@ confident fix was not attempted (see Outcome below).
     `docs/providers/xai.md`). **The Gemini 3 Flash Preview half is
     unrelated and remains genuinely open** — it does not share xAI's fix and
     still warrants its own look.
+  - **Correction, 2026-10-13**: the xAI explanation above is wrong. Live
+    checks showed xAI no longer returns reasoning summaries for these models
+    whatever the request carries. Production `besidka.com`
+    (`@ai-sdk/xai@4.0.33`, which still sends `reasoning.summary`) returned
+    1029 reasoning tokens and no reasoning part for
+    `grok-4.20-0309-reasoning`. A PR preview on `@ai-sdk/xai@5.0.20` with a
+    request-body shim injecting `reasoning: { summary: 'detailed' }` also
+    returned no part for it (1217 reasoning tokens) or for `grok-4.5` at
+    `low` (264 reasoning tokens). So the `reasoningSummary` fix does not
+    close the xAI half, the missing trace is not caused by the 5.x upgrade,
+    and the shim was removed. `@ai-sdk/xai` 5.0.8 stopped sending
+    `reasoning.summary` and deprecated `reasoningSummary`
+    ([vercel/ai#21410](https://github.com/vercel/ai/pull/21410), commit
+    `0a5dd0f`); xAI's Responses docs call the field "only included for
+    compatibility". The brain icon still shows in the picker for these
+    models although no trace renders: an open UX question for the owner, no
+    UI changed. Details in `docs/providers/xai.md`.
 - The shared browser session showed clear evidence of *other concurrent
   automation* running against the same Chrome profile mid-investigation (a
   tab was unexpectedly redirected to `localhost:8931/test.html`, a Playwright
