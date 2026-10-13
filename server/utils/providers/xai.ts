@@ -115,16 +115,12 @@ export async function useXai(
     const result: SharedV2ProviderOptions = {}
 
     /**
-     * Reasoning effort is set provider-agnostically via the top-level
-     * `reasoning` option on streamText (AI SDK v7). providerOptions only
-     * carries the output flag, because the SDK never enables reasoning
-     * summaries on its own (same contract as the OpenAI responses model).
-     * `modelData.reasoningAlwaysOn` models (e.g. grok-4.20-0309-reasoning)
-     * never accept a `reasoning_effort` value at all — xAI hardcodes them
-     * as unsupported — but they always reason internally, so the summary
-     * flag must still be requested here or their reasoning trace, despite
-     * the picker showing a brain icon for them, would never actually
-     * render.
+     * `reasoningSummary` is deprecated in @ai-sdk/xai 5 and no longer sent on
+     * the wire (vercel/ai PR #21410). xAI currently returns no reasoning
+     * summaries for these models even when requested (verified on production
+     * 2026-10-13), so this option is kept only as a harmless no-op that
+     * records the request intent. See docs/providers/xai.md "Reasoning
+     * summaries are no longer returned".
      * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#reasoning
      */
     if (reasoningLevel !== 'off' || reasoningAlwaysOn) {
