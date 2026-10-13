@@ -67,7 +67,7 @@
               </span>
             </div>
             <div
-              v-if="info.reasoning && info.reasoning !== 'off'"
+              v-if="isReasoningRowVisible"
               data-testid="message-menu-reasoning"
               class="flex min-w-0 items-center justify-between gap-3 text-xs"
             >
@@ -80,7 +80,7 @@
                   ({{ formatTokenCount(info.reasoningTokens) }} tokens)
                 </span>
                 <component :is="reasoningIconName" class="size-3.5 shrink-0" />
-                <span class="capitalize">{{ info.reasoning }}</span>
+                <span class="capitalize">{{ reasoningLabel }}</span>
               </span>
             </div>
             <div
@@ -331,8 +331,25 @@ const providerDisplayLabel = computed<string>(() => {
     : props.info?.providerLabel ?? ''
 })
 
+const hasRequestedReasoning = computed<boolean>(() => {
+  return !!props.info?.reasoning && props.info.reasoning !== 'off'
+})
+
+const isReasoningRowVisible = computed<boolean>(() => {
+  return hasRequestedReasoning.value
+    || (props.info?.reasoningTokens ?? 0) > 0
+})
+
+const reasoningLabel = computed<string>(() => {
+  return hasRequestedReasoning.value
+    ? props.info?.reasoning ?? ''
+    : 'Model default'
+})
+
 const reasoningIconName = computed<string>(() => {
-  const level = props.info?.reasoning ?? 'off'
+  const level = hasRequestedReasoning.value
+    ? props.info?.reasoning ?? 'medium'
+    : 'medium'
 
   return `SvgoThink${level.charAt(0).toUpperCase()}${level.slice(1)}`
 })
