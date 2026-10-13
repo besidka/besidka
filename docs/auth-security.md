@@ -346,26 +346,154 @@ invalidates every verification token already issued at deploy time, and D1
 transactional semantics for the adapter's consume lock are unverified.
 Revisit it if single-use token replay becomes a concrete concern.
 
-## `accounts.account_id` is an integer column read back as a string
+## Provider account ids live in `accounts.provider_account_id` (text)
 
-Better Auth 1.7.7 sign-in requires `account.accountId === user.id` as
-strings. Our ids are serial integers, so `accounts.account_id` is an
-`INTEGER` column and the `authAccountId` custom type in
-`server/utils/custom-db-types.ts` reads it back with `String(value)`. The
-behavior is pinned by `tests/unit/utils/custom-db-types.spec.ts`.
+Better Auth's `account.accountId` maps to the `TEXT` column
+`provider_account_id`. The original `account_id` column (`INTEGER NOT NULL`
+since the first migration) stays in the table as `legacyAccountId` and is
+no longer read. New rows write `0` to it through `$defaultFn`, which only
+satisfies its `NOT NULL`. The behavior is pinned by
+`tests/unit/db/accounts-provider-account-id.spec.ts`.
 
-Known pre-existing defect (not introduced by the 1.7 upgrade): INTEGER
-affinity coerces every numeric-looking provider id. Ids of 16 to 19 digits
-are stored exactly but come back from the driver as a JS number above
-2^53 and lose precision. Ids beyond the 64-bit range, such as Google's
-21-digit subject ids, are stored as `REAL` and lose precision on write
-(verified with `sqlite3`: `'123456789012345678901'` is stored as
-`1.2345678901234568e+20`). GitHub's numeric ids are well below both
-limits. Better Auth's OAuth path compares `account.accountId` with the
-provider id strictly (in 1.6 and 1.7), so Google account lookups by
-provider id cannot match these rows. The real fix is a `TEXT` column, which
-is a table rebuild of `accounts` and must follow the D1 migration safety
-checklist in `CLAUDE.md`.
+### Why the integer column was wrong
+
+INTEGER affinity coerced every numeric-looking provider id:
+
+- Google's 21-digit subject ids are beyond the 64-bit range, so SQLite
+  stored them as `REAL` and lost precision on write
+  (`'123456789012345678901'` became `1.2345678901234568e+20`). The exact
+  value is unrecoverable from that column.
+- Ids of 16 to 19 digits were stored exactly, but the JS driver returned
+  them as numbers above 2^53.
+- Credential rows store the user id as `accountId`, and Better Auth 1.7.7
+  email sign-in requires `account.accountId === user.id` as strings
+  (`api/routes/sign-in.mjs`). A stopgap custom type, `authAccountId`, read
+  the column back with `String(value)`. With a text column it is dead and
+  has been removed.
+
+Google sign-in did not visibly break, and it did not create duplicate rows.
+`findAccountOwnerByKey` (`db/internal-adapter.mjs`) queries
+`provider_id = ? AND account_id = ?` with the subject as a string. SQLite
+applies the column's numeric affinity to the bound string, so it is rounded
+to the same `REAL` and matches. The flaw is that a different subject which
+rounds to the same double matches too: around 1e20 the double spacing is
+16384. Two Google users within that range would resolve to the same account
+row, so one could sign in as the other. Exact text comparison removes that
+collision.
+
+### Why an added column and not a rebuild
+
+Changing the column type in place is a drizzle table rebuild
+(`CREATE __new_accounts`, `DROP TABLE accounts`, rename). That is the
+pattern the D1 migration safety section of `CLAUDE.md` warns about, and
+the owner ruled out any `DROP TABLE` for this fix. Nothing references
+`accounts`, so a rebuild would not have cascaded, but it was not needed.
+Migration `20261013154526_yummy_penance` is a single
+`ALTER TABLE accounts ADD provider_account_id text DEFAULT '' NOT NULL`.
+The SQL `DEFAULT ''` exists only because `ADD COLUMN ... NOT NULL`
+requires one. Better Auth always supplies the value.
+
+Better Auth never sees `legacyAccountId`. The drizzle adapter's `create`
+inserts only Better Auth's own fields (`db.insert(table).values(values)`),
+so drizzle fills the legacy column from `$defaultFn`. The adapter factory's
+`transformOutput` (`@better-auth/core` `db/adapter/factory.mjs`) emits only
+schema fields, so the legacy value never reaches Better Auth or the client.
+
+Dropping the legacy column later is a table rebuild and needs its own
+migration plan. No index covered `account_id`, so none was recreated.
+Better Auth looks accounts up by `provider_id` + `provider_account_id`, and
+an index on that pair is an optional follow-up.
+
+### Backfill and what happens to unrecoverable Google rows
+
+Existing rows start with `provider_account_id = ''` and are filled by a
+one-off, idempotent backfill run outside the repository. Every statement is
+guarded by `WHERE provider_account_id = ''`, so re-running it never touches
+a filled row or a row written by new code:
+
+1. `INTEGER` legacy values (credential, GitHub, and Google ids that fit in
+   64 bits) are copied with `CAST(account_id AS TEXT)`. This gives exact
+   digits, never `9.0`, including 17 to 19 digit ids.
+2. `TEXT` legacy values, if any, are copied as-is.
+3. `REAL` Google rows are recovered from the plaintext `id_token` stored on
+   the same row. `encryptOAuthTokens` covers only the access and refresh
+   tokens, and Better Auth refreshes `idToken` on every sign-in. The script
+   base64url-decodes the JWT payload in SQL and accepts `sub` only when:
+   - the issuer is Google,
+   - `sub` is all digits,
+   - `CAST(sub AS REAL)` equals the stored lossy value.
+
+   Any failure leaves the row at `''`.
+
+Nothing is deleted. For a Google row left at `''`, the next Google sign-in
+goes through `handleOAuthUserInfo` (`oauth2/link-account.mjs`):
+
+1. `findAccountOwnerByKey` finds no row, because `''` never equals a real
+   subject.
+2. `findUserByEmail` looks the user up by the Google email. The `''` row
+   fails the strict `acc.accountId === account.accountId` check.
+3. Google is a trusted provider, and `requireLocalEmailVerified` defaults
+   to `true`. So when `users.email_verified = 1`, `linkAccount` creates a
+   correct row and the user is signed in. The `''` row stays as an inert
+   duplicate.
+4. `databaseHooks.account.create.after` sees at least two accounts and
+   sends the "new sign-in method connected" email.
+
+Two cases still lock a user out of Google sign-in:
+
+- `users.email_verified = 0` returns "account not linked".
+- A Besidka email that no longer matches the Google email (`changeEmail` is
+  enabled) registers a brand-new user.
+
+The pre-migration diagnostics list every `REAL` row with `email_verified`,
+`has_password`, and whether it is recoverable, so these cases are known
+before rollout.
+
+### Rollout runbook
+
+CI facts that set the order:
+
+- Opening or pushing to a pull request against `main` runs Preview Build,
+  then Preview Deploy. Preview Deploy runs
+  `wrangler d1 migrations apply DB --remote` against `besidka-preview`.
+  There is no draft gate.
+- Merging to `main` runs `production.yml`. It runs `pnpm run db:generate`,
+  which is a no-op while `migrations-clean.spec.ts` passes, then applies
+  migrations to `besidka` with `--env production`, then to
+  `besidka-preview`.
+- `wrangler d1 migrations apply` skips any migration already recorded in
+  `d1_migrations`. A migration applied by hand from this branch under the
+  same directory name is therefore skipped by CI.
+
+Steps:
+
+1. Run the read-only diagnostics against both databases. Take a Time
+   Travel bookmark of each and record the row counts from the `CLAUDE.md`
+   checklist plus `users` and `accounts`. All of this happens before the
+   pull request is opened, because opening it migrates `besidka-preview`.
+
+   ```bash
+   npx wrangler d1 time-travel info besidka-preview
+   npx wrangler d1 time-travel info besidka --env production
+   ```
+
+2. Apply the migration to `besidka-preview` (`pnpm run db:migrate:preview`,
+   or let the PR's Preview Deploy do it). Run the backfill, run the
+   post-migration diagnostics, and test credential, GitHub and Google
+   sign-in on the PR preview.
+3. Bookmark `besidka` again. Then, before merging, apply the migration
+   (`pnpm run db:migrate:prod`) and the backfill to production. Verify the
+   row counts are unchanged and that no `INTEGER` row is unfilled. The old
+   code keeps reading `account_id` and is unaffected.
+4. Merge. The deploy switches reads to `provider_account_id`. CI's
+   migration step finds the migration already applied.
+5. Re-run the backfill right after the deploy. It fills rows created by
+   the old code between steps 3 and 4.
+
+Recovery: restore the bookmark from step 1 or 3 with
+`npx wrangler d1 time-travel restore <db> [--env production] --bookmark=<bookmark>`.
+Because the migration only adds a column, rolling back the code is enough
+when the data is intact. The old code ignores `provider_account_id`.
 
 ## Turnstile owner checklist
 

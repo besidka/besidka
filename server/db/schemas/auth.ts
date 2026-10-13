@@ -5,7 +5,6 @@ import {
   index,
 } from 'drizzle-orm/sqlite-core'
 import { defaultSchemaTimestamps } from '../../utils/schema'
-import { authAccountId } from '../../utils/custom-db-types'
 
 export const users = snakeCase.table('users', {
   ...defaultSchemaTimestamps,
@@ -39,7 +38,10 @@ export const accounts = snakeCase.table(
   {
     ...defaultSchemaTimestamps,
     id: integer({ mode: 'number' }).primaryKey({ autoIncrement: true }),
-    accountId: authAccountId().notNull(),
+    legacyAccountId: integer('account_id', { mode: 'number' })
+      .notNull()
+      .$defaultFn(() => 0),
+    accountId: text('provider_account_id').notNull().default(''),
     providerId: text().notNull(),
     userId: integer({ mode: 'number' })
       .notNull()

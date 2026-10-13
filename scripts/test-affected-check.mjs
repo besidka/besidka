@@ -423,7 +423,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-captcha-plugin.spec.ts',
     'tests/unit/utils/auth-hosts.spec.ts',
     'tests/unit/utils/auth-secondary-storage.spec.ts',
-    'tests/unit/utils/custom-db-types.spec.ts',
+    'tests/unit/db/accounts-provider-account-id.spec.ts',
   ]
 
   const keysApiTests = [
@@ -687,9 +687,8 @@ export function getAffectedTests(changedFiles) {
       tests: [...emailTests, ...authSecurityTests],
     },
     {
-      pattern:
-        /^(server\/utils\/custom-db-types|server\/db\/schemas\/auth)\.ts$/,
-      tests: ['tests/unit/utils/custom-db-types.spec.ts'],
+      pattern: /^server\/db\/schemas\/auth\.ts$/,
+      tests: ['tests/unit/db/accounts-provider-account-id.spec.ts'],
     },
     {
       pattern:
@@ -1523,7 +1522,10 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern: /^(server\/db\/|drizzle.*\.config\.ts$|\.drizzle\/migrations)/,
-      tests: ['tests/unit/db/migrations-clean.spec.ts'],
+      tests: [
+        'tests/unit/db/migrations-clean.spec.ts',
+        'tests/unit/db/accounts-provider-account-id.spec.ts',
+      ],
     },
     {
       pattern: /^app\/composables\/social-oauth\.ts$/,
