@@ -168,6 +168,75 @@ leave an orphaned Preview. Delete it by hand with
 `pnpm exec wrangler preview delete --name pr-<n> --env production --skip-confirmation`.
 Previews also auto-expire at the 500-per-Worker limit.
 
+## Skipping builds
+
+`preview-build.yml` skips the heavy `build` job when a commit changes only
+ignorable paths, but it never skips without a build to point at.
+
+The original check diffed only `HEAD^..HEAD`. That has a trap: the workflow's
+concurrency group cancels a superseded run (`cancel-in-progress: true`), and a
+build can also fail. If code commit A was cancelled or failed and a docs-only
+commit B arrived next, `A..B` looked docs-only, the build was skipped, and the
+PR never received artifacts or a preview for A's code. The skipping run also
+had no artifacts for `preview-deploy.yml` to download.
+
+Current behavior, implemented in `scripts/ci/resolve-preview-build-source.mjs`
+(job `check-latest-commit`, output `should-skip`, `source-run-id`,
+`source-sha`):
+
+1. List successful `preview-build.yml` runs on the PR head branch, keep the
+   ones belonging to this PR (by PR number; fork runs have no
+   `pull_requests`, so they match head repo + branch), and exclude the current
+   run.
+2. Walk them newest first. A candidate qualifies when both `preview-build`
+   and `preview-drizzle` exist with `expired: false` and its `head_sha` is an
+   ancestor of the PR head. A previous relay run qualifies too because it
+   re-uploads the same artifacts.
+3. Diff the candidate's `head_sha` against the head with `--no-renames` (a
+   rename out of a built path must not look ignorable). If every changed path
+   is ignorable, or nothing changed (a re-run of the same SHA), the run skips
+   and records the source. Otherwise it builds.
+
+Any failure (no candidate, artifacts expired, force-push or rebase making the
+source a non-ancestor, API or git error) resolves to a normal build. Because
+the diff base is the last built commit and not the previous commit, a docs
+commit on top of an unbuilt code commit now sees the code in range and builds.
+
+When skipping, `reuse-build` downloads both artifacts from `source-run-id` and
+re-uploads them under the same names and `retention-days: 1`, so the skipping
+run looks like a build run to its consumers: `preview-deploy.yml` (and
+`preview-fork-deploy.yml`, which looks up a successful run by head SHA)
+re-deploys the last built code. This also heals a preview whose deploy was
+cancelled by a newer `workflow_run`. Each relay refreshes the one-day artifact
+clock; once the source artifacts have expired the next run builds.
+
+Why it lives in `preview-build.yml`: `preview-deploy.yml` runs on
+`workflow_run`, and GitHub always executes the default-branch copy of such
+workflows, so a change to it cannot be exercised from a PR. A `pull_request`
+workflow runs from the PR branch, so the resolver and relay are testable there
+and the deploy workflow needs no change.
+
+The ignored-paths list exists twice because `on.pull_request.paths-ignore`
+cannot be shared with a script: `IGNORED_PATH_PATTERNS` in the resolver and the
+workflow list. `tests/unit/scripts/resolve-preview-build-source.spec.ts` fails
+if they drift. Do not add `**/*.md`: `content/*.md` is the landing page source.
+The earlier inline list also carried `.ai/**` (no such directory) and lacked
+`.agents/**`, `.agent/**`, `.cursor/**`, `.windsurf/**`, `.gitignore` and
+`skills-lock.json`; the resolver now matches the workflow exactly.
+
+Dry run against a real PR (read-only, needs `gh` auth and the commits locally):
+
+```bash
+node scripts/ci/resolve-preview-build-source.mjs --dry-run --pr=<n> \
+  --head-ref=<branch> --head-sha=<sha> --current-run-id=0
+```
+
+Known limits: `.github/**` and `scripts/**` are ignored paths, so a PR that
+only changes this machinery gets no Preview Build run and cannot exercise it;
+the first real exercise is the next code PR after merge. A source run whose
+artifacts expire between selection and download fails `reuse-build`; re-run
+the workflow to build.
+
 Local equivalents: `pnpm run deploy` builds and updates the long-lived
 `preview`; `pnpm run deploy:prod` deploys production.
 

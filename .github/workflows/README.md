@@ -73,11 +73,33 @@ completion, stacked sub-PRs get no build or deploy — only the PR targeting
 `main` does. Runs in the PR author's context without access to secrets.
 
 1. Check PR is still open
-2. Install dependencies
-3. Lint + typecheck
-4. Run affected tests only (based on changed files vs base branch)
-5. Build application
-6. Upload build output, `.drizzle`, and metrics as artifacts
+2. `check-latest-commit` runs `scripts/ci/resolve-preview-build-source.mjs`
+   to decide between building and reusing an earlier build (see below)
+3. Install dependencies
+4. Lint + typecheck
+5. Run affected tests only (based on changed files vs base branch)
+6. Build application
+7. Upload build output, `.drizzle`, and metrics as artifacts
+
+**Skipping builds.** A run skips the `build` job only when everything changed
+since the last commit that was actually built successfully for this PR is
+ignorable. The resolver lists successful `preview-build.yml` runs for the PR,
+takes the newest one whose `preview-build` and `preview-drizzle` artifacts
+are still downloadable and whose commit is an ancestor of the PR head, and
+diffs that commit against the head. Non-ignorable files in that range, no
+qualifying run, expired artifacts, rewritten history or any API/git error all
+resolve to a normal build. The ignored list lives in the script and must stay
+identical to `on.pull_request.paths-ignore` (a unit test enforces it).
+
+When it skips, `reuse-build` ("Reuse previous build") downloads both
+artifacts from the source run and re-uploads them under the same names with
+the same retention, comments which build was reused, and sets the pending
+`Preview Deploy` status. `preview-deploy.yml` is unchanged and finds the
+artifacts on the skipping run, so it re-deploys the last built code. This
+also redeploys a preview whose earlier deploy was cancelled. All of this logic
+lives in `preview-build.yml` because `workflow_run` workflows always execute
+the copy on the default branch. See `docs/cloudflare-previews.md` →
+"Skipping builds".
 
 ### `preview-deploy.yml` - PR Deploy
 
