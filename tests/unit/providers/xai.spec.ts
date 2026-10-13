@@ -103,11 +103,32 @@ describe('curated xai provider', () => {
     for (const id of leveledIds) {
       const model = xai.models.find(candidate => candidate.id === id)
 
+      expect(model?.reasoning).toEqual(expect.objectContaining({
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }))
+    }
+  })
+
+  it('marks grok-4.7, grok-4.6 and grok-4.5 as unable to disable '
+    + 'reasoning with a high default, and keeps off for grok-4.3', () => {
+    for (const id of ['grok-4.7', 'grok-4.6', 'grok-4.5']) {
+      const model = xai.models.find(candidate => candidate.id === id)
+
       expect(model?.reasoning).toEqual({
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       })
     }
+
+    const grok43 = xai.models.find(candidate => candidate.id === 'grok-4.3')
+
+    expect(grok43?.reasoning).toEqual({
+      mode: 'levels',
+      levels: ['low', 'medium', 'high'],
+    })
   })
 
   it('marks grok-4.20-0309-reasoning and grok-build-0.1 as always-on '

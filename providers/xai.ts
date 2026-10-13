@@ -39,6 +39,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       },
     },
     {
@@ -47,6 +49,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       },
       price: {
         tokens: 1_000_000,
@@ -58,6 +62,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       },
       price: {
         tokens: 1_000_000,

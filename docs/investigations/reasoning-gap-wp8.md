@@ -146,9 +146,13 @@ confident fix was not attempted (see Outcome below).
     `reasoning.summary` and deprecated `reasoningSummary`
     ([vercel/ai#21410](https://github.com/vercel/ai/pull/21410), commit
     `0a5dd0f`); xAI's Responses docs call the field "only included for
-    compatibility". The brain icon still shows in the picker for these
-    models although no trace renders: an open UX question for the owner, no
-    UI changed. Details in `docs/providers/xai.md`.
+    compatibility". Details in `docs/providers/xai.md`.
+  - **Resolved, 2026-10-13**: xAI documents readable reasoning summaries
+    only for `grok-4.7`. The other Grok models report reasoning tokens with
+    no readable text. The UI now shows a compact "Reasoned · N tokens"
+    indicator on those messages. Always-on models show their reasoning
+    button forced on and disabled instead of hiding it. See
+    `docs/providers/xai.md` "Reasoning output" and `docs/chat-reasoning.md`.
 - The shared browser session showed clear evidence of *other concurrent
   automation* running against the same Chrome profile mid-investigation (a
   tab was unexpectedly redirected to `localhost:8931/test.html`, a Playwright

@@ -1415,4 +1415,168 @@ describe('Chat/Reasoning', () => {
       expect(wrapper.findAll('[data-testid="reasoning-step-title"]'))
         .toHaveLength(0)
     })
+
+  describe('hidden reasoning indicator', () => {
+    function createMessageWithUsage(
+      parts: UIMessage['parts'],
+      reasoningTokens: number | undefined,
+      role: UIMessage['role'] = 'assistant',
+    ): UIMessage {
+      return {
+        id: 'msg-hidden',
+        role,
+        parts,
+        metadata: {
+          usage: {
+            model: 'grok-4.20-0309-reasoning',
+            provider: 'xai',
+            inputTokens: 20,
+            outputTokens: 1300,
+            totalTokens: 1320,
+            ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+          },
+        },
+      } as UIMessage
+    }
+
+    async function mountWithMessage(message: UIMessage) {
+      return await mountSuspended(Reasoning, {
+        props: {
+          message,
+          status: 'ready',
+          reasoningLevel: 'off',
+          turnStartedAt: 0,
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+    }
+
+    function findIndicator(wrapper: VueWrapper) {
+      return wrapper.find('[data-testid="hidden-reasoning-indicator"]')
+    }
+
+    beforeEach(() => {
+      setReasoningUserSetting(false, true)
+    })
+
+    it('shows a compact non-expandable indicator when the model reasoned '
+      + 'but returned no reasoning part', async () => {
+      const wrapper = await mountWithMessage(createMessageWithUsage(
+        [
+          { type: 'step-start' },
+          { type: 'text', text: 'Answer', state: 'done' },
+        ],
+        1217,
+      ))
+      const indicator = findIndicator(wrapper)
+
+      expect(indicator.exists()).toBe(true)
+      expect(indicator.text()).toContain('Reasoned · 1,217 tokens')
+      expect(indicator.find('details').exists()).toBe(false)
+      expect(indicator.find('summary').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="reasoning-steps"]').exists())
+        .toBe(false)
+    })
+
+    it('shows the indicator when the only reasoning part has empty text',
+      async () => {
+        const wrapper = await mountWithMessage(createMessageWithUsage(
+          [
+            { type: 'reasoning', text: '', state: 'done' },
+            { type: 'text', text: 'Answer', state: 'done' },
+          ],
+          264,
+        ))
+
+        expect(findIndicator(wrapper).text())
+          .toContain('Reasoned · 264 tokens')
+      })
+
+    it('hides the indicator when the provider returned reasoning text',
+      async () => {
+        const wrapper = await mountWithMessage(createMessageWithUsage(
+          [
+            { type: 'reasoning', text: multiStepReasoning, state: 'done' },
+            { type: 'text', text: 'Answer', state: 'done' },
+          ],
+          900,
+        ))
+
+        expect(findIndicator(wrapper).exists()).toBe(false)
+        expect(wrapper.find('[data-testid="reasoning-steps"]').exists())
+          .toBe(true)
+      })
+
+    it('hides the indicator for a model that did not reason', async () => {
+      const withoutTokens = await mountWithMessage(createMessageWithUsage(
+        [{ type: 'text', text: 'Answer', state: 'done' }],
+        undefined,
+      ))
+      const withZeroTokens = await mountWithMessage(createMessageWithUsage(
+        [{ type: 'text', text: 'Answer', state: 'done' }],
+        0,
+      ))
+
+      expect(findIndicator(withoutTokens).exists()).toBe(false)
+      expect(findIndicator(withZeroTokens).exists()).toBe(false)
+    })
+
+    it('hides the indicator for a message without usage metadata',
+      async () => {
+        const wrapper = await mountWithMessage(createMessage([
+          { type: 'text', text: 'Answer', state: 'done' },
+        ]))
+
+        expect(findIndicator(wrapper).exists()).toBe(false)
+      })
+
+    it('uses the medium effort icon, not the slashed off icon, on a '
+      + 'reasoning block from an always-on model whose level is off',
+    async () => {
+      const message = createMessageWithUsage(
+        [
+          { type: 'reasoning', text: multiStepReasoning, state: 'done' },
+          { type: 'text', text: 'Answer', state: 'done' },
+        ],
+        900,
+      )
+      const alwaysOnWrapper = await mountWithMessage(message)
+      const mediumWrapper = await mountSuspended(Reasoning, {
+        props: {
+          message,
+          status: 'ready',
+          reasoningLevel: 'medium',
+          turnStartedAt: 0,
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      expect(alwaysOnWrapper.get('summary svg').html())
+        .toBe(mediumWrapper.get('summary svg').html())
+    })
+
+    it('never shows the indicator on a user message', async () => {
+      const wrapper = await mountWithMessage(createMessageWithUsage(
+        [{ type: 'text', text: 'Question', state: 'done' }],
+        500,
+        'user',
+      ))
+
+      expect(findIndicator(wrapper).exists()).toBe(false)
+    })
+  })
 })

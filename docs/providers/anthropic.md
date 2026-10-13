@@ -99,6 +99,16 @@ untouched. The shared options object is never mutated.
   one-shot prompts: usually below the minimum length and never repeated, so a
   cache write would only cost more.
 
+## Reasoning
+
+Anthropic documents that Opus 5.5's adaptive thinking "is always on and
+can't be turned off"
+([effort docs](https://platform.claude.com/docs/en/build-with-claude/effort)).
+`claude-opus-5-5` is therefore curated with `cannotDisable: true` and
+`defaultLevel: 'medium'`: the menu has no `Off`, and `off` is sent and
+persisted as `medium`. Every other Claude model still offers `Off`. See
+[`docs/chat-reasoning.md`](../chat-reasoning.md#models-that-cannot-disable-reasoning).
+
 ## Cost accounting
 
 Anthropic bills three input buckets at different rates. Multipliers are

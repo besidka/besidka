@@ -162,6 +162,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/default-model.spec.ts',
     'tests/unit/providers/ordering.spec.ts',
     'tests/unit/providers/helper-models.spec.ts',
+    'tests/unit/providers/reasoning-control-state.spec.ts',
     'tests/unit/scripts/audit-curated-models.spec.ts',
     'tests/unit/scripts/detect-model-successors.spec.ts',
     'tests/unit/scripts/propose-model-successors-rehearsal.spec.ts',
@@ -178,6 +179,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/anthropic.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
     'tests/unit/utils/reasoning-levels.spec.ts',
+    'tests/unit/providers/reasoning-control-state.spec.ts',
   ]
   const moonshotWebSearchTests = [
     'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
@@ -607,7 +609,16 @@ export function getAffectedTests(changedFiles) {
         'tests/unit/composables/chat-input.spec.ts',
         'tests/unit/components/ChatInput.spec.ts',
         'tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts',
+        'tests/unit/components/ChatInput/ToolbarMore.spec.ts',
+        'tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts',
+        'tests/unit/components/ChatInput/ModelsTrigger/ModelDetail.spec.ts',
+        'tests/integration/api/chats-message-id-stream.spec.ts',
+        'tests/integration/api/chats-duplicate-message.spec.ts',
       ],
+    },
+    {
+      pattern: /^tests\/unit\/providers\/reasoning-control-state\.spec\.ts$/,
+      tests: ['tests/unit/providers/reasoning-control-state.spec.ts'],
     },
     {
       pattern: /^providers\/qwen\.ts$/,

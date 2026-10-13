@@ -74,8 +74,12 @@ is a live-key error, not a picker cosmetic).
   becomes `reasoning: { mode: 'toggle' }`, an always-on model with no
   disable switch becomes `reasoningAlwaysOn: true`, and a multi-level effort
   axis becomes `reasoning: { mode: 'levels' }` truncated to this app's
-  `'low' | 'medium' | 'high'` vocabulary. See each provider's "Curated
-  models" section for the specific derivation.
+  `'low' | 'medium' | 'high'` vocabulary. A levels model whose effort axis
+  has no `none` (the provider documents that reasoning cannot be disabled)
+  also gets `cannotDisable: true` and the documented `defaultLevel`, so the
+  app never offers or sends `off` for it. See each provider's "Curated
+  models" section for the specific derivation, and the audit table in
+  [`docs/chat-reasoning.md`](../chat-reasoning.md#models-that-cannot-disable-reasoning).
 - **Web search** is enabled per model only after independently verifying
   against the provider's own official documentation that the specific model
   supports it on the specific endpoint this app actually calls — a round-3

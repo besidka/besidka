@@ -1,5 +1,19 @@
 <template>
   <div
+    v-if="hiddenReasoningTokens > 0"
+    data-testid="hidden-reasoning-indicator"
+    class="my-1 text-sm"
+    :title="HIDDEN_REASONING_TITLE"
+  >
+    <div class="flex items-center gap-1 py-1.5">
+      <SvgoThinkMedium class="size-4 text-base-content/80" />
+      <span class="font-medium text-xs text-base-content/90">
+        Reasoned · {{ formatTokenCount(hiddenReasoningTokens) }} tokens
+      </span>
+      <span class="sr-only">{{ HIDDEN_REASONING_TITLE }}</span>
+    </div>
+  </div>
+  <div
     v-if="reasoningSteps.length > 0"
     class="my-1 text-sm"
   >
@@ -180,6 +194,11 @@
 import type { UIMessage, ReasoningUIPart, ChatStatus } from 'ai'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { SearchStepData } from '~/types/search-step.d'
+import { formatTokenCount } from '#shared/utils/message-format'
+
+const HIDDEN_REASONING_TITLE = 'This model reasoned before answering, but '
+  + 'the reasoning text is not available for this response. Reasoning '
+  + 'tokens are billed as output tokens.'
 
 const props = defineProps<{
   message: UIMessage
@@ -203,6 +222,11 @@ interface ReasoningStep {
 
 const reasoningIcon = computed<string>(() => {
   const level = props.reasoningLevel
+
+  if (level === 'off' && hasReasoningKindStep.value) {
+    return 'SvgoThinkMedium'
+  }
+
   const capitalized = level.charAt(0).toUpperCase() + level.slice(1)
 
   return `SvgoThink${capitalized}`
@@ -311,6 +335,14 @@ const hasReasoningKindStep = computed<boolean>(() => {
   return reasoningSteps.value.some((step) => {
     return step.kind === 'reasoning'
   })
+})
+
+const hiddenReasoningTokens = computed<number>(() => {
+  if (props.message.role !== 'assistant' || hasReasoningKindStep.value) {
+    return 0
+  }
+
+  return getMessageMetadata(props.message).usage?.reasoningTokens ?? 0
 })
 
 const streamingTitle = shallowRef<string>('')

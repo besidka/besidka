@@ -213,7 +213,7 @@ describe('ChatInput/ModelsTrigger/ModelDetail', () => {
         return badge.text()
       })
 
-    expect(badges).toEqual(['Always-on reasoning', 'Vision', 'Tool calling'])
+    expect(badges).toEqual(['Always reasons', 'Vision', 'Tool calling'])
   })
 
   it('lists vision as a separate badge from image generation', async () => {

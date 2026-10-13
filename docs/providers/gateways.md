@@ -308,9 +308,15 @@ package versions, not assumed from a prior investigation:
   chat-input reasoning toggle and the server-side `reasoningLevel`
   resolution consume — `true` for OpenRouter and Vercel, `false` for
   Cloudflare — so the toggle and the send-path gate can never drift apart.
-  This is a deliberate policy choice, not a gap: Cloudflare's `@cf/` catalog
-  exposes a `reasoning` capability flag for badge purposes only, with no
-  working control behind it.
+  A Cloudflare model whose `@cf/` catalog reports `reasoning` is treated as
+  always-on reasoning by `getGatewayReasoningControlState()`
+  (`shared/utils/reasoning.ts`). The chat input shows its reasoning button
+  forced on and disabled, the same as the direct always-on models. The
+  route still forwards the model's reasoning text, because the Cloudflare
+  builder returns the catalog's `supportsReasoning`. The `reasoning` flag
+  marks capability, so a hybrid model that defaults to non-thinking would
+  be mislabeled. This has not been checked against the live catalog. See
+  `docs/chat-reasoning.md`.
 
 ## Gateway prompt caching
 

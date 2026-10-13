@@ -948,6 +948,54 @@ describe('Chat/ContextMenu.client', () => {
       ).toBe(true)
     })
 
+    it('shows the reasoning row when tokens were billed at level off', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'grok-4.20-0309-reasoning',
+        reasoning: 'off',
+        reasoningTokens: 512,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      const row = wrapper.find('[data-testid="message-menu-reasoning"]')
+
+      expect(row.exists()).toBe(true)
+      expect(row.text()).toContain('512 tokens')
+      expect(row.text()).toContain('Model default')
+    })
+
+    it('hides the reasoning row at level off without tokens', async () => {
+      const info: MessageMenuInfo = {
+        role: 'assistant',
+        createdAt: '2026-01-15T10:30:00.000Z',
+        model: 'gpt-4.1',
+        reasoning: 'off',
+        reasoningTokens: 0,
+      }
+
+      const wrapper = await mountSuspended(ContextMenu, {
+        props: {
+          messageId: 'm1',
+          anchorEl,
+          info,
+        },
+        attachTo: document.body,
+      })
+
+      expect(
+        wrapper.find('[data-testid="message-menu-reasoning"]').exists(),
+      ).toBe(false)
+    })
+
     it('shows the raw model id as a tooltip on the display name', async () => {
       const info: MessageMenuInfo = {
         role: 'assistant',

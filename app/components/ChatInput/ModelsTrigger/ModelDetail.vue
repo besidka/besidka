@@ -131,6 +131,11 @@
 
 <script setup lang="ts">
 import type { Model } from '#shared/types/providers.d'
+import {
+  getReasoningBadgeLabel,
+  getReasoningControlState,
+  hasReasoningBadge,
+} from '#shared/utils/reasoning'
 
 interface CapabilityBadge {
   label: string
@@ -222,9 +227,11 @@ const capabilities = computed<CapabilityBadge[]>(() => {
   const { model } = props
   const badges: CapabilityBadge[] = []
 
-  if (model.reasoning || model.reasoningAlwaysOn) {
+  const reasoningControlState = getReasoningControlState(model)
+
+  if (hasReasoningBadge(reasoningControlState)) {
     badges.push({
-      label: model.reasoningAlwaysOn ? 'Always-on reasoning' : 'Reasoning',
+      label: getReasoningBadgeLabel(reasoningControlState),
       icon: 'lucide:brain',
       class: 'badge-warning',
     })

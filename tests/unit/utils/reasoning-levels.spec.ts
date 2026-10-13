@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canDisableReasoning,
+  getDefaultReasoningLevel,
+  getGatewayReasoningControlState,
+  getReplayReasoningControlState,
+  getReasoningDropdownLevels,
+  resolveSupportedReasoningLevel,
+  getReasoningBadgeLabel,
   getReasoningCapability,
+  getReasoningControlState,
+  hasReasoningBadge,
   isReasoningLevelSupported,
   normalizeReasoningLevel,
+  shouldSendReasoning,
 } from '../../../shared/utils/reasoning'
 import {
   resolveReasoningLevelForModel,
@@ -52,5 +62,123 @@ describe('reasoning levels', () => {
     expect(toReasoningEffort('low')).toBe('low')
     expect(toReasoningEffort('medium')).toBe('medium')
     expect(toReasoningEffort('high')).toBe('high')
+  })
+
+  describe('reasoning control state', () => {
+    it('is configurable for a levels or toggle capability', () => {
+      expect(getReasoningControlState({
+        reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
+      })).toBe('configurable')
+      expect(getReasoningControlState({
+        reasoning: { mode: 'toggle' },
+      })).toBe('configurable')
+    })
+
+    it('is always-on for a model curated with reasoningAlwaysOn', () => {
+      expect(getReasoningControlState({ reasoningAlwaysOn: true }))
+        .toBe('always-on')
+    })
+
+    it('is none for a model without reasoning, and for a missing model',
+      () => {
+        expect(getReasoningControlState({})).toBe('none')
+        expect(getReasoningControlState(null)).toBe('none')
+        expect(getReasoningControlState(undefined)).toBe('none')
+      })
+
+    it('is none for a levels capability with no supported level', () => {
+      expect(getReasoningControlState({
+        reasoning: { mode: 'levels', levels: [] },
+      })).toBe('none')
+    })
+
+    it('resolves gateway models by gateway reasoning policy', () => {
+      expect(getGatewayReasoningControlState('openrouter', true))
+        .toBe('configurable')
+      expect(getGatewayReasoningControlState('vercel', true))
+        .toBe('configurable')
+      expect(getGatewayReasoningControlState('cloudflare', true))
+        .toBe('always-on')
+      expect(getGatewayReasoningControlState('openrouter', false))
+        .toBe('none')
+      expect(getGatewayReasoningControlState('cloudflare', undefined))
+        .toBe('none')
+    })
+
+    it('shows the picker badge for every state except none', () => {
+      expect(hasReasoningBadge('configurable')).toBe(true)
+      expect(hasReasoningBadge('always-on')).toBe(true)
+      expect(hasReasoningBadge('none')).toBe(false)
+    })
+
+    it('labels always-on models as always reasoning', () => {
+      expect(getReasoningBadgeLabel('always-on')).toBe('Always reasons')
+      expect(getReasoningBadgeLabel('configurable')).toBe('Reasoning')
+    })
+
+    it('forwards reasoning text when a level is chosen or the model '
+      + 'always reasons', () => {
+      expect(shouldSendReasoning('medium', 'configurable')).toBe(true)
+      expect(shouldSendReasoning('off', 'configurable')).toBe(false)
+      expect(shouldSendReasoning('off', 'always-on')).toBe(true)
+      expect(shouldSendReasoning('off', 'none')).toBe(false)
+    })
+  })
+
+  it('drops off and falls back to the default for cannot-disable models',
+    () => {
+      const capability = getReasoningCapability({
+        reasoning: {
+          mode: 'levels',
+          levels: ['low', 'medium', 'high'],
+          cannotDisable: true,
+          defaultLevel: 'medium',
+        },
+      })
+
+      expect(canDisableReasoning(capability)).toBe(false)
+      expect(isReasoningLevelSupported('off', capability)).toBe(false)
+      expect(getReasoningDropdownLevels(capability))
+        .toEqual(['low', 'medium', 'high'])
+      expect(getDefaultReasoningLevel(capability)).toBe('medium')
+      expect(resolveSupportedReasoningLevel('off', capability))
+        .toBe('medium')
+      expect(resolveSupportedReasoningLevel('high', capability))
+        .toBe('high')
+    })
+
+  it('uses the highest level when the curated default is not offered', () => {
+    const capability = getReasoningCapability({
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
+      },
+    })
+
+    expect(getDefaultReasoningLevel(capability)).toBe('high')
+  })
+
+  it('keeps off for models that can disable reasoning', () => {
+    const capability = getReasoningCapability({
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    })
+
+    expect(canDisableReasoning(capability)).toBe(true)
+    expect(getReasoningDropdownLevels(capability)[0]).toBe('off')
+    expect(resolveSupportedReasoningLevel('off', capability)).toBe('off')
+  })
+
+  it('replays gateway reasoning by gateway, not by catalog', () => {
+    expect(getReplayReasoningControlState('cloudflare', undefined))
+      .toBe('always-on')
+    expect(getReplayReasoningControlState('openrouter', undefined))
+      .toBe('configurable')
+    expect(getReplayReasoningControlState(undefined, undefined))
+      .toBe('none')
   })
 })

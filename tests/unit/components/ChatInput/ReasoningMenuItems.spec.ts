@@ -26,6 +26,7 @@ function setReasoningUserSetting(
 async function mountMenuItems(props: {
   reasoning: ReasoningLevel
   levels: ReasoningEnabledLevel[]
+  canDisable?: boolean
 }): Promise<{ wrapper: VueWrapper, selectedLevels: ReasoningLevel[] }> {
   const selectedLevels: ReasoningLevel[] = []
 
@@ -35,6 +36,7 @@ async function mountMenuItems(props: {
         h(ReasoningMenuItems, {
           reasoning: props.reasoning,
           levels: props.levels,
+          canDisable: props.canDisable,
           onSelectLevel: (level: ReasoningLevel) => {
             selectedLevels.push(level)
           },
@@ -56,6 +58,21 @@ describe('ChatInput/ReasoningMenuItems', () => {
   beforeEach(() => {
     setReasoningUserSetting(false, false)
   })
+
+  it('omits the Off item for a model that cannot disable reasoning',
+    async () => {
+      const { wrapper } = await mountMenuItems({
+        reasoning: 'high',
+        levels: ['low', 'medium', 'high'],
+        canDisable: false,
+      })
+
+      const labels = levelButtons(wrapper).map((button) => {
+        return button.text().toLowerCase()
+      })
+
+      expect(labels).toEqual(['low', 'medium', 'high'])
+    })
 
   it('renders an Off/On two-item level list for a toggle-mode '
     + 'model, with the Expanded/Auto-hide section absent while off', async () => {

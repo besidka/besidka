@@ -33,6 +33,7 @@
             <ChatInputReasoningMenuItems
               :reasoning="reasoning"
               :levels="props.levels"
+              :can-disable="props.canDisable"
               @select-level="selectLevel"
             />
           </ul>
@@ -48,10 +49,13 @@ import type {
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   levels: ReasoningEnabledLevel[]
   align?: 'start' | 'end'
-}>()
+  canDisable?: boolean
+}>(), {
+  canDisable: true,
+})
 
 const reasoning = defineModel<ReasoningLevel>('reasoning', {
   default: 'off',

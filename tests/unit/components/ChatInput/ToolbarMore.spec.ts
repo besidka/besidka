@@ -221,4 +221,52 @@ describe('ChatInput/ToolbarMore', () => {
 
     expect(wrapper.emitted('open-files-select')).toHaveLength(1)
   })
+
+  it('shows a checked, disabled reasoning toggle and no effort levels for '
+    + 'an always-on model', async () => {
+    const wrapper = await mountToolbarMore({
+      isReasoningSupported: false,
+      isReasoningAlwaysOn: true,
+      isReasoningActive: true,
+      reasoning: 'off',
+      levels: [],
+    })
+
+    const row = wrapper.get('[data-testid="reasoning-always-on-menu-item"]')
+    const toggle = row.get('input[type="checkbox"]')
+
+    expect(row.text()).toContain('Reasoning')
+    expect((toggle.element as HTMLInputElement).checked).toBe(true)
+    expect(toggle.attributes('disabled')).toBeDefined()
+    expect(toggle.attributes('aria-label'))
+      .toBe('Reasoning is always on for this model')
+    expect(wrapper.text()).not.toContain('Reasoning effort')
+    expect(wrapper.emitted('select-reasoning-level')).toBeUndefined()
+  })
+
+  it('lights the overflow badge for an always-on reasoning model',
+    async () => {
+      const wrapper = await mountToolbarMore({
+        isReasoningAlwaysOn: true,
+        isReasoningActive: true,
+      })
+
+      expect(
+        wrapper.find('.indicator-item.badge-accent').exists(),
+      ).toBe(true)
+    })
+
+  it('hides the always-on reasoning row while image generation is '
+    + 'required', async () => {
+    const wrapper = await mountToolbarMore({
+      isReasoningAlwaysOn: true,
+      isImageGenerationSupported: true,
+      isImageGenerationEnabled: true,
+      isImageGenerationRequired: true,
+    })
+
+    expect(
+      wrapper.find('[data-testid="reasoning-always-on-menu-item"]').exists(),
+    ).toBe(false)
+  })
 })

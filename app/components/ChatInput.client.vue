@@ -164,8 +164,25 @@
                   :reasoning="reasoning"
                   :align="toolbarDropdownAlign"
                   :levels="reasoningMenuLevels"
+                :can-disable-reasoning="canDisableReasoningLevel"
+                  :can-disable="canDisableReasoningLevel"
                   @update:reasoning="selectReasoningLevel"
                 />
+                <UiButton
+                  v-if="isReasoningAlwaysOnButtonVisible"
+                  data-testid="reasoning-always-on"
+                  mode="accent"
+                  :title="REASONING_ALWAYS_ON_TITLE"
+                  text="On"
+                  tooltip-position="top"
+                  size="xs"
+                  class="rounded-full pl-[5px] btn-active pointer-events-none"
+                  aria-disabled="true"
+                >
+                  <template #icon>
+                    <SvgoThinkMedium class="size-4 text-current" />
+                  </template>
+                </UiButton>
                 <LazyChatInputDeepResearchTrigger
                   v-if="isDeepResearchModel"
                   :research="researchConfig"
@@ -183,6 +200,7 @@
                 :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-image-generation-required="isImageGenerationRequired"
                 :is-reasoning-supported="isReasoningSupported"
+                :is-reasoning-always-on="isReasoningAlwaysOn"
                 :is-reasoning-active="isReasoningActive"
                 :reasoning="reasoning"
                 :levels="reasoningMenuLevels"
@@ -271,6 +289,7 @@ import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
+import { REASONING_ALWAYS_ON_TITLE } from '#shared/utils/reasoning'
 import type { FileSourceFilter } from '~/types/file-manager'
 import type { WebSearchSelection } from '~/types/web-search'
 import { LazyChatInputFilesModal } from '#components'
@@ -309,8 +328,10 @@ const {
   isImageGenerationRequired,
   isImageInputSupported,
   isReasoningSupported,
+  isReasoningAlwaysOn,
   reasoningCapability,
   reasoningMenuLevels,
+  canDisableReasoningLevel,
   isDeepResearchModel,
   researchConfig,
   isSelectedModelKeyless,
@@ -340,7 +361,7 @@ const reasoning = defineModel<ReasoningLevel>('reasoning', {
 })
 
 const isReasoningActive = computed<boolean>(() => {
-  return isReasoningEnabled(reasoning.value)
+  return isReasoningEnabled(reasoning.value) || isReasoningAlwaysOn.value
 })
 
 const missingKeyWarning = computed<string>(() => {
@@ -516,6 +537,13 @@ watch(isImageInputSupported, (supported) => {
   useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
 }, { flush: 'post' })
 
+/**
+ * The level the user had before a model that cannot stop reasoning forced
+ * its default effort in, so switching back to a model that can honor it
+ * restores that level instead of keeping the forced one.
+ */
+const reasoningLevelBeforeClamp = shallowRef<ReasoningLevel | null>(null)
+
 watch(
   [isReasoningSupported, reasoningCapability, isModelCapabilityResolved],
   ([supported, capability, isResolved]) => {
@@ -525,13 +553,26 @@ watch(
 
     if (!supported || !capability) {
       reasoning.value = 'off'
+      reasoningLevelBeforeClamp.value = null
 
       return
     }
 
-    if (!isReasoningLevelSupported(reasoning.value, capability)) {
-      reasoning.value = 'off'
+    const desiredLevel = reasoningLevelBeforeClamp.value ?? reasoning.value
+
+    if (isReasoningLevelSupported(desiredLevel, capability)) {
+      reasoning.value = desiredLevel
+      reasoningLevelBeforeClamp.value = null
+
+      return
     }
+
+    const fallbackLevel = getDefaultReasoningLevel(capability)
+
+    reasoningLevelBeforeClamp.value = fallbackLevel === 'off'
+      ? null
+      : desiredLevel
+    reasoning.value = fallbackLevel
   },
   {
     immediate: true,
@@ -647,6 +688,13 @@ const isReasoningTriggerVisible = computed<boolean>(() => {
     && !isImageGenerationRequired.value
 })
 
+const isReasoningAlwaysOnButtonVisible = computed<boolean>(() => {
+  return isReasoningAlwaysOn.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
+})
+
 const isWebSearchTriggerVisible = computed<boolean>(() => {
   return (isWebSearchSupported.value || isToolCallingSupported.value)
     && !isDeepResearchModel.value
@@ -741,6 +789,7 @@ function selectWebSearchProvider(option: WebSearchSelection) {
 
 function selectReasoningLevel(level: ReasoningLevel) {
   reasoning.value = level
+  reasoningLevelBeforeClamp.value = null
   prefStorage.setItem('settings_reasoning_level', level)
   requestPersistence()
 }
@@ -759,12 +808,10 @@ function restoreLiveReasoningLevel() {
     prefStorage.getItem('settings_reasoning_level'),
   )
 
-  reasoning.value = isReasoningLevelSupported(
+  reasoning.value = resolveSupportedReasoningLevel(
     savedLevel,
     reasoningCapability.value,
   )
-    ? savedLevel
-    : 'off'
 }
 
 /**

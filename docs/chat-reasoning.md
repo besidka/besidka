@@ -7,6 +7,7 @@ Scope:
 - persistence and sync behavior.
 
 Main files:
+- `shared/utils/reasoning.ts`
 - `app/components/ChatInput/ReasoningTrigger.vue`
 - `app/components/ChatInput.client.vue`
 - `app/components/Chat/Reasoning.vue`
@@ -30,7 +31,9 @@ Why:
 - This avoids coupling model cost/latency choices with rendering preference.
 
 ### 2) `off` is a first-class level
-- `off` is part of the same selector as `low|medium|high`.
+- `off` is part of the same selector as `low|medium|high`, except for
+  models that cannot stop reasoning (see
+  [Models that cannot disable reasoning](#models-that-cannot-disable-reasoning)).
 
 Why:
 - Clear mental model: one control defines effort end-to-end.
@@ -61,12 +64,132 @@ Why:
 ### Model capability handling
 - Supported levels come from model metadata (`reasoning.mode/levels`).
 - On model switch:
-  - if current level is not supported, reasoning is forced to `off`.
+  - if current level is not supported, reasoning falls back to
+    `getDefaultReasoningLevel()`: `off`, or the curated default for a model
+    that cannot disable reasoning,
+  - the level held before that forced default is remembered, so switching
+    back to a model that supports it restores it (e.g. `off`).
 - This is implemented in `app/components/ChatInput.client.vue`.
+
+### Models that cannot disable reasoning
+- Some providers document that a model always reasons and only its effort
+  can change. These are curated as `reasoning.levels` with
+  `cannotDisable: true` and a `defaultLevel` (the provider's documented
+  default when no effort is sent).
+- For these models:
+  - the effort menu has no `Off` item (`getReasoningDropdownLevels`,
+    `ReasoningMenuItems` `canDisable`),
+  - `isReasoningLevelSupported('off')` is `false`, so a saved or persisted
+    `off` is clamped to `defaultLevel` on the client, and
+    `POST /api/v1/chats/[slug]` and every provider adapter
+    (`resolveReasoningLevelForModel`) do the same on the server,
+  - `off` semantics are never sent: the request carries the default effort
+    explicitly and the message is persisted with that level, which also
+    turns on reasoning output (OpenAI summaries, Gemini `includeThoughts`).
+- This differs from `always-on` (`reasoningAlwaysOn`), which is for models
+  that accept no effort parameter at all.
+- `tests/unit/providers/reasoning-control-state.spec.ts` lists every
+  audited model and its default, and fails if any other catalog model
+  drops `off`.
+
+#### Provider audit (October 2026)
+
+xAI, OpenAI, Google, DeepSeek and Moonshot pages were blocked by the
+sandbox proxy during the audit. Their rows rely on search-engine excerpts
+of the official pages, so re-check them on the live pages when touching
+these models.
+
+| Model | Can disable | Curated | Default | Source |
+|---|---|---|---|---|
+| `grok-4.5`, `grok-4.6`, `grok-4.7` | no | `cannotDisable` | `high` | [xAI reasoning](https://docs.x.ai/developers/model-capabilities/text/reasoning): "Reasoning cannot be disabled", effort "defaults to `high`" |
+| `grok-4.3` | yes (`none`) | unchanged | `low` | [xAI grok-4.3](https://docs.x.ai/developers/models/grok-4.3) |
+| `grok-4.20-multi-agent-0309` | not documented | unchanged | — | [xAI multi-agent](https://docs.x.ai/developers/model-capabilities/text/multi-agent): effort sets agent count |
+| `gpt-6.1-sol` | no | `cannotDisable` | `medium` | [OpenAI gpt-6.1-sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol): "none and minimal reasoning efforts are not supported" |
+| `gpt-5`, `gpt-5-mini`, `gpt-5-nano` | no (lowest `minimal`) | `cannotDisable` | `medium` | [OpenAI gpt-5](https://developers.openai.com/api/docs/models/gpt-5); mini/nano assumed to match gpt-5 |
+| `o3`, `o4-mini` | no (`low`..`high`) | `cannotDisable` | `medium` | [OpenAI reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) |
+| `gpt-5.1`, `gpt-5.2`, `gpt-5.4*` | yes, `none` is the default | unchanged | `none` | OpenAI model pages |
+| `gpt-5.5`, `gpt-5.6-*`, `gpt-6-sol`, `gpt-6-luna` | yes (`none`) | unchanged | `medium` | OpenAI model pages |
+| `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash` | no | `cannotDisable` | `medium` | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking): `minimal` "does not guarantee that thinking is off" |
+| `gemini-3.1-pro-preview`, `gemini-3-pro-preview`, `gemini-3-flash-preview` | no | `cannotDisable` | `high` | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking): "you cannot disable thinking for Gemini 3.1 Pro" |
+| `gemini-2.5-pro` | no (budget >= 128) | `cannotDisable` | dynamic; curated `medium` | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking): "Cannot disable thinking" |
+| `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite` | no, but default is `minimal` | unchanged | `minimal` | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking). `Off` sends nothing, which is the lowest effort; forcing `low` would raise cost |
+| `gemini-3.7-flash` | not documented | unchanged | — | no page found |
+| `gemini-2.5-flash`, `gemini-2.5-flash-lite` | yes (budget 0) | unchanged | dynamic / off | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking) |
+| `claude-opus-5-5` | no | `cannotDisable` | `medium` | [Anthropic effort](https://platform.claude.com/docs/en/build-with-claude/effort): "Adaptive thinking is always on and can't be turned off" |
+| other Claude models | yes | unchanged | — | [Anthropic thinking troubleshooting](https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting) |
+| `deepseek-flash`, `deepseek-v4-pro` | yes (`thinking: disabled`) | unchanged (toggle) | on | [DeepSeek thinking mode](https://api-docs.deepseek.com/guides/thinking_mode) |
+| `kimi-k2.6` | yes | unchanged (toggle) | on | Kimi K2.6 quickstart |
+| `kimi-k3`, `kimi-k2.7-code` | no, no effort accepted | already `reasoningAlwaysOn` | — | Kimi K3 / K2.7 Code quickstarts |
+
+Known gap, not addressed here: for models that *can* disable reasoning
+but reason by default (`gpt-5.5`+, `gpt-6-*`, `grok-4.3`, Claude 5-family
+"On" models), `off` still sends no effort, so the provider default
+applies and the model may reason. The message menu's reasoning row and the
+hidden-reasoning indicator show the billed tokens in that case.
+
+### Reasoning control states
+- One shared helper decides a model's reasoning state:
+  `getReasoningControlState()` in `shared/utils/reasoning.ts`, or
+  `getGatewayReasoningControlState()` for gateway models.
+- The model picker's brain badge, the chat input control and the server's
+  reasoning-output rule all read this helper, so they cannot disagree.
+  The sync rule is in `docs/models-data-fetching.md`.
+- `configurable` (curated `reasoning` levels or toggle): the input shows
+  the `ReasoningTrigger` effort dropdown.
+- `always-on` (curated `reasoningAlwaysOn`, or a Cloudflare gateway model
+  whose catalog reports reasoning):
+  - The input shows the reasoning button pressed (`btn-active`) and
+    disabled (`aria-disabled`, `pointer-events-none`, no click handler).
+    Its title is "Reasoning is always on for this model".
+  - This is the same pattern as the forced-on "Create image" button for
+    image-only models.
+  - In the mobile overflow menu, the effort list is replaced by one
+    "Reasoning" row with a checked, disabled toggle. This mirrors the
+    image-only "Create image" row.
+  - The picker labels the badge "Always reasons".
+  - The requested level stays `off`, because no effort is sent.
+- Cloudflare's `always-on` is inferred from its catalog `reasoning`
+  property, which marks capability. A hybrid model that defaults to
+  non-thinking would be mislabeled. This has not been checked against the
+  live Cloudflare catalog.
+- `none`: no badge and no control.
+- Image generation and deep research hide the always-on button just as they
+  hide the effort dropdown.
+
+### Hidden reasoning indicator
+- Some models reason but return no readable reasoning text. Examples are
+  xAI `grok-4.20-0309-reasoning` and `grok-4.5`; see
+  `docs/providers/xai.md`.
+- When an assistant message has no reasoning text,
+  `Chat/Reasoning.vue` shows a compact, non-expandable row: `Reasoned ·
+  N tokens`.
+  - `N` is `metadata.usage.reasoningTokens`, and the row only appears when
+    `N` is above zero.
+  - The row's title says the reasoning text is not available for this
+    response, and that reasoning tokens are billed as output.
+- It never shows when reasoning text exists (DeepSeek, Anthropic, Google,
+  OpenAI summaries). Empty-text reasoning parts, which the SDK emits for
+  encrypted reasoning, count as "no text".
+- It shows for any requested level, so a model that reasons at `off`
+  (an always-on model, or a provider default the app does not turn off)
+  is visibly honest.
+- The message context menu (`Chat/ContextMenu.client.vue`) follows the
+  same rule: its Reasoning row shows whenever `usage.reasoningTokens > 0`,
+  whatever the level. At level `off` it reads "Model default" with the
+  medium icon.
+- Usage arrives with the finish metadata, so the indicator appears when the
+  turn ends, not during streaming. Duration is not persisted, which is why
+  it shows tokens rather than "Thought for Xs".
+- History works because `useChat()` hydrates `usage` into
+  `metadata.usage`. The shared page does the same with
+  `hydrateMessageUsage`, but a share only exposes `usage` when it was
+  created with metadata visible.
 
 ### Message reasoning panel (`Chat/Reasoning.vue`)
 - Rendered only when reasoning parts exist.
-- Header icon matches effective effort level for that message.
+- Header icon matches effective effort level for that message. A message
+  persisted at `off` that still has reasoning text (an always-on model)
+  uses the medium icon instead of the slashed "off" brain.
 - Header title:
   - `Reasoning process` (steady),
   - `Reasoning` while streaming before full title parse,
@@ -136,7 +259,19 @@ Note:
 - `POST /api/v1/chats/[slug]` and `PUT /api/v1/chats/new` accept:
   - `reasoning: z.enum(['off', 'low', 'medium', 'high'])`.
 - Streaming behavior:
-  - `sendReasoning` is disabled when `reasoning === 'off'`.
+  - `sendReasoning` comes from `shouldSendReasoning(level, state)`. It is
+    disabled when `reasoning === 'off'`, unless the model is `always-on`.
+    An always-on model's level is always `off`, and its reasoning text
+    used to be stripped before reaching the client and the database.
+  - The disconnect-retry replay (issue #263) applies the same rule to the
+    persisted message's level, via `getReplayReasoningControlState()`.
+    Direct models use the selected model. The gateway catalog is not
+    loaded at replay time, so a gateway reply is judged as if the model
+    reasons: Cloudflare replays as `always-on`, OpenRouter/Vercel keep the
+    level rule. This is safe because the persisted parts come from the same
+    UI stream that already applied `sendReasoning` at first delivery, so
+    they only hold reasoning text that delivery chose to send. A separate
+    persisted flag would duplicate that decision and need a schema change.
 
 ### Message persistence
 - `messages.reasoning` is stored as text enum, not boolean.
@@ -149,12 +284,14 @@ Note:
 
 ### Capability-first fallback
 - Requested level is resolved against model capability
-  (`resolveReasoningLevelForModel`).
-- If unsupported, resolved level becomes `off`.
+  (`resolveReasoningLevelForModel` -> `resolveSupportedReasoningLevel`).
+- If unsupported, resolved level becomes `off`, or the curated
+  `defaultLevel` for a model that cannot disable reasoning.
 
 ### Provider-agnostic effort (AI SDK v7)
 - Effort is set once via the top-level `reasoning` option on `streamText`.
-  `toReasoningEffort` maps `off -> none`; `low|medium|high` pass through.
+  `toReasoningEffort` maps `off -> undefined` (no effort sent, so the
+  provider default applies); `low|medium|high` pass through.
 - The SDK maps that effort to each provider natively:
   - OpenAI -> `reasoningEffort`,
   - Gemini 3 -> `thinkingLevel`,
@@ -194,12 +331,36 @@ The hand-rolled provider mapping was removed in the v7 upgrade:
 - `tests/unit/utils/reasoning.spec.ts`
   - reasoning markdown parsing and title extraction.
 - `tests/unit/utils/reasoning-levels.spec.ts`
-  - normalization, capability checks, provider mapping.
+  - normalization, capability checks, provider mapping, control states,
+    `shouldSendReasoning`, the cannot-disable fallback and the replay
+    control state.
+- `tests/unit/providers/reasoning-control-state.spec.ts`
+  - representative models per provider, plus a guard that iterates the
+    whole merged catalog and checks that the picker badge and the input
+    control agree, and that exactly the audited models drop `off` and
+    resolve it to their default.
+- `tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts`
+  - catalog-wide rendered guard: the brain badge renders exactly when the
+    input offers a reasoning control.
+- `tests/unit/components/ChatInput.spec.ts`,
+  `tests/unit/components/ChatInput/ToolbarMore.spec.ts`
+  - configurable, always-on (visible, active, disabled, click does not
+    change the level) and none, plus the cannot-disable clamp and restore
+    on model switch.
+- `tests/unit/components/ChatInput/ReasoningMenuItems.spec.ts`
+  - no `Off` item for a model that cannot disable reasoning.
+- `tests/unit/components/Chat/ContextMenu.client.spec.ts`
+  - the Reasoning row at level `off` with and without billed tokens.
+- `tests/unit/components/Chat/Reasoning.spec.ts`
+  - the hidden-reasoning indicator.
 - `tests/unit/composables/user-setting.spec.ts`
   - fallback behavior, lazy load behavior, persistence path.
 
 ### Integration
 - `tests/integration/api/chats-test-endpoint.spec.ts`
   - effort-based reasoning step counts and `off` behavior.
+- `tests/integration/api/chats-duplicate-message.spec.ts`
+  - replayed reasoning for always-on direct models and Cloudflare gateway
+    replies.
 - `tests/integration/api/profile-settings.spec.ts`
   - auth checks, defaults, upsert behavior, validation errors.

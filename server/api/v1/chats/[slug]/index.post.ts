@@ -38,6 +38,14 @@ import {
   isGatewayToolAllowed,
 } from '#shared/utils/gateway-capabilities'
 import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
+import {
+  getDefaultReasoningLevel,
+  getGatewayReasoningControlState,
+  getReasoningCapability,
+  getReasoningControlState,
+  getReplayReasoningControlState,
+  shouldSendReasoning,
+} from '#shared/utils/reasoning'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import type { SearchRates, SearchUsage } from '~~/server/utils/ai/search-usage'
 import type { WebSearchStep } from '~~/server/utils/ai/web-search-cost'
@@ -181,7 +189,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const reasoningLevel: ReasoningLevel = body.data.gateway
+  let reasoningLevel: ReasoningLevel = body.data.gateway
     && !isGatewayReasoningSupported(body.data.gateway)
     ? 'off'
     : body.data.reasoning
@@ -300,6 +308,10 @@ export default defineEventHandler(async (event) => {
 
     provider = resolved.provider
     model = resolved.model
+
+    if (reasoningLevel === 'off') {
+      reasoningLevel = getDefaultReasoningLevel(getReasoningCapability(model))
+    }
 
     const hasImageAttachment = newMessage.parts.some((part) => {
       return part.type === 'file' && part.mediaType.startsWith('image/')
@@ -459,7 +471,10 @@ export default defineEventHandler(async (event) => {
           const replayChunks = buildPersistedAssistantReplayChunks({
             publicId: persistedAssistantMessage.id,
             parts: persistedAssistantMessage.parts as UIMessage['parts'],
-            sendReasoning: persistedAssistantMessage.reasoning !== 'off',
+            sendReasoning: shouldSendReasoning(
+              persistedAssistantMessage.reasoning,
+              getReplayReasoningControlState(gatewayId, model),
+            ),
           })
 
           for (const chunk of replayChunks) {
@@ -698,6 +713,7 @@ export default defineEventHandler(async (event) => {
   let gatewayMaxOutputTokens: number | undefined
   let gatewayPricing: GatewayModel['pricing'] | undefined
   let gatewayToolCall: boolean | undefined
+  let gatewaySupportsReasoning: boolean | undefined
   const searchRates = resolveSearchRates(useRuntimeConfig().public)
 
   try {
@@ -718,6 +734,7 @@ export default defineEventHandler(async (event) => {
       gatewayMaxOutputTokens = gatewayResult.maxOutputTokens
       gatewayPricing = gatewayResult.pricing
       gatewayToolCall = gatewayResult.toolCall
+      gatewaySupportsReasoning = gatewayResult.supportsReasoning
 
       if (gatewayId === 'vercel') {
         vercelGatewayClient = gatewayResult.client
@@ -1023,6 +1040,14 @@ export default defineEventHandler(async (event) => {
       },
     })
   }
+
+  const reasoningControlState = gatewayId
+    ? getGatewayReasoningControlState(gatewayId, gatewaySupportsReasoning)
+    : getReasoningControlState(model)
+  const sendReasoning = shouldSendReasoning(
+    reasoningLevel,
+    reasoningControlState,
+  )
 
   if (
     gatewayId
@@ -1362,7 +1387,7 @@ export default defineEventHandler(async (event) => {
           originalMessages: messagesForAI,
           generateMessageId: () => messagePublicId,
           sendSources: true,
-          sendReasoning: reasoningLevel !== 'off',
+          sendReasoning,
           messageMetadata({ part }) {
             if (
               part.type === 'tool-call'
@@ -1471,7 +1496,7 @@ export default defineEventHandler(async (event) => {
               sendStart: false,
               sendFinish: false,
               sendSources: true,
-              sendReasoning: reasoningLevel !== 'off',
+              sendReasoning,
               onError: error => exceptionMessage(error),
             }),
             settleUsage: async () => await continuationResult.totalUsage,

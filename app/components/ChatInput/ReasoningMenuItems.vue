@@ -85,10 +85,13 @@ import type {
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   reasoning: ReasoningLevel
   levels: ReasoningEnabledLevel[]
-}>()
+  canDisable?: boolean
+}>(), {
+  canDisable: true,
+})
 
 const emit = defineEmits<{
   'select-level': [level: ReasoningLevel]
@@ -102,7 +105,7 @@ const {
 } = useUserSetting()
 
 const levelsForMenu = computed<ReasoningLevel[]>(() => {
-  return ['off', ...props.levels]
+  return props.canDisable ? ['off', ...props.levels] : props.levels
 })
 
 const isToggleMode = computed<boolean>(() => {

@@ -1,5 +1,6 @@
 import type {
   ReasoningCapability,
+  ReasoningControlState,
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 import {
@@ -278,12 +279,39 @@ export function useChatInput() {
     return !!reasoningCapability.value
   })
 
+  /**
+   * Read through the same shared helpers as the model picker's brain badge,
+   * so a model that shows the badge always gets a reasoning control: a
+   * selectable one when `configurable`, a forced-on disabled one when
+   * `always-on`.
+   */
+  const reasoningControlState = computed<ReasoningControlState>(() => {
+    const current = selection.value
+
+    if (current.source === 'gateway') {
+      return getGatewayReasoningControlState(
+        current.gatewayId,
+        gatewayModel.value?.supportsReasoning,
+      )
+    }
+
+    return getReasoningControlState(selectedModel.value)
+  })
+
+  const isReasoningAlwaysOn = computed<boolean>(() => {
+    return reasoningControlState.value === 'always-on'
+  })
+
   const reasoningMode = computed<'none' | 'toggle' | 'levels'>(() => {
     if (!reasoningCapability.value) {
       return 'none'
     }
 
     return reasoningCapability.value.mode
+  })
+
+  const canDisableReasoningLevel = computed<boolean>(() => {
+    return canDisableReasoning(reasoningCapability.value)
   })
 
   const reasoningMenuLevels = computed<ReasoningEnabledLevel[]>(() => {
@@ -353,7 +381,10 @@ export function useChatInput() {
     reasoningCapability,
     reasoningMode,
     reasoningMenuLevels,
+    canDisableReasoningLevel,
     isReasoningSupported,
+    reasoningControlState,
+    isReasoningAlwaysOn,
     researchConfig,
     isDeepResearchModel,
     isSelectedModelKeyless,

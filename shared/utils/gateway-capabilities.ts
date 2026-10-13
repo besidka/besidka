@@ -46,10 +46,11 @@ export function isGatewayToolAllowed(
  * (OpenRouter via a `reasoning: { effort }` chat setting, Vercel via the
  * AI SDK's top-level `reasoning` option translated server-side) — see
  * `docs/providers/gateways.md`'s "Gateway reasoning" section for the full
- * mechanism per gateway. Cloudflare has no such mechanism wired, so its
- * existing `supportsReasoning` catalog badge stays advisory-only, matching
- * the same "badge without a working control" gap this app already accepts
- * for Cloudflare's web search and image generation.
+ * mechanism per gateway. Cloudflare has no such mechanism wired, so a
+ * Cloudflare model whose catalog reports `supportsReasoning` is treated as
+ * always-on reasoning: the chat input shows a forced-on, disabled control
+ * and its reasoning text is still forwarded (see
+ * `getGatewayReasoningControlState` in `shared/utils/reasoning.ts`).
  */
 const GATEWAY_REASONING_POLICY: Record<GatewayId, boolean> = {
   openrouter: true,

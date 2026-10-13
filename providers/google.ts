@@ -47,6 +47,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
       },
     },
     {
@@ -69,6 +71,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
       },
     },
     {
@@ -80,6 +84,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
       },
     },
     {
@@ -102,6 +108,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       },
     },
     {
@@ -141,6 +149,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       },
     },
     {
@@ -152,6 +162,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
       },
     },
     {
@@ -163,6 +175,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
       },
     },
     {

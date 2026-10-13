@@ -13,6 +13,8 @@ export default {
       reasoning: {
         mode: 'levels',
         levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
       },
     },
     {

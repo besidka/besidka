@@ -67,6 +67,14 @@ export interface GatewayChatResult {
    * same as before this field existed.
    */
   reasoning?: 'low' | 'medium' | 'high'
+  /**
+   * The routed model's catalog `supportsReasoning` flag, only ever set by the
+   * Cloudflare builder: Cloudflare cannot forward an effort request, so a
+   * reasoning model there is `always-on` and the chat route must still
+   * forward the reasoning text it returns (see
+   * `getGatewayReasoningControlState` in `shared/utils/reasoning.ts`).
+   */
+  supportsReasoning?: boolean
 }
 
 /**

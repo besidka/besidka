@@ -2,20 +2,17 @@ import type { Model } from '#shared/types/providers.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import {
   getReasoningCapability,
-  isReasoningLevelSupported,
+  resolveSupportedReasoningLevel,
 } from '#shared/utils/reasoning'
 
 export function resolveReasoningLevelForModel(
   model: Model | null,
   requestedReasoning: ReasoningLevel,
 ): ReasoningLevel {
-  const reasoningCapability = getReasoningCapability(model)
-
-  if (!isReasoningLevelSupported(requestedReasoning, reasoningCapability)) {
-    return 'off'
-  }
-
-  return requestedReasoning
+  return resolveSupportedReasoningLevel(
+    requestedReasoning,
+    getReasoningCapability(model),
+  )
 }
 
 export function toReasoningEffort(

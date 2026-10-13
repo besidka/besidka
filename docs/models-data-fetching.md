@@ -47,10 +47,55 @@ Workers build stays hermetic and offline, reading the committed snapshot.
 | `price.display` | curated (per-image copy) |
 | `price.tokens` | curated (the structural cost divisor) |
 | `priceTier` | derived at merge time |
-| `tools`, `reasoning`, `research`, `imageGeneration`, `forProjectMemory`, `default` | curated |
+| `tools`, `reasoning`, `reasoningAlwaysOn`, `research`, `imageGeneration`, `forProjectMemory`, `default` | curated |
 
 Research agents are recognised by their curated `research` block, so the
 policy never hardcodes model ids.
+
+## Reasoning capability sync rule
+
+The models.dev `reasoning` boolean is never merged into the catalog: a
+model's reasoning behaviour comes only from the two curated fields,
+`reasoning` (selectable effort levels or an on/off toggle) and
+`reasoningAlwaysOn` (the model always reasons and accepts no effort
+parameter). A model never carries both.
+
+Every consumer reads those two fields through one shared helper,
+`getReasoningControlState()` in `shared/utils/reasoning.ts`, which returns
+`'configurable'`, `'always-on'` or `'none'`:
+
+- the model picker's brain badge and detail badge (`ModelItem.vue`,
+  `ModelDetail.vue`) show for any state but `'none'`, labelled "Always
+  reasons" for `'always-on'`;
+- the chat input (`useChatInput().reasoningControlState`) shows the effort
+  dropdown for `'configurable'` and a forced-on, disabled reasoning button
+  for `'always-on'`;
+- the chat route uses it to keep forwarding reasoning text for
+  `'always-on'` models, whose requested level is always `off`.
+
+Gateway models use `getGatewayReasoningControlState()` with the catalog's
+`supportsReasoning` flag: `'configurable'` on OpenRouter/Vercel,
+`'always-on'` on Cloudflare (which cannot forward an effort request).
+
+A `'configurable'` levels model whose provider documents that reasoning
+cannot be switched off is curated with `reasoning.cannotDisable: true` and
+`reasoning.defaultLevel` (the provider default when no effort is sent).
+The effort menu then has no `Off`, and a saved or persisted `off` resolves
+to `defaultLevel` on both client and server. Use this, not
+`reasoningAlwaysOn`, when the model still accepts an effort parameter. The
+per-model audit and its sources are in
+[`docs/chat-reasoning.md`](./chat-reasoning.md#models-that-cannot-disable-reasoning);
+the catalog guard test fails if a model gains or loses `cannotDisable`
+without updating its list.
+
+Before this rule, the picker ORed `reasoning || reasoningAlwaysOn` while the
+input read only `getReasoningCapability()`, so all ten `reasoningAlwaysOn`
+models (2 xAI, 3 Moonshot, 5 Qwen) showed a brain badge with no control.
+Never read `model.reasoning` or `model.reasoningAlwaysOn` directly in UI
+code. `tests/unit/providers/reasoning-control-state.spec.ts` and the
+catalog-wide block in
+`tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts` iterate
+the whole merged catalog and fail if the badge and the control disagree.
 
 `price.cacheRead` and `price.cacheWrite` are fetched too, from models.dev
 `cost.cache_read` / `cost.cache_write`. They are carried as plain numbers
