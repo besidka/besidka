@@ -487,8 +487,10 @@ Steps:
    code keeps reading `account_id` and is unaffected.
 4. Merge. The deploy switches reads to `provider_account_id`. CI's
    migration step finds the migration already applied.
-5. Re-run the backfill right after the deploy. It fills rows created by
-   the old code between steps 3 and 4.
+5. Re-run the backfill immediately after the deploy. Rows created by the
+   old code between steps 3 and 4 have `provider_account_id = ''`, and their
+   users cannot sign in until it runs. That includes a credential sign-up
+   made in that window.
 
 Recovery: restore the bookmark from step 1 or 3 with
 `npx wrangler d1 time-travel restore <db> [--env production] --bookmark=<bookmark>`.
