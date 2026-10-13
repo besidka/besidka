@@ -21,8 +21,10 @@ declaration to a model that can't call tools would be a live-key error, not
 a picker cosmetic. `grok-4.20-0309-reasoning` and `grok-build-0.1` don't
 accept xAI's `reasoning_effort` param at all (fixed behavior, confirmed via
 xAI's own docs) — both are curated with `reasoningAlwaysOn: true` instead of
-a `reasoning` toggle/levels capability, so the picker shows the brain icon
-without offering a control the model can't actually honor.
+a `reasoning` toggle/levels capability. The picker labels them "Always
+reasons" and the chat input shows its reasoning button forced on and
+disabled, since no effort can be sent (see
+[`docs/chat-reasoning.md`](../chat-reasoning.md#reasoning-control-states)).
 
 - **`xhigh`/`none` reasoning levels don't exist in this app's vocabulary.**
   `shared/types/reasoning.d.ts`'s `ReasoningEnabledLevel` is exactly
@@ -49,32 +51,79 @@ Server-side wiring lives in `server/utils/providers/xai.ts`, matching the
 existing `use<Provider>()` contract described in
 [`general.md`](./general.md#server-side-wiring).
 
-## Reasoning summaries are no longer returned (2026-10-13)
+## Reasoning output
 
-`grok-4.20-0309-reasoning` and `grok-4.5` (at `low`) report reasoning
-tokens but return no reasoning part, so no trace renders. This is xAI's
-behavior, not a regression from the `@ai-sdk/xai` 4 to 5 upgrade:
+Verified against primary sources on 2026-10-13. Short version: xAI
+documents readable reasoning text only for `grok-4.7`. For every other
+curated Grok model the API reports `reasoning_tokens` in usage and, at most,
+an encrypted reasoning blob. No request parameter turns that into readable
+text. The app therefore shows a compact "Reasoned · N tokens" indicator on
+those messages instead of a reasoning block (see
+[`docs/chat-reasoning.md`](../chat-reasoning.md#hidden-reasoning-indicator)).
 
-- **Production** (`besidka.com`, `@ai-sdk/xai@4.0.33`, which still sends
-  `reasoning.summary`): `grok-4.20-0309-reasoning` returned 1029 reasoning
-  tokens and parts `step-start`, `text` only.
-- **PR preview** (`@ai-sdk/xai@5.0.20`, request-body shim injecting
-  `reasoning: { summary: 'detailed' }`): `grok-4.20-0309-reasoning` returned
-  1217 reasoning tokens and no reasoning part; `grok-4.5` at `low` returned
-  264 reasoning tokens and none either.
-- **Why 5.x sends no summary.** `@ai-sdk/xai` 5.0.8 stopped sending
-  `reasoning.summary` and deprecated `reasoningSummary`
-  ([vercel/ai#21410](https://github.com/vercel/ai/pull/21410), commit
-  `0a5dd0f`). xAI's Responses docs call the field "only included for
-  compatibility". `useXai()` still passes the deprecated
-  `reasoningSummary: 'detailed'`; it is harmless and does nothing on 5.x.
-- **Tried and removed.** A fetch wrapper that rewrote `/responses` bodies to
-  restore the 4.0.33 wire shape had no effect on the preview, so it was
-  dropped.
-- **Open UX question for the owner.** The picker still shows the brain icon
-  for these models (`reasoningAlwaysOn` / `levels`) even though no trace
-  renders. Whether to keep, relabel, or hide it is undecided; no UI was
-  changed.
+What the docs say:
+
+- **Summaries are `grok-4.7`-only.** The reasoning guide's "Summarized
+  Reasoning Content" section says "For `grok-4.7`, we expose summarizations
+  of the model's internal reasoning", and names no other model
+  ([docs.x.ai reasoning guide](https://docs.x.ai/developers/model-capabilities/text/reasoning)).
+  The model pages for `grok-4.20-0309-reasoning`, `grok-build-0.1`,
+  `grok-4.3`, `grok-4.5` and `grok-4.6` only say "Reasoning: Yes"
+  ([model pages](https://docs.x.ai/developers/models)). The docs are silent
+  for those models rather than explicitly negative.
+- **Otherwise the trace is encrypted.** The guide's key features list says
+  usage exposes `reasoning_tokens` and "Some models can also return
+  encrypted reasoning" via `include: ["reasoning.encrypted_content"]`. That
+  blob exists to be sent back for multi-turn context; it is not readable.
+  The docs' own encrypted example item carries `"summary": []` next to
+  `encrypted_content`
+  ([generate-text guide](https://docs.x.ai/developers/model-capabilities/text/generate-text)).
+- **`reasoning.summary` does nothing.** The Responses API reference
+  describes it as "Only included for compatibility"
+  ([Responses API reference](https://docs.x.ai/developers/rest-api-reference/inference/responses)).
+- **Reasoning cannot be disabled** on `grok-4.5`, `grok-4.6` and
+  `grok-4.7`. The guide says `reasoning_effort` "defaults to `"high"`" and
+  "Reasoning cannot be disabled". This app's `off` level sends no effort,
+  so these models still reason at their own default. The hidden-reasoning
+  indicator makes that visible on the message.
+
+What `@ai-sdk/xai@5.0.20` does (`dist/index.js`):
+
+- The Responses parser emits a `reasoning` part from `summary` text, or
+  from `content` text when `summary` is empty. When neither has text but
+  `encrypted_content` is present, it emits a reasoning part with empty
+  text. Empty-text reasoning parts never render as a block in this app.
+- `reasoningSummary` is deprecated and no longer sent
+  ([vercel/ai#21410](https://github.com/vercel/ai/pull/21410)), because
+  xAI documents the field as compatibility-only. `useXai()` still passes
+  it, which is a no-op.
+- `include: ['reasoning.encrypted_content']` is only added automatically
+  when `store: false` is set. This app sets neither.
+- For `grok-4.20(-dddd)-(non-)reasoning` ids the SDK drops any effort with
+  an unsupported-setting warning, because those models reject
+  `reasoning_effort`.
+
+Live evidence (2026-10-13). Production (`@ai-sdk/xai@4.0.33`, still sending
+`reasoning.summary`) and a PR preview (`5.0.20`, plus a temporary body shim
+that sent `reasoning: { summary: 'detailed' }`) gave the same result:
+`grok-4.20-0309-reasoning` returned 855–1217 reasoning tokens and
+`grok-4.5` at `low` returned 264, with message parts `step-start` and
+`text` only. So the missing trace is not caused by the SDK upgrade or by a
+parameter this app fails to send.
+
+One app-side bug did hide reasoning on always-on models, and it is now
+fixed. The chat route forwarded reasoning text only when the requested
+level was not `off`, and an always-on model's level is always `off`. Any
+reasoning text such a model returned was stripped before it reached the
+client or the database. For `grok-4.20-0309-reasoning` this made no
+visible difference, because xAI returns no text. It did matter for the
+Moonshot and Qwen always-on models. The rule now lives in
+`shouldSendReasoning()` (`shared/utils/reasoning.ts`).
+
+Not live-verified: that `grok-4.7` at `low`/`medium`/`high` streams its
+summary into a full reasoning block through the
+`response.reasoning_summary_text.delta` path. It is on the PR's preview
+checklist.
 
 ## Image generation
 

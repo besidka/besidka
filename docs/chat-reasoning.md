@@ -7,6 +7,7 @@ Scope:
 - persistence and sync behavior.
 
 Main files:
+- `shared/utils/reasoning.ts`
 - `app/components/ChatInput/ReasoningTrigger.vue`
 - `app/components/ChatInput.client.vue`
 - `app/components/Chat/Reasoning.vue`
@@ -63,6 +64,59 @@ Why:
 - On model switch:
   - if current level is not supported, reasoning is forced to `off`.
 - This is implemented in `app/components/ChatInput.client.vue`.
+
+### Reasoning control states
+- One shared helper decides a model's reasoning state:
+  `getReasoningControlState()` in `shared/utils/reasoning.ts`, or
+  `getGatewayReasoningControlState()` for gateway models.
+- The model picker's brain badge, the chat input control and the server's
+  reasoning-output rule all read this helper, so they cannot disagree.
+  The sync rule is in `docs/models-data-fetching.md`.
+- `configurable` (curated `reasoning` levels or toggle): the input shows
+  the `ReasoningTrigger` effort dropdown.
+- `always-on` (curated `reasoningAlwaysOn`, or a Cloudflare gateway model
+  whose catalog reports reasoning):
+  - The input shows the reasoning button pressed (`btn-active`) and
+    disabled (`aria-disabled`, `pointer-events-none`, no click handler).
+    Its title is "Reasoning is always on for this model".
+  - This is the same pattern as the forced-on "Create image" button for
+    image-only models.
+  - In the mobile overflow menu, the effort list is replaced by one
+    "Reasoning" row with a checked, disabled toggle. This mirrors the
+    image-only "Create image" row.
+  - The picker labels the badge "Always reasons".
+  - The requested level stays `off`, because no effort is sent.
+- Cloudflare's `always-on` is inferred from its catalog `reasoning`
+  property, which marks capability. A hybrid model that defaults to
+  non-thinking would be mislabeled. This has not been checked against the
+  live Cloudflare catalog.
+- `none`: no badge and no control.
+- Image generation and deep research hide the always-on button just as they
+  hide the effort dropdown.
+
+### Hidden reasoning indicator
+- Some models reason but return no readable reasoning text. Examples are
+  xAI `grok-4.20-0309-reasoning` and `grok-4.5`; see
+  `docs/providers/xai.md`.
+- When an assistant message has no reasoning text,
+  `Chat/Reasoning.vue` shows a compact, non-expandable row: `Reasoned ·
+  N tokens`.
+  - `N` is `metadata.usage.reasoningTokens`, and the row only appears when
+    `N` is above zero.
+  - The row's title says the reasoning text is not available for this
+    response, and that reasoning tokens are billed as output.
+- It never shows when reasoning text exists (DeepSeek, Anthropic, Google,
+  OpenAI summaries). Empty-text reasoning parts, which the SDK emits for
+  encrypted reasoning, count as "no text".
+- It shows for any requested level, so `Off` on a model that cannot
+  disable reasoning (e.g. `grok-4.5`) is visibly honest.
+- Usage arrives with the finish metadata, so the indicator appears when the
+  turn ends, not during streaming. Duration is not persisted, which is why
+  it shows tokens rather than "Thought for Xs".
+- History works because `useChat()` hydrates `usage` into
+  `metadata.usage`. The shared page does the same with
+  `hydrateMessageUsage`, but a share only exposes `usage` when it was
+  created with metadata visible.
 
 ### Message reasoning panel (`Chat/Reasoning.vue`)
 - Rendered only when reasoning parts exist.
@@ -136,7 +190,14 @@ Note:
 - `POST /api/v1/chats/[slug]` and `PUT /api/v1/chats/new` accept:
   - `reasoning: z.enum(['off', 'low', 'medium', 'high'])`.
 - Streaming behavior:
-  - `sendReasoning` is disabled when `reasoning === 'off'`.
+  - `sendReasoning` comes from `shouldSendReasoning(level, state)`. It is
+    disabled when `reasoning === 'off'`, unless the model is `always-on`.
+    An always-on model's level is always `off`, and its reasoning text
+    used to be stripped before reaching the client and the database.
+  - The disconnect-retry replay (issue #263) applies the same rule to the
+    persisted message's level and the selected direct model. Gateway
+    replays fall back to the level alone, because the gateway catalog is
+    not loaded at that point.
 
 ### Message persistence
 - `messages.reasoning` is stored as text enum, not boolean.
@@ -194,7 +255,21 @@ The hand-rolled provider mapping was removed in the v7 upgrade:
 - `tests/unit/utils/reasoning.spec.ts`
   - reasoning markdown parsing and title extraction.
 - `tests/unit/utils/reasoning-levels.spec.ts`
-  - normalization, capability checks, provider mapping.
+  - normalization, capability checks, provider mapping, control states,
+    `shouldSendReasoning`.
+- `tests/unit/providers/reasoning-control-state.spec.ts`
+  - representative models per provider, plus a guard that iterates the
+    whole merged catalog and checks that the picker badge and the input
+    control agree.
+- `tests/unit/components/ChatInput/ModelsTrigger/ModelItem.spec.ts`
+  - catalog-wide rendered guard: the brain badge renders exactly when the
+    input offers a reasoning control.
+- `tests/unit/components/ChatInput.spec.ts`,
+  `tests/unit/components/ChatInput/ToolbarMore.spec.ts`
+  - configurable, always-on (visible, active, disabled, click does not
+    change the level) and none.
+- `tests/unit/components/Chat/Reasoning.spec.ts`
+  - the hidden-reasoning indicator.
 - `tests/unit/composables/user-setting.spec.ts`
   - fallback behavior, lazy load behavior, persistence path.
 
