@@ -98,7 +98,7 @@
 		"crypto-shield": "^1.6.2",
 		"daisyui": "^5.7.16",
 		"defu": "^6.1.7",
-		"drizzle-kit": "1.0.0-rc.4",
+		"drizzle-kit": "1.0.0-rc.5-5935859",
 		"drizzle-orm": "1.0.0-rc.4",
 		"eslint": "^10.8.0",
 		"evlog": "2.24.0",
