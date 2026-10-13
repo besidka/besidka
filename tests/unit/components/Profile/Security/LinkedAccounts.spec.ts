@@ -146,7 +146,7 @@ describe('Profile/Security/LinkedAccounts', () => {
     await disconnectButton.trigger('click')
     await flushPromises()
 
-    expect(mocks.unlinkAccount).toHaveBeenCalled()
+    expect(mocks.unlinkAccount).toHaveBeenCalledWith({ accountId: '1' })
     expect(wrapper.text()).toContain('Recent sign-in required')
 
     const signOutButton = wrapper.find('[aria-label="Sign out"]')

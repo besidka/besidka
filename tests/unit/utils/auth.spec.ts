@@ -81,6 +81,13 @@ function stubBindings() {
     set: vi.fn(),
     consume: vi.fn(),
   }))
+  vi.stubGlobal('createAuthSecondaryStorage', () => ({
+    get: vi.fn(),
+    getAndDelete: vi.fn(),
+    increment: vi.fn(),
+    set: vi.fn(),
+    delete: vi.fn(),
+  }))
   vi.stubGlobal('resolveServerLogger', resolveServerLogger)
   vi.stubGlobal('exceptionMessage', exceptionMessage)
 }
