@@ -1537,6 +1537,38 @@ describe('Chat/Reasoning', () => {
         expect(findIndicator(wrapper).exists()).toBe(false)
       })
 
+    it('uses the medium effort icon, not the slashed off icon, on a '
+      + 'reasoning block from an always-on model whose level is off',
+    async () => {
+      const message = createMessageWithUsage(
+        [
+          { type: 'reasoning', text: multiStepReasoning, state: 'done' },
+          { type: 'text', text: 'Answer', state: 'done' },
+        ],
+        900,
+      )
+      const alwaysOnWrapper = await mountWithMessage(message)
+      const mediumWrapper = await mountSuspended(Reasoning, {
+        props: {
+          message,
+          status: 'ready',
+          reasoningLevel: 'medium',
+          turnStartedAt: 0,
+          reasoningAccumulatedMs: 0,
+          reasoningSegmentStartedAt: 0,
+          isTurnThinkingHeld: false,
+        },
+        global: {
+          stubs: {
+            MDCCached: true,
+          },
+        },
+      })
+
+      expect(alwaysOnWrapper.get('summary svg').html())
+        .toBe(mediumWrapper.get('summary svg').html())
+    })
+
     it('never shows the indicator on a user message', async () => {
       const wrapper = await mountWithMessage(createMessageWithUsage(
         [{ type: 'text', text: 'Question', state: 'done' }],

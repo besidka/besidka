@@ -222,6 +222,11 @@ interface ReasoningStep {
 
 const reasoningIcon = computed<string>(() => {
   const level = props.reasoningLevel
+
+  if (level === 'off' && hasReasoningKindStep.value) {
+    return 'SvgoThinkMedium'
+  }
+
   const capitalized = level.charAt(0).toUpperCase() + level.slice(1)
 
   return `SvgoThink${capitalized}`
