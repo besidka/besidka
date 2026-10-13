@@ -37,7 +37,8 @@ them, 563 on this branch).
 
 ## Overview
 
-`drizzle-orm` and `drizzle-kit` are pinned to `1.0.0-rc.4` (exact, no `^`).
+`drizzle-orm` and `drizzle-kit` are pinned to `1.0.0-rc.5-5935859` (exact,
+no `^`).
 This is a release candidate, not GA — npm's `latest` tag still points at the
 old `0.45.x`/`0.31.x` line. The upgrade was done deliberately on the RC
 channel; revisit pinning to a future GA release once one ships.

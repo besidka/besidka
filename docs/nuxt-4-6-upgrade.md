@@ -10,7 +10,7 @@ audit the choices without replaying the session.
 | Package | Before | After |
 |---|---|---|
 | `nuxt` / `@nuxt/kit` | 4.5.2 | 4.6.0 |
-| `vue` | 3.5.41 | 3.6.0-rc.10 |
+| `vue` | 3.5.41 | 3.6.0-rc.11 |
 | `vue-router` | 5.2.x | 5.3.1 |
 | `vite` | (transitive) | 8.3.2 |
 | `unhead` / `@unhead/vue` / `@unhead/bundler` (override) | 3.2.1 | 3.4.2 |
