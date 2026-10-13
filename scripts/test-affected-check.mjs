@@ -783,6 +783,10 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/scripts/indexnow-submit.spec.ts'],
     },
     {
+      pattern: /^(scripts\/ci\/resolve-preview-build-source\.mjs|\.github\/workflows\/preview-build\.yml)$/,
+      tests: ['tests/unit/scripts/resolve-preview-build-source.spec.ts'],
+    },
+    {
       pattern: /^content\/legal\/cookie-policy\.md$/,
       tests: cookieConsentTests,
     },
