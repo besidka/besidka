@@ -16,7 +16,23 @@
     <div class="dropdown-content z-50 w-56 pb-2">
       <div class="bg-base-100 rounded-box w-full shadow-sm">
         <ul class="menu menu-xs w-full">
-          <template v-if="hasReasoningSection && !isDeepResearchModel">
+          <li
+            v-if="hasAlwaysOnReasoningRow"
+            data-testid="reasoning-always-on-menu-item"
+          >
+            <label class="flex items-center gap-2">
+              <SvgoThinkMedium class="size-4 text-current" />
+              <span class="grow">Reasoning</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-xs toggle-accent"
+                checked
+                disabled
+                :aria-label="REASONING_ALWAYS_ON_TITLE"
+              >
+            </label>
+          </li>
+          <template v-else-if="hasReasoningSection && !isDeepResearchModel">
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
               :levels="levels ?? []"
@@ -42,7 +58,11 @@
               @select-provider="emit('select-web-search-provider', $event)"
             />
           </template>
-          <li v-if="hasReasoningSection || hasWebSearchSection">
+          <li
+            v-if="hasReasoningSection
+              || hasAlwaysOnReasoningRow
+              || hasWebSearchSection"
+          >
             <label class="menu-title text-xs">
               <span class="divider my-0"/>
             </label>
@@ -118,6 +138,7 @@ import type {
   ReasoningEnabledLevel,
 } from '#shared/types/reasoning.d'
 import type { ModelResearchConfig } from '#shared/types/research.d'
+import { REASONING_ALWAYS_ON_TITLE } from '#shared/utils/reasoning'
 import type {
   WebSearchOption,
   WebSearchSelection,
@@ -133,6 +154,7 @@ const props = defineProps<{
   isImageGenerationEnabled?: boolean
   isImageGenerationRequired?: boolean
   isReasoningSupported?: boolean
+  isReasoningAlwaysOn?: boolean
   isReasoningActive?: boolean
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
@@ -179,6 +201,15 @@ const hasReasoningSection = computed<boolean>(() => {
       && !props.isImageGenerationEnabled
       && !props.isImageGenerationRequired)
     || (props.isDeepResearchModel && props.research)
+  )
+})
+
+const hasAlwaysOnReasoningRow = computed<boolean>(() => {
+  return !!(
+    props.isReasoningAlwaysOn
+    && !props.isDeepResearchModel
+    && !props.isImageGenerationEnabled
+    && !props.isImageGenerationRequired
   )
 })
 

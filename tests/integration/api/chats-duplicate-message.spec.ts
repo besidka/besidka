@@ -786,6 +786,68 @@ describe('chat duplicate message detection', () => {
       delta: 'Visible answer',
     }))
   })
+
+  it('replays reasoning parts for an always-on model even though its '
+    + 'level is off', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'qwen' },
+      model: {
+        id: 'qwq-plus',
+        tools: [],
+        reasoningAlwaysOn: true,
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Question' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const assistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Always-on reasoning' },
+        { type: 'text', text: 'Visible answer' },
+      ],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db } = createDb({
+      messages: [userMessage, assistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'qwq-plus',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: 'reasoning-delta',
+      delta: 'Always-on reasoning',
+    }))
+  })
 })
 
 describe('chat tool selection for single-message chats', () => {

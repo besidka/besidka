@@ -2,6 +2,7 @@ import { createError } from 'evlog'
 import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
+import { getReasoningControlState } from '#shared/utils/reasoning'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createXai } from '@ai-sdk/xai'
 import {
@@ -75,7 +76,7 @@ export async function useXai(
     modelData,
     requestedReasoning,
   )
-  const reasoningAlwaysOn = !!modelData.reasoningAlwaysOn
+  const reasoningAlwaysOn = getReasoningControlState(modelData) === 'always-on'
 
   function getTools(): FormattedTools {
     if (
@@ -116,12 +117,14 @@ export async function useXai(
 
     /**
      * `reasoningSummary` is deprecated in @ai-sdk/xai 5 and no longer sent on
-     * the wire (vercel/ai PR #21410). xAI currently returns no reasoning
-     * summaries for these models even when requested (verified on production
-     * 2026-10-13), so this option is kept only as a harmless no-op that
-     * records the request intent. See docs/providers/xai.md "Reasoning
-     * summaries are no longer returned".
-     * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#reasoning
+     * the wire (vercel/ai PR #21410): xAI documents `reasoning.summary` as
+     * compatibility-only. xAI documents readable reasoning summaries only for
+     * `grok-4.7`. `grok-4.20-0309-reasoning` and `grok-4.5` were observed
+     * reporting reasoning tokens with no readable text, which the chat UI
+     * shows as a compact "Reasoned" indicator. Kept only as a harmless
+     * no-op that records the request intent. See docs/providers/xai.md
+     * "Reasoning output".
+     * @see https://docs.x.ai/developers/model-capabilities/text/reasoning
      */
     if (reasoningLevel !== 'off' || reasoningAlwaysOn) {
       Object.assign(result, {

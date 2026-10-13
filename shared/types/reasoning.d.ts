@@ -15,3 +15,5 @@ export interface ReasoningToggleCapability {
 
 export type ReasoningCapability = ReasoningLevelsCapability
   | ReasoningToggleCapability
+
+export type ReasoningControlState = 'configurable' | 'always-on' | 'none'

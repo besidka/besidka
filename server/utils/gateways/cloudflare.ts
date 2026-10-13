@@ -304,5 +304,6 @@ export async function useCloudflareGateway(
     maxOutputTokens,
     pricing: catalogModel?.pricing,
     toolCall: catalogModel?.toolCall,
+    supportsReasoning: catalogModel?.supportsReasoning,
   }
 }

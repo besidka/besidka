@@ -86,13 +86,11 @@
           }"
         >
           <span
-            v-if="model.reasoning || model.reasoningAlwaysOn"
+            v-if="hasReasoningBadge(reasoningControlState)"
+            data-testid="model-reasoning-capability"
             class="capability-chip shrink-0 flex items-center p-1 rounded-full text-warning"
             :class="{ 'tooltip tooltip-soft tooltip-bottom': hasTooltip }"
-            :data-tip="model.reasoningAlwaysOn
-              ? 'Always-on reasoning'
-              : 'Reasoning'
-            "
+            :data-tip="getReasoningBadgeLabel(reasoningControlState)"
           >
             <Icon
               name="lucide:brain"
@@ -210,6 +208,12 @@
 
 <script setup lang="ts">
 import type { Model } from '#shared/types/providers.d'
+import type { ReasoningControlState } from '#shared/types/reasoning.d'
+import {
+  getReasoningBadgeLabel,
+  getReasoningControlState,
+  hasReasoningBadge,
+} from '#shared/utils/reasoning'
 
 const props = defineProps<{
   model: Model
@@ -245,6 +249,10 @@ const keyMissingLabel = computed<string>(() => {
   return `Add your ${owner} API key to use this model.`
 })
 
+const reasoningControlState = computed<ReasoningControlState>(() => {
+  return getReasoningControlState(props.model)
+})
+
 const hasTooltip = computed<boolean>(() => {
   return isDesktop && !props.isLegacy
 })
@@ -252,8 +260,7 @@ const hasTooltip = computed<boolean>(() => {
 const hasCapabilities = computed<boolean>(() => {
   const { model } = props
 
-  return !!model.reasoning
-    || !!model.reasoningAlwaysOn
+  return hasReasoningBadge(reasoningControlState.value)
     || model.tools.includes('web_search')
     || hasImageGenerationCapability(model)
     || hasVisionCapability(model)

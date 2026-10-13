@@ -146,7 +146,7 @@
         </UiBubble>
       </div>
       <div
-        v-for="m in data.messages"
+        v-for="m in hydratedMessages"
         :key="`message-${m.id}`"
         ref="messagesDomRefs"
         :data-role="m.role"
@@ -254,7 +254,10 @@ import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { MessageUsage } from '#shared/types/message-usage.d'
 import type { ModelTool } from '#shared/types/providers.d'
 import { setResponseHeader } from 'h3'
-import { resolveMessageMenuInfo } from '#shared/utils/message-metadata'
+import {
+  hydrateMessageUsage,
+  resolveMessageMenuInfo,
+} from '#shared/utils/message-metadata'
 import { resolveShareDescription } from '#shared/utils/og-description'
 import {
   getPersistedFailureErrorPayload,
@@ -316,6 +319,10 @@ const { data, error } = await useFetch<SharedChatResponse>(
   () => `/api/v1/shared/${shareSlug.value}`,
   { key },
 )
+
+const hydratedMessages = computed(() => {
+  return (data.value?.messages ?? []).map(hydrateMessageUsage)
+})
 
 const isNotFound = computed<boolean>(() => {
   return Boolean(error.value) || !data.value

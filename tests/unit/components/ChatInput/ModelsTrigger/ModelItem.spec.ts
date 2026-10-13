@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Model } from '#shared/types/providers.d'
 import ModelItem
   from '../../../../../app/components/ChatInput/ModelsTrigger/ModelItem.vue'
+import { providers } from '../../../../../providers'
+import {
+  getReasoningCapability,
+  getReasoningMenuLevels,
+} from '../../../../../shared/utils/reasoning'
 
 const mocks = vi.hoisted(() => ({
   useDevice: vi.fn(),
@@ -330,7 +335,7 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
 
     expect(wrapper.find('[data-testid="model-capabilities"]').exists())
       .toBe(true)
-    expect(wrapper.find('[data-tip="Always-on reasoning"]').exists())
+    expect(wrapper.find('[data-tip="Always reasons"]').exists())
       .toBe(true)
     expect(wrapper.find('[data-tip="Reasoning"]').exists()).toBe(false)
   })
@@ -592,5 +597,38 @@ describe('ChatInput/ModelsTrigger/ModelItem', () => {
           .toBe(false)
       })
     })
+  })
+
+  describe('reasoning badge matches the chat input control', () => {
+    const catalog = providers.flatMap((provider) => {
+      return provider.models.map((model) => {
+        return { providerId: provider.id, model }
+      })
+    })
+
+    it.each(catalog)(
+      '$providerId/$model.id',
+      async ({ providerId, model }) => {
+        const wrapper = await mountModelItem(model, { providerId })
+        const badge = wrapper.find(
+          '[data-testid="model-reasoning-capability"]',
+        )
+        const inputLevels = getReasoningMenuLevels(
+          getReasoningCapability(model),
+        )
+        const hasInputControl = inputLevels.length > 0
+          || !!model.reasoningAlwaysOn
+
+        expect(badge.exists()).toBe(hasInputControl)
+
+        if (!badge.exists()) {
+          return
+        }
+
+        expect(badge.attributes('data-tip')).toBe(inputLevels.length > 0
+          ? 'Reasoning'
+          : 'Always reasons')
+      },
+    )
   })
 })

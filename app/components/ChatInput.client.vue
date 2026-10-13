@@ -166,6 +166,21 @@
                   :levels="reasoningMenuLevels"
                   @update:reasoning="selectReasoningLevel"
                 />
+                <UiButton
+                  v-if="isReasoningAlwaysOnButtonVisible"
+                  data-testid="reasoning-always-on"
+                  mode="accent"
+                  :title="REASONING_ALWAYS_ON_TITLE"
+                  text="On"
+                  tooltip-position="top"
+                  size="xs"
+                  class="rounded-full pl-[5px] btn-active pointer-events-none"
+                  aria-disabled="true"
+                >
+                  <template #icon>
+                    <SvgoThinkMedium class="size-4 text-current" />
+                  </template>
+                </UiButton>
                 <LazyChatInputDeepResearchTrigger
                   v-if="isDeepResearchModel"
                   :research="researchConfig"
@@ -183,6 +198,7 @@
                 :is-image-generation-enabled="isImageGenerationEnabled"
                 :is-image-generation-required="isImageGenerationRequired"
                 :is-reasoning-supported="isReasoningSupported"
+                :is-reasoning-always-on="isReasoningAlwaysOn"
                 :is-reasoning-active="isReasoningActive"
                 :reasoning="reasoning"
                 :levels="reasoningMenuLevels"
@@ -271,6 +287,7 @@ import type { Tools } from '#shared/types/chats.d'
 import type { FileMetadata } from '#shared/types/files.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import { isWebSearchTool } from '#shared/utils/message-metadata'
+import { REASONING_ALWAYS_ON_TITLE } from '#shared/utils/reasoning'
 import type { FileSourceFilter } from '~/types/file-manager'
 import type { WebSearchSelection } from '~/types/web-search'
 import { LazyChatInputFilesModal } from '#components'
@@ -309,6 +326,7 @@ const {
   isImageGenerationRequired,
   isImageInputSupported,
   isReasoningSupported,
+  isReasoningAlwaysOn,
   reasoningCapability,
   reasoningMenuLevels,
   isDeepResearchModel,
@@ -340,7 +358,7 @@ const reasoning = defineModel<ReasoningLevel>('reasoning', {
 })
 
 const isReasoningActive = computed<boolean>(() => {
-  return isReasoningEnabled(reasoning.value)
+  return isReasoningEnabled(reasoning.value) || isReasoningAlwaysOn.value
 })
 
 const missingKeyWarning = computed<string>(() => {
@@ -642,6 +660,13 @@ const isImageGenerationEnabled = computed<boolean>(() => {
  */
 const isReasoningTriggerVisible = computed<boolean>(() => {
   return isReasoningSupported.value
+    && !isDeepResearchModel.value
+    && !isImageGenerationEnabled.value
+    && !isImageGenerationRequired.value
+})
+
+const isReasoningAlwaysOnButtonVisible = computed<boolean>(() => {
+  return isReasoningAlwaysOn.value
     && !isDeepResearchModel.value
     && !isImageGenerationEnabled.value
     && !isImageGenerationRequired.value

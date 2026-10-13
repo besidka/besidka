@@ -120,6 +120,7 @@ describe('ChatInput.client', () => {
       isImageGenerationRequired: shallowRef(false),
       isImageInputSupported: shallowRef(true),
       isReasoningSupported: shallowRef(false),
+      isReasoningAlwaysOn: shallowRef(false),
       reasoningCapability: shallowRef(null),
       reasoningMode: shallowRef('none'),
       reasoningMenuLevels: shallowRef([]),
@@ -264,6 +265,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(false),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
@@ -445,6 +447,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported,
         isReasoningSupported: shallowRef(false),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
@@ -552,6 +555,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(true),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef({ mode: 'toggle' }),
         reasoningMode: shallowRef('toggle'),
         reasoningMenuLevels: shallowRef(['medium']),
@@ -573,6 +577,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(true),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef({
           mode: 'levels',
           levels: ['low', 'medium', 'high'],
@@ -597,6 +602,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(true),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef({ mode: 'toggle' }),
         reasoningMode: shallowRef('toggle'),
         reasoningMenuLevels: shallowRef(['medium']),
@@ -742,6 +748,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(false),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
@@ -1080,6 +1087,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(true),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability,
         reasoningMode: shallowRef('levels'),
         reasoningMenuLevels,
@@ -1250,6 +1258,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired,
         isImageInputSupported: shallowRef(true),
         isReasoningSupported,
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability,
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
@@ -1455,6 +1464,7 @@ describe('ChatInput.client', () => {
         isImageGenerationRequired: shallowRef(false),
         isImageInputSupported: shallowRef(true),
         isReasoningSupported: shallowRef(false),
+        isReasoningAlwaysOn: shallowRef(false),
         reasoningCapability: shallowRef(null),
         reasoningMode: shallowRef('none'),
         reasoningMenuLevels: shallowRef([]),
@@ -1500,5 +1510,120 @@ describe('ChatInput.client', () => {
         )
         expect(wrapper.emitted('submit')).toBeUndefined()
       })
+  })
+
+  describe('reasoning control states', () => {
+    function useReasoningSelection(input: {
+      state: 'configurable' | 'always-on' | 'none'
+      isImageGenerationRequired?: boolean
+    }) {
+      const isConfigurable = input.state === 'configurable'
+
+      mocks.useChatInput.mockReturnValue({
+        isWebSearchSupported: shallowRef(false),
+        isToolCallingSupported: shallowRef(false),
+        webSearchProviderOptions: shallowRef([]),
+        isImageGenerationSupported: shallowRef(
+          !!input.isImageGenerationRequired,
+        ),
+        isImageGenerationRequired: shallowRef(
+          !!input.isImageGenerationRequired,
+        ),
+        isImageInputSupported: shallowRef(true),
+        isReasoningSupported: shallowRef(isConfigurable),
+        isReasoningAlwaysOn: shallowRef(input.state === 'always-on'),
+        reasoningCapability: shallowRef(isConfigurable
+          ? { mode: 'levels', levels: ['low', 'medium', 'high'] }
+          : null),
+        reasoningMode: shallowRef(isConfigurable ? 'levels' : 'none'),
+        reasoningMenuLevels: shallowRef(isConfigurable
+          ? ['low', 'medium', 'high']
+          : []),
+        isDeepResearchModel: shallowRef(false),
+        researchConfig: shallowRef(null),
+        isSelectedModelKeyless: shallowRef(false),
+        selectedModelKeyOwnerLabel: shallowRef('xAI'),
+        isModelCapabilityResolved: shallowRef(true),
+        isSelectedModelUnavailable: shallowRef(false),
+      })
+    }
+
+    it('renders the selectable effort trigger and no forced-on button '
+      + 'for a configurable model', async () => {
+      useReasoningSelection({ state: 'configurable' })
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(true)
+      expect(wrapper.find('[data-testid="reasoning-always-on"]').exists())
+        .toBe(false)
+    })
+
+    it('renders a visible, active and disabled reasoning button for an '
+      + 'always-on model', async () => {
+      useReasoningSelection({ state: 'always-on' })
+
+      const wrapper = await mountChatInput()
+      const button = wrapper.get('[data-testid="reasoning-always-on"]')
+
+      expect(button.isVisible()).toBe(true)
+      expect(button.classes()).toContain('btn-active')
+      expect(button.classes()).toContain('pointer-events-none')
+      expect(button.attributes('aria-disabled')).toBe('true')
+      expect(button.attributes('title'))
+        .toBe('Reasoning is always on for this model')
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(false)
+    })
+
+    it('keeps the reasoning level unchanged when the always-on button '
+      + 'is clicked', async () => {
+      useReasoningSelection({ state: 'always-on' })
+
+      const wrapper = await mountChatInput({ reasoning: 'off' })
+
+      await wrapper.get('[data-testid="reasoning-always-on"]')
+        .trigger('click')
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning') ?? []).not.toContainEqual([
+        'low',
+      ])
+      expect(wrapper.emitted('update:reasoning') ?? []).not.toContainEqual([
+        'medium',
+      ])
+      expect(wrapper.emitted('update:reasoning') ?? []).not.toContainEqual([
+        'high',
+      ])
+      expect(usePreferenceStorage().getItem('settings_reasoning_level'))
+        .toBeNull()
+    })
+
+    it('renders no reasoning control at all for a model that does not '
+      + 'reason', async () => {
+      useReasoningSelection({ state: 'none' })
+
+      const wrapper = await mountChatInput()
+
+      expect(wrapper.find('[data-testid="reasoning-trigger"]').exists())
+        .toBe(false)
+      expect(wrapper.find('[data-testid="reasoning-always-on"]').exists())
+        .toBe(false)
+    })
+
+    it('hides the always-on reasoning button while image generation is '
+      + 'required', async () => {
+      useReasoningSelection({
+        state: 'always-on',
+        isImageGenerationRequired: true,
+      })
+
+      const wrapper = await mountChatInput({ tools: ['image_generation'] })
+      await nextTick()
+
+      expect(wrapper.find('[data-testid="reasoning-always-on"]').exists())
+        .toBe(false)
+    })
   })
 })
