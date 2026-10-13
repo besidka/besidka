@@ -118,17 +118,7 @@ function createAuth() {
       schema,
       usePlural: true,
     }),
-    secondaryStorage: {
-      get: key => kv.get(`${dataKey}:${key}`),
-      set: (key, value, ttl) => {
-        return kv.put(
-          `${dataKey}:${key}`,
-          value,
-          ttl ? { expirationTtl: Math.max(ttl, 60) } : undefined,
-        )
-      },
-      delete: key => kv.delete(`${dataKey}:${key}`),
-    },
+    secondaryStorage: createAuthSecondaryStorage(kv, dataKey),
     baseURL: {
       allowedHosts,
       protocol: 'auto',

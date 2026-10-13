@@ -225,7 +225,7 @@ async function disconnect(providerId: 'credential' | LinkableProvider) {
 
   try {
     const { error } = await $auth.client.unlinkAccount({
-      providerId: account.providerId,
+      accountId: account.id,
     })
 
     if (error) {

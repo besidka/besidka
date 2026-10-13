@@ -421,6 +421,8 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-rate-limit.spec.ts',
     'tests/unit/utils/auth-captcha.spec.ts',
     'tests/unit/utils/auth-hosts.spec.ts',
+    'tests/unit/utils/auth-secondary-storage.spec.ts',
+    'tests/unit/utils/custom-db-types.spec.ts',
   ]
 
   const keysApiTests = [
@@ -670,14 +672,23 @@ export function getAffectedTests(changedFiles) {
       tests: ['tests/unit/components/Chat/ErrorCard.spec.ts'],
     },
     {
+      pattern: /^(app\/.+\.vue|pnpm-workspace\.yaml)$/,
+      tests: ['tests/unit/config/vapor-template-auto-imports.spec.ts'],
+    },
+    {
       pattern:
         /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|server\/plugins\/push-subscription-sweep\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
       tests: pushNotificationTests,
     },
     {
       pattern:
-        /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts)\.ts$/,
+        /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts|auth-secondary-storage)\.ts$/,
       tests: [...emailTests, ...authSecurityTests],
+    },
+    {
+      pattern:
+        /^(server\/utils\/custom-db-types|server\/db\/schemas\/auth)\.ts$/,
+      tests: ['tests/unit/utils/custom-db-types.spec.ts'],
     },
     {
       pattern:
@@ -1223,7 +1234,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/db\/schemas\/(two-factor|passkeys)\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes|Passkeys)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/(qr-code|webauthn)\.ts)$/,
+        /^(server\/db\/schemas\/(auth|two-factor|passkeys)\.ts|server\/utils\/custom-db-types\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes|Passkeys)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/(qr-code|webauthn)\.ts)$/,
       tests: twoFactorTests,
     },
     {
