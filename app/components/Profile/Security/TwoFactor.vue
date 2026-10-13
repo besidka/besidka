@@ -334,6 +334,7 @@ async function submitPassword() {
 
   const { data, error } = await client.twoFactor.enable({
     password: enablePassword.value,
+    method: 'totp',
   })
 
   if (error) {
@@ -343,6 +344,13 @@ async function submitPassword() {
       useErrorMessage(error.message || 'Failed to start setup')
     }
 
+    pending.value = false
+
+    return
+  }
+
+  if (data.method !== 'totp') {
+    useErrorMessage('Failed to start setup')
     pending.value = false
 
     return

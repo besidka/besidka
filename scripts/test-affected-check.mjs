@@ -421,6 +421,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/auth-rate-limit.spec.ts',
     'tests/unit/utils/auth-captcha.spec.ts',
     'tests/unit/utils/auth-hosts.spec.ts',
+    'tests/unit/utils/auth-secondary-storage.spec.ts',
   ]
 
   const keysApiTests = [
@@ -676,7 +677,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts)\.ts$/,
+        /^server\/utils\/(email|auth|auth-rate-limit|auth-captcha|auth-hosts|auth-secondary-storage)\.ts$/,
       tests: [...emailTests, ...authSecurityTests],
     },
     {
