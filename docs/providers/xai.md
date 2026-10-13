@@ -49,46 +49,6 @@ Server-side wiring lives in `server/utils/providers/xai.ts`, matching the
 existing `use<Provider>()` contract described in
 [`general.md`](./general.md#server-side-wiring).
 
-## Reasoning summaries
-
-xAI only reliably streams reasoning summary items
-(`response.reasoning_summary_*` events, a `reasoning` output item with
-`summary_text`) when the Responses request carries `reasoning.summary`.
-Without it, the model still reasons
-and bills `reasoning_tokens`, but the assistant message gets no reasoning
-part and the reasoning trace never renders.
-
-- **The contract.** `useXai()` sends `reasoning.summary: 'detailed'` on every
-  `/responses` request whenever the resolved reasoning level is not `'off'`
-  or the model is `reasoningAlwaysOn`. Effort still travels through the AI
-  SDK's top-level `reasoning` option; the summary is merged next to it, so
-  an effort model sends `reasoning: { effort, summary: 'detailed' }` and an
-  always-on model sends `reasoning: { summary: 'detailed' }`. At `'off'` on
-  a non-always-on model nothing is added, so xAI's own default applies and
-  no trace renders.
-- **Why a fetch shim, not `providerOptions.xai.reasoningSummary`.**
-  `@ai-sdk/xai` 5 deprecated `reasoningSummary` and stopped sending it
-  ([vercel/ai#21410](https://github.com/vercel/ai/pull/21410), commit
-  `0a5dd0f`, released in 5.0.8), on the grounds that xAI's API reference
-  calls `reasoning.summary` "compatibility only" and says the model always
-  returns a detailed summary. That holds only once a `reasoning` object is
-  present: with 5.0.20, `grok-4.20-0309-reasoning` reported 855 reasoning
-  tokens and returned no reasoning part, because always-on models resolve
-  no effort and the SDK then sends no `reasoning` object at all. The stream
-  parser for summary events is unchanged between 4.0.33 and 5.0.20, so the
-  gap is purely on the request side. `withXaiReasoningSummary()` in
-  `server/utils/providers/xai-reasoning-summary.ts` is passed to
-  `createXai({ fetch })` and rewrites only `POST .../responses` JSON bodies,
-  restoring the exact wire shape 4.0.33 sent.
-- **Side effect.** The shim is per client, so the title request for an
-  always-on title model (`title.patch.ts` calls `useXai(..., 'off')`) also
-  asks for a summary. The title code reads only the text, so this costs at
-  most a few summary tokens.
-- **Revert criteria.** Drop the shim once `@ai-sdk/xai` sends
-  `reasoning.summary` again or xAI starts returning summaries without a
-  `reasoning` object. Verify on a live key with `grok-4.20-0309-reasoning`
-  before removing it.
-
 ## Image generation
 
 `grok-imagine-image-2.0` is xAI's first image model in this catalog, wired
@@ -107,8 +67,8 @@ parameter, and none is sent: the xAI path sends only `aspectRatio`.
 `grok-imagine-image-quality` is deliberately not curated; it retires
 2026-11-02.
 
-- **`xai.image(modelId)`, not `xai.tools.imageGeneration()`.** The
-  then-installed `@ai-sdk/xai@4.0.33` exposed both `xai.image`/`xai.imageModel` (confirmed
+- **`xai.image(modelId)`, not `xai.tools.imageGeneration()`.** The installed
+  `@ai-sdk/xai@4.0.33` exposes both `xai.image`/`xai.imageModel` (confirmed
   via `require()` — no SDK bump needed) and a conversational
   `xai.tools.imageGeneration()` tool the chat model can call mid-turn. Only
   the former fits this app's controller-model pattern: a dedicated image

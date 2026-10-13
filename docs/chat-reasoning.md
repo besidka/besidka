@@ -163,9 +163,6 @@ Note:
   never enables on its own:
   - OpenAI: `reasoningSummary: 'detailed'`,
   - Google: `thinkingConfig.includeThoughts: true`.
-- xAI is the exception: `@ai-sdk/xai` 5 no longer sends `reasoningSummary`,
-  so `reasoning.summary: 'detailed'` is injected into the request body by a
-  `createXai({ fetch })` shim instead (see `docs/providers/xai.md`).
 
 ### Behavior change from the v6 implementation
 The hand-rolled provider mapping was removed in the v7 upgrade:

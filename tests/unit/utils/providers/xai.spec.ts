@@ -1,5 +1,5 @@
 import type { Model, Provider } from '#shared/types/providers.d'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   createXai: vi.fn(),
@@ -88,28 +88,6 @@ async function importUseXai() {
   return useXai
 }
 
-function stubFailingFetch() {
-  const fetchSpy = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) => {
-      return new Response('stop', { status: 500 })
-    },
-  )
-
-  vi.stubGlobal('fetch', fetchSpy)
-
-  return fetchSpy
-}
-
-function readSentBody(fetchSpy: ReturnType<typeof stubFailingFetch>) {
-  const init = fetchSpy.mock.calls[0]?.[1]
-
-  return JSON.parse(String(init?.body))
-}
-
-const TEST_PROMPT = [
-  { role: 'user' as const, content: [{ type: 'text' as const, text: 'hi' }] },
-]
-
 describe('useXai reasoning wiring for grok-4.5', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -117,53 +95,8 @@ describe('useXai reasoning wiring for grok-4.5', () => {
     stubKeyLookup()
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('merges reasoning.summary with the SDK-resolved effort on the wire',
-    async () => {
-      stubModel(createModel({
-        id: 'grok-4.5',
-        reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
-      }))
-
-      const fetchSpy = stubFailingFetch()
-      const useXai = await importUseXai()
-      const result = await useXai('1', 'grok-4.5', [], 'high')
-
-      await expect(result.instance.doGenerate({
-        prompt: TEST_PROMPT,
-        reasoning: result.reasoning,
-      })).rejects.toThrow()
-
-      expect(readSentBody(fetchSpy).reasoning).toEqual({
-        effort: 'high',
-        summary: 'detailed',
-      })
-    })
-
-  it('sends no reasoning object on the wire when off', async () => {
-    stubModel(createModel({
-      id: 'grok-4.5',
-      reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
-    }))
-
-    const fetchSpy = stubFailingFetch()
-    const useXai = await importUseXai()
-    const result = await useXai('1', 'grok-4.5', [], 'off')
-
-    await expect(result.instance.doGenerate({
-      prompt: TEST_PROMPT,
-      reasoning: result.reasoning,
-    })).rejects.toThrow()
-
-    expect(readSentBody(fetchSpy)).not.toHaveProperty('reasoning')
-  })
-
   it.each(['low', 'medium', 'high'] as const)(
-    'sets the reasoning option at %s and requests a reasoning summary '
-    + 'through the fetch shim',
+    'sets the reasoning option at %s and marks summaries detailed',
     async (level) => {
       stubModel(createModel({
         id: 'grok-4.5',
@@ -173,16 +106,14 @@ describe('useXai reasoning wiring for grok-4.5', () => {
       const useXai = await importUseXai()
       const result = await useXai('1', 'grok-4.5', [], level)
 
-      expect(result.providerOptions).toEqual({})
+      expect(result.providerOptions).toEqual({
+        reasoningSummary: 'detailed',
+      })
       expect(result.reasoning).toBe(level)
-      expect(mocks.createXai).toHaveBeenCalledWith(
-        expect.objectContaining({ fetch: expect.any(Function) }),
-      )
     },
   )
 
-  it('leaves providerOptions empty, reasoning unset and fetch unwrapped '
-    + 'when off', async () => {
+  it('leaves providerOptions empty and reasoning unset when off', async () => {
     stubModel(createModel({
       id: 'grok-4.5',
       reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
@@ -193,7 +124,6 @@ describe('useXai reasoning wiring for grok-4.5', () => {
 
     expect(result.providerOptions).toEqual({})
     expect(result.reasoning).toBeUndefined()
-    expect(mocks.createXai.mock.calls[0]?.[0]).not.toHaveProperty('fetch')
   })
 })
 
@@ -216,7 +146,6 @@ describe.each(['grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'])(
 
         expect(result.providerOptions).toEqual({})
         expect(result.reasoning).toBeUndefined()
-        expect(mocks.createXai.mock.calls[0]?.[0]).not.toHaveProperty('fetch')
       },
     )
   },
@@ -227,10 +156,6 @@ describe('useXai reasoning wiring for the reasoningAlwaysOn flag', () => {
     vi.resetModules()
     vi.clearAllMocks()
     stubKeyLookup()
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
   })
 
   it.each(['off', 'low', 'medium', 'high'] as const)(
@@ -250,32 +175,12 @@ describe('useXai reasoning wiring for the reasoningAlwaysOn flag', () => {
         level,
       )
 
-      expect(result.providerOptions).toEqual({})
+      expect(result.providerOptions).toEqual({
+        reasoningSummary: 'detailed',
+      })
       expect(result.reasoning).toBeUndefined()
-      expect(mocks.createXai).toHaveBeenCalledWith(
-        expect.objectContaining({ fetch: expect.any(Function) }),
-      )
     },
   )
-
-  it('sends reasoning.summary on the wire for an always-on model even '
-    + 'though no effort resolves', async () => {
-    stubModel(createModel({
-      id: 'grok-4.20-0309-reasoning',
-      reasoningAlwaysOn: true,
-    }))
-
-    const fetchSpy = stubFailingFetch()
-    const useXai = await importUseXai()
-    const result = await useXai('1', 'grok-4.20-0309-reasoning', [], 'off')
-
-    await expect(result.instance.doGenerate({
-      prompt: TEST_PROMPT,
-    })).rejects.toThrow()
-
-    expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://api.x.ai/v1/responses')
-    expect(readSentBody(fetchSpy).reasoning).toEqual({ summary: 'detailed' })
-  })
 })
 
 describe('useXai web search tool choice', () => {

@@ -175,7 +175,6 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/providers/moonshotai.spec.ts',
     'tests/unit/utils/providers/openai.spec.ts',
     'tests/unit/utils/providers/xai.spec.ts',
-    'tests/unit/utils/providers/xai-reasoning-summary.spec.ts',
     'tests/unit/utils/providers/anthropic.spec.ts',
     'tests/unit/utils/providers/qwen.spec.ts',
     'tests/unit/utils/reasoning-levels.spec.ts',
@@ -597,7 +596,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/utils\/providers\/(openai|anthropic|deepseek|moonshotai|xai|xai-reasoning-summary|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
+        /^(server\/utils\/providers\/(openai|anthropic|deepseek|moonshotai|xai|qwen|reasoning)\.ts|shared\/types\/reasoning\.d\.ts)$/,
       tests: providerReasoningWiringTests,
     },
     {
