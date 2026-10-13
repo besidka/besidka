@@ -53,61 +53,117 @@ jobs:
     needs: check-pr-state
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     outputs:
-      should-skip: ${{ steps.paths.outputs.should-skip }}
+      should-skip: ${{ steps.source.outputs.should-skip }}
+      source-run-id: ${{ steps.source.outputs.source-run-id }}
+      source-sha: ${{ steps.source.outputs.source-sha }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Evaluate latest commit paths
-        id: paths
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Resolve build source
+        id: source
+        run: node scripts/ci/resolve-preview-build-source.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+
+  reuse-build:
+    name: Reuse previous build
+    needs:
+      - check-pr-state
+      - check-latest-commit
+    if: needs.check-latest-commit.outputs.should-skip == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - name: Download previous build artifact
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ needs.check-latest-commit.outputs.source-run-id }}
+          name: preview-build
+          path: reused/preview-build/
+          github-token: ${{ github.token }}
+
+      - name: Download previous drizzle artifact
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ needs.check-latest-commit.outputs.source-run-id }}
+          name: preview-drizzle
+          path: reused/preview-drizzle/
+          github-token: ${{ github.token }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-build
+          path: reused/preview-build/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload drizzle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-drizzle
+          path: reused/preview-drizzle/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Get commit info
+        id: commits
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SOURCE_SHA: ${{ needs.check-latest-commit.outputs.source-sha }}
         run: |
-          python - <<'PY'
-          import fnmatch
-          import subprocess
+          echo "sha-short=$(echo "$HEAD_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "source-sha-short=$(echo "$SOURCE_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
-          # NOTE: do not ignore '**/*.md' — content/*.md is the landing
-          # page source and MUST trigger build+deploy.
-          ignored = [
-              '.ai/**',
-              '.claude/**',
-              '.pi/**',
-              '.github/**',
-              '.husky/**',
-              '.vscode/**',
-              'docs/**',
-              'lib/**',
-              'scripts/**',
-              'commitlint.config.ts',
-              '.*rc',
-          ]
+      - name: Comment reused build on PR
+        uses: mshick/add-pr-comment@v3
+        with:
+          issue: ${{ github.event.pull_request.number }}
+          allow-repeats: true
+          message: |
+            ## Reused previous build on <img width="16" alt="GitHub Actions" src="https://github.githubassets.com/favicons/favicon.svg"> GitHub Actions
 
-          output = subprocess.check_output(
-              ['git', 'diff', '--name-only', 'HEAD^', 'HEAD'],
-              text=True,
-          )
-          files = [line.strip() for line in output.splitlines() if line.strip()]
+            Everything changed since the last built commit is docs, CI or tooling, so the build was not repeated.
 
-          def is_ignored(path: str) -> bool:
-              if path.endswith('.md') and '/' not in path:
-                  return True
+            | Property | Value |
+            |----------|-------|
+            | **Reused build** | [`${{ steps.commits.outputs.source-sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ needs.check-latest-commit.outputs.source-sha }}) from [run ${{ needs.check-latest-commit.outputs.source-run-id }}](https://github.com/${{ github.repository }}/actions/runs/${{ needs.check-latest-commit.outputs.source-run-id }}) |
+            | **Latest commit** | [`${{ steps.commits.outputs.sha-short }}`](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}/commits/${{ github.event.pull_request.head.sha }}) |
 
-              return any(fnmatch.fnmatch(path, pattern) for pattern in ignored)
-
-          should_skip = bool(files) and all(is_ignored(path) for path in files)
-          print(f"Files: {files}")
-          print(f"should-skip={str(should_skip).lower()}")
-
-          with open('paths_output.txt', 'w', encoding='utf-8') as handle:
-              handle.write(f"should-skip={str(should_skip).lower()}\n")
-          PY
-
-      - name: Set job output
+      - name: Set pending deploy status on PR
         run: |
-          cat paths_output.txt >> $GITHUB_OUTPUT
+          gh api "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
+            -f state=pending \
+            -f context="Preview Deploy" \
+            -f description="Waiting for preview deployment..."
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   build:
     name: Build PR
