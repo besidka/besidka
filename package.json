@@ -115,7 +115,7 @@
 		"shiki-stream": "^0.1.5",
 		"tailwindcss": "^4.3.3",
 		"ulid": "^3.0.2",
-		"vue": "3.6.0-rc.10",
+		"vue": "3.6.0-rc.11",
 		"vue-router": "^5.4.0",
 		"web-haptics": "0.0.6",
 		"zod": "^4.6.6"
