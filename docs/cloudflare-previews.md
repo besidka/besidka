@@ -145,13 +145,12 @@ sign-in on Previews. CI e2e is unaffected: it runs `wrangler dev` with no
 `getCaptchaOptions()` returns `null` and the captcha plugin is not registered.
 The Preview sitekey lives only under `env.production.previews.vars`.
 
-Do not work around a blocked Preview by setting Cloudflare's always-pass test
-secret on it (`wrangler preview secret put NUXT_TURNSTILE_SECRET_KEY --name
-pr-<n> --env production`). Enforcement is inherited from production and the
-test `siteverify` response has no `action` and always reports hostname
-`example.com`, so it still 403s. If such an override was applied, remove it with
-`pnpm exec wrangler preview secret delete NUXT_TURNSTILE_SECRET_KEY --name
-pr-<n> --env production` so the Preview falls back to the base-config secret.
+Setting Cloudflare's always-pass test secret on a single Preview
+(`pnpm exec wrangler preview secret put NUXT_TURNSTILE_SECRET_KEY --name
+pr-<n> --env production`) is not recommended; use the real widget. If such an
+override was applied, remove it with `pnpm exec wrangler preview secret delete
+NUXT_TURNSTILE_SECRET_KEY --name pr-<n> --env production` so the Preview falls
+back to the base-config secret.
 
 ## Secrets runbook
 

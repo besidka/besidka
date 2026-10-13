@@ -93,7 +93,10 @@ describe('wrangler.jsonc previews block', () => {
   it('keeps previews vars in parity with top-level vars except overrides',
     () => {
       const previewOnlyKeys = ['NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS']
-      const overriddenKeys = ['NUXT_PUBLIC_BASE_URL']
+      const overriddenKeys = [
+        'NUXT_PUBLIC_BASE_URL',
+        'NUXT_PUBLIC_TURNSTILE_SITE_KEY',
+      ]
       const excludedKeys = [...previewOnlyKeys, ...overriddenKeys]
 
       function withoutKeys(vars: Vars): Vars {
@@ -113,16 +116,24 @@ describe('wrangler.jsonc previews block', () => {
     })
 
   it('uses preview-specific public keys instead of production ones', () => {
-    const publicKeys = [
-      'NUXT_PUBLIC_VAPID_PUBLIC_KEY',
-      'NUXT_PUBLIC_TURNSTILE_SITE_KEY',
-    ]
+    const publicKeys = ['NUXT_PUBLIC_VAPID_PUBLIC_KEY']
 
     for (const key of publicKeys) {
       expect(typeof previews.vars[key]).toBe('string')
       expect(previews.vars[key]).not.toBe(production.vars[key])
     }
   })
+
+  it('shares the production Turnstile sitekey so previews run the real widget',
+    () => {
+      const turnstileSiteKey = 'NUXT_PUBLIC_TURNSTILE_SITE_KEY'
+
+      expect(typeof production.vars[turnstileSiteKey]).toBe('string')
+      expect(previews.vars[turnstileSiteKey])
+        .toBe(production.vars[turnstileSiteKey])
+      expect(previews.vars[turnstileSiteKey])
+        .not.toBe(config.vars[turnstileSiteKey])
+    })
 
   it('never references a production resource id or name', () => {
     const serializedPreviews = JSON.stringify(previews)
