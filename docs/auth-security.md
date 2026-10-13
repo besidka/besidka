@@ -53,10 +53,15 @@ Since the migration to Cloudflare Workers Previews (PR #430, see
 `docs/cloudflare-previews.md`) PR and `main` Previews run as
 `env.production`, so they inherit `turnstileEnforced: true` and get the real
 secret. They therefore run the **real** captcha, same as production
-(owner decision 2026-10-13): `env.production.previews.vars` carries the
-real production sitekey instead of Cloudflare's always-pass test sitekey.
-A test sitekey paired with the real secret can never pass `siteverify`, so
-mixing them returns 403 "Captcha verification failed" on every sign-in.
+(owner decision 2026-10-13), through a **dedicated** "Besidka (preview)"
+widget: `env.production.previews.vars` carries its sitekey
+`0x4AAAAAAEFM-2wD0PMvdy4q`, and the previews secret in `.dev.vars.preview` /
+base-config must be that widget's secret. A sitekey paired with another
+widget's secret (the production sitekey with the preview secret, or a test
+sitekey with a real secret) renders and passes in the browser but can never
+pass `siteverify`, so it returns 403 "Captcha verification failed" on every
+sign-in. The preview widget's hostname list is `chernenko.workers.dev`
+(covers all preview hosts); the production widget lists `besidka.com` only.
 
 `allowedHostnames`, when enforced, reuses `getAllowedHosts()` (in
 `server/utils/auth-hosts.ts`, used for Better Auth's
@@ -399,16 +404,20 @@ key is set):
       verification note below, not required. Verified 2026-10-07 with
       `wrangler turnstile widget get 0x4AAAAAAEFMAZiwbUuiy0qi`: mode
       `managed`, domains `[besidka.com]`.
-- [ ] Previews run the real widget (see "The `turnstileEnforced` gate"). Add
-      `chernenko.workers.dev` to the widget's hostname list in the
-      Cloudflare dashboard (Turnstile, widget, Hostname management) so the
-      widget renders on `preview-besidka.chernenko.workers.dev` and every
-      `pr-<n>-besidka.chernenko.workers.dev`. Adding a hostname authorizes
-      all of its subdomains; wildcards are not supported; see
-      `docs/cloudflare-previews.md` ("Turnstile on Previews"). Until it is
-      added, the widget fails with error 110200 on Previews. Automation
-      cannot pass a real challenge, so a human must test sign-in on a
-      Preview.
+- [ ] Previews run the real widget through the dedicated "Besidka (preview)"
+      widget `0x4AAAAAAEFM-2wD0PMvdy4q` (see "The `turnstileEnforced` gate").
+      Its hostname list is `chernenko.workers.dev` (Cloudflare dashboard,
+      Turnstile, widget, Hostname management); adding a hostname authorizes
+      all of its subdomains and wildcards are not supported, so that one
+      entry covers `preview-besidka.chernenko.workers.dev` and every
+      `pr-<n>-besidka.chernenko.workers.dev`. The previews secret
+      (`.dev.vars.preview`, pushed via `wrangler preview base-config secret
+      bulk`) must be this widget's secret; a sitekey/secret mismatch shows as
+      "Captcha verification failed" (403) after the widget itself passed. The
+      production widget must keep `besidka.com` only (remove
+      `chernenko.workers.dev` from it). See `docs/cloudflare-previews.md`
+      ("Turnstile on Previews"). Automation cannot pass a real challenge, so
+      a human must test sign-in on a Preview.
 - [ ] After the first real deploy with keys configured, manually
       exercise sign-up, sign-in, and reset-password in production to
       confirm the widget renders and the rate-limit windows above don't
