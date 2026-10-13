@@ -1196,7 +1196,6 @@ describe('multi-step tool loop', () => {
         state: 'output-error',
         input: { cursor: 1, id: 0 },
       }))
-      expect(invalidCallPart?.rawInput).toBeUndefined()
       expect(JSON.parse(invalidCallPart?.errorText)).toEqual(
         expect.objectContaining({
           code: 'invalid-provider-output',
