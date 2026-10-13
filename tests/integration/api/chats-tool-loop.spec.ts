@@ -1194,8 +1194,9 @@ describe('multi-step tool loop', () => {
       expect(invalidCallPart).toEqual(expect.objectContaining({
         type: `tool-${FIXTURE_FOLLOW_UP_TOOL_NAME}`,
         state: 'output-error',
-        rawInput: { cursor: 1, id: 0 },
+        input: { cursor: 1, id: 0 },
       }))
+      expect(invalidCallPart?.rawInput).toBeUndefined()
       expect(JSON.parse(invalidCallPart?.errorText)).toEqual(
         expect.objectContaining({
           code: 'invalid-provider-output',
