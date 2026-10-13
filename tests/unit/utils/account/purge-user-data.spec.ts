@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SQL } from 'drizzle-orm'
+import { SQLiteDialect } from 'drizzle-orm/sqlite-core'
 
 const mocks = vi.hoisted(() => ({
   invalidateFileCache: vi.fn(),
@@ -135,18 +137,12 @@ describe('purgeUserData', () => {
 
     expect(db.run).toHaveBeenCalledTimes(1)
 
-    const sqlArgument = db.run.mock.calls[0]![0] as {
-      queryChunks: Array<string | { value: string[] }>
-    }
-    const queryText = sqlArgument.queryChunks
-      .map((chunk) => {
-        return typeof chunk === 'string' ? chunk : chunk.value.join('')
-      })
-      .join('')
+    const sqlArgument = db.run.mock.calls[0]![0] as SQL
+    const query = new SQLiteDialect().sqlToQuery(sqlArgument)
 
-    expect(queryText).toContain('delete from message_search')
-    expect(queryText).toContain('where owner =')
-    expect(sqlArgument.queryChunks).toContain('u42')
+    expect(query.sql).toContain('delete from message_search')
+    expect(query.sql).toContain('where owner = ?')
+    expect(query.params).toEqual(['u42'])
   })
 
   it('does not throw when the message_search delete fails', async () => {
