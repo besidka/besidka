@@ -43,3 +43,19 @@ export const publicId = customType<{
     return decodePublicId(value)
   },
 })
+
+export const authAccountId = customType<{
+  data: string
+  driverData: number | string
+  notNull: true
+}>({
+  dataType() {
+    return 'integer'
+  },
+  fromDriver(value) {
+    return String(value)
+  },
+  toDriver(value) {
+    return value
+  },
+})

@@ -1224,7 +1224,7 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
-        /^(server\/db\/schemas\/(two-factor|passkeys)\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes|Passkeys)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/(qr-code|webauthn)\.ts)$/,
+        /^(server\/db\/schemas\/(auth|two-factor|passkeys)\.ts|server\/utils\/custom-db-types\.ts|lib\/auth\.ts|server\/utils\/auth\.ts|app\/composables\/auth\.ts|app\/pages\/\(auth\)\/(signin|2fa)\.vue|app\/components\/ui\/Form\/Otp\.vue|app\/components\/Profile\/Security\/(TwoFactor|BackupCodes|Passkeys)\.vue|app\/pages\/profile\/security\.vue|app\/utils\/(qr-code|webauthn)\.ts)$/,
       tests: twoFactorTests,
     },
     {
