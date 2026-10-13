@@ -120,7 +120,9 @@ Why:
 
 ### Message reasoning panel (`Chat/Reasoning.vue`)
 - Rendered only when reasoning parts exist.
-- Header icon matches effective effort level for that message.
+- Header icon matches effective effort level for that message. A message
+  persisted at `off` that still has reasoning text (an always-on model)
+  uses the medium icon instead of the slashed "off" brain.
 - Header title:
   - `Reasoning process` (steady),
   - `Reasoning` while streaming before full title parse,
