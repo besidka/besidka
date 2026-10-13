@@ -104,40 +104,44 @@ Consequences:
 
 ## Turnstile on Previews
 
-Previews run the **real** Turnstile widget, same as production (owner decision
-2026-10-13). They inherit `NUXT_TURNSTILE_ENFORCED: true` from
-`env.production` and get the real secret from `.dev.vars.preview`, so
-`env.production.previews.vars` sets `NUXT_PUBLIC_TURNSTILE_SITE_KEY` to the
-production sitekey `0x4AAAAAAEFMAZiwbUuiy0qi` (public by design). Before this
-change it was Cloudflare's always-pass test sitekey, whose token the real secret
-rejects, so every sign-in, sign-up and reset-password on a Preview returned 403
-"Captcha verification failed". The old `besidka-preview` Worker had the test
-key and no enforcement, so captcha was effectively off there.
+Previews run the **real** Turnstile widget (owner decision 2026-10-13), but a
+**dedicated** one: "Besidka (preview)", sitekey `0x4AAAAAAEFM-2wD0PMvdy4q`
+(public by design). Previews inherit `NUXT_TURNSTILE_ENFORCED: true` from
+`env.production`, so `env.production.previews.vars` sets
+`NUXT_PUBLIC_TURNSTILE_SITE_KEY` to that preview sitekey. Production keeps its
+own widget (`0x4AAAAAAEFMAZiwbUuiy0qi`) and previews do not share it.
+
+A Turnstile sitekey and secret are a pair. The previews secret in
+`.dev.vars.preview` (pushed with `wrangler preview base-config secret bulk`)
+must be the secret of the **"Besidka (preview)"** widget. A mismatched pair
+(for example the production sitekey with the preview secret, which is what PR
+#444 shipped, or a test sitekey with a real secret) lets the widget itself
+render and pass in the browser, but `siteverify` rejects the token, so every
+sign-in, sign-up and reset-password on a Preview returns 403 "Captcha
+verification failed". The old `besidka-preview` Worker had the test key and no
+enforcement, so captcha was effectively off there.
 
 Server side, `allowedHostnames` accepts the wildcard host set in
 `NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS`, so `pr-<n>-besidka...` tokens pass the
 hostname check (details in `docs/auth-security.md`).
 
-Dashboard hostnames: the widget `0x4AAAAAAEFMAZiwbUuiy0qi` lists only
-`besidka.com`. Cloudflare's hostname management docs state that wildcards are
-not supported, but "adding a hostname automatically authorizes all of its
-subdomains" and the widget "will work on that exact hostname and all of its
-subdomains"
+Dashboard hostnames: the "Besidka (preview)" widget lists
+`chernenko.workers.dev`. Cloudflare's hostname management docs state that
+wildcards are not supported, but "adding a hostname automatically authorizes
+all of its subdomains" and the widget "will work on that exact hostname and
+all of its subdomains"
 (<https://developers.cloudflare.com/turnstile/additional-configuration/hostname-management/>).
 `pr-<n>-besidka` is a single label, so `besidka.chernenko.workers.dev` would
-not cover it. The one entry that covers `preview-besidka` and every
-`pr-<n>-besidka` (and deployment hosts) is:
+not cover it; the one entry that covers `preview-besidka.chernenko.workers.dev`,
+every `pr-<n>-besidka.chernenko.workers.dev` and deployment hosts is
+`chernenko.workers.dev`. Registering each `pr-<n>` host is not viable (10
+hostnames per widget on the free plan).
 
-- `chernenko.workers.dev`
-
-The docs do not say whether the dashboard accepts a hostname one label below
-the `workers.dev` public suffix; this is unverified. If it is rejected, the
-fallbacks are: register `preview-besidka.chernenko.workers.dev` only (captcha
-works on the long-lived Preview, PR hosts fail with 110200), or create a
-separate preview widget with its own secret in `.dev.vars.preview`. Registering
-each `pr-<n>` host is not viable (10 hostnames per widget on the free plan).
-Side effect of the broad entry: any Worker on `chernenko.workers.dev` can
-render the production widget.
+The production widget `0x4AAAAAAEFMAZiwbUuiy0qi` lists only `besidka.com`. It
+briefly also carried `chernenko.workers.dev` while previews wrongly used it;
+that entry is removed once this change is deployed, which is the intended end
+state. Using a dedicated preview widget means production never has to authorize
+a `workers.dev` host.
 
 Testing: automation always fails the real challenge, so a human must test
 sign-in on Previews. CI e2e is unaffected: it runs `wrangler dev` with no
