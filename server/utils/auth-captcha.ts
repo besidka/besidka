@@ -1,6 +1,6 @@
 import type { CloudflareTurnstileOptions } from 'better-auth/plugins'
 import { createRequestLogger } from 'evlog'
-import { getAllowedHosts } from './auth-hosts'
+import { getAllowedHosts, matchesHostnamePattern } from './auth-hosts'
 import { shipWideEventToAxiom } from './evlog-drains'
 
 const authCaptchaEndpoints = [
@@ -11,10 +11,34 @@ const authCaptchaEndpoints = [
 
 const authCaptchaExpectedAction = 'auth'
 
+function stripPort(host: string): string {
+  return host.split(':')[0] ?? host
+}
+
 function toTurnstileHostnames(hosts: string[]): string[] {
-  return hosts
+  const literalHostnames = hosts
     .filter(host => !host.includes('*'))
-    .map(host => host.split(':')[0] ?? host)
+    .map(stripPort)
+  const wildcardPatterns = hosts
+    .map(stripPort)
+    .filter(hostname => hostname.includes('*'))
+
+  if (!wildcardPatterns.length) {
+    return literalHostnames
+  }
+
+  const hostnames = [...literalHostnames, ...wildcardPatterns]
+
+  Object.defineProperty(hostnames, 'includes', {
+    value: (hostname: string): boolean => {
+      return literalHostnames.includes(hostname)
+        || wildcardPatterns.some((pattern) => {
+          return matchesHostnamePattern(hostname, pattern)
+        })
+    },
+  })
+
+  return hostnames
 }
 
 export function getCaptchaOptions(

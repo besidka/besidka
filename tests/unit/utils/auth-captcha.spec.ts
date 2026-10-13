@@ -156,18 +156,77 @@ describe('getCaptchaOptions', () => {
 })
 
 describe('getCaptchaOptions additional allowed hosts', () => {
-  it('drops wildcard additional hosts and keeps literal ones', () => {
-    const options = getCaptchaOptions(createConfig({
-      turnstileEnforced: true,
-      baseUrl: 'https://preview-besidka.chernenko.workers.dev',
-      authAdditionalAllowedHosts:
-        '*-besidka.chernenko.workers.dev,extra.example.com:8443',
-    }))
+  const previewConfig = {
+    turnstileEnforced: true,
+    baseUrl: 'https://preview-besidka.chernenko.workers.dev',
+    authAdditionalAllowedHosts:
+      '*-besidka.chernenko.workers.dev,extra.example.com:8443',
+  }
 
-    expect(options?.allowedHostnames).toEqual([
+  it('keeps literal hosts and wildcard patterns with ports stripped', () => {
+    const options = getCaptchaOptions(createConfig(previewConfig))
+
+    expect(Array.from(options?.allowedHostnames ?? [])).toEqual([
       'preview-besidka.chernenko.workers.dev',
       'extra.example.com',
+      '*-preview-besidka.chernenko.workers.dev',
+      '*-besidka.chernenko.workers.dev',
     ])
+  })
+
+  it('accepts exact literal hosts', () => {
+    const allowedHostnames = getCaptchaOptions(
+      createConfig(previewConfig),
+    )?.allowedHostnames
+
+    expect(allowedHostnames?.includes(
+      'preview-besidka.chernenko.workers.dev',
+    )).toBe(true)
+    expect(allowedHostnames?.includes('extra.example.com')).toBe(true)
+  })
+
+  it('accepts hosts matching a wildcard pattern', () => {
+    const allowedHostnames = getCaptchaOptions(
+      createConfig(previewConfig),
+    )?.allowedHostnames
+
+    expect(allowedHostnames?.includes(
+      'pr-442-besidka.chernenko.workers.dev',
+    )).toBe(true)
+  })
+
+  it('rejects lookalike and unrelated hosts', () => {
+    const allowedHostnames = getCaptchaOptions(
+      createConfig(previewConfig),
+    )?.allowedHostnames
+
+    expect(allowedHostnames?.includes(
+      'evil-besidka.chernenko.workers.dev.attacker.com',
+    )).toBe(false)
+    expect(allowedHostnames?.includes(
+      'besidka.chernenko.workers.dev',
+    )).toBe(false)
+    expect(allowedHostnames?.includes(
+      'a.b-besidka.chernenko.workers.dev',
+    )).toBe(false)
+    expect(allowedHostnames?.includes('example.com')).toBe(false)
+    expect(allowedHostnames?.includes('extra.example.com:8443')).toBe(false)
+    expect(allowedHostnames?.includes('')).toBe(false)
+  })
+
+  it('stays a plain exact-match array when no wildcard is configured', () => {
+    const allowedHostnames = getCaptchaOptions(createConfig({
+      turnstileEnforced: true,
+      baseUrl: 'https://besidka.com',
+    }))?.allowedHostnames
+
+    expect(Object.getOwnPropertyNames(allowedHostnames)).toEqual([
+      '0',
+      '1',
+      'length',
+    ])
+    expect(allowedHostnames?.includes('pr-442-besidka.com')).toBe(false)
+    expect(allowedHostnames?.includes('besidka.com')).toBe(true)
   })
 })
 

@@ -17,6 +17,34 @@ export function parseAdditionalHosts(additionalHosts: string): string[] {
   return [...new Set(hosts)]
 }
 
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Matches a bare hostname (no port) against a pattern where `*` stands for
+ * one or more characters inside a single DNS label, so `*-besidka.example.dev`
+ * accepts `pr-442-besidka.example.dev` but never a host spanning extra labels.
+ */
+export function matchesHostnamePattern(
+  hostname: string,
+  pattern: string,
+): boolean {
+  const normalizedHostname = hostname.toLowerCase()
+  const normalizedPattern = pattern.toLowerCase()
+
+  if (!normalizedPattern.includes('*')) {
+    return normalizedHostname === normalizedPattern
+  }
+
+  const expression = normalizedPattern
+    .split('*')
+    .map(escapeRegularExpression)
+    .join('[^.]+')
+
+  return new RegExp(`^${expression}$`).test(normalizedHostname)
+}
+
 function getBaseAllowedHosts(baseUrl: string): string[] {
   if (!baseUrl) {
     return []
