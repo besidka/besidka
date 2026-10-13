@@ -324,13 +324,21 @@ Revisit it if single-use token replay becomes a concrete concern.
 Better Auth 1.7.7 sign-in requires `account.accountId === user.id` as
 strings. Our ids are serial integers, so `accounts.account_id` is an
 `INTEGER` column and the `authAccountId` custom type in
-`server/utils/custom-db-types.ts` reads it back with `String(value)`. SQLite
-integer affinity means a numeric provider id of 16 to 19 digits is coerced
-to an integer and can come back from the driver as a JS number that has
-lost precision. Google's 21-digit subject ids exceed the 64-bit integer
-range, so SQLite keeps them as text and they round-trip exactly, and GitHub's
-numeric ids are far below the precision limit. The behavior is pinned by
-`tests/unit/utils/custom-db-types.spec.ts`.
+`server/utils/custom-db-types.ts` reads it back with `String(value)`. The
+behavior is pinned by `tests/unit/utils/custom-db-types.spec.ts`.
+
+Known pre-existing defect (not introduced by the 1.7 upgrade): INTEGER
+affinity coerces every numeric-looking provider id. Ids of 16 to 19 digits
+are stored exactly but come back from the driver as a JS number above
+2^53 and lose precision. Ids beyond the 64-bit range, such as Google's
+21-digit subject ids, are stored as `REAL` and lose precision on write
+(verified with `sqlite3`: `'123456789012345678901'` is stored as
+`1.2345678901234568e+20`). GitHub's numeric ids are well below both
+limits. Better Auth's OAuth path compares `account.accountId` with the
+provider id strictly (in 1.6 and 1.7), so Google account lookups by
+provider id cannot match these rows. The real fix is a `TEXT` column, which
+is a table rebuild of `accounts` and must follow the D1 migration safety
+checklist in `CLAUDE.md`.
 
 ## Turnstile owner checklist
 
