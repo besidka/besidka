@@ -77,6 +77,17 @@ Gateway models use `getGatewayReasoningControlState()` with the catalog's
 `supportsReasoning` flag: `'configurable'` on OpenRouter/Vercel,
 `'always-on'` on Cloudflare (which cannot forward an effort request).
 
+A `'configurable'` levels model whose provider documents that reasoning
+cannot be switched off is curated with `reasoning.cannotDisable: true` and
+`reasoning.defaultLevel` (the provider default when no effort is sent).
+The effort menu then has no `Off`, and a saved or persisted `off` resolves
+to `defaultLevel` on both client and server. Use this, not
+`reasoningAlwaysOn`, when the model still accepts an effort parameter. The
+per-model audit and its sources are in
+[`docs/chat-reasoning.md`](./chat-reasoning.md#models-that-cannot-disable-reasoning);
+the catalog guard test fails if a model gains or loses `cannotDisable`
+without updating its list.
+
 Before this rule, the picker ORed `reasoning || reasoningAlwaysOn` while the
 input read only `getReasoningCapability()`, so all ten `reasoningAlwaysOn`
 models (2 xAI, 3 Moonshot, 5 Qwen) showed a brain badge with no control.

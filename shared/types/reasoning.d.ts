@@ -7,6 +7,12 @@ export type ReasoningCapabilityMode = 'levels' | 'toggle'
 export interface ReasoningLevelsCapability {
   mode: 'levels'
   levels: ReasoningEnabledLevel[]
+  /**
+   * The provider cannot turn reasoning off for this model, so the menu
+   * offers no `off` and an `off` request resolves to `defaultLevel`.
+   */
+  cannotDisable?: true
+  defaultLevel?: ReasoningEnabledLevel
 }
 
 export interface ReasoningToggleCapability {

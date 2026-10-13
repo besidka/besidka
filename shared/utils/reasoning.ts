@@ -57,10 +57,57 @@ export function getReasoningCapability(
     return null
   }
 
+  if (!model.reasoning.cannotDisable) {
+    return {
+      mode: 'levels',
+      levels,
+    }
+  }
+
+  const curatedDefault = model.reasoning.defaultLevel
+
   return {
     mode: 'levels',
     levels,
+    cannotDisable: true,
+    defaultLevel: curatedDefault && levels.includes(curatedDefault)
+      ? curatedDefault
+      : levels[levels.length - 1],
   }
+}
+
+export function canDisableReasoning(
+  capability: ReasoningCapability | null,
+): boolean {
+  return !(capability?.mode === 'levels' && capability.cannotDisable)
+}
+
+/**
+ * The level an unsupported request falls back to: `off` when the model can
+ * stop reasoning, otherwise the provider's own default effort, so a model
+ * that cannot stop reasoning never receives `off`.
+ */
+export function getDefaultReasoningLevel(
+  capability: ReasoningCapability | null,
+): ReasoningLevel {
+  if (capability?.mode === 'levels' && capability.cannotDisable) {
+    return capability.defaultLevel
+      ?? capability.levels[capability.levels.length - 1]
+      ?? 'off'
+  }
+
+  return 'off'
+}
+
+export function resolveSupportedReasoningLevel(
+  level: ReasoningLevel,
+  capability: ReasoningCapability | null,
+): ReasoningLevel {
+  if (isReasoningLevelSupported(level, capability)) {
+    return level
+  }
+
+  return getDefaultReasoningLevel(capability)
 }
 
 /**
@@ -101,6 +148,24 @@ export function getGatewayReasoningControlState(
   return isGatewayReasoningSupported(gatewayId) ? 'configurable' : 'always-on'
 }
 
+/**
+ * Control state used when replaying a persisted reply. The gateway catalog
+ * is not loaded at replay time, so a gateway reply is judged as if the
+ * model reasons: persisted parts only carry reasoning text the first
+ * delivery already decided to send, Cloudflare (no effort forwarding) then
+ * replays it as `always-on`, and OpenRouter/Vercel keep the level rule.
+ */
+export function getReplayReasoningControlState(
+  gatewayId: GatewayId | undefined,
+  model: Pick<Model, 'reasoning' | 'reasoningAlwaysOn'> | null | undefined,
+): ReasoningControlState {
+  if (gatewayId) {
+    return getGatewayReasoningControlState(gatewayId, true)
+  }
+
+  return getReasoningControlState(model)
+}
+
 export const REASONING_ALWAYS_ON_TITLE
   = 'Reasoning is always on for this model'
 
@@ -137,7 +202,7 @@ export function isReasoningLevelSupported(
   capability: ReasoningCapability | null,
 ): boolean {
   if (level === 'off') {
-    return true
+    return canDisableReasoning(capability)
   }
 
   if (!capability) {
@@ -168,5 +233,7 @@ export function getReasoningMenuLevels(
 export function getReasoningDropdownLevels(
   capability: ReasoningCapability | null,
 ): ReasoningLevel[] {
-  return ['off', ...getReasoningMenuLevels(capability)]
+  const levels = getReasoningMenuLevels(capability)
+
+  return canDisableReasoning(capability) ? ['off', ...levels] : levels
 }

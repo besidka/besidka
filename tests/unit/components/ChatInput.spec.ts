@@ -1102,6 +1102,32 @@ describe('ChatInput.client', () => {
       return { isImageGenerationRequired, reasoningCapability }
     }
 
+    it('forces the default level for a model that cannot disable '
+      + 'reasoning and restores off after switching back', async () => {
+      const { reasoningCapability } = useMutualExclusionSelection({
+        reasoningCapability: {
+          mode: 'levels',
+          levels: ['low', 'medium', 'high'],
+          cannotDisable: true,
+          defaultLevel: 'high',
+        },
+      })
+
+      const wrapper = await mountChatInput({ reasoning: 'off' })
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+    })
+
     it('hides both the reasoning and web search triggers once image '
       + 'generation is toggled on, and shows them again once it is '
       + 'toggled off', async () => {

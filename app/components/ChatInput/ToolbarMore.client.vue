@@ -36,6 +36,7 @@
             <ChatInputReasoningMenuItems
               :reasoning="reasoning ?? 'off'"
               :levels="levels ?? []"
+              :can-disable="canDisableReasoning"
               @select-level="emit('select-reasoning-level', $event)"
             />
           </template>
@@ -144,7 +145,7 @@ import type {
   WebSearchSelection,
 } from '~/types/web-search'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   isWebSearchSupported?: boolean
   isWebSearchEnabled?: boolean
   isToolCallingSupported?: boolean
@@ -158,6 +159,7 @@ const props = defineProps<{
   isReasoningActive?: boolean
   reasoning?: ReasoningLevel
   levels?: ReasoningEnabledLevel[]
+  canDisableReasoning?: boolean
   isDeepResearchModel?: boolean
   research?: ModelResearchConfig | null
   displayProjectPicker?: boolean
@@ -166,7 +168,9 @@ const props = defineProps<{
     name: string
   } | null
   filesCount?: number
-}>()
+}>(), {
+  canDisableReasoning: true,
+})
 
 const emit = defineEmits<{
   'select-web-search-provider': [value: WebSearchSelection]

@@ -848,6 +848,59 @@ describe('chat duplicate message detection', () => {
       delta: 'Always-on reasoning',
     }))
   })
+
+  it('replays persisted reasoning for a Cloudflare gateway reply without '
+    + 'loading the gateway catalog', async () => {
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Question' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const assistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Gateway reasoning' },
+        { type: 'text', text: 'Visible answer' },
+      ],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db } = createDb({
+      messages: [userMessage, assistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'workers-ai/@cf/qwen/qwq-32b',
+        gateway: 'cloudflare',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: 'reasoning-delta',
+      delta: 'Gateway reasoning',
+    }))
+  })
 })
 
 describe('chat tool selection for single-message chats', () => {

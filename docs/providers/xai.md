@@ -41,11 +41,11 @@ disabled, since no effort can be sent (see
   `none,low,medium,high`; it's curated the same as every other levels-mode
   xAI model, `levels: ['low', 'medium', 'high']`. The app's `'off'`
   reasoning state sends no `reasoning_effort` param at all, which lets xAI
-  apply its own per-model default (e.g. `grok-4.5` defaults to `'high'` when
-  nothing is sent) rather than explicitly disabling reasoning the way `none`
-  would. This is pre-existing behavior, identical for the already-curated
-  `grok-4.5` — not a regression introduced by this PR — and is left as-is
-  rather than plumbing an explicit `none` value through.
+  apply its own default (`low` for `grok-4.3`, per its model page) rather
+  than explicitly disabling reasoning the way `none` would. This is
+  pre-existing behavior and is left as-is rather than plumbing an explicit
+  `none` value through. `grok-4.5`/`4.6`/`4.7` have no `none` at all and
+  no longer offer `off` (see below).
 
 Server-side wiring lives in `server/utils/providers/xai.ts`, matching the
 existing `use<Provider>()` contract described in
@@ -83,9 +83,11 @@ What the docs say:
   ([Responses API reference](https://docs.x.ai/developers/rest-api-reference/inference/responses)).
 - **Reasoning cannot be disabled** on `grok-4.5`, `grok-4.6` and
   `grok-4.7`. The guide says `reasoning_effort` "defaults to `"high"`" and
-  "Reasoning cannot be disabled". This app's `off` level sends no effort,
-  so these models still reason at their own default. The hidden-reasoning
-  indicator makes that visible on the message.
+  "Reasoning cannot be disabled". These models are curated with
+  `cannotDisable: true` and `defaultLevel: 'high'`, so their menu has no
+  `Off` and a saved `off` is sent and persisted as `high` (see
+  [`docs/chat-reasoning.md`](../chat-reasoning.md#models-that-cannot-disable-reasoning)).
+  The hidden-reasoning indicator makes that visible on the message.
 
 What `@ai-sdk/xai@5.0.20` does (`dist/index.js`):
 

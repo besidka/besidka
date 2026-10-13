@@ -164,6 +164,8 @@
                   :reasoning="reasoning"
                   :align="toolbarDropdownAlign"
                   :levels="reasoningMenuLevels"
+                :can-disable-reasoning="canDisableReasoningLevel"
+                  :can-disable="canDisableReasoningLevel"
                   @update:reasoning="selectReasoningLevel"
                 />
                 <UiButton
@@ -329,6 +331,7 @@ const {
   isReasoningAlwaysOn,
   reasoningCapability,
   reasoningMenuLevels,
+  canDisableReasoningLevel,
   isDeepResearchModel,
   researchConfig,
   isSelectedModelKeyless,
@@ -534,6 +537,13 @@ watch(isImageInputSupported, (supported) => {
   useWarningMessage(IMAGE_INPUT_UNSUPPORTED_MESSAGE)
 }, { flush: 'post' })
 
+/**
+ * The level the user had before a model that cannot stop reasoning forced
+ * its default effort in, so switching back to a model that can honor it
+ * restores that level instead of keeping the forced one.
+ */
+const reasoningLevelBeforeClamp = shallowRef<ReasoningLevel | null>(null)
+
 watch(
   [isReasoningSupported, reasoningCapability, isModelCapabilityResolved],
   ([supported, capability, isResolved]) => {
@@ -543,13 +553,26 @@ watch(
 
     if (!supported || !capability) {
       reasoning.value = 'off'
+      reasoningLevelBeforeClamp.value = null
 
       return
     }
 
-    if (!isReasoningLevelSupported(reasoning.value, capability)) {
-      reasoning.value = 'off'
+    const desiredLevel = reasoningLevelBeforeClamp.value ?? reasoning.value
+
+    if (isReasoningLevelSupported(desiredLevel, capability)) {
+      reasoning.value = desiredLevel
+      reasoningLevelBeforeClamp.value = null
+
+      return
     }
+
+    const fallbackLevel = getDefaultReasoningLevel(capability)
+
+    reasoningLevelBeforeClamp.value = fallbackLevel === 'off'
+      ? null
+      : desiredLevel
+    reasoning.value = fallbackLevel
   },
   {
     immediate: true,
@@ -766,6 +789,7 @@ function selectWebSearchProvider(option: WebSearchSelection) {
 
 function selectReasoningLevel(level: ReasoningLevel) {
   reasoning.value = level
+  reasoningLevelBeforeClamp.value = null
   prefStorage.setItem('settings_reasoning_level', level)
   requestPersistence()
 }
@@ -784,12 +808,10 @@ function restoreLiveReasoningLevel() {
     prefStorage.getItem('settings_reasoning_level'),
   )
 
-  reasoning.value = isReasoningLevelSupported(
+  reasoning.value = resolveSupportedReasoningLevel(
     savedLevel,
     reasoningCapability.value,
   )
-    ? savedLevel
-    : 'off'
 }
 
 /**

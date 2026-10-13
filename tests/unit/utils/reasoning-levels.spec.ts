@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canDisableReasoning,
+  getDefaultReasoningLevel,
   getGatewayReasoningControlState,
+  getReplayReasoningControlState,
+  getReasoningDropdownLevels,
+  resolveSupportedReasoningLevel,
   getReasoningBadgeLabel,
   getReasoningCapability,
   getReasoningControlState,
@@ -118,5 +123,62 @@ describe('reasoning levels', () => {
       expect(shouldSendReasoning('off', 'always-on')).toBe(true)
       expect(shouldSendReasoning('off', 'none')).toBe(false)
     })
+  })
+
+  it('drops off and falls back to the default for cannot-disable models',
+    () => {
+      const capability = getReasoningCapability({
+        reasoning: {
+          mode: 'levels',
+          levels: ['low', 'medium', 'high'],
+          cannotDisable: true,
+          defaultLevel: 'medium',
+        },
+      })
+
+      expect(canDisableReasoning(capability)).toBe(false)
+      expect(isReasoningLevelSupported('off', capability)).toBe(false)
+      expect(getReasoningDropdownLevels(capability))
+        .toEqual(['low', 'medium', 'high'])
+      expect(getDefaultReasoningLevel(capability)).toBe('medium')
+      expect(resolveSupportedReasoningLevel('off', capability))
+        .toBe('medium')
+      expect(resolveSupportedReasoningLevel('high', capability))
+        .toBe('high')
+    })
+
+  it('uses the highest level when the curated default is not offered', () => {
+    const capability = getReasoningCapability({
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'medium',
+      },
+    })
+
+    expect(getDefaultReasoningLevel(capability)).toBe('high')
+  })
+
+  it('keeps off for models that can disable reasoning', () => {
+    const capability = getReasoningCapability({
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      },
+    })
+
+    expect(canDisableReasoning(capability)).toBe(true)
+    expect(getReasoningDropdownLevels(capability)[0]).toBe('off')
+    expect(resolveSupportedReasoningLevel('off', capability)).toBe('off')
+  })
+
+  it('replays gateway reasoning by gateway, not by catalog', () => {
+    expect(getReplayReasoningControlState('cloudflare', undefined))
+      .toBe('always-on')
+    expect(getReplayReasoningControlState('openrouter', undefined))
+      .toBe('configurable')
+    expect(getReplayReasoningControlState(undefined, undefined))
+      .toBe('none')
   })
 })

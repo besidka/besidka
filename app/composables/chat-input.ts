@@ -310,6 +310,10 @@ export function useChatInput() {
     return reasoningCapability.value.mode
   })
 
+  const canDisableReasoningLevel = computed<boolean>(() => {
+    return canDisableReasoning(reasoningCapability.value)
+  })
+
   const reasoningMenuLevels = computed<ReasoningEnabledLevel[]>(() => {
     return getReasoningMenuLevels(reasoningCapability.value)
   })
@@ -377,6 +381,7 @@ export function useChatInput() {
     reasoningCapability,
     reasoningMode,
     reasoningMenuLevels,
+    canDisableReasoningLevel,
     isReasoningSupported,
     reasoningControlState,
     isReasoningAlwaysOn,

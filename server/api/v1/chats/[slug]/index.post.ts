@@ -39,8 +39,11 @@ import {
 } from '#shared/utils/gateway-capabilities'
 import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import {
+  getDefaultReasoningLevel,
   getGatewayReasoningControlState,
+  getReasoningCapability,
   getReasoningControlState,
+  getReplayReasoningControlState,
   shouldSendReasoning,
 } from '#shared/utils/reasoning'
 import type { FormattedTools } from '~~/server/types/tools.d'
@@ -186,7 +189,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const reasoningLevel: ReasoningLevel = body.data.gateway
+  let reasoningLevel: ReasoningLevel = body.data.gateway
     && !isGatewayReasoningSupported(body.data.gateway)
     ? 'off'
     : body.data.reasoning
@@ -305,6 +308,10 @@ export default defineEventHandler(async (event) => {
 
     provider = resolved.provider
     model = resolved.model
+
+    if (reasoningLevel === 'off') {
+      reasoningLevel = getDefaultReasoningLevel(getReasoningCapability(model))
+    }
 
     const hasImageAttachment = newMessage.parts.some((part) => {
       return part.type === 'file' && part.mediaType.startsWith('image/')
@@ -466,7 +473,7 @@ export default defineEventHandler(async (event) => {
             parts: persistedAssistantMessage.parts as UIMessage['parts'],
             sendReasoning: shouldSendReasoning(
               persistedAssistantMessage.reasoning,
-              getReasoningControlState(model),
+              getReplayReasoningControlState(gatewayId, model),
             ),
           })
 

@@ -3,8 +3,10 @@ import type { Model } from '#shared/types/providers.d'
 import type { ReasoningControlState } from '#shared/types/reasoning.d'
 import { providers } from '../../../providers'
 import {
+  canDisableReasoning,
   getReasoningCapability,
   getReasoningControlState,
+  getReasoningDropdownLevels,
   getReasoningMenuLevels,
   hasReasoningBadge,
   shouldSendReasoning,
@@ -38,6 +40,31 @@ const representativeStates: Record<string, ReasoningControlState> = {
   'qwen3.7-plus': 'configurable',
   'qwq-plus': 'always-on',
   'qwen3-max': 'none',
+}
+
+/**
+ * Models whose provider documents that reasoning cannot be switched off.
+ * Their menu offers no `off` and an `off` request resolves to the listed
+ * provider default. Sources are cited in docs/chat-reasoning.md.
+ */
+const cannotDisableDefaults: Record<string, 'low' | 'medium' | 'high'> = {
+  'grok-4.7': 'high',
+  'grok-4.6': 'high',
+  'grok-4.5': 'high',
+  'gpt-6.1-sol': 'medium',
+  'gpt-5': 'medium',
+  'gpt-5-mini': 'medium',
+  'gpt-5-nano': 'medium',
+  'o3': 'medium',
+  'o4-mini': 'medium',
+  'gemini-3.8-flash': 'medium',
+  'gemini-3.6-flash': 'medium',
+  'gemini-3.5-flash': 'medium',
+  'gemini-3.1-pro-preview': 'high',
+  'gemini-3-pro-preview': 'high',
+  'gemini-3-flash-preview': 'high',
+  'gemini-2.5-pro': 'medium',
+  'claude-opus-5-5': 'medium',
 }
 
 function findModel(modelId: string): Model {
@@ -104,4 +131,26 @@ describe('reasoning control state across the merged catalog', () => {
       )).toBe(true)
     }
   })
+
+  it.each(Object.entries(cannotDisableDefaults))(
+    '%s cannot disable reasoning and defaults to %s',
+    (modelId, defaultLevel) => {
+      const model = findModel(modelId)
+      const capability = getReasoningCapability(model)
+
+      expect(canDisableReasoning(capability)).toBe(false)
+      expect(getReasoningDropdownLevels(capability)).not.toContain('off')
+      expect(resolveReasoningLevelForModel(model, 'off')).toBe(defaultLevel)
+    },
+  )
+
+  it.each(catalog)(
+    '$providerId/$model.id: only audited models drop the off level',
+    ({ model }) => {
+      const capability = getReasoningCapability(model)
+
+      expect(!canDisableReasoning(capability))
+        .toBe(model.id in cannotDisableDefaults)
+    },
+  )
 })
