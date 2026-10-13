@@ -124,16 +124,17 @@ describe('wrangler.jsonc previews block', () => {
     }
   })
 
-  it('shares the production Turnstile sitekey so previews run the real widget',
-    () => {
-      const turnstileSiteKey = 'NUXT_PUBLIC_TURNSTILE_SITE_KEY'
+  it('uses the dedicated preview Turnstile widget sitekey', () => {
+    const turnstileSiteKey = 'NUXT_PUBLIC_TURNSTILE_SITE_KEY'
+    const previewWidgetSiteKey = '0x4AAAAAAEFM-2wD0PMvdy4q'
 
-      expect(typeof production.vars[turnstileSiteKey]).toBe('string')
-      expect(previews.vars[turnstileSiteKey])
-        .toBe(production.vars[turnstileSiteKey])
-      expect(previews.vars[turnstileSiteKey])
-        .not.toBe(config.vars[turnstileSiteKey])
-    })
+    expect(typeof production.vars[turnstileSiteKey]).toBe('string')
+    expect(previews.vars[turnstileSiteKey])
+      .not.toBe(production.vars[turnstileSiteKey])
+    expect(previews.vars[turnstileSiteKey])
+      .not.toBe(config.vars[turnstileSiteKey])
+    expect(previews.vars[turnstileSiteKey]).toBe(previewWidgetSiteKey)
+  })
 
   it('never references a production resource id or name', () => {
     const serializedPreviews = JSON.stringify(previews)

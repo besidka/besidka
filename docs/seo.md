@@ -236,35 +236,60 @@ actions, roughly in leverage order:
    engines cite. Positioning sentence, to reuse verbatim where length allows:
    "Open-source BYOK AI chat app. Use GPT, Claude, Gemini, Grok and more with
    your own API key. Pay the provider directly: no subscription, no markup."
-   Status per target as of 2026-10-12:
+   Status per target as of 2026-10-13:
    - `github.com/yatsyk/awesome-byok-apps`: PR opened 2026-10-12,
      <https://github.com/yatsyk/awesome-byok-apps/pull/25> (Chat UIs). The
      list caps descriptions under 100 chars, so the entry reads "Open-source
      chat app for GPT, Claude, Gemini and more; pay providers directly, no
      markup." The maintainer merges rarely (1 PR merged ever, ~17 open), so
      it may sit.
-   - `byokhub.com`: already listed
-     (<https://www.byokhub.com/products/besidka>, submitted 2026-07-26) but
-     the copy is wrong: it calls Besidka a "desktop and mobile" client and
-     says "no API key or subscription needed" / "usage-based app charges".
-     Needs an edit while signed in as the original submitter. Corrected copy:
-     tagline "Open-source BYOK AI chat app. Use GPT, Claude, Gemini, Grok and
-     more with your own API key."; pricing "Free / open source (MIT), AI
-     usage billed directly by the provider"; platform "Web app + PWA".
+   - `byokhub.com`: listed
+     (<https://www.byokhub.com/products/besidka>, submitted 2026-07-26); the
+     wrong copy ("desktop and mobile" client, "no API key or subscription
+     needed", "usage-based app charges") was fixed on 2026-10-13 from the
+     original submitter's account. A listing only shows under "My
+     submissions" for the sign-in that created it: a different provider sees
+     an empty list, which looks like the listing is not yours. Now set:
+     website `https://besidka.com` (was `www`); tagline = the first two
+     sentences of the positioning sentence; the full description; pricing
+     model "Free with your key"; free tier; starting price "Free"; "No extra
+     app-side metered charges"; setup "Beginner-friendly"; a "Best for" line;
+     thumbnail on the apex host. The site's feedback widget returned "Failed
+     to send feedback email" on every try that day, so edit through My
+     submissions → Edit, not feedback.
    - `byoklist.com`: already listed at
      <https://byoklist.com/tool/www.besidka.com> on the old `www` host, with
      only OpenAI/Google named. There is no edit flow and re-submission is a
      $4.99 non-refundable fee. Decision: keep as is. `www` 301s to the apex,
      so the link still counts, and the copy is incomplete rather than false.
-   - AlternativeTo: not listed as far as could be checked. Needs an account
-     with a verified email; descriptions cannot contain URLs. Use the
-     positioning sentence and "alternative to" ChatGPT, Claude, Google Gemini,
-     LibreChat, Open WebUI, TypingMind.
+   - AlternativeTo: submitted 2026-10-13,
+     <https://alternativeto.net/software/besidka/about/>, in the free review
+     queue (priority review $5 and human content review $15 not bought; the
+     owner's call). Listing: Free, Open Source (MIT), source
+     `https://github.com/besidka/besidka`, platforms Online + Self-Hosted
+     (self-hosting requires a Cloudflare account: Workers, D1, KV, R2),
+     author "Serhii Chernenko" (existing author entry, website
+     chernenko.digital, country Ukraine), tags `ai-enabled-chatbots`,
+     `ai-chat`, `byok`, `self-hosted` (category AI Tools & Services).
+     Features are limited to verifiable ones: AI-Powered, syntax
+     highlighting, text-to-image, ad-free, dark mode, no coding required,
+     cloud sync, Markdown; deliberately not "no tracking", "privacy focused"
+     or "no registration". Nine alternatives: LibreChat, ChatGPT, Open WebUI,
+     AnythingLLM, Typing Mind, Cherry Studio, Chatbox AI, Poe, DeepSeek. Two
+     real UI screenshots (desktop and narrow window). Descriptions cannot
+     contain URLs. The owner's AlternativeTo profile is filled (name, bio
+     with the positioning sentence, X `besidka_ai`, GitHub
+     `serhii-chernenko`).
    - `awesome-selfhosted`: **not eligible.** awesome-selfhosted-data requires
      a first tagged release older than 4 months (Besidka has none) and
      excludes "software that depends on a specific cloud provider"
      (Workers/D1/KV/R2). Their CONTRIBUTING also bans machine/LLM-generated
      submissions, so if it ever qualifies a human writes the entry.
+   - Screenshots: `public/preview-*.svg` are illustrative mockups (they
+     still show "Gemini 2.5 Pro"), not screenshots; do not submit them to
+     directories as screenshots. The real UI screenshots used for both
+     listings live on byokhub's blob storage; keeping real screenshots in
+     the repo would avoid that dependency.
 3. **Close the `sameAs` loop.** Once the Wikidata QID and directory profiles
    exist, add them to the `Organization` node's `sameAs`, and make every profile
    bio agree *verbatim* on the positioning sentence. Entity reconciliation is
@@ -521,11 +546,12 @@ None of these can be done from the repository.
       [Off-page](#off-page-where-the-ceiling-actually-is).
 - [ ] **Directory listings** — per-target status is in item 2 under
       [Off-page](#off-page-where-the-ceiling-actually-is): the
-      `awesome-byok-apps` PR is open, the `byokhub.com` copy fix is pending
-      owner sign-in, AlternativeTo is pending, `byoklist.com` is kept as is,
-      and `awesome-selfhosted` is not eligible. Link
-      `https://besidka.com/byok` where a listing allows a docs/guide URL, and
-      reuse the positioning sentence verbatim where length allows.
+      `byokhub.com` copy is fixed, AlternativeTo is submitted (awaiting
+      review), the `awesome-byok-apps` PR (#25) is open and unmerged,
+      `byoklist.com` is kept as is, and `awesome-selfhosted` is not
+      eligible. Link `https://besidka.com/byok` where a listing allows a
+      docs/guide URL, and reuse the positioning sentence verbatim where
+      length allows.
 - [ ] **`sameAs`.** Once the Wikidata QID and profiles exist, add them to the
       `Organization` node in `app/utils/landing-jsonld.ts`.
 - [x] **Search Console.** URL Inspection → Request Indexing done for `/` and
