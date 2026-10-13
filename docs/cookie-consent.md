@@ -451,7 +451,7 @@ oversight.
   does not enable it; declare it if that option is ever turned on. `oauth_state`
   is not declared because it is only written under the `cookie` OAuth state
   strategy, and this app uses the `database` strategy (the plain `state` cookie
-  is declared). The cookies are read from the installed `better-auth` 1.6.26
+  is declared). The cookies are read from the installed `better-auth` 1.7.7
   source; re-verify names and lifetimes on a Better Auth upgrade, because the
   manifest and `content/legal/cookie-policy.md` repeat them.
   The names carry no `__Secure-` prefix, in production or locally. The prefix

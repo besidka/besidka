@@ -14,6 +14,7 @@
 
 <script setup lang="ts" vapor>
 import type { ChatErrorPayload } from '#shared/types/chat-errors.d'
+import { buildChatErrorLines } from '~/composables/chat'
 
 defineProps<{
   error: ChatErrorPayload | null

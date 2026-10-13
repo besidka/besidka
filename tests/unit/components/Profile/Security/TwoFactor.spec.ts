@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   enable: vi.fn(async () => ({
     data: {
+      method: 'totp',
       totpURI:
         'otpauth://totp/Besidka:user%40example.com?secret=JBSWY3DPEHPK3PXP'
         + '&issuer=Besidka',
@@ -118,6 +119,7 @@ describe('Profile/Security/TwoFactor', () => {
     })
     mocks.enable.mockResolvedValue({
       data: {
+        method: 'totp',
         totpURI:
           'otpauth://totp/Besidka:user%40example.com?secret=JBSWY3DPEHPK3PXP'
           + '&issuer=Besidka',
@@ -207,6 +209,7 @@ describe('Profile/Security/TwoFactor', () => {
 
       expect(mocks.enable).toHaveBeenCalledWith({
         password: 'CurrentPass1!',
+        method: 'totp',
       })
       expect(passwordInput(wrapper).exists()).toBe(false)
       expect(wrapper.find('[data-testid="two-factor-manual-secret"]')
@@ -228,6 +231,32 @@ describe('Profile/Security/TwoFactor', () => {
         .toBe('abcde-fghij,klmno-pqrst')
     },
   )
+
+  it('stays on the password step when enable returns a non-TOTP result',
+    async () => {
+      authMock = createAuthMock(false)
+      mocks.enable.mockResolvedValue({
+        data: { method: 'otp' },
+        error: null,
+      } as never)
+
+      const wrapper = await mountSuspended(TwoFactor, {
+        global: { stubs: stubs() },
+      })
+
+      await flushPromises()
+
+      await wrapper.get('[data-testid="two-factor-enable"]').trigger('click')
+      await flushPromises()
+      await passwordInput(wrapper).setValue('CurrentPass1!')
+      await wrapper.get('form').trigger('submit')
+      await flushPromises()
+
+      expect(passwordInput(wrapper).exists()).toBe(true)
+      expect(wrapper.find('[data-testid="two-factor-qr-code"]').exists())
+        .toBe(false)
+      expect(mocks.verifyTotp).not.toHaveBeenCalled()
+    })
 
   it('gates turning off behind a confirmation and the account password',
     async () => {

@@ -10,7 +10,7 @@ audit the choices without replaying the session.
 | Package | Before | After |
 |---|---|---|
 | `nuxt` / `@nuxt/kit` | 4.5.2 | 4.6.0 |
-| `vue` | 3.5.41 | 3.6.0-rc.10 |
+| `vue` | 3.5.41 | 3.6.0-rc.11 |
 | `vue-router` | 5.2.x | 5.3.1 |
 | `vite` | (transitive) | 8.3.2 |
 | `unhead` / `@unhead/vue` / `@unhead/bundler` (override) | 3.2.1 | 3.4.2 |
@@ -130,6 +130,46 @@ A component stays VDOM if it:
 - renders `ContentRenderer` or MDC;
 - sits inside a VDOM `v-for`;
 - lives under `content/**` or `landing/**` and is rendered from MDC.
+
+A Vapor component with `<script setup>` must also import every auto-imported
+function, composable, util, or constant its template uses explicitly in the
+script block (for example
+`import { buildChatErrorLines } from '~/composables/chat'`). Components and
+`$`-prefixed globals are unaffected. See the next section for why.
+
+### Template auto-imports in production Vapor builds
+
+Since Vue `3.6.0-rc.11` ([vuejs/core#15839](https://github.com/vuejs/core/pull/15839),
+commit `7d0928be7`, "read unknown identifiers from props in templates and css
+vars"), the Vapor compiler emits an identifier that is unknown to an inlined
+`<script setup>` template as `__props.name`. Up to rc.10 it emitted the bare
+`name`. `@vitejs/plugin-vue` inlines the template into `setup()` only in
+production builds. The dev server compiles the template separately, and that
+output still reads `_ctx.name`.
+
+Nuxt resolves template auto-imports through unimport. Its `vueTemplate` addon
+rewrites only `_ctx.name` accesses, and its script transform only sees bare
+identifiers. A production `__props.name` access matches neither, so the import
+is never injected and the call resolves against the props object. The first
+case was `Chat/ErrorCard`: its template called the auto-imported
+`buildChatErrorLines(error)`, and production threw
+`e.buildChatErrorLines is not a function` (`e` is the minified `__props`)
+when a chat request failed, so the error card never rendered.
+
+Neither dev nor unit tests catch this. `pnpm run dev` compiles the separate
+`_ctx.name` form, which unimport still rewrites. `tests/unit` strips the `vapor`
+attribute (see below), so those specs compile VDOM output. The guard is
+`tests/unit/config/vapor-template-auto-imports.spec.ts`. It compiles every
+Vapor SFC under `app/` with `inlineTemplate` and `isProd`, and fails on any
+`__props.name` that is not a declared prop. Only `Chat/ErrorCard` was affected
+among the 20 converted components. Template-only Vapor components
+(`<template vapor>` with no script) compile in non-inline mode to `_ctx.name`,
+so unimport still handles them.
+
+The fix is the explicit import, not a Vue pin. #15839 is a deliberate
+semantics change, so a later rc will not revert it. Remove the explicit-import
+rule only when unimport or Nuxt resolves auto-imports in the production Vapor
+`__props` form.
 
 ### `@nuxtjs/mdc` `viteMDCSlot` crash
 
@@ -260,6 +300,11 @@ to evlog's (`status` and `message`, with technical detail in `why`).
   mismatch is contained inside `useRequestLogger`.
 - **Upstream issue to file** for `@nuxtjs/mdc` `viteMDCSlot` against the Vapor
   compiler context, so `guardMdcSlotTransformForVapor` can be deleted.
+- **Upstream issue to file** against unimport's `vueTemplate` addon (or Nuxt):
+  production Vapor templates read unknown identifiers as `__props.name` since
+  Vue rc.11 (vuejs/core#15839), so template auto-imports silently stop
+  resolving. Once that is handled upstream, the explicit-import rule in
+  "Template auto-imports in production Vapor builds" can be dropped.
 - **Pre-existing low-severity findings** from the security audit of this
   branch. None were introduced by the migration:
   - `server/utils/auth.ts` (~line 128) falls back to `x-forwarded-for` after

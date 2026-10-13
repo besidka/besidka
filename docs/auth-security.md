@@ -301,6 +301,45 @@ the same gap, plus the TTL bug above) — not a hard guarantee. A truly
 atomic implementation would need Durable Objects or D1, which is out of
 scope for this PR.
 
+## Verification tokens: `getAndDelete` is not atomic on KV
+
+Better Auth 1.7 consumes single-use verification tokens (password reset,
+email verification, change-email, two-factor) through
+`SecondaryStorage.getAndDelete`. Our Cloudflare KV adapter
+(`createAuthSecondaryStorage` in `server/utils/auth-secondary-storage.ts`)
+implements it as `get` followed by `delete`. That is not atomic, and KV
+deletes are eventually consistent across colos, so a concurrent or
+cross-colo replay of the same token inside the propagation window is
+possible. Better Auth 1.6 had the same get-then-delete exposure, so this is
+not a regression introduced by the 1.7 upgrade.
+
+Considered and deferred: `verification: { storeInDatabase: true }`, which
+routes consumption through D1's `consumeOne`. It was deferred because it
+invalidates every verification token already issued at deploy time, and D1
+transactional semantics for the adapter's consume lock are unverified.
+Revisit it if single-use token replay becomes a concrete concern.
+
+## `accounts.account_id` is an integer column read back as a string
+
+Better Auth 1.7.7 sign-in requires `account.accountId === user.id` as
+strings. Our ids are serial integers, so `accounts.account_id` is an
+`INTEGER` column and the `authAccountId` custom type in
+`server/utils/custom-db-types.ts` reads it back with `String(value)`. The
+behavior is pinned by `tests/unit/utils/custom-db-types.spec.ts`.
+
+Known pre-existing defect (not introduced by the 1.7 upgrade): INTEGER
+affinity coerces every numeric-looking provider id. Ids of 16 to 19 digits
+are stored exactly but come back from the driver as a JS number above
+2^53 and lose precision. Ids beyond the 64-bit range, such as Google's
+21-digit subject ids, are stored as `REAL` and lose precision on write
+(verified with `sqlite3`: `'123456789012345678901'` is stored as
+`1.2345678901234568e+20`). GitHub's numeric ids are well below both
+limits. Better Auth's OAuth path compares `account.accountId` with the
+provider id strictly (in 1.6 and 1.7), so Google account lookups by
+provider id cannot match these rows. The real fix is a `TEXT` column, which
+is a table rebuild of `accounts` and must follow the D1 migration safety
+checklist in `CLAUDE.md`.
+
 ## Turnstile owner checklist
 
 Manual steps needed before `turnstileEnforced` can be safely flipped to
