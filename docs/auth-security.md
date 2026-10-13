@@ -301,6 +301,37 @@ the same gap, plus the TTL bug above) — not a hard guarantee. A truly
 atomic implementation would need Durable Objects or D1, which is out of
 scope for this PR.
 
+## Verification tokens: `getAndDelete` is not atomic on KV
+
+Better Auth 1.7 consumes single-use verification tokens (password reset,
+email verification, change-email, two-factor) through
+`SecondaryStorage.getAndDelete`. Our Cloudflare KV adapter
+(`createAuthSecondaryStorage` in `server/utils/auth-secondary-storage.ts`)
+implements it as `get` followed by `delete`. That is not atomic, and KV
+deletes are eventually consistent across colos, so a concurrent or
+cross-colo replay of the same token inside the propagation window is
+possible. Better Auth 1.6 had the same get-then-delete exposure, so this is
+not a regression introduced by the 1.7 upgrade.
+
+Considered and deferred: `verification: { storeInDatabase: true }`, which
+routes consumption through D1's `consumeOne`. It was deferred because it
+invalidates every verification token already issued at deploy time, and D1
+transactional semantics for the adapter's consume lock are unverified.
+Revisit it if single-use token replay becomes a concrete concern.
+
+## `accounts.account_id` is an integer column read back as a string
+
+Better Auth 1.7.7 sign-in requires `account.accountId === user.id` as
+strings. Our ids are serial integers, so `accounts.account_id` is an
+`INTEGER` column and the `authAccountId` custom type in
+`server/utils/custom-db-types.ts` reads it back with `String(value)`. SQLite
+integer affinity means a numeric provider id of 16 to 19 digits is coerced
+to an integer and can come back from the driver as a JS number that has
+lost precision. Google's 21-digit subject ids exceed the 64-bit integer
+range, so SQLite keeps them as text and they round-trip exactly, and GitHub's
+numeric ids are far below the precision limit. The behavior is pinned by
+`tests/unit/utils/custom-db-types.spec.ts`.
+
 ## Turnstile owner checklist
 
 Manual steps needed before `turnstileEnforced` can be safely flipped to
