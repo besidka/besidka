@@ -4,6 +4,7 @@ import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import { createXai } from '@ai-sdk/xai'
+import { withXaiReasoningSummary } from '~~/server/utils/providers/xai-reasoning-summary'
 import {
   resolveReasoningLevelForModel,
   toReasoningEffort,
@@ -33,10 +34,6 @@ export async function useXai(
     })
   }
 
-  const xai = createXai({
-    apiKey: await useDecryptText(data.apiKey),
-    ...(cacheKey ? { headers: { 'x-grok-conv-id': cacheKey } } : {}),
-  })
   const { model: modelData } = getModel(model)
 
   if (!modelData) {
@@ -45,6 +42,20 @@ export async function useXai(
       status: 400,
     })
   }
+
+  const reasoningLevel = resolveReasoningLevelForModel(
+    modelData,
+    requestedReasoning,
+  )
+  const isReasoningSummaryRequested = reasoningLevel !== 'off'
+    || !!modelData.reasoningAlwaysOn
+  const xai = createXai({
+    apiKey: await useDecryptText(data.apiKey),
+    ...(cacheKey ? { headers: { 'x-grok-conv-id': cacheKey } } : {}),
+    ...(isReasoningSummaryRequested
+      ? { fetch: withXaiReasoningSummary() }
+      : {}),
+  })
 
   const controllerModelId = getControllerModelId(modelData)
   const imageModelId = getImageGenerationModelId(
@@ -70,12 +81,6 @@ export async function useXai(
       message,
     )
   }
-
-  const reasoningLevel = resolveReasoningLevelForModel(
-    modelData,
-    requestedReasoning,
-  )
-  const reasoningAlwaysOn = !!modelData.reasoningAlwaysOn
 
   function getTools(): FormattedTools {
     if (
@@ -111,30 +116,7 @@ export async function useXai(
     return result
   }
 
-  function getProviderOptions(): SharedV2ProviderOptions {
-    const result: SharedV2ProviderOptions = {}
-
-    /**
-     * Reasoning effort is set provider-agnostically via the top-level
-     * `reasoning` option on streamText (AI SDK v7). providerOptions only
-     * carries the output flag, because the SDK never enables reasoning
-     * summaries on its own (same contract as the OpenAI responses model).
-     * `modelData.reasoningAlwaysOn` models (e.g. grok-4.20-0309-reasoning)
-     * never accept a `reasoning_effort` value at all — xAI hardcodes them
-     * as unsupported — but they always reason internally, so the summary
-     * flag must still be requested here or their reasoning trace, despite
-     * the picker showing a brain icon for them, would never actually
-     * render.
-     * @see https://ai-sdk.dev/providers/ai-sdk-providers/xai#reasoning
-     */
-    if (reasoningLevel !== 'off' || reasoningAlwaysOn) {
-      Object.assign(result, {
-        reasoningSummary: 'detailed',
-      })
-    }
-
-    return result
-  }
+  const providerOptions: SharedV2ProviderOptions = {}
 
   return {
     instance: getInstance(),
@@ -142,7 +124,7 @@ export async function useXai(
     imageModelId,
     generateChatTitle,
     tools: getTools(),
-    providerOptions: getProviderOptions(),
+    providerOptions,
     reasoning: toReasoningEffort(reasoningLevel),
   }
 }
