@@ -102,6 +102,56 @@ Consequences:
   OAuth callback is `/__nuxt_studio/auth/github` on a single host and does
   not go through `oAuthProxy`.
 
+## Turnstile on Previews
+
+Previews run the **real** Turnstile widget, same as production (owner decision
+2026-10-13). They inherit `NUXT_TURNSTILE_ENFORCED: true` from
+`env.production` and get the real secret from `.dev.vars.preview`, so
+`env.production.previews.vars` sets `NUXT_PUBLIC_TURNSTILE_SITE_KEY` to the
+production sitekey `0x4AAAAAAEFMAZiwbUuiy0qi` (public by design). Before this
+change it was Cloudflare's always-pass test sitekey, whose token the real secret
+rejects, so every sign-in, sign-up and reset-password on a Preview returned 403
+"Captcha verification failed". The old `besidka-preview` Worker had the test
+key and no enforcement, so captcha was effectively off there.
+
+Server side, `allowedHostnames` accepts the wildcard host set in
+`NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS`, so `pr-<n>-besidka...` tokens pass the
+hostname check (details in `docs/auth-security.md`).
+
+Dashboard hostnames: the widget `0x4AAAAAAEFMAZiwbUuiy0qi` lists only
+`besidka.com`. Cloudflare's hostname management docs state that wildcards are
+not supported, but "adding a hostname automatically authorizes all of its
+subdomains" and the widget "will work on that exact hostname and all of its
+subdomains"
+(<https://developers.cloudflare.com/turnstile/additional-configuration/hostname-management/>).
+`pr-<n>-besidka` is a single label, so `besidka.chernenko.workers.dev` would
+not cover it. The one entry that covers `preview-besidka` and every
+`pr-<n>-besidka` (and deployment hosts) is:
+
+- `chernenko.workers.dev`
+
+The docs do not say whether the dashboard accepts a hostname one label below
+the `workers.dev` public suffix; this is unverified. If it is rejected, the
+fallbacks are: register `preview-besidka.chernenko.workers.dev` only (captcha
+works on the long-lived Preview, PR hosts fail with 110200), or create a
+separate preview widget with its own secret in `.dev.vars.preview`. Registering
+each `pr-<n>` host is not viable (10 hostnames per widget on the free plan).
+Side effect of the broad entry: any Worker on `chernenko.workers.dev` can
+render the production widget.
+
+Testing: automation always fails the real challenge, so a human must test
+sign-in on Previews. CI e2e is unaffected: it runs `wrangler dev` with no
+`--env` against a `.dev.vars` that sets no Turnstile secret, so
+`getCaptchaOptions()` returns `null` and the captcha plugin is not registered.
+The Preview sitekey lives only under `env.production.previews.vars`.
+
+Setting Cloudflare's always-pass test secret on a single Preview
+(`pnpm exec wrangler preview secret put NUXT_TURNSTILE_SECRET_KEY --name
+pr-<n> --env production`) is not recommended; use the real widget. If such an
+override was applied, remove it with `pnpm exec wrangler preview secret delete
+NUXT_TURNSTILE_SECRET_KEY --name pr-<n> --env production` so the Preview falls
+back to the base-config secret.
+
 ## Secrets runbook
 
 Secrets are **not** inherited from production and **not** managed by CI. CI

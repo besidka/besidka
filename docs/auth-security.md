@@ -44,19 +44,46 @@ the change safely before it reaches production.
 
 The fix is a dedicated, non-secret runtime config flag,
 `turnstileEnforced` (`runtimeConfig.turnstileEnforced`, default
-`false`), analogous to `emailNoopEnabled`. It is set to `true` only in
-the production Worker's `wrangler.jsonc` `vars` block. Preview deploys,
-local dev, and CI all keep it `false`, so `expectedAction`/
-`allowedHostnames` are only ever asserted where a human has explicitly
-confirmed the deployed hostname and action match — production.
+`false`), analogous to `emailNoopEnabled`. It is set to `true` in the
+`env.production` block of `wrangler.jsonc`. Local dev and CI keep it
+`false`, so `expectedAction`/`allowedHostnames` are only asserted where a
+real widget and a real secret are configured.
+
+Since the migration to Cloudflare Workers Previews (PR #430, see
+`docs/cloudflare-previews.md`) PR and `main` Previews run as
+`env.production`, so they inherit `turnstileEnforced: true` and get the real
+secret. They therefore run the **real** captcha, same as production
+(owner decision 2026-10-13): `env.production.previews.vars` carries the
+real production sitekey instead of Cloudflare's always-pass test sitekey.
+A test sitekey paired with the real secret can never pass `siteverify`, so
+mixing them returns 403 "Captcha verification failed" on every sign-in.
 
 `allowedHostnames`, when enforced, reuses `getAllowedHosts()` (in
 `server/utils/auth-hosts.ts`, used for Better Auth's
-`baseURL.allowedHosts`) but strips any `:port` suffix and any entry
-containing `*` — Turnstile matches bare hostnames only, and
-`getAllowedHosts()` can return port/wildcard entries (`localhost:*`,
-`*-branch.rest`) for other, legitimate reasons that don't apply to
-Turnstile's hostname check.
+`baseURL.allowedHosts`) but strips any `:port` suffix and drops port
+wildcards such as `localhost:*`, which don't apply to Turnstile's
+hostname check (it reports bare hostnames).
+
+Hostname wildcards (`*-besidka.chernenko.workers.dev`, set through
+`NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS` on Previews) are kept. Better Auth's
+Turnstile handler only supports exact matching —
+`allowedHostnames.includes(response.hostname)` in
+`verify-handlers/cloudflare-turnstile.mjs`, identical in 1.6.26 and 1.7.7 —
+and the verification result is not exposed to the caller (the token is
+single-use, so a second `siteverify` call is impossible). When at least one
+wildcard is present, `toTurnstileHostnames()` in
+`server/utils/auth-captcha.ts` therefore returns an array whose `includes`
+is overridden to also match wildcard patterns via `matchesHostnamePattern()`
+(`*` stands for one or more characters within a single DNS label, so
+`pr-442-besidka.chernenko.workers.dev` matches but
+`evil-besidka.chernenko.workers.dev.attacker.com` and
+`besidka.chernenko.workers.dev` do not). Without wildcards (production)
+the plain array is returned and behaviour is exact-match, byte-for-byte as
+before. If a future Better Auth stops calling `.includes`, the override
+stops being consulted and the check falls back to the literal entries,
+which rejects wildcard hosts (403) rather than letting them through.
+`tests/unit/utils/auth-captcha-plugin.spec.ts` exercises the real `captcha`
+plugin so a Better Auth bump that changes this contract fails a test.
 
 **Known limitation**: `getAllowedHosts()`'s apex/`www.` detection uses a
 `parts.slice(-2)` heuristic (last two dot-separated labels = the
@@ -372,11 +399,16 @@ key is set):
       verification note below, not required. Verified 2026-10-07 with
       `wrangler turnstile widget get 0x4AAAAAAEFMAZiwbUuiy0qi`: mode
       `managed`, domains `[besidka.com]`.
-- [ ] Any preview/staging environment that ever gets its own
-      `turnstileSecretKey`/`turnstileSiteKey` for testing must NOT also
-      get `turnstileEnforced: true` (already the default in this repo:
-      only the production `env` block sets it) — its hostname will
-      never match the production Turnstile widget's allow-list.
+- [ ] Previews run the real widget (see "The `turnstileEnforced` gate"). Add
+      `chernenko.workers.dev` to the widget's hostname list in the
+      Cloudflare dashboard (Turnstile, widget, Hostname management) so the
+      widget renders on `preview-besidka.chernenko.workers.dev` and every
+      `pr-<n>-besidka.chernenko.workers.dev`. Adding a hostname authorizes
+      all of its subdomains; wildcards are not supported; see
+      `docs/cloudflare-previews.md` ("Turnstile on Previews"). Until it is
+      added, the widget fails with error 110200 on Previews. Automation
+      cannot pass a real challenge, so a human must test sign-in on a
+      Preview.
 - [ ] After the first real deploy with keys configured, manually
       exercise sign-up, sign-in, and reset-password in production to
       confirm the widget renders and the rate-limit windows above don't

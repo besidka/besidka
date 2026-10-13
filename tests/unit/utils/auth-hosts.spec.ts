@@ -3,6 +3,7 @@ import {
   getAllowedHosts,
   getRelyingPartyId,
   isSecureBaseUrl,
+  matchesHostnamePattern,
   parseAdditionalHosts,
 } from '../../../server/utils/auth-hosts'
 
@@ -190,5 +191,55 @@ describe('isSecureBaseUrl', () => {
   it('is false for http and empty base URLs', () => {
     expect(isSecureBaseUrl('http://localhost:3000')).toBe(false)
     expect(isSecureBaseUrl('')).toBe(false)
+  })
+})
+
+describe('matchesHostnamePattern', () => {
+  const pattern = '*-besidka.chernenko.workers.dev'
+
+  it('matches an exact hostname when the pattern has no wildcard', () => {
+    expect(matchesHostnamePattern('besidka.com', 'besidka.com')).toBe(true)
+    expect(matchesHostnamePattern('www.besidka.com', 'besidka.com'))
+      .toBe(false)
+  })
+
+  it('matches a wildcard inside a single label', () => {
+    expect(matchesHostnamePattern(
+      'pr-442-besidka.chernenko.workers.dev',
+      pattern,
+    )).toBe(true)
+    expect(matchesHostnamePattern(
+      'preview-besidka.chernenko.workers.dev',
+      pattern,
+    )).toBe(true)
+  })
+
+  it('compares case-insensitively', () => {
+    expect(matchesHostnamePattern(
+      'PR-442-Besidka.Chernenko.Workers.Dev',
+      pattern,
+    )).toBe(true)
+  })
+
+  it('rejects hosts that span extra labels or append a suffix', () => {
+    expect(matchesHostnamePattern(
+      'evil-besidka.chernenko.workers.dev.attacker.com',
+      pattern,
+    )).toBe(false)
+    expect(matchesHostnamePattern(
+      'a.b-besidka.chernenko.workers.dev',
+      pattern,
+    )).toBe(false)
+    expect(matchesHostnamePattern(
+      'besidka.chernenko.workers.dev',
+      pattern,
+    )).toBe(false)
+  })
+
+  it('treats regular expression characters in the pattern literally', () => {
+    expect(matchesHostnamePattern(
+      'a-besidkaXchernenko.dev',
+      '*-besidka.chernenko.dev',
+    )).toBe(false)
   })
 })
