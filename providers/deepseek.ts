@@ -8,7 +8,8 @@ export default {
       id: 'deepseek-flash',
       tools: [],
       reasoning: {
-        mode: 'toggle',
+        mode: 'levels',
+        levels: ['low', 'high'],
       },
       price: {
         tokens: 1_000_000,
@@ -18,7 +19,8 @@ export default {
       id: 'deepseek-v4-pro',
       tools: [],
       reasoning: {
-        mode: 'toggle',
+        mode: 'levels',
+        levels: ['low', 'high'],
       },
       price: {
         tokens: 1_000_000,

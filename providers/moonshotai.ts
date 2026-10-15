@@ -17,7 +17,11 @@ export default {
     {
       id: 'kimi-k3',
       tools: ['web_search'],
-      reasoningAlwaysOn: true,
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'high'],
+        cannotDisable: true,
+      },
       price: {
         tokens: 1_000_000,
       },

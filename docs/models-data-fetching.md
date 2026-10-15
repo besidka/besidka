@@ -78,11 +78,15 @@ Gateway models use `getGatewayReasoningControlState()` with the catalog's
 `'always-on'` on Cloudflare (which cannot forward an effort request).
 
 A `'configurable'` levels model whose provider documents that reasoning
-cannot be switched off is curated with `reasoning.cannotDisable: true` and
+cannot be switched off is curated with `reasoning.cannotDisable: true` and,
+when the provider default is one of the curated levels,
 `reasoning.defaultLevel` (the provider default when no effort is sent).
 The effort menu then has no `Off`, and a saved or persisted `off` resolves
-to `defaultLevel` on both client and server. Use this, not
-`reasoningAlwaysOn`, when the model still accepts an effort parameter. The
+to the default level (`defaultLevel`, else `medium` rounded up to the next
+supported level) on both client and server. A non-`off` level the model
+lacks rounds up the same way; see
+[`docs/chat-reasoning.md`](./chat-reasoning.md#reasoning-scale-and-the-round-up-rule).
+Use this, not `reasoningAlwaysOn`, when the model still accepts an effort parameter. The
 per-model audit and its sources are in
 [`docs/chat-reasoning.md`](./chat-reasoning.md#models-that-cannot-disable-reasoning);
 the catalog guard test fails if a model gains or loses `cannotDisable`
@@ -90,7 +94,8 @@ without updating its list.
 
 Before this rule, the picker ORed `reasoning || reasoningAlwaysOn` while the
 input read only `getReasoningCapability()`, so all ten `reasoningAlwaysOn`
-models (2 xAI, 3 Moonshot, 5 Qwen) showed a brain badge with no control.
+models (2 xAI, 3 Moonshot, 5 Qwen at the time; `kimi-k3` has since moved to
+levels, leaving 9) showed a brain badge with no control.
 Never read `model.reasoning` or `model.reasoningAlwaysOn` directly in UI
 code. `tests/unit/providers/reasoning-control-state.spec.ts` and the
 catalog-wide block in
@@ -206,13 +211,14 @@ a `levels` array when generating a successor's curated code, so a toggle-mode
 template would produce a successor that silently loses the toggle and shows
 a reasoning control the model can't honor. Before the model catalog
 expansion (`docs/model-catalog-expansion-plan.md`), this excluded only a
-couple of models; after it, it permanently excludes **all of DeepSeek** (both
-`deepseek-flash` and `deepseek-v4-pro`), **22 Qwen models** (19 Group A
-`toggle`-mode models plus the three originally-curated `qwen3.7-plus`,
-`qwen3.7-max`, and `qwen3.6-flash`), and Moonshot's **`kimi-k2.6`**. The
-weekly drift check will therefore never auto-propose a successor for any
-DeepSeek or Qwen model, nor for `kimi-k2.6` specifically — that family sits
-out every run as "needs a human," permanently, not as a transient gap. This
+couple of models; after it, it permanently excluded all of DeepSeek and
+most of Qwen and Moonshot. Since 2026-10-15 `deepseek-flash`,
+`deepseek-v4-pro`, `qwen3.8-max` and `qwen3.8-flash` are `levels` models and
+no longer fall under this rule. What remains toggle-curated is the hybrid
+Qwen line (23 models at the time of writing) and Moonshot's **`kimi-k2.6`**.
+The weekly drift check will therefore never auto-propose a successor for
+those Qwen models, nor for `kimi-k2.6` specifically — that family sits out
+every run as "needs a human," permanently, not as a transient gap. This
 is the intended trade-off
 of a `renderCuratedEntry()` that only knows how to emit `levels`, recorded
 here so it isn't later mistaken for the `modelsDevKey` bug below recurring.
@@ -223,8 +229,9 @@ than left to fail incidentally on the price-shape check (a
 `reasoningAlwaysOn` model has no `reasoning` object at all, so it would
 otherwise pass the `mode !== 'levels'` check by having no mode to check).
 This matters far more after the model catalog expansion than before it:
-`reasoningAlwaysOn` goes from 2 curated models to **10** (1 pre-existing xAI
-+ 1 new xAI + 3 Moonshot + 5 Qwen).
+`reasoningAlwaysOn` went from 2 curated models to **10** (1 pre-existing xAI
++ 1 new xAI + 3 Moonshot + 5 Qwen), and to **9** once `kimi-k3` moved to
+`levels` on 2026-10-15.
 
 **Guardrails**, applied to every upstream candidate before it can become a
 proposal — a hit on any of these is a skip, never a throw:
@@ -897,8 +904,9 @@ output is opt-in through the request `modalities` parameter (default
 `["text"]`), and this app always streams, never sends `modalities` and
 renders text and images only. The exclusion is narrowed to realtime, ASR,
 livetranslate and audio-only models (guarded in
-`tests/unit/providers/qwen.spec.ts`). `qwen3.8-omni-flash` is the first
-Qwen model curated with `reasoning: { mode: 'levels', ... }`: it thinks by
+`tests/unit/providers/qwen.spec.ts`). `qwen3.8-omni-flash` was the first
+Qwen model curated with `reasoning: { mode: 'levels', ... }` (`qwen3.8-max`
+and `qwen3.8-flash` followed on 2026-10-15): it thinks by
 default at `xhigh` and documents `reasoning_effort` rather than
 `enable_thinking`, so `useQwen()` sends `providerOptions.qwen.reasoningEffort`
 (`off` -> `'none'`, otherwise the level) and chat-title generation uses

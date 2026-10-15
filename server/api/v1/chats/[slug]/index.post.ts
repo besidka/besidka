@@ -39,13 +39,12 @@ import {
 } from '#shared/utils/gateway-capabilities'
 import { estimateGatewayMessageCost } from '#shared/utils/gateway-pricing'
 import {
-  getDefaultReasoningLevel,
   getGatewayReasoningControlState,
-  getReasoningCapability,
   getReasoningControlState,
   getReplayReasoningControlState,
   shouldSendReasoning,
 } from '#shared/utils/reasoning'
+import { resolveReasoningLevelForModel } from '~~/server/utils/providers/reasoning'
 import type { FormattedTools } from '~~/server/types/tools.d'
 import type { SearchRates, SearchUsage } from '~~/server/utils/ai/search-usage'
 import type { WebSearchStep } from '~~/server/utils/ai/web-search-cost'
@@ -309,9 +308,7 @@ export default defineEventHandler(async (event) => {
     provider = resolved.provider
     model = resolved.model
 
-    if (reasoningLevel === 'off') {
-      reasoningLevel = getDefaultReasoningLevel(getReasoningCapability(model))
-    }
+    reasoningLevel = resolveReasoningLevelForModel(model, reasoningLevel)
 
     const hasImageAttachment = newMessage.parts.some((part) => {
       return part.type === 'file' && part.mediaType.startsWith('image/')
@@ -472,7 +469,11 @@ export default defineEventHandler(async (event) => {
             publicId: persistedAssistantMessage.id,
             parts: persistedAssistantMessage.parts as UIMessage['parts'],
             sendReasoning: shouldSendReasoning(
-              persistedAssistantMessage.reasoning,
+              getReplayReasoningLevel(
+                persistedAssistantMessage.reasoning,
+                gatewayId,
+                model,
+              ),
               getReplayReasoningControlState(gatewayId, model),
             ),
           })
@@ -1939,6 +1940,25 @@ function getToolInputAspectRatio(input: unknown): string {
   }
 
   return input.aspectRatio
+}
+
+/**
+ * The level a replayed assistant message is judged by. A direct-provider
+ * message persisted while the model was curated always-on stores `off`, so it
+ * is resolved against the model's current capability (a model that cannot
+ * stop reasoning maps `off` to its default level) and keeps its reasoning
+ * text. Gateway replays keep the persisted level untouched.
+ */
+function getReplayReasoningLevel(
+  persistedLevel: ReasoningLevel,
+  gatewayId: GatewayId | undefined,
+  model: Model | undefined,
+): ReasoningLevel {
+  if (gatewayId || !model) {
+    return persistedLevel
+  }
+
+  return resolveReasoningLevelForModel(model, persistedLevel)
 }
 
 // Rebuild a UI message stream from an already-persisted assistant message so a

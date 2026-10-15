@@ -538,9 +538,11 @@ watch(isImageInputSupported, (supported) => {
 }, { flush: 'post' })
 
 /**
- * The level the user had before a model that cannot stop reasoning forced
- * its default effort in, so switching back to a model that can honor it
- * restores that level instead of keeping the forced one.
+ * The level the user asked for before the model replaced it with a supported
+ * one (the default effort on a model that cannot stop reasoning, or the next
+ * stronger level on a model lacking the requested one), so switching back to
+ * a model that can honor it restores that level instead of keeping the
+ * substitute.
  */
 const reasoningLevelBeforeClamp = shallowRef<ReasoningLevel | null>(null)
 
@@ -560,19 +562,15 @@ watch(
 
     const desiredLevel = reasoningLevelBeforeClamp.value ?? reasoning.value
 
-    if (isReasoningLevelSupported(desiredLevel, capability)) {
-      reasoning.value = desiredLevel
-      reasoningLevelBeforeClamp.value = null
+    const resolvedLevel = resolveSupportedReasoningLevel(
+      desiredLevel,
+      capability,
+    )
 
-      return
-    }
-
-    const fallbackLevel = getDefaultReasoningLevel(capability)
-
-    reasoningLevelBeforeClamp.value = fallbackLevel === 'off'
+    reasoningLevelBeforeClamp.value = resolvedLevel === desiredLevel
       ? null
       : desiredLevel
-    reasoning.value = fallbackLevel
+    reasoning.value = resolvedLevel
   },
   {
     immediate: true,
@@ -801,17 +799,23 @@ function selectReasoningLevel(level: ReasoningLevel) {
  * against the current model's capability here rather than left to the
  * separate capability watcher above, since that watcher only reacts to its
  * own tracked sources and would not re-run just because `reasoning.value`
- * changed.
+ * changed. When the saved level had to be substituted, it is remembered in
+ * `reasoningLevelBeforeClamp` so a later model switch restores it.
  */
 function restoreLiveReasoningLevel() {
   const savedLevel = normalizeReasoningLevel(
     prefStorage.getItem('settings_reasoning_level'),
   )
 
-  reasoning.value = resolveSupportedReasoningLevel(
+  const resolvedLevel = resolveSupportedReasoningLevel(
     savedLevel,
     reasoningCapability.value,
   )
+
+  reasoningLevelBeforeClamp.value = resolvedLevel === savedLevel
+    ? null
+    : savedLevel
+  reasoning.value = resolvedLevel
 }
 
 /**

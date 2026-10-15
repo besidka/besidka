@@ -77,10 +77,26 @@ describe('useDeepSeek reasoning wiring', () => {
     stubKeyLookup()
   })
 
-  it('enables the thinking toggle without double-signaling reasoning', async () => {
+  it('enables thinking and forwards a supported level as the effort',
+    async () => {
+      stubModel(createModel({
+        id: 'deepseek-flash',
+        reasoning: { mode: 'levels', levels: ['low', 'high'] },
+      }))
+
+      const useDeepSeek = await importUseDeepSeek()
+      const result = await useDeepSeek('1', 'deepseek-flash', [], 'low')
+
+      expect(result.providerOptions).toEqual({
+        thinking: { type: 'enabled' },
+      })
+      expect(result.reasoning).toBe('low')
+    })
+
+  it('rounds medium up to high on a low/high model', async () => {
     stubModel(createModel({
       id: 'deepseek-flash',
-      reasoning: { mode: 'toggle' },
+      reasoning: { mode: 'levels', levels: ['low', 'high'] },
     }))
 
     const useDeepSeek = await importUseDeepSeek()
@@ -89,13 +105,13 @@ describe('useDeepSeek reasoning wiring', () => {
     expect(result.providerOptions).toEqual({
       thinking: { type: 'enabled' },
     })
-    expect(result.reasoning).toBeUndefined()
+    expect(result.reasoning).toBe('high')
   })
 
-  it('disables the thinking toggle without double-signaling reasoning', async () => {
+  it('explicitly disables thinking and sends no effort for off', async () => {
     stubModel(createModel({
       id: 'deepseek-v4-pro',
-      reasoning: { mode: 'toggle' },
+      reasoning: { mode: 'levels', levels: ['low', 'high'] },
     }))
 
     const useDeepSeek = await importUseDeepSeek()
@@ -107,39 +123,37 @@ describe('useDeepSeek reasoning wiring', () => {
     expect(result.reasoning).toBeUndefined()
   })
 
-  it('leaves providerOptions empty and forwards the level for a '
-    + 'synthetic levels-mode model, since no curated DeepSeek model uses '
-    + 'levels mode any more', async () => {
-    stubModel(createModel({
-      id: 'deepseek-synthetic-levels-model',
-      reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
-    }))
+  it('still sends the thinking flag and no effort for a toggle-mode model',
+    async () => {
+      stubModel(createModel({
+        id: 'deepseek-synthetic-toggle-model',
+        reasoning: { mode: 'toggle' },
+      }))
+
+      const useDeepSeek = await importUseDeepSeek()
+      const enabled = await useDeepSeek(
+        '1',
+        'deepseek-synthetic-toggle-model',
+        [],
+        'medium',
+      )
+
+      expect(enabled.providerOptions).toEqual({
+        thinking: { type: 'enabled' },
+      })
+      expect(enabled.reasoning).toBe('medium')
+    })
+
+  it('leaves providerOptions empty for a model with no reasoning '
+    + 'capability', async () => {
+    stubModel(createModel({ id: 'deepseek-synthetic-plain-model' }))
 
     const useDeepSeek = await importUseDeepSeek()
     const result = await useDeepSeek(
       '1',
-      'deepseek-synthetic-levels-model',
+      'deepseek-synthetic-plain-model',
       [],
       'high',
-    )
-
-    expect(result.providerOptions).toEqual({})
-    expect(result.reasoning).toBe('high')
-  })
-
-  it('resolves an unsupported level to off for a synthetic levels-mode '
-    + 'model', async () => {
-    stubModel(createModel({
-      id: 'deepseek-synthetic-levels-model',
-      reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] },
-    }))
-
-    const useDeepSeek = await importUseDeepSeek()
-    const result = await useDeepSeek(
-      '1',
-      'deepseek-synthetic-levels-model',
-      [],
-      'off',
     )
 
     expect(result.providerOptions).toEqual({})

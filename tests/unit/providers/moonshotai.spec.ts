@@ -80,11 +80,16 @@ describe('curated moonshotai provider', () => {
     expect(k26?.reasoningAlwaysOn).toBeUndefined()
   })
 
-  it('curates kimi-k3 as always-on reasoning without a toggle', () => {
+  it('curates kimi-k3 with low/high effort levels that cannot be '
+    + 'disabled', () => {
     const k3 = moonshotai.models.find(model => model.id === 'kimi-k3')
 
-    expect(k3?.reasoning).toBeUndefined()
-    expect(k3?.reasoningAlwaysOn).toBe(true)
+    expect(k3?.reasoning).toEqual({
+      mode: 'levels',
+      levels: ['low', 'high'],
+      cannotDisable: true,
+    })
+    expect(k3?.reasoningAlwaysOn).toBeUndefined()
   })
 
   it('curates kimi-k2.7-code as always-on reasoning without a toggle', () => {

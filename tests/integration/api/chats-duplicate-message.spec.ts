@@ -849,6 +849,133 @@ describe('chat duplicate message detection', () => {
     }))
   })
 
+  it('replays reasoning stored as off for a model that has since become '
+    + 'configurable and cannot disable reasoning', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'moonshotai' },
+      model: {
+        id: 'kimi-k3',
+        tools: [],
+        reasoning: {
+          mode: 'levels',
+          levels: ['low', 'high'],
+          cannotDisable: true,
+        },
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+
+    const handler = await getHandler()
+    const userMessage = {
+      id: 'db-user-1',
+      publicId: 'user-public-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Question' }],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:31Z'),
+    }
+    const assistantMessage = {
+      id: 'db-assistant-1',
+      publicId: 'assistant-public-1',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Older always-on reasoning' },
+        { type: 'text', text: 'Visible answer' },
+      ],
+      tools: [] as string[],
+      reasoning: 'off',
+      createdAt: new Date('2026-06-22T14:14:43Z'),
+    }
+    const { db } = createDb({
+      messages: [userMessage, assistantMessage],
+    })
+
+    vi.stubGlobal('useDb', () => db)
+
+    const stream = await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'kimi-k3',
+        tools: [],
+        reasoning: 'off',
+        messages: [{
+          id: 'user-public-1',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    const chunks = await collectStreamChunks(stream)
+
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: 'reasoning-delta',
+      delta: 'Older always-on reasoning',
+    }))
+  })
+
+  it('persists the level actually sent when a direct-provider model '
+    + 'lacks the requested level', async () => {
+    vi.stubGlobal('useChatProvider', vi.fn(() => ({
+      provider: { id: 'openai' },
+      model: {
+        id: 'gpt-5-mini',
+        tools: [],
+        reasoning: {
+          mode: 'levels',
+          levels: ['low', 'high'],
+          cannotDisable: true,
+        },
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    })))
+
+    const useOpenAIMock = vi.fn(async () => ({
+      instance: {},
+      tools: {},
+      providerOptions: {},
+    }))
+
+    vi.stubGlobal('useOpenAI', useOpenAIMock)
+
+    const handler = await getHandler()
+    const { db, insertValues } = createDb()
+
+    vi.stubGlobal('useDb', () => db)
+
+    await handler({
+      params: { slug: '01ARZ3NDEKTSV4RRFFQ69G5FAV' },
+      body: {
+        model: 'gpt-5-mini',
+        tools: [],
+        reasoning: 'medium',
+        messages: [{
+          id: 'new-user-public-id',
+          role: 'user',
+          parts: [{ type: 'text', text: 'Question' }],
+        }],
+      },
+    } as any)
+
+    expect(useOpenAIMock).toHaveBeenCalledWith(
+      '1',
+      'gpt-5-mini',
+      [],
+      'high',
+      '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    )
+
+    const userInserts = insertValues.mock.calls.filter(
+      ([value]) => value.role === 'user',
+    )
+
+    expect(userInserts).toHaveLength(1)
+    expect(userInserts[0][0]).toEqual(
+      expect.objectContaining({ reasoning: 'high' }),
+    )
+  })
+
   it('replays persisted reasoning for a Cloudflare gateway reply without '
     + 'loading the gateway catalog', async () => {
     const handler = await getHandler()

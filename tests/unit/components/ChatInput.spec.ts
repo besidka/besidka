@@ -1128,6 +1128,61 @@ describe('ChatInput.client', () => {
       expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
     })
 
+    it('rounds a level up on a model that lacks it and restores it after '
+      + 'switching back', async () => {
+      const { reasoningCapability } = useMutualExclusionSelection()
+
+      const wrapper = await mountChatInput({ reasoning: 'medium' })
+      await nextTick()
+
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'high'],
+      }
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1))
+        .toEqual(['medium'])
+    })
+
+    it('rounds off up to the default level on a model that cannot '
+      + 'disable reasoning and lacks medium, then restores off', async () => {
+      const { reasoningCapability } = useMutualExclusionSelection()
+
+      const wrapper = await mountChatInput({ reasoning: 'off' })
+      await nextTick()
+
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'high'],
+        cannotDisable: true,
+        defaultLevel: 'high',
+      }
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['high'])
+
+      reasoningCapability.value = {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+      }
+      await nextTick()
+      await nextTick()
+
+      expect(wrapper.emitted('update:reasoning')?.at(-1)).toEqual(['off'])
+    })
+
     it('hides both the reasoning and web search triggers once image '
       + 'generation is toggled on, and shows them again once it is '
       + 'toggled off', async () => {

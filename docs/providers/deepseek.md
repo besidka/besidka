@@ -13,11 +13,19 @@ exist in models.dev's `deepseek` catalog at all. The retirement wasn't
 cosmetic: it broke `pnpm run models:fetch` outright ("models.dev no longer
 lists 2 curated model(s)"), blocking every other catalog change in this PR
 until it was fixed first. Both replacements are curated with
-`reasoning: { mode: 'toggle' }`, not levels — DeepSeek's own effort axis
-(`deepseek-flash`: `low,high,max`; `deepseek-v4-pro`: `high,max`, no `low`
-at all) has no `medium` and no shared shape between the two models, so
-there's no lossless mapping onto this app's `low`/`medium`/`high` levels;
-the on/off toggle both models share is the only exact fit. DeepSeek also
+`reasoning: { mode: 'levels', levels: ['low', 'high'] }` and can still be
+switched off (updated 2026-10-15; they were first curated as plain toggles).
+DeepSeek's docs for both models give `reasoning_effort` as `none`/`low`/
+`high`/`max` with thinking on by default and the default effort `high`;
+`minimal` maps to `low`, and `medium` and `xhigh` map to `high`. Besidka's
+scale is `off|low|medium|high` by owner decision (`max` targets coding and
+agentic workloads, not chat, so High is the cap), so the menu shows Off, Low
+and High, and a requested Medium rounds up to High (see
+[`chat-reasoning.md`](../chat-reasoning.md#reasoning-scale-and-the-round-up-rule)).
+Earlier revisions of this document called the two effort axes incompatible
+and curated a toggle; a lossless mapping onto `low`/`high` does exist, and
+`medium` is covered by the round-up rule instead of a synthesized level.
+DeepSeek also
 bills a 2x peak/off-peak pricing multiplier that
 `server/utils/ai/cost-map.ts`'s single flat per-model rate does not model —
 a known, disclosed limitation, not something this PR attempts to fix. Still
@@ -35,13 +43,19 @@ the existing `use<Provider>()` contract described in
 [`general.md`](./general.md#package-versions) for the cross-provider version
 note this is part of. **Correction**: an earlier draft of this plan assumed
 `@ai-sdk/deepseek` needed a bump to `3.0.45` before it could support
-`reasoningEffort`. That's wrong — the installed `3.0.26` already ships the
+`reasoningEffort`. That's wrong — the installed `3.0.26` already shipped the
 full `reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max"])`
 schema and the `thinking.type` field, read directly from
-`node_modules/@ai-sdk/deepseek/dist/index.js`. Bumping the package stays
-optional hygiene, not a blocker for anything in this catalog expansion: the
-bump only affects the unreachable `mode: 'levels'` branch (see
-`server/utils/providers/deepseek.ts`'s doc comment).
+`node_modules/@ai-sdk/deepseek/dist/index.js`.
+
+**Reasoning wiring (updated 2026-10-15, `@ai-sdk/deepseek@3.0.63`).**
+`useDeepSeek()` always sends `providerOptions.deepseek.thinking` as
+`enabled` or `disabled` for a reasoning model, plus the top-level
+`reasoning` option for the effort. The explicit `thinking` is required
+because the installed provider treats V4 models as thinking-enabled whenever
+no `thinking` is sent, so an `off` request that sent nothing would stay on.
+The provider maps `medium` to `high` and omits `reasoning_effort` when
+thinking is disabled, so `off` sends only `thinking: disabled`.
 
 ## Web search
 

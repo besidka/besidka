@@ -36,7 +36,9 @@ const representativeStates: Record<string, ReasoningControlState> = {
   'grok-build-0.1': 'always-on',
   'deepseek-flash': 'configurable',
   'kimi-k2.6': 'configurable',
-  'kimi-k3': 'always-on',
+  'kimi-k3': 'configurable',
+  'kimi-k2.7-code': 'always-on',
+  'kimi-k2.7-code-highspeed': 'always-on',
   'qwen3.7-plus': 'configurable',
   'qwq-plus': 'always-on',
   'qwen3-max': 'none',
@@ -65,6 +67,7 @@ const cannotDisableDefaults: Record<string, 'low' | 'medium' | 'high'> = {
   'gemini-3-flash-preview': 'high',
   'gemini-2.5-pro': 'medium',
   'claude-opus-5-5': 'medium',
+  'kimi-k3': 'high',
 }
 
 function findModel(modelId: string): Model {
