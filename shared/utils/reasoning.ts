@@ -37,6 +37,27 @@ export function normalizeReasoningLevel(
   return 'off'
 }
 
+/**
+ * Rounds a requested level up to the first supported level at or above it,
+ * so a model lacking a middle level answers with the next stronger one. When
+ * nothing at or above is supported, the highest supported level below it is
+ * used. Returns `null` when the model offers no level at all.
+ */
+export function roundUpReasoningLevel(
+  level: ReasoningEnabledLevel,
+  levels: ReasoningEnabledLevel[],
+): ReasoningEnabledLevel | null {
+  const requestedIndex = reasoningEnabledLevels.indexOf(level)
+  const supportedLevels = reasoningEnabledLevels.filter((candidate) => {
+    return levels.includes(candidate)
+  })
+  const roundedUp = supportedLevels.find((candidate) => {
+    return reasoningEnabledLevels.indexOf(candidate) >= requestedIndex
+  })
+
+  return roundedUp ?? supportedLevels[supportedLevels.length - 1] ?? null
+}
+
 export function getReasoningCapability(
   model: Pick<Model, 'reasoning'> | null | undefined,
 ): ReasoningCapability | null {
@@ -65,14 +86,15 @@ export function getReasoningCapability(
   }
 
   const curatedDefault = model.reasoning.defaultLevel
+  const defaultLevel = curatedDefault
+    ? roundUpReasoningLevel(curatedDefault, levels)
+    : roundUpReasoningLevel('medium', levels)
 
   return {
     mode: 'levels',
     levels,
     cannotDisable: true,
-    defaultLevel: curatedDefault && levels.includes(curatedDefault)
-      ? curatedDefault
-      : levels[levels.length - 1],
+    defaultLevel: defaultLevel ?? levels[0]!,
   }
 }
 
@@ -83,22 +105,30 @@ export function canDisableReasoning(
 }
 
 /**
- * The level an unsupported request falls back to: `off` when the model can
- * stop reasoning, otherwise the provider's own default effort, so a model
- * that cannot stop reasoning never receives `off`.
+ * The level an `off` request falls back to: `off` when the model can stop
+ * reasoning, otherwise its default effort (the curated default, else
+ * `medium` rounded up to the next supported level), so a model that cannot
+ * stop reasoning never receives `off`.
  */
 export function getDefaultReasoningLevel(
   capability: ReasoningCapability | null,
 ): ReasoningLevel {
   if (capability?.mode === 'levels' && capability.cannotDisable) {
     return capability.defaultLevel
-      ?? capability.levels[capability.levels.length - 1]
+      ?? roundUpReasoningLevel('medium', capability.levels)
       ?? 'off'
   }
 
   return 'off'
 }
 
+/**
+ * Maps a requested level onto one the model supports. `off` on a model that
+ * cannot stop reasoning becomes its default level, a non-off level on a
+ * model with no reasoning becomes `off`, and a non-off level a levels model
+ * lacks is rounded up to the next supported level (or the highest one below
+ * when none is above). Toggle models accept every non-off level unchanged.
+ */
 export function resolveSupportedReasoningLevel(
   level: ReasoningLevel,
   capability: ReasoningCapability | null,
@@ -107,7 +137,12 @@ export function resolveSupportedReasoningLevel(
     return level
   }
 
-  return getDefaultReasoningLevel(capability)
+  if (level === 'off' || capability?.mode !== 'levels') {
+    return getDefaultReasoningLevel(capability)
+  }
+
+  return roundUpReasoningLevel(level, capability.levels)
+    ?? getDefaultReasoningLevel(capability)
 }
 
 /**

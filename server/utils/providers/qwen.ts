@@ -121,14 +121,15 @@ export async function useQwen(
    * `textVerbosity`, `strictJsonSchema`) straight into the JSON body, so
    * this is the only place that needs to know the field names. Toggle
    * models send `enable_thinking`. Models curated with `mode: 'levels'`
-   * (`qwen3.8-omni-flash`) do not document `enable_thinking`; they think by
-   * default at `xhigh` and are controlled through top-level
+   * (`qwen3.8-max`, `qwen3.8-flash` and `qwen3.8-omni-flash`) do not
+   * document `enable_thinking`; they are controlled through top-level
    * `reasoning_effort` instead, so they send `providerOptions.qwen.
    * reasoningEffort` (the recognized key that becomes `reasoning_effort`)
    * and never `enable_thinking`. `off` is sent as `none` because the
    * provider's own top-level `reasoning` option drops `none`, which would
-   * leave the model on its xhigh default. `high` is forwarded as-is; Alibaba
-   * maps `high` and `max` to `xhigh`. Every currently curated Qwen model also
+   * leave the model on its default effort. Besidka's `high` is the model's
+   * top tier, which Qwen names `xhigh`; `high` is forwarded as-is and
+   * Alibaba maps it to `xhigh`. Every currently curated Qwen model also
    * exposes a `budget_tokens` option alongside its toggle or levels, left
    * deliberately unused here, so the top-level `reasoning` streamText option
    * is never set for this provider. Web search is pinned to

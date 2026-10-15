@@ -74,6 +74,36 @@ describe('ChatInput/ReasoningMenuItems', () => {
       expect(labels).toEqual(['low', 'medium', 'high'])
     })
 
+  it('renders a two-level capability as effort levels, not On', async () => {
+    const { wrapper } = await mountMenuItems({
+      reasoning: 'low',
+      levels: ['low', 'high'],
+      canDisable: true,
+    })
+
+    const labels = levelButtons(wrapper).map((button) => {
+      return button.text().toLowerCase()
+    })
+
+    expect(labels).toEqual(['off', 'low', 'high'])
+    expect(labels).not.toContain('on')
+  })
+
+  it('hides Off for a low/high model that cannot disable reasoning',
+    async () => {
+      const { wrapper } = await mountMenuItems({
+        reasoning: 'high',
+        levels: ['low', 'high'],
+        canDisable: false,
+      })
+
+      const labels = levelButtons(wrapper).map((button) => {
+        return button.text().toLowerCase()
+      })
+
+      expect(labels).toEqual(['low', 'high'])
+    })
+
   it('renders an Off/On two-item level list for a toggle-mode '
     + 'model, with the Expanded/Auto-hide section absent while off', async () => {
     const { wrapper } = await mountMenuItems({

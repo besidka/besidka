@@ -64,30 +64,60 @@ Why:
 ### Model capability handling
 - Supported levels come from model metadata (`reasoning.mode/levels`).
 - On model switch:
-  - if current level is not supported, reasoning falls back to
-    `getDefaultReasoningLevel()`: `off`, or the curated default for a model
+  - if current level is not supported, reasoning is replaced by the
+    nearest supported one (see
+    [Reasoning scale and the round-up rule](#reasoning-scale-and-the-round-up-rule)):
+    `off` for a model with no reasoning, the next stronger level for a
+    levels model that lacks the requested one, or
+    `getDefaultReasoningLevel()` (the curated default) for `off` on a model
     that cannot disable reasoning,
-  - the level held before that forced default is remembered, so switching
-    back to a model that supports it restores it (e.g. `off`).
+  - the level the user originally asked for is remembered
+    (`reasoningLevelBeforeClamp`), so switching back to a model that
+    supports it restores it (e.g. `off`, or `medium` after passing through
+    Kimi K3).
 - This is implemented in `app/components/ChatInput.client.vue`.
+
+### Reasoning scale and the round-up rule
+- The scale is `off|low|medium|high` and stays that way by owner decision.
+  Provider efforts above it (`xhigh`, `max`) target coding and agentic
+  workloads, not chat, so High is the cap even where a provider offers more.
+  A provider's own top tier is mapped to High only when it is the model's
+  highest (Qwen3.8 calls its top tier `xhigh`; Besidka High sends it).
+- A requested level the model lacks **rounds up** to the next supported
+  level, and when nothing above is supported, to the highest one below.
+  `roundUpReasoningLevel()` in `shared/utils/reasoning.ts` implements it,
+  and `resolveSupportedReasoningLevel()` applies it on the client clamp and
+  on the server (`resolveReasoningLevelForModel`).
+- Models that cannot disable reasoning never show Off. They preselect the
+  user's last-used level (rounded) or the curated `defaultLevel`, else
+  `medium` rounded up. Kimi K3 (levels low/high) therefore defaults to High.
+- Models that can disable reasoning keep Off in the menu, and a missing
+  level is rounded the same way (DeepSeek: Medium becomes High).
+- Known SDK limits, no action: the installed `@ai-sdk/xai` and
+  `@ai-sdk/google` cap the top-level `reasoning` option at `high`.
+  OpenAI and Anthropic could reach `xhigh`/`max` through `providerOptions`,
+  but Besidka deliberately does not expose them.
 
 ### Models that cannot disable reasoning
 - Some providers document that a model always reasons and only its effort
   can change. These are curated as `reasoning.levels` with
-  `cannotDisable: true` and a `defaultLevel` (the provider's documented
-  default when no effort is sent).
+  `cannotDisable: true` and, where the provider's default is one of the
+  curated levels, a `defaultLevel` (the provider's documented default when
+  no effort is sent). Without one, the default is `medium` rounded up to a
+  supported level.
 - For these models:
   - the effort menu has no `Off` item (`getReasoningDropdownLevels`,
     `ReasoningMenuItems` `canDisable`),
   - `isReasoningLevelSupported('off')` is `false`, so a saved or persisted
-    `off` is clamped to `defaultLevel` on the client, and
+    `off` is clamped to the default level on the client, and
     `POST /api/v1/chats/[slug]` and every provider adapter
     (`resolveReasoningLevelForModel`) do the same on the server,
   - `off` semantics are never sent: the request carries the default effort
     explicitly and the message is persisted with that level, which also
     turns on reasoning output (OpenAI summaries, Gemini `includeThoughts`).
 - This differs from `always-on` (`reasoningAlwaysOn`), which is for models
-  that accept no effort parameter at all.
+  that accept no effort parameter at all (`kimi-k2.7-code`, the Qwen
+  thinking-only models, `grok-4.20-0309-reasoning`).
 - `tests/unit/providers/reasoning-control-state.spec.ts` lists every
   audited model and its default, and fails if any other catalog model
   drops `off`.
@@ -97,7 +127,8 @@ Why:
 xAI, OpenAI, Google, DeepSeek and Moonshot pages were blocked by the
 sandbox proxy during the audit. Their rows rely on search-engine excerpts
 of the official pages, so re-check them on the live pages when touching
-these models.
+these models. The DeepSeek, Moonshot and Qwen3.8 rows were re-verified
+against the primary docs on 2026-10-15.
 
 | Model | Can disable | Curated | Default | Source |
 |---|---|---|---|---|
@@ -117,9 +148,13 @@ these models.
 | `gemini-2.5-flash`, `gemini-2.5-flash-lite` | yes (budget 0) | unchanged | dynamic / off | [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking) |
 | `claude-opus-5-5` | no | `cannotDisable` | `medium` | [Anthropic effort](https://platform.claude.com/docs/en/build-with-claude/effort): "Adaptive thinking is always on and can't be turned off" |
 | other Claude models | yes | unchanged | — | [Anthropic thinking troubleshooting](https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting) |
-| `deepseek-flash`, `deepseek-v4-pro` | yes (`thinking: disabled`) | unchanged (toggle) | on | [DeepSeek thinking mode](https://api-docs.deepseek.com/guides/thinking_mode) |
-| `kimi-k2.6` | yes | unchanged (toggle) | on | Kimi K2.6 quickstart |
-| `kimi-k3`, `kimi-k2.7-code` | no, no effort accepted | already `reasoningAlwaysOn` | — | Kimi K3 / K2.7 Code quickstarts |
+| `deepseek-flash`, `deepseek-v4-pro` | yes (`thinking: disabled`, effort `none`) | levels `low`, `high` + Off | `high` | [DeepSeek thinking mode](https://api-docs.deepseek.com/guides/thinking_mode); `minimal` maps to `low`, `medium`/`xhigh` to `high`, `max` unused |
+| `kimi-k2.6` | yes | unchanged (toggle) | on | Kimi K2.6 quickstart; `thinking` enabled/disabled only, no levels |
+| `kimi-k3` | no | levels `low`, `high` + `cannotDisable` | `high` (Moonshot's own default is `max`) | Kimi K3 quickstart; `reasoning_effort` `low`/`high`/`max`, docs say not to send `thinking`. models.dev reports the effort options; the earlier on/off curation was a mapping gap, not a source limitation |
+| `kimi-k2.7-code`, `kimi-k2.7-code-highspeed` | no, no effort accepted | already `reasoningAlwaysOn` | — | Kimi K2.7 Code quickstart; `thinking.type` only `enabled` |
+| `qwen3.8-max`, `qwen3.8-flash`, `qwen3.8-omni-flash` | yes (`none`) | levels `low`, `medium`, `high` + Off | `xhigh` on Alibaba's side (Besidka High) | Alibaba DashScope deep-thinking docs: `reasoning_effort` `low`/`medium`/`xhigh`; `high`/`max` map to `xhigh` |
+| hybrid Qwen (`qwen3.7-*`, `qwen3.6-*`, `qwen3.5-*`, `qwen-plus`/`flash`/`turbo`, `qwen3-*`) | yes | unchanged (toggle) | — | only `enable_thinking` plus a raw `thinking_budget`; no discrete levels, and inventing them from a token count would fabricate a scale |
+| `grok-4.20-0309-reasoning`, `grok-build-0.1`, `qwq-plus`, `qvq-max`, `qwen3-next-80b-a3b-thinking`, `qwen3-vl-235b-a22b`, `qwen3-vl-30b-a3b` | no, no effort accepted | already `reasoningAlwaysOn` | — | empty effort options in models.dev and the docs |
 
 Known gap, not addressed here: for models that *can* disable reasoning
 but reason by default (`gpt-5.5`+, `gpt-6-*`, `grok-4.3`, Claude 5-family

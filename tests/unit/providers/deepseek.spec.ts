@@ -44,9 +44,13 @@ describe('curated deepseek provider', () => {
     }
   })
 
-  it('gives every curated model a toggle-only reasoning capability', () => {
+  it('gives every curated model low/high effort levels that can be '
+    + 'disabled', () => {
     for (const model of deepseek.models) {
-      expect(model.reasoning).toEqual({ mode: 'toggle' })
+      expect(model.reasoning).toEqual({
+        mode: 'levels',
+        levels: ['low', 'high'],
+      })
     }
   })
 

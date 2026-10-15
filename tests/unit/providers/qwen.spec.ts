@@ -61,8 +61,6 @@ const toggleReasoningIds = [
   'qwen3.7-max',
   'qwen3.7-flash',
   'qwen3.6-flash',
-  'qwen3.8-max',
-  'qwen3.8-flash',
   'qwen3.6-max-preview',
   'qwen3.6-plus',
   'qwen3.6-27b',
@@ -85,6 +83,8 @@ const toggleReasoningIds = [
 ]
 
 const levelsReasoningIds = [
+  'qwen3.8-max',
+  'qwen3.8-flash',
   'qwen3.8-omni-flash',
 ]
 
@@ -215,8 +215,9 @@ describe('curated qwen provider', () => {
       }
     })
 
-  it('curates qwen3.8-omni-flash with effort levels, not a toggle, since '
-    + 'it documents reasoning_effort and no enable_thinking', () => {
+  it('curates qwen3.8-max, qwen3.8-flash and qwen3.8-omni-flash with '
+    + 'effort levels, not a toggle, since they document reasoning_effort '
+    + 'and no enable_thinking', () => {
     for (const id of levelsReasoningIds) {
       const model = findModel(id)
 
@@ -252,8 +253,8 @@ describe('curated qwen provider', () => {
 
   it('partitions every curated model into exactly one of the four '
     + 'reasoning groups', () => {
-    expect(toggleReasoningIds).toHaveLength(25)
-    expect(levelsReasoningIds).toHaveLength(1)
+    expect(toggleReasoningIds).toHaveLength(23)
+    expect(levelsReasoningIds).toHaveLength(3)
     expect(reasoningAlwaysOnIds).toHaveLength(5)
     expect(noReasoningIds).toHaveLength(20)
 

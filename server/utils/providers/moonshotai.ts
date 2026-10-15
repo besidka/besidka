@@ -6,7 +6,12 @@ import type { FormattedTools } from '~~/server/types/tools.d'
 import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createMoonshotAI } from '@ai-sdk/moonshotai'
 import { getMoonshotWebSearchTools } from './moonshotai-web-search'
-import { resolveReasoningLevelForModel } from './reasoning'
+import {
+  resolveReasoningLevelForModel,
+  toReasoningEffort,
+} from './reasoning'
+
+const LEVELS_MODEL_TITLE_REASONING = 'low'
 
 export async function useMoonshotAi(
   userId: string,
@@ -44,12 +49,22 @@ export async function useMoonshotAi(
   }
 
   const controllerModelId = getControllerModelId(modelData)
+  const isLevelsCapability = modelData.reasoning?.mode === 'levels'
 
   function getInstance() {
     return moonshotai(controllerModelId)
   }
 
   async function generateChatTitle(message: string) {
+    if (isLevelsCapability) {
+      return await useChatTitle(
+        getInstance(),
+        message,
+        undefined,
+        LEVELS_MODEL_TITLE_REASONING,
+      )
+    }
+
     return await useChatTitle(
       getInstance(),
       message,
@@ -71,22 +86,16 @@ export async function useMoonshotAi(
   const isToggleCapability = modelData.reasoning?.mode === 'toggle'
 
   /**
-   * Of the four curated models (kimi-k2.6, kimi-k3, kimi-k2.7-code,
-   * kimi-k2.7-code-highspeed), only kimi-k2.6 is curated with a toggle
-   * reasoning capability, and its `thinking` param is set explicitly here
-   * rather than through the top-level `reasoning` option: the base
-   * openai-compatible model this provider extends auto-derives a
-   * `reasoning_effort` field from that option, and Moonshot's API rejects a
-   * request that sends `thinking` and `reasoning_effort` together for this
-   * model. The other three (kimi-k3, kimi-k2.7-code,
-   * kimi-k2.7-code-highspeed) are curated with `reasoningAlwaysOn` instead
-   * of a toggle capability — they dropped `thinking` in favour of a
-   * mandatory, differently-shaped `reasoning_effort` this app's reasoning
-   * levels don't cover (Moonshot's own docs confirm reasoning cannot be
-   * disabled for kimi-k3, only its effort adjusted, and models.dev reports
-   * an empty `reasoning_options` for both kimi-k2.7 variants, meaning
-   * neither accepts a disable/enable toggle at all) — so they get neither
-   * field and reason at the provider's own default effort.
+   * kimi-k2.6 is curated with a toggle and gets its `thinking` param set
+   * explicitly here: Moonshot's API rejects a request that sends `thinking`
+   * together with `reasoning_effort`, which the installed provider would
+   * otherwise derive from the top-level `reasoning` option. kimi-k3 is
+   * curated with levels low/high and cannot be disabled; it is driven by the
+   * top-level `reasoning` option, which the installed provider maps to
+   * `reasoning_effort` for that model only (Moonshot accepts low/high/max
+   * with max as its default; Besidka caps at high) and never sends
+   * `thinking` for it. The kimi-k2.7-code variants always reason and accept
+   * no effort field, so they send neither.
    */
   function getProviderOptions(): SharedV2ProviderOptions {
     if (!isToggleCapability) {
@@ -105,6 +114,8 @@ export async function useMoonshotAi(
     generateChatTitle,
     tools: await getTools(),
     providerOptions: getProviderOptions(),
-    reasoning: undefined,
+    reasoning: isToggleCapability
+      ? undefined
+      : toReasoningEffort(reasoningLevel),
   }
 }

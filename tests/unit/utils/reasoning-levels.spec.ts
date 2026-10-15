@@ -6,6 +6,7 @@ import {
   getReplayReasoningControlState,
   getReasoningDropdownLevels,
   resolveSupportedReasoningLevel,
+  roundUpReasoningLevel,
   getReasoningBadgeLabel,
   getReasoningCapability,
   getReasoningControlState,
@@ -45,7 +46,7 @@ describe('reasoning levels', () => {
     expect(isReasoningLevelSupported('medium', capability)).toBe(false)
   })
 
-  it('drops unsupported model reasoning levels to off', () => {
+  it('rounds unsupported model reasoning levels up', () => {
     const model = {
       reasoning: {
         mode: 'levels',
@@ -53,7 +54,7 @@ describe('reasoning levels', () => {
       },
     } as any
 
-    expect(resolveReasoningLevelForModel(model, 'medium')).toBe('off')
+    expect(resolveReasoningLevelForModel(model, 'medium')).toBe('high')
     expect(resolveReasoningLevelForModel(model, 'high')).toBe('high')
   })
 
@@ -147,17 +148,96 @@ describe('reasoning levels', () => {
         .toBe('high')
     })
 
-  it('uses the highest level when the curated default is not offered', () => {
-    const capability = getReasoningCapability({
+  it('rounds the curated default up when the model does not offer it',
+    () => {
+      const capability = getReasoningCapability({
+        reasoning: {
+          mode: 'levels',
+          levels: ['low', 'high'],
+          cannotDisable: true,
+          defaultLevel: 'medium',
+        },
+      })
+
+      expect(getDefaultReasoningLevel(capability)).toBe('high')
+    })
+
+  it('defaults to medium rounded up when no default is curated', () => {
+    const lowHigh = getReasoningCapability({
       reasoning: {
         mode: 'levels',
         levels: ['low', 'high'],
         cannotDisable: true,
-        defaultLevel: 'medium',
+      },
+    })
+    const allLevels = getReasoningCapability({
+      reasoning: {
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
+        cannotDisable: true,
       },
     })
 
-    expect(getDefaultReasoningLevel(capability)).toBe('high')
+    expect(getDefaultReasoningLevel(lowHigh)).toBe('high')
+    expect(resolveSupportedReasoningLevel('off', lowHigh)).toBe('high')
+    expect(getDefaultReasoningLevel(allLevels)).toBe('medium')
+  })
+
+  describe('roundUpReasoningLevel', () => {
+    it('returns the level itself when supported', () => {
+      expect(roundUpReasoningLevel('medium', ['low', 'medium', 'high']))
+        .toBe('medium')
+    })
+
+    it('rounds up to the next supported level', () => {
+      expect(roundUpReasoningLevel('medium', ['low', 'high'])).toBe('high')
+      expect(roundUpReasoningLevel('low', ['medium', 'high']))
+        .toBe('medium')
+    })
+
+    it('falls back to the highest level below when none is above', () => {
+      expect(roundUpReasoningLevel('high', ['low', 'medium']))
+        .toBe('medium')
+    })
+
+    it('returns null when no level is offered', () => {
+      expect(roundUpReasoningLevel('medium', [])).toBeNull()
+    })
+  })
+
+  describe('resolveSupportedReasoningLevel rounding', () => {
+    it('rounds an unsupported middle level up on a levels model', () => {
+      const capability = getReasoningCapability({
+        reasoning: { mode: 'levels', levels: ['low', 'high'] },
+      })
+
+      expect(resolveSupportedReasoningLevel('medium', capability))
+        .toBe('high')
+      expect(resolveSupportedReasoningLevel('off', capability)).toBe('off')
+    })
+
+    it('rounds down only when nothing above is supported', () => {
+      const capability = getReasoningCapability({
+        reasoning: { mode: 'levels', levels: ['low', 'medium'] },
+      })
+
+      expect(resolveSupportedReasoningLevel('high', capability))
+        .toBe('medium')
+    })
+
+    it('keeps every non-off level for a toggle model', () => {
+      const capability = getReasoningCapability({
+        reasoning: { mode: 'toggle' },
+      })
+
+      expect(resolveSupportedReasoningLevel('low', capability)).toBe('low')
+      expect(resolveSupportedReasoningLevel('off', capability)).toBe('off')
+    })
+
+    it('resolves a non-off level to off when the model has no reasoning',
+      () => {
+        expect(resolveSupportedReasoningLevel('high', null)).toBe('off')
+      })
   })
 
   it('keeps off for models that can disable reasoning', () => {

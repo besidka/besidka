@@ -61,7 +61,8 @@ export default {
       id: 'qwen3.8-max',
       tools: [],
       reasoning: {
-        mode: 'toggle',
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
       },
       price: {
         tokens: 1_000_000,
@@ -71,7 +72,8 @@ export default {
       id: 'qwen3.8-flash',
       tools: [],
       reasoning: {
-        mode: 'toggle',
+        mode: 'levels',
+        levels: ['low', 'medium', 'high'],
       },
       price: {
         tokens: 1_000_000,

@@ -131,21 +131,18 @@ forward, not only DeepSeek/GLM (Zhipu) today.
   mechanism, not a dedicated SDK" below for the rest of that wiring. (This
   package's shape also matters for the separate Qwen3.8 web-search gap — see
   "Owner action items" below.)
-- **Reversal — `qwen3.8-max`'s `xhigh` exclusion.** (Superseded in part on
-  2026-10-06: the "effort axis is never sent" statement below holds for every
-  toggle-curated model but not for `qwen3.8-omni-flash`, which sends
-  `reasoning_effort`; see "Reasoning effort wiring".) This document previously
-  excluded `qwen3.8-max` because its reasoning is a three-way
-  `toggle`/`effort` (`low`/`medium`/`xhigh`)/`budget_tokens` choice and
-  mapping DashScope's `xhigh` onto this app's `low`/`medium`/`high` levels
-  had no prior art. **Reversed**, because that concern never actually
-  applies to Qwen: this app only ever wires the `enable_thinking` boolean
-  for every Qwen model — the effort axis (including `xhigh`) is never sent
-  regardless of which model is selected. `qwen3.8-max` is curated as plain
-  `reasoning: { mode: 'toggle' }`, identical in shape to every other Group A
-  Qwen model, and the `xhigh` incompatibility that blocks xAI's
-  `grok-4.6`/`grok-4.20-multi-agent-0309` (see
-  [`xai.md`](./xai.md#curated-models)) simply doesn't arise here.
+- **Reversal — `qwen3.8-max`'s `xhigh` exclusion.** (Superseded twice:
+  on 2026-10-06 for `qwen3.8-omni-flash`, and on 2026-10-15 for
+  `qwen3.8-max` and `qwen3.8-flash` themselves; see "Reasoning effort
+  wiring".) This document previously excluded `qwen3.8-max` because its
+  reasoning is a three-way `toggle`/`effort` (`low`/`medium`/`xhigh`)/
+  `budget_tokens` choice and mapping DashScope's `xhigh` onto this app's
+  `low`/`medium`/`high` levels had no prior art. It was then **reversed**
+  and curated as a plain `reasoning: { mode: 'toggle' }`, on the argument
+  that this app only wires `enable_thinking` and never the effort axis. That
+  argument no longer holds: both Qwen3.8 chat models are now curated with
+  `levels: ['low', 'medium', 'high']`, where Besidka's High is the model's
+  top tier, which Qwen names `xhigh`.
 - **Reversal — the rolling-alias exclusion.** This document previously
   excluded the bare `qwen-max`/`qwen-plus`/`qwen-flash`/`qwen-turbo` ids
   because Alibaba's release notices describe them as rolling aliases that
@@ -195,7 +192,8 @@ other direct provider in this app uses. DashScope's China-mainland endpoint
 (`https://dashscope.aliyuncs.com/compatible-mode/v1`) is not used — Besidka
 is not China-region-specific.
 
-Toggle-curated models use `enable_thinking`; the one effort-level model uses
+Toggle-curated models use `enable_thinking`; the effort-level models
+(`qwen3.8-max`, `qwen3.8-flash`, `qwen3.8-omni-flash`) use
 `reasoning_effort` (see "Reasoning effort wiring" below). DashScope's
 thinking mode is a plain `enable_thinking` boolean forwarded
 directly in the request body (via `extra_body` in Alibaba's own Python/Node
@@ -210,13 +208,20 @@ JSONValue>>` shape rejecting a flat boolean value at the type level.
 
 ## Reasoning effort wiring
 
-`qwen3.8-omni-flash` is the only Qwen model curated with
-`reasoning: { mode: 'levels', levels: ['low', 'medium', 'high'] }`.
-DashScope documents no `enable_thinking` for it; its control is the
-top-level `reasoning_effort`: `none` disables thinking, `low` and `medium`
-are honoured, `minimal` maps to `low`, and `high`/`max` map to `xhigh`.
-Thinking is **on by default at `xhigh`**, so an unset field would silently
-bill every plain chat for maximum thinking.
+`qwen3.8-max`, `qwen3.8-flash` and `qwen3.8-omni-flash` are the Qwen models
+curated with `reasoning: { mode: 'levels', levels: ['low', 'medium',
+'high'] }` (`qwen3.8-max` and `qwen3.8-flash` were toggles until
+2026-10-15, when the DashScope docs were re-verified).
+DashScope documents no `enable_thinking` for them; their control is the
+top-level `reasoning_effort`: `low` and `medium` are honoured, `minimal`
+maps to `low`, `high`/`max` map to `xhigh`, and `none` disables thinking
+(`enable_thinking: false`). Thinking is **on by default at `xhigh`**, so an
+unset field would silently bill every plain chat for maximum thinking.
+Besidka's scale stops at High by owner decision (`xhigh`/`max` target coding
+and agentic workloads, not chat), and for these models High is the top tier
+Qwen itself calls `xhigh`, so nothing is lost; see
+[`chat-reasoning.md`](../chat-reasoning.md#reasoning-scale-and-the-round-up-rule).
+All three share the `providerOptions.qwen.reasoningEffort` path below.
 
 `useQwen()` therefore branches on `modelData.reasoning?.mode === 'levels'`:
 
@@ -225,19 +230,28 @@ bill every plain chat for maximum thinking.
   `reasoning_effort`) and never `enable_thinking`;
 - `off` sends `reasoningEffort: 'none'`, and `low`/`medium`/`high` are
   forwarded unchanged (`high` reaches `xhigh` on Alibaba's side);
-- the top-level `reasoning` streamText option stays `undefined` for this
-  model. The shipped provider derives `reasoning_effort` from that option
+- the top-level `reasoning` streamText option stays `undefined` for these
+  models. The shipped provider derives `reasoning_effort` from that option
   only when it is not `none`, so relying on it would leave `off` on the
   `xhigh` default. `enable_search` and `search_options` are merged into the
   same object exactly as for other models;
 - chat-title generation passes `minimal` (which Alibaba maps to `low`) for
-  this model, because `useChatTitle` cannot carry provider options and the
+  these models, because `useChatTitle` cannot carry provider options and the
   default `xhigh` would otherwise be paid on every new chat's title.
 
-The chat UI's `off` level is the default, so a new chat on this model runs
+The chat UI's `off` level is the default, so a new chat on these models runs
 with thinking disabled and the user opts in to `low`/`medium`/`high`.
 Not live-verified (no DashScope key): confirm that `reasoning_effort: 'none'`
 is accepted and that thinking stops, alongside the web-search probe below.
+
+**Deliberately still toggles or always-on (2026-10-15).** The hybrid Qwen
+models (`qwen3.7-*`, `qwen3.6-*`, `qwen3.5-*`, `qwen-plus`/`qwen-flash`/
+`qwen-turbo` and the `qwen3-*` line) expose only `enable_thinking` plus a raw
+`thinking_budget` token count, with no discrete levels. Synthesizing levels
+from a token count would invent a scale the provider does not publish, so
+they stay toggles. `qwq-plus`, `qvq-max`, `qwen3-next-80b-a3b-thinking`,
+`qwen3-vl-235b-a22b` and `qwen3-vl-30b-a3b` stay always-on: models.dev
+reports empty effort options and the docs list no effort control.
 
 ## Web search
 

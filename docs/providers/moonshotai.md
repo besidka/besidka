@@ -11,16 +11,20 @@ Moonshot AI (4 models): `kimi-k2.6` (default/first-listed), `kimi-k3`,
 line is deliberately not curated — Moonshot is sunsetting it. `kimi-k2.5`
 (originally the product owner's explicit pick) was removed after real users
 hit "Not found the model kimi-k2.5 or Permission denied" in the live app —
-Moonshot has an active sunset notice for it on their platform. **Three of
-the four models — `kimi-k3`, `kimi-k2.7-code`, and
-`kimi-k2.7-code-highspeed` — are curated with `reasoningAlwaysOn: true`,
-not a toggle**: models.dev reports an empty `reasoning_options: []` for all
-three, meaning reasoning is always on with zero adjustable options, no
-disable switch included. Sending `providerOptions.moonshotai.thinking =
-{ type: 'disabled' }` to a model with no `thinking` parameter at all would
-be a live-key failure mode nothing in CI can catch. `kimi-k2.6` is the
-*only* Moonshot model models.dev reports a real `[{"type":"toggle"}]` for,
-so it's the only one curated with `reasoning: { mode: 'toggle' }`. Both new
+Moonshot has an active sunset notice for it on their platform. **Only
+`kimi-k3` gets a level control**; the rest are split by what Moonshot
+documents. `kimi-k2.7-code` and `kimi-k2.7-code-highspeed` are
+curated with `reasoningAlwaysOn: true`, not a toggle: models.dev reports an
+empty `reasoning_options: []` for both, and Moonshot's docs give them no
+`reasoning_effort` and a `thinking.type` that only accepts `"enabled"`, so
+reasoning is always on with zero adjustable options. Sending
+`providerOptions.moonshotai.thinking = { type: 'disabled' }` to a model with
+no usable `thinking` parameter would be a live-key failure mode nothing in CI
+can catch. `kimi-k2.6` is the only Moonshot model whose `thinking` is a real
+enabled/disabled switch (models.dev `[{"type":"toggle"}]`), so it stays
+curated with `reasoning: { mode: 'toggle' }`. **`kimi-k3` is curated with
+`reasoning: { mode: 'levels', levels: ['low', 'high'], cannotDisable: true }`**
+(see "Kimi K3 reasoning levels" below). Both new
 code-focused models are ordinary singleton families
 (`kimi-k{v}-code`, `kimi-k{v}-code-highspeed`) and don't interact with the
 ordering question below. All four declare `tools: ['web_search']` — see
@@ -35,7 +39,7 @@ ordering question below. All four declare `tools: ['web_search']` — see
   newest-first convention the generic family parser encodes — and here
   they collide: `kimi-k2.6` ($0.95/$4.00, reasoning toggleable off) is the
   intended cheaper default, while `kimi-k3` ($3.00/$15.00, reasoning
-  mandatory) is the newer release. Reordering to satisfy the generic parser
+  mandatory, effort only) is the newer release. Reordering to satisfy the generic parser
   would silently triple the cost of Moonshot's default. `kimi-k2.6` stays
   first, and `tests/unit/providers/ordering.spec.ts`'s newest-first
   invariant is scoped to `anthropic`, `google`, `openai` and `xai` only —
@@ -51,19 +55,49 @@ Server-side wiring lives in `server/utils/providers/moonshotai.ts`, matching
 the existing `use<Provider>()` contract described in
 [`general.md`](./general.md#server-side-wiring). **Moonshot needs one
 non-obvious guard**: its API rejects a request that sends both a `thinking`
-param and an auto-derived `reasoning_effort` — this app avoids the conflict
-by never setting the top-level `reasoning` streamText option for Moonshot
-models, only `providerOptions.moonshotai.thinking` directly.
+param and an auto-derived `reasoning_effort`. `kimi-k2.6` (toggle) therefore
+gets `providerOptions.moonshotai.thinking` set directly and no top-level
+`reasoning` option. `kimi-k3` is the opposite: it is driven only by the
+top-level `reasoning` option and never receives `thinking`. The two
+`kimi-k2.7-code` variants send neither field.
+
+## Kimi K3 reasoning levels
+
+**Why K3 was once on/off only — corrected 2026-10-15.** `kimi-k3` was first
+curated `reasoningAlwaysOn`, which looked like a models.dev limitation. It
+was not: models.dev reports `reasoning_options: [{ type: 'effort', values:
+['low', 'high', 'max'] }]` for it. The earlier implementation treated that
+shape as "not covered" because this app's scale is `off|low|medium|high` and
+K3 has no `medium`, and the installed `@ai-sdk/moonshotai` was also stale at
+the time. Moonshot's own docs (verified 2026-10-15): `reasoning_effort` takes
+`low`/`high`/`max`, defaults to `max`, reasoning cannot be disabled, and
+`thinking` should not be sent.
+
+- **Curation.** `levels: ['low', 'high']` with `cannotDisable: true`, so the
+  menu shows Low and High and no Off. The scale stays `off|low|medium|high`
+  by owner decision (`max`/`xhigh` target coding and agentic workloads, not
+  chat, so High is the cap); see
+  [`chat-reasoning.md`](../chat-reasoning.md#reasoning-scale-and-the-round-up-rule).
+  With no `defaultLevel` curated, the default is `medium` rounded up, which
+  is High.
+- **Wire format.** `useMoonshotAi()` passes the level through the top-level
+  `reasoning` option. `@ai-sdk/moonshotai@3.0.67` maps it to
+  `reasoning_effort` for `kimi-k3` only, with `medium` mapped to `high`. A
+  Besidka High therefore sends `high`, not Moonshot's own default `max`, so
+  K3 answers at a lower effort than the provider default.
+- **Not changed.** `kimi-k2.6` stays a toggle (its `thinking` is a plain
+  enabled/disabled switch with no discrete levels), and the `kimi-k2.7-code`
+  variants stay always-on with no control.
 
 ## Package version note
 
 `@ai-sdk/moonshotai@3.x` ships on a lower major than this app's `ai@7`/
 `@ai-sdk/provider@4` line — see
 [`general.md`](./general.md#package-versions) for the cross-provider version
-note this is part of. Bumping it changes nothing for reasoning behavior:
-this app never sends a Moonshot reasoning effort at all —
-`server/utils/providers/moonshotai.ts` returns `reasoning: undefined`
-unconditionally.
+note this is part of. Reasoning behavior depends on the installed version:
+`3.0.67` is the first that maps the top-level `reasoning` option to
+`reasoning_effort` for `kimi-k3`, which `server/utils/providers/moonshotai.ts`
+relies on. `kimi-k2.6` keeps `reasoning: undefined`.
 
 ## Web search — implemented via the Formula API
 
@@ -236,7 +270,7 @@ from Moonshot's own current doc pages (cited inline in the source and in
    billing contradiction above actually applies to a Formula-API call, not
    the legacy `$web_search` builtin;
 4. confirming `withFollowUpTurn()` + no forced `toolChoice` actually lets
-   `kimi-k3` (always-on reasoning) produce a natural-language answer after
+   `kimi-k3` (reasoning cannot be disabled) produce a natural-language answer after
    the tool result rather than re-calling the tool — the fixture-based loop
    test proves the mechanism generically with a mock model, not with this
    specific model's real tool-calling behavior; and

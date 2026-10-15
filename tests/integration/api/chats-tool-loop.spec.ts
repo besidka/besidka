@@ -493,6 +493,7 @@ describe('multi-step tool loop', () => {
         id: LOOP_MODEL_ID,
         name: 'Kimi K2.6',
         tools: ['web_search'],
+        reasoning: { mode: 'toggle' },
         modalities: { input: ['text'], output: ['text'] },
       },
     })))

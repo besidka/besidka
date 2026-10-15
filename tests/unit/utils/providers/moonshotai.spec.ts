@@ -114,32 +114,43 @@ describe('useMoonshotAi reasoning wiring for kimi-k2.6', () => {
 })
 
 describe('useMoonshotAi reasoning wiring for kimi-k3', () => {
+  const k3Reasoning = {
+    mode: 'levels' as const,
+    levels: ['low', 'high'] as ('low' | 'high')[],
+    cannotDisable: true as const,
+  }
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
     stubKeyLookup()
   })
 
-  it('sends no reasoning field for a model with no reasoning capability', async () => {
-    stubModel(createModel({ id: 'kimi-k3' }))
+  it.each([
+    ['low', 'low'],
+    ['high', 'high'],
+    ['medium', 'high'],
+  ] as const)('maps the %s request to the %s effort without a thinking '
+    + 'param', async (requested, expected) => {
+    stubModel(createModel({ id: 'kimi-k3', reasoning: k3Reasoning }))
 
     const useMoonshotAi = await importUseMoonshotAi()
-    const result = await useMoonshotAi('1', 'kimi-k3', [], 'medium')
+    const result = await useMoonshotAi('1', 'kimi-k3', [], requested)
 
     expect(result.providerOptions).toEqual({})
-    expect(result.reasoning).toBeUndefined()
+    expect(result.reasoning).toBe(expected)
   })
 
-  it('sends no reasoning field even when reasoningAlwaysOn is set, since '
-    + 'the flag only drives the picker UI, not provider wiring', async () => {
-    stubModel(createModel({ id: 'kimi-k3', reasoningAlwaysOn: true }))
+  it('resolves off to high because kimi-k3 cannot stop reasoning',
+    async () => {
+      stubModel(createModel({ id: 'kimi-k3', reasoning: k3Reasoning }))
 
-    const useMoonshotAi = await importUseMoonshotAi()
-    const result = await useMoonshotAi('1', 'kimi-k3', [], 'medium')
+      const useMoonshotAi = await importUseMoonshotAi()
+      const result = await useMoonshotAi('1', 'kimi-k3', [], 'off')
 
-    expect(result.providerOptions).toEqual({})
-    expect(result.reasoning).toBeUndefined()
-  })
+      expect(result.providerOptions).toEqual({})
+      expect(result.reasoning).toBe('high')
+    })
 })
 
 describe('useMoonshotAi reasoning wiring for kimi-k2.7-code and '
