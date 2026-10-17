@@ -4,11 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   getModel: vi.fn(),
   getControllerModelId: vi.fn((model: Model) => model.id),
+  getDeepSeekWebSearchTools: vi.fn(),
 }))
 
 vi.mock('#shared/utils/model', () => ({
   getModel: mocks.getModel,
   getControllerModelId: mocks.getControllerModelId,
+}))
+
+vi.mock('../../../../server/utils/providers/deepseek-web-search', () => ({
+  getDeepSeekWebSearchTools: mocks.getDeepSeekWebSearchTools,
 }))
 
 function createModel(overrides: Partial<Model> = {}): Model {
@@ -159,4 +164,74 @@ describe('useDeepSeek reasoning wiring', () => {
     expect(result.providerOptions).toEqual({})
     expect(result.reasoning).toBeUndefined()
   })
+})
+
+describe('useDeepSeek web search tool', () => {
+  const searchTools = { tools: { web_search: { description: 'search' } } }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    stubKeyLookup()
+    mocks.getDeepSeekWebSearchTools.mockReturnValue(searchTools)
+  })
+
+  it('returns the search tool, built with the decrypted key and logger, '
+    + 'when requested and advertised', async () => {
+    stubModel(createModel({ tools: ['web_search'] }))
+
+    const logger = { set: vi.fn() }
+    const useDeepSeek = await importUseDeepSeek()
+    const result = await useDeepSeek(
+      '1',
+      'deepseek-flash',
+      ['web_search'],
+      'off',
+      logger,
+    )
+
+    expect(result.tools).toBe(searchTools)
+    expect(mocks.getDeepSeekWebSearchTools).toHaveBeenCalledWith(
+      'decrypted-key',
+      undefined,
+      logger,
+    )
+  })
+
+  it('returns no tools when web search was not requested', async () => {
+    stubModel(createModel({ tools: ['web_search'] }))
+
+    const useDeepSeek = await importUseDeepSeek()
+    const result = await useDeepSeek('1', 'deepseek-flash', [], 'off')
+
+    expect(result.tools).toEqual({})
+    expect(mocks.getDeepSeekWebSearchTools).not.toHaveBeenCalled()
+  })
+
+  it('returns no tools when the model does not advertise web search',
+    async () => {
+      stubModel(createModel({ tools: [] }))
+
+      const useDeepSeek = await importUseDeepSeek()
+      const result = await useDeepSeek(
+        '1',
+        'deepseek-flash',
+        ['web_search'],
+        'off',
+      )
+
+      expect(result.tools).toEqual({})
+      expect(mocks.getDeepSeekWebSearchTools).not.toHaveBeenCalled()
+    })
+
+  it('keeps the title path tool-less even for a search-capable model',
+    async () => {
+      stubModel(createModel({ tools: ['web_search'] }))
+
+      const useDeepSeek = await importUseDeepSeek()
+      const result = await useDeepSeek('1', 'deepseek-flash', [], 'off')
+
+      expect(result.tools).toEqual({})
+      expect(typeof result.generateChatTitle).toBe('function')
+    })
 })

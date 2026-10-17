@@ -120,6 +120,78 @@ describe('getSearchStepData', () => {
       ])
     })
 
+  it('reads a DeepSeek web_search output and maps date to the published '
+    + 'date', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-web_search',
+      state: 'output-available',
+      input: { query: 'nuxt 4' },
+      output: {
+        provider: 'deepseek',
+        query: 'nuxt 4',
+        billable: true,
+        results: [
+          {
+            title: 'A',
+            url: 'https://a.example/x',
+            snippet: 's',
+            summary: 'long',
+            date: '2026-07-01',
+          },
+          { title: 'B', url: 'https://b.example/y' },
+        ],
+      },
+    }))
+
+    expect(data).toMatchObject({
+      toolName: 'web_search',
+      state: 'done',
+      query: 'nuxt 4',
+      hasOutput: true,
+    })
+    expect(data?.results).toEqual([
+      {
+        title: 'A',
+        url: 'https://a.example/x',
+        publishedDate: '2026-07-01',
+      },
+      { title: 'B', url: 'https://b.example/y', publishedDate: undefined },
+    ])
+  })
+
+  it('does not treat other web_search outputs as a search step', () => {
+    const outputs = [
+      undefined,
+      'encrypted-moonshot-blob',
+      { results: [{ title: 'A', url: 'https://a.example/x' }] },
+      { provider: 'brave', results: [] },
+      { sources: [] },
+    ]
+
+    for (const output of outputs) {
+      expect(getSearchStepData(part({
+        type: 'tool-web_search',
+        state: 'output-available',
+        input: { query: 'x' },
+        output,
+      }))).toBeNull()
+    }
+  })
+
+  it('ignores a date field on Brave and Exa results', () => {
+    const data = getSearchStepData(part({
+      type: 'tool-web_search_brave',
+      state: 'output-available',
+      input: { query: 'x' },
+      output: {
+        provider: 'brave',
+        results: [{ title: 'A', url: 'https://a.example/x', date: '2026-07-01' }],
+      },
+    }))
+
+    expect(data?.results[0]?.publishedDate).toBeUndefined()
+  })
+
   it('drops an unknown freshness value', () => {
     const data = getSearchStepData(part({
       type: 'tool-web_search_brave',

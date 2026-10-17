@@ -30,7 +30,10 @@ bills a 2x peak/off-peak pricing multiplier that
 `server/utils/ai/cost-map.ts`'s single flat per-model rate does not model —
 a known, disclosed limitation, not something this PR attempts to fix. Still
 no native web_search or image_generation — re-verified against DeepSeek's
-official API docs, see "Web search" below.
+official API docs, see "Web search" below. **Superseded for web search
+(2026-10-17):** both models now carry `tools: ['web_search']` through
+DeepSeek's standalone Search API — see "Correction (2026-10-17)" at the end
+of this document.
 
 Server-side wiring lives in `server/utils/providers/deepseek.ts`, matching
 the existing `use<Provider>()` contract described in
@@ -69,6 +72,8 @@ search findings follow.
 through 2026-07-31 (DeepSeek-V4-Flash public beta) and still announces no
 search, grounding, or `enable_search` capability of any kind. Nothing
 changed since round 3; `providers/deepseek.ts` correctly keeps `tools: []`.
+(Superseded 2026-10-17 — DeepSeek has since shipped a standalone Search API;
+see "Correction (2026-10-17)" at the end of this document.)
 
 **Correction (2026-09-16), scoped narrowly.** The "no first-party mechanism"
 conclusion for DeepSeek's OpenAI-compatible endpoint (the one this app
@@ -111,8 +116,10 @@ base URL) than the one this app currently uses for DeepSeek
 (`@ai-sdk/deepseek` against the OpenAI-compatible endpoint). Wiring it is
 deliberately **not** done in this round — see "Owner action items" below
 for the five live-key details that need verification first — so
-`providers/deepseek.ts` keeps every DeepSeek model at `tools: []` for now.
-This is a candidate follow-up, not the same "not now, skip" product
+`providers/deepseek.ts` keeps every DeepSeek model at `tools: []` for now
+(superseded 2026-10-17 by the standalone Search API — see "Correction
+(2026-10-17)" at the end of this document, which wires search without the
+Anthropic-compatible transport). This is a candidate follow-up, not the same "not now, skip" product
 decision recorded on 2026-08-09 against Besidka building its own non-BYOK
 search backend (that decision is unaffected and still stands).
 
@@ -165,3 +172,93 @@ DeepSeek key is available in this environment:
   5. general endpoint behavior parity with the OpenAI-compatible endpoint
      (error shapes, streaming semantics, model id acceptance) before
      trusting it for anything beyond search.
+
+## Correction (2026-10-17)
+
+Two things in the sections above are out of date as of 2026-10-17. The
+earlier text is kept in place, annotated, rather than rewritten.
+
+**The "new model" is the existing `deepseek-flash` id.** DeepSeek announced
+V4.1-Flash-1017, but it is served under the existing `deepseek-flash` model
+id with unchanged pricing. There is no catalog id change, no new entry in
+`providers/deepseek.ts`, and `scripts/fetch-models-metadata.mjs` was
+deliberately not re-run for it.
+
+**DeepSeek now has a first-party web search mechanism on the
+OpenAI-compatible endpoint: the standalone Search API.** "No first-party
+mechanism on the endpoint this app uses" is no longer true for web search.
+Both `deepseek-flash` and `deepseek-v4-pro` now carry
+`tools: ['web_search']`.
+
+- **Endpoint.** `POST https://api.deepseek.com/v1/tools/search` with the
+  user's own DeepSeek key as `Authorization: Bearer`. Body: `query` (1 to 128
+  characters, supports the operators `site:`, `-site:`, `"exact phrase"`,
+  `lang:`, `after:`, `before:`), plus optional `count` (1 to 50, default 10),
+  `need_content` (default false), `ori_question` and `localization`.
+  Response: `results[]` with `rerank_score`, `title`, `url`, `snippet`
+  (short, for UI), `summary` (longer, for models), `content`, `site_name`,
+  `site_icon`, `date` and `authority`; `site_name`, `site_icon` and `date`
+  can be null. Errors are OpenAI-style `{ error: ... }`: 402 insufficient
+  balance, 429 over the QPS limit, 504 timeout.
+- **Why a client function tool.** It is a standalone endpoint, not a
+  chat-completions parameter, and `@ai-sdk/deepseek` (3.0.63, installed) has
+  no search support. The one thing the SDK does send is client `function`
+  tools, which is exactly what this wiring uses
+  (`server/utils/providers/deepseek-web-search.ts`), the same shape as the
+  Brave/Exa and Moonshot tools: `tool()` with a zod `{ query }` schema,
+  `withFollowUpTurn()` so the model answers after the results, no forced
+  `toolChoice`, no KV caching. The SDK already replays `reasoning_content`
+  for `deepseek-flash`/`deepseek-v4-pro`, so the multi-step tool loop is safe
+  with thinking enabled. No package was bumped.
+- **Request shape.** `count: 8` (a named constant) and `need_content: false`;
+  the model reads each result's `summary`, not full page content that would
+  be resent on every later loop step. The tool output is
+  `{ provider: 'deepseek', query, billable, results: [{ title, url, snippet,
+  summary, siteName?, date? }] }` — no dollar amount, since rates come only
+  from config. `rerank_score`, `authority`, `site_icon` and `content` are
+  dropped. The per-turn call cap (`createExternalSearchBudget`, 8 calls) is
+  shared with Brave/Exa's pattern and also keeps parallel calls inside the
+  5 QPS account limit; a non-2xx response or network failure throws, which
+  becomes a `tool-error` part.
+- **Billing rule and rate.** $0.75 per 1,000 *successful* requests, where
+  successful means HTTP 200 with a non-empty `results` array. Empty-result
+  and failed requests are not billed, and `count` does not change the price.
+  The rate is `NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD`
+  (`0.75`) in all three `wrangler.jsonc` vars blocks, source
+  https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-10-17),
+  documentation-only and not invoice-verified. The tool sets
+  `billable: results.length > 0`, and `getWebSearchUsage` counts only
+  `tool-result` parts for `web_search` whose output has `billable === true`;
+  a `tool-error` or an empty result never counts. See
+  [`web-search-cost-accounting.md`](../web-search-cost-accounting.md).
+- **Cost is a floor, and the API is docs-verified only.** A timeout or a
+  200 response with a malformed body is not counted, though DeepSeek may
+  still bill it, so the recorded search cost can underestimate the invoice
+  but never overestimate from those cases. The request/response shapes, the
+  billing rule and the rate come from DeepSeek's published documentation;
+  no live DeepSeek key has called the endpoint yet, so verify the first real
+  searches against the DeepSeek usage page.
+- **Untrusted results.** Each result is bounded and sanitized before it
+  reaches the model or the UI: at most 8 results, every field coerced to a
+  length-capped string, results without a plain http(s) URL dropped, `date`
+  kept only when it is an ISO date or datetime, and non-OK response bodies
+  cancelled with redirects refused. The system instruction tells the model
+  results are information, never instructions.
+- **Direct sends only.** A gateway send of a DeepSeek model never counts this
+  usage (`resolveUnbundledSearchUsage` returns nothing for a gateway send
+  without a Brave/Exa key), and the tool is only registered on the direct
+  DeepSeek path. Chat title generation calls `useDeepSeek` with no tools and
+  stays tool-less.
+- **Source chips.** `emitSourcesForExternalSearchResults` accepts
+  `provider: 'deepseek'`, so the cited URLs render as source chips.
+- **5 QPS limit.** The account-level 5 QPS cap is not enforced client-side
+  beyond the per-turn call budget; a 429 surfaces as the shared "rate limited
+  or out of quota" tool error.
+- **Fetch API intentionally not wired.** DeepSeek also offers a page-fetch
+  endpoint; it is not exposed. `need_content` stays false and the model
+  answers from summaries.
+- **Responses-API and Anthropic server-side `web_search` intentionally not
+  used.** The Anthropic-compatible `web_search_20250305` route described
+  above remains unwired and its five open verification items are moot for
+  search: the standalone Search API needs no second transport, no
+  `@ai-sdk/anthropic`, and no reasoning/`top_p` parity work.

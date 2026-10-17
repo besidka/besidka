@@ -1,12 +1,13 @@
 export type SearchBillingUnit = 'query' | 'grounded-prompt' | 'search'
 
-// The provider that actually ran the search: the four native integrations
-// (Google, Anthropic, OpenAI, xAI) plus the two BYOK vendors (Brave, Exa).
+// The provider that actually ran the search: the native integrations
+// (Google, Anthropic, OpenAI, xAI, DeepSeek) plus the two BYOK vendors
+// (Brave, Exa).
 // Populated by the send path (server/utils/ai/message-usage.ts) so the
 // context-menu cost row can say "Web search (Brave)" instead of a bare
 // "Web search".
 export type SearchProvider
-  = 'google' | 'anthropic' | 'openai' | 'xai' | 'brave' | 'exa'
+  = 'google' | 'anthropic' | 'openai' | 'xai' | 'deepseek' | 'brave' | 'exa'
 
 export type MessageUsage = {
   model: string

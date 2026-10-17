@@ -8,6 +8,7 @@ import { createError } from 'evlog'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { withFollowUpTurn } from '~~/server/utils/ai/tool-loop'
+import { isIsoDateString } from '~~/server/utils/search/iso-date'
 import {
   searchFreshnessSchema,
   toBraveFreshnessCode,
@@ -33,8 +34,6 @@ const BRAVE_SEARCH_MAX_TOKENS = 3072
 const BRAVE_SEARCH_MAX_TOKENS_PER_URL = 1024
 const BRAVE_SEARCH_QUERY_MAX_LENGTH = 400
 const BRAVE_SEARCH_SNIPPET_SEPARATOR = '\n'
-const ISO_DATE_PATTERN
-  = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/
 
 interface BraveGroundingResult {
   url?: string
@@ -65,10 +64,6 @@ function hostnameFallback(url: string | undefined): string {
   } catch {
     return url
   }
-}
-
-function isIsoDateString(value: unknown): value is string {
-  return typeof value === 'string' && ISO_DATE_PATTERN.test(value)
 }
 
 /**

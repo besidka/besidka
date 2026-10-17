@@ -8,11 +8,13 @@ export type WebSearchUsage = {
 export type WebSearchRates = {
   anthropicPerSearchUsd: number | undefined
   openaiPerCallUsd: number | undefined
+  deepseekPerSearchUsd: number | undefined
 }
 
 export type WebSearchCostConfig = {
   anthropicWebSearchCostPerThousandSearchesUsd?: string | number
   openaiWebSearchCostPerThousandCallsUsd?: string | number
+  deepseekSearchCostPerThousandRequestsUsd?: string | number
 }
 
 export type WebSearchStep = {
@@ -28,17 +30,60 @@ const WEB_SEARCH_TOOL_NAMES = new Set([
   'web_search',
 ])
 
+const DEEPSEEK_WEB_SEARCH_TOOL_NAME = 'web_search'
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
 /**
- * Counts billable web-search tool uses for Anthropic and OpenAI. Returns
- * `undefined` for any other provider — Google's grounding is counted
+ * DeepSeek's Search API is a client-executed function tool, so unlike the
+ * Anthropic/OpenAI server tools there is no provider-reported usage to read:
+ * a billable request is a `tool-result` whose output carries
+ * `billable: true`, which `executeDeepSeekSearch` sets only for a successful
+ * response with a non-empty result list — exactly DeepSeek's billing rule.
+ * A `tool-error` part (failed request, exhausted per-turn budget) and an
+ * empty-result `tool-result` are never counted.
+ */
+function getDeepSeekWebSearchUsage(
+  steps: ReadonlyArray<WebSearchStep>,
+): WebSearchUsage | undefined {
+  let billableSearches = 0
+
+  for (const step of steps) {
+    const content = step.content
+
+    if (!Array.isArray(content)) {
+      continue
+    }
+
+    for (const part of content) {
+      if (
+        isRecord(part)
+        && part.type === 'tool-result'
+        && part.toolName === DEEPSEEK_WEB_SEARCH_TOOL_NAME
+        && isRecord(part.output)
+        && part.output.billable === true
+      ) {
+        billableSearches += 1
+      }
+    }
+  }
+
+  return billableSearches === 0
+    ? undefined
+    : { searches: billableSearches, billingUnit: 'search' }
+}
+
+/**
+ * Counts billable web-search tool uses for Anthropic, OpenAI and DeepSeek.
+ * Returns `undefined` for any other provider — Google's grounding is counted
  * separately by `getGoogleSearchGrounding` in `google-search-cost.ts`, and
  * Google registers its tool under the SAME `web_search_preview` key, so an
  * ungated structural count here would double-report it if this function
- * weren't gated to Anthropic/OpenAI only. Returns `undefined` when zero
+ * weren't gated to Anthropic/OpenAI only (DeepSeek's tool shares the
+ * `web_search` key but is counted by output shape, see
+ * `getDeepSeekWebSearchUsage`). Returns `undefined` when zero
  * searches ran, so a turn that merely offers web search never gains a
  * fabricated usage record.
  */
@@ -46,6 +91,10 @@ export function getWebSearchUsage(
   steps: ReadonlyArray<WebSearchStep>,
   providerId: string,
 ): WebSearchUsage | undefined {
+  if (providerId === 'deepseek') {
+    return getDeepSeekWebSearchUsage(steps)
+  }
+
   if (providerId !== 'anthropic' && providerId !== 'openai') {
     return undefined
   }
@@ -140,6 +189,9 @@ export function resolveWebSearchRates(
     openaiPerCallUsd: parsePerThousandRate(
       config.openaiWebSearchCostPerThousandCallsUsd,
     ),
+    deepseekPerSearchUsd: parsePerThousandRate(
+      config.deepseekSearchCostPerThousandRequestsUsd,
+    ),
   }
 }
 
@@ -176,6 +228,8 @@ export function getWebSearchCost(
     rate = rates.anthropicPerSearchUsd
   } else if (providerId === 'openai') {
     rate = rates.openaiPerCallUsd
+  } else if (providerId === 'deepseek') {
+    rate = rates.deepseekPerSearchUsd
   } else {
     return undefined
   }

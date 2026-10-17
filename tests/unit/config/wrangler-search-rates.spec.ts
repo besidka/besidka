@@ -83,7 +83,7 @@ describe('wrangler.jsonc search-cost rates', () => {
       expect(previewsRates).toEqual(productionRates)
     })
 
-  it('includes the Brave and Exa external-search rates alongside the '
+  it('includes the Brave, Exa and DeepSeek search rates alongside the '
     + 'four pre-existing native rates', () => {
     const config = parseWranglerConfig()
     const previewVars = config.vars as Record<string, unknown>
@@ -101,6 +101,8 @@ describe('wrangler.jsonc search-cost rates', () => {
       NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD:
         expect.any(String),
       NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD:
+        expect.any(String),
+      NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD:
         expect.any(String),
     })
   })
