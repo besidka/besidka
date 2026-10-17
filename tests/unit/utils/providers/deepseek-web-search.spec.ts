@@ -125,7 +125,7 @@ describe('getDeepSeekWebSearchTools', () => {
 
       expect(url).toBe(SEARCH_URL)
       expect(init.method).toBe('POST')
-      expect(init.redirect).toBe('error')
+      expect(init.redirect).toBe('manual')
       expect(init.headers).toEqual({
         'authorization': 'Bearer deepseek-key',
         'content-type': 'application/json',
@@ -492,6 +492,32 @@ describe('getDeepSeekWebSearchTools result sanitizing', () => {
     )).rejects.toMatchObject({ status: 503 })
     expect(cancel).toHaveBeenCalledTimes(1)
   })
+
+  it('treats a 3xx response as a status error and cancels its body',
+    async () => {
+      const cancel = vi.fn(async () => undefined)
+
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        return {
+          ok: false,
+          status: 302,
+          headers: new Headers({ location: 'https://elsewhere.example/' }),
+          body: { cancel },
+          json: async () => ({ results: [API_RESULT] }),
+        }
+      }))
+
+      const webSearch = await getWebSearchTool()
+
+      await expect(webSearch.execute(
+        { query: 'nuxt 4' },
+        createExecutionOptions(),
+      )).rejects.toMatchObject({
+        message: 'DeepSeek is temporarily unavailable.',
+        status: 302,
+      })
+      expect(cancel).toHaveBeenCalledTimes(1)
+    })
 
   it('still throws the status error when cancelling the body fails',
     async () => {

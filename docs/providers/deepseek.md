@@ -242,8 +242,10 @@ Both `deepseek-flash` and `deepseek-v4-pro` now carry
   reaches the model or the UI: at most 8 results, every field coerced to a
   length-capped string, results without a plain http(s) URL dropped, `date`
   kept only when it is an ISO date or datetime, and non-OK response bodies
-  cancelled with redirects refused. The system instruction tells the model
-  results are information, never instructions.
+  cancelled, with redirects not followed (`redirect: 'manual'`, the only
+  non-follow value Cloudflare's workerd fetch accepts, so a 3xx surfaces as a
+  status error). The system instruction tells the model results are
+  information, never instructions.
 - **Direct sends only.** A gateway send of a DeepSeek model never counts this
   usage (`resolveUnbundledSearchUsage` returns nothing for a gateway send
   without a Brave/Exa key), and the tool is only registered on the direct

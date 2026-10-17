@@ -187,7 +187,7 @@ async function executeDeepSeekSearch(
         count: DEEPSEEK_WEB_SEARCH_RESULT_COUNT,
         need_content: false,
       }),
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     })
   } catch (exception) {
