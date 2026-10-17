@@ -180,13 +180,17 @@ function isExternalSearchToolOutput(
   output: unknown,
 ): output is ExternalSearchToolOutputLike {
   return isRecord(output)
-    && (output.provider === 'brave' || output.provider === 'exa')
+    && (
+      output.provider === 'brave'
+      || output.provider === 'exa'
+      || output.provider === 'deepseek'
+    )
 }
 
 /**
- * Brave and Exa are plain tool calls, not provider-native search — the model
- * never emits `source-url` parts for them on its own. This mirrors their
- * `tool-output-available` results into the same `source-url` part type
+ * Brave, Exa and DeepSeek are plain tool calls, not provider-native search —
+ * the model never emits `source-url` parts for them on its own. This mirrors
+ * their `tool-output-available` results into the same `source-url` part type
  * native search uses, so citations render through the existing
  * `UrlSources.vue` path and `getMessageUsedTools()`'s existing
  * `source-url`/`source-document` inference lights up the Web search badge,

@@ -201,7 +201,12 @@ function readSearchQuery(input: unknown): string {
 }
 
 function readResultSnippet(result: Record<string, unknown>): string {
-  const textCandidates = [result.snippet, result.description, result.text]
+  const textCandidates = [
+    result.summary,
+    result.snippet,
+    result.description,
+    result.text,
+  ]
   const textSnippet = textCandidates.find((candidate) => {
     return typeof candidate === 'string' && candidate.trim().length > 0
   })
@@ -235,9 +240,10 @@ function renderStructuredResult(
   }
 
   const snippet = readResultSnippet(result)
+  const publishedDate = result.publishedDate ?? result.date
 
-  if (typeof result.publishedDate === 'string' && result.publishedDate) {
-    lines.push(`${SEARCH_ANSWER_LINE_INDENT}Published: ${result.publishedDate}`)
+  if (typeof publishedDate === 'string' && publishedDate) {
+    lines.push(`${SEARCH_ANSWER_LINE_INDENT}Published: ${publishedDate}`)
   }
 
   if (snippet) {

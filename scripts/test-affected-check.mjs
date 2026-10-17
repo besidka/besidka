@@ -187,6 +187,12 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/providers/moonshotai.spec.ts',
     'tests/unit/utils/ai/tool-loop.spec.ts',
   ]
+  const deepseekWebSearchTests = [
+    'tests/unit/utils/providers/deepseek-web-search.spec.ts',
+    'tests/unit/utils/providers/deepseek.spec.ts',
+    'tests/unit/providers/deepseek.spec.ts',
+    'tests/unit/utils/ai/tool-loop.spec.ts',
+  ]
   const chatStreamBranchTests = [
     'tests/unit/composables/chat.spec.ts',
     'tests/unit/utils/filter-ui-message-stream.spec.ts',
@@ -506,6 +512,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/search/freshness.spec.ts',
     'tests/unit/utils/search/search-budget.spec.ts',
     'tests/unit/utils/search/search-error.spec.ts',
+    'tests/unit/utils/providers/deepseek-web-search.spec.ts',
     'tests/unit/utils/ai/external-search-cost.spec.ts',
     'tests/unit/config/wrangler-search-rates.spec.ts',
     'tests/unit/utils/search-usage.spec.ts',
@@ -575,6 +582,7 @@ export function getAffectedTests(changedFiles) {
         'tests/integration/api/chats-tool-loop.spec.ts',
         'tests/integration/api/chats-single-step-characterization.spec.ts',
         'tests/unit/utils/providers/moonshotai-web-search.spec.ts',
+        'tests/unit/utils/providers/deepseek-web-search.spec.ts',
       ],
     },
     {
@@ -645,6 +653,10 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/providers\/moonshotai-web-search\.ts$/,
       tests: moonshotWebSearchTests,
+    },
+    {
+      pattern: /^server\/utils\/providers\/deepseek-web-search\.ts$/,
+      tests: deepseekWebSearchTests,
     },
     {
       pattern: /^server\/utils\/chats\/request-schema\.ts$/,
@@ -1016,12 +1028,12 @@ export function getAffectedTests(changedFiles) {
       tests: chatShareTests,
     },
     {
-      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|freshness\.ts|search-budget\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
+      pattern: /^server\/utils\/search\/(?!brave\.ts|exa\.ts|freshness\.ts|iso-date\.ts|search-budget\.ts|search-error\.ts|types\.d\.ts).*\.ts$/,
       tests: messageSearchTests,
     },
     {
       pattern:
-        /^(server\/utils\/search\/(brave|exa|freshness|search-budget|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
+        /^(server\/utils\/search\/(brave|exa|freshness|iso-date|search-budget|search-error|types\.d)\.ts|server\/utils\/ai\/external-search-cost\.ts)$/,
       tests: externalSearchTests,
     },
     {

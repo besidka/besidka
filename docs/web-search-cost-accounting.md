@@ -51,8 +51,9 @@ hard, and all four get worse as providers are added:
 As shipped, this app accounts for separately-billed web search on Google,
 Anthropic, and OpenAI (the three providers that existed when this pattern
 was built; Brave and Exa are covered separately by
-`external-search-cost.ts`, see "Sketch: external search backends") through a
-provider-dispatcher pattern:
+`external-search-cost.ts`, see "Sketch: external search backends"; DeepSeek
+was added later to `web-search-cost.ts`, see "DeepSeek (added 2026-10-17)")
+through a provider-dispatcher pattern:
 
 - `server/utils/ai/google-search-cost.ts` — Google-only, untouched since PR
   #385 (invoice-verified, deliberately not refactored when the other two
@@ -118,6 +119,54 @@ providerId === 'openai'` and returns `undefined` for anything else: an
 ungated structural count would double-report a Google turn, since Google's
 tool-result parts carry the same local tool name.
 
+### DeepSeek (added 2026-10-17)
+
+DeepSeek's standalone Search API (`POST /v1/tools/search`, wired as a
+client-executed `web_search` function tool in
+`server/utils/providers/deepseek-web-search.ts`) is billed at $0.75 / 1,000
+requests, but only for a *successful* request: HTTP 200 **and** a non-empty
+`results` array. Empty-result and failed requests are not billed, and
+`count` does not change the price. This deviates from every other provider
+here, where one tool-result part is one billed unit.
+
+Because the tool is client-executed there is no provider-reported counter to
+read, so the count is structural, with one extra condition:
+`getWebSearchUsage(steps, 'deepseek')` counts `tool-result` parts for tool
+`web_search` whose output has `billable === true`. The tool sets
+`billable: results.length > 0`, mirroring DeepSeek's billing rule exactly,
+so a `tool-result` with empty results is a successful tool call that is
+correctly *not* counted, and a `tool-error` part (failed request, 402/429,
+exhausted per-turn budget) never appears as a `tool-result` at all. The tool
+output carries no dollar amount; the rate comes only from
+`NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD` (`0.75`), read
+through `resolveWebSearchRates` as `deepseekPerSearchUsd`, so a missing rate
+records units without a cost, never a fabricated `0`. `resolveSearchUsage`
+tags the result `provider: 'deepseek'` (`SearchProvider` gained
+`'deepseek'`).
+
+**The recorded DeepSeek search cost is a floor.** Only a `tool-result` with
+`billable: true` is counted, so requests that DeepSeek may still bill but
+this app cannot confirm — a client timeout, a connection dropped after the
+request was accepted, a 200 whose body is not valid JSON — are not counted.
+Unfixable client-side without a billing API; the number is never an
+overestimate from these cases, only an underestimate.
+
+**Docs-verified, not live-key verified.** The response shape, the billing
+rule (HTTP 200 with a non-empty `results` array) and the $0.75 rate come from
+DeepSeek's published docs. No live DeepSeek key has exercised the endpoint
+yet, so confirm the first real searches against the DeepSeek usage page
+before trusting the figures.
+
+The tool is registered under the key `web_search`, the same key Anthropic
+and OpenAI use for their provider-executed tools, which is safe because
+`getWebSearchUsage` dispatches on `providerId` first. `ExternalSearchProviderId`
+stays `'brave' | 'exa'`: that type means a separate BYOK search key, and
+DeepSeek's search runs on the key the chat already uses. A gateway send never
+counts it — `resolveUnbundledSearchUsage` returns nothing for a gateway send
+without a Brave/Exa key, and the tool is only registered on the direct
+DeepSeek path. See also
+[`providers/deepseek.md`](./providers/deepseek.md#correction-2026-10-17).
+
 ### The billing unit, and its shape per provider
 
 `SearchBillingUnit` (`shared/types/message-usage.d.ts`) is `'query' |
@@ -173,8 +222,9 @@ from a rejected first attempt that hardcoded an unsourced `$0.014` and
 applied it uniformly to every Google model regardless of generation.
 
 The real values live in `wrangler.jsonc`, in two places kept in sync by
-hand: the top-level (preview) `vars` block and `env.production.vars`. Six
-keys today, all under the `NUXT_PUBLIC_` prefix:
+hand: the top-level (preview) `vars` block, `env.production.vars` and
+`env.production.previews.vars` (`wrangler-search-rates.spec.ts` enforces
+that they agree). Seven keys today, all under the `NUXT_PUBLIC_` prefix:
 
 ```
 NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_QUERIES_USD=14
@@ -183,6 +233,7 @@ NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=10
 NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=10
 NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=5
 NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=7
+NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=0.75
 ```
 
 Public provider list pricing is a deliberate exception to "config values are
@@ -190,10 +241,10 @@ secrets, keep them out of git": it isn't a credential, it's published on a
 web page, and having it in git with a dated source comment is strictly
 better for review than having it invisible in a Cloudflare dashboard. Only
 the Gemini 3.x rate is invoice-verified (paid-one SKU; its free allowance
-is not modelled); the other five are documentation-only, and the comment
+is not modelled); the other six are documentation-only, and the comment
 above each block says so.
 
-These six keys live in `runtimeConfig.public` (not private
+These seven keys live in `runtimeConfig.public` (not private
 `runtimeConfig`) — they are the single source of truth for search pricing.
 `server/api/v1/chats/[slug]/index.post.ts` reads them via
 `resolveSearchRates(useRuntimeConfig(event).public)` for cost accounting,
@@ -300,7 +351,10 @@ to estimated.
 ### Model coverage
 
 Native `web_search` is wired for Google, Anthropic, and OpenAI in
-`server/utils/providers/*.ts`. In the curated catalogs, every Gemini chat
+`server/utils/providers/*.ts`. DeepSeek's `deepseek-flash` and
+`deepseek-v4-pro` also carry `tools: ['web_search']` (2026-10-17), backed by
+a client-executed tool against DeepSeek's Search API rather than a
+provider-native one — see "DeepSeek (added 2026-10-17)" above. In the curated catalogs, every Gemini chat
 model and every Claude model carries `tools: ['web_search']`; most OpenAI
 chat models do too, with a handful of exceptions (`gpt-5-nano`,
 `gpt-4-turbo`, `gpt-4`, `gpt-3.5-turbo`). As of this fix, **all three

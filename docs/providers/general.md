@@ -25,7 +25,7 @@ own files:
 | File | Covers |
 | --- | --- |
 | [`xai.md`](./xai.md) | Grok models, image generation (`grok-imagine-image-2.0`), xAI-specific web search/reasoning wiring |
-| [`deepseek.md`](./deepseek.md) | `deepseek-flash`/`deepseek-v4-pro`, reasoning wiring, the unwired Anthropic-compatible web-search endpoint |
+| [`deepseek.md`](./deepseek.md) | `deepseek-flash`/`deepseek-v4-pro`, reasoning wiring, the standalone Search API wired as a client `web_search` tool, the unwired Anthropic-compatible web-search endpoint |
 | [`moonshotai.md`](./moonshotai.md) | Kimi models, Formula-API web search, reasoning notes |
 | [`alibaba.md`](./alibaba.md) | Qwen/Alibaba models, DashScope web search, the `qwen`-vs-`alibaba` catalog-key divergence |
 | [`gateways.md`](./gateways.md) | The optional gateway layer: Vercel AI Gateway, Cloudflare AI Gateway, OpenRouter — per-gateway cost capture, reasoning, web search and image generation |
@@ -103,9 +103,12 @@ is a live-key error, not a picker cosmetic).
   [`alibaba.md`](./alibaba.md#web-search)); Moonshot gets a Formula-API tool
   requiring the multi-step tool loop below (see
   [`moonshotai.md`](./moonshotai.md#web-search--implemented-via-the-formula-api));
-  and DeepSeek gets none on the endpoint this app calls, with a documented,
+  and DeepSeek got none on the endpoint this app calls, with a documented,
   unwired alternative transport (see
-  [`deepseek.md`](./deepseek.md#web-search)). Superseded conclusions are
+  [`deepseek.md`](./deepseek.md#web-search)) — superseded 2026-10-17:
+  DeepSeek's standalone Search API is wired as a client function tool
+  (`web_search`, $0.75 / 1,000 successful requests; see
+  [`deepseek.md`](./deepseek.md#correction-2026-10-17)). Superseded conclusions are
   kept in place with a **Reversed**/**Correction** annotation rather than
   being silently rewritten, so each correction itself stays legible in the
   record.
@@ -245,9 +248,11 @@ Moonshot's Formula-API `web_search` tool
 caller of the marker — see
 [`moonshotai.md`](./moonshotai.md#web-search--implemented-via-the-formula-api).
 Brave and Exa's BYOK search tools (`server/utils/search/brave.ts`,
-`server/utils/search/exa.ts`) now also mark their tool with
-`withFollowUpTurn()`, for the same reason: the model must read the search
-results before it can answer in natural language. The loop mechanics
+`server/utils/search/exa.ts`) and DeepSeek's Search API tool
+(`server/utils/providers/deepseek-web-search.ts`, see
+[`deepseek.md`](./deepseek.md#correction-2026-10-17)) now also mark their
+tool with `withFollowUpTurn()`, for the same reason: the model must read the
+search results before it can answer in natural language. The loop mechanics
 themselves remain proven generically by a test-only
 fixture tool (`tests/fixtures/follow-up-turn-tool.ts`) driven through the
 real send pipeline with a real `streamText` and a `MockLanguageModelV4`;
@@ -258,7 +263,8 @@ calls, and Anthropic keeps tools declared on the forced step, so the step
 budget alone does not bound provider requests. `index.post.ts` creates one
 `ExternalSearchBudget` per chat request (`server/utils/search/search-budget.ts`,
 never module-global) and passes it to `getBraveWebSearchTools` /
-`getExaWebSearchTools`. Each `execute` spends one call before any provider
+`getExaWebSearchTools`; DeepSeek's tool builds its own per-request budget
+inside `useDeepSeek`. Each `execute` spends one call before any provider
 request; past `EXTERNAL_SEARCH_MAX_CALLS_PER_TURN = 8` it throws a 429
 `createError` whose message tells the model to answer from the results
 already gathered. A throw inside a tool `execute()` becomes a `tool-error`

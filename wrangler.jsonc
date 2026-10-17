@@ -82,7 +82,15 @@
 		// raising it back. Brave's LLM Context endpoint is part of the same
 		// Search plan ($5/1,000 requests), so the Brave rate is unchanged.
 		"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
-		"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
+		"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+		// DeepSeek Search API (client-executed `web_search` tool, direct DeepSeek
+		// sends only): $0.75 / 1,000 successful requests, where successful means
+		// HTTP 200 with a non-empty `results` array — empty-result and failed
+		// requests are not billed, and `count` does not change the price.
+		// Public, provider-published rate, not a secret. Source:
+		// https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-10-17),
+		// documentation-only, NOT invoice-verified. See docs/providers/deepseek.md.
+		"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75"
 	},
 	"d1_databases": [
 		{
@@ -256,7 +264,15 @@
 				// raising it back. Brave's LLM Context endpoint is part of the same
 				// Search plan ($5/1,000 requests), so the Brave rate is unchanged.
 				"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
-				"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7"
+				"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+				// DeepSeek Search API (client-executed `web_search` tool, direct DeepSeek
+				// sends only): $0.75 / 1,000 successful requests, where successful means
+				// HTTP 200 with a non-empty `results` array — empty-result and failed
+				// requests are not billed, and `count` does not change the price.
+				// Public, provider-published rate, not a secret. Source:
+				// https://api-docs.deepseek.com/quick_start/pricing (accessed 2026-10-17),
+				// documentation-only, NOT invoice-verified. See docs/providers/deepseek.md.
+				"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75"
 			},
 			"d1_databases": [
 				{
@@ -351,6 +367,7 @@
 					"NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD": "10",
 					"NUXT_PUBLIC_BRAVE_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "5",
 					"NUXT_PUBLIC_EXA_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "7",
+					"NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD": "0.75",
 					"NUXT_AUTH_ADDITIONAL_ALLOWED_HOSTS": "*-besidka.chernenko.workers.dev"
 				},
 				"d1_databases": [

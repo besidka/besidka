@@ -78,6 +78,10 @@ NUXT_PUBLIC_GOOGLE_SEARCH_COST_PER_THOUSAND_GROUNDED_PROMPTS_USD=
 NUXT_PUBLIC_ANTHROPIC_WEB_SEARCH_COST_PER_THOUSAND_SEARCHES_USD=
 NUXT_PUBLIC_OPENAI_WEB_SEARCH_COST_PER_THOUSAND_CALLS_USD=
 
+# DeepSeek Search API cost (billed per successful request with non-empty
+# results). The real public rate is committed in wrangler.jsonc.
+NUXT_PUBLIC_DEEPSEEK_SEARCH_COST_PER_THOUSAND_REQUESTS_USD=
+
 # Brave Search API (owner dev/testing key) — https://api-dashboard.search.brave.com/
 NUXT_BRAVE_SEARCH_API_KEY=
 

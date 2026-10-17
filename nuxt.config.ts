@@ -273,6 +273,7 @@ export default defineNuxtConfig({
       openaiWebSearchCostPerThousandCallsUsd: '',
       braveSearchCostPerThousandRequestsUsd: '',
       exaSearchCostPerThousandRequestsUsd: '',
+      deepseekSearchCostPerThousandRequestsUsd: '',
     },
   },
   site: {
