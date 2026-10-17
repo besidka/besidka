@@ -701,6 +701,11 @@ export function getAffectedTests(changedFiles) {
     },
     {
       pattern:
+        /^(pnpm-workspace\.yaml|app\/app\.vue|app\/pages\/chats\/(new|\[slug\])\.vue|app\/components\/(Chat\/Container|ui\/Bubble|Logo|Welcome|Sidebar\/NewChat)\.vue)$/,
+      tests: ['tests/e2e/chat/new-chat-navigation.spec.ts'],
+    },
+    {
+      pattern:
         /^(server\/utils\/push\.ts|server\/utils\/push-protocol\.ts|server\/api\/v1\/push\/.*\.ts|app\/composables\/(push-notifications|notification-prompt)\.ts|app\/components\/NotificationPrompt\.client\.vue|app\/components\/ui\/Alert\.vue|app\/layouts\/chat\.vue|server\/db\/schemas\/push-subscriptions\.ts|server\/plugins\/push-subscription-sweep\.ts|app\/service-worker\/.*\.ts|app\/plugins\/push-navigation\.client\.ts|app\/components\/Sidebar\/(AuthCta|PushToggle\.client)\.vue)$/,
       tests: pushNotificationTests,
     },
