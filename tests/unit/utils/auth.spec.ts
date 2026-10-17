@@ -39,7 +39,14 @@ const dbMocks = vi.hoisted(() => ({
   > => null),
 }))
 
+const activationMocks = vi.hoisted(() => ({
+  recordSignupActivation: vi.fn(async () => 'fired'),
+  resolveSignupUtm: vi.fn(async (): Promise<Record<string, string>> => ({})),
+}))
+
 vi.mock('~~/server/utils/account/security-emails', () => mocks)
+
+vi.mock('~~/server/utils/analytics/activation', () => activationMocks)
 
 vi.mock('~~/server/utils/files/convert-files-for-ai', () => ({
   invalidateFileCache: vi.fn(),
@@ -147,6 +154,63 @@ describe('server/utils/auth.ts security notification wiring', () => {
 
   afterEach(() => {
     useRuntimeConfig().betterAuthSecret = ''
+  })
+
+  describe('databaseHooks.user.create.after', () => {
+    it('records signup activation with the resolved utm', async () => {
+      const options = await importAuthOptions()
+      const after = options.databaseHooks!.user!.create!.after!
+      const context = {
+        body: { callbackURL: '/signin?utm_source=reddit' },
+      }
+
+      activationMocks.resolveSignupUtm.mockResolvedValueOnce({
+        source: 'reddit',
+      })
+
+      await after({ id: '42', email: 'new@example.com' } as any, context as any)
+
+      expect(activationMocks.resolveSignupUtm)
+        .toHaveBeenCalledExactlyOnceWith(context)
+      expect(activationMocks.recordSignupActivation)
+        .toHaveBeenCalledExactlyOnceWith(42, { source: 'reddit' })
+    })
+
+    it('records signup activation without a context', async () => {
+      const options = await importAuthOptions()
+      const after = options.databaseHooks!.user!.create!.after!
+
+      await after({ id: '7', email: 'new@example.com' } as any, null)
+
+      expect(activationMocks.resolveSignupUtm)
+        .toHaveBeenCalledExactlyOnceWith(null)
+      expect(activationMocks.recordSignupActivation)
+        .toHaveBeenCalledExactlyOnceWith(7, {})
+    })
+
+    it('never fails user creation when activation throws', async () => {
+      const options = await importAuthOptions()
+      const after = options.databaseHooks!.user!.create!.after!
+      const loggerSet = vi.fn()
+
+      vi.stubGlobal('resolveServerLogger', () => ({ set: loggerSet }))
+      activationMocks.recordSignupActivation.mockRejectedValueOnce(
+        new Error('E_ACTIVATION_FAILED'),
+      )
+
+      await expect(
+        after({ id: '7', email: 'new@example.com' } as any, null),
+      ).resolves.toBeUndefined()
+
+      expect(loggerSet).toHaveBeenCalledExactlyOnceWith({
+        attributes: {
+          analytics: {
+            error: 'E_ACTIVATION_FAILED',
+            event: 'signup_completed',
+          },
+        },
+      })
+    })
   })
 
   describe('databaseHooks.account.create.after', () => {

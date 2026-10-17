@@ -73,6 +73,7 @@ import {
   resolveSearchUsage,
 } from '~~/server/utils/ai/search-usage'
 import { getImageGenerationCost } from '~~/server/utils/ai/image-generation-cost'
+import { trackFirstChatMessage } from '~~/server/utils/analytics/chat-activation'
 import {
   getRequestId,
   normalizeChatError,
@@ -670,9 +671,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const cfCtx = (event.context as WaitUntilCtx | undefined)?.cloudflare?.context
+  const aiStreamPath = getRequestURL(event).pathname
   const aiLogger = createRequestLogger({
     method: 'POST',
-    path: getRequestURL(event).pathname,
+    path: aiStreamPath,
     waitUntil: cfCtx?.waitUntil?.bind(cfCtx),
   })
 
@@ -1676,6 +1678,26 @@ export default defineEventHandler(async (event) => {
         if (aiWideEvent && cfCtx?.waitUntil) {
           cfCtx.waitUntil(shipWideEventToAxiom(aiWideEvent))
         }
+
+        if (
+          wasPersisted
+          && !persistResult.emptyAnswerFailure
+          && persistResult.answered
+        ) {
+          const firstChatMessageTracking = trackFirstChatMessage({
+            userId,
+            providerId: telemetryProviderId,
+            path: aiStreamPath,
+            parentRequestId,
+            waitUntil: cfCtx?.waitUntil?.bind(cfCtx),
+          })
+
+          if (cfCtx?.waitUntil) {
+            cfCtx.waitUntil(firstChatMessageTracking)
+          } else {
+            await firstChatMessageTracking
+          }
+        }
       } finally {
         await generationGuardHeartbeat.stop()
 
@@ -2048,6 +2070,7 @@ function buildPersistedAssistantReplayChunks(input: {
 interface PersistAssistantMessageResult {
   persisted: boolean
   emptyAnswerFailure: boolean
+  answered: boolean
 }
 
 async function persistAssistantMessageFromStream(input: {
@@ -2121,7 +2144,7 @@ async function persistAssistantMessageFromStream(input: {
         },
       })
 
-      return { persisted: false, emptyAnswerFailure: false }
+      return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
     const responseParts = responseMessage.parts as UIMessage['parts']
@@ -2174,7 +2197,7 @@ async function persistAssistantMessageFromStream(input: {
     )
 
     if (!hasMeaningfulAssistantParts(finalParts)) {
-      return { persisted: false, emptyAnswerFailure: false }
+      return { persisted: false, emptyAnswerFailure: false, answered: false }
     }
 
     const generatedFileIds = [
@@ -2369,6 +2392,9 @@ async function persistAssistantMessageFromStream(input: {
     return {
       persisted: true,
       emptyAnswerFailure: ranFollowUpToolWithoutAnswer,
+      answered: !!assistantMessage
+        && !streamErrorText
+        && !hasPersistedFailureNotice(finalParts),
     }
   } catch (exception) {
     const chatError = normalizeChatError({
@@ -2406,6 +2432,17 @@ async function persistAssistantMessageFromStream(input: {
 
     throw chatError
   }
+}
+
+function hasPersistedFailureNotice(parts: UIMessage['parts']): boolean {
+  return parts.some((part) => {
+    return part.type === 'text'
+      && (
+        isPersistedEmptyAnswerFailureText(part.text)
+        || isPersistedOversizedResponseFailureText(part.text)
+        || isPersistedImageGenerationFailureText(part.text)
+      )
+  })
 }
 
 /**

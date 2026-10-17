@@ -378,6 +378,7 @@ export function getAffectedTests(changedFiles) {
     'tests/unit/utils/landing-video-range.spec.ts',
     'tests/unit/utils/video.spec.ts',
     'tests/unit/utils/landing/stats.spec.ts',
+    'tests/unit/utils/landing/analytics-events.spec.ts',
     'tests/unit/components/landing/StatCard.spec.ts',
     'tests/unit/components/landing/StatGrid.spec.ts',
     'tests/unit/components/landing/VideoPlayer.client.spec.ts',
@@ -390,6 +391,23 @@ export function getAffectedTests(changedFiles) {
     'tests/integration/api/stats.spec.ts',
     'tests/integration/server/landing-cache-refresh.spec.ts',
     'tests/integration/server/landing-stats.spec.ts',
+  ]
+
+  const utmAttributionTests = [
+    'tests/unit/utils/utm.spec.ts',
+    'tests/unit/utils/analytics/activation.spec.ts',
+    'tests/unit/utils/analytics/chat-activation.spec.ts',
+    'tests/unit/utils/landing/analytics-events.spec.ts',
+    'tests/unit/utils/auth.spec.ts',
+    'tests/unit/composables/utm-attribution.spec.ts',
+    'tests/unit/composables/landing-analytics.spec.ts',
+    'tests/integration/api/events-ingest.spec.ts',
+    'tests/integration/api/chats-message-id-stream.spec.ts',
+    'tests/integration/api/profile-keys-qwen.spec.ts',
+    'tests/integration/api/profile-keys-cloudflare-gateway.spec.ts',
+    'tests/integration/api/profile-keys-vercel-gateway.spec.ts',
+    'tests/integration/api/profile-keys-openrouter.spec.ts',
+    'tests/e2e/attribution/utm-signup.spec.ts',
   ]
 
   const pushNotificationTests = [
@@ -831,6 +849,11 @@ export function getAffectedTests(changedFiles) {
     {
       pattern: /^server\/utils\/landing\/.*\.ts$/,
       tests: landingTests,
+    },
+    {
+      pattern:
+        /^(shared\/utils\/utm\.ts|shared\/types\/analytics\.d\.ts|server\/utils\/analytics\/.*\.ts|server\/db\/schemas\/attribution\.ts|app\/composables\/(utm-attribution|landing-analytics)\.ts|app\/plugins\/utm-attribution\.client\.ts)$/,
+      tests: utmAttributionTests,
     },
     {
       pattern: /^server\/api\/v1\/(events|stats)\/.*\.ts$/,

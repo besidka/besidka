@@ -16,6 +16,12 @@ vi.mock('evlog', () => ({
   },
 }))
 
+const activationMocks = vi.hoisted(() => ({
+  recordFirstProviderKeyActivation: vi.fn(async () => undefined),
+}))
+
+vi.mock('~~/server/utils/analytics/activation', () => activationMocks)
+
 function createFakeKv() {
   const store = new Map<string, string>()
 
@@ -204,6 +210,8 @@ describe('vercel-gateway key API', () => {
 
     await postHandler({ body: { apiKey: 'vck_updated_key' } } as any)
     expect(dbMock.spies.update).toHaveBeenCalledTimes(1)
+    expect(activationMocks.recordFirstProviderKeyActivation)
+      .toHaveBeenCalledExactlyOnceWith(1, 'vercel-gateway')
     expect(await getHandler({} as any)).toEqual({ hasKey: true })
 
     await deleteHandler({} as any)

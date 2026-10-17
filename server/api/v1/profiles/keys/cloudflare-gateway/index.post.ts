@@ -1,6 +1,7 @@
 import { createError } from 'evlog'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '~~/server/db/schema'
+import { recordFirstProviderKeyActivation } from '~~/server/utils/analytics/activation'
 import {
   defineEventHandler,
   readValidatedBody,
@@ -85,6 +86,11 @@ export default defineEventHandler(async (event) => {
     provider: 'cloudflare-gateway',
     apiKey,
   })
+
+  await recordFirstProviderKeyActivation(
+    parseInt(session.user.id),
+    'cloudflare-gateway',
+  )
 
   return setResponseStatus(event, 201, 'Key created successfully')
 })

@@ -167,3 +167,8 @@ enum, a count, an operation name)? Keep it flat. Is it free-form text, an
 identifier that grows as the product grows (provider/model ids, mime types),
 or an error-code enum with many variants? Nest it under
 `attributes.<domain>`, using the existing domain object's name.
+
+Example: campaign attribution (`docs/analytics-utm.md`) logs
+`attributes.utm.{source,medium,campaign,content}` and
+`attributes.activation.provider`, and keeps only `analytics.event` flat.
+Query them with `attributes['utm']['campaign']`.

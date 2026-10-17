@@ -163,7 +163,7 @@
       </UiFormFieldset>
     </UiForm>
     <p class="py-2 text-center">
-      Don't have an account? <NuxtLink to="/signup" class="underline hover:no-underline">Sign up</NuxtLink>
+      Don't have an account? <NuxtLink :to="withUtm('/signup')" class="underline hover:no-underline">Sign up</NuxtLink>
     </p>
   </UiBubble>
 </template>
@@ -227,6 +227,8 @@ const {
   lastLoginMethod,
   options,
 } = useAuth()
+
+const { resolveUtm, withUtm } = useUtmAttribution()
 
 const turnstile = ref<InstanceType<typeof TurnstileComponent> | null>(null)
 const { requestToken } = useCaptcha(() => turnstile.value)
@@ -299,7 +301,10 @@ async function socialSignIn(provider: 'google' | 'github') {
   pending.value = true
 
   try {
-    await signInWithSocialOAuth(provider, '/chats/new')
+    await signInWithSocialOAuth(
+      provider,
+      appendUtmToPath('/chats/new', resolveUtm()),
+    )
   } finally {
     pending.value = false
   }

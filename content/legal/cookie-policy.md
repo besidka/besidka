@@ -1,8 +1,8 @@
 ---
 title: "Cookie Policy"
 description: "Every cookie and browser storage entry Besidka uses, what it is for, how long it lasts, and how to change or withdraw your consent."
-updatedAt: 2026-10-09
-summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, and hand a tapped push notification to the open app. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. The only third-party script is a security check on the sign-in forms. There is no analytics or marketing category: my page-view counting happens on the server with no cookie, no identifier and no stored IP address. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
+updatedAt: 2026-10-18
+summary: "Besidka uses a handful of cookies and browser storage keys, and nothing at all for advertising or cross-site tracking. The necessary ones keep you signed in, remember your cookie choice, protect an unsent message you have typed, and hand a tapped push notification to the open app. The optional ones only remember preferences such as your theme and your last used model, and they are kept only if you agree. The only third-party script is a security check on the sign-in forms. There is no analytics or marketing category: my page-view counting happens on the server with no cookie, no identifier and no stored IP address, and the campaign tags in a link you click are read from the web address, never stored on your device. You can change or withdraw your choice at any time, and denying preferences deletes the affected keys from your browser."
 ---
 
 ## What this policy covers
@@ -88,7 +88,7 @@ This check exists to keep automated sign-up and password-guessing out of the ser
 
 ## There is no analytics or marketing category
 
-I have **no analytics cookies and no marketing cookies**, so those categories do not appear in the banner. There are no advertising pixels, no social media trackers, no fingerprinting and no cross-site tracking of any kind on this site.
+I have **no analytics cookies and no marketing cookies**, so those categories do not appear in the banner. Campaign links work without any of them, as explained below. There are no advertising pixels, no social media trackers, no fingerprinting and no cross-site tracking of any kind on this site.
 
 ### How I count visits instead
 
@@ -97,9 +97,17 @@ I count page views and a small number of interface events (for example that a bu
 - sets **no cookie** and reads nothing from your device;
 - uses **no user identifier**, no visitor id and no session id;
 - **stores no IP address**; and
-- records only the event name, the path, a coarse **country**, and a **device class** (mobile, tablet or desktop) worked out from your browser's User-Agent string.
+- records only the event name, the path, a coarse **country**, a **device class** (mobile, tablet or desktop) worked out from your browser's User-Agent string, and the campaign tags of the link you opened, if it had any.
 
 The result is a counter, not a profile. Because it is aggregate and cannot be traced back to you, it is not personal data and it is not consent-gated. It also means nothing you do or do not consent to here changes it.
+
+### Campaign links
+
+If you open a link that carries campaign tags (`utm_source`, `utm_medium`, `utm_campaign`, `utm_content`), Besidka reads them **from the web address** of the page. It keeps them in the page's memory and adds them to the address of the sign-up and sign-in links, so they reach the sign-up. They are **not written to a cookie, localStorage, sessionStorage or IndexedDB**, and nothing is read back from your device. Opening the site again without the campaign link forgets them. While you use the sign-up page, the tags stay in its web address.
+
+If you then create an account, I store the tags with your account on the server. That is described in the [Privacy Policy](/privacy-policy#campaign-attribution). It is not a cookie and it is not browser storage, so it does not need consent under PKE Art. 399.
+
+I considered a cookie that would remember a campaign across visits. I do **not** use one. If I ever add one, it will go under a new analytics category that is off until you agree, and this page will list it before it is set.
 
 ## Cookies set by other companies
 

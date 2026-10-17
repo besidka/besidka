@@ -249,3 +249,18 @@ chats and projects for that user.
 - `--env` is only valid together with `--remote`
 - cleanup is intentionally broad and deletes all chats and projects for the
   selected user
+
+## utm-report.mjs
+
+Prints the campaign funnel (visits, sign-ups, first provider key, first chat,
+conversion %) from Cloudflare Workers Analytics Engine. See
+`docs/analytics-utm.md`.
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_ANALYTICS_TOKEN=... \
+  node scripts/utm-report.mjs [--days=7|30] [--dataset=besidka_cms_events]
+```
+
+The token needs only "Account Analytics: Read". `CLOUDFLARE_API_TOKEN` is used
+when `CLOUDFLARE_ANALYTICS_TOKEN` is unset. Use
+`--dataset=besidka_cms_events_preview` for previews.

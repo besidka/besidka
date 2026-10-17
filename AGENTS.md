@@ -84,7 +84,7 @@ PRAGMA foreign_keys=ON;
 
 These tables ALL cascade-delete when `users` is rebuilt — **never** rebuild `users` without recovery plan:
 
-- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`
+- `sessions`, `accounts`, `chats`, `messages`, `projects`, `files`, `storages`, `keys`, `user_settings`, `chat_shares`, `chat_share_files`, `two_factors`, `passkeys`, `user_attribution`, `user_activation_events`
 
 Other parent tables with cascade children: `chats` → `messages`, `chat_share_files`; `projects` → `chats` (project-scoped).
 
@@ -230,6 +230,11 @@ The first bookmark whose timestamp predates the migration is **not necessarily s
   `allowedHosts` mismatch that blocks versioned preview URLs), and why
   password-only 2FA gating (no challenge via passkey/OAuth sign-in) is a
   confirmed, accepted design decision rather than a gap
+- `docs/analytics-utm.md` - Campaign attribution + activation funnel: UTM
+  sanitizer, URL-only propagation (no cookie) into `user_attribution`, the
+  `user_activation_events` ledger (once per user), the Analytics Engine blob
+  layout (blob2..5 differ per event — filter on blob1), ready SQL/APL
+  queries, `scripts/utm-report.mjs`, and why no analytics-consent cookie
 - `docs/domain-migration-www-to-apex.md` - The `www.besidka.com` →
   `besidka.com` canonical-host migration: D1 Time Travel bookmarks and
   read-only scan, blast radius for existing sessions/push/passkeys, and the
