@@ -29,6 +29,7 @@ const rates = resolveSearchRates({
   openaiWebSearchCostPerThousandCallsUsd: '10',
   braveSearchCostPerThousandRequestsUsd: '5',
   exaSearchCostPerThousandRequestsUsd: '17',
+  deepseekSearchCostPerThousandRequestsUsd: '0.75',
 })
 
 function externalToolResultStep(toolName: string, output: unknown = {}) {
@@ -40,7 +41,7 @@ function externalToolResultStep(toolName: string, output: unknown = {}) {
 }
 
 describe('resolveSearchRates', () => {
-  it('maps all six config keys into google, web and external rate groups', () => {
+  it('maps all seven config keys into google, web and external rate groups', () => {
     expect(rates).toEqual({
       google: {
         perQueryUsd: 0.014,
@@ -49,6 +50,7 @@ describe('resolveSearchRates', () => {
       web: {
         anthropicPerSearchUsd: 0.01,
         openaiPerCallUsd: 0.01,
+        deepseekPerSearchUsd: 0.00075,
       },
       external: {
         bravePerSearchUsd: 0.005,
@@ -156,6 +158,55 @@ describe('resolveSearchUsage', () => {
 
     expect(result?.units).toBe(1)
     expect(result?.cost).toBeUndefined()
+  })
+
+  it('counts only billable DeepSeek searches and tags the provider', () => {
+    const result = resolveSearchUsage({
+      providerId: 'deepseek',
+      modelId: 'deepseek-flash',
+      steps: [
+        externalToolResultStep('web_search', { billable: true }),
+        externalToolResultStep('web_search', { billable: false }),
+        externalToolResultStep('web_search', { billable: true }),
+      ],
+      rates,
+    })
+
+    expect(result?.units).toBe(2)
+    expect(result?.billingUnit).toBe('search')
+    expect(result?.cost).toBeCloseTo(2 * 0.00075)
+    expect(result?.googleQueries).toBeUndefined()
+    expect(result?.googleGroundedSteps).toBeUndefined()
+    expect(result?.provider).toBe('deepseek')
+  })
+
+  it('records DeepSeek units with no cost when no rate is configured', () => {
+    const result = resolveSearchUsage({
+      providerId: 'deepseek',
+      modelId: 'deepseek-flash',
+      steps: [externalToolResultStep('web_search', { billable: true })],
+      rates: {
+        ...rates,
+        web: { ...rates.web, deepseekPerSearchUsd: undefined },
+      },
+    })
+
+    expect(result?.units).toBe(1)
+    expect(result?.cost).toBeUndefined()
+    expect(result?.provider).toBe('deepseek')
+  })
+
+  it('returns undefined for a DeepSeek turn with only empty or failed '
+    + 'searches', () => {
+    expect(resolveSearchUsage({
+      providerId: 'deepseek',
+      modelId: 'deepseek-flash',
+      steps: [
+        externalToolResultStep('web_search', { billable: false }),
+        { content: [{ type: 'tool-error', toolName: 'web_search' }] },
+      ],
+      rates,
+    })).toBeUndefined()
   })
 
   it('returns undefined when no search happened, for any provider', () => {

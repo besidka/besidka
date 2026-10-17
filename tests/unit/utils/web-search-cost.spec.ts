@@ -37,6 +37,15 @@ function toolErrorStep(toolName: string) {
   }
 }
 
+function deepseekToolResultStep(output: unknown) {
+  return {
+    content: [
+      { type: 'tool-call', toolName: 'web_search' },
+      { type: 'tool-result', toolName: 'web_search', output },
+    ],
+  }
+}
+
 describe('getWebSearchUsage', () => {
   it('sums Anthropic web_search_requests across multiple steps', () => {
     const result = getWebSearchUsage(
@@ -116,6 +125,79 @@ describe('getWebSearchUsage', () => {
     expect(result).toBeUndefined()
   })
 
+  it('counts only DeepSeek tool results whose output is billable', () => {
+    const result = getWebSearchUsage(
+      [
+        deepseekToolResultStep({ provider: 'deepseek', billable: true }),
+        deepseekToolResultStep({ provider: 'deepseek', billable: false }),
+        deepseekToolResultStep({ provider: 'deepseek', billable: true }),
+      ],
+      'deepseek',
+    )
+
+    expect(result).toEqual({ searches: 2, billingUnit: 'search' })
+  })
+
+  it('never counts a DeepSeek empty-result search', () => {
+    const result = getWebSearchUsage(
+      [deepseekToolResultStep({
+        provider: 'deepseek',
+        billable: false,
+        results: [],
+      })],
+      'deepseek',
+    )
+
+    expect(result).toBeUndefined()
+  })
+
+  it('never counts a DeepSeek tool-error', () => {
+    const result = getWebSearchUsage(
+      [toolErrorStep('web_search')],
+      'deepseek',
+    )
+
+    expect(result).toBeUndefined()
+  })
+
+  it('ignores DeepSeek tool results without a boolean billable flag', () => {
+    const result = getWebSearchUsage(
+      [
+        deepseekToolResultStep({ provider: 'deepseek' }),
+        deepseekToolResultStep({ billable: 'true' }),
+        deepseekToolResultStep('not-a-record'),
+        toolResultStep('web_search'),
+      ],
+      'deepseek',
+    )
+
+    expect(result).toBeUndefined()
+  })
+
+  it('ignores DeepSeek tool results under other tool names', () => {
+    const result = getWebSearchUsage(
+      [{
+        content: [{
+          type: 'tool-result',
+          toolName: 'web_search_brave',
+          output: { billable: true },
+        }],
+      }],
+      'deepseek',
+    )
+
+    expect(result).toBeUndefined()
+  })
+
+  it('does not count billable DeepSeek-shaped results for other providers', () => {
+    const result = getWebSearchUsage(
+      [deepseekToolResultStep({ billable: true })],
+      'moonshotai',
+    )
+
+    expect(result).toBeUndefined()
+  })
+
   it('tolerates missing or non-array content, and non-record parts', () => {
     expect(getWebSearchUsage(
       [{ content: undefined }],
@@ -137,7 +219,23 @@ describe('resolveWebSearchRates', () => {
     expect(resolveWebSearchRates({})).toEqual({
       anthropicPerSearchUsd: undefined,
       openaiPerCallUsd: undefined,
+      deepseekPerSearchUsd: undefined,
     })
+  })
+
+  it('divides the DeepSeek per-thousand rate into a per-request rate', () => {
+    expect(resolveWebSearchRates({
+      deepseekSearchCostPerThousandRequestsUsd: '0.75',
+    }).deepseekPerSearchUsd).toBe(0.00075)
+    expect(resolveWebSearchRates({
+      deepseekSearchCostPerThousandRequestsUsd: 0.75,
+    }).deepseekPerSearchUsd).toBe(0.00075)
+    expect(resolveWebSearchRates({
+      deepseekSearchCostPerThousandRequestsUsd: '0',
+    }).deepseekPerSearchUsd).toBeUndefined()
+    expect(resolveWebSearchRates({
+      deepseekSearchCostPerThousandRequestsUsd: '',
+    }).deepseekPerSearchUsd).toBeUndefined()
   })
 
   it('divides a string rate into a per-unit rate', () => {
@@ -178,7 +276,28 @@ describe('getWebSearchCost', () => {
   const rates = {
     anthropicPerSearchUsd: 0.01,
     openaiPerCallUsd: 0.01,
+    deepseekPerSearchUsd: 0.00075,
   }
+
+  it('charges DeepSeek searches at units times the per-request rate', () => {
+    const result = getWebSearchCost(
+      { searches: 4, billingUnit: 'search' },
+      'deepseek',
+      rates,
+    )
+
+    expect(result).toBeCloseTo(4 * 0.75 / 1000)
+  })
+
+  it('returns no DeepSeek cost when the rate is unset', () => {
+    const result = getWebSearchCost(
+      { searches: 4, billingUnit: 'search' },
+      'deepseek',
+      { ...rates, deepseekPerSearchUsd: undefined },
+    )
+
+    expect(result).toBeUndefined()
+  })
 
   it('charges Anthropic searches at the per-search rate', () => {
     const result = getWebSearchCost(

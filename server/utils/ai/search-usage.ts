@@ -137,7 +137,8 @@ export function resolveSearchUsage(input: {
     googleQueries: undefined,
     googleGroundedSteps: undefined,
     provider: (input.providerId === 'anthropic'
-      || input.providerId === 'openai')
+      || input.providerId === 'openai'
+      || input.providerId === 'deepseek')
       ? input.providerId
       : undefined,
   }

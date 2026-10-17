@@ -55,7 +55,7 @@
         List prices as of September 2026 and may change. Besidka
         estimates Gemini search at list price from the first query, which
         has matched real Google invoices more closely than the documented
-        allowance.
+        allowance. DeepSeek charges only for searches that return results.
       </p>
     </div>
   </div>
@@ -81,6 +81,7 @@ const {
   exaSearchCostPerThousandRequestsUsd,
   anthropicWebSearchCostPerThousandSearchesUsd,
   openaiWebSearchCostPerThousandCallsUsd,
+  deepseekSearchCostPerThousandRequestsUsd,
   googleSearchCostPerThousandQueriesUsd,
   googleSearchCostPerThousandGroundedPromptsUsd,
 } = useRuntimeConfig().public
@@ -128,6 +129,13 @@ const builtInPricingRows: SearchPricingRow[] = [
   {
     name: 'OpenAI built-in',
     price: formatRatePerThousandUsd(openaiWebSearchCostPerThousandCallsUsd),
+    freeAllowance: '—',
+  },
+  {
+    name: 'DeepSeek built-in',
+    price: formatRatePerThousandUsd(
+      deepseekSearchCostPerThousandRequestsUsd,
+    ),
     freeAllowance: '—',
   },
 ]

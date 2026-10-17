@@ -57,6 +57,7 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       googleSearchCostPerThousandGroundedPromptsUsd: '35',
       anthropicWebSearchCostPerThousandSearchesUsd: '10',
       openaiWebSearchCostPerThousandCallsUsd: '10',
+      deepseekSearchCostPerThousandRequestsUsd: '0.75',
     }
 
     const wrapper = await mountSuspended(SearchProvidersInfo)
@@ -72,8 +73,17 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       'Gemini 2.5 built-in',
       'Anthropic built-in',
       'OpenAI built-in',
+      'DeepSeek built-in',
     ])
-    expect(prices).toEqual(['$5', '$7', '$14', '$35', '$10', '$10'])
+    expect(prices).toEqual([
+      '$5',
+      '$7',
+      '$14',
+      '$35',
+      '$10',
+      '$10',
+      '$0.75',
+    ])
   })
 
   it('shows a dash when a rate is unset or invalid', async () => {
@@ -84,6 +94,7 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
       googleSearchCostPerThousandGroundedPromptsUsd: '',
       anthropicWebSearchCostPerThousandSearchesUsd: 'not-a-number',
       openaiWebSearchCostPerThousandCallsUsd: '-5',
+      deepseekSearchCostPerThousandRequestsUsd: '',
     }
 
     const wrapper = await mountSuspended(SearchProvidersInfo)
@@ -91,7 +102,7 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
     const rows = wrapper.findAll('tbody tr')
     const prices = rows.map(row => row.findAll('td')[1]?.text())
 
-    expect(prices).toEqual(['—', '—', '—', '—', '—', '—'])
+    expect(prices).toEqual(['—', '—', '—', '—', '—', '—', '—'])
   })
 
   it('shows the verified free-tier allowance for each search provider',
@@ -102,6 +113,9 @@ describe('Profile/Keys/SearchProvidersInfo', () => {
 
       expect(text).toContain('$5 credit / month (card required)')
       expect(text).toContain('$10 credit / month (no card)')
+      expect(text).toContain(
+        'DeepSeek charges only for searches that return results.',
+      )
       expect(text).toContain(
         'Documented: 5,000 queries / month on paid billing. In practice '
         + 'Google may bill from the first query.',

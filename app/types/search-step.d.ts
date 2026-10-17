@@ -12,7 +12,7 @@ export interface SearchStepResult {
 }
 
 export interface SearchStepData {
-  toolName: 'web_search_brave' | 'web_search_exa'
+  toolName: 'web_search_brave' | 'web_search_exa' | 'web_search'
   state: SearchStepState
   query: string
   freshness?: SearchStepFreshness

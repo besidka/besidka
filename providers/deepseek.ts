@@ -6,7 +6,7 @@ export default {
   models: [
     {
       id: 'deepseek-flash',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'high'],
@@ -17,7 +17,7 @@ export default {
     },
     {
       id: 'deepseek-v4-pro',
-      tools: [],
+      tools: ['web_search'],
       reasoning: {
         mode: 'levels',
         levels: ['low', 'high'],

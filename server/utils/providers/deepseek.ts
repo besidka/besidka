@@ -3,7 +3,9 @@ import type { SharedV2ProviderOptions } from '@ai-sdk/provider'
 import type { Tools } from '#shared/types/chats.d'
 import type { ReasoningLevel } from '#shared/types/reasoning.d'
 import type { FormattedTools } from '~~/server/types/tools.d'
+import type { LoggerLike } from '~~/server/utils/files/logger'
 import { createDeepSeek } from '@ai-sdk/deepseek'
+import { getDeepSeekWebSearchTools } from '~~/server/utils/providers/deepseek-web-search'
 import {
   resolveReasoningLevelForModel,
   toReasoningEffort,
@@ -14,6 +16,7 @@ export async function useDeepSeek(
   model: string,
   requestedTools: Tools,
   requestedReasoning: ReasoningLevel,
+  logger?: LoggerLike,
 ) {
   const data = await useDb().query.keys.findFirst({
     where: {
@@ -32,9 +35,8 @@ export async function useDeepSeek(
     })
   }
 
-  const deepseek = createDeepSeek({
-    apiKey: await useDecryptText(data.apiKey),
-  })
+  const apiKey = await useDecryptText(data.apiKey)
+  const deepseek = createDeepSeek({ apiKey })
   const { model: modelData } = getModel(model)
 
   if (!modelData) {
@@ -58,7 +60,14 @@ export async function useDeepSeek(
   }
 
   function getTools(): FormattedTools {
-    return {}
+    if (
+      !requestedTools.includes('web_search')
+      || !modelData?.tools.includes('web_search')
+    ) {
+      return {}
+    }
+
+    return getDeepSeekWebSearchTools(apiKey, undefined, logger)
   }
 
   const reasoningLevel = resolveReasoningLevelForModel(

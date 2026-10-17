@@ -31,9 +31,9 @@ describe('curated deepseek provider', () => {
     }
   })
 
-  it('has no model exposing any tool', () => {
+  it('exposes only web_search on every model', () => {
     for (const model of deepseek.models) {
-      expect(model.tools).toEqual([])
+      expect(model.tools).toEqual(['web_search'])
       expect(model.imageGeneration).toBeUndefined()
     }
   })

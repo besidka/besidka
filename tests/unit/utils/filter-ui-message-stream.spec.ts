@@ -519,6 +519,42 @@ describe('emitSourcesForExternalSearchResults', () => {
     }))
   })
 
+  it('emits derived source-url chunks for a DeepSeek tool-output', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-output-available',
+          toolCallId: 'call-1',
+          output: {
+            provider: 'deepseek',
+            query: 'nuxt 4',
+            billable: true,
+            results: [
+              {
+                title: 'DeepSeek result',
+                url: 'https://example.com/deepseek',
+                snippet: 'Short snippet',
+                summary: 'Longer summary',
+              },
+            ],
+          },
+        })
+        controller.close()
+      },
+    })
+
+    const chunks = await readAllChunks(
+      emitSourcesForExternalSearchResults(stream),
+    )
+
+    expect(chunks).toHaveLength(2)
+    expect(chunks[1]).toEqual(expect.objectContaining({
+      type: 'source-url',
+      url: 'https://example.com/deepseek',
+      title: 'DeepSeek result',
+    }))
+  })
+
   it('deduplicates repeated URLs within the same message', async () => {
     const stream = new ReadableStream({
       start(controller) {

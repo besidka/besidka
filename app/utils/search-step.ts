@@ -14,6 +14,8 @@ const SEARCH_STEP_TOOL_NAMES = new Set<string>([
   'web_search_brave',
   'web_search_exa',
 ])
+const DEEPSEEK_SEARCH_TOOL_NAME = 'web_search'
+const DEEPSEEK_SEARCH_PROVIDER = 'deepseek'
 const SEARCH_STEP_FRESHNESS_LABELS = new Map<SearchStepFreshness, string>([
   ['day', 'Last 24 hours'],
   ['week', 'Last 7 days'],
@@ -75,8 +77,26 @@ function readFreshness(value: unknown): SearchStepFreshness | undefined {
     : undefined
 }
 
+function isDeepSeekSearchOutput(output: unknown): boolean {
+  return asRecord(output)?.provider === DEEPSEEK_SEARCH_PROVIDER
+}
+
+function readResultDate(
+  record: Record<string, unknown>,
+  isDeepSeek: boolean,
+): string | undefined {
+  if (typeof record.publishedDate === 'string') {
+    return record.publishedDate
+  }
+
+  return isDeepSeek && typeof record.date === 'string'
+    ? record.date
+    : undefined
+}
+
 function readResults(output: unknown): SearchStepResult[] {
   const results = asRecord(output)?.results
+  const isDeepSeek = isDeepSeekSearchOutput(output)
 
   if (!Array.isArray(results)) {
     return []
@@ -94,9 +114,7 @@ function readResults(output: unknown): SearchStepResult[] {
     readable.push({
       title: typeof record.title === 'string' ? record.title : '',
       url: record.url,
-      publishedDate: typeof record.publishedDate === 'string'
-        ? record.publishedDate
-        : undefined,
+      publishedDate: readResultDate(record, isDeepSeek),
     })
   }
 
@@ -161,8 +179,10 @@ export function getSearchStepData(
 ): SearchStepData | null {
   const toolPart = part as SearchToolLikePart
   const toolName = getToolPartName(part)
+  const isDeepSeekSearch = toolName === DEEPSEEK_SEARCH_TOOL_NAME
+    && isDeepSeekSearchOutput(toolPart.output)
 
-  if (!SEARCH_STEP_TOOL_NAMES.has(toolName)) {
+  if (!SEARCH_STEP_TOOL_NAMES.has(toolName) && !isDeepSeekSearch) {
     return null
   }
 

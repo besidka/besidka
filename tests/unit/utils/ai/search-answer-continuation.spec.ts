@@ -357,6 +357,29 @@ describe('richer search content caps', () => {
     expect(context.match(/Published:/g)).toHaveLength(1)
   })
 
+  it('renders a DeepSeek result from its summary and date rather than the '
+    + 'short snippet', () => {
+    const context = buildSearchResultsContext([{
+      toolName: SEARCH_TOOL_NAME,
+      input: { query: 'q' },
+      output: {
+        provider: 'deepseek',
+        results: [{
+          title: 'DeepSeek result',
+          url: 'https://example.com/deepseek',
+          snippet: 'Short UI snippet',
+          summary: 'Longer summary for the model',
+          siteName: 'Example',
+          date: '2026-07-01',
+        }],
+      },
+    }])
+
+    expect(context).toContain('   Longer summary for the model')
+    expect(context).not.toContain('Short UI snippet')
+    expect(context).toContain('   Published: 2026-07-01')
+  })
+
   it('caps non-record tool input and error text with the auxiliary cap',
     () => {
       const context = buildSearchResultsContext([
