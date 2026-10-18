@@ -573,6 +573,8 @@ html body[data-studio-active][data-expand-sidebar]::before {
 
   &:not(.btn-active, :hover, :active:focus, :focus-visible, input:checked:not(.filter .btn)) {
     --btn-rest-fg: var(--color-base-content, currentColor);
+    --btn-bg: #0000;
+    --btn-border: #0000;
 
     &.btn-disabled {
       @supports (color: color-mix(in lab, red, red)) {

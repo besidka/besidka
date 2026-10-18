@@ -6,7 +6,7 @@
           <div class="flex flex-col gap-3 sm:col-span-3 md:col-span-2 max-md:items-center">
             <NuxtLink
               to="/"
-              class="btn btn-ghost btn-sm md:self-start -translate-x-4 rounded-full"
+              class="btn btn-ghost btn-ghost-legacy btn-sm md:self-start -translate-x-4 rounded-full"
               aria-label="Besidka home"
             >
               <Logo class="h-7 w-auto" />
