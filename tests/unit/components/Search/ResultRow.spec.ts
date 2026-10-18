@@ -242,4 +242,108 @@ describe('Search/ResultRow', () => {
     expect(wrapper.attributes('aria-selected')).toBe('true')
     expect(wrapper.attributes('data-testid')).toBe('search-result-row')
   })
+
+  describe('pin toggle button', () => {
+    it('is labelled "Pin" for an unpinned chat', async () => {
+      const wrapper = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({ pinnedAt: null, shared: false }),
+          active: false,
+        },
+      })
+
+      const button = wrapper.find('[data-testid="search-result-pin-toggle"]')
+
+      expect(button.exists()).toBe(true)
+      expect(button.attributes('aria-label')).toBe('Pin')
+    })
+
+    it('is labelled "Unpin" for a pinned chat', async () => {
+      const wrapper = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({
+            pinnedAt: '2026-03-01T00:00:00.000Z',
+            shared: false,
+          }),
+          active: false,
+        },
+      })
+
+      expect(wrapper.find('[data-testid="search-result-pin-toggle"]')
+        .attributes('aria-label')).toBe('Unpin')
+    })
+
+    it('emits pin without emitting select when clicked', async () => {
+      const wrapper = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({ shared: false }),
+          active: false,
+        },
+      })
+
+      await wrapper.find('[data-testid="search-result-pin-toggle"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('pin')).toHaveLength(1)
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('still emits pin but never select when clicked while pending', async () => {
+      const wrapper = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({ shared: false }),
+          active: false,
+          pinPending: true,
+        },
+      })
+
+      const button = wrapper.find('[data-testid="search-result-pin-toggle"]')
+
+      expect(button.attributes('disabled')).toBeUndefined()
+
+      await button.trigger('click')
+
+      expect(wrapper.emitted('pin')).toHaveLength(1)
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('never emits select when the tooltip wrapper itself is clicked', async () => {
+      const wrapper = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({ shared: false }),
+          active: false,
+        },
+      })
+
+      await wrapper.find('[data-testid="search-result-pin-wrapper"]')
+        .trigger('click')
+
+      expect(wrapper.emitted('select')).toBeUndefined()
+    })
+
+    it('reflects pinPending in aria-busy and shows a spinner', async () => {
+      const idle = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({ shared: false }),
+          active: false,
+        },
+      })
+
+      expect(idle.find('[data-testid="search-result-pin-toggle"]')
+        .attributes('aria-busy')).toBe('false')
+      expect(idle.find('.loading').exists()).toBe(false)
+
+      const pending = await mountSuspended(SearchResultRow, {
+        props: {
+          chat: createHistoryChat({ shared: false }),
+          active: false,
+          pinPending: true,
+        },
+      })
+
+      expect(pending.find('[data-testid="search-result-pin-toggle"]')
+        .attributes('aria-busy')).toBe('true')
+      expect(pending.find('.loading').exists()).toBe(true)
+    })
+  })
 })

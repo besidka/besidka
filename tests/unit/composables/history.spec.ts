@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { effectScope, type EffectScope } from 'vue'
-import { useHistory } from '../../../app/composables/history'
+import {
+  setHistoryChatPinned,
+  useHistory,
+} from '../../../app/composables/history'
 import {
   createHistoryChat,
   createHistoryResponse,
@@ -627,5 +630,132 @@ describe('useHistory', () => {
     await flushPromises()
 
     expect(history.searchCapped.value).toBe(false)
+  })
+
+  describe('setHistoryChatPinned', () => {
+    it('moves a known chat into pinned across loaded entries', () => {
+      const chat = createHistoryChat({ id: 'chat-1' })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ chats: [chat] }))
+
+      setHistoryChatPinned({
+        ...chat,
+        pinnedAt: '2026-03-11T09:00:00.000Z',
+        activityAt: '2026-03-11T09:30:00.000Z',
+      })
+
+      expect(history.chats.value).toEqual([])
+      expect(history.pinned.value).toEqual([
+        expect.objectContaining({
+          id: 'chat-1',
+          pinnedAt: '2026-03-11T09:00:00.000Z',
+          activityAt: '2026-03-11T09:30:00.000Z',
+        }),
+      ])
+    })
+
+    it('moves a known pinned chat back into chats when unpinned', () => {
+      const chat = createHistoryChat({
+        id: 'chat-1',
+        pinnedAt: '2026-03-01T00:00:00.000Z',
+      })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ pinned: [chat] }))
+
+      setHistoryChatPinned({
+        ...chat,
+        pinnedAt: null,
+        activityAt: '2026-03-11T09:30:00.000Z',
+      })
+
+      expect(history.pinned.value).toEqual([])
+      expect(history.chats.value).toEqual([
+        expect.objectContaining({ id: 'chat-1', pinnedAt: null }),
+      ])
+    })
+
+    it('prepends an unknown pinned chat to the unsearched pinned list only', () => {
+      const knownChat = createHistoryChat({ id: 'chat-known' })
+      const unknownChat = createHistoryChat({ id: 'chat-unknown' })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ chats: [knownChat] }))
+
+      setHistoryChatPinned({
+        ...unknownChat,
+        pinnedAt: '2026-03-11T09:00:00.000Z',
+      })
+
+      expect(history.pinned.value.map(chat => chat.id))
+        .toEqual(['chat-unknown'])
+      expect(history.chats.value.map(chat => chat.id))
+        .toEqual(['chat-known'])
+    })
+
+    it('strips search-only fields from an unknown chat prepended to the unsearched entry', () => {
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse())
+
+      setHistoryChatPinned(createHistoryChat({
+        id: 'chat-unknown',
+        pinnedAt: '2026-03-11T09:00:00.000Z',
+        snippet: 'a stale snippet',
+        matchedIn: 'content',
+      }))
+
+      expect(history.pinned.value).toHaveLength(1)
+      expect(history.pinned.value[0]).not.toHaveProperty('snippet')
+      expect(history.pinned.value[0]).not.toHaveProperty('matchedIn')
+      expect(history.pinned.value[0]?.id).toBe('chat-unknown')
+    })
+
+    it('does not fabricate an unknown chat when it is unpinned', () => {
+      const knownChat = createHistoryChat({ id: 'chat-known' })
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse({ chats: [knownChat] }))
+
+      setHistoryChatPinned(createHistoryChat({
+        id: 'chat-unknown',
+        pinnedAt: null,
+      }))
+
+      expect(history.pinned.value).toEqual([])
+      expect(history.chats.value.map(chat => chat.id))
+        .toEqual(['chat-known'])
+    })
+
+    it('does not add an unknown chat to a searched cache entry', async () => {
+      vi.useFakeTimers()
+
+      fetchMock.mockResolvedValue(createHistoryResponse())
+
+      const history = createHistoryComposable()
+
+      history.prime(createHistoryResponse())
+      history.search.value = 'report'
+      await flushPromises()
+      vi.advanceTimersByTime(180)
+      await flushPromises()
+
+      setHistoryChatPinned(createHistoryChat({
+        id: 'chat-unknown',
+        pinnedAt: '2026-03-11T09:00:00.000Z',
+      }))
+
+      expect(history.pinned.value).toEqual([])
+
+      fetchMock.mockImplementation(() => new Promise(() => {}))
+      history.search.value = ''
+      await flushPromises()
+      vi.advanceTimersByTime(180)
+      await flushPromises()
+
+      expect(history.pinned.value.map(chat => chat.id))
+        .toEqual(['chat-unknown'])
+    })
   })
 })

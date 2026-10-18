@@ -54,8 +54,10 @@
                 :aria-selected="item.index === activeIndex"
                 :chat="item.chat"
                 :active="item.index === activeIndex"
+                :pin-pending="pendingPinChatId === item.chat.id"
                 @mousemove="activeIndex = item.index"
                 @select="item.run()"
+                @pin="togglePin(item.chat)"
               />
               <div
                 v-else
@@ -96,6 +98,7 @@
 
 <script setup lang="ts">
 import type { HistoryChat } from '#shared/types/history.d'
+import { parseError } from 'evlog'
 import { MIN_SEARCH_LENGTH } from '#shared/utils/search'
 
 interface SearchInputInstance {
@@ -145,6 +148,7 @@ const results = shallowRef<HistoryChat[]>([])
 const recentChats = shallowRef<HistoryChat[]>([])
 const isSearching = shallowRef<boolean>(false)
 const activeIndex = shallowRef<number>(0)
+const pendingPinChatId = shallowRef<string | null>(null)
 
 let requestId = 0
 let recentChatsRequestId = 0
@@ -434,12 +438,14 @@ const runSearch = useDebounceFn(async () => {
       ...response.pinned,
       ...response.chats,
     ].slice(0, RESULTS_LIMIT)
+    activeIndex.value = 0
   } catch {
     if (currentRequestId !== requestId) {
       return
     }
 
     results.value = []
+    activeIndex.value = 0
   }
 
   isSearching.value = false
@@ -469,6 +475,48 @@ async function fetchRecentChats() {
     if (currentRecentChatsRequestId !== recentChatsRequestId) {
       return
     }
+  }
+}
+
+function replaceChat(
+  historyChats: HistoryChat[],
+  updatedChat: HistoryChat,
+): HistoryChat[] {
+  return historyChats.map((historyChat) => {
+    return historyChat.id === updatedChat.id ? updatedChat : historyChat
+  })
+}
+
+async function togglePin(chat: HistoryChat) {
+  if (pendingPinChatId.value) {
+    return
+  }
+
+  pendingPinChatId.value = chat.id
+
+  try {
+    const response = await $fetch('/api/v1/chats/history/pin', {
+      method: 'POST',
+      body: { chatId: chat.id },
+    })
+    const updatedChat: HistoryChat = {
+      ...chat,
+      pinnedAt: response.pinnedAt,
+      activityAt: new Date().toISOString(),
+    }
+
+    recentChats.value = replaceChat(recentChats.value, updatedChat)
+    results.value = replaceChat(results.value, updatedChat)
+    setHistoryChatPinned(updatedChat)
+  } catch (exception) {
+    const parsedException = parseError(exception)
+
+    useErrorMessage(
+      parsedException.message || 'Failed to toggle pin',
+      parsedException.why,
+    )
+  } finally {
+    pendingPinChatId.value = null
   }
 }
 
@@ -507,6 +555,7 @@ watch(trimmedQuery, (search) => {
     requestId += 1
     results.value = []
     isSearching.value = false
+    activeIndex.value = 0
 
     return
   }
@@ -515,7 +564,7 @@ watch(trimmedQuery, (search) => {
   runSearch()
 })
 
-watch([hasSearchQuery, results], () => {
+watch(hasSearchQuery, () => {
   activeIndex.value = 0
 })
 

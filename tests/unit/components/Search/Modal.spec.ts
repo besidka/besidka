@@ -12,6 +12,7 @@ import {
 } from '../../../setup/helpers/history-fixtures'
 
 const mocks = vi.hoisted(() => ({
+  errorMessageMock: vi.fn(),
   fetchMock: vi.fn(),
   navigateToMock: vi.fn(),
   toggleThemeMock: vi.fn(),
@@ -26,6 +27,7 @@ const mockRoute = reactive<{ name: string | undefined, path: string }>({
 
 mockNuxtImport('$fetch', () => mocks.fetchMock)
 mockNuxtImport('navigateTo', () => mocks.navigateToMock)
+mockNuxtImport('useErrorMessage', () => mocks.errorMessageMock)
 
 mockNuxtImport('useAuth', () => {
   return () => ({
@@ -94,6 +96,7 @@ describe('Search/Modal.client', () => {
     mocks.fetchMock.mockReset()
     mocks.navigateToMock.mockReset().mockResolvedValue(undefined)
     mocks.toggleThemeMock.mockReset()
+    mocks.errorMessageMock.mockReset()
 
     useSearchModal().isModalOpen.value = false
     useFilesModalHandoff().clearPendingOpen()
@@ -741,5 +744,235 @@ describe('Search/Modal.client', () => {
           .toBe(true)
       },
     )
+  })
+
+  describe('pin toggle', () => {
+    function mockPinFetch(
+      history: ReturnType<typeof createHistoryResponse>,
+      pinnedAt: string | null,
+    ) {
+      mocks.fetchMock.mockImplementation((url: string) => {
+        if (url === '/api/v1/chats/history/pin') {
+          return Promise.resolve({ pinnedAt })
+        }
+
+        return Promise.resolve(history)
+      })
+    }
+
+    async function flushPin() {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+      await nextTick()
+    }
+
+    it('pins a recent chat in place without navigating', async () => {
+      useSearchModal().isModalOpen.value = true
+      mockPinFetch(createHistoryResponse({
+        chats: [
+          createHistoryChat({
+            id: 'recent-1',
+            slug: 'recent-1',
+            activityAt: '2026-03-11T00:00:00.000Z',
+          }),
+          createHistoryChat({
+            id: 'recent-2',
+            slug: 'recent-2',
+            activityAt: '2026-03-10T00:00:00.000Z',
+          }),
+        ],
+      }), '2026-03-12T00:00:00.000Z')
+
+      const wrapper = await mountModal()
+      await waitForRecentChatsFetch()
+
+      const row = wrapper.find('#search-option-recent-recent-2')
+      const button = row.find('[data-testid="search-result-pin-toggle"]')
+
+      expect(button.attributes('aria-label')).toBe('Pin')
+
+      await button.trigger('click')
+      await flushPin()
+
+      expect(mocks.fetchMock).toHaveBeenCalledWith(
+        '/api/v1/chats/history/pin',
+        { method: 'POST', body: { chatId: 'recent-2' } },
+      )
+      expect(mocks.navigateToMock).not.toHaveBeenCalled()
+
+      const ids = wrapper.findAll('[role="option"]')
+        .map(option => option.attributes('id'))
+        .filter((id): id is string => !!id?.startsWith('search-option-recent-'))
+
+      expect(ids).toEqual([
+        'search-option-recent-recent-1',
+        'search-option-recent-recent-2',
+      ])
+      expect(wrapper.find('#search-option-recent-recent-2')
+        .find('[data-testid="search-result-pin-toggle"]')
+        .attributes('aria-label')).toBe('Unpin')
+    })
+
+    it('unpins a pinned chat in the filtered results', async () => {
+      useSearchModal().isModalOpen.value = true
+      mockPinFetch(createHistoryResponse({
+        pinned: [createHistoryChat({
+          id: 'pinned-1',
+          slug: 'pinned-1',
+          pinnedAt: '2026-03-01T00:00:00.000Z',
+        })],
+      }), null)
+
+      const wrapper = await mountModal()
+
+      await wrapper.find('input').setValue('chat')
+      await waitForDebouncedSearch()
+
+      const button = wrapper.find('#search-option-chat-pinned-1')
+        .find('[data-testid="search-result-pin-toggle"]')
+
+      expect(button.attributes('aria-label')).toBe('Unpin')
+
+      await button.trigger('click')
+      await flushPin()
+
+      expect(mocks.fetchMock).toHaveBeenCalledWith(
+        '/api/v1/chats/history/pin',
+        { method: 'POST', body: { chatId: 'pinned-1' } },
+      )
+      expect(mocks.navigateToMock).not.toHaveBeenCalled()
+      expect(wrapper.find('#search-option-chat-pinned-1')
+        .find('[data-testid="search-result-pin-toggle"]')
+        .attributes('aria-label')).toBe('Pin')
+      expect(wrapper.find('#search-option-chat-pinned-1')
+        .find('[data-testid="chat-pinned-badge"]').exists()).toBe(false)
+    })
+
+    it('keeps the highlighted row after pinning a non-first result', async () => {
+      useSearchModal().isModalOpen.value = true
+      mockPinFetch(createHistoryResponse({
+        chats: [
+          createHistoryChat({ id: 'c1', slug: 'c1' }),
+          createHistoryChat({ id: 'c2', slug: 'c2' }),
+          createHistoryChat({ id: 'c3', slug: 'c3' }),
+        ],
+      }), '2026-03-12T00:00:00.000Z')
+
+      const wrapper = await mountModal()
+
+      await wrapper.find('input').setValue('chat')
+      await waitForDebouncedSearch()
+
+      await wrapper.find('input').trigger('keydown', { key: 'ArrowDown' })
+      await wrapper.find('input').trigger('keydown', { key: 'ArrowDown' })
+      await nextTick()
+
+      expect(wrapper.find('#search-option-chat-c3').attributes('aria-selected'))
+        .toBe('true')
+
+      await wrapper.find('#search-option-chat-c3')
+        .find('[data-testid="search-result-pin-toggle"]')
+        .trigger('click')
+      await flushPin()
+
+      expect(wrapper.find('#search-option-chat-c3').attributes('aria-selected'))
+        .toBe('true')
+      expect(wrapper.find('#search-option-chat-c1').attributes('aria-selected'))
+        .toBe('false')
+    })
+
+    it('reports a failed pin request and allows retrying afterwards', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      let shouldPinFail = true
+
+      mocks.fetchMock.mockImplementation((url: string) => {
+        if (url === '/api/v1/chats/history/pin') {
+          if (shouldPinFail) {
+            return Promise.reject(new Error('Pin failed'))
+          }
+
+          return Promise.resolve({ pinnedAt: '2026-03-12T00:00:00.000Z' })
+        }
+
+        return Promise.resolve(createHistoryResponse({
+          chats: [createHistoryChat({ id: 'c1', slug: 'c1' })],
+        }))
+      })
+
+      const wrapper = await mountModal()
+
+      await wrapper.find('input').setValue('chat')
+      await waitForDebouncedSearch()
+
+      const pinButton = () => {
+        return wrapper.find('#search-option-chat-c1')
+          .find('[data-testid="search-result-pin-toggle"]')
+      }
+
+      await pinButton().trigger('click')
+      await flushPin()
+
+      expect(mocks.errorMessageMock).toHaveBeenCalledTimes(1)
+      expect(mocks.errorMessageMock.mock.calls[0]?.[0]).toBeTruthy()
+      expect(pinButton().attributes('aria-label')).toBe('Pin')
+      expect(pinButton().attributes('aria-busy')).toBe('false')
+
+      shouldPinFail = false
+
+      await pinButton().trigger('click')
+      await flushPin()
+
+      const pinCalls = mocks.fetchMock.mock.calls.filter((call) => {
+        return call[0] === '/api/v1/chats/history/pin'
+      })
+
+      expect(pinCalls).toHaveLength(2)
+      expect(pinButton().attributes('aria-label')).toBe('Unpin')
+      expect(mocks.navigateToMock).not.toHaveBeenCalled()
+    })
+
+    it('ignores a second pin click while one is pending', async () => {
+      useSearchModal().isModalOpen.value = true
+
+      let resolvePin!: (value: { pinnedAt: string | null }) => void
+
+      mocks.fetchMock.mockImplementation((url: string) => {
+        if (url === '/api/v1/chats/history/pin') {
+          return new Promise((resolve) => {
+            resolvePin = resolve
+          })
+        }
+
+        return Promise.resolve(createHistoryResponse({
+          chats: [
+            createHistoryChat({ id: 'c1', slug: 'c1' }),
+            createHistoryChat({ id: 'c2', slug: 'c2' }),
+          ],
+        }))
+      })
+
+      const wrapper = await mountModal()
+
+      await wrapper.find('input').setValue('chat')
+      await waitForDebouncedSearch()
+
+      await wrapper.find('#search-option-chat-c1')
+        .find('[data-testid="search-result-pin-toggle"]')
+        .trigger('click')
+      await wrapper.find('#search-option-chat-c2')
+        .find('[data-testid="search-result-pin-toggle"]')
+        .trigger('click')
+
+      const pinCalls = mocks.fetchMock.mock.calls.filter((call) => {
+        return call[0] === '/api/v1/chats/history/pin'
+      })
+
+      expect(pinCalls).toHaveLength(1)
+
+      resolvePin({ pinnedAt: '2026-03-12T00:00:00.000Z' })
+      await flushPin()
+    })
   })
 })
