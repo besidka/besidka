@@ -93,7 +93,7 @@
       <NuxtLink
         v-else
         :to="withAuthUtm(secondary.href)"
-        class="group/cta btn btn-ghost btn-sm"
+        class="group/cta btn btn-ghost btn-ghost-legacy btn-sm"
         @click="track('cta_click', { target: secondary.href })"
       >
         <Icon

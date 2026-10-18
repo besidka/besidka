@@ -7,7 +7,7 @@
     >
       <NuxtLink
         to="/"
-        class="btn btn-sm btn-ghost -translate-x-2.5 rounded-full"
+        class="btn btn-sm btn-ghost btn-ghost-legacy -translate-x-2.5 rounded-full"
         aria-label="Besidka home"
       >
         <Logo class="h-7 w-auto" />
